@@ -23,6 +23,12 @@ UtcNow = Callable[[], datetime]
 Subscription = Mapping[str, object]
 
 
+class _SinkFailure(RuntimeError):
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+
+
 def event_stream_id(event: StreamEvent) -> str:
     if event.kind is StreamKind.ALL_MIDS:
         return f"allMids:{event.market.dex}" if event.market.dex else "allMids"
@@ -91,7 +97,21 @@ class WebSocketSupervisor:
     async def _subscribe_all(self, connection: WsConnection) -> None:
         ordered = sorted(self._subscriptions, key=subscription_id)
         for subscription in ordered:
+            stream_id = subscription_id(subscription)
             await connection.send_json(subscribe_message(subscription))
+            self._last_stream_message[stream_id] = self._clock_ms()
+
+    async def _emit_event(self, event: StreamEvent) -> None:
+        try:
+            await self._event_sink(event)
+        except Exception as exc:
+            raise _SinkFailure(exc) from exc
+
+    async def _emit_gap(self, gap: DataGap) -> None:
+        try:
+            await self._gap_sink(gap)
+        except Exception as exc:
+            raise _SinkFailure(exc) from exc
 
     def _remember(self, stream_id: str, event_key: str) -> bool:
         keys = self._recent_key_sets[stream_id]
@@ -123,7 +143,7 @@ class WebSocketSupervisor:
         gap = self._open_gaps.pop(stream_id, None)
         if gap is None:
             return
-        await self._gap_sink(
+        await self._emit_gap(
             DataGap(
                 stream_id=stream_id,
                 started_ms=gap.started_ms,
@@ -149,7 +169,7 @@ class WebSocketSupervisor:
                 and exchange_time < previous_exchange_time
             ):
                 self._anomaly_count += 1
-                await self._gap_sink(
+                await self._emit_gap(
                     DataGap(
                         stream_id=stream_id,
                         started_ms=exchange_time,
@@ -163,7 +183,7 @@ class WebSocketSupervisor:
                 self._last_exchange_time[stream_id] = exchange_time
             self._last_stream_message[stream_id] = now_ms
             await self._close_gap_if_needed(stream_id, now_ms)
-            await self._event_sink(event)
+            await self._emit_event(event)
 
     async def _session(
         self,
@@ -209,6 +229,8 @@ class WebSocketSupervisor:
                 backoff = 1.0
             except asyncio.CancelledError:
                 raise
+            except _SinkFailure as exc:
+                raise exc.cause from exc
             except WsProtocolError:
                 raise
             except Exception:
