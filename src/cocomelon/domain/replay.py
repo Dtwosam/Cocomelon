@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Any
 
 
@@ -23,8 +24,12 @@ def _require_nonempty(value: str, field: str) -> None:
 
 
 def _require_sha256(value: str, field: str) -> None:
-    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value.lower()):
-        raise ValueError(f"{field} must be a 64-character sha256 hex digest")
+    if (
+        len(value) != 64
+        or value != value.lower()
+        or any(char not in "0123456789abcdef" for char in value)
+    ):
+        raise ValueError(f"{field} must be a lowercase 64-character sha256 hex digest")
 
 
 def _canonical_digest(payload: dict[str, object], *, length: int = 64) -> str:
@@ -51,6 +56,14 @@ class SourceSegment:
 
     def __post_init__(self) -> None:
         _require_nonempty(self.relative_path, "relative_path")
+        path = PurePosixPath(self.relative_path)
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in self.relative_path
+            or path.as_posix() != self.relative_path
+        ):
+            raise ValueError("relative_path must be a safe canonical relative POSIX path")
         _require_nonempty(self.partition, "partition")
         _require_sha256(self.sha256, "sha256")
         if self.byte_count < 0:
