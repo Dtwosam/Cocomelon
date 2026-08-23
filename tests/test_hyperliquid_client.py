@@ -174,3 +174,9 @@ def test_funding_history_reserves_conservative_page_weight() -> None:
     client = InfoClient(Settings(), transport=transport, budget=Budget())
     client.funding_history(MarketId(dex="", coin="BTC"), start_ms=1, end_ms=2)
     assert weights == [45]
+
+
+def test_info_client_rejects_noncanonical_mainnet_api_url() -> None:
+    settings = Settings(api_url="https://example.com")
+    with pytest.raises(ValueError, match="canonical Hyperliquid mainnet"):
+        InfoClient(settings, transport=lambda *_: [])

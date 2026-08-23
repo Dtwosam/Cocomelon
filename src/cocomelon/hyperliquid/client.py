@@ -9,7 +9,7 @@ from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from cocomelon.config import Settings
+from cocomelon.config import MAINNET_API_URL, Settings
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.rate_limit import RollingRateBudget
 
@@ -90,7 +90,11 @@ class InfoClient:
             raise ValueError("backoff_base must not be negative")
         if max_attempts <= 0:
             raise ValueError("max_attempts must be positive")
-        self._endpoint = f"{settings.api_url.rstrip('/')}/info"
+        if settings.api_url.rstrip("/") != MAINNET_API_URL:
+            raise ValueError(
+                "Phase 2 public-data reads require the canonical Hyperliquid mainnet API URL"
+            )
+        self._endpoint = f"{MAINNET_API_URL}/info"
         self._transport = transport or _stdlib_transport
         self._budget = budget or RollingRateBudget()
         self._timeout = timeout
