@@ -2,12 +2,21 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.execution import ExecutionAttempt, ExecutionResult
+from cocomelon.domain.execution import (
+    ExecutionAttempt,
+    ExecutionResult,
+    PositionAction,
+    PositionActionType,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision
 from cocomelon.domain.strategy import Direction, StrategyDecision
+from cocomelon.execution.funding import FundingAccrual, FundingGap
 from cocomelon.journal.observations import (
     observation_from_execution,
+    observation_from_funding_accrual,
+    observation_from_funding_gap,
+    observation_from_position_action,
     observation_from_risk,
     observation_from_strategy,
     should_sample_no_trade,
@@ -124,6 +133,59 @@ def test_execution_observations_cover_full_partial_and_zero_fill() -> None:
         ("IOC_PARTIAL",),
         ("NO_VISIBLE_DEPTH",),
     )
+
+
+def test_position_action_observation_preserves_deterministic_action_id() -> None:
+    action = PositionAction(
+        action_type=PositionActionType.TIGHTEN_STOP,
+        market=MARKET,
+        quantity=None,
+        new_stop_price=Decimal("99"),
+        reason_codes=("TRAIL_PROFIT",),
+        timestamp_ms=1_100,
+    )
+
+    observation = observation_from_position_action(action, replay_run_id="replay-4")
+
+    assert observation.kind.value == "position_action"
+    assert observation.market == MARKET
+    assert observation.timestamp_ms == action.timestamp_ms
+    assert observation.position_action_id == action.action_id
+    assert observation.reason_codes == ("TRAIL_PROFIT",)
+
+
+def test_funding_observations_preserve_accrual_and_gap_source_ids() -> None:
+    accrual = FundingAccrual(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        position_id="position-1",
+        signed_quantity=Decimal("2"),
+        oracle_price=Decimal("100"),
+        funding_rate=Decimal("0.0001"),
+        cash_delta=Decimal("-0.02"),
+        oracle_event_key="ctx:SOL:1",
+        funding_source="hyperliquid-mainnet-info",
+        funding_received_at_ms=3_600_100,
+    )
+    gap = FundingGap(
+        market=MARKET,
+        boundary_ms=7_200_000,
+        position_id="position-1",
+        reason="FUNDING_RECORD_MISSING",
+        as_of_ms=7_200_250,
+        account_inconsistent=False,
+    )
+
+    accrual_observation = observation_from_funding_accrual(accrual, replay_run_id="replay-5")
+    gap_observation = observation_from_funding_gap(gap, replay_run_id="replay-5")
+
+    assert accrual_observation.kind.value == "funding_event"
+    assert accrual_observation.funding_event_id == accrual.accrual_id
+    assert accrual_observation.timestamp_ms == accrual.boundary_ms
+    assert gap_observation.kind.value == "funding_gap"
+    assert gap_observation.funding_event_id == gap.gap_id
+    assert gap_observation.reason_codes == ("FUNDING_RECORD_MISSING",)
+    assert gap_observation.timestamp_ms == gap.as_of_ms
 
 
 def test_no_trade_sampling_is_hash_deterministic_and_has_exact_edges() -> None:
