@@ -2,14 +2,14 @@ import json
 from pathlib import Path
 
 import pytest
-
-from cocomelon.domain.replay import EvidenceClass
-from cocomelon.replay.jsonl import validate_jsonl_segment
 from cocomelon.replay.manifest import (
     ReplayInputMismatchError,
     build_replay_manifest,
     verify_replay_inputs,
 )
+
+from cocomelon.domain.replay import EvidenceClass
+from cocomelon.replay.jsonl import validate_jsonl_segment
 
 
 def write_event(path: Path, *, event_key: str, receive_time: str) -> None:
