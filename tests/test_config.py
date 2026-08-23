@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 
 from cocomelon.config import ExecutionMode, Settings
@@ -18,10 +20,18 @@ def test_defaults_are_mainnet_and_paper(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.ws_url == "wss://api.hyperliquid.xyz/ws"
     assert settings.execution_mode is ExecutionMode.PAPER
     assert settings.live_activation_valid is False
-    assert settings.risk_per_trade == 0.0025
-    assert settings.max_open_risk == 0.0075
-    assert settings.daily_loss_limit == 0.01
-    assert settings.weekly_drawdown_limit == 0.03
+    assert settings.risk_per_trade == Decimal("0.0025")
+    assert settings.max_open_risk == Decimal("0.0075")
+    assert settings.daily_loss_limit == Decimal("0.01")
+    assert settings.weekly_drawdown_limit == Decimal("0.03")
+    assert settings.consecutive_loss_cooldown == 3
+    assert settings.cooldown_ms == 3_600_000
+    assert settings.correlation_bucket_risk_limit == Decimal("0.005")
+    assert settings.max_gross_leverage == Decimal("3")
+    assert settings.max_available_margin_fraction == Decimal("0.50")
+    assert settings.max_visible_depth_fraction == Decimal("0.10")
+    assert settings.min_liquidation_stop_multiple == Decimal("2")
+    assert settings.max_state_age_ms == 5_000
 
 
 @pytest.mark.parametrize(
