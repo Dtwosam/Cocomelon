@@ -7,9 +7,9 @@
 ## Current state
 
 **Last completed phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots  
-**Integration state:** VERIFIED COMPLETE on `phase-2-mainnet-rest`; pending merge through PR #2  
-**Verified branch head before this status-only update:** `1961e0112770172cb475a574cb4ca2a26dd1627c`  
-**Active next phase after merge:** Phase 3 — WebSocket collector and durable market recording
+**Integration state:** MERGED into `main`  
+**Phase 2 merge commit:** `b95352e238d6a9eabd63e13c1f8300e654a7e636`  
+**Active next phase:** Phase 3 — WebSocket collector and durable market recording
 
 ## Phase 2 implementation evidence
 
@@ -40,7 +40,6 @@ Successful smoke run:
 - Python: `3.12.14`;
 - `python -m cocomelon markets` — PASS;
 - public fixture capture — PASS;
-- artifact upload — PASS;
 - source endpoint: `https://api.hyperliquid.xyz/info`;
 - no wallet, signing, account mutation, order, or execution method was involved.
 
@@ -51,29 +50,34 @@ Observed market-discovery snapshot during the smoke:
 - 180 delisted markets;
 - 11 perp DEX namespaces total;
 - 10 HIP-3/perp DEX namespaces beyond the native venue;
-- first sampled HIP-3 namespace: `xyz`;
 - sampled HIP-3 wire symbols included `xyz:XYZ100`, `xyz:TSLA`, and `xyz:NVDA`.
 
-Captured public fixtures include:
+## Final Phase 2 verification
 
-- `perpDexs`;
-- native `metaAndAssetCtxs`;
-- HIP-3 `xyz` `metaAndAssetCtxs`;
-- BTC 15-minute candles;
-- BTC funding history.
+Final feature-tree CI after the temporary network workflow was removed:
 
-## Final deterministic CI gate
-
-Final implementation tree after removing the temporary network-smoke workflow:
-
-- head: `1961e0112770172cb475a574cb4ca2a26dd1627c`;
+- verified head before status-only update: `1961e0112770172cb475a574cb4ca2a26dd1627c`;
 - CI run: `32648127671` — SUCCESS;
 - project install — PASS;
 - Ruff (`src tests scripts`) — PASS;
 - mypy (`src`) — PASS;
-- pytest — PASS.
+- pytest — PASS;
+- subsequent status-only commit CI run `32648418819` — SUCCESS;
+- local execution-sandbox suite reached 42 passing tests, including captured real-mainnet fixture contracts.
 
-Local execution-sandbox verification during Phase 2 reached 42 passing tests, including tests against the captured real-mainnet fixture structures. The local sandbox has restricted outbound networking; real-mainnet reachability was therefore verified by the separate read-only GitHub Actions smoke above.
+## Phase 3 current design facts
+
+Current official Hyperliquid documentation has been re-checked before Phase 3 planning:
+
+- mainnet WebSocket endpoint: `wss://api.hyperliquid.xyz/ws`;
+- server may disconnect periodically and clients must reconnect/resubscribe;
+- missed data may appear in snapshot acknowledgements or be recovered through corresponding info requests;
+- server closes a connection if it has not sent a message for 60 seconds; clients may send `{"method":"ping"}` and receive `{"channel":"pong"}`;
+- public subscription types needed by Phase 3 include `allMids`, `candle`, `l2Book`, and `trades`;
+- `allMids` supports an optional perp DEX namespace;
+- current per-IP limits include 10 WebSocket connections, 30 new connections/minute, 1000 subscriptions, and 2000 messages sent/minute.
+
+Phase 3 will remain public-market-data only. User/account subscriptions, signing, orders, and live execution remain out of scope.
 
 ## Safety invariants still locked
 
@@ -84,18 +88,18 @@ Local execution-sandbox verification during Phase 2 reached 42 passing tests, in
 - No live exchange adapter exists.
 - No strategy engine exists yet.
 - No ML/learning engine exists yet.
-- No wallet signing, order placement, transfer, or withdrawal capability was added in Phase 2.
+- No wallet signing, order placement, transfer, or withdrawal capability exists.
 - Risk defaults remain 0.25% per trade, 0.75% aggregate planned open risk, 1% daily loss lockout, and 3% rolling weekly drawdown lockout.
 - Solidity is not part of V1.
 - No secrets may be committed or emitted in logs.
 
 ## Exact next action
 
-1. Merge verified PR #2 into `main` using the verified head SHA.
-2. Verify the merge landed on `main`.
-3. Re-check current official Hyperliquid WebSocket/subscription semantics.
-4. Create and commit the Phase 3 implementation plan for **WebSocket collector and durable market recording**.
-5. Execute Phase 3 autonomously on a feature branch using TDD, then PR/CI/merge under the same evidence-before-completion rule.
+1. Create and commit the dedicated Phase 3 implementation plan for **WebSocket collector and durable market recording**.
+2. Execute Phase 3 autonomously on an isolated feature branch using TDD.
+3. Add reconnect/resubscribe, heartbeat/freshness, duplicate/out-of-order handling, event normalization, rotating durable storage, gap records, and dynamic deep-watchlist subscription management.
+4. Use a read-only mainnet smoke only where network verification is necessary, then remove any temporary network-dependent CI before merge.
+5. Merge only after deterministic CI and Phase 3 exit criteria pass.
 
 Do not begin scanner/strategy, ML, paper execution, or live execution before their preceding build-order phases pass.
 
