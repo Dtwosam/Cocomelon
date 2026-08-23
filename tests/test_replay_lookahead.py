@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 
-from cocomelon.replay.engine import ReplayEngine, ReplayPipeline
-
 from cocomelon.domain.journal import JournalObservation, ObservationKind
 from cocomelon.domain.replay import (
     EvidenceClass,
@@ -14,6 +12,7 @@ from cocomelon.domain.replay import (
     SourceSegment,
 )
 from cocomelon.journal.store import JournalStore
+from cocomelon.replay.engine import ReplayEngine, ReplayPipeline
 
 
 class MemoryReplaySource:
