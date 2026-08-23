@@ -84,16 +84,18 @@ class DynamicShortlistManager:
             key = market.canonical
             if key in pinned_keys:
                 continue
-            decision = decision_map.get(key)
-            rank = rank_map.get(key)
+            current_decision = decision_map.get(key)
+            current_rank = rank_map.get(key)
             if (
-                decision is not None
-                and decision.rankable
-                and rank is not None
-                and rank.ordinal <= self._config.retention_rank
+                current_decision is not None
+                and current_decision.rankable
+                and current_rank is not None
+                and current_rank.ordinal <= self._config.retention_rank
             ):
                 retained.append(market)
-        retained.sort(key=lambda market: (rank_map[market.canonical].ordinal, market.canonical))
+        retained.sort(
+            key=lambda market: (rank_map[market.canonical].ordinal, market.canonical)
+        )
         selected = retained[: self._config.target_size]
         selected_keys = {market.canonical for market in selected}
 
@@ -106,7 +108,9 @@ class DynamicShortlistManager:
             selected.append(rank.market)
             selected_keys.add(key)
 
-        selected.sort(key=lambda market: (rank_map[market.canonical].ordinal, market.canonical))
+        selected.sort(
+            key=lambda market: (rank_map[market.canonical].ordinal, market.canonical)
+        )
         current = tuple((*selected, *pinned))
         previous_keys = {market.canonical for market in self._current}
         current_keys = {market.canonical for market in current}
