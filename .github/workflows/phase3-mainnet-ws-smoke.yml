@@ -1,0 +1,29 @@
+name: Phase 3 Mainnet WS Smoke
+
+on:
+  push:
+    branches:
+      - phase-3-websocket-recorder
+    paths:
+      - scripts/capture_phase3_ws_fixtures.py
+      - .github/workflows/phase3-mainnet-ws-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Run bounded public mainnet stream smoke
+        run: cocomelon stream-smoke --seconds 5 --market BTC
+      - name: Capture public mainnet WebSocket fixture shapes
+        run: python scripts/capture_phase3_ws_fixtures.py --output-dir artifacts/phase3_ws_capture
