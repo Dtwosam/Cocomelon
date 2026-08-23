@@ -458,13 +458,13 @@ The user expects ChatGPT to build the project **from A to Z in the GitHub reposi
 
 ## 14. Current status at creation of this project-source file
 
-Phase 0 documentation is being anchored. The next implementation phase is **Phase 1 — Python foundation and domain contracts**.
+**Phase 0 is complete. Phase 1 — Python foundation and domain contracts — is active.**
 
 The active implementation plan is:
 
 `docs/superpowers/plans/2026-08-23-phase-1-foundation.md`
 
-Do not begin ML, strategies, or live execution before the preceding phase exit criteria pass.
+The exact next action is to execute Task 1 of that plan. Do not begin ML, strategies, or live execution before the preceding phase exit criteria pass.
 
 ---
 
