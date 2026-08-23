@@ -30,9 +30,19 @@ class EligibilityConfig:
             raise ValueError("max_context_age_ms must be positive")
         if self.max_book_age_ms <= 0:
             raise ValueError("max_book_age_ms must be positive")
-        for name in ("volume_quantile", "oi_quantile", "spread_quantile", "depth_quantile"):
+        for name in (
+            "volume_quantile",
+            "oi_quantile",
+            "spread_quantile",
+            "depth_quantile",
+        ):
             value = getattr(self, name)
-            if not isinstance(value, Decimal) or not value.is_finite() or value < ZERO or value > ONE:
+            if (
+                not isinstance(value, Decimal)
+                or not value.is_finite()
+                or value < ZERO
+                or value > ONE
+            ):
                 raise ValueError(f"{name} must be finite and between 0 and 1")
         non_negative = (
             ("absolute_min_day_notional_volume", self.absolute_min_day_notional_volume),
@@ -130,7 +140,9 @@ def evaluate_eligibility(
         reasons.append("invalid_price_state")
 
     received_at = market_snapshot.received_at_ms
-    if received_at > features.as_of_ms or features.as_of_ms - received_at > config.max_context_age_ms:
+    context_is_future = received_at > features.as_of_ms
+    context_is_stale = features.as_of_ms - received_at > config.max_context_age_ms
+    if context_is_future or context_is_stale:
         reasons.append("stale_context")
 
     if market_snapshot.meta.max_leverage <= 0:
