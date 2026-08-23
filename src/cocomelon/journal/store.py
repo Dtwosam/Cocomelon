@@ -164,7 +164,10 @@ class JournalStore:
                 maximum_actual_notional, gross_pnl, fees, funding, entry_slippage,
                 exit_slippage, net_pnl, mfe_pnl, mae_pnl, exit_reason, reason_trace_json,
                 equity_before, equity_after
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             (
                 summary.trade_id,
@@ -293,7 +296,9 @@ class JournalStore:
         assert isinstance(market_dex, str)
         assert isinstance(market_coin, str)
         reasons_raw = json.loads(str(reason_trace_json))
-        if not isinstance(reasons_raw, list) or not all(isinstance(item, str) for item in reasons_raw):
+        if not isinstance(reasons_raw, list) or not all(
+            isinstance(item, str) for item in reasons_raw
+        ):
             raise ValueError("stored reason_trace_json is invalid")
         return TradeSummary(
             trade_id=str(trade_id),
