@@ -213,7 +213,9 @@ def _validated_rows(root: Path, segments: tuple[SourceSegment, ...]) -> list[dic
     for segment in sorted(segments, key=lambda item: item.relative_path):
         path = root / segment.relative_path
         if not path.is_file():
-            raise RecordingValidationError(f"missing validated source segment: {segment.relative_path}")
+            raise RecordingValidationError(
+                f"missing validated source segment: {segment.relative_path}"
+            )
         raw = path.read_bytes()
         actual_sha = hashlib.sha256(raw).hexdigest()
         if actual_sha != segment.sha256:
