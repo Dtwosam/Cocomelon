@@ -6,11 +6,12 @@
 
 ## Current state
 
-**Last completed implementation phase:** Phase 4 — feature engine, eligibility, broad-to-deep scanner, opportunity ranking, and dynamic shortlist  
-**Integration state:** Phase 4 exit criteria VERIFIED on PR #4 feature tree; final merge gate pending continuity-doc CI  
+**Last completed phase:** Phase 4 — feature engine, eligibility, broad-to-deep scanner, opportunity ranking, and dynamic shortlist  
+**Integration state:** MERGED into `main`  
 **Phase 4 PR:** #4  
-**Verified implementation head before continuity-doc reconciliation:** `6de2a1addc7da6018b76a107b59a2e5ba1426262`  
-**Next phase after Phase 4 is merged:** Phase 5 — explainable baseline strategy engines
+**Phase 4 merge commit:** `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`  
+**Verified Phase 4 feature head:** `7317d05d69139e144b077c4aafd42ea3ad85102d`  
+**Active next phase:** Phase 5 — explainable baseline strategy engines
 
 ## Phase 4 established
 
@@ -38,20 +39,26 @@ No strategy direction, risk sizing, paper fills, user/account access, signing, o
 
 ## Phase 4 deterministic verification
 
-Fresh feature-tree verification after the temporary public-network workflow was removed:
+Final feature-tree verification before merge:
 
-- verified implementation head: `6de2a1addc7da6018b76a107b59a2e5ba1426262`;
-- PR merge-ref tested by CI: `45938e4443b6bd119be96e164d5bc92ccc63456f`;
-- CI run: `32655216604` — SUCCESS;
-- job: `97232742547`;
+- feature head: `7317d05d69139e144b077c4aafd42ea3ad85102d`;
+- continuity-doc CI run: `32655382404` — SUCCESS;
 - Python: `3.12.14`;
 - `python -m pip install -e ".[dev]"` — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
 - Ruff (`src tests scripts`) — PASS;
-- mypy (`src`) — PASS, no issues in 39 source files;
+- mypy (`src`) — PASS;
 - pytest — PASS to 100%.
 
-The Task 9 RED cycle was independently observed before implementation: tests failed because `scan-once` and `scan_once_payload` did not exist, while compileall/Ruff/mypy remained clean. After the minimal implementation, full CI passed.
+Earlier implementation verification after the temporary public-network workflow was removed:
+
+- implementation head: `6de2a1addc7da6018b76a107b59a2e5ba1426262`;
+- CI run: `32655216604` — SUCCESS;
+- job: `97232742547`;
+- mypy reported no issues in 39 source files;
+- pytest reached 100%.
+
+PR #4 was marked ready only after the verified suite, then merged with expected-head SHA protection using exact head `7317d05d69139e144b077c4aafd42ea3ad85102d`. The resulting merge commit is `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`, and `main` was verified to point at that commit immediately after merge.
 
 ## Real Hyperliquid mainnet Phase 4 smoke evidence
 
@@ -75,9 +82,9 @@ Successful public-mainnet run:
 - top broad-attention markets at that observation were XPL, PURR, ENA, PENGU, and PUMP;
 - each top result correctly carried `missing_deep_data`, because `scan-once` intentionally does not fan out candle/L2 enrichment.
 
-The temporary smoke workflow was removed in commit `6de2a1addc7da6018b76a107b59a2e5ba1426262` before the merge gate. No wallet, user/account endpoint, signing, order, transfer, withdrawal, or WebSocket `post` action was used.
+The temporary smoke workflow was removed before merge. `main` was verified after merge to contain only `.github/workflows/ci.yml`; no temporary network workflow remains.
 
-Market counts and rankings above are timestamped observations, not permanent assumptions or profitability claims.
+No wallet, user/account endpoint, signing, order, transfer, withdrawal, or WebSocket `post` action was used. Market counts and rankings above are timestamped observations, not permanent assumptions or profitability claims.
 
 ## Phase 4 exit-criteria audit
 
@@ -96,16 +103,15 @@ Verified line by line against the approved implementation plan:
 - Phase 3 subscription ceilings remain final protection;
 - feature snapshots are immutable, schema-versioned, provenance-carrying, and deterministically identified;
 - scanner outputs contain no strategy direction, risk sizing, or order plan;
-- PR #4 net changed-file set contains only Phase 4 feature/scanner/CLI/tests/plan files; the temporary smoke workflow is not part of the final diff.
+- the temporary smoke workflow is absent from the merged tree.
 
-## Completed prior phases
+## Completed phases
 
 - Phase 0 — governance/source-of-truth anchor: COMPLETE.
 - Phase 1 — Python foundation/domain/config/CI: MERGED at `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`.
 - Phase 2 — mainnet REST discovery/normalization: MERGED at `b95352e238d6a9eabd63e13c1f8300e654a7e636`.
 - Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
-
-Phase 3 real-mainnet WebSocket smoke remains valid historical evidence: run `32650798749` processed 1,002 normalized events in five seconds with 6 subscriptions, 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams at completion.
+- Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
 
 ## Safety invariants still locked
 
@@ -123,16 +129,16 @@ Phase 3 real-mainnet WebSocket smoke remains valid historical evidence: run `326
 
 ## Exact next action
 
-1. Run fresh CI on the Phase 4 continuity-doc commit.
-2. Re-read PR #4 head and mergeability.
-3. Merge PR #4 using expected-head SHA protection only after CI is green.
-4. Verify `main` contains the Phase 4 merge and no temporary smoke workflow.
-5. Reconcile continuity metadata to the actual merge commit if necessary.
-6. Only then begin Phase 5 — explainable baseline strategy engines — from current `main`, using the approved source hierarchy and a fresh Phase 5 spec/implementation plan before coding.
-7. Do not begin risk, paper execution, ML, or live execution early.
+1. Finish and merge this Phase 4 closeout documentation branch after its CI passes.
+2. Start Phase 5 from the resulting current `main`.
+3. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, and any existing Phase 5 material before implementation.
+4. Produce/review the Phase 5 design/spec and implementation plan before writing strategy production code.
+5. Build explainable baseline strategy engines with TDD while preserving NO TRADE as a first-class result.
+6. Strategy code may propose direction but cannot size risk, bypass data-quality/eligibility gates, or send orders.
+7. Do not begin risk, paper execution, ML, or live execution before their build-order gates.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon remains in pre-execution infrastructure/research phases. Phase 4 ranks markets for attention only; it does not decide LONG/SHORT, size positions, or send orders.
+Cocomelon remains in pre-execution research/infrastructure phases. Phase 4 ranks markets for attention only; it does not decide LONG/SHORT, size positions, or send orders.
