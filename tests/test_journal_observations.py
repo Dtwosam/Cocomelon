@@ -1,17 +1,17 @@
 from decimal import Decimal
 
 import pytest
-
-from cocomelon.domain.execution import ExecutionAttempt, ExecutionResult
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.risk import RiskDecision
-from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.journal.observations import (
     observation_from_execution,
     observation_from_risk,
     observation_from_strategy,
     should_sample_no_trade,
 )
+
+from cocomelon.domain.execution import ExecutionAttempt, ExecutionResult
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.risk import RiskDecision
+from cocomelon.domain.strategy import Direction, StrategyDecision
 
 MARKET = MarketId("", "SOL")
 
@@ -51,7 +51,12 @@ def risk(*, approved: bool) -> RiskDecision:
     )
 
 
-def attempt(result: ExecutionResult, *, filled: str, reason_codes: tuple[str, ...]) -> ExecutionAttempt:
+def attempt(
+    result: ExecutionResult,
+    *,
+    filled: str,
+    reason_codes: tuple[str, ...],
+) -> ExecutionAttempt:
     filled_quantity = Decimal(filled)
     requested = Decimal("5")
     return ExecutionAttempt(
