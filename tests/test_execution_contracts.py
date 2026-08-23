@@ -1,4 +1,4 @@
-from decimal import Decimal, ROUND_UP, getcontext, localcontext
+from decimal import ROUND_UP, Decimal, getcontext, localcontext
 
 import pytest
 
