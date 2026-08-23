@@ -121,15 +121,13 @@ def test_manifest_is_replaced_atomically_and_tracks_segment_state(tmp_path) -> N
     manifest = tmp_path / "manifest.json"
     temp_manifest = tmp_path / "manifest.json.tmp"
     payload = json.loads(manifest.read_text(encoding="utf-8"))
+    partition = payload["partitions"]["events/2026-08-23/trade/xyz%3ANVDA"]
 
     assert temp_manifest.exists() is False
     assert payload["schema_version"] == 1
-    assert payload["partitions"]["events/2026-08-23/trade/xyz%3ANVDA"] == {
-        "bytes": pytest.approx(payload["partitions"]["events/2026-08-23/trade/xyz%3ANVDA"]["bytes"]),
-        "records": 1,
-        "segment": 1,
-    }
-    assert payload["partitions"]["events/2026-08-23/trade/xyz%3ANVDA"]["bytes"] > 0
+    assert partition["segment"] == 1
+    assert partition["records"] == 1
+    assert partition["bytes"] > 0
 
 
 def test_write_failure_is_surfaced(tmp_path) -> None:
