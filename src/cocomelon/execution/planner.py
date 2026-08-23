@@ -33,10 +33,10 @@ def plan_opening_order(
         return PlanningRejection("RISK_NOT_APPROVED")
     if risk_decision.direction is Direction.NO_TRADE:
         return PlanningRejection("NO_TRADE")
-    if risk_decision.market != instrument.market:
-        return PlanningRejection("MARKET_MISMATCH")
     if not instrument.execution_supported:
         return PlanningRejection(instrument.unsupported_reason or "EXECUTION_UNSUPPORTED")
+    if risk_decision.market != instrument.market:
+        return PlanningRejection("MARKET_MISMATCH")
     if not reference_price.is_finite() or reference_price <= ZERO:
         return PlanningRejection("INVALID_REFERENCE_PRICE")
     if created_at_ms < 0:
