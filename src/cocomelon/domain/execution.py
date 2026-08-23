@@ -3,12 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from enum import StrEnum
 
 from cocomelon.domain.market import MarketId
 
 ZERO = Decimal("0")
+AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 
 
 def _require_finite(value: Decimal, field: str) -> None:
@@ -85,6 +86,8 @@ class PaperExecutionConfig:
     config_version: str = "phase7-v1"
     latency_ms: int = 250
     max_book_age_ms: int = 1_000
+    max_asset_ctx_age_ms: int = 5_000
+    funding_reconciliation_grace_ms: int = 300_000
     max_ioc_slippage_bps: Decimal = Decimal("25")
     taker_fee_rate: Decimal = Decimal("0.00045")
     fee_schedule_id: str = "hyperliquid-native-base-2026-08-23"
@@ -98,6 +101,10 @@ class PaperExecutionConfig:
             raise ValueError("latency_ms must be non-negative")
         if self.max_book_age_ms <= 0:
             raise ValueError("max_book_age_ms must be positive")
+        if self.max_asset_ctx_age_ms <= 0:
+            raise ValueError("max_asset_ctx_age_ms must be positive")
+        if self.funding_reconciliation_grace_ms < 0:
+            raise ValueError("funding_reconciliation_grace_ms must be non-negative")
         _require_positive(self.max_ioc_slippage_bps, "max_ioc_slippage_bps")
         _require_nonnegative(self.taker_fee_rate, "taker_fee_rate")
         _require_positive(self.native_perp_min_notional, "native_perp_min_notional")
@@ -154,6 +161,9 @@ class PaperOrderPlan:
     earliest_execution_ms: int
     execution_config_version: str
     instrument_metadata_received_at_ms: int
+    approved_risk_amount_ceiling: Decimal | None = None
+    stop_distance_fraction: Decimal | None = None
+    effective_loss_fraction: Decimal | None = None
 
     def __post_init__(self) -> None:
         _require_nonempty(self.risk_decision_id, "risk_decision_id")
@@ -173,8 +183,46 @@ class PaperOrderPlan:
         _require_nonempty(self.execution_config_version, "execution_config_version")
         if self.order_type is not OrderType.MARKETABLE_IOC:
             raise ValueError("Phase 7 paper orders must use MARKETABLE_IOC")
-        if not self.reduce_only and self.stop_price is None:
-            raise ValueError("opening paper orders require stop_price")
+        if not self.reduce_only:
+            if self.stop_price is None:
+                raise ValueError("opening paper orders require stop_price")
+            if self.approved_risk_amount_ceiling is None:
+                raise ValueError("opening paper orders require approved_risk_amount_ceiling")
+            if self.stop_distance_fraction is None:
+                raise ValueError("opening paper orders require stop_distance_fraction")
+            if self.effective_loss_fraction is None:
+                raise ValueError("opening paper orders require effective_loss_fraction")
+            _require_positive(
+                self.approved_risk_amount_ceiling,
+                "approved_risk_amount_ceiling",
+            )
+            _require_positive(self.stop_distance_fraction, "stop_distance_fraction")
+            _require_positive(self.effective_loss_fraction, "effective_loss_fraction")
+            with localcontext(AUTHORITATIVE_CONTEXT):
+                if self.effective_loss_fraction < self.stop_distance_fraction:
+                    raise ValueError(
+                        "effective_loss_fraction must be >= stop_distance_fraction"
+                    )
+        else:
+            if self.approved_risk_amount_ceiling is not None:
+                _require_nonnegative(
+                    self.approved_risk_amount_ceiling,
+                    "approved_risk_amount_ceiling",
+                )
+            if self.stop_distance_fraction is not None:
+                _require_nonnegative(self.stop_distance_fraction, "stop_distance_fraction")
+            if self.effective_loss_fraction is not None:
+                _require_nonnegative(
+                    self.effective_loss_fraction,
+                    "effective_loss_fraction",
+                )
+
+    @property
+    def cost_buffer_fraction(self) -> Decimal | None:
+        if self.stop_distance_fraction is None or self.effective_loss_fraction is None:
+            return None
+        with localcontext(AUTHORITATIVE_CONTEXT):
+            return self.effective_loss_fraction - self.stop_distance_fraction
 
     @property
     def plan_id(self) -> str:
@@ -191,6 +239,11 @@ class PaperOrderPlan:
                 "max_slippage_bps": str(self.max_slippage_bps),
                 "stop_price": _canonical_decimal(self.stop_price),
                 "approved_notional_ceiling": str(self.approved_notional_ceiling),
+                "approved_risk_amount_ceiling": _canonical_decimal(
+                    self.approved_risk_amount_ceiling
+                ),
+                "stop_distance_fraction": _canonical_decimal(self.stop_distance_fraction),
+                "effective_loss_fraction": _canonical_decimal(self.effective_loss_fraction),
                 "created_at_ms": self.created_at_ms,
                 "earliest_execution_ms": self.earliest_execution_ms,
                 "execution_config_version": self.execution_config_version,
