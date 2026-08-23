@@ -13,7 +13,7 @@ from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.hyperliquid.registry import InfoReader, MarketRegistry
 from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
-from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
+from cocomelon.hyperliquid.ws_client import WsConnection, connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.util.time import utc_now_ms
 
@@ -91,7 +91,7 @@ async def _stream_smoke_async(
         nonlocal gap_count
         gap_count += 1
 
-    async def connection_factory():  # type: ignore[no-untyped-def]
+    async def connection_factory() -> WsConnection:
         return await connect_mainnet_ws(settings)
 
     supervisor = WebSocketSupervisor(
