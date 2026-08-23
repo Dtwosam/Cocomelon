@@ -3,7 +3,6 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.stream import StreamKind
 from cocomelon.hyperliquid.ws_protocol import (
     WsProtocolError,
     normalize_ws_message,
@@ -11,6 +10,7 @@ from cocomelon.hyperliquid.ws_protocol import (
     subscription_id,
     unsubscribe_message,
 )
+from cocomelon.domain.stream import StreamKind
 
 RECEIVED = datetime(2026, 8, 23, 15, 30, tzinfo=UTC)
 
