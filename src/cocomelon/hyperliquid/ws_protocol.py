@@ -11,7 +11,7 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 
 SOURCE = "hyperliquid-mainnet-ws"
 SCHEMA_VERSION = 1
-PUBLIC_TYPES = frozenset({"allMids", "l2Book", "trades", "candle"})
+PUBLIC_TYPES = frozenset({"allMids", "activeAssetCtx", "l2Book", "trades", "candle"})
 
 
 class WsProtocolError(ValueError):
@@ -42,6 +42,12 @@ def _decimal(value: object, field: str) -> Decimal:
     return result
 
 
+def _optional_decimal(value: object, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    return _decimal(value, field)
+
+
 def _market(wire: object) -> MarketId:
     name = _string(wire, "coin")
     if ":" in name:
@@ -59,7 +65,7 @@ def _mapping(value: object, field: str) -> Mapping[str, object]:
 def _validated_subscription(subscription: Mapping[str, object]) -> str:
     kind = subscription.get("type")
     if not isinstance(kind, str) or kind not in PUBLIC_TYPES:
-        raise WsProtocolError("Phase 3 accepts only a public subscription")
+        raise WsProtocolError("Phase 7 accepts only a public subscription")
     if kind == "allMids":
         extra = set(subscription) - {"type", "dex"}
         if extra:
@@ -123,6 +129,29 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                 )
             )
         return mid_events
+    if channel == "activeAssetCtx":
+        ctx_data = _mapping(message.get("data"), "data")
+        market = _market(ctx_data.get("coin"))
+        ctx = _mapping(ctx_data.get("ctx"), "ctx")
+        payload: dict[str, object] = {
+            "mark_px": _decimal(ctx.get("markPx"), "markPx"),
+            "mid_px": _optional_decimal(ctx.get("midPx"), "midPx"),
+            "oracle_px": _decimal(ctx.get("oraclePx"), "oraclePx"),
+            "funding": _decimal(ctx.get("funding"), "funding"),
+            "open_interest": _decimal(ctx.get("openInterest"), "openInterest"),
+        }
+        return [
+            StreamEvent(
+                StreamKind.ACTIVE_ASSET_CTX,
+                market,
+                None,
+                receive_time,
+                SCHEMA_VERSION,
+                SOURCE,
+                f"activeAssetCtx:{market.canonical}:{_digest(payload)}",
+                payload,
+            )
+        ]
     if channel == "l2Book":
         book_data = _mapping(message.get("data"), "data")
         market = _market(book_data.get("coin"))
@@ -147,7 +176,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                     }
                 )
             normalized.append(tuple(side_rows))
-        payload: dict[str, object] = {"bids": normalized[0], "asks": normalized[1]}
+        payload = {"bids": normalized[0], "asks": normalized[1]}
         return [
             StreamEvent(
                 StreamKind.L2_BOOK,
