@@ -2,7 +2,6 @@ from datetime import UTC, datetime
 from decimal import Decimal, getcontext
 
 import pytest
-
 from cocomelon.domain.replay import (
     EvidenceClass,
     InputArtifact,
