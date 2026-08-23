@@ -3,10 +3,10 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
-from cocomelon.recorder import DurableRecorder
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
+from cocomelon.recorder import DurableRecorder
 
 RECEIVED = datetime(2026, 8, 23, 14, 30, tzinfo=UTC)
 
