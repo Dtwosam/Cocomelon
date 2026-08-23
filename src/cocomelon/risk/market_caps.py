@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from cocomelon.domain.risk import RiskRequest
 from cocomelon.domain.strategy import Direction
+from cocomelon.risk.decimal_math import divide_down
 
 ZERO = Decimal("0")
 
@@ -101,7 +102,7 @@ def calculate_market_caps(
         )
         * limits.max_visible_depth_fraction
     )
-    risk_notional = approved_risk_amount / effective_loss_fraction
+    risk_notional = divide_down(approved_risk_amount, effective_loss_fraction)
 
     if gross_capacity <= ZERO:
         return _rejected(
