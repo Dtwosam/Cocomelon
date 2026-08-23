@@ -10,6 +10,7 @@ from cocomelon.domain.market import MarketId
 
 class StreamKind(StrEnum):
     ALL_MIDS = "all_mids"
+    ACTIVE_ASSET_CTX = "active_asset_ctx"
     L2_BOOK = "l2_book"
     TRADE = "trade"
     CANDLE = "candle"
