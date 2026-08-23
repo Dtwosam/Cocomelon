@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - phase-2-mainnet-rest
+  pull_request:
   workflow_dispatch:
 
 jobs:
