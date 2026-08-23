@@ -171,18 +171,16 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
             time_ms = _integer(trade.get("time"), "time")
             tid = _integer(trade.get("tid"), "tid")
             users_raw = trade.get("users")
-            valid_users = isinstance(users_raw, list) and all(
-                isinstance(item, str) for item in users_raw
-            )
-            if not valid_users:
+            if not isinstance(users_raw, list):
                 raise WsProtocolError("users must be a string array")
+            users = tuple(_string(item, "user") for item in users_raw)
             payload = {
                 "side": _string(trade.get("side"), "side"),
                 "price": _decimal(trade.get("px"), "px"),
                 "size": _decimal(trade.get("sz"), "sz"),
                 "hash": _string(trade.get("hash"), "hash"),
                 "tid": tid,
-                "users": tuple(users_raw),
+                "users": users,
             }
             trade_events.append(
                 StreamEvent(
