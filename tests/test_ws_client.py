@@ -2,9 +2,9 @@ import asyncio
 import json
 
 import pytest
+from cocomelon.hyperliquid.ws_client import JsonWsConnection, WsTransportError, connect_mainnet_ws
 
 from cocomelon.config import Settings
-from cocomelon.hyperliquid.ws_client import JsonWsConnection, WsTransportError, connect_mainnet_ws
 
 
 class FakeSocket:
