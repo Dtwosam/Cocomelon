@@ -2,7 +2,6 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pytest
-from cocomelon.strategies.decision import combine_signals
 
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -22,6 +21,7 @@ from cocomelon.domain.strategy import (
     StrategyRole,
     StrategySignal,
 )
+from cocomelon.strategies.decision import combine_signals
 
 
 def _feature(**overrides: object) -> FeatureSnapshot:
