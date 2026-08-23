@@ -3,7 +3,11 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from cocomelon.domain.execution import InstrumentExecutionSpec, PositionAction, PositionActionType
+from cocomelon.domain.execution import (
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
+    PositionActionType,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision, RiskRequest
 from cocomelon.domain.strategy import StrategyDecision
@@ -14,7 +18,11 @@ from cocomelon.execution.accounting import (
     apply_reduce_only_fills,
     empty_account,
 )
-from cocomelon.execution.interface import ExecutionHealth, OpeningSubmission, PositionManagement
+from cocomelon.execution.interface import (
+    ExecutionHealth,
+    OpeningSubmission,
+    PositionManagement,
+)
 from cocomelon.execution.ioc import simulate_ioc
 from cocomelon.execution.manager import evaluate_position
 from cocomelon.execution.planner import (
@@ -30,7 +38,7 @@ class PaperExecutionAdapter:
     def __init__(
         self,
         path: str | Path,
-        config,
+        config: PaperExecutionConfig,
         *,
         starting_cash: Decimal,
         startup_timestamp_ms: int,
@@ -101,7 +109,8 @@ class PaperExecutionAdapter:
                 account=self._account,
             )
         if any(
-            position.market == risk_decision.market for position in self._account.positions
+            position.market == risk_decision.market
+            for position in self._account.positions
         ):
             return OpeningSubmission(
                 risk_decision=risk_decision,
@@ -173,7 +182,9 @@ class PaperExecutionAdapter:
         timestamp_ms: int,
         attempt_timestamp_ms: int,
     ) -> PositionManagement:
-        matches = tuple(position for position in self._account.positions if position.market == market)
+        matches = tuple(
+            position for position in self._account.positions if position.market == market
+        )
         if len(matches) != 1:
             raise ValueError("position manager requires exactly one open position")
         position = matches[0]
@@ -188,7 +199,10 @@ class PaperExecutionAdapter:
             timestamp_ms=timestamp_ms,
         )
 
-        if action.action_type in {PositionActionType.HOLD, PositionActionType.TIGHTEN_STOP}:
+        if action.action_type in {
+            PositionActionType.HOLD,
+            PositionActionType.TIGHTEN_STOP,
+        }:
             return PositionManagement(
                 action=action,
                 plan=None,
