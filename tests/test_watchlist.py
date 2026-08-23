@@ -1,7 +1,7 @@
 import pytest
-from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 
 from cocomelon.domain.market import MarketId
+from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_protocol import subscription_id
 
 
