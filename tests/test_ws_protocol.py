@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -59,23 +59,24 @@ def test_all_mids_normalizes_native_and_hip3_markets() -> None:
     assert events[1].payload["mid_px"] == Decimal("55.25")
 
 
-def test_active_asset_ctx_normalizes_public_mark_oracle_funding_context() -> None:
-    event = normalize_ws_message(
-        {
-            "channel": "activeAssetCtx",
-            "data": {
-                "coin": "BTC",
-                "ctx": {
-                    "funding": "0.0000125",
-                    "openInterest": "12345.67",
-                    "oraclePx": "64250.5",
-                    "markPx": "64255.25",
-                    "midPx": "64254.75",
-                },
+def active_asset_ctx_message() -> dict[str, object]:
+    return {
+        "channel": "activeAssetCtx",
+        "data": {
+            "coin": "BTC",
+            "ctx": {
+                "funding": "0.0000125",
+                "openInterest": "12345.67",
+                "oraclePx": "64250.5",
+                "markPx": "64255.25",
+                "midPx": "64254.75",
             },
         },
-        receive_time=RECEIVED,
-    )[0]
+    }
+
+
+def test_active_asset_ctx_normalizes_public_mark_oracle_funding_context() -> None:
+    event = normalize_ws_message(active_asset_ctx_message(), receive_time=RECEIVED)[0]
 
     assert event.kind is StreamKind.ACTIVE_ASSET_CTX
     assert event.market.canonical == "BTC"
@@ -91,6 +92,18 @@ def test_active_asset_ctx_normalizes_public_mark_oracle_funding_context() -> Non
     }
     assert event.event_key.startswith("activeAssetCtx:BTC:")
     assert event_stream_id(event) == "activeAssetCtx:BTC"
+
+
+def test_identical_active_asset_ctx_values_at_new_receive_time_are_distinct_evidence() -> None:
+    first = normalize_ws_message(active_asset_ctx_message(), receive_time=RECEIVED)[0]
+    second = normalize_ws_message(
+        active_asset_ctx_message(), receive_time=RECEIVED + timedelta(seconds=1)
+    )[0]
+
+    assert first.payload == second.payload
+    assert first.exchange_time_ms is None
+    assert second.exchange_time_ms is None
+    assert first.event_key != second.event_key
 
 
 def test_active_asset_ctx_supports_hip3_and_missing_mid_without_inventing_timestamp() -> None:
@@ -118,24 +131,14 @@ def test_active_asset_ctx_supports_hip3_and_missing_mid_without_inventing_timest
 
 
 def test_active_asset_ctx_event_key_changes_when_public_context_changes() -> None:
-    base = {
-        "channel": "activeAssetCtx",
-        "data": {
-            "coin": "BTC",
-            "ctx": {
-                "funding": "0.00001",
-                "openInterest": "100",
-                "oraclePx": "100",
-                "markPx": "100.1",
-                "midPx": "100.05",
-            },
-        },
-    }
+    base = active_asset_ctx_message()
+    assert isinstance(base["data"], dict)
+    assert isinstance(base["data"]["ctx"], dict)
     changed = {
         "channel": "activeAssetCtx",
         "data": {
             **base["data"],
-            "ctx": {**base["data"]["ctx"], "markPx": "100.2"},
+            "ctx": {**base["data"]["ctx"], "markPx": "64255.5"},
         },
     }
 
