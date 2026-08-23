@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
@@ -10,7 +11,6 @@ from cocomelon.domain.features import (
     TrendRegime,
     VolatilityRegime,
 )
-
 from cocomelon.domain.market import MarketId
 
 
