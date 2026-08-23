@@ -303,7 +303,7 @@ class TradeAnalytics:
     metric_unknown_reason: str | None = None
 
     def __post_init__(self) -> None:
-        for field, value in (
+        for text_field, text_value in (
             ("market", self.market),
             ("direction", self.direction),
             ("position_id", self.position_id),
@@ -312,7 +312,7 @@ class TradeAnalytics:
             ("exit_reason", self.exit_reason),
             ("replay_id", self.replay_id),
         ):
-            _require_nonempty(value, field)
+            _require_nonempty(text_value, text_field)
         _require_nonnegative(self.entry_timestamp_ms, "entry_timestamp_ms")
         _require_nonnegative(self.exit_timestamp_ms, "exit_timestamp_ms")
         if self.exit_timestamp_ms < self.entry_timestamp_ms:
@@ -332,9 +332,9 @@ class TradeAnalytics:
             ("mfe_r", self.mfe_r),
             ("mae_r", self.mae_r),
         )
-        for field, value in decimals:
-            if value is not None and not value.is_finite():
-                raise ValueError(f"{field} must be finite")
+        for decimal_field, decimal_value in decimals:
+            if decimal_value is not None and not decimal_value.is_finite():
+                raise ValueError(f"{decimal_field} must be finite")
         if self.entry_vwap <= 0 or self.exit_vwap <= 0:
             raise ValueError("entry_vwap and exit_vwap must be positive")
         if self.fees < 0:
