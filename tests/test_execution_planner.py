@@ -1,7 +1,5 @@
 from decimal import ROUND_UP, Decimal, getcontext
 
-from cocomelon.execution.planner import PlanningRejection, plan_opening_order
-
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     OrderSide,
@@ -10,6 +8,7 @@ from cocomelon.domain.execution import (
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision
 from cocomelon.domain.strategy import Direction
+from cocomelon.execution.planner import PlanningRejection, plan_opening_order
 
 
 def approved_risk(
