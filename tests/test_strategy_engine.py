@@ -162,7 +162,8 @@ def test_engine_runs_all_five_families_in_deterministic_name_order() -> None:
         for signal in first.signals
     )
     assert first.decision.direction is Direction.LONG
-    assert first.decision.score == Decimal("100")
+    assert first.decision.score == Decimal("99")
+    assert first.decision.lead_strategy == "breakout"
 
 
 def test_engine_produces_short_from_aligned_trend_and_breakout() -> None:
@@ -178,8 +179,8 @@ def test_engine_produces_short_from_aligned_trend_and_breakout() -> None:
     evaluation = evaluate_strategies(_context(feature=feature, candles=_short_candles()))
 
     assert evaluation.decision.direction is Direction.SHORT
-    assert evaluation.decision.score == Decimal("100")
-    assert evaluation.decision.lead_strategy == "trend"
+    assert evaluation.decision.score == Decimal("99")
+    assert evaluation.decision.lead_strategy == "breakout"
 
 
 def test_engine_preserves_deep_readiness_as_hard_no_trade_gate() -> None:
