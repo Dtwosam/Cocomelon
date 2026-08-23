@@ -100,8 +100,7 @@ def _percentile_universes(
         name: tuple(
             raw[name]
             for raw in raw_by_market.values()
-            if raw.get(name) is not None
-            and isinstance(raw[name], Decimal)
+            if raw.get(name) is not None and isinstance(raw[name], Decimal)
         )
         for name in names
     }
@@ -152,7 +151,11 @@ def _book_quality_raw(
     if not usable:
         return {}
 
-    inverse_spreads = tuple(-snapshot.spread_bps for snapshot in usable.values() if snapshot.spread_bps is not None)
+    inverse_spreads = tuple(
+        -snapshot.spread_bps
+        for snapshot in usable.values()
+        if snapshot.spread_bps is not None
+    )
     side_depths = tuple(
         min(snapshot.bid_depth_25bps, snapshot.ask_depth_25bps)
         for snapshot in usable.values()
