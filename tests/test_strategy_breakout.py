@@ -107,7 +107,11 @@ def _candle(
     )
 
 
-def _up_breakout(*, trigger_low: str = "96", received_at_ms: int | None = None) -> tuple[Candle, ...]:
+def _up_breakout(
+    *,
+    trigger_low: str = "96",
+    received_at_ms: int | None = None,
+) -> tuple[Candle, ...]:
     prior = tuple(_candle(i) for i in range(20))
     trigger = _candle(
         20,
