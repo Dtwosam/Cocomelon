@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable
-from http.client import HTTPResponse
 from time import sleep
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -56,7 +55,6 @@ def _stdlib_transport(url: str, payload: dict[str, object], timeout: float) -> o
         method="POST",
     )
     try:
-        response: HTTPResponse
         with urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
     except HTTPError as exc:
