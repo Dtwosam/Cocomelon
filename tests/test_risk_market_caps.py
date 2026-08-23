@@ -197,7 +197,10 @@ def test_long_liquidation_must_be_beyond_stop_and_at_least_twice_stop_distance()
 def test_short_liquidation_mirrors_long_rule() -> None:
     request = _request(direction=Direction.SHORT)
     at_boundary = replace(request.liquidity_state, liquidation_price=Decimal("102"))
-    assert _caps(_request(direction=Direction.SHORT, liquidity=at_boundary)).rejection_reason is None
+    at_boundary_result = _caps(
+        _request(direction=Direction.SHORT, liquidity=at_boundary)
+    )
+    assert at_boundary_result.rejection_reason is None
 
     too_close = replace(request.liquidity_state, liquidation_price=Decimal("101.99"))
     assert _caps(_request(direction=Direction.SHORT, liquidity=too_close)).rejection_reason == (
