@@ -456,15 +456,24 @@ The user expects ChatGPT to build the project **from A to Z in the GitHub reposi
 
 ---
 
-## 14. Current status at creation of this project-source file
+## 14. Current handoff status
 
-**Phase 0 is complete. Phase 1 — Python foundation and domain contracts — is active.**
+**Phase 1 — Python foundation and domain contracts — is verified complete on branch `phase-1-foundation` and is pending integration into `main` through pull request #1.**
 
-The active implementation plan is:
+Verified implementation commit before the status-only update:
 
-`docs/superpowers/plans/2026-08-23-phase-1-foundation.md`
+`96b532608f06f6257b06b63167bb6cb561aa7bc5`
 
-The exact next action is to execute Task 1 of that plan. Do not begin ML, strategies, or live execution before the preceding phase exit criteria pass.
+Phase 1 verification includes a successful Python 3.12 GitHub Actions run with project installation, Ruff, mypy, and pytest all passing. The branch also contains the final status/evidence update.
+
+The exact next action is:
+
+1. integrate pull request #1 into `main`;
+2. re-check current official Hyperliquid API schemas and rate limits;
+3. create the Phase 2 implementation plan for **Hyperliquid mainnet discovery and REST snapshots**;
+4. execute Phase 2 only after that plan is committed.
+
+Do not begin strategy code, ML, paper execution, or live execution before the preceding build-order phases pass.
 
 ---
 
