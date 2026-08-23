@@ -1,17 +1,17 @@
 from decimal import Decimal
 
 import pytest
+
+from cocomelon.domain.execution import ExecutionAttempt, ExecutionResult
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.risk import RiskDecision
+from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.journal.observations import (
     observation_from_execution,
     observation_from_risk,
     observation_from_strategy,
     should_sample_no_trade,
 )
-
-from cocomelon.domain.execution import ExecutionAttempt, ExecutionResult
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.risk import RiskDecision
-from cocomelon.domain.strategy import Direction, StrategyDecision
 
 MARKET = MarketId("", "SOL")
 
