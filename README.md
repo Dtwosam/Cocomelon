@@ -27,7 +27,7 @@ Detailed phase implementation plans live under `docs/superpowers/plans/`.
 
 ## Current status
 
-Phase 0 — governance and source-of-truth documentation — is being established. See `docs/STATUS.md` for the live status.
+Phase 0 — governance and source-of-truth documentation — is complete. Phase 1 — Python foundation and domain contracts — is active. See `docs/STATUS.md` for the live status and exact next action.
 
 ## Important
 
