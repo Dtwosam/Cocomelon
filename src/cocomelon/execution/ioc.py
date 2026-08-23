@@ -86,6 +86,8 @@ def _parse_levels(value: object) -> tuple[_Level, ...] | None:
 
 def _quantity_quantum(plan: PaperOrderPlan) -> Decimal:
     exponent = plan.requested_quantity.as_tuple().exponent
+    if not isinstance(exponent, int):
+        raise ValueError("requested_quantity must be finite")
     return ONE.scaleb(exponent)
 
 
