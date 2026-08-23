@@ -458,22 +458,23 @@ The user expects ChatGPT to build the project **from A to Z in the GitHub reposi
 
 ## 14. Current handoff status
 
-**Phase 1 — Python foundation and domain contracts — is verified complete on branch `phase-1-foundation` and is pending integration into `main` through pull request #1.**
+**Phase 1 — Python foundation and domain contracts — is complete and merged into `main`. Phase 2 — Hyperliquid mainnet discovery and REST snapshots — is the active next phase.**
 
-Verified implementation commit before the status-only update:
+Phase 1 merge commit on `main`:
 
-`96b532608f06f6257b06b63167bb6cb561aa7bc5`
+`3efd9e28b84eaa5dcd75f6949d8df02e2928d163`
 
-Phase 1 verification includes a successful Python 3.12 GitHub Actions run with project installation, Ruff, mypy, and pytest all passing. The branch also contains the final status/evidence update.
+Pull request #1 was merged after successful Python 3.12 CI. The verified Phase 1 checks included project installation, Ruff, mypy, and pytest, with paper mode and mainnet-only safety defaults preserved.
 
 The exact next action is:
 
-1. integrate pull request #1 into `main`;
-2. re-check current official Hyperliquid API schemas and rate limits;
-3. create the Phase 2 implementation plan for **Hyperliquid mainnet discovery and REST snapshots**;
-4. execute Phase 2 only after that plan is committed.
+1. re-check current official Hyperliquid API schemas and rate limits;
+2. create and commit the Phase 2 implementation plan for **Hyperliquid mainnet discovery and REST snapshots**;
+3. execute Phase 2 autonomously through a feature branch/PR;
+4. merge only after verification passes and update `docs/STATUS.md`;
+5. continue through the build order without asking for routine integration choices.
 
-Do not begin strategy code, ML, paper execution, or live execution before the preceding build-order phases pass.
+Do not begin strategy code, ML, paper execution, or live execution before the preceding build-order phases pass. The user expects routine engineering, branch, PR, CI, and merge decisions to be handled autonomously; ask only for genuine product/risk decisions that cannot be derived from the source of truth.
 
 ---
 
