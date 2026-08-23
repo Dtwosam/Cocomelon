@@ -260,8 +260,8 @@ Do not skip phases.
 1. Python foundation/domain contracts/config/CI — COMPLETE
 2. Mainnet REST market discovery and normalization — COMPLETE
 3. WebSocket collector and durable recorder — COMPLETE / MERGED
-4. Features, eligibility, scanner, opportunity ranking — COMPLETE / PR #4 FINAL MERGE GATE
-5. Explainable baseline strategy engines — NEXT AFTER PHASE 4 MERGE
+4. Features, eligibility, scanner, opportunity ranking — COMPLETE / MERGED
+5. Explainable baseline strategy engines — ACTIVE NEXT
 6. Independent risk engine
 7. Real-mainnet paper execution + position manager
 8. Journal + deterministic replay/backtester + offline raw-to-columnar compaction
@@ -301,13 +301,13 @@ Established canonical mainnet-only WebSocket collection, public-only `allMids`/`
 
 Phase 3 smoke run `32650798749` processed 1,002 normalized events in five seconds with 6 subscriptions, 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams. The temporary network workflow was removed before merge.
 
-### Phase 4 — implementation verified, merge gate pending
+### Phase 4 — merged
 
+Merge commit: `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`  
 PR: #4  
-Verified implementation head before continuity-doc reconciliation: `6de2a1addc7da6018b76a107b59a2e5ba1426262`  
-Verified merge-ref: `45938e4443b6bd119be96e164d5bc92ccc63456f`  
-Deterministic CI run: `32655216604` — SUCCESS  
-Public-mainnet scanner smoke: run `32655176825` — SUCCESS
+Final feature head: `7317d05d69139e144b077c4aafd42ea3ad85102d`  
+Final feature-head CI: `32655382404` — SUCCESS  
+Public-mainnet scanner smoke: `32655176825` — SUCCESS
 
 Established:
 
@@ -328,13 +328,13 @@ Established:
 
 Phase 4 public-mainnet smoke used one registry refresh and broad-only scanning. It discovered 500 markets, produced 500 feature snapshots, marked 320 rankable and 180 rejected, skipped 0, and bounded output to 20 rows. The top broad-attention names in that timestamped observation began XPL, PURR, ENA, PENGU, and PUMP. Rankable rows showed `missing_deep_data` because the operator command intentionally does not fan out L2/candle enrichment. This is attention ranking, not a trade signal or profitability claim.
 
-The temporary Phase 4 smoke workflow was removed before the final merge gate. No wallet, account endpoint, signing, order, transfer, withdrawal, strategy direction, risk sizing, ML control, or live execution was introduced.
+The temporary Phase 4 smoke workflow was removed before merge. After merge, `main` was verified at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`, and `.github/workflows` contained only the permanent `ci.yml` workflow. No wallet, account endpoint, signing, order, transfer, withdrawal, strategy direction, risk sizing, ML control, or live execution was introduced.
 
 ---
 
-## 9. Next Phase 5 objective
+## 9. Active Phase 5 objective
 
-Phase 5 begins only after PR #4 is merged and `main` is verified. It introduces **explainable baseline strategy engines**, not risk or execution.
+Phase 5 introduces **explainable baseline strategy engines**, not risk sizing or execution.
 
 Expected strategy families from the approved architecture:
 
@@ -344,14 +344,16 @@ Expected strategy families from the approved architecture:
 - funding/open-interest context;
 - order-flow/microstructure.
 
-Phase 5 must consume Phase 4 feature snapshots/ranks without allowing scanner scores to masquerade as trade probabilities. Strategy output may propose directional hypotheses with explicit reason codes, but cannot size risk, bypass eligibility/data-quality gates, or send orders. NO TRADE remains a first-class result.
+Phase 5 must consume Phase 4 feature snapshots and eligibility/deep-readiness state without allowing scanner scores to masquerade as trade probabilities. Strategy output may propose directional hypotheses with explicit reason codes, but cannot size account risk, override market/data-quality gates, or send orders. NO TRADE remains a first-class result.
 
-Before Phase 5 implementation:
+Before strategy production code:
 
-1. read `AGENTS.md`, `MASTER_SPEC.md`, `DECISIONS.md`, `BUILD_ORDER.md`, and `STATUS.md` from current `main`;
-2. create/review the Phase 5 design/spec and implementation plan;
-3. use TDD and an isolated branch;
-4. keep risk engine, paper execution, ML, and live execution out of Phase 5.
+1. read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, and `docs/STATUS.md` from current `main`;
+2. inspect any existing Phase 5 spec/plan;
+3. complete the Phase 5 design/spec approval gate;
+4. create the Phase 5 implementation plan;
+5. implement with TDD on an isolated branch;
+6. keep the independent risk engine, paper execution, ML, and live execution out of Phase 5.
 
 ---
 
@@ -383,8 +385,8 @@ The user expects ChatGPT to build this project **from A to Z directly in the Git
 
 ## 11. Exact handoff now
 
-**Phase 4 implementation and exit criteria are verified on PR #4. The temporary public-mainnet smoke workflow has been removed. The remaining Phase 4 work is continuity-doc CI, expected-head PR merge, and verification that `main` contains the Phase 4 merge.**
+**Phase 4 is complete and merged into `main` at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`. The only remaining closeout action is merging the documentation-only Phase 4 closeout branch that records this actual merge metadata.**
 
-After that merge is verified, Phase 5 — explainable baseline strategy engines — becomes the active phase. Do not begin Phase 5 implementation from the Phase 4 branch, and do not begin risk, paper execution, ML, or live execution early.
+After that closeout merge, Phase 5 — explainable baseline strategy engines — is the active phase. Begin with authoritative-source review and the Phase 5 design/spec approval gate; do not jump straight into strategy production code. Do not begin risk, paper execution, ML, or live execution early.
 
 **Live trading status: DISABLED.**
