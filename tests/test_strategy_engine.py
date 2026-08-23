@@ -2,7 +2,6 @@ from dataclasses import replace
 from decimal import Decimal
 
 from cocomelon.strategies.engine import StrategyEvaluation, evaluate_strategies
-
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
