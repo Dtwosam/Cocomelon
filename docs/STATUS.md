@@ -6,104 +6,78 @@
 
 ## Current state
 
-**Last completed phase:** Phase 4 — feature engine, eligibility, broad-to-deep scanner, opportunity ranking, and dynamic shortlist  
-**Integration state:** MERGED into `main`  
-**Phase 4 PR:** #4  
+**Last merged phase:** Phase 4 — feature engine, eligibility, scanner, ranking, and shortlist  
 **Phase 4 merge commit:** `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`  
-**Verified Phase 4 feature head:** `7317d05d69139e144b077c4aafd42ea3ad85102d`  
-**Active next phase:** Phase 5 — explainable baseline strategy engines
+**Current phase:** Phase 5 — explainable baseline strategy engines  
+**Phase 5 integration state:** implementation and boundary audit verified on `phase-5-baseline-strategies`; guarded PR #6 merge pending final continuity-doc CI  
+**Verified Phase 5 implementation head:** `76bf0df9ab3289eab56213db3c54b2d1c16c6b85`  
+**Verified Phase 5 CI run:** `32660243872` — SUCCESS  
+**Verified Phase 5 CI job:** `97245184233`  
+**Next phase after merge:** Phase 6 — independent risk engine
 
-## Phase 4 established
+## Phase 5 established
 
-Phase 4 turns trustworthy Phase 2/3 public-mainnet observations into a deterministic broad-to-deep attention funnel without making trading decisions.
+Phase 5 converts Phase 4 feature/eligibility state into deterministic, explainable directional hypotheses while preserving a hard boundary from risk sizing and execution.
 
 Implemented:
 
-- immutable, versioned `FeatureSnapshot` records with deterministic snapshot IDs and provenance;
-- broad features across every dynamically supplied valid market snapshot;
-- daily return, funding, open interest, notional volume, OI change, funding change, and mark/oracle dislocation;
-- closed-window 5m/15m/1h/4h return context;
-- realized-volatility, range-expansion, and relative-volume candle features;
-- normalized L2 spread, 25 bps side depth, book imbalance, and book age;
-- transparent baseline trend and volatility regimes;
-- two-stage eligibility separating coarse rankability from deep-data readiness;
-- observed-distribution liquidity/OI/spread/depth thresholds plus hard safety caps;
-- direction-neutral percentile opportunity ranking with explicit component contributions/reason codes;
-- missing optional features remove and renormalize their score weights instead of becoming fabricated zero penalties;
-- independent Tier B ranked watchlist and hysteretic Tier C shortlist;
-- pinned-market monitoring while keeping the Phase 3 subscription safety ceiling as final resource protection;
-- broad-to-deep `FeatureScanner` orchestration with coarse fallback when enrichment is unavailable;
-- bounded read-only `cocomelon scan-once --limit 20` operator command using one mainnet registry refresh and broad-only scanning.
+- immutable `StrategySignal`, `StrategyContext`, `MicrostructureWindow`, and `StrategyDecision` contracts using `Decimal` financial/evidence values and deterministic IDs;
+- shared closed-candle/reference-price/swing-invalidation helpers with receive-time and end-time lookahead protection;
+- primary trend engine;
+- primary breakout engine using the latest trigger candle against the prior 20-candle range;
+- primary mean-reversion engine restricted to compatible MIXED + LOW/NORMAL-volatility regimes;
+- real microstructure window derived only from normalized Phase 3 `TRADE` and `L2_BOOK` events;
+- funding/open-interest context engine that can support or veto but cannot create a trade by itself;
+- order-flow context engine grounded in real normalized trade/L2 evidence and unable to create a trade by itself;
+- deterministic regime-aware LONG/SHORT/NO_TRADE combiner;
+- deterministic five-engine strategy orchestrator;
+- Phase 5 boundary tests that enforce separation from risk, execution, exchange/wallet/account APIs, and ML dependencies.
 
-No strategy direction, risk sizing, paper fills, user/account access, signing, orders, ML control, or live execution was added.
+No position quantity, leverage, risk budget, account equity, order type, wallet, signing, fill simulation, paper execution, ML control, or live execution was added to the strategy layer.
 
-## Phase 4 deterministic verification
+## Phase 5 deterministic decision behavior
 
-Final feature-tree verification before merge:
+The baseline combiner is intentionally conservative and explainable.
 
-- feature head: `7317d05d69139e144b077c4aafd42ea3ad85102d`;
-- continuity-doc CI run: `32655382404` — SUCCESS;
+Primary effective scores are raw strategy evidence multiplied by fixed trend-regime and volatility modifiers. A raw primary score below 60 cannot become a candidate. Same-direction qualifying primary agreement adds 5 points each, capped at 10. If the best opposing primary is within 15 effective points of the leader, the result is `NO_TRADE` with `primary_conflict`.
+
+Context engines remain subordinate evidence. A context veto blocks the candidate direction. Otherwise context strength can add or subtract at most 10 total points. A directional decision requires final evidence of at least 65 and a valid lead-primary invalidation on the correct side of the current reference price. Scanner `rankable` and `deep_ready` remain hard preconditions.
+
+`NO_TRADE` is a normal first-class result for insufficient evidence, conflict, context veto, invalidation failure, missing deep readiness, or other blocked conditions.
+
+## Phase 5 verification evidence
+
+Verified feature-branch head before continuity-doc updates:
+
+- head: `76bf0df9ab3289eab56213db3c54b2d1c16c6b85`;
+- CI run: `32660243872` — SUCCESS;
+- CI job: `97245184233`;
 - Python: `3.12.14`;
-- `python -m pip install -e ".[dev]"` — PASS;
+- editable install — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
 - Ruff (`src tests scripts`) — PASS;
-- mypy (`src`) — PASS;
+- mypy (`src`) — PASS, no issues in 49 source files;
 - pytest — PASS to 100%.
 
-Earlier implementation verification after the temporary public-network workflow was removed:
+The preceding orchestrator integration head `981e12a8b2aa528ad3877b8ca892cdbae50eabc9` also passed full CI in run `32660130856` after the integration fixture was corrected to the exact locked combiner math: aligned trend + breakout + ordinary funding/OI support yields 99 evidence points because trend raw maximum is 90, breakout 100 is regime-weighted to 90, deterministic tie-break selects breakout, primary agreement adds 5, and funding/OI context adds 4.
 
-- implementation head: `6de2a1addc7da6018b76a107b59a2e5ba1426262`;
-- CI run: `32655216604` — SUCCESS;
-- job: `97232742547`;
-- mypy reported no issues in 39 source files;
-- pytest reached 100%.
+## Phase 5 exit-criteria audit
 
-PR #4 was marked ready only after the verified suite, then merged with expected-head SHA protection using exact head `7317d05d69139e144b077c4aafd42ea3ad85102d`. The resulting merge commit is `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`, and `main` was verified to point at that commit immediately after merge.
+Verified line by line against the approved Phase 5 spec/plan:
 
-## Real Hyperliquid mainnet Phase 4 smoke evidence
-
-A temporary GitHub Actions workflow ran the exact read-only command:
-
-`cocomelon scan-once --limit 20`
-
-Successful public-mainnet run:
-
-- workflow run: `32655176825` — SUCCESS;
-- job: `97232651332`;
-- Python: `3.12.14`;
-- endpoint: `https://api.hyperliquid.xyz`;
-- execution mode: `paper`;
-- discovered markets: 500;
-- feature snapshots produced: 500;
-- rankable markets: 320;
-- rejected markets: 180;
-- skipped markets: 0;
-- output was bounded to 20 ranked rows;
-- top broad-attention markets at that observation were XPL, PURR, ENA, PENGU, and PUMP;
-- each top result correctly carried `missing_deep_data`, because `scan-once` intentionally does not fan out candle/L2 enrichment.
-
-The temporary smoke workflow was removed before merge. `main` was verified after merge to contain only `.github/workflows/ci.yml`; no temporary network workflow remains.
-
-No wallet, user/account endpoint, signing, order, transfer, withdrawal, or WebSocket `post` action was used. Market counts and rankings above are timestamped observations, not permanent assumptions or profitability claims.
-
-## Phase 4 exit-criteria audit
-
-Verified line by line against the approved implementation plan:
-
-- scanner coverage is based on the dynamically supplied discovered market universe, not a favorites list;
-- future-received inputs fail closed and cannot leak lookahead into snapshots/ranks;
-- delisted, stale-context, and invalid-price markets cannot rank;
-- coarse eligibility and opportunity ranking are separate stages;
-- candle windows use closed observations and preserve receive-time provenance;
-- multi-timeframe return/trend, realized-volatility, range, relative-volume, funding/OI, spread/depth, and baseline regime features exist;
-- missing Tier B/C enrichment stays missing and never becomes a fabricated value;
-- ranking is direction-neutral, deterministic, percentile-based, and tie-broken canonically;
-- shortlist state is bounded, deterministic, explainable, and hysteretic;
-- Tier B enrichment candidates remain independent from the Tier C target shortlist;
-- Phase 3 subscription ceilings remain final protection;
-- feature snapshots are immutable, schema-versioned, provenance-carrying, and deterministically identified;
-- scanner outputs contain no strategy direction, risk sizing, or order plan;
-- the temporary smoke workflow is absent from the merged tree.
+- five evidence engines exist: trend, breakout, mean reversion, funding/OI, and order flow;
+- shared immutable strategy contracts exist and use deterministic IDs;
+- deterministic LONG/SHORT/NO_TRADE combination exists;
+- `rankable` and `deep_ready` cannot be bypassed;
+- `NO_TRADE` is normal and covered by tests;
+- every signal/decision preserves the exact feature snapshot reference;
+- a directional decision's invalidation is owned by the lead primary thesis;
+- real frozen Phase 3 Hyperliquid mainnet trade/L2 fixtures ground microstructure tests;
+- candle data cannot be accepted as synthetic order-flow history;
+- strategies do not import the risk or execution domains;
+- strategies do not import Hyperliquid exchange/wallet/account APIs;
+- strategies have no ML dependency;
+- strategy contracts contain no quantity, leverage, risk-budget, order, wallet, account, equity, margin, or position-size field.
 
 ## Completed phases
 
@@ -112,33 +86,36 @@ Verified line by line against the approved implementation plan:
 - Phase 2 — mainnet REST discovery/normalization: MERGED at `b95352e238d6a9eabd63e13c1f8300e654a7e636`.
 - Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
 - Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
+- Phase 5 — baseline strategy engines: VERIFIED on PR #6 branch; merge pending.
 
 ## Safety invariants still locked
 
 - Hyperliquid testnet is forbidden.
-- Runtime data sources remain Hyperliquid mainnet only.
+- Runtime observations remain Hyperliquid mainnet only.
 - Default execution mode remains `paper`.
 - Live trading is disabled.
 - No live exchange adapter exists.
-- No strategy engine exists yet.
+- Strategy code cannot size positions or send orders.
 - No ML/learning engine exists yet.
-- No wallet signing, order placement, transfer, or withdrawal capability exists.
-- Risk defaults remain 0.25% per trade, 0.75% aggregate planned open risk, 1% daily loss lockout, and 3% rolling weekly drawdown lockout.
+- No wallet signing, transfer, or withdrawal capability exists.
+- Risk defaults remain 0.25% per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, and 3% rolling weekly drawdown lockout.
+- Three consecutive losses trigger cooldown.
+- No averaging down or martingale.
 - Solidity is not part of V1.
 - No secrets may be committed or emitted in logs.
 
 ## Exact next action
 
-1. Finish and merge this Phase 4 closeout documentation branch after its CI passes.
-2. Start Phase 5 from the resulting current `main`.
-3. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, and any existing Phase 5 material before implementation.
-4. Produce/review the Phase 5 design/spec and implementation plan before writing strategy production code.
-5. Build explainable baseline strategy engines with TDD while preserving NO TRADE as a first-class result.
-6. Strategy code may propose direction but cannot size risk, bypass data-quality/eligibility gates, or send orders.
-7. Do not begin risk, paper execution, ML, or live execution before their build-order gates.
+1. Run final CI on the Phase 5 continuity-document head.
+2. Re-read PR #6 head and mergeability.
+3. Merge PR #6 only with exact expected-head protection after CI is green.
+4. Verify `main` points to the merge result and that no Phase 5 runtime changes remain unmerged.
+5. If merge metadata requires continuity correction, use a docs-only closeout branch/PR.
+6. Make Phase 6 — independent risk engine — the active build phase.
+7. In Phase 6, keep risk authoritative and independent from strategy evidence; do not begin paper execution or live execution early.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon remains in pre-execution research/infrastructure phases. Phase 4 ranks markets for attention only; it does not decide LONG/SHORT, size positions, or send orders.
+Cocomelon can now generate explainable baseline LONG/SHORT/NO_TRADE strategy decisions on validated inputs, but it still cannot size exposure or send an exchange order. The next architectural gate is the independent risk engine.

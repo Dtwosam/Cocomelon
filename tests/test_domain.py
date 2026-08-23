@@ -9,7 +9,7 @@ from cocomelon.domain.market import (
     PerpMarketMeta,
     PerpMarketSnapshot,
 )
-from cocomelon.domain.strategy import Direction, StrategySignal
+from cocomelon.domain.strategy import Direction, StrategyRole, StrategySignal
 
 
 def test_market_id_canonicalizes_default_and_named_dex() -> None:
@@ -65,24 +65,30 @@ def test_strategy_score_is_bounded() -> None:
     with pytest.raises(ValueError, match="score"):
         StrategySignal(
             strategy="trend",
+            role=StrategyRole.PRIMARY,
             market=market,
             direction=Direction.LONG,
-            score=101.0,
+            score=Decimal("101"),
             timestamp_ms=1,
-            reasons=("example",),
-            invalidation_price=100.0,
+            reason_codes=("example",),
+            feature_snapshot_id="feature-1",
+            invalidation_price=Decimal("100"),
+            veto_directions=(),
         )
 
 
 def test_no_trade_does_not_require_invalidation() -> None:
     signal = StrategySignal(
         strategy="trend",
+        role=StrategyRole.PRIMARY,
         market=MarketId(dex="", coin="ETH"),
         direction=Direction.NO_TRADE,
-        score=40.0,
+        score=Decimal("40"),
         timestamp_ms=1,
-        reasons=("insufficient edge",),
+        reason_codes=("insufficient_edge",),
+        feature_snapshot_id="feature-1",
         invalidation_price=None,
+        veto_directions=(),
     )
     assert signal.direction is Direction.NO_TRADE
 
