@@ -1,8 +1,6 @@
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.strategies.trend import evaluate_trend
-
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
@@ -17,6 +15,7 @@ from cocomelon.domain.market import (
     PerpMarketSnapshot,
 )
 from cocomelon.domain.strategy import Direction, StrategyContext, StrategyRole
+from cocomelon.strategies.trend import evaluate_trend
 
 
 def _feature(**overrides: object) -> FeatureSnapshot:
