@@ -1,8 +1,6 @@
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.strategies.order_flow import evaluate_order_flow
-
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
@@ -21,6 +19,7 @@ from cocomelon.domain.strategy import (
     StrategyContext,
     StrategyRole,
 )
+from cocomelon.strategies.order_flow import evaluate_order_flow
 
 
 def _feature() -> FeatureSnapshot:
