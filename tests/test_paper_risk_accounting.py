@@ -91,9 +91,10 @@ def test_empty_account_initializes_phase6_control_state_and_rolling_peak() -> No
     assert account.available_margin == Decimal("10000")
     assert account.consecutive_losses == 0
     assert account.last_closed_trade_ms is None
-    assert tuple((point.timestamp_ms, point.equity) for point in account.rolling_peak_candidates) == (
-        (0, Decimal("10000")),
+    candidates = tuple(
+        (point.timestamp_ms, point.equity) for point in account.rolling_peak_candidates
     )
+    assert candidates == ((0, Decimal("10000")),)
     assert account.rolling_7d_peak_equity == Decimal("10000")
 
 
@@ -184,7 +185,11 @@ def test_partial_reduce_does_not_change_loss_streak_and_scales_planned_risk() ->
 
 def test_profitable_full_close_resets_existing_loss_streak() -> None:
     _, opened = open_long()
-    seeded = accounting.replace_loss_state(opened, consecutive_losses=2, last_closed_trade_ms=1_500)
+    seeded = accounting.replace_loss_state(
+        opened,
+        consecutive_losses=2,
+        last_closed_trade_ms=1_500,
+    )
     exit_fill = paper_fill(
         plan_id="reduce-win",
         side=OrderSide.SELL,
