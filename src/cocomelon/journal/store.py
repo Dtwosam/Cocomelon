@@ -8,7 +8,6 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJournalEntry
 from cocomelon.domain.market import MarketId
