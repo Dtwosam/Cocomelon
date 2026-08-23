@@ -233,6 +233,7 @@ def simulate_ioc(
             gross_notional / filled_quantity if filled_quantity > ZERO else None
         )
 
+    reasons: tuple[str, ...]
     if filled_quantity == plan.requested_quantity:
         result = ExecutionResult.FULL
         reasons = ("FILLED_VISIBLE_DEPTH",)
