@@ -7,6 +7,10 @@ on:
     paths:
       - scripts/capture_phase3_ws_fixtures.py
       - .github/workflows/phase3-mainnet-ws-smoke.yml
+  pull_request:
+    paths:
+      - scripts/capture_phase3_ws_fixtures.py
+      - .github/workflows/phase3-mainnet-ws-smoke.yml
 
 permissions:
   contents: read
