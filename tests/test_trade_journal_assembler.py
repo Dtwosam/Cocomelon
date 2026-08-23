@@ -1,12 +1,6 @@
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.journal.assembler import (
-    JournalInconsistency,
-    TradeLifecycleInput,
-    assemble_trade_journal_entry,
-)
-
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     ExecutionResult,
@@ -20,6 +14,11 @@ from cocomelon.domain.execution import (
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.execution.funding import FundingAccrual
+from cocomelon.journal.assembler import (
+    JournalInconsistency,
+    TradeLifecycleInput,
+    assemble_trade_journal_entry,
+)
 
 MARKET = MarketId("", "SOL")
 
