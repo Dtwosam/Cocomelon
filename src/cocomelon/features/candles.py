@@ -50,7 +50,9 @@ def _closed_candles(
 
 def _simple_return(current: Decimal, previous: Decimal) -> Decimal:
     if not current.is_finite() or not previous.is_finite() or previous <= ZERO:
-        raise ValueError("candle closes used for returns must be finite and previous close positive")
+        raise ValueError(
+            "candle closes used for returns must be finite and previous close positive"
+        )
     return current / previous - ONE
 
 
