@@ -7,12 +7,12 @@ import tomllib
 from pathlib import Path
 
 import pytest
-
-from cocomelon.domain.replay import EvidenceClass
 from cocomelon.replay.compaction import (
     ResearchDependencyError,
     compact_recording,
 )
+
+from cocomelon.domain.replay import EvidenceClass
 from cocomelon.replay.source import validate_recording
 
 
