@@ -1,8 +1,7 @@
-from cocomelon.replay.engine import EvidenceBoundaryError, ReplayEngine
-
 from cocomelon.domain.journal import canonical_json
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayEvidence, SourceCoordinate
+from cocomelon.replay.engine import EvidenceBoundaryError, ReplayEngine
 
 MARKET = MarketId(dex="", coin="SOL")
 
