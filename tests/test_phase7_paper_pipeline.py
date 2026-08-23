@@ -2,7 +2,11 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from cocomelon.domain.execution import ExecutionResult, InstrumentExecutionSpec, PaperExecutionConfig
+from cocomelon.domain.execution import (
+    ExecutionResult,
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision
 from cocomelon.domain.strategy import Direction
@@ -114,7 +118,9 @@ def adapter(path: Path) -> PaperExecutionAdapter:
     )
 
 
-def test_approved_long_opens_from_post_latency_public_l2_and_persists(tmp_path: Path) -> None:
+def test_approved_long_opens_from_post_latency_public_l2_and_persists(
+    tmp_path: Path,
+) -> None:
     engine = adapter(tmp_path / "paper.sqlite3")
 
     result = engine.submit_opening(
@@ -246,7 +252,9 @@ def test_stop_exit_uses_reduce_only_ioc_and_closes_without_flip(tmp_path: Path) 
     engine.close()
 
 
-def test_restart_inconsistency_blocks_new_exposure_but_is_visible_in_health(tmp_path: Path) -> None:
+def test_restart_inconsistency_blocks_new_exposure_but_is_visible_in_health(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "paper.sqlite3"
     engine = adapter(path)
     result = engine.submit_opening(
