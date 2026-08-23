@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -19,9 +22,34 @@ jobs:
       - name: Read-only mainnet market discovery
         run: python -m cocomelon markets
       - name: Capture public mainnet fixtures
-        run: python scripts/capture_phase2_fixtures.py --output-dir phase2-fixtures --sample-size 3
+        run: python scripts/capture_phase2_fixtures.py --output-dir tests/fixtures/hyperliquid --sample-size 3
+      - name: Record public fixture provenance
+        run: |
+          cat > tests/fixtures/hyperliquid/README.md <<EOF
+          # Hyperliquid Phase 2 public mainnet fixtures
+
+          Captured from the public Hyperliquid mainnet /info endpoint on 2026-08-23.
+
+          - GitHub Actions smoke run: $GITHUB_RUN_ID
+          - Commit observed: $GITHUB_SHA
+          - API base: https://api.hyperliquid.xyz/info
+          - metaAndAssetCtxs fixture sample size: 3 aligned markets/contexts
+          - Requests: perpDexs, native metaAndAssetCtxs, first discovered HIP-3 metaAndAssetCtxs, BTC 15m candleSnapshot (~6h), BTC fundingHistory (~72h)
+
+          Public read-only data only. No user address, account state, wallet key, signature, order, or private endpoint is queried.
+          EOF
+      - name: Commit captured public fixtures on branch push
+        if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/fixtures/hyperliquid
+          if ! git diff --cached --quiet; then
+            git commit -m "test: anchor Hyperliquid mainnet REST fixtures"
+            git push origin HEAD:phase-2-mainnet-rest
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: phase2-public-mainnet-fixtures
-          path: phase2-fixtures/
+          path: tests/fixtures/hyperliquid/
           if-no-files-found: error
