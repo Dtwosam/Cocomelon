@@ -5,7 +5,7 @@ from collections.abc import Callable
 import pytest
 
 from cocomelon.cli import DEFAULT_SMOKE_MARKETS, build_parser, stream_smoke_payload
-from cocomelon.config import ExecutionMode, LIVE_ACK, Settings
+from cocomelon.config import LIVE_ACK, ExecutionMode, Settings
 
 SmokeResult = dict[str, object]
 SmokeRunner = Callable[[Settings, float, tuple[str, ...]], SmokeResult]
