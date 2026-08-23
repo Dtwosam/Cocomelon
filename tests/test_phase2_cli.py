@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+from test_hyperliquid_normalize import HIP3_META_CTX, MAIN_META_CTX, PERP_DEXS
+
 from cocomelon.cli import markets_payload
 from cocomelon.config import Settings
-
-from test_hyperliquid_normalize import HIP3_META_CTX, MAIN_META_CTX, PERP_DEXS
 
 
 class FakeInfoClient:
