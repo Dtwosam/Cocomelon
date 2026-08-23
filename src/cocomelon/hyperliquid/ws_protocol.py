@@ -104,13 +104,13 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
     if channel in {"pong", "subscriptionResponse"}:
         return []
     if channel == "allMids":
-        data = _mapping(message.get("data"), "data")
-        mids = _mapping(data.get("mids"), "mids")
-        events: list[StreamEvent] = []
+        mid_data = _mapping(message.get("data"), "data")
+        mids = _mapping(mid_data.get("mids"), "mids")
+        mid_events: list[StreamEvent] = []
         for wire, value in mids.items():
             market = _market(wire)
             mid = _decimal(value, "mid")
-            events.append(
+            mid_events.append(
                 StreamEvent(
                     StreamKind.ALL_MIDS,
                     market,
@@ -122,12 +122,12 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                     {"mid_px": mid},
                 )
             )
-        return events
+        return mid_events
     if channel == "l2Book":
-        data = _mapping(message.get("data"), "data")
-        market = _market(data.get("coin"))
-        time_ms = _integer(data.get("time"), "time")
-        levels = data.get("levels")
+        book_data = _mapping(message.get("data"), "data")
+        market = _market(book_data.get("coin"))
+        time_ms = _integer(book_data.get("time"), "time")
+        levels = book_data.get("levels")
         if (
             not isinstance(levels, list)
             or len(levels) != 2
@@ -161,11 +161,11 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
             )
         ]
     if channel == "trades":
-        data = message.get("data")
-        if not isinstance(data, list):
+        trade_rows = message.get("data")
+        if not isinstance(trade_rows, list):
             raise WsProtocolError("trades data must be an array")
-        events: list[StreamEvent] = []
-        for raw_trade in data:
+        trade_events: list[StreamEvent] = []
+        for raw_trade in trade_rows:
             trade = _mapping(raw_trade, "trade")
             market = _market(trade.get("coin"))
             time_ms = _integer(trade.get("time"), "time")
@@ -184,7 +184,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                 "tid": tid,
                 "users": tuple(users_raw),
             }
-            events.append(
+            trade_events.append(
                 StreamEvent(
                     StreamKind.TRADE,
                     market,
@@ -196,21 +196,21 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                     payload,
                 )
             )
-        return events
+        return trade_events
     if channel == "candle":
-        data = _mapping(message.get("data"), "data")
-        market = _market(data.get("s"))
-        start = _integer(data.get("t"), "t")
+        candle_data = _mapping(message.get("data"), "data")
+        market = _market(candle_data.get("s"))
+        start = _integer(candle_data.get("t"), "t")
         payload = {
             "start_ms": start,
-            "end_ms": _integer(data.get("T"), "T"),
-            "interval": _string(data.get("i"), "i"),
-            "open_px": _decimal(data.get("o"), "o"),
-            "close_px": _decimal(data.get("c"), "c"),
-            "high_px": _decimal(data.get("h"), "h"),
-            "low_px": _decimal(data.get("l"), "l"),
-            "volume": _decimal(data.get("v"), "v"),
-            "trade_count": _integer(data.get("n"), "n"),
+            "end_ms": _integer(candle_data.get("T"), "T"),
+            "interval": _string(candle_data.get("i"), "i"),
+            "open_px": _decimal(candle_data.get("o"), "o"),
+            "close_px": _decimal(candle_data.get("c"), "c"),
+            "high_px": _decimal(candle_data.get("h"), "h"),
+            "low_px": _decimal(candle_data.get("l"), "l"),
+            "volume": _decimal(candle_data.get("v"), "v"),
+            "trade_count": _integer(candle_data.get("n"), "n"),
         }
         return [
             StreamEvent(
