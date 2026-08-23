@@ -17,6 +17,7 @@ def approved_risk(
     approved_notional: Decimal = Decimal("1000"),
     entry_reference_price: Decimal = Decimal("100"),
 ) -> RiskDecision:
+    stop = Decimal("98") if direction is Direction.LONG else Decimal("102")
     return RiskDecision(
         strategy_decision_id="strategy-1",
         market=MarketId(dex="", coin="SOL"),
@@ -24,12 +25,12 @@ def approved_risk(
         approved=True,
         reason_codes=("risk_approved",),
         target_risk_amount=Decimal("25"),
-        approved_risk_amount=Decimal("20"),
+        approved_risk_amount=Decimal("22.4"),
         approved_notional=approved_notional,
         entry_reference_price=entry_reference_price,
-        stop_price=Decimal("95") if direction is Direction.LONG else Decimal("105"),
-        stop_distance_fraction=Decimal("0.05"),
-        effective_loss_fraction=Decimal("0.02"),
+        stop_price=stop,
+        stop_distance_fraction=Decimal("0.02"),
+        effective_loss_fraction=Decimal("0.0224"),
         correlation_bucket="sol-beta",
         binding_caps=("liquidity",),
         timestamp_ms=1_000,
@@ -157,7 +158,7 @@ def test_hostile_decimal_context_cannot_increase_planned_quantity() -> None:
     assert plan.requested_quantity * plan.execution_reference_price <= risk.approved_notional
 
 
-def test_plan_records_latency_and_risk_ceiling() -> None:
+def test_plan_preserves_exact_phase6_loss_envelope_and_latency() -> None:
     risk = approved_risk()
     plan = plan_opening_order(
         risk, native_spec(), PaperExecutionConfig(), Decimal("100"), 2_000
@@ -165,5 +166,9 @@ def test_plan_records_latency_and_risk_ceiling() -> None:
 
     assert plan.risk_decision_id == risk.risk_decision_id
     assert plan.approved_notional_ceiling == risk.approved_notional
+    assert plan.approved_risk_amount_ceiling == risk.approved_risk_amount
+    assert plan.stop_distance_fraction == risk.stop_distance_fraction
+    assert plan.effective_loss_fraction == risk.effective_loss_fraction
+    assert plan.cost_buffer_fraction == Decimal("0.0024")
     assert plan.created_at_ms == 2_000
     assert plan.earliest_execution_ms == 2_250
