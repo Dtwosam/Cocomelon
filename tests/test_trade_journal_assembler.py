@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 
 from cocomelon.domain.execution import (
@@ -191,7 +192,7 @@ def test_mismatched_fill_market_returns_structured_inconsistency() -> None:
         timestamp_ms=item.fills[1].timestamp_ms,
     )
     result = assemble_trade_journal_entry(
-        TradeLifecycleInput(**{**item.__dict__, "fills": (item.fills[0], bad_fill)})
+        replace(item, fills=(item.fills[0], bad_fill))
     )
 
     assert isinstance(result, JournalInconsistency)
@@ -213,7 +214,7 @@ def test_open_and_exit_quantity_must_reconcile_to_zero() -> None:
         timestamp_ms=2_000,
     )
     result = assemble_trade_journal_entry(
-        TradeLifecycleInput(**{**item.__dict__, "fills": (item.fills[0], half)})
+        replace(item, fills=(item.fills[0], half))
     )
 
     assert isinstance(result, JournalInconsistency)
