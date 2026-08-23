@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol, TypedDict, cast
 
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.normalize import normalize_perp_dexs
+
+
+class CaptureManifest(TypedDict):
+    captured_at_ms: int
+    source: str
+    hip3_dex: str | None
+    sample_size: int
+    files: tuple[str, ...]
 
 
 class PublicFixtureReader(Protocol):
@@ -59,7 +66,7 @@ def capture_public_fixtures(
     *,
     now_ms: int,
     sample_size: int = 3,
-) -> Mapping[str, object]:
+) -> CaptureManifest:
     if sample_size <= 0:
         raise ValueError("sample_size must be positive")
     output_dir.mkdir(parents=True, exist_ok=True)
