@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -57,10 +57,10 @@ def _string(value: object, field: str) -> str:
     return value
 
 
-def _integer(value: object, field: str, *, nonnegative: bool = True) -> int:
+def _integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise RecordingValidationError(f"{field} must be an integer")
-    if nonnegative and value < 0:
+    if value < 0:
         raise RecordingValidationError(f"{field} must be non-negative")
     return value
 
@@ -98,8 +98,7 @@ def _segment_files(root: Path) -> tuple[Path, ...]:
             (
                 path
                 for path in root.rglob("segment-*.jsonl")
-                if path.is_file()
-                and (path.relative_to(root).parts[0] in {"events", "gaps"})
+                if path.is_file() and path.relative_to(root).parts[0] in {"events", "gaps"}
             ),
             key=lambda path: path.relative_to(root).as_posix(),
         )
@@ -159,7 +158,10 @@ def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
             source=source,
             schema_version=schema_version,
             market=market,
-            exchange_time_ms=_optional_integer(row.get("exchange_time_ms"), "exchange_time_ms"),
+            exchange_time_ms=_optional_integer(
+                row.get("exchange_time_ms"),
+                "exchange_time_ms",
+            ),
             event_key=event_key,
             payload_json=_canonical_json(payload),
             event_kind=event_kind,
@@ -193,7 +195,7 @@ def _record_from_row(row: Mapping[str, object]) -> ReplayRecord:
     raise RecordingValidationError(f"unsupported record_type: {record_type}")
 
 
-def _read_segment(path: Path) -> tuple[ReplayRecord, ...]:
+def _decode_segment(path: Path) -> tuple[tuple[Mapping[str, object], ReplayRecord], ...]:
     raw = path.read_bytes()
     if not raw:
         raise RecordingValidationError(f"empty JSONL segment: {path}")
@@ -203,16 +205,21 @@ def _read_segment(path: Path) -> tuple[ReplayRecord, ...]:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise RecordingValidationError(f"segment is not valid UTF-8: {path}") from exc
-    records: list[ReplayRecord] = []
+
+    decoded: list[tuple[Mapping[str, object], ReplayRecord]] = []
     for line_number, line in enumerate(text.splitlines(), start=1):
         if not line:
             raise RecordingValidationError(f"blank JSONL row at {path}:{line_number}")
         row = _mapping(_json_loads(line), "record")
         try:
-            records.append(_record_from_row(row))
+            decoded.append((row, _record_from_row(row)))
         except RecordingValidationError as exc:
             raise RecordingValidationError(f"{path}:{line_number}: {exc}") from exc
-    return tuple(records)
+    return tuple(decoded)
+
+
+def _read_segment(path: Path) -> tuple[ReplayRecord, ...]:
+    return tuple(record for _, record in _decode_segment(path))
 
 
 def validate_recording(root: str | Path) -> tuple[SourceSegment, ...]:
@@ -227,21 +234,17 @@ def validate_recording(root: str | Path) -> tuple[SourceSegment, ...]:
     segments: list[SourceSegment] = []
     for path in paths:
         raw = path.read_bytes()
-        records = _read_segment(path)
+        decoded = _decode_segment(path)
         partition: str | None = None
         schema_versions: set[int] = set()
-        for record in records:
+        for row, record in decoded:
             if record.record_kind is SourceRecordKind.NORMALIZED_EVENT:
-                assert record.event_key is not None
+                if record.event_key is None:
+                    raise RecordingValidationError("normalized event is missing event_key")
                 if record.event_key in seen_event_keys:
                     raise RecordingValidationError(f"duplicate event_key: {record.event_key}")
                 seen_event_keys.add(record.event_key)
-            row_partition = _validate_partition(
-                base,
-                path,
-                _mapping(_json_loads(raw.decode("utf-8").splitlines()[records.index(record)]), "record"),
-                record.available_at_ms,
-            )
+            row_partition = _validate_partition(base, path, row, record.available_at_ms)
             if partition is None:
                 partition = row_partition
             elif partition != row_partition:
@@ -249,8 +252,10 @@ def validate_recording(root: str | Path) -> tuple[SourceSegment, ...]:
             schema_versions.add(record.schema_version)
         if len(schema_versions) != 1:
             raise RecordingValidationError("segment contains mixed schema versions")
-        assert partition is not None
-        available = [record.available_at_ms for record in records]
+        if partition is None:
+            raise RecordingValidationError("segment contains no records")
+        records = tuple(record for _, record in decoded)
+        available = tuple(record.available_at_ms for record in records)
         segments.append(
             SourceSegment(
                 relative_path=path.relative_to(base).as_posix(),
@@ -274,18 +279,23 @@ class JsonlReplaySource:
         for segment in manifest.segments:
             path = self.root / segment.relative_path
             if not path.is_file():
-                raise RecordingValidationError(f"missing manifest segment: {segment.relative_path}")
+                raise RecordingValidationError(
+                    f"missing manifest segment: {segment.relative_path}"
+                )
             raw = path.read_bytes()
             actual = hashlib.sha256(raw).hexdigest()
             if actual != segment.sha256:
                 raise RecordingValidationError(
-                    f"sha256 mismatch for {segment.relative_path}: expected {segment.sha256}, got {actual}"
+                    f"sha256 mismatch for {segment.relative_path}: "
+                    f"expected {segment.sha256}, got {actual}"
                 )
             records = _read_segment(path)
             if len(records) != segment.row_count:
-                raise RecordingValidationError(f"row count mismatch for {segment.relative_path}")
+                raise RecordingValidationError(
+                    f"row count mismatch for {segment.relative_path}"
+                )
             for record in records:
-                if record.available_at_ms < manifest.start_ms or record.available_at_ms > manifest.end_ms:
+                if not manifest.start_ms <= record.available_at_ms <= manifest.end_ms:
                     continue
                 if (
                     manifest.evidence_class is EvidenceClass.CANDLE_CONTEXT
