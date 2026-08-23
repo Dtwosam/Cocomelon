@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from cocomelon.domain.risk import RiskDecision, RiskRequest
 from cocomelon.risk.capacity import calculate_risk_capacity
+from cocomelon.risk.decimal_math import risk_decimal_context
 from cocomelon.risk.market_caps import calculate_market_caps
 from cocomelon.risk.sizing import BaseRiskSizing, calculate_base_sizing
 from cocomelon.risk.validation import validate_request
@@ -37,7 +38,7 @@ def _reject(
     )
 
 
-def evaluate_risk(request: RiskRequest) -> RiskDecision:
+def _evaluate_risk(request: RiskRequest) -> RiskDecision:
     validation_reasons = validate_request(request)
     if validation_reasons:
         return _reject(request, validation_reasons[0])
@@ -92,3 +93,8 @@ def evaluate_risk(request: RiskRequest) -> RiskDecision:
         binding_caps=binding_caps,
         timestamp_ms=request.timestamp_ms,
     )
+
+
+def evaluate_risk(request: RiskRequest) -> RiskDecision:
+    with risk_decimal_context():
+        return _evaluate_risk(request)
