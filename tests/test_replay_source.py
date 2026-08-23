@@ -45,10 +45,11 @@ def stream_event(kind: StreamKind, key: str, *, receive_time: datetime = RECEIVE
         }
     else:
         payload = {"mid_px": Decimal("100.5")}
+    no_exchange_time = {StreamKind.ALL_MIDS, StreamKind.ACTIVE_ASSET_CTX}
     return StreamEvent(
         kind=kind,
         market=MARKET,
-        exchange_time_ms=None if kind in {StreamKind.ALL_MIDS, StreamKind.ACTIVE_ASSET_CTX} else RECEIVED_MS,
+        exchange_time_ms=None if kind in no_exchange_time else RECEIVED_MS,
         receive_time=receive_time,
         schema_version=1,
         source="hyperliquid-mainnet-ws",
@@ -73,6 +74,7 @@ def valid_recording(root: Path) -> None:
 
 
 def replay_manifest(root: Path, evidence_class: EvidenceClass) -> ReplayManifest:
+    microstructure = evidence_class is EvidenceClass.MICROSTRUCTURE
     return ReplayManifest(
         evidence_class=evidence_class,
         start_ms=RECEIVED_MS - 1,
@@ -84,8 +86,8 @@ def replay_manifest(root: Path, evidence_class: EvidenceClass) -> ReplayManifest
         feature_version="phase4-v1",
         strategy_version="phase5-v1",
         risk_version="phase6-v1",
-        execution_config_version=("phase7-v1" if evidence_class is EvidenceClass.MICROSTRUCTURE else None),
-        fee_schedule_id=("fees-v1" if evidence_class is EvidenceClass.MICROSTRUCTURE else None),
+        execution_config_version="phase7-v1" if microstructure else None,
+        fee_schedule_id="fees-v1" if microstructure else None,
         replay_engine_version="phase8-v1",
         dataset_manifest_id=None,
     )
