@@ -2,6 +2,7 @@ from dataclasses import replace
 from decimal import Decimal
 
 from cocomelon.strategies.engine import StrategyEvaluation, evaluate_strategies
+
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
@@ -16,7 +17,6 @@ from cocomelon.domain.market import (
     PerpMarketSnapshot,
 )
 from cocomelon.domain.strategy import Direction, StrategyContext
-
 
 AS_OF_MS = 30_000
 
