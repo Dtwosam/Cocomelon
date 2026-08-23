@@ -6,52 +6,50 @@
 
 ## Current state
 
-**Last completed phase:** Phase 5 — explainable baseline strategy engines  
+**Last completed phase:** Phase 6 — independent risk engine  
 **Integration state:** MERGED into `main`  
-**Phase 5 PR:** #6  
-**Phase 5 merge commit:** `82c3db2f9ce39676e089eac79e63c5043b72e331`  
-**Final Phase 5 PR head:** `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`  
-**Final Phase 5 PR-head CI:** `32660385058` — SUCCESS  
-**Final Phase 5 CI job:** `97245537563`  
-**Active next phase:** Phase 6 — independent risk engine
+**Phase 6 PR:** #8  
+**Phase 6 merge commit:** `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`  
+**Final Phase 6 PR head:** `09a7fc7c3ed611d700905081cb2b606d52b558d4`  
+**Final Phase 6 PR-head CI:** `32663669112` — SUCCESS  
+**Final Phase 6 CI job:** `97253567901`  
+**Active next phase:** Phase 7 — real-mainnet paper execution + position manager
 
-## Phase 5 established
+## Phase 6 established
 
-Phase 5 converts Phase 4 feature/eligibility state into deterministic, explainable directional hypotheses while preserving a hard boundary from risk sizing and execution.
+Phase 6 is the authoritative deterministic new-exposure risk gate between Phase 5 strategy output and future execution.
 
 Implemented:
 
-- immutable `StrategySignal`, `StrategyContext`, `MicrostructureWindow`, and `StrategyDecision` contracts using `Decimal` financial/evidence values and deterministic IDs;
-- shared closed-candle/reference-price/swing-invalidation helpers with receive-time and end-time lookahead protection;
-- primary trend engine;
-- primary breakout engine using the latest trigger candle against the prior 20-candle range;
-- primary mean-reversion engine restricted to compatible MIXED + LOW/NORMAL-volatility regimes;
-- real microstructure window derived only from normalized Phase 3 `TRADE` and `L2_BOOK` events;
-- funding/open-interest context engine that can support or veto but cannot create a trade by itself;
-- order-flow context engine grounded in real normalized trade/L2 evidence and unable to create a trade by itself;
-- deterministic regime-aware LONG/SHORT/NO_TRADE combiner;
-- deterministic five-engine strategy orchestrator;
-- Phase 5 boundary tests that enforce separation from risk, execution, exchange/wallet/account APIs, and ML dependencies.
+- immutable Decimal `RiskLimits`, `RiskAccountState`, `OpenPositionRisk`, `RiskHealthState`, `ExecutionCostEstimate`, `LiquidityRiskState`, `RiskRequest`, and `RiskDecision` contracts;
+- deterministic risk/account IDs and stable reason/binding-cap normalization;
+- 0.25% cost-aware planned risk per trade;
+- 0.75% aggregate planned-open-risk ceiling;
+- 0.50% conservative correlation-bucket ceiling with no directional risk netting;
+- 1.00% daily realized-loss lockout;
+- 3.00% rolling weekly drawdown lockout;
+- three consecutive losses -> 60-minute cooldown;
+- same-market exposure veto, preventing averaging down/add-on entry through the public new-exposure pathway;
+- stale/future/inconsistent risk, market, liquidity, account, and execution-health rejection;
+- system gross leverage cap of 3x or lower venue maximum;
+- new exposure limited to 50% of available margin after effective leverage;
+- new notional limited to 10% of the weaker visible 25-bps entry/exit side depth;
+- LONG/SHORT liquidation checks requiring liquidation beyond the stop and at least 2x stop distance;
+- venue minimum notional rejection without forced upsizing;
+- conservative risk-budget-to-notional Decimal division using downward rounding;
+- fixed 28-digit authoritative Decimal arithmetic context so replay is not affected by ambient process precision/rounding;
+- source-level architectural boundary tests excluding order placement, wallet/signing, exchange account APIs, fill simulation, ML, averaging-down, and martingale capability from the risk package;
+- deterministic invariant matrices proving higher strategy score, higher execution costs, lower margin, or lower liquidity cannot improperly increase exposure.
 
-No position quantity, leverage, risk budget, account equity, order type, wallet, signing, fill simulation, paper execution, ML control, or live execution was added to the strategy layer.
+The risk engine returns only APPROVE/REJECT approval envelopes. It does not place or simulate orders.
 
-## Phase 5 deterministic decision behavior
+## Phase 6 verification evidence
 
-The baseline combiner is intentionally conservative and explainable.
+Final feature head before merge:
 
-Primary effective scores are raw strategy evidence multiplied by fixed trend-regime and volatility modifiers. A raw primary score below 60 cannot become a candidate. Same-direction qualifying primary agreement adds 5 points each, capped at 10. If the best opposing primary is within 15 effective points of the leader, the result is `NO_TRADE` with `primary_conflict`.
-
-Context engines remain subordinate evidence. A context veto blocks the candidate direction. Otherwise context strength can add or subtract at most 10 total points. A directional decision requires final evidence of at least 65 and a valid lead-primary invalidation on the correct side of the current reference price. Scanner `rankable` and `deep_ready` remain hard preconditions.
-
-`NO_TRADE` is a normal first-class result for insufficient evidence, conflict, context veto, invalidation failure, missing deep readiness, or other blocked conditions.
-
-## Phase 5 verification evidence
-
-Final PR head before merge:
-
-- head: `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`;
-- CI run: `32660385058` — SUCCESS;
-- CI job: `97245537563`;
+- head: `09a7fc7c3ed611d700905081cb2b606d52b558d4`;
+- CI run: `32663669112` — SUCCESS;
+- CI job: `97253567901`;
 - Python: `3.12.14`;
 - editable install — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
@@ -59,34 +57,30 @@ Final PR head before merge:
 - mypy (`src`) — PASS;
 - pytest — PASS to 100%.
 
-Boundary-audit implementation head before continuity-doc updates:
+Late safety audit deliberately caught two issues before merge:
 
-- head: `76bf0df9ab3289eab56213db3c54b2d1c16c6b85`;
-- CI run: `32660243872` — SUCCESS;
-- CI job: `97245184233`;
-- Python: `3.12.14`;
-- mypy reported no issues in 49 source files;
-- pytest reached 100%.
+1. Default Decimal half-even division could round a repeating risk-budget quotient upward, causing planned risk to exceed the cap by one Decimal unit. A RED regression demonstrated `25 / 0.0224` producing a notional whose recomputed risk was `25.00000000000000000000000001`. The fix introduced downward risk-to-notional division; the regression then passed.
+2. Authoritative risk results inherited ambient process Decimal precision/rounding. A hostile-context RED regression changed precision to 8 and rounding to `ROUND_UP` and produced a different approval. The fix wrapped the entire authoritative pipeline in a fixed 28-digit half-even context while retaining downward risk-to-notional division. The final full suite passed.
 
-PR #6 was marked ready only after the final verified suite, then merged with expected-head SHA protection using exact head `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`. GitHub returned merge commit `82c3db2f9ce39676e089eac79e63c5043b72e331`. Immediately after merge, `main` was verified at that SHA. Comparing `main` to `phase-5-baseline-strategies` showed the feature branch behind by exactly the merge commit, ahead by 0, with an empty file diff; no Phase 5 runtime change remained unmerged.
+PR #8 was marked ready only after final verification and had no unresolved review threads. It was merged with expected-head SHA protection using exact head `09a7fc7c3ed611d700905081cb2b606d52b558d4`. GitHub returned merge commit `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`. Immediately after merge, `main` was verified at that SHA. Comparing `main` to `phase-6-independent-risk` showed the feature branch behind by exactly the merge commit, ahead by 0, with an empty file diff.
 
-## Phase 5 exit-criteria audit
+## Phase 6 exit-criteria audit
 
-Verified line by line against the approved Phase 5 spec/plan:
+Verified against the approved Phase 6 design:
 
-- five evidence engines exist: trend, breakout, mean reversion, funding/OI, and order flow;
-- shared immutable strategy contracts exist and use deterministic IDs;
-- deterministic LONG/SHORT/NO_TRADE combination exists;
-- `rankable` and `deep_ready` cannot be bypassed;
-- `NO_TRADE` is normal and covered by tests;
-- every signal/decision preserves the exact feature snapshot reference;
-- a directional decision's invalidation is owned by the lead primary thesis;
-- real frozen Phase 3 Hyperliquid mainnet trade/L2 fixtures ground microstructure tests;
-- candle data cannot be accepted as synthetic order-flow history;
-- strategies do not import the risk or execution domains;
-- strategies do not import Hyperliquid exchange/wallet/account APIs;
-- strategies have no ML dependency;
-- strategy contracts contain no quantity, leverage, risk-budget, order, wallet, account, equity, margin, or position-size field.
+- old float risk placeholder replaced by immutable Decimal contracts;
+- deterministic tests cover every locked risk rule;
+- strategy score cannot override or scale the risk budget;
+- risk approval cannot place orders;
+- adverse/missing/stale/inconsistent state fails closed;
+- estimated entry slippage, stop slippage, and round-trip fees consume the risk budget;
+- aggregate and correlation limits are enforced with absolute planned loss and no default directional netting;
+- same-market add-on exposure is rejected;
+- rejected decisions always expose zero approved risk/notional;
+- risk-to-notional rounding cannot exceed the approved risk budget;
+- authoritative results are independent of ambient Decimal context;
+- full Python 3.12 install/compile/Ruff/mypy/pytest CI passes;
+- live trading remains disabled.
 
 ## Completed phases
 
@@ -96,6 +90,7 @@ Verified line by line against the approved Phase 5 spec/plan:
 - Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
 - Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
 - Phase 5 — explainable baseline strategy engines: MERGED at `82c3db2f9ce39676e089eac79e63c5043b72e331`.
+- Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
 
 ## Safety invariants still locked
 
@@ -104,46 +99,46 @@ Verified line by line against the approved Phase 5 spec/plan:
 - Default execution mode remains `paper`.
 - Live trading is disabled.
 - No live exchange adapter exists.
-- Strategy code cannot size positions or send orders.
-- Risk must remain independent and authoritative over strategy output.
+- Strategy cannot size positions or send orders.
+- Risk is independent and authoritative over strategy output.
+- Phase 7 may execute less than a risk approval but never more without a fresh risk decision.
 - No ML/learning engine exists yet.
 - No wallet signing, transfer, or withdrawal capability exists.
-- Risk defaults remain 0.25% planned account risk per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, and 3% rolling weekly drawdown lockout.
-- Three consecutive losses trigger cooldown.
 - No averaging down or martingale.
 - Solidity is not part of V1.
 - No secrets may be committed or emitted in logs.
 
-## Phase 6 objective
+## Phase 7 objective
 
-Phase 6 builds the independent risk engine that sits between the Phase 5 strategy decision and any future execution layer. It must be authoritative: a strategy LONG/SHORT is only a proposal until risk approves it.
+Phase 7 builds real-mainnet paper execution and position management while preserving the Phase 6 approval envelope as a hard ceiling.
 
-The Phase 6 design must cover at minimum:
+Phase 7 must, at minimum:
 
-- 0.25% planned risk-per-trade sizing from account equity and stop distance;
-- 0.75% maximum aggregate planned open risk;
-- 1% daily realized-loss lockout;
-- 3% rolling weekly drawdown lockout;
-- cooldown after three consecutive losses;
-- correlated-exposure restrictions;
-- leverage/liquidation-buffer constraints subordinate to dollar risk;
-- liquidity/depth/slippage constraints on allowable notional;
-- stale/inconsistent-state rejection;
-- no averaging down or martingale;
-- deterministic approve/reject decisions with reason codes and auditability;
-- no exchange order placement inside the risk engine.
+- define an execution abstraction shared by paper now and live much later;
+- translate approved notional into venue-valid quantity using actual instrument precision/minimum rules;
+- consume real Hyperliquid mainnet book/trade observations only;
+- model spread, visible-depth impact/slippage, fees, latency, partial fills where defensible, and execution failure without assuming perfect fills;
+- create immutable order-plan/order-attempt/fill/position lifecycle records with deterministic IDs;
+- prevent paper execution from exceeding approved notional/risk;
+- support LONG and SHORT entry plus reduce-only exits;
+- manage stop/invalidation exits and bounded intraday lifecycle actions without widening risk;
+- keep account/position state deterministic and restart/reconciliation friendly;
+- make paper fills auditable and replayable from recorded market evidence;
+- keep all live signing/order submission disabled and outside the paper adapter.
+
+Do not begin journal/backtest/ML/live phases early except for interfaces strictly required by Phase 7.
 
 ## Exact next action
 
-1. Treat Phase 6 — independent risk engine — as active.
-2. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, and existing risk-domain code/tests.
-3. Run the required design/spec workflow for Phase 6 before production implementation.
-4. Write the detailed Phase 6 implementation plan.
-5. Implement the independent risk engine with TDD on an isolated branch.
-6. Keep paper execution, position management, ML, and live execution out of Phase 6.
+1. Treat Phase 7 — real-mainnet paper execution + position manager — as active.
+2. Re-read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, Phase 6 risk contracts, and existing market/event contracts.
+3. Verify current official Hyperliquid mainnet instrument sizing, order semantics, fee/public-data behavior relevant to paper modeling.
+4. Run the Phase 7 design/spec workflow before production implementation.
+5. Write a detailed Phase 7 TDD implementation plan.
+6. Implement on an isolated branch with no signing, wallet, private account API, or live order submission.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can generate explainable baseline LONG/SHORT/NO_TRADE strategy decisions on validated inputs, but it still cannot size or approve exposure and cannot send an exchange order. Phase 6 is the next safety-critical architectural gate.
+Cocomelon can now generate explainable LONG/SHORT/NO_TRADE strategy decisions and independently approve/reject bounded exposure on deterministic inputs. It still cannot send a real exchange order. Phase 7 is paper execution only.
