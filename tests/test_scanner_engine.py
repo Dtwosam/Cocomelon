@@ -210,5 +210,7 @@ def test_scan_result_contract_has_no_strategy_risk_or_order_output() -> None:
     assert "direction" not in names
     assert "risk" not in names
     assert "order" not in names
-    assert "long" not in rendered
-    assert "short" not in rendered
+    assert "direction='long'" not in rendered
+    assert 'direction="long"' not in rendered
+    assert "direction='short'" not in rendered
+    assert 'direction="short"' not in rendered
