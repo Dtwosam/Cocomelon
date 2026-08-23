@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Iterable, Mapping
 
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.ws_protocol import subscription_id
