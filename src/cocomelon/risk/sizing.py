@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from cocomelon.domain.risk import ExecutionCostEstimate, RiskLimits
+from cocomelon.risk.decimal_math import divide_down
 
 ZERO = Decimal("0")
 
@@ -44,7 +45,7 @@ def calculate_base_sizing(
     if not effective_loss_fraction.is_finite() or effective_loss_fraction <= ZERO:
         raise ValueError("effective_loss_fraction must be positive and finite")
 
-    raw_notional = target_risk_amount / effective_loss_fraction
+    raw_notional = divide_down(target_risk_amount, effective_loss_fraction)
     return BaseRiskSizing(
         target_risk_amount=target_risk_amount,
         stop_distance_fraction=stop_distance_fraction,
