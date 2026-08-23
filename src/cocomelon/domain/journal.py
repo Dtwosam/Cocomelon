@@ -249,7 +249,13 @@ class TradeJournalEntry:
             "health_refs",
             _dedupe(self.health_refs, "health_refs", sort=True),
         )
-        for field in ("initial_stop", "initial_risk_amount", "entry_price", "exit_price", "filled_quantity"):
+        for field in (
+            "initial_stop",
+            "initial_risk_amount",
+            "entry_price",
+            "exit_price",
+            "filled_quantity",
+        ):
             _require_positive(getattr(self, field), field)
         for field in (
             "gross_realized_pnl",
@@ -264,7 +270,12 @@ class TradeJournalEntry:
             "equity_after",
         ):
             _require_finite(getattr(self, field), field)
-        for field in ("entry_fees", "exit_fees", "entry_slippage_fraction", "exit_slippage_fraction"):
+        for field in (
+            "entry_fees",
+            "exit_fees",
+            "entry_slippage_fraction",
+            "exit_slippage_fraction",
+        ):
             if getattr(self, field) < ZERO:
                 raise ValueError(f"{field} must be non-negative")
         if self.equity_before <= ZERO or self.equity_after <= ZERO:
