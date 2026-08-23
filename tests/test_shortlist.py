@@ -140,8 +140,9 @@ def test_subscription_plan_delegates_to_phase3_public_watchlist_boundary() -> No
 
     plan = build_subscription_plan(deep_watchlist, delta)
 
-    assert plan.desired_count == 7
+    assert plan.desired_count == 8
     assert {item["type"] for item in plan.subscribe} == {
+        "activeAssetCtx",
         "allMids",
         "l2Book",
         "trades",
