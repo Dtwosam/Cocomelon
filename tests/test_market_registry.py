@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from cocomelon.hyperliquid.registry import MarketRegistry
-
 from test_hyperliquid_normalize import HIP3_META_CTX, MAIN_META_CTX, PERP_DEXS
+
+from cocomelon.hyperliquid.registry import MarketRegistry
 
 
 class FakeInfoClient:
