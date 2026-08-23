@@ -1,8 +1,9 @@
 from decimal import ROUND_DOWN, Context, Decimal, getcontext, setcontext
 
+from cocomelon.journal.analytics import ExcursionPoint, build_trade_summary
+
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
-from cocomelon.journal.analytics import ExcursionPoint, build_trade_summary
 
 MARKET = MarketId(dex="", coin="SOL")
 
