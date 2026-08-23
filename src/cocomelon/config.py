@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 from urllib.parse import urlparse
 
@@ -29,11 +30,18 @@ class Settings:
     ws_url: str = MAINNET_WS_URL
     execution_mode: ExecutionMode = ExecutionMode.PAPER
     live_ack: str = ""
-    risk_per_trade: float = 0.0025
-    max_open_risk: float = 0.0075
-    daily_loss_limit: float = 0.01
-    weekly_drawdown_limit: float = 0.03
+    risk_per_trade: Decimal = Decimal("0.0025")
+    max_open_risk: Decimal = Decimal("0.0075")
+    daily_loss_limit: Decimal = Decimal("0.01")
+    weekly_drawdown_limit: Decimal = Decimal("0.03")
     consecutive_loss_cooldown: int = 3
+    cooldown_ms: int = 3_600_000
+    correlation_bucket_risk_limit: Decimal = Decimal("0.005")
+    max_gross_leverage: Decimal = Decimal("3")
+    max_available_margin_fraction: Decimal = Decimal("0.50")
+    max_visible_depth_fraction: Decimal = Decimal("0.10")
+    min_liquidation_stop_multiple: Decimal = Decimal("2")
+    max_state_age_ms: int = 5_000
 
     @classmethod
     def from_env(cls) -> Settings:

@@ -72,10 +72,10 @@ def status_payload(settings: Settings) -> dict[str, Any]:
         "api_url": settings.api_url,
         "ws_url": settings.ws_url,
         "live_activation_valid": settings.live_activation_valid,
-        "risk_per_trade": settings.risk_per_trade,
-        "max_open_risk": settings.max_open_risk,
-        "daily_loss_limit": settings.daily_loss_limit,
-        "weekly_drawdown_limit": settings.weekly_drawdown_limit,
+        "risk_per_trade": float(settings.risk_per_trade),
+        "max_open_risk": float(settings.max_open_risk),
+        "daily_loss_limit": float(settings.daily_loss_limit),
+        "weekly_drawdown_limit": float(settings.weekly_drawdown_limit),
     }
 
 
