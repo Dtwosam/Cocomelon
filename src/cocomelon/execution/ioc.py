@@ -7,6 +7,7 @@ from decimal import ROUND_DOWN, ROUND_HALF_EVEN, Context, Decimal, localcontext
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     ExecutionResult,
+    InstrumentExecutionSpec,
     OrderSide,
     PaperExecutionConfig,
     PaperFill,
@@ -84,16 +85,28 @@ def _parse_levels(value: object) -> tuple[_Level, ...] | None:
     return tuple(parsed)
 
 
-def _quantity_quantum(plan: PaperOrderPlan) -> Decimal:
-    exponent = plan.requested_quantity.as_tuple().exponent
-    if not isinstance(exponent, int):
-        raise ValueError("requested_quantity must be finite")
-    return ONE.scaleb(exponent)
+def _floor_quantity(value: Decimal, quantum: Decimal) -> Decimal:
+    if value <= ZERO:
+        return ZERO
+    return value.quantize(quantum, rounding=ROUND_DOWN)
+
+
+def _risk_per_quantity(
+    plan: PaperOrderPlan,
+    price: Decimal,
+    cost_buffer_fraction: Decimal,
+) -> Decimal:
+    if plan.stop_price is None:
+        raise ValueError("opening IOC requires stop_price")
+    if plan.side is OrderSide.BUY:
+        return price * (ONE + cost_buffer_fraction) - plan.stop_price
+    return plan.stop_price - price * (ONE - cost_buffer_fraction)
 
 
 def simulate_ioc(
     plan: PaperOrderPlan,
     event: StreamEvent,
+    instrument: InstrumentExecutionSpec,
     config: PaperExecutionConfig,
     *,
     attempt_timestamp_ms: int,
@@ -104,6 +117,19 @@ def simulate_ioc(
         return _rejected(plan, event, attempt_timestamp_ms, "NOT_L2_BOOK")
     if event.market != plan.market:
         return _rejected(plan, event, attempt_timestamp_ms, "MARKET_MISMATCH")
+    if instrument.market != plan.market:
+        return _rejected(plan, event, attempt_timestamp_ms, "INSTRUMENT_MISMATCH")
+    if not instrument.execution_supported:
+        return _rejected(
+            plan,
+            event,
+            attempt_timestamp_ms,
+            instrument.unsupported_reason or "UNSUPPORTED_INSTRUMENT",
+        )
+    if instrument.metadata_received_at_ms != plan.instrument_metadata_received_at_ms:
+        return _rejected(plan, event, attempt_timestamp_ms, "INSTRUMENT_VERSION_MISMATCH")
+    if config.config_version != plan.execution_config_version:
+        return _rejected(plan, event, attempt_timestamp_ms, "EXECUTION_CONFIG_MISMATCH")
     if attempt_timestamp_ms < plan.earliest_execution_ms:
         return _rejected(plan, event, attempt_timestamp_ms, "LATENCY_NOT_ELAPSED")
 
@@ -135,12 +161,31 @@ def simulate_ioc(
             boundary = plan.execution_reference_price * (ONE - slippage_fraction)
             levels = sorted_bids
 
-        remaining_quantity = plan.requested_quantity
+        if not plan.reduce_only:
+            if (
+                plan.stop_price is None
+                or plan.approved_risk_amount_ceiling is None
+                or plan.cost_buffer_fraction is None
+            ):
+                return _rejected(plan, event, attempt_timestamp_ms, "INCOMPLETE_RISK_ENVELOPE")
+            if plan.side is OrderSide.BUY and plan.stop_price >= sorted_asks[0].price:
+                return _rejected(plan, event, attempt_timestamp_ms, "STOP_ALREADY_BREACHED")
+            if plan.side is OrderSide.SELL and plan.stop_price <= sorted_bids[0].price:
+                return _rejected(plan, event, attempt_timestamp_ms, "STOP_ALREADY_BREACHED")
+            remaining_risk: Decimal | None = plan.approved_risk_amount_ceiling
+            cost_buffer_fraction = plan.cost_buffer_fraction
+        else:
+            remaining_risk = None
+            cost_buffer_fraction = ZERO
+
+        remaining_quantity = _floor_quantity(plan.requested_quantity, instrument.size_quantum)
         remaining_notional = plan.approved_notional_ceiling
-        quantum = _quantity_quantum(plan)
+        quantum = instrument.size_quantum
         raw_fills: list[tuple[_Level, Decimal, Decimal, Decimal]] = []
         gross_notional = ZERO
         total_fee = ZERO
+        risk_clipped = False
+        notional_clipped = False
 
         for level in levels:
             if remaining_quantity <= ZERO or remaining_notional <= ZERO:
@@ -150,13 +195,25 @@ def simulate_ioc(
             if plan.side is OrderSide.SELL and level.price < boundary:
                 break
 
-            max_by_notional = (remaining_notional / level.price).quantize(
-                quantum,
-                rounding=ROUND_DOWN,
-            )
-            fill_quantity = min(remaining_quantity, level.quantity, max_by_notional)
+            max_by_notional = _floor_quantity(remaining_notional / level.price, quantum)
+            visible_quantity = _floor_quantity(level.quantity, quantum)
+            fill_quantity = min(remaining_quantity, visible_quantity, max_by_notional)
+            if max_by_notional < min(remaining_quantity, visible_quantity):
+                notional_clipped = True
+
+            if remaining_risk is not None:
+                unit_risk = _risk_per_quantity(plan, level.price, cost_buffer_fraction)
+                if not unit_risk.is_finite() or unit_risk <= ZERO:
+                    return _rejected(plan, event, attempt_timestamp_ms, "INVALID_RISK_GEOMETRY")
+                max_by_risk = _floor_quantity(remaining_risk / unit_risk, quantum)
+                if max_by_risk < fill_quantity:
+                    fill_quantity = max_by_risk
+                    risk_clipped = True
+
+            fill_quantity = _floor_quantity(fill_quantity, quantum)
             if fill_quantity <= ZERO:
                 break
+
             fill_notional = level.price * fill_quantity
             fee = fill_notional * config.taker_fee_rate
             raw_fills.append((level, fill_quantity, fill_notional, fee))
@@ -164,6 +221,12 @@ def simulate_ioc(
             remaining_notional -= fill_notional
             gross_notional += fill_notional
             total_fee += fee
+
+            if remaining_risk is not None:
+                unit_risk = _risk_per_quantity(plan, level.price, cost_buffer_fraction)
+                remaining_risk -= unit_risk * fill_quantity
+                if remaining_risk < ZERO:
+                    return _rejected(plan, event, attempt_timestamp_ms, "RISK_ENVELOPE_BREACH")
 
         filled_quantity = plan.requested_quantity - remaining_quantity
         average_fill_price = (
@@ -175,10 +238,20 @@ def simulate_ioc(
         reasons = ("FILLED_VISIBLE_DEPTH",)
     elif filled_quantity > ZERO:
         result = ExecutionResult.PARTIAL
-        reasons = ("IOC_REMAINDER_CANCELLED",)
+        partial_reasons = ["IOC_REMAINDER_CANCELLED"]
+        if risk_clipped:
+            partial_reasons.append("RISK_CEILING_REACHED")
+        if notional_clipped:
+            partial_reasons.append("NOTIONAL_CEILING_REACHED")
+        reasons = tuple(partial_reasons)
     else:
         result = ExecutionResult.NO_FILL
-        reasons = ("NO_ELIGIBLE_VISIBLE_DEPTH",)
+        if risk_clipped:
+            reasons = ("RISK_CEILING_REACHED",)
+        elif notional_clipped:
+            reasons = ("NOTIONAL_CEILING_REACHED",)
+        else:
+            reasons = ("NO_ELIGIBLE_VISIBLE_DEPTH",)
 
     attempt = ExecutionAttempt(
         plan_id=plan.plan_id,
