@@ -31,3 +31,10 @@ jobs:
         run: cocomelon stream-smoke --seconds 5 --market BTC
       - name: Capture public mainnet WebSocket fixture shapes
         run: python scripts/capture_phase3_ws_fixtures.py --output-dir artifacts/phase3_ws_capture
+      - name: Upload exact public fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-mainnet-ws-fixtures
+          path: artifacts/phase3_ws_capture
+          if-no-files-found: error
+          retention-days: 1
