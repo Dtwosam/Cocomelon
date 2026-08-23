@@ -11,6 +11,7 @@ from cocomelon.hyperliquid.ws_protocol import (
     subscription_id,
     unsubscribe_message,
 )
+from cocomelon.hyperliquid.ws_supervisor import event_stream_id
 
 RECEIVED = datetime(2026, 8, 23, 15, 30, tzinfo=UTC)
 
@@ -89,6 +90,7 @@ def test_active_asset_ctx_normalizes_public_mark_oracle_funding_context() -> Non
         "open_interest": Decimal("12345.67"),
     }
     assert event.event_key.startswith("activeAssetCtx:BTC:")
+    assert event_stream_id(event) == "activeAssetCtx:BTC"
 
 
 def test_active_asset_ctx_supports_hip3_and_missing_mid_without_inventing_timestamp() -> None:
@@ -112,6 +114,7 @@ def test_active_asset_ctx_supports_hip3_and_missing_mid_without_inventing_timest
     assert event.market.canonical == "xyz:NVDA"
     assert event.payload["mid_px"] is None
     assert event.exchange_time_ms is None
+    assert event_stream_id(event) == "activeAssetCtx:xyz:NVDA"
 
 
 def test_active_asset_ctx_event_key_changes_when_public_context_changes() -> None:
