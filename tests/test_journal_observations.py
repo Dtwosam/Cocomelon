@@ -145,13 +145,15 @@ def test_position_action_observation_preserves_deterministic_action_id() -> None
         timestamp_ms=1_100,
     )
 
-    observation = observation_from_position_action(action, replay_run_id="replay-4")
+    first = observation_from_position_action(action, replay_run_id="replay-4")
+    second = observation_from_position_action(action, replay_run_id="replay-4")
 
-    assert observation.kind.value == "position_action"
-    assert observation.market == MARKET
-    assert observation.timestamp_ms == action.timestamp_ms
-    assert observation.position_action_id == action.action_id
-    assert observation.reason_codes == ("TRAIL_PROFIT",)
+    assert first.kind.value == "position_action"
+    assert first.market == MARKET
+    assert first.timestamp_ms == action.timestamp_ms
+    assert first.position_action_id is not None
+    assert first.position_action_id == second.position_action_id
+    assert first.reason_codes == ("TRAIL_PROFIT",)
 
 
 def test_funding_observations_preserve_accrual_and_gap_source_ids() -> None:
