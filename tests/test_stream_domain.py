@@ -2,9 +2,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from cocomelon.domain.stream import DataGap, FreshnessState, StreamEvent, StreamKind
 
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.stream import DataGap, FreshnessState, StreamEvent, StreamKind
 
 
 def test_stream_event_preserves_provenance_and_times() -> None:
