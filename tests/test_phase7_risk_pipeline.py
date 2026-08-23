@@ -159,9 +159,13 @@ def test_phase5_long_flows_through_phase6_and_opens_paper_position(
     assert result.risk_decision.approved is True
     assert result.risk_decision.strategy_decision_id == strategy(Direction.LONG).decision_id
     assert result.simulation is not None
-    assert result.simulation.attempt.result in {ExecutionResult.FULL, ExecutionResult.PARTIAL}
-    assert result.account.positions[0].side.value == "long"
-    assert result.account.positions[0].initial_risk_decision_id == result.risk_decision.risk_decision_id
+    assert result.simulation.attempt.result in {
+        ExecutionResult.FULL,
+        ExecutionResult.PARTIAL,
+    }
+    position = result.account.positions[0]
+    assert position.side.value == "long"
+    assert position.initial_risk_decision_id == result.risk_decision.risk_decision_id
     engine.close()
 
 
