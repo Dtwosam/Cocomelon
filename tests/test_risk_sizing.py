@@ -40,6 +40,14 @@ def test_cost_aware_sizing_uses_exact_decimal_arithmetic() -> None:
     assert result.raw_notional == Decimal("2016.129032258064516129032258")
 
 
+def test_repeating_risk_division_never_rounds_notional_above_budget() -> None:
+    result = _calculate(stop=Decimal("98"))
+
+    assert result.effective_loss_fraction == Decimal("0.0224")
+    assert result.raw_notional == Decimal("1116.071428571428571428571428")
+    assert result.raw_notional * result.effective_loss_fraction <= result.target_risk_amount
+
+
 def test_short_stop_distance_is_symmetric() -> None:
     long = _calculate(entry=Decimal("100"), stop=Decimal("99"))
     short = _calculate(entry=Decimal("100"), stop=Decimal("101"))
