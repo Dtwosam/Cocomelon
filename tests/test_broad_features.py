@@ -15,7 +15,7 @@ calculate_broad_features = broad_module.calculate_broad_features
 
 
 def _snapshot(
-    market: MarketId = MarketId("", "BTC"),
+    market: MarketId | None = None,
     *,
     received_at_ms: int = 900,
     mark_px: Decimal | None = Decimal("102"),
@@ -26,10 +26,11 @@ def _snapshot(
     day_ntl_vlm: Decimal = Decimal("1000000"),
     prev_day_px: Decimal = Decimal("100"),
 ) -> PerpMarketSnapshot:
+    resolved_market = market or MarketId("", "BTC")
     return PerpMarketSnapshot(
         meta=PerpMarketMeta(
-            market=market,
-            wire_name=market.wire_name,
+            market=resolved_market,
+            wire_name=resolved_market.wire_name,
             sz_decimals=4,
             max_leverage=20,
             margin_table_id=None,
@@ -38,7 +39,7 @@ def _snapshot(
             margin_mode=None,
         ),
         context=PerpMarketContext(
-            market=market,
+            market=resolved_market,
             mark_px=mark_px,
             mid_px=mid_px,
             oracle_px=oracle_px,
