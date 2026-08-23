@@ -165,7 +165,9 @@ def assemble_trade_journal_entry(
     }
     known_plans = {opening_plan.plan_id: opening_plan, **exit_plan_by_id}
 
-    ordered_fills = tuple(sorted(lifecycle.fills, key=lambda item: (item.timestamp_ms, item.fill_id)))
+    ordered_fills = tuple(
+        sorted(lifecycle.fills, key=lambda item: (item.timestamp_ms, item.fill_id))
+    )
     for fill in ordered_fills:
         if fill.market != market:
             return _inconsistency("FILL_MARKET_MISMATCH")
