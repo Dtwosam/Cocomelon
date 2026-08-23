@@ -140,6 +140,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
             "funding": _decimal(ctx.get("funding"), "funding"),
             "open_interest": _decimal(ctx.get("openInterest"), "openInterest"),
         }
+        receive_key = receive_time.isoformat(timespec="microseconds")
         return [
             StreamEvent(
                 StreamKind.ACTIVE_ASSET_CTX,
@@ -148,7 +149,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                 receive_time,
                 SCHEMA_VERSION,
                 SOURCE,
-                f"activeAssetCtx:{market.canonical}:{_digest(payload)}",
+                f"activeAssetCtx:{market.canonical}:{receive_key}:{_digest(payload)}",
                 payload,
             )
         ]
