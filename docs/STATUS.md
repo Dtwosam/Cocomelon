@@ -6,78 +6,126 @@
 
 ## Current state
 
-**Last completed phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots  
-**Integration state:** MERGED into `main`  
+**Last merged phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots  
 **Phase 2 merge commit:** `b95352e238d6a9eabd63e13c1f8300e654a7e636`  
-**Active next phase:** Phase 3 — WebSocket collector and durable market recording
+**Phase 3 state:** IMPLEMENTED and exit criteria verified on PR #3; merge pending final documentation-tree CI  
+**Phase 3 feature branch:** `phase-3-websocket-recorder`  
+**Phase 3 verified code head:** `c5eba63eb30379c8a7812d660382fbfb5b83cd88`  
+**Next build phase after merge:** Phase 4 — feature engine, eligibility, scanner, and opportunity ranking
 
-## Phase 2 implementation evidence
+## Phase 3 implementation evidence
 
-Phase 2 established:
+Phase 3 establishes a public-mainnet-only live market-data layer:
 
-- a direct mainnet-only Hyperliquid `/info` HTTP client with injectable transport;
-- canonical-mainnet endpoint enforcement;
-- retry/backoff for 429, server, and transport failures only;
-- rolling REST rate-budget protection below the documented 1,200-weight/minute ceiling;
-- dynamic discovery of the native perp venue plus HIP-3/perp DEX namespaces;
-- canonical HIP-3 market IDs such as `xyz:NVDA` without double-prefixing;
-- typed immutable market, asset-context, candle, and funding records;
+- canonical Hyperliquid mainnet WebSocket transport at `wss://api.hyperliquid.xyz/ws`;
+- injectable WebSocket connection boundary for deterministic tests;
+- public subscription validation for `allMids`, `l2Book`, `trades`, and `candle` only;
+- typed normalized `StreamEvent`, `DataGap`, `FreshnessState`, and `StreamHealth` contracts;
 - `Decimal`-based financial normalization;
-- preservation/identification of delisted markets;
-- candle and funding-history fetch/normalization with timestamp/order validation;
-- a read-only `cocomelon markets` operator command;
-- public mainnet fixture capture tooling;
-- captured real Hyperliquid mainnet public fixtures committed to the repository;
-- deterministic fixture contract tests against those real captured structures.
+- exchange timestamps plus local receive timestamps and schema/source provenance;
+- reconnect with exponential backoff and deterministic resubscription;
+- Hyperliquid application ping/pong heartbeat handling;
+- duplicate-event suppression and explicit out-of-order anomaly/gap records;
+- freshness tracking for both active streams and subscriptions that have not yet emitted their first event;
+- fail-closed recorder/event-sink behavior: storage failures surface instead of being misclassified as reconnectable network drops;
+- dynamic deep-watchlist reconciliation with deterministic deltas;
+- broad `allMids` feeds managed per discovered perp DEX rather than duplicated per market;
+- deep feeds per selected market: `l2Book`, `trades`, and `candle` at 1m/5m/15m;
+- configured subscription safety ceiling of 800 and a hard maximum no greater than Hyperliquid's documented 1,000-subscription IP ceiling;
+- durable rotating append-only JSONL recording with fsync;
+- UTC date/stream/market partitioning and Windows-safe HIP-3 paths;
+- atomic recovery manifest replacement;
+- restart-safe segmentation that never truncates an existing segment;
+- separate durable data-gap records;
+- bounded `cocomelon stream-smoke` operator command with no wallet, key, order, or live-execution flags;
+- exact real-mainnet WebSocket fixtures with immutable SHA-256 regression locks.
 
-## Real-mainnet smoke evidence
+D-021 is authoritative for storage: Phase 3 JSONL is the trusted liveness-critical append log. Validated JSONL is compacted/exported to Parquet or equivalent columnar analytical datasets offline in the later replay/research phase rather than adding PyArrow to the always-on collector.
 
-A temporary read-only GitHub Actions workflow was used only for public Hyperliquid mainnet `/info` reads, then removed before merge.
+## Real Hyperliquid mainnet WebSocket evidence
 
-Successful smoke run:
+A temporary GitHub Actions workflow was used only to validate public mainnet WebSocket behavior and capture fixtures. It was removed from the feature branch after capture.
 
-- Workflow run: `32647847123` — SUCCESS;
+Successful fixture/smoke run:
+
+- Workflow run: `32650798749` — SUCCESS;
+- job: `97221967066`;
 - Python: `3.12.14`;
-- `python -m cocomelon markets` — PASS;
-- public fixture capture — PASS;
-- source endpoint: `https://api.hyperliquid.xyz/info`;
-- no wallet, signing, account mutation, order, or execution method was involved.
+- endpoint: `wss://api.hyperliquid.xyz/ws`;
+- command: `cocomelon stream-smoke --seconds 5 --market BTC`;
+- execution mode reported by command: `paper`;
+- subscriptions: 6;
+- normalized events processed in 5 seconds: 1,002;
+- gaps: 0;
+- duplicates: 0;
+- anomalies: 0;
+- reconnects: 0;
+- stale streams at completion: none;
+- server traffic observed: yes.
 
-Observed market-discovery snapshot during the smoke:
+Fixture capture from the same successful run produced six exact public responses:
 
-- 500 discovered perpetual markets;
-- 320 active markets;
-- 180 delisted markets;
-- 11 perp DEX namespaces total;
-- 10 HIP-3/perp DEX namespaces beyond the native venue;
-- sampled HIP-3 wire symbols included `xyz:XYZ100`, `xyz:TSLA`, and `xyz:NVDA`.
+- native `allMids`;
+- HIP-3 `allMids`;
+- BTC `l2Book`;
+- HIP-3 `l2Book`;
+- BTC trades;
+- BTC 1m candle.
 
-## Final Phase 2 verification
+HIP-3 capture proved the live `allMids` wire payload includes `data.dex: "xyz"` and DEX-prefixed markets such as `xyz:NVDA` and `xyz:XYZ100`.
 
-Final feature-tree CI after the temporary network workflow was removed:
+Fixture provenance:
 
-- verified head before status-only update: `1961e0112770172cb475a574cb4ca2a26dd1627c`;
-- CI run: `32648127671` — SUCCESS;
-- project install — PASS;
+- artifact ID: `9496120799`;
+- artifact name: `phase3-mainnet-ws-fixtures`;
+- artifact ZIP SHA-256: `a5720f2012ce696536fa437d9c9102e996e098d0d98fa949c05402f88d515e88`;
+- exact fixture commit: `8cabafe0425a3f44ee8f09a9a704360038e1266c`;
+- exact per-file SHA-256 values are locked in `tests/fixtures/hyperliquid_ws/README.md` and verified by `tests/test_ws_fixtures.py`.
+
+No wallet, signing key, user/account subscription, order, transfer, withdrawal, or WebSocket `post` action was used.
+
+## Pre-merge regression audit
+
+A manual requirement/diff audit after an earlier green suite found two correctness gaps that normal tests had not covered:
+
+1. a subscribed stream that never emitted its first event was not becoming stale;
+2. an event-sink/recorder `OSError` could be swallowed as a reconnectable transport failure.
+
+TDD RED evidence:
+
+- regression-tests-only commit: `9e31762c25c5a588c904f79aff93d284880e7285`;
+- CI run: `32651509744`;
+- compileall, Ruff, and mypy passed;
+- pytest failed exactly the two intended new regressions.
+
+TDD GREEN evidence:
+
+- minimal production fix commit: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`;
+- CI run: `32651574711` — SUCCESS;
+- `python -m pip install -e ".[dev]"` — PASS;
+- `python -m compileall -q src tests scripts` — PASS;
 - Ruff (`src tests scripts`) — PASS;
-- mypy (`src`) — PASS;
-- pytest — PASS;
-- subsequent status-only commit CI run `32648418819` — SUCCESS;
-- local execution-sandbox suite reached 42 passing tests, including captured real-mainnet fixture contracts.
+- mypy (`src`) — PASS, no issues in 26 source files;
+- pytest — PASS to 100%, including both new regression cases.
 
-## Phase 3 current design facts
+The final documentation-tree CI is still required after this status/source update before PR #3 is merged.
 
-Current official Hyperliquid documentation has been re-checked before Phase 3 planning:
+## Phase 3 exit-criteria audit
 
-- mainnet WebSocket endpoint: `wss://api.hyperliquid.xyz/ws`;
-- server may disconnect periodically and clients must reconnect/resubscribe;
-- missed data may appear in snapshot acknowledgements or be recovered through corresponding info requests;
-- server closes a connection if it has not sent a message for 60 seconds; clients may send `{"method":"ping"}` and receive `{"channel":"pong"}`;
-- public subscription types needed by Phase 3 include `allMids`, `candle`, `l2Book`, and `trades`;
-- `allMids` supports an optional perp DEX namespace;
-- current per-IP limits include 10 WebSocket connections, 30 new connections/minute, 1000 subscriptions, and 2000 messages sent/minute.
+Verified on the feature branch:
 
-Phase 3 will remain public-market-data only. User/account subscriptions, signing, orders, and live execution remain out of scope.
+- disconnect/reconnect/resubscribe behavior is tested;
+- application heartbeat behavior is tested;
+- stale streams are detected, including never-seen subscribed streams;
+- duplicate events are explicitly suppressed;
+- out-of-order events are explicitly rejected and recorded as anomalies/gaps;
+- exchange and receive timestamps are preserved where available;
+- durable recording survives append, deterministic rotation, reopen, and manifest recovery tests;
+- recorder/sink failures fail closed;
+- subscription ceilings fail before sends;
+- real public-mainnet smoke and exact fixture capture succeeded;
+- temporary network-dependent workflow has been removed;
+- no user-specific or trading capability was introduced.
 
 ## Safety invariants still locked
 
@@ -95,16 +143,16 @@ Phase 3 will remain public-market-data only. User/account subscriptions, signing
 
 ## Exact next action
 
-1. Create and commit the dedicated Phase 3 implementation plan for **WebSocket collector and durable market recording**.
-2. Execute Phase 3 autonomously on an isolated feature branch using TDD.
-3. Add reconnect/resubscribe, heartbeat/freshness, duplicate/out-of-order handling, event normalization, rotating durable storage, gap records, and dynamic deep-watchlist subscription management.
-4. Use a read-only mainnet smoke only where network verification is necessary, then remove any temporary network-dependent CI before merge.
-5. Merge only after deterministic CI and Phase 3 exit criteria pass.
+1. Run final deterministic CI on the documentation-updated Phase 3 feature tree.
+2. Re-check PR #3 head and Phase 3 exit criteria.
+3. Merge PR #3 using an expected-head SHA guard and verify `main`.
+4. Update the portable source/status with the actual Phase 3 merge commit if needed.
+5. Begin Phase 4 autonomously from current `main`: features, eligibility, market scanner, opportunity ranking, and dynamic shortlist integration.
 
-Do not begin scanner/strategy, ML, paper execution, or live execution before their preceding build-order phases pass.
+Do not begin baseline strategies, risk, paper execution, ML, or live execution before their preceding build-order phases pass.
 
 ## Live trading status
 
 **DISABLED.**
 
-There is no approved live execution path yet. The project remains in market-data infrastructure stages until the later promotion gates in `docs/MASTER_SPEC.md` and `docs/BUILD_ORDER.md` are satisfied.
+There is no approved live execution path yet. Cocomelon remains in pre-execution infrastructure/research phases until the later promotion gates in `docs/MASTER_SPEC.md` and `docs/BUILD_ORDER.md` are satisfied.

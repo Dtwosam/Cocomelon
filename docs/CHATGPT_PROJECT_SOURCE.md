@@ -98,6 +98,10 @@ The initial system must not require paid market-data or infrastructure services.
 
 Never reconstruct fake historical L2 books or trade flow from OHLCV candles and then call it an order-flow backtest. Microstructure research requires real recorded/reliably sourced book/trade events.
 
+### Raw storage decision
+
+The Phase 3 always-on collector writes fsynced, append-only, rotating JSONL as the trusted operational raw/normalized stream log. Do not add PyArrow merely to force Parquet during liveness-critical ingestion. Validated JSONL partitions are compacted/exported offline to Parquet or an equivalent columnar analytical format in the later replay/research phase. Never fake Parquet by changing file extensions.
+
 ---
 
 ## 3. Target architecture
@@ -197,8 +201,9 @@ For a configurable bounded shortlist (initial target around 20) and all open pos
 
 Persistence target:
 
-- SQLite for operational state, decisions, risk, orders/fills, positions, journal metadata
-- Parquet/columnar files for high-volume raw/normalized market events and feature datasets
+- SQLite for operational state, decisions, risk, orders/fills, positions, and journal metadata;
+- durable JSONL for the Phase 3 liveness-critical raw/normalized stream log;
+- Parquet or equivalent columnar datasets produced offline from validated JSONL for research/features/replay at scale.
 
 All persisted data must preserve provenance, market identity, exchange timestamp where available, receive timestamp, and schema version.
 
@@ -254,12 +259,12 @@ Do not skip phases.
 0. Governance/source-of-truth anchor — COMPLETE
 1. Python foundation/domain contracts/config/CI — COMPLETE
 2. Mainnet REST market discovery and normalization — COMPLETE
-3. WebSocket collector and durable recorder — ACTIVE NEXT
-4. Features, eligibility, scanner, opportunity ranking
+3. WebSocket collector and durable recorder — IMPLEMENTED / PR #3 MERGE GATE
+4. Features, eligibility, scanner, opportunity ranking — NEXT AFTER PHASE 3 MERGE
 5. Explainable baseline strategy engines
 6. Independent risk engine
 7. Real-mainnet paper execution + position manager
-8. Journal + deterministic replay/backtester
+8. Journal + deterministic replay/backtester + offline raw-to-columnar compaction
 9. Evaluation/out-of-sample/walk-forward research gates
 10. Champion/challenger learning engine
 11. Long-running mainnet shadow operation
@@ -309,29 +314,65 @@ Established:
 
 Phase 2 real-mainnet smoke observed 500 discovered perp markets at that moment: 320 active and 180 delisted, across 11 perp DEX namespaces total (native plus 10 additional namespaces). This is an observation from the Phase 2 smoke, not a permanent market-count assumption.
 
-Phase 2 deterministic final CI passed install, Ruff, mypy, and pytest. No order, signing, wallet mutation, strategy, ML, or live execution capability was introduced.
+### Phase 3 — implemented on PR #3, merge pending
+
+Verified code head before documentation reconciliation: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`
+
+Established:
+
+- canonical mainnet-only WebSocket client with injectable transport;
+- public-only `allMids`, `l2Book`, `trades`, and `candle` protocol validation;
+- normalized typed stream events and explicit data-gap contracts;
+- exchange + receive timestamp provenance;
+- application heartbeat and freshness tracking;
+- reconnect/resubscribe with bounded exponential backoff;
+- duplicate suppression and explicit out-of-order rejection/gap reporting;
+- freshness baseline for subscriptions before their first event;
+- fail-closed propagation of recorder/event-sink failures;
+- dynamic deep-watchlist subscriptions with deterministic reconciliation;
+- 800 configured subscription ceiling and hard maximum <= Hyperliquid's documented 1,000 per-IP subscription limit;
+- durable rotating append-only JSONL with fsync, atomic manifest, deterministic serialization, safe recovery, and Windows-safe HIP-3 partition names;
+- bounded read-only `cocomelon stream-smoke` CLI;
+- exact frozen public-mainnet WebSocket fixtures with SHA-256 mutation locks.
+
+Phase 3 real-mainnet WebSocket evidence:
+
+- successful workflow run: `32650798749`;
+- Python 3.12.14;
+- `cocomelon stream-smoke --seconds 5 --market BTC` processed 1,002 normalized events;
+- 6 subscriptions;
+- 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams at completion;
+- fixture artifact: `9496120799`;
+- artifact ZIP SHA-256: `a5720f2012ce696536fa437d9c9102e996e098d0d98fa949c05402f88d515e88`;
+- HIP-3 sample DEX `xyz`; live `allMids` carried `data.dex: "xyz"` and prefixed symbols such as `xyz:NVDA` and `xyz:XYZ100`;
+- temporary network workflow removed afterward;
+- no wallet, user/account stream, signing, order, transfer, withdrawal, or `post` action used.
+
+Pre-merge TDD regression audit:
+
+- RED tests-only commit: `9e31762c25c5a588c904f79aff93d284880e7285`;
+- RED CI: `32651509744`, failed exactly the never-seen freshness and sink-failure propagation tests;
+- GREEN fix commit: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`;
+- GREEN CI: `32651574711`, install/compileall/Ruff/mypy/pytest all passed; mypy reported no issues in 26 source files and pytest reached 100% including both regressions.
+
+A final CI run on the documentation-updated Phase 3 feature tree is still required before merge.
 
 ---
 
-## 9. Phase 3 current verified API facts
+## 9. Phase 3 verified WebSocket facts and boundaries
 
-Official Hyperliquid WebSocket behavior was re-checked on 2026-08-23 before Phase 3 planning:
+Verified against official docs and/or real public mainnet traffic on 2026-08-23:
 
-- mainnet endpoint: `wss://api.hyperliquid.xyz/ws`
-- clients must gracefully reconnect because server disconnects can occur periodically
-- subscription format: `{"method":"subscribe","subscription":{...}}`
-- unsubscribe must match the original subscription object
-- successful subscription acknowledgement uses channel `subscriptionResponse`
-- public feeds needed now: `allMids`, `candle`, `l2Book`, `trades`
-- `allMids` accepts optional `dex`
-- L2 book updates contain coin, time, and bid/ask levels
-- trade events contain coin, side, price, size, time, transaction hash, trade id, and users
-- server closes a connection if it has not sent a message for 60 seconds; client may send `{"method":"ping"}` and receives `{"channel":"pong"}`
-- current per-IP WebSocket limits documented by Hyperliquid: 10 connections, 30 new connections/minute, 1000 subscriptions, 2000 client-sent messages/minute, and 100 simultaneous in-flight post messages
+- endpoint: `wss://api.hyperliquid.xyz/ws`;
+- clients must gracefully reconnect/resubscribe;
+- subscription format uses `{"method":"subscribe","subscription":{...}}`;
+- successful subscription acknowledgement uses `subscriptionResponse`;
+- public feeds used now: `allMids`, `candle`, `l2Book`, `trades`;
+- `allMids` accepts an optional `dex` namespace;
+- Hyperliquid application heartbeat uses `{"method":"ping"}` / `{"channel":"pong"}`;
+- current documented WebSocket ceilings include 10 connections, 30 new connections/minute, 1,000 subscriptions, and 2,000 client-sent messages/minute.
 
-Phase 3 is **public market-data only**. Do not add user-specific subscriptions, signing, orders, or account mutation.
-
-Recommended WebSocket dependency for the Python 3.12 asyncio architecture: `websockets` 17.x (current stable line supports Python >=3.11). Keep transport injectable so reconnect/failure tests do not require live internet.
+Phase 3 is **public market-data only**. User-specific subscriptions, signing, orders, account mutation, strategy, ML, and live execution are absent.
 
 ---
 
@@ -347,12 +388,12 @@ When asked to continue Cocomelon:
    - `docs/DECISIONS.md`
    - `docs/BUILD_ORDER.md`
    - `docs/STATUS.md`
-   - the active phase plan referenced by status
+   - the active phase spec/plan referenced by status
 4. Check recent `main` commits and open PRs.
 5. Continue from the exact active task; never rebuild completed phases.
-6. Use TDD/small verifiable commits.
+6. Use TDD and small verifiable commits.
 7. Handle routine branches, PRs, CI fixes, and merges autonomously.
-8. Ask the user only for a genuine product/risk decision that cannot be derived from the source of truth.
+8. Ask the user only for a genuine product/risk decision that cannot be derived from source of truth.
 9. Never claim a phase complete until its verification commands actually pass.
 10. After every phase, update `docs/STATUS.md` and this portable Project Source.
 11. If current Hyperliquid behavior could have changed, verify official docs immediately before coding against it.
@@ -363,19 +404,16 @@ The user expects ChatGPT to build this project **from A to Z directly in the Git
 
 ## 11. Exact handoff now
 
-**Phase 2 is complete and merged. Phase 3 — WebSocket collector and durable market recording — is the active next phase.**
+**Phase 3 is implemented on PR #3 and has passed its code-level exit criteria. The immediate gate is final CI on the documentation-updated feature tree, then a guarded merge to `main`. Phase 4 begins only after that merge.**
 
 Exact next actions:
 
-1. create/commit the Phase 3 implementation plan;
-2. create an isolated Phase 3 branch from current `main`;
-3. implement public-mainnet WebSocket transport/contracts with TDD;
-4. implement heartbeat, reconnect/resubscribe, freshness, duplicate/out-of-order handling;
-5. implement normalized raw-event envelopes and durable rotating recorder/data-gap records;
-6. implement dynamic deep-watchlist subscription management;
-7. run deterministic CI;
-8. run a temporary read-only mainnet WebSocket smoke if necessary for schema/reconnect verification, then remove network-dependent workflow before merge;
-9. update status/project-source evidence;
-10. merge and continue automatically to Phase 4.
+1. run final deterministic Phase 3 CI after the BUILD_ORDER/STATUS/Project Source updates;
+2. verify temporary mainnet-smoke workflow is absent and PR #3 head is unchanged from the verified tree;
+3. merge PR #3 with expected-head protection and verify `main`;
+4. record the actual Phase 3 merge commit in continuity docs if necessary;
+5. inspect/create the approved detailed Phase 4 plan for feature engine, eligibility, scanner, ranking, and dynamic shortlist integration;
+6. execute Phase 4 with TDD on an isolated branch;
+7. do not begin baseline strategies, risk, paper execution, ML, or live execution early.
 
 **Live trading status: DISABLED.**

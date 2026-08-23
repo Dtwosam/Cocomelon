@@ -86,16 +86,18 @@ Deliverables:
 - freshness/heartbeat tracking;
 - duplicate/out-of-order handling;
 - raw/normalized event schemas;
-- rotating Parquet writer;
+- durable rotating append-only JSONL raw/normalized recorder per D-021;
+- recovery manifest and restart-safe segmentation;
 - data-gap records;
 - dynamic deep-watchlist subscription manager.
 
 Exit criteria:
 
 - collector survives disconnect/reconnect tests;
-- stale streams are detected;
+- stale streams are detected, including subscribed streams that never produce a first event;
+- recorder/sink failures fail closed rather than being misclassified as network reconnects;
 - events preserve exchange and receive timestamps;
-- raw market recording runs for an extended smoke period without corruption.
+- durable recording survives rotation/reopen tests and a bounded public-mainnet smoke without corruption.
 
 ## Phase 4 — Feature engine, eligibility, and market scanner
 
@@ -200,6 +202,7 @@ Deliverables:
 
 - complete decision/trade journal;
 - deterministic event replay;
+- offline compaction/export of validated Phase 3 JSONL partitions to Parquet or an equivalent columnar analytical format;
 - candle/context backtester;
 - microstructure replay for real recorded data;
 - MFE/MAE calculations;
@@ -210,6 +213,7 @@ Deliverables:
 Exit criteria:
 
 - same dataset + config + code version reproduces results;
+- validated raw JSONL can be deterministically compacted into versioned analytical datasets without changing event provenance;
 - lookahead tests pass;
 - candle and microstructure evidence classes remain clearly separated.
 

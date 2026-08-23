@@ -115,3 +115,11 @@ This file records decisions that should not be casually re-litigated in later ch
 **Decision:** Data integrity, replay, accounting, risk, and paper execution are built before ML or live execution.
 
 **Why:** A sophisticated strategy on bad data/accounting is worse than a simple strategy we can trust.
+
+## D-021 — Phase 3 raw stream log is durable JSONL; Parquet compaction is offline
+
+**Decision:** The always-on Phase 3 WebSocket collector writes fsynced, append-only, rotating JSONL segments as the trusted raw/normalized stream log. Do not add PyArrow to the always-on runtime merely to produce Parquet during ingestion.
+
+**Why:** JSONL keeps crash recovery and auditing simple, preserves exact event provenance, and keeps the free baseline lightweight. A large columnar dependency is more appropriate in an offline compaction/research job than in the liveness-critical collector.
+
+**Compatibility with D-015:** Parquet (or an equivalent columnar format) remains the preferred large analytical dataset format. A later data/replay slice must compact validated JSONL partitions into columnar files before large-scale research/feature workloads rely on them. Renaming JSONL files to `.parquet` is forbidden.

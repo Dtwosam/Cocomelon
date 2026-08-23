@@ -7,7 +7,9 @@ name = "cocomelon-trader"
 version = "0.1.0"
 description = "Autonomous Hyperliquid mainnet paper-to-live perpetual trading research system"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+  "websockets>=17.0.1,<18",
+]
 
 [project.optional-dependencies]
 dev = [
