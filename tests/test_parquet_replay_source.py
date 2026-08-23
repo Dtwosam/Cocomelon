@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
 
@@ -10,8 +11,11 @@ from cocomelon.domain.replay import EvidenceClass
 from cocomelon.replay.clock import canonical_record_order
 from cocomelon.replay.compaction import compact_recording
 from cocomelon.replay.manifest import build_replay_manifest
-from cocomelon.replay.parquet_source import ParquetReplayError, ParquetReplaySource
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
+
+_parquet_source = importlib.import_module("cocomelon.replay.parquet_source")
+ParquetReplayError = _parquet_source.ParquetReplayError
+ParquetReplaySource = _parquet_source.ParquetReplaySource
 
 
 def _write_event(
@@ -117,8 +121,12 @@ def test_parquet_replay_matches_authoritative_jsonl_canonical_sequence(tmp_path:
     pytest.importorskip("pyarrow.parquet")
     root, compaction, replay_manifest = _fixture(tmp_path)
 
-    expected = canonical_record_order(tuple(JsonlReplaySource(root).iter_records(replay_manifest)))
-    actual = tuple(ParquetReplaySource(compaction.dataset_root, compaction).iter_records(replay_manifest))
+    expected = canonical_record_order(
+        tuple(JsonlReplaySource(root).iter_records(replay_manifest))
+    )
+    actual = tuple(
+        ParquetReplaySource(compaction.dataset_root, compaction).iter_records(replay_manifest)
+    )
 
     assert actual == expected
 
