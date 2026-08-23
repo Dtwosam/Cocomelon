@@ -204,3 +204,4 @@ class ShortlistDelta:
     added: tuple[MarketId, ...]
     removed: tuple[MarketId, ...]
     current: tuple[MarketId, ...]
+    ranked_watchlist: tuple[MarketId, ...] = ()
