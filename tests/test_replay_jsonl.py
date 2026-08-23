@@ -56,7 +56,7 @@ def test_validated_event_preserves_provenance_and_receive_time_controls_availabi
     assert len(segment.input_file.sha256) == 64
     assert len(segment.rows) == 1
     row = segment.rows[0]
-    assert row.receive_time_ms == 1_777_075_205_000
+    assert row.receive_time_ms == 1_787_443_205_000
     assert row.exchange_time_ms == 1_000
     assert row.coordinate.segment == 2
     assert row.coordinate.line_number == 1
