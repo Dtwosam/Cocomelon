@@ -36,7 +36,7 @@ class Settings:
     consecutive_loss_cooldown: int = 3
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         mode = ExecutionMode(os.getenv("COCOMELON_EXECUTION_MODE", "paper").lower())
         return cls(
             api_url=_reject_testnet(os.getenv("COCOMELON_API_URL", MAINNET_API_URL)),
