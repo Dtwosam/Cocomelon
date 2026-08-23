@@ -30,7 +30,7 @@ def opening_plan(*, side: OrderSide = OrderSide.BUY) -> PaperOrderPlan:
         earliest_execution_ms=1_250,
         execution_config_version="phase7-v1",
         instrument_metadata_received_at_ms=900,
-        approved_risk_amount_ceiling=Decimal("25"),
+        approved_risk_amount_ceiling=Decimal("100"),
         stop_distance_fraction=Decimal("0.05"),
         effective_loss_fraction=Decimal("0.0525"),
     )
