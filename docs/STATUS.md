@@ -6,14 +6,14 @@
 
 ## Current state
 
-**Last merged phase:** Phase 4 — feature engine, eligibility, scanner, ranking, and shortlist  
-**Phase 4 merge commit:** `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`  
-**Current phase:** Phase 5 — explainable baseline strategy engines  
-**Phase 5 integration state:** implementation and boundary audit verified on `phase-5-baseline-strategies`; guarded PR #6 merge pending final continuity-doc CI  
-**Verified Phase 5 implementation head:** `76bf0df9ab3289eab56213db3c54b2d1c16c6b85`  
-**Verified Phase 5 CI run:** `32660243872` — SUCCESS  
-**Verified Phase 5 CI job:** `97245184233`  
-**Next phase after merge:** Phase 6 — independent risk engine
+**Last completed phase:** Phase 5 — explainable baseline strategy engines  
+**Integration state:** MERGED into `main`  
+**Phase 5 PR:** #6  
+**Phase 5 merge commit:** `82c3db2f9ce39676e089eac79e63c5043b72e331`  
+**Final Phase 5 PR head:** `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`  
+**Final Phase 5 PR-head CI:** `32660385058` — SUCCESS  
+**Final Phase 5 CI job:** `97245537563`  
+**Active next phase:** Phase 6 — independent risk engine
 
 ## Phase 5 established
 
@@ -47,19 +47,28 @@ Context engines remain subordinate evidence. A context veto blocks the candidate
 
 ## Phase 5 verification evidence
 
-Verified feature-branch head before continuity-doc updates:
+Final PR head before merge:
+
+- head: `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`;
+- CI run: `32660385058` — SUCCESS;
+- CI job: `97245537563`;
+- Python: `3.12.14`;
+- editable install — PASS;
+- `python -m compileall -q src tests scripts` — PASS;
+- Ruff (`src tests scripts`) — PASS;
+- mypy (`src`) — PASS;
+- pytest — PASS to 100%.
+
+Boundary-audit implementation head before continuity-doc updates:
 
 - head: `76bf0df9ab3289eab56213db3c54b2d1c16c6b85`;
 - CI run: `32660243872` — SUCCESS;
 - CI job: `97245184233`;
 - Python: `3.12.14`;
-- editable install — PASS;
-- `python -m compileall -q src tests scripts` — PASS;
-- Ruff (`src tests scripts`) — PASS;
-- mypy (`src`) — PASS, no issues in 49 source files;
-- pytest — PASS to 100%.
+- mypy reported no issues in 49 source files;
+- pytest reached 100%.
 
-The preceding orchestrator integration head `981e12a8b2aa528ad3877b8ca892cdbae50eabc9` also passed full CI in run `32660130856` after the integration fixture was corrected to the exact locked combiner math: aligned trend + breakout + ordinary funding/OI support yields 99 evidence points because trend raw maximum is 90, breakout 100 is regime-weighted to 90, deterministic tie-break selects breakout, primary agreement adds 5, and funding/OI context adds 4.
+PR #6 was marked ready only after the final verified suite, then merged with expected-head SHA protection using exact head `7e70c70fcde325fd0b19d19cbaa346b7cec7de41`. GitHub returned merge commit `82c3db2f9ce39676e089eac79e63c5043b72e331`. Immediately after merge, `main` was verified at that SHA. Comparing `main` to `phase-5-baseline-strategies` showed the feature branch behind by exactly the merge commit, ahead by 0, with an empty file diff; no Phase 5 runtime change remained unmerged.
 
 ## Phase 5 exit-criteria audit
 
@@ -86,7 +95,7 @@ Verified line by line against the approved Phase 5 spec/plan:
 - Phase 2 — mainnet REST discovery/normalization: MERGED at `b95352e238d6a9eabd63e13c1f8300e654a7e636`.
 - Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
 - Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
-- Phase 5 — baseline strategy engines: VERIFIED on PR #6 branch; merge pending.
+- Phase 5 — explainable baseline strategy engines: MERGED at `82c3db2f9ce39676e089eac79e63c5043b72e331`.
 
 ## Safety invariants still locked
 
@@ -96,26 +105,45 @@ Verified line by line against the approved Phase 5 spec/plan:
 - Live trading is disabled.
 - No live exchange adapter exists.
 - Strategy code cannot size positions or send orders.
+- Risk must remain independent and authoritative over strategy output.
 - No ML/learning engine exists yet.
 - No wallet signing, transfer, or withdrawal capability exists.
-- Risk defaults remain 0.25% per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, and 3% rolling weekly drawdown lockout.
+- Risk defaults remain 0.25% planned account risk per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, and 3% rolling weekly drawdown lockout.
 - Three consecutive losses trigger cooldown.
 - No averaging down or martingale.
 - Solidity is not part of V1.
 - No secrets may be committed or emitted in logs.
 
+## Phase 6 objective
+
+Phase 6 builds the independent risk engine that sits between the Phase 5 strategy decision and any future execution layer. It must be authoritative: a strategy LONG/SHORT is only a proposal until risk approves it.
+
+The Phase 6 design must cover at minimum:
+
+- 0.25% planned risk-per-trade sizing from account equity and stop distance;
+- 0.75% maximum aggregate planned open risk;
+- 1% daily realized-loss lockout;
+- 3% rolling weekly drawdown lockout;
+- cooldown after three consecutive losses;
+- correlated-exposure restrictions;
+- leverage/liquidation-buffer constraints subordinate to dollar risk;
+- liquidity/depth/slippage constraints on allowable notional;
+- stale/inconsistent-state rejection;
+- no averaging down or martingale;
+- deterministic approve/reject decisions with reason codes and auditability;
+- no exchange order placement inside the risk engine.
+
 ## Exact next action
 
-1. Run final CI on the Phase 5 continuity-document head.
-2. Re-read PR #6 head and mergeability.
-3. Merge PR #6 only with exact expected-head protection after CI is green.
-4. Verify `main` points to the merge result and that no Phase 5 runtime changes remain unmerged.
-5. If merge metadata requires continuity correction, use a docs-only closeout branch/PR.
-6. Make Phase 6 — independent risk engine — the active build phase.
-7. In Phase 6, keep risk authoritative and independent from strategy evidence; do not begin paper execution or live execution early.
+1. Treat Phase 6 — independent risk engine — as active.
+2. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, and existing risk-domain code/tests.
+3. Run the required design/spec workflow for Phase 6 before production implementation.
+4. Write the detailed Phase 6 implementation plan.
+5. Implement the independent risk engine with TDD on an isolated branch.
+6. Keep paper execution, position management, ML, and live execution out of Phase 6.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can now generate explainable baseline LONG/SHORT/NO_TRADE strategy decisions on validated inputs, but it still cannot size exposure or send an exchange order. The next architectural gate is the independent risk engine.
+Cocomelon can generate explainable baseline LONG/SHORT/NO_TRADE strategy decisions on validated inputs, but it still cannot size or approve exposure and cannot send an exchange order. Phase 6 is the next safety-critical architectural gate.
