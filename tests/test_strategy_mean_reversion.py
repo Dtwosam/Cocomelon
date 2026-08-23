@@ -1,8 +1,6 @@
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.strategies.mean_reversion import evaluate_mean_reversion
-
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
@@ -17,6 +15,7 @@ from cocomelon.domain.market import (
     PerpMarketSnapshot,
 )
 from cocomelon.domain.strategy import Direction, StrategyContext
+from cocomelon.strategies.mean_reversion import evaluate_mean_reversion
 
 
 def _feature(**overrides: object) -> FeatureSnapshot:
