@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - phase-4-feature-scanner
+  pull_request:
+    branches:
+      - main
 
 jobs:
   scan-once:
