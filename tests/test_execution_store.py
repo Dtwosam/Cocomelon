@@ -57,7 +57,7 @@ def fill(order: PaperOrderPlan) -> PaperFill:
     )
 
 
-def attempt(order: PaperOrderPlan, paper_fill: PaperFill) -> ExecutionAttempt:
+def attempt(order: PaperOrderPlan) -> ExecutionAttempt:
     return ExecutionAttempt(
         plan_id=order.plan_id,
         source_event_key="l2:SOL:store",
@@ -115,7 +115,7 @@ def test_plan_and_execution_round_trip_restart_exactly(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
     paper_fill = fill(order)
-    execution = attempt(order, paper_fill)
+    execution = attempt(order)
     account = opened_state(order, paper_fill)
 
     store = PaperExecutionStore(path)
@@ -137,7 +137,7 @@ def test_duplicate_plan_and_execution_are_idempotent(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
     paper_fill = fill(order)
-    execution = attempt(order, paper_fill)
+    execution = attempt(order)
     account = opened_state(order, paper_fill)
     store = PaperExecutionStore(path)
 
@@ -160,7 +160,12 @@ def test_same_immutable_id_with_different_payload_fails_closed(tmp_path: Path) -
     store = PaperExecutionStore(path)
     store.persist_plan(order)
 
-    object.__setattr__(order, "approved_notional_ceiling", Decimal("249"))
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_order_plans SET payload_json = '{}' WHERE plan_id = ?",
+            (order.plan_id,),
+        )
+
     with pytest.raises(ValueError, match="immutable payload mismatch"):
         store.persist_plan(order)
     store.close()
@@ -170,7 +175,7 @@ def test_execution_transaction_rolls_back_on_position_constraint_failure(tmp_pat
     path = tmp_path / "paper.sqlite3"
     order = plan()
     paper_fill = fill(order)
-    execution = attempt(order, paper_fill)
+    execution = attempt(order)
     account = opened_state(order, paper_fill)
     store = PaperExecutionStore(path)
     store.persist_plan(order)
@@ -195,7 +200,7 @@ def test_materialized_position_tamper_makes_restart_unhealthy(tmp_path: Path) ->
     path = tmp_path / "paper.sqlite3"
     order = plan()
     paper_fill = fill(order)
-    execution = attempt(order, paper_fill)
+    execution = attempt(order)
     account = opened_state(order, paper_fill)
     store = PaperExecutionStore(path)
     store.persist_plan(order)
