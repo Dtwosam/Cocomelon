@@ -8,6 +8,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from typing import Any, cast
 
 from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJournalEntry
 from cocomelon.domain.market import MarketId
@@ -45,7 +46,7 @@ def _json_value(value: object) -> object:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if hasattr(value, "__dataclass_fields__"):
-        return _json_value(asdict(value))
+        return _json_value(asdict(cast(Any, value)))
     raise TypeError(f"unsupported journal value type: {type(value).__name__}")
 
 
