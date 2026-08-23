@@ -96,14 +96,15 @@ def _percentile_universes(
     raw_by_market: Mapping[str, Mapping[str, Decimal | None]],
     names: Sequence[str],
 ) -> dict[str, tuple[Decimal, ...]]:
-    return {
-        name: tuple(
-            raw[name]
-            for raw in raw_by_market.values()
-            if raw.get(name) is not None and isinstance(raw[name], Decimal)
-        )
-        for name in names
-    }
+    result: dict[str, tuple[Decimal, ...]] = {}
+    for name in names:
+        values: list[Decimal] = []
+        for raw in raw_by_market.values():
+            value = raw.get(name)
+            if isinstance(value, Decimal):
+                values.append(value)
+        result[name] = tuple(values)
+    return result
 
 
 def _score_components(
