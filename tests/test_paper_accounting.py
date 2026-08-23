@@ -1,20 +1,14 @@
 from decimal import Decimal
 
+from cocomelon.domain.execution import OrderSide, OrderType, PaperFill, PaperOrderPlan
+from cocomelon.domain.market import MarketId
 from cocomelon.execution.accounting import (
+    PositionSide,
     apply_opening_fills,
     apply_reduce_only_fills,
     empty_account,
     mark_to_market,
 )
-
-from cocomelon.domain.execution import (
-    OrderSide,
-    OrderType,
-    PaperFill,
-    PaperOrderPlan,
-    PositionSide,
-)
-from cocomelon.domain.market import MarketId
 
 MARKET = MarketId(dex="", coin="SOL")
 
