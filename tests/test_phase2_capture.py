@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from cocomelon.hyperliquid.capture import capture_public_fixtures
-
 from test_hyperliquid_normalize import HIP3_META_CTX, MAIN_META_CTX, PERP_DEXS
+
+from cocomelon.hyperliquid.capture import capture_public_fixtures
 
 
 class FakeCaptureClient:
