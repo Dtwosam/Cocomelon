@@ -1,3 +1,4 @@
+import decimal
 from dataclasses import replace
 from decimal import Decimal
 
@@ -203,6 +204,19 @@ def test_strategy_score_alone_never_increases_approved_risk_or_notional() -> Non
 
     assert low.approved_risk_amount == medium.approved_risk_amount == high.approved_risk_amount
     assert low.approved_notional == medium.approved_notional == high.approved_notional
+
+
+def test_risk_evaluation_ignores_ambient_decimal_context() -> None:
+    request = _request(stop=Decimal("98"))
+    baseline = evaluate_risk(request)
+
+    with decimal.localcontext() as context:
+        context.prec = 8
+        context.rounding = decimal.ROUND_UP
+        hostile = evaluate_risk(request)
+
+    assert hostile == baseline
+    assert hostile.risk_decision_id == baseline.risk_decision_id
 
 
 def test_rejected_decisions_remain_zero_exposure_under_matrix_changes() -> None:
