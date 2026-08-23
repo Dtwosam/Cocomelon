@@ -5,13 +5,20 @@ from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import FundingRate, MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
-from cocomelon.execution.funding import FundingAccrual, FundingGap, funding_cash_delta, reconcile_funding_boundary
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    FundingGap,
+    funding_cash_delta,
+    reconcile_funding_boundary,
+)
 
 MARKET = MarketId(dex="", coin="SOL")
 BOUNDARY = 3_600_000
 
 
-def position(*, side: PositionSide = PositionSide.LONG, opened_at_ms: int = 1_000) -> PaperPosition:
+def position(
+    *, side: PositionSide = PositionSide.LONG, opened_at_ms: int = 1_000
+) -> PaperPosition:
     return PaperPosition(
         market=MARKET,
         side=side,
@@ -67,10 +74,18 @@ def funding_record(
 
 
 def test_funding_cash_delta_signs_long_and_short_correctly() -> None:
-    assert funding_cash_delta(Decimal("2"), Decimal("100"), Decimal("0.001")) == Decimal("-0.200")
-    assert funding_cash_delta(Decimal("-2"), Decimal("100"), Decimal("0.001")) == Decimal("0.200")
-    assert funding_cash_delta(Decimal("2"), Decimal("100"), Decimal("-0.001")) == Decimal("0.200")
-    assert funding_cash_delta(Decimal("-2"), Decimal("100"), Decimal("-0.001")) == Decimal("-0.200")
+    assert funding_cash_delta(
+        Decimal("2"), Decimal("100"), Decimal("0.001")
+    ) == Decimal("-0.200")
+    assert funding_cash_delta(
+        Decimal("-2"), Decimal("100"), Decimal("0.001")
+    ) == Decimal("0.200")
+    assert funding_cash_delta(
+        Decimal("2"), Decimal("100"), Decimal("-0.001")
+    ) == Decimal("0.200")
+    assert funding_cash_delta(
+        Decimal("-2"), Decimal("100"), Decimal("-0.001")
+    ) == Decimal("-0.200")
 
 
 def test_reconcile_pairs_exact_record_with_pre_boundary_oracle() -> None:
@@ -110,10 +125,20 @@ def test_short_positive_funding_is_credit() -> None:
 
 def test_deterministic_event_id_makes_reconciliation_idempotent_for_store_layer() -> None:
     first = reconcile_funding_boundary(
-        position(), BOUNDARY, oracle_ctx(), funding_record(), now_ms=BOUNDARY + 2_000, config=PaperExecutionConfig()
+        position(),
+        BOUNDARY,
+        oracle_ctx(),
+        funding_record(),
+        now_ms=BOUNDARY + 2_000,
+        config=PaperExecutionConfig(),
     )
     second = reconcile_funding_boundary(
-        position(), BOUNDARY, oracle_ctx(), funding_record(), now_ms=BOUNDARY + 50_000, config=PaperExecutionConfig()
+        position(),
+        BOUNDARY,
+        oracle_ctx(),
+        funding_record(),
+        now_ms=BOUNDARY + 50_000,
+        config=PaperExecutionConfig(),
     )
 
     assert isinstance(first, FundingAccrual)
