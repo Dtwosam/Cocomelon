@@ -6,61 +6,101 @@
 
 ## Current state
 
-**Last completed phase:** Phase 1 — Python foundation and domain contracts  
-**Integration state:** MERGED into `main`  
-**Phase 1 merge commit:** `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`  
-**Active next phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots
+**Last completed phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots  
+**Integration state:** VERIFIED COMPLETE on `phase-2-mainnet-rest`; pending merge through PR #2  
+**Verified branch head before this status-only update:** `1961e0112770172cb475a574cb4ca2a26dd1627c`  
+**Active next phase after merge:** Phase 3 — WebSocket collector and durable market recording
 
-## Phase 1 implementation evidence
+## Phase 2 implementation evidence
 
-Phase 1 established:
+Phase 2 established:
 
-- Python 3.12 project/package structure;
-- mainnet-only Hyperliquid REST/WebSocket configuration defaults;
-- paper execution mode by default;
-- explicit live acknowledgement contract, with no live adapter implemented;
-- locked V1 risk defaults from the master spec;
-- testnet hostname rejection;
-- shared typed market, strategy, risk, execution, journal, ID, and time contracts;
-- secret-safe structured logging;
-- a safe `cocomelon status` operator command;
-- GitHub Actions CI covering install, Ruff, mypy, and pytest.
+- a direct mainnet-only Hyperliquid `/info` HTTP client with injectable transport;
+- canonical-mainnet endpoint enforcement;
+- retry/backoff for 429, server, and transport failures only;
+- rolling REST rate-budget protection below the documented 1,200-weight/minute ceiling;
+- dynamic discovery of the native perp venue plus HIP-3/perp DEX namespaces;
+- canonical HIP-3 market IDs such as `xyz:NVDA` without double-prefixing;
+- typed immutable market, asset-context, candle, and funding records;
+- `Decimal`-based financial normalization;
+- preservation/identification of delisted markets;
+- candle and funding-history fetch/normalization with timestamp/order validation;
+- a read-only `cocomelon markets` operator command;
+- public mainnet fixture capture tooling;
+- captured real Hyperliquid mainnet public fixtures committed to the repository;
+- deterministic fixture contract tests against those real captured structures.
 
-Pull request #1 was merged into `main` after successful Python 3.12 CI.
+## Real-mainnet smoke evidence
 
-Authoritative verification before merge:
+A temporary read-only GitHub Actions workflow was used only for public Hyperliquid mainnet `/info` reads, then removed before merge.
 
-- Python `3.12.14`;
-- `python -m pip install -e ".[dev]"` — PASS;
-- `python -m ruff check src tests` — PASS;
-- `python -m mypy src` — PASS;
-- `python -m pytest -q` — PASS;
-- local execution-sandbox pytest — PASS, 11 tests;
-- `python -m cocomelon status` — PASS with mainnet + paper defaults and no secret acknowledgement printed.
+Successful smoke run:
+
+- Workflow run: `32647847123` — SUCCESS;
+- Python: `3.12.14`;
+- `python -m cocomelon markets` — PASS;
+- public fixture capture — PASS;
+- artifact upload — PASS;
+- source endpoint: `https://api.hyperliquid.xyz/info`;
+- no wallet, signing, account mutation, order, or execution method was involved.
+
+Observed market-discovery snapshot during the smoke:
+
+- 500 discovered perpetual markets;
+- 320 active markets;
+- 180 delisted markets;
+- 11 perp DEX namespaces total;
+- 10 HIP-3/perp DEX namespaces beyond the native venue;
+- first sampled HIP-3 namespace: `xyz`;
+- sampled HIP-3 wire symbols included `xyz:XYZ100`, `xyz:TSLA`, and `xyz:NVDA`.
+
+Captured public fixtures include:
+
+- `perpDexs`;
+- native `metaAndAssetCtxs`;
+- HIP-3 `xyz` `metaAndAssetCtxs`;
+- BTC 15-minute candles;
+- BTC funding history.
+
+## Final deterministic CI gate
+
+Final implementation tree after removing the temporary network-smoke workflow:
+
+- head: `1961e0112770172cb475a574cb4ca2a26dd1627c`;
+- CI run: `32648127671` — SUCCESS;
+- project install — PASS;
+- Ruff (`src tests scripts`) — PASS;
+- mypy (`src`) — PASS;
+- pytest — PASS.
+
+Local execution-sandbox verification during Phase 2 reached 42 passing tests, including tests against the captured real-mainnet fixture structures. The local sandbox has restricted outbound networking; real-mainnet reachability was therefore verified by the separate read-only GitHub Actions smoke above.
 
 ## Safety invariants still locked
 
 - Hyperliquid testnet is forbidden.
+- Runtime data sources remain Hyperliquid mainnet only.
+- Default execution mode remains `paper`.
 - Live trading is disabled.
 - No live exchange adapter exists.
 - No strategy engine exists yet.
 - No ML/learning engine exists yet.
+- No wallet signing, order placement, transfer, or withdrawal capability was added in Phase 2.
 - Risk defaults remain 0.25% per trade, 0.75% aggregate planned open risk, 1% daily loss lockout, and 3% rolling weekly drawdown lockout.
 - Solidity is not part of V1.
 - No secrets may be committed or emitted in logs.
 
 ## Exact next action
 
-1. Re-check current official Hyperliquid mainnet API schemas and rate limits.
-2. Create and commit a dedicated Phase 2 implementation plan for **Hyperliquid mainnet discovery and REST snapshots**.
-3. Execute Phase 2 autonomously on a feature branch using TDD.
-4. Open a PR, require CI to pass, merge, and update this status file.
-5. Continue through `docs/BUILD_ORDER.md` without asking the user for routine branch/PR/merge choices.
+1. Merge verified PR #2 into `main` using the verified head SHA.
+2. Verify the merge landed on `main`.
+3. Re-check current official Hyperliquid WebSocket/subscription semantics.
+4. Create and commit the Phase 3 implementation plan for **WebSocket collector and durable market recording**.
+5. Execute Phase 3 autonomously on a feature branch using TDD, then PR/CI/merge under the same evidence-before-completion rule.
 
-Do not begin strategy code, ML, paper execution, or live execution before their preceding build-order phases pass.
+Do not begin scanner/strategy, ML, paper execution, or live execution before their preceding build-order phases pass.
 
 ## Live trading status
 
 **DISABLED.**
 
-There is no approved live execution path yet. The project remains in build/paper infrastructure stages until the later promotion gates in `docs/MASTER_SPEC.md` and `docs/BUILD_ORDER.md` are satisfied.
+There is no approved live execution path yet. The project remains in market-data infrastructure stages until the later promotion gates in `docs/MASTER_SPEC.md` and `docs/BUILD_ORDER.md` are satisfied.
