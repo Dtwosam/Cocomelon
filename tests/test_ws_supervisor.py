@@ -1,9 +1,8 @@
 import asyncio
 from datetime import UTC, datetime
 
-from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
-
 from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 
 
 class FakeConnection:
