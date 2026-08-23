@@ -6,15 +6,15 @@
 
 ## Current state
 
-**Last merged phase:** Phase 6 — independent risk engine  
-**Phase 6 merge commit:** `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`  
-**Phase 7:** implementation complete and exit-audited on PR #9; guarded merge closeout in progress  
-**Phase 7 branch:** `phase-7-paper-execution`  
-**Verified Phase 7 implementation head before continuity-doc closeout:** `6dabbd43e4333801ef797248117adc0b6dbfc660`  
-**Verified Phase 7 CI:** `32667371201` — SUCCESS  
-**Verified Phase 7 CI job:** `97262807933`  
+**Last completed phase:** Phase 7 — real-mainnet paper execution + position manager  
+**Integration state:** MERGED into `main`  
+**Phase 7 PR:** #9  
+**Phase 7 merge commit:** `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`  
+**Final Phase 7 PR head:** `f0059025f578524df56e4cdbff75710e9885f45c`  
+**Final Phase 7 PR-head CI:** `32667484578` — SUCCESS  
+**Final Phase 7 CI job:** `97263085563`  
 **Python:** `3.12.14`  
-**Next phase after guarded merge:** Phase 8 — journal, replay, deterministic backtester, and offline raw-to-columnar compaction
+**Active next phase:** Phase 8 — journal, deterministic replay/backtester, and offline raw-to-columnar compaction
 
 ## Phase 7 established
 
@@ -45,17 +45,22 @@ Implemented:
 
 ## Phase 7 verification evidence
 
-At implementation head `6dabbd43e4333801ef797248117adc0b6dbfc660`:
+Final PR head `f0059025f578524df56e4cdbff75710e9885f45c`:
 
-- CI run `32667371201` — SUCCESS;
-- CI job `97262807933` — SUCCESS;
+- CI run `32667484578` — SUCCESS;
+- CI job `97263085563` — SUCCESS;
 - Python `3.12.14`;
 - editable install — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
 - Ruff `src tests scripts` — PASS;
-- mypy `src` — PASS, 67 source files checked;
+- mypy `src` — PASS;
 - full pytest — PASS to 100%;
-- PR #9 inline review threads — none.
+- PR #9 had no comments or inline review threads;
+- PR #9 was mergeable before merge;
+- merge used expected-head SHA protection against `f0059025f578524df56e4cdbff75710e9885f45c`;
+- GitHub returned merge commit `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`;
+- `main` was immediately verified at that exact SHA;
+- comparing `phase-7-paper-execution` to `main` after merge showed `main` ahead by exactly the merge commit and an empty file diff.
 
 The final boundary audit is executable in `tests/test_execution_boundaries.py`, rather than relying only on documentation assertions.
 
@@ -88,7 +93,7 @@ Verified against `docs/superpowers/specs/2026-08-23-phase-7-paper-execution-desi
 - Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
 - Phase 5 — explainable baseline strategy engines: MERGED at `82c3db2f9ce39676e089eac79e63c5043b72e331`.
 - Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
-- Phase 7 — real-mainnet paper execution + position manager: VERIFIED on PR #9; merge closeout in progress.
+- Phase 7 — real-mainnet paper execution + position manager: MERGED at `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`.
 
 ## Safety invariants still locked
 
@@ -101,24 +106,39 @@ Verified against `docs/superpowers/specs/2026-08-23-phase-7-paper-execution-desi
 - No private exchange-account/user subscription exists in the paper execution layer.
 - Strategy cannot size positions or send orders.
 - Risk remains independent and authoritative.
-- Phase 7 may execute less than a risk approval but never more without a fresh risk decision.
+- Execution may use less than a risk approval but never more without a fresh risk decision.
 - No averaging down or martingale.
 - No ML/learning engine exists yet.
 - Solidity is outside V1.
 - No secrets may be committed or emitted in logs.
 
+## Phase 8 objective
+
+Phase 8 makes every decision and trade reproducible and measurable without weakening the existing data/evidence boundaries.
+
+Phase 8 must, at minimum:
+
+- build a complete durable decision/trade journal across scanner, strategy, risk, execution, position-management, funding, and account outcomes;
+- define deterministic replay manifests with exact code/config/data/schema/version provenance;
+- replay candle/context evidence without lookahead;
+- replay microstructure only from actually recorded book/trade evidence, never fabricated from candles;
+- deterministically compact validated Phase 3 JSONL partitions into versioned analytical columnar datasets such as Parquet while preserving provenance;
+- compute trade-level MFE/MAE, net R, fees/funding/slippage attribution, holding time, and reason-code traces;
+- make the same dataset + config + code version reproduce the same replay/backtest outputs;
+- keep execution paper-only and live trading disabled.
+
+Do not begin Phase 9 evaluation gates, Phase 10 ML, or Phase 12 live adapter early except for interfaces strictly required by Phase 8.
+
 ## Exact next action
 
-1. Run CI on the continuity-doc closeout head.
-2. Re-check PR #9 head, diff/review threads, and mergeability.
-3. Mark PR #9 ready only if the closeout head remains green.
-4. Merge with expected-head SHA protection.
-5. Verify `main` points at the returned merge commit and compare feature branch vs `main`.
-6. Reconcile continuity docs on `main` with the exact merge SHA if needed.
-7. Activate Phase 8 design/spec workflow. Do not start Phase 9+ early.
+1. Treat Phase 8 as active.
+2. Re-read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, Phase 3 recorder formats, Phase 4-7 domain contracts, and existing fixture/replay-relevant tests.
+3. Design the Phase 8 journal/replay/backtester/compaction architecture and write the approved spec.
+4. Write a detailed Phase 8 TDD implementation plan.
+5. Implement on an isolated Phase 8 branch with deterministic replay and explicit evidence-class separation.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can now discover, analyze, decide, independently risk-gate, and execute/manage deterministic fake-capital positions against real Hyperliquid mainnet observations. It still cannot send a real exchange order.
+Cocomelon can now discover, analyze, decide, independently risk-gate, and execute/manage deterministic fake-capital positions against real Hyperliquid mainnet observations. Phase 8 will make those decisions and outcomes reproducible for rigorous research; it will not enable real exchange orders.
