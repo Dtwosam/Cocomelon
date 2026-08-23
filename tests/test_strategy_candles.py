@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from cocomelon.strategies.candles import closed_candles, reference_price, swing_invalidation
 
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -16,7 +17,6 @@ from cocomelon.domain.market import (
     PerpMarketSnapshot,
 )
 from cocomelon.domain.strategy import Direction, StrategyContext
-from cocomelon.strategies.candles import closed_candles, reference_price, swing_invalidation
 
 
 def _market_snapshot(
@@ -168,7 +168,10 @@ def test_closed_candles_rejects_market_or_interval_mismatch() -> None:
 
 def test_reference_price_prefers_positive_mid_then_mark() -> None:
     assert reference_price(_context()) == Decimal("100.5")
-    assert reference_price(_context(market_snapshot=_market_snapshot(mid_px=None))) == Decimal("100")
+    assert (
+        reference_price(_context(market_snapshot=_market_snapshot(mid_px=None)))
+        == Decimal("100")
+    )
     assert (
         reference_price(
             _context(market_snapshot=_market_snapshot(mid_px=Decimal("0"), mark_px=None))
