@@ -2,9 +2,9 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from cocomelon.journal.store import JournalStore
 
 from cocomelon.domain.replay import JournalRecord, JournalRecordType
-from cocomelon.journal.store import JournalStore
 
 
 def record(
