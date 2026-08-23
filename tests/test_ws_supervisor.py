@@ -1,6 +1,8 @@
 import asyncio
 from datetime import UTC, datetime
 
+import pytest
+
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 
@@ -194,5 +196,75 @@ def test_freshness_reports_stale_streams() -> None:
 
         assert supervisor.stale_streams(now_ms=5999) == ()
         assert supervisor.stale_streams(now_ms=6000) == ("trades:BTC",)
+
+    asyncio.run(run())
+
+
+def test_subscribed_stream_becomes_stale_before_first_event() -> None:
+    async def run() -> None:
+        connection = FakeConnection([{"channel": "pong"}])
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            raise AssertionError(f"unexpected event: {event}")
+
+        async def gap_sink(gap: DataGap) -> None:
+            raise AssertionError(f"unexpected gap: {gap}")
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            [{"type": "trades", "coin": "BTC"}],
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: 1000,
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+            stale_after_ms=5000,
+        )
+        await supervisor.run(max_sessions=1, max_messages_per_session=1)
+
+        assert supervisor.stale_streams(now_ms=5999) == ()
+        assert supervisor.stale_streams(now_ms=6000) == ("trades:BTC",)
+
+    asyncio.run(run())
+
+
+def test_event_sink_failure_surfaces_without_reconnect() -> None:
+    async def run() -> None:
+        first = FakeConnection([trade(1)])
+        second = FakeConnection([trade(2)])
+        pool = [first, second]
+        factory_calls = 0
+
+        async def factory() -> FakeConnection:
+            nonlocal factory_calls
+            factory_calls += 1
+            return pool.pop(0)
+
+        async def event_sink(event: StreamEvent) -> None:
+            raise OSError("disk full")
+
+        async def gap_sink(gap: DataGap) -> None:
+            return None
+
+        async def fake_sleep(value: float) -> None:
+            return None
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            [{"type": "trades", "coin": "BTC"}],
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: 1000,
+            utcnow=lambda: datetime(2026, 8, 23, tzinfo=UTC),
+            sleep=fake_sleep,
+        )
+
+        with pytest.raises(OSError, match="disk full"):
+            await supervisor.run(max_sessions=2, max_messages_per_session=1)
+
+        assert factory_calls == 1
+        assert supervisor.health.reconnect_count == 0
 
     asyncio.run(run())
