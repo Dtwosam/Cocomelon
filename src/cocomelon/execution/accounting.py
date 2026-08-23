@@ -289,16 +289,18 @@ def _state_with_equity(
     daily_realized_pnl: Decimal,
     timestamp_ms: int,
     consecutive_losses: int | None = None,
-    last_closed_trade_ms: int | None | object = ...,
+    last_closed_trade_ms: int | None = None,
 ) -> PaperAccountState:
     equity = cash + unrealized_pnl
     candidates = update_rolling_peak(account.rolling_peak_candidates, timestamp_ms, equity)
-    if consecutive_losses is None:
-        consecutive_losses = account.consecutive_losses
-    if last_closed_trade_ms is ...:
-        resolved_last_closed = account.last_closed_trade_ms
-    else:
-        resolved_last_closed = last_closed_trade_ms
+    resolved_losses = (
+        account.consecutive_losses if consecutive_losses is None else consecutive_losses
+    )
+    resolved_last_closed = (
+        account.last_closed_trade_ms
+        if last_closed_trade_ms is None
+        else last_closed_trade_ms
+    )
     return PaperAccountState(
         starting_cash=account.starting_cash,
         cash=cash,
@@ -316,7 +318,7 @@ def _state_with_equity(
         day_start_equity=account.day_start_equity,
         day_start_ms=account.day_start_ms,
         rolling_peak_candidates=candidates,
-        consecutive_losses=consecutive_losses,
+        consecutive_losses=resolved_losses,
         last_closed_trade_ms=resolved_last_closed,
     )
 
