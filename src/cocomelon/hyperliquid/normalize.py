@@ -4,6 +4,8 @@ from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from cocomelon.domain.market import (
+    Candle,
+    FundingRate,
     MarketId,
     PerpDex,
     PerpMarketContext,
@@ -163,3 +165,80 @@ def normalize_meta_and_asset_ctxs(
             )
         )
     return tuple(snapshots)
+
+
+def normalize_candles(
+    market: MarketId,
+    raw: object,
+    *,
+    received_at_ms: int,
+) -> tuple[Candle, ...]:
+    values = _as_list(raw, "candleSnapshot")
+    candles: list[Candle] = []
+    previous_start: int | None = None
+    for index, value in enumerate(values):
+        item = _as_dict(value, f"candleSnapshot[{index}]")
+        wire_name = _required_str(item, "s")
+        if wire_name != market.wire_name:
+            raise ValueError(
+                f"candle coin {wire_name!r} does not match requested market {market.wire_name!r}"
+            )
+        start_ms = _required_int(item, "t")
+        end_ms = _required_int(item, "T")
+        if end_ms < start_ms:
+            raise ValueError("candle end timestamp must be >= start timestamp")
+        if previous_start is not None and start_ms <= previous_start:
+            raise ValueError("candle timestamps must be strictly increasing")
+        previous_start = start_ms
+        candles.append(
+            Candle(
+                market=market,
+                interval=_required_str(item, "i"),
+                start_ms=start_ms,
+                end_ms=end_ms,
+                open_px=cast(Decimal, _decimal(item, "o")),
+                high_px=cast(Decimal, _decimal(item, "h")),
+                low_px=cast(Decimal, _decimal(item, "l")),
+                close_px=cast(Decimal, _decimal(item, "c")),
+                volume=cast(Decimal, _decimal(item, "v")),
+                trade_count=_required_int(item, "n"),
+                source=SOURCE,
+                received_at_ms=received_at_ms,
+                schema_version=SCHEMA_VERSION,
+            )
+        )
+    return tuple(candles)
+
+
+def normalize_funding_history(
+    market: MarketId,
+    raw: object,
+    *,
+    received_at_ms: int,
+) -> tuple[FundingRate, ...]:
+    values = _as_list(raw, "fundingHistory")
+    rates: list[FundingRate] = []
+    previous_time: int | None = None
+    for index, value in enumerate(values):
+        item = _as_dict(value, f"fundingHistory[{index}]")
+        wire_name = _required_str(item, "coin")
+        if wire_name != market.wire_name:
+            raise ValueError(
+                f"funding coin {wire_name!r} does not match requested market {market.wire_name!r}"
+            )
+        time_ms = _required_int(item, "time")
+        if previous_time is not None and time_ms <= previous_time:
+            raise ValueError("funding timestamps must be strictly increasing")
+        previous_time = time_ms
+        rates.append(
+            FundingRate(
+                market=market,
+                time_ms=time_ms,
+                funding_rate=cast(Decimal, _decimal(item, "fundingRate")),
+                premium=cast(Decimal, _decimal(item, "premium")),
+                source=SOURCE,
+                received_at_ms=received_at_ms,
+                schema_version=SCHEMA_VERSION,
+            )
+        )
+    return tuple(rates)
