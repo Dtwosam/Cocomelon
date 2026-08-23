@@ -78,6 +78,7 @@ class JournalObservation:
     reason_codes: tuple[str, ...]
     health_refs: tuple[str, ...]
     replay_run_id: str | None
+    funding_event_id: str | None = None
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -94,6 +95,7 @@ class JournalObservation:
             "position_action_id",
             "account_state_id",
             "replay_run_id",
+            "funding_event_id",
         ):
             value = getattr(self, field)
             if value is not None:
@@ -123,6 +125,7 @@ class JournalObservation:
                 "attempt_id": self.attempt_id,
                 "position_action_id": self.position_action_id,
                 "account_state_id": self.account_state_id,
+                "funding_event_id": self.funding_event_id,
                 "reason_codes": self.reason_codes,
                 "health_refs": self.health_refs,
                 "replay_run_id": self.replay_run_id,
