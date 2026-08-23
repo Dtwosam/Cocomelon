@@ -1,7 +1,6 @@
 from decimal import Decimal
 
 import pytest
-
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
