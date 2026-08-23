@@ -108,13 +108,14 @@ Provide a deterministic `signal_id` derived from the canonical serialized conten
 Contract rules:
 
 - financial values use `Decimal`;
-- reason codes are non-empty, deduplicated, and deterministically ordered/preserved;
+- reason codes are non-empty and deduplicated while preserving first occurrence;
 - primary LONG/SHORT requires a positive finite invalidation price;
 - primary signals may not set context vetoes;
 - primary NO_TRADE has no invalidation;
 - context signals never set an invalidation price;
 - context may favor LONG/SHORT/NO_TRADE and may veto LONG and/or SHORT;
 - `NO_TRADE` may never appear inside `veto_directions`;
+- veto directions are deduplicated in deterministic LONG/SHORT enum order;
 - score is evidence strength only and must never be described as probability/confidence calibration.
 
 ### 3.4 StrategyDecision
@@ -136,6 +137,7 @@ Rules:
 
 - LONG/SHORT requires a lead primary strategy and invalidation;
 - NO_TRADE has no invalidation and may retain a non-zero score representing the strongest rejected candidate for later missed-opportunity analysis;
+- signal IDs are stored in deterministic strategy-name then signal-ID order;
 - the contract contains no quantity, leverage, account equity, risk budget, order type, target order, wallet, execution mode, or exchange action.
 
 ## 4. Strategy input boundary
@@ -160,24 +162,28 @@ Opportunity rank is intentionally not a required strategy input. Phase 4 ranking
 
 Strategy candle helpers must:
 
-- sort deterministically;
+- sort by `(end_ms, start_ms)` deterministically;
 - use only closed candles with `end_ms <= as_of_ms` and `received_at_ms <= as_of_ms`;
 - reject market/interval mismatches;
-- ignore or fail closed on future observations;
+- ignore future observations rather than leaking them into a decision;
 - require explicit minimum sample counts per engine.
 
 Directional primary signals use market structure for invalidation, not an arbitrary account-risk percentage. Phase 6 will later translate stop distance into position size.
 
 Before accepting a directional invalidation:
 
-- resolve reference price from usable `mid_px`, otherwise `mark_px`;
+- resolve reference price from positive finite `mid_px`, otherwise positive finite `mark_px`;
 - LONG invalidation must be below the reference price;
 - SHORT invalidation must be above the reference price;
 - invalidation must be positive and finite.
 
+The default swing window for trend and mean reversion is the latest **4 closed 15m candles** available at decision time.
+
 ## 6. Primary engine baselines
 
 All thresholds below are transparent configurable **baseline research defaults**, not optimized claims. Phase 9 evaluation may later revise them through evidence.
+
+Every primary engine returns a `StrategySignal`. It emits LONG/SHORT only when its own family threshold is met. Otherwise it returns NO_TRADE while preserving the strongest computed score and reason codes where useful.
 
 ### 6.1 Trend engine
 
@@ -188,33 +194,39 @@ Minimum inputs:
 - rankable + deep-ready market;
 - known `trend_regime` of UP or DOWN;
 - 15m and 1h returns;
-- enough closed 15m candles to establish recent swing invalidation.
+- at least 4 closed 15m candles.
 
 Direction:
 
 - UP -> candidate LONG;
 - DOWN -> candidate SHORT.
 
-Evidence components are additive and deterministic:
+Hard alignment rule:
 
-- regime direction present;
-- 15m return aligns;
-- 1h return aligns;
-- 4h return aligns when available;
-- 5m return aligns when available;
-- relative volume at/above baseline when available;
-- current book imbalance supports direction when available.
+- 15m return must have the regime sign;
+- 1h return must have the regime sign;
+- if either opposes, emit NO_TRADE.
 
-An explicitly opposing 15m or 1h return prevents a directional trend thesis instead of merely subtracting a few points.
+Exact default score:
 
-Default qualifying score target: `>= 65`.
+- `25` points: directional trend regime exists;
+- `+20`: 15m return aligns;
+- `+20`: 1h return aligns;
+- `+10`: 4h return exists and aligns;
+- `+5`: 5m return exists and aligns;
+- `+5`: `relative_volume_15m >= 1.00`;
+- `+5`: book imbalance exists and is at least `+0.10` for LONG or at most `-0.10` for SHORT.
+
+Maximum score is clamped to `100`.
+
+Default family threshold: `>= 65`.
 
 Invalidation:
 
-- LONG: recent closed-15m swing low over a configurable small window;
-- SHORT: recent closed-15m swing high over the same window.
+- LONG: minimum low of the latest 4 closed 15m candles;
+- SHORT: maximum high of the latest 4 closed 15m candles.
 
-If the resulting invalidation is on the wrong side of the reference price, emit NO_TRADE.
+If the resulting invalidation is on the wrong side of the reference price, emit NO_TRADE with `invalid_invalidation`.
 
 ### 6.2 Breakout engine
 
@@ -223,14 +235,13 @@ Purpose: detect expansion beyond an established closed-candle range with confirm
 Minimum inputs:
 
 - rankable + deep-ready market;
-- at least 21 closed 15m candles: 20 prior range candles + 1 trigger candle;
-- relative-volume and/or range-expansion context sufficient to validate the move.
+- at least 21 closed 15m candles: 20 prior range candles + 1 trigger candle.
 
 Range definition:
 
 - upper boundary = maximum high of the preceding 20 closed 15m candles;
 - lower boundary = minimum low of the preceding 20 closed 15m candles;
-- trigger candle is excluded from range construction.
+- trigger candle is the 21st/latest closed candle and is excluded from range construction.
 
 Direction:
 
@@ -238,22 +249,30 @@ Direction:
 - trigger close below lower boundary -> SHORT candidate;
 - otherwise NO_TRADE.
 
-Confirmation favors:
+At least one expansion confirmation is mandatory:
 
-- `relative_volume_15m >= 1.20` when available;
-- `range_expansion_15m >= 1.10` when available;
-- broader 1h direction consistent with the breakout when available.
+- `relative_volume_15m >= 1.20`; or
+- `range_expansion_15m >= 1.10`.
 
-A breakout without enough confirmation remains NO_TRADE rather than lowering the threshold until it trades.
+Exact default score after structural breakout exists:
 
-Default qualifying score target: `>= 70`.
+- `50` points: close is beyond the prior 20-candle boundary;
+- `+20`: relative-volume confirmation passes;
+- `+20`: range-expansion confirmation passes;
+- `+10`: 1h return exists and aligns with breakout direction.
+
+Maximum score is clamped to `100`.
+
+Default family threshold: `>= 70`.
+
+Because at least one expansion confirmation is mandatory, an unconfirmed boundary break remains NO_TRADE even if another optional point source would otherwise lift its score.
 
 Invalidation:
 
 - LONG: trigger candle low;
 - SHORT: trigger candle high.
 
-This is a thesis boundary, not a fixed risk percentage. Phase 6 may later reject an impractically wide stop.
+If the invalidation is on the wrong side of the current reference price, emit NO_TRADE.
 
 ### 6.3 Mean-reversion engine
 
@@ -263,15 +282,14 @@ Minimum inputs:
 
 - rankable + deep-ready market;
 - `trend_regime == MIXED`;
-- volatility regime is LOW or NORMAL, never HIGH;
-- usable 15m return and realized-volatility feature;
-- enough closed 15m candles for a recent extreme/invalidation.
+- volatility regime is LOW or NORMAL, never HIGH/UNKNOWN;
+- usable non-zero 15m return;
+- positive finite realized-volatility feature;
+- at least 4 closed 15m candles.
 
 Stretch metric:
 
 `stretch = abs(return_15m) / realized_vol_15m`
-
-Use only when realized volatility is positive and finite.
 
 Default trigger: `stretch >= 1.75`.
 
@@ -280,16 +298,24 @@ Direction:
 - stretched positive 15m move -> SHORT candidate;
 - stretched negative 15m move -> LONG candidate.
 
-Additional evidence may include range expansion and absence of strong higher-timeframe directional persistence.
+Exact default score after compatible regime and stretch trigger:
 
-Default qualifying score target: `>= 65`.
+- `45` points: compatible regime + base stretch trigger passes;
+- `+20`: `stretch >= 2.25`;
+- `+15`: `range_expansion_15m >= 1.10`;
+- `+10`: 5m return exists and has the proposed reversion direction;
+- `+10`: 1h return exists and has the proposed reversion direction.
+
+Maximum score is clamped to `100`.
+
+Default family threshold: `>= 65`.
 
 Invalidation:
 
-- LONG: recent closed-15m swing low / stretch extreme;
-- SHORT: recent closed-15m swing high / stretch extreme.
+- LONG: minimum low of the latest 4 closed 15m candles;
+- SHORT: maximum high of the latest 4 closed 15m candles.
 
-The order-flow context engine is allowed to veto a mean-reversion entry when aggressive real microstructure strongly confirms continuation.
+The order-flow context engine may veto a mean-reversion entry when aggressive real microstructure strongly confirms continuation.
 
 ## 7. Funding/open-interest context engine
 
@@ -299,24 +325,28 @@ Inputs:
 
 - current funding;
 - OI change fraction when available;
-- 15m/1h price direction when available.
+- 15m and 1h returns when available.
 
-Default baseline concepts:
+Default constants:
 
-- `oi_support_threshold = 0.01` (1% expansion);
-- `oi_extreme_threshold = 0.03` (3% expansion);
+- `oi_support_threshold = 0.01`;
+- `oi_extreme_threshold = 0.03`;
 - `funding_crowded_threshold = 0.0001`;
 - `funding_extreme_threshold = 0.0002`.
 
-Behavior:
+Exact default behavior, evaluated in this order:
 
-- price direction + OI expansion with non-crowded funding may support that direction;
-- extreme positive funding plus strong OI expansion may veto LONG due to long crowding;
-- extreme negative funding plus strong OI expansion may veto SHORT due to short crowding;
-- extreme funding does not automatically create the opposite trade;
-- falling/unknown OI or missing history generally produces neutral context rather than a fabricated signal.
+1. If OI change is missing or non-positive, return neutral context (`NO_TRADE`, score `0`).
+2. If `oi_change_fraction >= 0.03` and `funding >= 0.0002`, return neutral direction with score `100` and veto LONG.
+3. If `oi_change_fraction >= 0.03` and `funding <= -0.0002`, return neutral direction with score `100` and veto SHORT.
+4. If 15m and 1h returns are both positive, `oi_change_fraction >= 0.01`, and `abs(funding) < 0.0001`, support LONG with score `70`.
+5. If 15m and 1h returns are both negative under the same OI/funding conditions, support SHORT with score `70`.
+6. If OI is expanding but funding is crowded without meeting the extreme-veto rule, return neutral context with score `50` and a crowding reason.
+7. Otherwise return neutral context with score `0`.
 
-All thresholds are configurable baselines to be evaluated later, not economic truths.
+Extreme funding never automatically originates the opposite direction.
+
+All constants are baseline research defaults, not economic truths.
 
 ## 8. Real microstructure window
 
@@ -326,7 +356,15 @@ Inputs must be real normalized public `TRADE` and `L2_BOOK` events. Candles may 
 
 Default window length: `60_000 ms`, configurable.
 
-Derived fields should include at least:
+For each event:
+
+- convert `receive_time` to observed receive milliseconds;
+- require receive milliseconds `<= as_of_ms`;
+- if `exchange_time_ms` exists, require it `<= as_of_ms`;
+- include only events whose receive milliseconds are within `[as_of_ms - window_ms, as_of_ms]`;
+- sort by `(receive_ms, exchange_time_ms-or--1, event_key)` before aggregation.
+
+Derived fields:
 
 - `market`;
 - `start_ms` / `as_of_ms`;
@@ -334,10 +372,10 @@ Derived fields should include at least:
 - aggressive buy notional;
 - aggressive sell notional;
 - signed trade-flow imbalance in `[-1, 1]`;
-- available latest book imbalance;
+- latest available book imbalance;
 - optional book-imbalance change when at least two real books exist;
-- latest event age;
-- source event keys/provenance sufficient to reproduce the window.
+- latest receive-event age;
+- ordered source event keys/provenance sufficient to reproduce the window.
 
 Trade notional is `price * size` using `Decimal`.
 
@@ -346,28 +384,40 @@ Hyperliquid normalized trade side handling:
 - `B` contributes buy/aggressive-positive notional;
 - `A` contributes sell/aggressive-negative notional.
 
-Unknown/malformed sides make the affected window unusable rather than being guessed.
+Unknown/malformed sides make the window unusable rather than being guessed.
 
-Insufficient or stale real microstructure produces neutral order-flow context.
+Trade-flow imbalance is:
+
+`(buy_notional - sell_notional) / (buy_notional + sell_notional)`
+
+when total notional is positive; otherwise it is unavailable.
+
+Latest/earliest real L2 book imbalance uses the same side-depth semantics as Phase 4. If fewer than two usable real book samples exist, book-imbalance change is `None` rather than fabricated.
 
 ## 9. Order-flow context engine
 
 Purpose: reinforce timing or block a primary thesis using real current microstructure.
 
-Baseline defaults, configurable:
+Default constants:
 
-- directional trade-flow support at absolute imbalance `>= 0.35`;
-- directional current book-imbalance support at absolute imbalance `>= 0.15`;
-- extreme opposite-flow veto may require trade-flow imbalance `>= 0.60` in magnitude plus book imbalance `>= 0.30` in the same opposite direction;
-- require a minimum real trade count and fresh-enough event age.
+- `window_ms = 60_000`;
+- `min_trade_count = 5`;
+- `max_event_age_ms = 2_000`;
+- `trade_support_threshold = 0.35`;
+- `book_support_threshold = 0.15`;
+- `trade_veto_threshold = 0.60`;
+- `book_veto_threshold = 0.30`.
 
-Behavior:
+Exact default behavior:
 
-- aligned aggressive buy flow + positive book imbalance may support LONG;
-- aligned aggressive sell flow + negative book imbalance may support SHORT;
-- extreme coherent flow may veto the opposite candidate direction;
-- disagreement between trades/book remains neutral or weak rather than being forced into a direction;
-- missing/stale microstructure is neutral and cannot become synthetic confirmation.
+1. If the microstructure window is missing, unusable, stale, has fewer than 5 trades, lacks trade-flow imbalance, or lacks current book imbalance: neutral context with score `0` and an explanatory reason.
+2. If trade-flow imbalance `>= +0.60` and current book imbalance `>= +0.30`: support LONG with score `100` and veto SHORT.
+3. If trade-flow imbalance `<= -0.60` and current book imbalance `<= -0.30`: support SHORT with score `100` and veto LONG.
+4. Else if trade-flow imbalance `>= +0.35` and current book imbalance `>= +0.15`: support LONG with score `75`.
+5. Else if trade-flow imbalance `<= -0.35` and current book imbalance `<= -0.15`: support SHORT with score `75`.
+6. Otherwise: neutral context with score `0`; disagreement is not forced into a direction.
+
+Book-imbalance change may be recorded in reasons/evidence and later evaluated, but it is not required for a Phase 5 directional context result because current Phase 3 frozen fixtures contain a trustworthy single-book example while the durable recorder will accumulate real sequences for later replay.
 
 ## 10. Deterministic decision combiner
 
@@ -385,9 +435,7 @@ Immediately return NO_TRADE when:
 
 Use simple transparent weights, not learned parameters.
 
-Recommended starting matrix:
-
-Trend regime:
+Trend-regime weights:
 
 - UP/DOWN: trend `1.00`, breakout `0.90`, mean reversion `0.35`;
 - MIXED: trend `0.50`, breakout `0.80`, mean reversion `1.00`;
@@ -402,41 +450,57 @@ Volatility modifiers:
 
 Effective primary weight is trend-regime weight multiplied by volatility modifier.
 
-### 10.3 Candidate construction
+For each directional primary signal:
 
-For each direction:
+`effective_signal_score = raw_signal_score * effective_primary_weight`
 
-- include only qualifying primary directional signals;
-- compute a weighted aggregate evidence score;
-- identify the lead primary as highest weighted evidence with a stable deterministic tie-break by strategy name;
-- preserve all contributing signal IDs/reasons.
+### 10.3 Direction candidate score
 
-A candidate must have:
+For each direction independently:
 
-- lead primary raw score `>= 60`;
-- weighted primary evidence `>= 60`.
+1. collect directional primary signals for that direction;
+2. choose the lead primary by highest `effective_signal_score`, tie-breaking by strategy name;
+3. start candidate score at the lead primary's effective signal score;
+4. add `+5` points for each additional same-direction qualifying primary, capped at `+10` total confirmation bonus;
+5. clamp candidate score to `[0, 100]`.
+
+A direction is a valid primary candidate only if:
+
+- lead raw primary score is `>= 60`; and
+- candidate score is `>= 60`.
 
 ### 10.4 Opposing primary conflict
 
-If both LONG and SHORT candidates exist:
+If both LONG and SHORT primary candidates exist:
 
-- if evidence gap is `< 15` points -> NO_TRADE with `primary_conflict`;
-- otherwise the stronger candidate may continue through context checks.
+- compute `gap = abs(long_candidate_score - short_candidate_score)`;
+- if `gap < 15`, return NO_TRADE with `primary_conflict`;
+- otherwise keep the stronger direction and continue through context checks.
+
+If only one candidate exists, continue with it.
 
 ### 10.5 Context adjustment and veto
 
-Context may not create a candidate when no primary candidate exists.
+Context may never create a candidate when no primary candidate exists.
 
-For an existing candidate:
+For the surviving candidate direction:
 
-- any explicit veto of that direction -> NO_TRADE;
-- same-direction context may add at most `+10` points total;
-- opposite-direction context may subtract at most `-10` points total;
-- context adjustments are deterministic and bounded.
+1. If any context signal lists that direction in `veto_directions`, return NO_TRADE with `context_veto`.
+2. For each directional context signal with score above `50`, compute:
+   `context_strength = min(10, (score - 50) / 5)`.
+3. Same-direction context contributes `+context_strength`.
+4. Opposite-direction context contributes `-context_strength`.
+5. Sum all context contributions and clamp the total adjustment to `[-10, +10]`.
+6. Add the bounded adjustment to the primary candidate score and clamp final score to `[0, 100]`.
 
-Final trade threshold: `>= 65`.
+Examples:
 
-The final decision invalidation comes from the lead primary only. Context never manufactures or widens an invalidation.
+- context score `75` -> strength `5`;
+- context score `100` -> strength `10`.
+
+Final directional trade threshold: `>= 65`.
+
+The final decision invalidation comes from the lead primary only. Context never manufactures, tightens, or widens an invalidation.
 
 ### 10.6 NO_TRADE reason codes
 
@@ -451,6 +515,8 @@ At minimum support stable reasons for:
 - `below_decision_threshold`;
 - `invalid_invalidation`;
 - `stale_microstructure` where relevant.
+
+NO_TRADE decision score is the strongest rejected candidate score after the last completed decision stage, or `0` when no candidate existed.
 
 ## 11. Orchestration boundary
 
@@ -483,13 +549,11 @@ Fail closed.
 - invalid lead invalidation -> final NO_TRADE;
 - no qualifying thesis -> NO_TRADE.
 
-No strategy failure should silently fall through to an order path because no order path exists in Phase 5.
+No strategy failure can silently fall through to an order path because no order path exists in Phase 5.
 
 ## 13. Testing strategy
 
 Use TDD with deterministic unit and integration fixtures.
-
-Required coverage:
 
 ### Contract tests
 
@@ -501,33 +565,36 @@ Required coverage:
 
 ### Trend tests
 
-- aligned UP -> LONG;
-- aligned DOWN -> SHORT;
+- aligned UP -> LONG with exact score;
+- aligned DOWN -> SHORT with exact score;
 - opposing 15m/1h -> NO_TRADE;
+- optional aligned features add only documented points;
 - wrong-side invalidation -> NO_TRADE;
 - insufficient closed candles -> NO_TRADE.
 
 ### Breakout tests
 
 - 20-candle prior range excludes trigger candle;
-- confirmed upside/downside breakout;
+- confirmed upside/downside breakout with exact score;
 - no breakout -> NO_TRADE;
-- weak volume/range confirmation -> NO_TRADE;
+- no expansion confirmation -> NO_TRADE;
 - future trigger candle cannot leak into decision.
 
 ### Mean-reversion tests
 
 - stretched move in MIXED + LOW/NORMAL volatility;
-- HIGH volatility blocks entry;
+- HIGH/UNKNOWN volatility blocks entry;
 - directional trend blocks mean reversion;
-- insufficient realized-vol data -> NO_TRADE.
+- insufficient realized-vol data -> NO_TRADE;
+- exact stretch/confirmation point allocation.
 
 ### Funding/OI tests
 
 - supportive OI expansion without crowding;
 - extreme long crowding vetoes LONG only;
 - extreme short crowding vetoes SHORT only;
-- extreme funding never creates the opposite trade by itself.
+- extreme funding never creates the opposite trade by itself;
+- crowded but non-extreme state is neutral rather than contrarian.
 
 ### Order-flow tests
 
@@ -551,9 +618,13 @@ Synthetic candle fixtures are acceptable for candle-strategy unit tests. They mu
 
 - ineligible/deep-not-ready markets cannot trade despite high primary scores;
 - context alone cannot originate a trade;
-- same-direction support can strengthen a real primary candidate;
+- exact regime/volatility weight multiplication;
+- exact `+5` same-direction primary confirmation bonus;
+- exact primary conflict gap handling;
+- same-direction context adjustment follows the documented formula;
+- opposite context subtracts symmetrically;
+- total context adjustment is capped at 10 points in magnitude;
 - explicit context veto wins;
-- close LONG/SHORT primary conflict -> NO_TRADE;
 - clearly dominant candidate can survive conflict;
 - lead primary supplies invalidation;
 - deterministic input permutation yields identical decision.
