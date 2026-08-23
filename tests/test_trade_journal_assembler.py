@@ -1,6 +1,12 @@
 from dataclasses import replace
 from decimal import Decimal
 
+from cocomelon.journal.assembler import (
+    JournalInconsistency,
+    TradeLifecycleInput,
+    assemble_trade_journal_entry,
+)
+
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     ExecutionResult,
@@ -14,11 +20,6 @@ from cocomelon.domain.execution import (
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.execution.funding import FundingAccrual
-from cocomelon.journal.assembler import (
-    JournalInconsistency,
-    TradeLifecycleInput,
-    assemble_trade_journal_entry,
-)
 
 MARKET = MarketId("", "SOL")
 
@@ -86,7 +87,13 @@ def attempt(plan: PaperOrderPlan, avg: str, ts: int, suffix: str) -> ExecutionAt
     )
 
 
-def fill(plan: PaperOrderPlan, attempt_: ExecutionAttempt, price: str, fee: str, ts: int) -> PaperFill:
+def fill(
+    plan: PaperOrderPlan,
+    attempt_: ExecutionAttempt,
+    price: str,
+    fee: str,
+    ts: int,
+) -> PaperFill:
     quantity = Decimal("10")
     px = Decimal(price)
     return PaperFill(
@@ -191,9 +198,7 @@ def test_mismatched_fill_market_returns_structured_inconsistency() -> None:
         source_event_key=item.fills[1].source_event_key,
         timestamp_ms=item.fills[1].timestamp_ms,
     )
-    result = assemble_trade_journal_entry(
-        replace(item, fills=(item.fills[0], bad_fill))
-    )
+    result = assemble_trade_journal_entry(replace(item, fills=(item.fills[0], bad_fill)))
 
     assert isinstance(result, JournalInconsistency)
     assert result.reason == "FILL_MARKET_MISMATCH"
@@ -213,9 +218,7 @@ def test_open_and_exit_quantity_must_reconcile_to_zero() -> None:
         source_event_key="book:partial",
         timestamp_ms=2_000,
     )
-    result = assemble_trade_journal_entry(
-        replace(item, fills=(item.fills[0], half))
-    )
+    result = assemble_trade_journal_entry(replace(item, fills=(item.fills[0], half)))
 
     assert isinstance(result, JournalInconsistency)
     assert result.reason == "POSITION_NOT_FULLY_CLOSED"
