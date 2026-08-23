@@ -275,6 +275,7 @@ class PaperExecutionStore:
                     accrual_id TEXT PRIMARY KEY,
                     market TEXT NOT NULL,
                     boundary_ms INTEGER NOT NULL,
+                    position_id TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     UNIQUE(market, boundary_ms, position_id)
                 );
@@ -288,10 +289,7 @@ class PaperExecutionStore:
                     timestamp_ms INTEGER NOT NULL,
                     equity TEXT NOT NULL
                 );
-                """.replace(
-                    "boundary_ms INTEGER NOT NULL,\n                    payload_json",
-                    "boundary_ms INTEGER NOT NULL,\n                    position_id TEXT NOT NULL,\n                    payload_json",
-                )
+                """
             )
             self._conn.execute(
                 "INSERT OR REPLACE INTO paper_meta(key, value) VALUES ('schema_version', ?)",
@@ -344,7 +342,11 @@ class PaperExecutionStore:
         existing = self._conn.execute(
             "SELECT state_id, payload_json FROM paper_account_state WHERE singleton_id = 1"
         ).fetchone()
-        if existing is not None and existing[0] == account.state_id and existing[1] != account_json:
+        if (
+            existing is not None
+            and existing[0] == account.state_id
+            and existing[1] != account_json
+        ):
             raise ValueError("immutable payload mismatch for paper account state")
         self._conn.execute("DELETE FROM paper_positions")
         for position in account.positions:
@@ -469,7 +471,9 @@ class PaperExecutionStore:
             )
             for position in account.positions
         )
-        actual = tuple((str(row[0]), str(row[1]), str(row[2])) for row in materialized_rows)
+        actual = tuple(
+            (str(item[0]), str(item[1]), str(item[2])) for item in materialized_rows
+        )
         if actual != expected:
             return ReconciledPaperState(
                 account,
@@ -484,7 +488,7 @@ class PaperExecutionStore:
             (point.timestamp_ms, str(point.equity))
             for point in account.rolling_peak_candidates
         )
-        actual_peaks = tuple((int(row[0]), str(row[1])) for row in peak_rows)
+        actual_peaks = tuple((int(item[0]), str(item[1])) for item in peak_rows)
         if actual_peaks != expected_peaks:
             return ReconciledPaperState(
                 account,
