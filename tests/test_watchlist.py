@@ -18,14 +18,15 @@ def test_twenty_market_deep_watchlist_stays_below_safety_ceiling() -> None:
 
     plan = manager.reconcile(markets)
 
-    assert plan.desired_count == 102
-    assert len(plan.subscribe) == 102
+    assert plan.desired_count == 122
+    assert len(plan.subscribe) == 122
     assert plan.unsubscribe == ()
     ids = {subscription_id(item) for item in plan.subscribe}
     assert "allMids" in ids
     assert "allMids:xyz" in ids
     assert "l2Book:COIN0" in ids
     assert "trades:COIN0" in ids
+    assert "activeAssetCtx:COIN0" in ids
     assert "candle:COIN0:1m" in ids
     assert "candle:COIN0:5m" in ids
     assert "candle:COIN0:15m" in ids
@@ -48,7 +49,7 @@ def test_reconcile_unsubscribes_removed_before_subscribing_added() -> None:
 def test_safety_ceiling_rejects_oversized_state_without_mutating_active() -> None:
     manager = DeepWatchlistManager(safety_ceiling=12)
     initial = manager.reconcile([market("BTC")])
-    assert initial.desired_count == 6
+    assert initial.desired_count == 7
 
     with pytest.raises(ValueError, match="safety ceiling"):
         manager.reconcile([market("BTC"), market("ETH"), market("SOL")])
@@ -56,7 +57,7 @@ def test_safety_ceiling_rejects_oversized_state_without_mutating_active() -> Non
     recovery = manager.reconcile([market("BTC")])
     assert recovery.subscribe == ()
     assert recovery.unsubscribe == ()
-    assert recovery.desired_count == 6
+    assert recovery.desired_count == 7
 
 
 def test_hip3_market_subscriptions_preserve_wire_prefix() -> None:
@@ -67,4 +68,5 @@ def test_hip3_market_subscriptions_preserve_wire_prefix() -> None:
 
     assert "l2Book:xyz:NVDA" in ids
     assert "trades:xyz:NVDA" in ids
+    assert "activeAssetCtx:xyz:NVDA" in ids
     assert "candle:xyz:NVDA:15m" in ids

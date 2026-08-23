@@ -5,26 +5,26 @@
 **Project:** Autonomous Hyperliquid perpetual-futures trading system  
 **Primary language:** Python 3.12  
 **Target venue:** Hyperliquid HyperCore perpetual markets  
-**Execution mode now:** research + mainnet observation + bounded internal paper execution work; live trading disabled  
+**Execution mode now:** real-mainnet observation + bounded internal paper execution; live trading disabled  
 **Hyperliquid testnet:** NEVER USE
 
 ---
 
 ## 1. Mission
 
-Cocomelon is being built as an autonomous intraday Hyperliquid perp trader. The final system should dynamically discover the real perp universe, reject poor/stale markets, rank opportunities, deeply analyze a bounded shortlist, choose LONG/SHORT/NO_TRADE, pass every directional proposal through an independent risk engine, execute approved trades, manage exits, journal every decision/cost/result, evaluate without lookahead, train offline challengers, and eventually trade real mainnet capital only after evidence gates pass and the user explicitly authorizes live capital.
+Cocomelon is being built as an autonomous intraday Hyperliquid perp trader. The intended system dynamically discovers the real perp universe, rejects poor/stale markets, ranks opportunities, deeply analyzes a bounded shortlist, chooses LONG/SHORT/NO_TRADE, passes every directional proposal through an independent risk engine, executes approved trades, manages exits, journals every decision/cost/result, evaluates without lookahead, trains offline challengers, and eventually trades real mainnet capital only after evidence gates pass and the user explicitly authorizes live capital.
 
 Economic objective: **positive net risk-adjusted expectancy after fees, funding, slippage, and realistic execution costs**. Profit is never guaranteed.
 
 ---
 
-## 2. User operating instruction
+## 2. Operating instruction
 
-The user wants ChatGPT to build this project **from A to Z directly in GitHub** and to handle routine engineering/product decisions, branches, PRs, CI fixes, and guarded merges autonomously. Do not repeatedly ask for approval when the source of truth or best engineering judgment can resolve a choice.
+Build the project from A to Z directly in GitHub and handle routine engineering/product decisions, branches, PRs, CI fixes, and guarded merges autonomously. Do not repeatedly ask for approval when the source of truth or sound engineering judgment resolves a choice.
 
 Optimize for durable positive expectancy and capital survival, not trade count, leverage, or headline win rate.
 
-Real-money activation is the exception: live mode and live capital amount require explicit user authorization after the promotion gates pass.
+Real-money activation is the exception: live mode and live capital amount require explicit user authorization after promotion gates pass.
 
 ---
 
@@ -39,7 +39,7 @@ Real-money activation is the exception: live mode and live capital amount requir
 
 ### Mainnet paper/shadow before real capital
 
-Paper execution runs internally against real Hyperliquid mainnet observations and must model spread, visible depth/slippage, fees, funding, latency, stop behavior, partial fills where defensible, and execution failures. Never assume perfect fills.
+Paper execution runs internally against real Hyperliquid mainnet observations and models spread, visible depth/slippage, fees, funding, latency, stop behavior, partial fills where defensible, and execution failures. Never assume perfect fills.
 
 ### Intraday V1
 
@@ -62,7 +62,6 @@ No hard-coded favorite-token trading universe.
 
 ### Locked risk model
 
-Core locked limits:
 - planned account risk per trade: **0.25%**
 - max aggregate planned open risk: **0.75%**
 - daily realized-loss lockout: **1.00%**
@@ -78,13 +77,11 @@ Core locked limits:
 - no position without stop/invalidation
 - stale/inconsistent state blocks new exposure
 
-Leverage is subordinate to the dollar-risk budget. Strategy score never scales the risk percentage upward.
-
-Authoritative risk arithmetic uses a fixed 28-digit Decimal context. Risk-budget-to-notional division rounds downward so repeating Decimal quotients cannot exceed the approved budget by a rounding unit.
+Leverage is subordinate to dollar risk. Strategy score never scales the risk percentage upward. Authoritative risk arithmetic uses a fixed 28-digit Decimal context and risk-budget-to-notional division rounds downward.
 
 ### Python, not Solidity
 
-Core system is Python. HyperCore perps are accessed through Hyperliquid APIs/SDK. Solidity is out of V1 unless a later genuine HyperEVM contract feature requires it.
+Core system is Python. Solidity is outside V1 unless a later real HyperEVM requirement genuinely appears.
 
 ### Free/public sources first
 
@@ -114,7 +111,7 @@ Hyperliquid Mainnet
      + Order-flow context
   -> Deterministic LONG/SHORT/NO_TRADE Decision
   -> Independent Risk Engine APPROVE/REJECT
-  -> Execution Interface
+  -> Narrow Execution Interface
   -> Paper first / Live much later
   -> Position Manager
   -> Journal / Replay
@@ -127,7 +124,7 @@ Hard boundaries:
 - strategy may propose direction/invalidation but cannot size positions or send orders;
 - context engines cannot originate a V1 trade without a primary thesis;
 - risk is independent and has final veto;
-- Phase 7 may execute **less** than approved but may never exceed the Phase 6 approved notional/risk envelope without a fresh risk decision;
+- execution may use less than approved but may never exceed the Phase 6 approved risk/notional envelope without a fresh decision;
 - models never call exchange APIs directly;
 - learning cannot silently change hard risk limits;
 - live trading remains disabled until much later.
@@ -143,8 +140,8 @@ Hard boundaries:
 4. Features/eligibility/scanner/ranking — COMPLETE / MERGED
 5. Explainable baseline strategy engines — COMPLETE / MERGED
 6. Independent risk engine — COMPLETE / MERGED
-7. Real-mainnet paper execution + position manager — **ACTIVE NEXT**
-8. Journal + deterministic replay/backtester + offline raw-to-columnar compaction
+7. Real-mainnet paper execution + position manager — **VERIFIED; PR #9 guarded merge closeout**
+8. Journal + deterministic replay/backtester + offline raw-to-columnar compaction — NEXT AFTER PHASE 7 MERGE
 9. Evaluation/OOS/walk-forward research gates
 10. Champion/challenger learning engine
 11. Long-running mainnet shadow
@@ -184,64 +181,70 @@ Immutable versioned feature snapshots; funding/OI/volume/returns/dislocation; 5m
 Merge commit: `82c3db2f9ce39676e089eac79e63c5043b72e331`  
 PR: #6
 
-Established immutable strategy contracts, lookahead-safe helpers, primary trend/breakout/mean-reversion engines, real trade/L2 microstructure windows, funding/OI and order-flow context, deterministic regime-aware LONG/SHORT/NO_TRADE combination, orchestration, and boundary tests excluding risk/execution/exchange/ML leakage.
+Immutable strategy contracts, lookahead-safe helpers, primary trend/breakout/mean-reversion engines, real trade/L2 microstructure windows, funding/OI and order-flow context, deterministic regime-aware LONG/SHORT/NO_TRADE combination, orchestration, and boundary tests excluding risk/execution/exchange/ML leakage.
 
 ### Phase 6 — merged
 Merge commit: `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`  
 PR: #8  
 Final feature head: `09a7fc7c3ed611d700905081cb2b606d52b558d4`  
 Final CI: `32663669112` — SUCCESS  
-CI job: `97253567901`  
+CI job: `97253567901`
+
+Established immutable Decimal risk/account/liquidity/health/request/decision contracts; deterministic IDs; cost-aware 0.25% sizing; aggregate/correlation/daily/weekly/cooldown caps; same-market veto; leverage/margin/liquidity/liquidation limits; venue-minimum rejection without upsizing; fixed Decimal context; downward risk-to-notional rounding; source-level boundary tests.
+
+### Phase 7 — verified on PR #9, merge closeout in progress
+
+Branch: `phase-7-paper-execution`  
+Verified implementation head before continuity-doc closeout: `6dabbd43e4333801ef797248117adc0b6dbfc660`  
+Verified CI: `32667371201` — SUCCESS  
+CI job: `97262807933`  
 Python: `3.12.14`
 
 Established:
-- immutable Decimal risk/account/liquidity/health/request/decision contracts;
-- deterministic approval IDs and stable reason/binding-cap ordering;
-- cost-aware 0.25% risk sizing including entry slippage, stop slippage, and round-trip fees;
-- 0.75% aggregate planned-open-risk cap;
-- 0.50% correlation-bucket cap with no default long/short netting;
-- 1% daily realized-loss lockout;
-- 3% rolling weekly drawdown lockout;
-- same-market exposure veto;
-- three-loss / 60-minute cooldown;
-- 3x/lower-venue gross leverage cap;
-- 50%-available-margin cap;
-- 10%-weak-side-visible-depth cap;
-- liquidation beyond-stop and 2x-distance safety;
-- venue-minimum rejection without forced upsizing;
-- fixed 28-digit authoritative Decimal context;
-- downward risk-to-notional rounding;
-- boundary tests excluding order, wallet, account-exchange, fill simulation, averaging-down, martingale, ML, and live capability.
 
-Late audit regressions caught and fixed before merge:
-1. a one-ulp repeating-Decimal risk-budget overshoot;
-2. dependence on ambient Decimal precision/rounding.
+- immutable Decimal paper execution contracts and deterministic lifecycle IDs;
+- native-perp opening planner with exact size precision/minimum checks and 250 ms deterministic latency;
+- exact carry-forward of Phase 6 approved risk/notional and stop/effective-loss envelope;
+- public-only `activeAssetCtx` stream normalization and deep-watchlist subscription;
+- visible-mainnet-L2 marketable IOC simulator with full/partial/no-fill outcomes, 25-bps guard, fee charging, no hidden liquidity, and safe final-level clipping to both Phase 6 ceilings;
+- LONG/SHORT paper position/account state, weighted entries, realized/unrealized PnL, fees/funding, gross notional, conservative margin, daily realized PnL, rolling seven-day peak, loss streak, and Phase 6 account adapter;
+- actual-public-evidence funding reconciliation with pre-boundary oracle context and unresolved-gap fail-closed behavior;
+- deterministic emergency/stop/thesis/tighter-stop/reduction/HOLD position manager;
+- reduce-only exits through the same IOC path, with no fill awarded at the stop price;
+- atomic/idempotent SQLite operational state and restart reconciliation;
+- narrow `TradingExecution` protocol and `PaperExecutionAdapter` with no generic private client escape hatch;
+- Phase 5 -> Phase 6 -> Phase 7 LONG/SHORT/NO_TRADE integration coverage;
+- explicit boundary tests excluding real order submission, wallet/private-key signing, transfer/withdrawal, private user/account subscription, testnet, passive-maker/candle fill fabrication, and ML.
 
-The final full install/compileall/Ruff/mypy/pytest suite passed. PR #8 merged with expected-head protection. `main` was verified at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`; comparing `main` to `phase-6-independent-risk` showed branch ahead-by 0 and an empty file diff.
+Verification at `6dabbd43e4333801ef797248117adc0b6dbfc660`:
+- editable install PASS;
+- compileall PASS;
+- Ruff PASS;
+- mypy PASS across 67 source files;
+- full pytest PASS to 100%;
+- PR #9 has no inline review threads.
 
 ---
 
-## 7. Phase 7 — active objective
+## 7. Phase 7 execution assumptions locked for the current simulator
 
-Phase 7 builds **real-mainnet paper execution and position management** while treating the Phase 6 risk approval as a hard upper bound.
+These are versioned simulation/control assumptions, not claims of optimal venue policy:
 
-Required design/implementation themes:
-- one execution interface that paper implements now and live may implement much later;
-- immutable deterministic execution records: order plan/attempt/fill/position state/lifecycle actions;
-- translate approved notional into venue-valid quantity using actual instrument sizing/minimum rules;
-- consume real Hyperliquid mainnet L2/trade observations only;
-- model spread, visible-depth impact/slippage, latency, fees, partial fills where defensible, and explicit execution failures;
-- never assume perfect fills;
-- never execute more notional/risk than Phase 6 approved;
-- support LONG and SHORT entries and reduce-only exits;
-- stop/invalidation and bounded intraday position management cannot widen risk;
-- deterministic/restart-friendly account and position state;
-- fills must be auditable/replayable from recorded market evidence;
-- no signing, wallet/private key, exchange account API, transfer, withdrawal, or live order submission in the paper adapter.
-
-Do not begin Phase 8 backtesting/journaling, Phase 10 ML, or Phase 12 live adapter early except for narrow interfaces strictly required by Phase 7.
-
-Before coding against Hyperliquid order/instrument behavior, verify current official mainnet documentation because external rules may change.
+- native validator-operated Hyperliquid perps only (`MarketId.dex == ""`) for execution;
+- HIP-3 remains observable/rankable but unsupported for Phase 7 execution until separately validated;
+- deterministic latency: 250 ms;
+- max accepted L2 age: 1,000 ms;
+- max public asset-context age: 5,000 ms;
+- funding reconciliation grace: 300,000 ms;
+- IOC slippage guard: 25 bps;
+- native-perp baseline taker fee: `Decimal("0.00045")` with versioned schedule ID;
+- native-perp minimum notional baseline: `Decimal("10")`;
+- paper gross leverage ceiling: 3x or lower venue maximum;
+- only displayed normalized L2 depth may fill;
+- no passive maker fills/rebates;
+- actual entry price rechecks the original Phase 6 envelope using inherited cost buffer;
+- funding uses actual public funding history + lookahead-safe public oracle context;
+- stale/inconsistent execution/account/funding state blocks new exposure while safe exit attempts remain allowed when usable public data exists.
 
 ---
 
@@ -249,7 +252,7 @@ Before coding against Hyperliquid order/instrument behavior, verify current offi
 
 Live trading remains disabled until evidence exists and the user explicitly authorizes capital.
 
-Initial minimum gate remains:
+Initial minimum gate:
 - >=500 closed mainnet paper trades under candidate champion;
 - >=45 calendar days mainnet shadow;
 - positive net expectancy after modeled costs;
@@ -286,15 +289,16 @@ When asked to continue Cocomelon:
 
 ## 10. Exact handoff now
 
-Phase 6 is merged into `main` at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`. Continuity docs activate Phase 7.
+Phase 7 implementation is verified on PR #9. The remaining closeout sequence is:
 
-Next sequence:
-1. treat Phase 7 — real-mainnet paper execution + position manager — as active;
-2. inspect authoritative governance/build-order/current domain and stream/risk contracts;
-3. verify current official Hyperliquid mainnet instrument sizing/order semantics/public fee behavior relevant to paper modeling;
-4. run the Phase 7 design/spec workflow;
-5. write the Phase 7 implementation plan;
-6. implement with TDD on an isolated branch;
-7. keep signing, wallet/account private APIs, real orders, ML, and live execution out of Phase 7.
+1. run CI on the continuity-doc closeout head;
+2. re-check PR #9 diff/review threads/mergeability;
+3. mark PR ready only if green;
+4. merge with expected-head SHA protection;
+5. verify `main` at the returned merge SHA and compare branch vs `main`;
+6. reconcile merge metadata in continuity docs if necessary;
+7. activate the Phase 8 design/spec workflow for journal/replay/deterministic backtesting and offline raw-to-columnar compaction.
+
+Do not begin Phase 9+ early.
 
 **Live trading status: DISABLED.**
