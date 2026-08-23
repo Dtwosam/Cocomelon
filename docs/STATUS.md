@@ -6,16 +6,15 @@
 
 ## Current state
 
-**Last merged phase:** Phase 2 — Hyperliquid mainnet discovery and REST snapshots  
-**Phase 2 merge commit:** `b95352e238d6a9eabd63e13c1f8300e654a7e636`  
-**Phase 3 state:** IMPLEMENTED and exit criteria verified on PR #3; merge pending final documentation-tree CI  
-**Phase 3 feature branch:** `phase-3-websocket-recorder`  
-**Phase 3 verified code head:** `c5eba63eb30379c8a7812d660382fbfb5b83cd88`  
-**Next build phase after merge:** Phase 4 — feature engine, eligibility, scanner, and opportunity ranking
+**Last completed phase:** Phase 3 — WebSocket collector and durable market recording  
+**Integration state:** MERGED into `main`  
+**Phase 3 merge commit:** `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`  
+**Phase 3 PR:** #3  
+**Active next phase:** Phase 4 — feature engine, eligibility, market scanner, opportunity ranking, and dynamic shortlist integration
 
 ## Phase 3 implementation evidence
 
-Phase 3 establishes a public-mainnet-only live market-data layer:
+Phase 3 established a public-mainnet-only live market-data layer:
 
 - canonical Hyperliquid mainnet WebSocket transport at `wss://api.hyperliquid.xyz/ws`;
 - injectable WebSocket connection boundary for deterministic tests;
@@ -44,7 +43,7 @@ D-021 is authoritative for storage: Phase 3 JSONL is the trusted liveness-critic
 
 ## Real Hyperliquid mainnet WebSocket evidence
 
-A temporary GitHub Actions workflow was used only to validate public mainnet WebSocket behavior and capture fixtures. It was removed from the feature branch after capture.
+A temporary GitHub Actions workflow was used only to validate public mainnet WebSocket behavior and capture fixtures. It was removed before Phase 3 merge.
 
 Successful fixture/smoke run:
 
@@ -63,14 +62,7 @@ Successful fixture/smoke run:
 - stale streams at completion: none;
 - server traffic observed: yes.
 
-Fixture capture from the same successful run produced six exact public responses:
-
-- native `allMids`;
-- HIP-3 `allMids`;
-- BTC `l2Book`;
-- HIP-3 `l2Book`;
-- BTC trades;
-- BTC 1m candle.
+Fixture capture from the same successful run produced six exact public responses: native `allMids`, HIP-3 `allMids`, BTC `l2Book`, HIP-3 `l2Book`, BTC trades, and BTC 1m candle.
 
 HIP-3 capture proved the live `allMids` wire payload includes `data.dex: "xyz"` and DEX-prefixed markets such as `xyz:NVDA` and `xyz:XYZ100`.
 
@@ -86,7 +78,7 @@ No wallet, signing key, user/account subscription, order, transfer, withdrawal, 
 
 ## Pre-merge regression audit
 
-A manual requirement/diff audit after an earlier green suite found two correctness gaps that normal tests had not covered:
+A manual requirement/diff audit after an earlier green suite found two correctness gaps:
 
 1. a subscribed stream that never emitted its first event was not becoming stale;
 2. an event-sink/recorder `OSError` could be swallowed as a reconnectable transport failure.
@@ -102,17 +94,30 @@ TDD GREEN evidence:
 
 - minimal production fix commit: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`;
 - CI run: `32651574711` — SUCCESS;
+- install, compileall, Ruff, mypy, and pytest all passed;
+- mypy reported no issues in 26 source files;
+- pytest reached 100%, including both new regression cases.
+
+## Final Phase 3 verification and merge
+
+Final feature-tree verification after BUILD_ORDER/STATUS/Project Source reconciliation:
+
+- verified feature head: `283bb6aadbf850a26e948fe1bbc2f1075d1c7226`;
+- PR merge-ref tested: `1dda533d1fe16d515cca6f3b05c9742766ad929e`;
+- CI run: `32651779102` — SUCCESS;
+- Python: `3.12.14`;
 - `python -m pip install -e ".[dev]"` — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
 - Ruff (`src tests scripts`) — PASS;
 - mypy (`src`) — PASS, no issues in 26 source files;
-- pytest — PASS to 100%, including both new regression cases.
-
-The final documentation-tree CI is still required after this status/source update before PR #3 is merged.
+- pytest — PASS to 100%;
+- PR #3 was merged with expected-head SHA protection;
+- resulting merge commit: `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`;
+- `main` was verified to point at that merge commit immediately after merge.
 
 ## Phase 3 exit-criteria audit
 
-Verified on the feature branch:
+Verified:
 
 - disconnect/reconnect/resubscribe behavior is tested;
 - application heartbeat behavior is tested;
@@ -124,7 +129,7 @@ Verified on the feature branch:
 - recorder/sink failures fail closed;
 - subscription ceilings fail before sends;
 - real public-mainnet smoke and exact fixture capture succeeded;
-- temporary network-dependent workflow has been removed;
+- temporary network-dependent workflow was removed;
 - no user-specific or trading capability was introduced.
 
 ## Safety invariants still locked
@@ -143,13 +148,12 @@ Verified on the feature branch:
 
 ## Exact next action
 
-1. Run final deterministic CI on the documentation-updated Phase 3 feature tree.
-2. Re-check PR #3 head and Phase 3 exit criteria.
-3. Merge PR #3 using an expected-head SHA guard and verify `main`.
-4. Update the portable source/status with the actual Phase 3 merge commit if needed.
-5. Begin Phase 4 autonomously from current `main`: features, eligibility, market scanner, opportunity ranking, and dynamic shortlist integration.
-
-Do not begin baseline strategies, risk, paper execution, ML, or live execution before their preceding build-order phases pass.
+1. Begin Phase 4 autonomously from current `main`.
+2. Inspect the approved source hierarchy and any existing Phase 4 spec/plan before writing implementation code.
+3. If the detailed Phase 4 implementation plan is absent, create it from the already-approved build-order architecture before implementation.
+4. Build deterministic, lookahead-safe feature calculations, eligibility gates, broad-market scoring/ranking, and dynamic shortlist integration with TDD.
+5. Keep bad-quality/stale markets unable to enter tradable/ranked state.
+6. Do not begin baseline strategies, risk, paper execution, ML, or live execution before their preceding build-order phases pass.
 
 ## Live trading status
 
