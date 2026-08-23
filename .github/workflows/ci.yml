@@ -30,4 +30,8 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev,research]"
-      - run: python -m pytest tests/test_replay_compaction.py -q
+      - run: >-
+          python -m pytest
+          tests/test_replay_compaction.py
+          tests/test_parquet_replay_source.py
+          -q
