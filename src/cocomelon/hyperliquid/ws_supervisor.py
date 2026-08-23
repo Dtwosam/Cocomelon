@@ -32,6 +32,8 @@ class _SinkFailure(RuntimeError):
 def event_stream_id(event: StreamEvent) -> str:
     if event.kind is StreamKind.ALL_MIDS:
         return f"allMids:{event.market.dex}" if event.market.dex else "allMids"
+    if event.kind is StreamKind.ACTIVE_ASSET_CTX:
+        return f"activeAssetCtx:{event.market.wire_name}"
     if event.kind is StreamKind.L2_BOOK:
         return f"l2Book:{event.market.wire_name}"
     if event.kind is StreamKind.TRADE:
