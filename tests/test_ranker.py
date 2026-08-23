@@ -95,7 +95,11 @@ def test_coarse_ranker_excludes_ineligible_and_is_input_order_invariant() -> Non
     decisions = (_decision("A"), _decision("B"), _decision("C", rankable=False))
 
     first = rank_opportunities(snapshots, decisions, mode="coarse")
-    second = rank_opportunities(tuple(reversed(snapshots)), tuple(reversed(decisions)), mode="coarse")
+    second = rank_opportunities(
+        tuple(reversed(snapshots)),
+        tuple(reversed(decisions)),
+        mode="coarse",
+    )
 
     assert _signature(first) == _signature(second)
     assert tuple(rank.market.coin for rank in first) == ("B", "A")
@@ -200,9 +204,8 @@ def test_reason_codes_follow_component_contribution_order() -> None:
     )
     decisions = (_decision("A"), _decision("B"))
 
-    rank = next(
-        item for item in rank_opportunities(snapshots, decisions, mode="coarse") if item.market.coin == "A"
-    )
+    ranks = rank_opportunities(snapshots, decisions, mode="coarse")
+    rank = next(item for item in ranks if item.market.coin == "A")
     expected = tuple(
         component.name
         for component in sorted(
