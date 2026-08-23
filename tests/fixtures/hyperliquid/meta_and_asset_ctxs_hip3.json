@@ -1,0 +1,95 @@
+[
+  {
+    "collateralToken": 0,
+    "marginTables": [
+      [
+        50,
+        {
+          "description": "",
+          "marginTiers": [
+            {
+              "lowerBound": "0.0",
+              "maxLeverage": 50
+            }
+          ]
+        }
+      ]
+    ],
+    "universe": [
+      {
+        "deployerFeeScale": "1.0",
+        "growthMode": "enabled",
+        "lastFeeScaleChangeTime": "2025-11-23T17:37:10.033211662",
+        "marginTableId": 30,
+        "maxLeverage": 30,
+        "name": "xyz:XYZ100",
+        "szDecimals": 4
+      },
+      {
+        "deployerFeeScale": "1.0",
+        "growthMode": "enabled",
+        "lastFeeScaleChangeTime": "2025-11-23T17:37:10.033211662",
+        "marginTableId": 20,
+        "maxLeverage": 20,
+        "name": "xyz:TSLA",
+        "szDecimals": 3
+      },
+      {
+        "deployerFeeScale": "1.0",
+        "growthMode": "enabled",
+        "lastFeeScaleChangeTime": "2025-11-23T17:37:10.033211662",
+        "marginTableId": 20,
+        "maxLeverage": 20,
+        "name": "xyz:NVDA",
+        "szDecimals": 3
+      }
+    ]
+  },
+  [
+    {
+      "dayBaseVlm": "1098.4636",
+      "dayNtlVlm": "32160381.327600006",
+      "funding": "0.00000625",
+      "impactPxs": [
+        "29348.0",
+        "29349.37"
+      ],
+      "markPx": "29348.0",
+      "midPx": "29348.5",
+      "openInterest": "7257.7558",
+      "oraclePx": "29331.0",
+      "premium": "0.0006029457",
+      "prevDayPx": "29230.0"
+    },
+    {
+      "dayBaseVlm": "8597.804",
+      "dayNtlVlm": "3115475.2768199998",
+      "funding": "0.00000625",
+      "impactPxs": [
+        "362.98",
+        "363.031"
+      ],
+      "markPx": "363.01",
+      "midPx": "363.015",
+      "openInterest": "115846.722",
+      "oraclePx": "362.94",
+      "premium": "0.0001804706",
+      "prevDayPx": "361.43"
+    },
+    {
+      "dayBaseVlm": "64804.348",
+      "dayNtlVlm": "14037063.6167900041",
+      "funding": "0.0000000717",
+      "impactPxs": [
+        "218.34",
+        "218.372"
+      ],
+      "markPx": "218.41",
+      "midPx": "218.36",
+      "openInterest": "555889.8239999998",
+      "oraclePx": "218.51",
+      "premium": "-0.0007047732",
+      "prevDayPx": "215.41"
+    }
+  ]
+]
