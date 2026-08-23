@@ -6,11 +6,11 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from cocomelon.strategies.microstructure import build_microstructure_window
 
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.stream import StreamKind
+from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
+from cocomelon.strategies.microstructure import build_microstructure_window
 
 FIXTURES = Path(__file__).parent / "fixtures" / "hyperliquid_ws"
 AS_OF_MS = 1_787_501_400_000
@@ -21,11 +21,11 @@ def _load(name: str) -> object:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _trade_events() -> list[object]:
+def _trade_events() -> list[StreamEvent]:
     return normalize_ws_message(_load("trades_btc.json"), receive_time=RECEIVE_TIME)
 
 
-def _book_events() -> list[object]:
+def _book_events() -> list[StreamEvent]:
     return normalize_ws_message(_load("l2_book_btc.json"), receive_time=RECEIVE_TIME)
 
 
