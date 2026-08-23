@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+from cocomelon.execution.ioc import simulate_ioc
+
 from cocomelon.domain.execution import (
     ExecutionResult,
     OrderSide,
@@ -10,7 +12,6 @@ from cocomelon.domain.execution import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
-from cocomelon.execution.ioc import simulate_ioc
 
 MARKET = MarketId(dex="", coin="SOL")
 
