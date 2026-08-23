@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 
 import pytest
+from cocomelon.replay.jsonl import ReplayValidationError, validate_jsonl_segment
 
 from cocomelon.domain.replay import EvidenceClass
-from cocomelon.replay.jsonl import ReplayValidationError, validate_jsonl_segment
 
 
 def write_lines(path: Path, rows: list[dict[str, object]], *, final_newline: bool = True) -> None:
