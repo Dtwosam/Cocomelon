@@ -260,8 +260,8 @@ Do not skip phases.
 1. Python foundation/domain contracts/config/CI — COMPLETE
 2. Mainnet REST market discovery and normalization — COMPLETE
 3. WebSocket collector and durable recorder — COMPLETE / MERGED
-4. Features, eligibility, scanner, opportunity ranking — ACTIVE NEXT
-5. Explainable baseline strategy engines
+4. Features, eligibility, scanner, opportunity ranking — COMPLETE / PR #4 FINAL MERGE GATE
+5. Explainable baseline strategy engines — NEXT AFTER PHASE 4 MERGE
 6. Independent risk engine
 7. Real-mainnet paper execution + position manager
 8. Journal + deterministic replay/backtester + offline raw-to-columnar compaction
@@ -282,119 +282,76 @@ The exact current state is always `docs/STATUS.md`.
 
 Merge commit: `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`
 
-Established:
-
-- Python 3.12 package layout
-- mainnet-only config + testnet rejection
-- paper mode default
-- typed domain contracts
-- time/ID utilities
-- secret-safe logging
-- operator `status` command
-- Ruff, mypy, pytest, CI
+Established Python 3.12 package layout, mainnet-only config + testnet rejection, paper mode default, typed domain contracts, time/ID utilities, secret-safe logging, operator `status`, and Ruff/mypy/pytest/CI.
 
 ### Phase 2 — merged
 
 Merge commit: `b95352e238d6a9eabd63e13c1f8300e654a7e636`
 
-Established:
+Established direct mainnet `/info` HTTP access, conservative rate budgeting/retry, dynamic native + HIP-3 discovery, correct namespaced market IDs, typed immutable REST-normalized records, Decimal financial normalization, candle/funding readers, read-only `cocomelon markets`, and real-mainnet contract fixtures.
 
-- direct mainnet `/info` HTTP client
-- conservative weighted rate budget
-- retry/backoff
-- dynamic native + HIP-3/perp DEX discovery
-- correct HIP-3 market identifiers such as `xyz:NVDA`
-- typed immutable market/asset/candle/funding records
-- Decimal financial normalization
-- active/delisted preservation
-- candle + funding-history readers/normalizers
-- read-only `cocomelon markets`
-- real public-mainnet fixture capture
-- deterministic contract tests against captured real-mainnet structures
-
-Phase 2 real-mainnet smoke observed 500 discovered perp markets at that moment: 320 active and 180 delisted, across 11 perp DEX namespaces total (native plus 10 additional namespaces). This is an observation from the Phase 2 smoke, not a permanent market-count assumption.
+Phase 2 public-mainnet smoke observed 500 discovered perp markets at that moment: 320 active and 180 delisted. This was an observation, not a permanent assumption.
 
 ### Phase 3 — merged
 
 Merge commit: `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`  
-PR: #3  
-Final verified feature head: `283bb6aadbf850a26e948fe1bbc2f1075d1c7226`
+PR: #3
+
+Established canonical mainnet-only WebSocket collection, public-only `allMids`/`l2Book`/`trades`/`candle` normalization, heartbeat/freshness/reconnect handling, duplicate/out-of-order protection, deterministic dynamic deep-watchlist reconciliation, bounded subscription safety, durable fsynced rotating JSONL recording with recovery manifests, `cocomelon stream-smoke`, and exact frozen real-mainnet WebSocket fixtures.
+
+Phase 3 smoke run `32650798749` processed 1,002 normalized events in five seconds with 6 subscriptions, 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams. The temporary network workflow was removed before merge.
+
+### Phase 4 — implementation verified, merge gate pending
+
+PR: #4  
+Verified implementation head before continuity-doc reconciliation: `6de2a1addc7da6018b76a107b59a2e5ba1426262`  
+Verified merge-ref: `45938e4443b6bd119be96e164d5bc92ccc63456f`  
+Deterministic CI run: `32655216604` — SUCCESS  
+Public-mainnet scanner smoke: run `32655176825` — SUCCESS
 
 Established:
 
-- canonical mainnet-only WebSocket client with injectable transport;
-- public-only `allMids`, `l2Book`, `trades`, and `candle` protocol validation;
-- normalized typed stream events and explicit data-gap contracts;
-- exchange + receive timestamp provenance;
-- application heartbeat and freshness tracking;
-- reconnect/resubscribe with bounded exponential backoff;
-- duplicate suppression and explicit out-of-order rejection/gap reporting;
-- freshness baseline for subscriptions before their first event;
-- fail-closed propagation of recorder/event-sink failures;
-- dynamic deep-watchlist subscriptions with deterministic reconciliation;
-- 800 configured subscription ceiling and hard maximum <= Hyperliquid's documented 1,000 per-IP subscription limit;
-- durable rotating append-only JSONL with fsync, atomic manifest, deterministic serialization, safe recovery, and Windows-safe HIP-3 partition names;
-- bounded read-only `cocomelon stream-smoke` CLI;
-- exact frozen public-mainnet WebSocket fixtures with SHA-256 mutation locks.
+- immutable/versioned/provenanced feature snapshots with deterministic IDs;
+- broad funding/OI/volume/return/dislocation context across the dynamic universe;
+- closed-window 5m/15m/1h/4h candle returns;
+- realized volatility, range expansion, and relative volume;
+- L2 spread/depth/imbalance/book-age features;
+- explainable baseline trend + volatility regimes;
+- coarse rankability separated from deep readiness;
+- distribution-derived eligibility thresholds plus hard caps;
+- direction-neutral percentile opportunity ranking with component contributions/reason codes;
+- missing-feature weight renormalization rather than fabricated zero penalties;
+- independent Tier B ranked watchlist and hysteretic Tier C shortlist;
+- Phase 3 deep-watchlist/subscription-ceiling integration;
+- broad-to-deep scanner orchestration with coarse fallback when enrichment is missing;
+- bounded read-only `cocomelon scan-once --limit 20`.
 
-Phase 3 real-mainnet WebSocket evidence:
+Phase 4 public-mainnet smoke used one registry refresh and broad-only scanning. It discovered 500 markets, produced 500 feature snapshots, marked 320 rankable and 180 rejected, skipped 0, and bounded output to 20 rows. The top broad-attention names in that timestamped observation began XPL, PURR, ENA, PENGU, and PUMP. Rankable rows showed `missing_deep_data` because the operator command intentionally does not fan out L2/candle enrichment. This is attention ranking, not a trade signal or profitability claim.
 
-- successful workflow run: `32650798749`;
-- Python 3.12.14;
-- `cocomelon stream-smoke --seconds 5 --market BTC` processed 1,002 normalized events;
-- 6 subscriptions;
-- 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams at completion;
-- fixture artifact: `9496120799`;
-- artifact ZIP SHA-256: `a5720f2012ce696536fa437d9c9102e996e098d0d98fa949c05402f88d515e88`;
-- HIP-3 sample DEX `xyz`; live `allMids` carried `data.dex: "xyz"` and prefixed symbols such as `xyz:NVDA` and `xyz:XYZ100`;
-- temporary network workflow removed before merge;
-- no wallet, user/account stream, signing, order, transfer, withdrawal, or `post` action used.
-
-Pre-merge regression audit:
-
-- RED tests-only commit: `9e31762c25c5a588c904f79aff93d284880e7285`;
-- RED CI: `32651509744`, failed exactly the never-seen freshness and sink-failure propagation tests;
-- GREEN fix commit: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`;
-- GREEN CI: `32651574711`, install/compileall/Ruff/mypy/pytest all passed.
-
-Final Phase 3 feature-tree verification:
-
-- CI run: `32651779102` — SUCCESS;
-- Python 3.12.14;
-- install — PASS;
-- compileall — PASS;
-- Ruff — PASS;
-- mypy — PASS, no issues in 26 source files;
-- pytest — PASS to 100%;
-- PR #3 merged with expected-head SHA protection;
-- `main` verified at merge commit `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57` immediately after merge.
+The temporary Phase 4 smoke workflow was removed before the final merge gate. No wallet, account endpoint, signing, order, transfer, withdrawal, strategy direction, risk sizing, ML control, or live execution was introduced.
 
 ---
 
-## 9. Current Phase 4 objective
+## 9. Next Phase 5 objective
 
-Phase 4 turns trustworthy Phase 2/3 observations into a broad-to-deep market opportunity funnel without yet producing trade decisions.
+Phase 5 begins only after PR #4 is merged and `main` is verified. It introduces **explainable baseline strategy engines**, not risk or execution.
 
-Required deliverables from the approved build order:
+Expected strategy families from the approved architecture:
 
-- liquidity/spread/depth quality features;
-- multi-timeframe returns/trend features;
-- realized volatility and range features;
-- relative-volume features;
+- trend;
+- breakout;
+- mean reversion;
 - funding/open-interest context;
-- market regime baseline;
-- eligibility gate;
-- opportunity score/ranker;
-- dynamic shortlist manager;
-- feature snapshot versioning.
+- order-flow/microstructure.
 
-Required exit properties:
+Phase 5 must consume Phase 4 feature snapshots/ranks without allowing scanner scores to masquerade as trade probabilities. Strategy output may propose directional hypotheses with explicit reason codes, but cannot size risk, bypass eligibility/data-quality gates, or send orders. NO TRADE remains a first-class result.
 
-- bad-quality markets cannot rank into tradable/eligible state;
-- scanner operates across dynamically discovered markets rather than a favorites list;
-- calculations are deterministic and lookahead-safe;
-- shortlist changes are explainable from stored feature snapshots/reason codes;
-- Phase 4 does not add strategy LONG/SHORT decisions, risk sizing, paper fills, ML control, wallet access, or live execution.
+Before Phase 5 implementation:
+
+1. read `AGENTS.md`, `MASTER_SPEC.md`, `DECISIONS.md`, `BUILD_ORDER.md`, and `STATUS.md` from current `main`;
+2. create/review the Phase 5 design/spec and implementation plan;
+3. use TDD and an isolated branch;
+4. keep risk engine, paper execution, ML, and live execution out of Phase 5.
 
 ---
 
@@ -426,17 +383,8 @@ The user expects ChatGPT to build this project **from A to Z directly in the Git
 
 ## 11. Exact handoff now
 
-**Phase 3 is complete and merged. Phase 4 — feature engine, eligibility, scanner, opportunity ranking, and dynamic shortlist integration — is the active next phase.**
+**Phase 4 implementation and exit criteria are verified on PR #4. The temporary public-mainnet smoke workflow has been removed. The remaining Phase 4 work is continuity-doc CI, expected-head PR merge, and verification that `main` contains the Phase 4 merge.**
 
-Exact next actions:
-
-1. inspect the repository for an existing approved Phase 4 spec/implementation plan;
-2. if absent, derive and commit the detailed Phase 4 plan from `MASTER_SPEC.md`, `DECISIONS.md`, and `BUILD_ORDER.md` before implementation;
-3. create an isolated Phase 4 branch from current `main`;
-4. implement Phase 4 with TDD, deterministic time-bounded inputs, immutable/versioned feature snapshots, and explainable eligibility/ranking reason codes;
-5. integrate the resulting shortlist with the Phase 3 deep-watchlist boundary without introducing strategy or execution behavior;
-6. run full deterministic CI and a bounded public-mainnet read-only smoke only if necessary to validate data wiring;
-7. merge only after Phase 4 exit criteria pass;
-8. do not begin baseline strategies, risk, paper execution, ML, or live execution early.
+After that merge is verified, Phase 5 — explainable baseline strategy engines — becomes the active phase. Do not begin Phase 5 implementation from the Phase 4 branch, and do not begin risk, paper execution, ML, or live execution early.
 
 **Live trading status: DISABLED.**
