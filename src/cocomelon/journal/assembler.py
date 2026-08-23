@@ -171,13 +171,13 @@ def assemble_trade_journal_entry(
     for fill in ordered_fills:
         if fill.market != market:
             return _inconsistency("FILL_MARKET_MISMATCH")
-        plan = known_plans.get(fill.plan_id)
-        if plan is None:
+        fill_plan = known_plans.get(fill.plan_id)
+        if fill_plan is None:
             return _inconsistency("FILL_PLAN_MISMATCH")
         expected_plan_id = known_attempt_plan.get(fill.attempt_id)
         if expected_plan_id != fill.plan_id:
             return _inconsistency("FILL_ATTEMPT_MISMATCH")
-        if fill.side is not plan.side:
+        if fill.side is not fill_plan.side:
             return _inconsistency("FILL_SIDE_MISMATCH")
         if not _validate_fill_notional(fill):
             return _inconsistency("FILL_NOTIONAL_MISMATCH")
