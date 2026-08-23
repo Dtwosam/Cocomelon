@@ -43,6 +43,13 @@ def plan_opening_order(
         return PlanningRejection("INVALID_CREATED_AT")
     if instrument.metadata_received_at_ms > created_at_ms:
         return PlanningRejection("FUTURE_INSTRUMENT_METADATA")
+    if (
+        risk_decision.stop_price is None
+        or risk_decision.stop_distance_fraction is None
+        or risk_decision.effective_loss_fraction is None
+        or risk_decision.approved_risk_amount <= ZERO
+    ):
+        return PlanningRejection("INCOMPLETE_RISK_ENVELOPE")
 
     with localcontext(AUTHORITATIVE_CONTEXT):
         raw_quantity = risk_decision.approved_notional / reference_price
@@ -77,4 +84,7 @@ def plan_opening_order(
         earliest_execution_ms=created_at_ms + config.latency_ms,
         execution_config_version=config.config_version,
         instrument_metadata_received_at_ms=instrument.metadata_received_at_ms,
+        approved_risk_amount_ceiling=risk_decision.approved_risk_amount,
+        stop_distance_fraction=risk_decision.stop_distance_fraction,
+        effective_loss_fraction=risk_decision.effective_loss_fraction,
     )
