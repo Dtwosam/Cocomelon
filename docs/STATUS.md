@@ -6,131 +6,106 @@
 
 ## Current state
 
-**Last completed phase:** Phase 3 — WebSocket collector and durable market recording  
-**Integration state:** MERGED into `main`  
-**Phase 3 merge commit:** `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`  
-**Phase 3 PR:** #3  
-**Active next phase:** Phase 4 — feature engine, eligibility, market scanner, opportunity ranking, and dynamic shortlist integration
+**Last completed implementation phase:** Phase 4 — feature engine, eligibility, broad-to-deep scanner, opportunity ranking, and dynamic shortlist  
+**Integration state:** Phase 4 exit criteria VERIFIED on PR #4 feature tree; final merge gate pending continuity-doc CI  
+**Phase 4 PR:** #4  
+**Verified implementation head before continuity-doc reconciliation:** `6de2a1addc7da6018b76a107b59a2e5ba1426262`  
+**Next phase after Phase 4 is merged:** Phase 5 — explainable baseline strategy engines
 
-## Phase 3 implementation evidence
+## Phase 4 established
 
-Phase 3 established a public-mainnet-only live market-data layer:
+Phase 4 turns trustworthy Phase 2/3 public-mainnet observations into a deterministic broad-to-deep attention funnel without making trading decisions.
 
-- canonical Hyperliquid mainnet WebSocket transport at `wss://api.hyperliquid.xyz/ws`;
-- injectable WebSocket connection boundary for deterministic tests;
-- public subscription validation for `allMids`, `l2Book`, `trades`, and `candle` only;
-- typed normalized `StreamEvent`, `DataGap`, `FreshnessState`, and `StreamHealth` contracts;
-- `Decimal`-based financial normalization;
-- exchange timestamps plus local receive timestamps and schema/source provenance;
-- reconnect with exponential backoff and deterministic resubscription;
-- Hyperliquid application ping/pong heartbeat handling;
-- duplicate-event suppression and explicit out-of-order anomaly/gap records;
-- freshness tracking for both active streams and subscriptions that have not yet emitted their first event;
-- fail-closed recorder/event-sink behavior: storage failures surface instead of being misclassified as reconnectable network drops;
-- dynamic deep-watchlist reconciliation with deterministic deltas;
-- broad `allMids` feeds managed per discovered perp DEX rather than duplicated per market;
-- deep feeds per selected market: `l2Book`, `trades`, and `candle` at 1m/5m/15m;
-- configured subscription safety ceiling of 800 and a hard maximum no greater than Hyperliquid's documented 1,000-subscription IP ceiling;
-- durable rotating append-only JSONL recording with fsync;
-- UTC date/stream/market partitioning and Windows-safe HIP-3 paths;
-- atomic recovery manifest replacement;
-- restart-safe segmentation that never truncates an existing segment;
-- separate durable data-gap records;
-- bounded `cocomelon stream-smoke` operator command with no wallet, key, order, or live-execution flags;
-- exact real-mainnet WebSocket fixtures with immutable SHA-256 regression locks.
+Implemented:
 
-D-021 is authoritative for storage: Phase 3 JSONL is the trusted liveness-critical append log. Validated JSONL is compacted/exported to Parquet or equivalent columnar analytical datasets offline in the later replay/research phase rather than adding PyArrow to the always-on collector.
+- immutable, versioned `FeatureSnapshot` records with deterministic snapshot IDs and provenance;
+- broad features across every dynamically supplied valid market snapshot;
+- daily return, funding, open interest, notional volume, OI change, funding change, and mark/oracle dislocation;
+- closed-window 5m/15m/1h/4h return context;
+- realized-volatility, range-expansion, and relative-volume candle features;
+- normalized L2 spread, 25 bps side depth, book imbalance, and book age;
+- transparent baseline trend and volatility regimes;
+- two-stage eligibility separating coarse rankability from deep-data readiness;
+- observed-distribution liquidity/OI/spread/depth thresholds plus hard safety caps;
+- direction-neutral percentile opportunity ranking with explicit component contributions/reason codes;
+- missing optional features remove and renormalize their score weights instead of becoming fabricated zero penalties;
+- independent Tier B ranked watchlist and hysteretic Tier C shortlist;
+- pinned-market monitoring while keeping the Phase 3 subscription safety ceiling as final resource protection;
+- broad-to-deep `FeatureScanner` orchestration with coarse fallback when enrichment is unavailable;
+- bounded read-only `cocomelon scan-once --limit 20` operator command using one mainnet registry refresh and broad-only scanning.
 
-## Real Hyperliquid mainnet WebSocket evidence
+No strategy direction, risk sizing, paper fills, user/account access, signing, orders, ML control, or live execution was added.
 
-A temporary GitHub Actions workflow was used only to validate public mainnet WebSocket behavior and capture fixtures. It was removed before Phase 3 merge.
+## Phase 4 deterministic verification
 
-Successful fixture/smoke run:
+Fresh feature-tree verification after the temporary public-network workflow was removed:
 
-- Workflow run: `32650798749` — SUCCESS;
-- job: `97221967066`;
-- Python: `3.12.14`;
-- endpoint: `wss://api.hyperliquid.xyz/ws`;
-- command: `cocomelon stream-smoke --seconds 5 --market BTC`;
-- execution mode reported by command: `paper`;
-- subscriptions: 6;
-- normalized events processed in 5 seconds: 1,002;
-- gaps: 0;
-- duplicates: 0;
-- anomalies: 0;
-- reconnects: 0;
-- stale streams at completion: none;
-- server traffic observed: yes.
-
-Fixture capture from the same successful run produced six exact public responses: native `allMids`, HIP-3 `allMids`, BTC `l2Book`, HIP-3 `l2Book`, BTC trades, and BTC 1m candle.
-
-HIP-3 capture proved the live `allMids` wire payload includes `data.dex: "xyz"` and DEX-prefixed markets such as `xyz:NVDA` and `xyz:XYZ100`.
-
-Fixture provenance:
-
-- artifact ID: `9496120799`;
-- artifact name: `phase3-mainnet-ws-fixtures`;
-- artifact ZIP SHA-256: `a5720f2012ce696536fa437d9c9102e996e098d0d98fa949c05402f88d515e88`;
-- exact fixture commit: `8cabafe0425a3f44ee8f09a9a704360038e1266c`;
-- exact per-file SHA-256 values are locked in `tests/fixtures/hyperliquid_ws/README.md` and verified by `tests/test_ws_fixtures.py`.
-
-No wallet, signing key, user/account subscription, order, transfer, withdrawal, or WebSocket `post` action was used.
-
-## Pre-merge regression audit
-
-A manual requirement/diff audit after an earlier green suite found two correctness gaps:
-
-1. a subscribed stream that never emitted its first event was not becoming stale;
-2. an event-sink/recorder `OSError` could be swallowed as a reconnectable transport failure.
-
-TDD RED evidence:
-
-- regression-tests-only commit: `9e31762c25c5a588c904f79aff93d284880e7285`;
-- CI run: `32651509744`;
-- compileall, Ruff, and mypy passed;
-- pytest failed exactly the two intended new regressions.
-
-TDD GREEN evidence:
-
-- minimal production fix commit: `c5eba63eb30379c8a7812d660382fbfb5b83cd88`;
-- CI run: `32651574711` — SUCCESS;
-- install, compileall, Ruff, mypy, and pytest all passed;
-- mypy reported no issues in 26 source files;
-- pytest reached 100%, including both new regression cases.
-
-## Final Phase 3 verification and merge
-
-Final feature-tree verification after BUILD_ORDER/STATUS/Project Source reconciliation:
-
-- verified feature head: `283bb6aadbf850a26e948fe1bbc2f1075d1c7226`;
-- PR merge-ref tested: `1dda533d1fe16d515cca6f3b05c9742766ad929e`;
-- CI run: `32651779102` — SUCCESS;
+- verified implementation head: `6de2a1addc7da6018b76a107b59a2e5ba1426262`;
+- PR merge-ref tested by CI: `45938e4443b6bd119be96e164d5bc92ccc63456f`;
+- CI run: `32655216604` — SUCCESS;
+- job: `97232742547`;
 - Python: `3.12.14`;
 - `python -m pip install -e ".[dev]"` — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
 - Ruff (`src tests scripts`) — PASS;
-- mypy (`src`) — PASS, no issues in 26 source files;
-- pytest — PASS to 100%;
-- PR #3 was merged with expected-head SHA protection;
-- resulting merge commit: `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`;
-- `main` was verified to point at that merge commit immediately after merge.
+- mypy (`src`) — PASS, no issues in 39 source files;
+- pytest — PASS to 100%.
 
-## Phase 3 exit-criteria audit
+The Task 9 RED cycle was independently observed before implementation: tests failed because `scan-once` and `scan_once_payload` did not exist, while compileall/Ruff/mypy remained clean. After the minimal implementation, full CI passed.
 
-Verified:
+## Real Hyperliquid mainnet Phase 4 smoke evidence
 
-- disconnect/reconnect/resubscribe behavior is tested;
-- application heartbeat behavior is tested;
-- stale streams are detected, including never-seen subscribed streams;
-- duplicate events are explicitly suppressed;
-- out-of-order events are explicitly rejected and recorded as anomalies/gaps;
-- exchange and receive timestamps are preserved where available;
-- durable recording survives append, deterministic rotation, reopen, and manifest recovery tests;
-- recorder/sink failures fail closed;
-- subscription ceilings fail before sends;
-- real public-mainnet smoke and exact fixture capture succeeded;
-- temporary network-dependent workflow was removed;
-- no user-specific or trading capability was introduced.
+A temporary GitHub Actions workflow ran the exact read-only command:
+
+`cocomelon scan-once --limit 20`
+
+Successful public-mainnet run:
+
+- workflow run: `32655176825` — SUCCESS;
+- job: `97232651332`;
+- Python: `3.12.14`;
+- endpoint: `https://api.hyperliquid.xyz`;
+- execution mode: `paper`;
+- discovered markets: 500;
+- feature snapshots produced: 500;
+- rankable markets: 320;
+- rejected markets: 180;
+- skipped markets: 0;
+- output was bounded to 20 ranked rows;
+- top broad-attention markets at that observation were XPL, PURR, ENA, PENGU, and PUMP;
+- each top result correctly carried `missing_deep_data`, because `scan-once` intentionally does not fan out candle/L2 enrichment.
+
+The temporary smoke workflow was removed in commit `6de2a1addc7da6018b76a107b59a2e5ba1426262` before the merge gate. No wallet, user/account endpoint, signing, order, transfer, withdrawal, or WebSocket `post` action was used.
+
+Market counts and rankings above are timestamped observations, not permanent assumptions or profitability claims.
+
+## Phase 4 exit-criteria audit
+
+Verified line by line against the approved implementation plan:
+
+- scanner coverage is based on the dynamically supplied discovered market universe, not a favorites list;
+- future-received inputs fail closed and cannot leak lookahead into snapshots/ranks;
+- delisted, stale-context, and invalid-price markets cannot rank;
+- coarse eligibility and opportunity ranking are separate stages;
+- candle windows use closed observations and preserve receive-time provenance;
+- multi-timeframe return/trend, realized-volatility, range, relative-volume, funding/OI, spread/depth, and baseline regime features exist;
+- missing Tier B/C enrichment stays missing and never becomes a fabricated value;
+- ranking is direction-neutral, deterministic, percentile-based, and tie-broken canonically;
+- shortlist state is bounded, deterministic, explainable, and hysteretic;
+- Tier B enrichment candidates remain independent from the Tier C target shortlist;
+- Phase 3 subscription ceilings remain final protection;
+- feature snapshots are immutable, schema-versioned, provenance-carrying, and deterministically identified;
+- scanner outputs contain no strategy direction, risk sizing, or order plan;
+- PR #4 net changed-file set contains only Phase 4 feature/scanner/CLI/tests/plan files; the temporary smoke workflow is not part of the final diff.
+
+## Completed prior phases
+
+- Phase 0 — governance/source-of-truth anchor: COMPLETE.
+- Phase 1 — Python foundation/domain/config/CI: MERGED at `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`.
+- Phase 2 — mainnet REST discovery/normalization: MERGED at `b95352e238d6a9eabd63e13c1f8300e654a7e636`.
+- Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
+
+Phase 3 real-mainnet WebSocket smoke remains valid historical evidence: run `32650798749` processed 1,002 normalized events in five seconds with 6 subscriptions, 0 gaps, 0 duplicates, 0 anomalies, 0 reconnects, and no stale streams at completion.
 
 ## Safety invariants still locked
 
@@ -148,15 +123,16 @@ Verified:
 
 ## Exact next action
 
-1. Begin Phase 4 autonomously from current `main`.
-2. Inspect the approved source hierarchy and any existing Phase 4 spec/plan before writing implementation code.
-3. If the detailed Phase 4 implementation plan is absent, create it from the already-approved build-order architecture before implementation.
-4. Build deterministic, lookahead-safe feature calculations, eligibility gates, broad-market scoring/ranking, and dynamic shortlist integration with TDD.
-5. Keep bad-quality/stale markets unable to enter tradable/ranked state.
-6. Do not begin baseline strategies, risk, paper execution, ML, or live execution before their preceding build-order phases pass.
+1. Run fresh CI on the Phase 4 continuity-doc commit.
+2. Re-read PR #4 head and mergeability.
+3. Merge PR #4 using expected-head SHA protection only after CI is green.
+4. Verify `main` contains the Phase 4 merge and no temporary smoke workflow.
+5. Reconcile continuity metadata to the actual merge commit if necessary.
+6. Only then begin Phase 5 — explainable baseline strategy engines — from current `main`, using the approved source hierarchy and a fresh Phase 5 spec/implementation plan before coding.
+7. Do not begin risk, paper execution, ML, or live execution early.
 
 ## Live trading status
 
 **DISABLED.**
 
-There is no approved live execution path yet. Cocomelon remains in pre-execution infrastructure/research phases until the later promotion gates in `docs/MASTER_SPEC.md` and `docs/BUILD_ORDER.md` are satisfied.
+Cocomelon remains in pre-execution infrastructure/research phases. Phase 4 ranks markets for attention only; it does not decide LONG/SHORT, size positions, or send orders.
