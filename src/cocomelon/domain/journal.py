@@ -188,7 +188,7 @@ class TradeSummary:
     equity_after: Decimal
 
     def __post_init__(self) -> None:
-        for field, value in (
+        for string_field, string_value in (
             ("trade_id", self.trade_id),
             ("decision_id", self.decision_id),
             ("risk_decision_id", self.risk_decision_id),
@@ -196,14 +196,14 @@ class TradeSummary:
             ("replay_run_id", self.replay_run_id),
             ("exit_reason", self.exit_reason),
         ):
-            _require_nonempty(value, field)
+            _require_nonempty(string_value, string_field)
         if self.direction not in {Direction.LONG, Direction.SHORT}:
             raise ValueError("direction must be LONG or SHORT")
         if self.entry_timestamp_ms < 0:
             raise ValueError("entry_timestamp_ms must be non-negative")
         if self.exit_timestamp_ms < self.entry_timestamp_ms:
             raise ValueError("exit_timestamp_ms must be >= entry_timestamp_ms")
-        for field, value in (
+        for positive_field, positive_value in (
             ("entry_price", self.entry_price),
             ("exit_price", self.exit_price),
             ("quantity", self.quantity),
@@ -211,8 +211,8 @@ class TradeSummary:
             ("approved_risk_amount", self.approved_risk_amount),
             ("maximum_actual_notional", self.maximum_actual_notional),
         ):
-            _require_positive(value, field)
-        for field, value in (
+            _require_positive(positive_value, positive_field)
+        for decimal_field, decimal_value in (
             ("gross_pnl", self.gross_pnl),
             ("fees", self.fees),
             ("funding", self.funding),
@@ -224,7 +224,7 @@ class TradeSummary:
             ("equity_before", self.equity_before),
             ("equity_after", self.equity_after),
         ):
-            _require_finite(value, field)
+            _require_finite(decimal_value, decimal_field)
         if self.fees < ZERO:
             raise ValueError("fees must be non-negative")
         if self.entry_slippage < ZERO or self.exit_slippage < ZERO:
