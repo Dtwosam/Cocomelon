@@ -1,3 +1,5 @@
+import pytest
+
 from cocomelon.domain.replay import (
     EvidenceClass,
     ReplayManifest,
@@ -81,6 +83,16 @@ def test_source_segment_validates_sha_and_availability_bounds() -> None:
         assert "sha256" in str(exc)
     else:
         raise AssertionError("invalid sha256 must reject")
+
+
+def test_source_segment_rejects_paths_that_escape_recording_root() -> None:
+    digest = "a" * 64
+    with pytest.raises(ValueError, match="relative_path"):
+        source_segment("/tmp/events/a.jsonl", digest=digest)
+    with pytest.raises(ValueError, match="relative_path"):
+        source_segment("events/../secrets.jsonl", digest=digest)
+    with pytest.raises(ValueError, match="sha256"):
+        source_segment("events/a.jsonl", digest="A" * 64)
 
 
 def test_replay_record_uses_canonical_payload_json() -> None:
