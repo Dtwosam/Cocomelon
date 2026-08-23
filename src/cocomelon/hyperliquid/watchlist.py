@@ -85,6 +85,7 @@ class DeepWatchlistManager:
         unique_markets = {market.canonical: market for market in markets}
         for canonical in sorted(unique_markets):
             wire_name = unique_markets[canonical].wire_name
+            self._add(desired, {"type": "activeAssetCtx", "coin": wire_name})
             self._add(desired, {"type": "l2Book", "coin": wire_name})
             self._add(desired, {"type": "trades", "coin": wire_name})
             for interval in self._candle_intervals:
