@@ -1,0 +1,3 @@
+trigger=2
+pinned_code_revision=571c13bfe0bab0312940617540ec973ee3eee3c5
+purpose=non_overlapping_genuine_mainnet_paper_evidence
