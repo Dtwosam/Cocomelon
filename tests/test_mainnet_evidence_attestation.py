@@ -291,6 +291,23 @@ def test_genuine_mainnet_corpus_accumulates_only_attested_runs(tmp_path: Path) -
     assert [item["run_id"] for item in corpus["source_attestations"]] == ["run-a", "run-b"]
 
 
+def test_genuine_mainnet_aggregation_rejects_duplicate_run_sources(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    _source(first, run_id="run-a")
+    _source(second, run_id="run-a")
+    target = tmp_path / "aggregate"
+
+    with pytest.raises(mainnet_aggregate.EvidenceAggregationError, match="duplicate replay run"):
+        mainnet_aggregate.aggregate_genuine_mainnet_evidence(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            (first, second),
+        )
+
+    assert not target.exists()
+
+
 def test_genuine_mainnet_aggregation_cli_requires_local_attested_sources() -> None:
     parser = mainnet_cli.build_parser()
     args = parser.parse_args(
