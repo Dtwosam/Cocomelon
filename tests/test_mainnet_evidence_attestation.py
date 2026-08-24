@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 from pathlib import Path
@@ -16,28 +17,41 @@ def _module() -> ModuleType:
     return importlib.import_module("cocomelon.evaluation.mainnet_evidence")
 
 
-def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
+def _write_cohort(
+    root: Path,
+    *,
+    complete: bool,
+    run_id: str = "run-mainnet-a",
+    start_ms: int = 1_000,
+    end_ms: int = 2_000,
+    session_id: str = "b" * 64,
+    segment_sha: str = "c" * 64,
+    trigger_head: str = "f" * 40,
+) -> tuple[Path, ReplayResult]:
     output = root / "output"
     recording = root / "recording"
     output.mkdir(parents=True)
     recording.mkdir(parents=True)
     revision = "a" * 40
-    session_id = "b" * 64
-    gap_refs = () if complete else ("gap:l2Book:SOL:1000:2000:recovered",)
+    gap_refs = (
+        ()
+        if complete
+        else (f"gap:l2Book:SOL:{start_ms}:{end_ms}:recovered",)
+    )
     manifest = ReplayManifest(
         evidence_class=EvidenceClass.MICROSTRUCTURE,
-        start_ms=1_000,
-        end_ms=2_000,
+        start_ms=start_ms,
+        end_ms=end_ms,
         segments=(
             SourceSegment(
                 relative_path="events/2026-08-24/l2book/SOL/segment-000001.jsonl",
                 partition="events/2026-08-24/l2book/SOL",
-                sha256="c" * 64,
+                sha256=segment_sha,
                 byte_count=100,
                 row_count=10,
                 schema_version=1,
-                first_available_at_ms=1_000,
-                last_available_at_ms=2_000,
+                first_available_at_ms=start_ms,
+                last_available_at_ms=end_ms,
             ),
         ),
         gap_refs=gap_refs,
@@ -53,7 +67,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
     )
     result = ReplayResult(
         manifest_id=manifest.manifest_id,
-        run_id="run-mainnet-a",
+        run_id=run_id,
         evidence_class=EvidenceClass.MICROSTRUCTURE,
         start_ms=manifest.start_ms,
         end_ms=manifest.end_ms,
@@ -68,7 +82,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
         closed_positions=0,
         journal_observations=0,
         closed_trade_ids=(),
-        final_account_state_id="account-final",
+        final_account_state_id=f"account-final-{run_id}",
         data_complete=complete,
     )
     journal = JournalStore(output / "journal.sqlite3")
@@ -89,7 +103,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
                 "selected": [],
                 "selection_policy_id": "rankable-native-top-v1",
                 "session_id": session_id,
-                "started_at_ms": 1_000,
+                "started_at_ms": start_ms,
             },
             sort_keys=True,
         ),
@@ -121,7 +135,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
                 "risk_rejections": 0,
                 "selected_markets": ["SOL"],
                 "strategy_decisions": 1,
-                "trigger_head_sha": "f" * 40,
+                "trigger_head_sha": trigger_head,
                 "validated_segment_count": 1,
             },
             sort_keys=True,
@@ -133,7 +147,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
             {
                 "anomaly_count": 0,
                 "duplicate_count": 0,
-                "duration_seconds": 1,
+                "duration_seconds": max(1, (end_ms - start_ms) // 1_000),
                 "event_count": 10,
                 "gap_count": 0 if complete else 1,
                 "live_orders": False,
@@ -150,7 +164,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
     (output / "replay.json").write_text(
         json.dumps(
             {
-                "bundle_id": "bundle-a",
+                "bundle_id": f"bundle-{run_id}",
                 "closed_positions": 0,
                 "closed_trade_ids": [],
                 "data_complete": complete,
@@ -159,7 +173,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
                 "execution_attempts": 1,
                 "facts": "evidence-cohort/output/facts.sqlite3",
                 "fills": 1,
-                "final_account_state_id": "account-final",
+                "final_account_state_id": result.final_account_state_id,
                 "final_equity": "10000",
                 "journal": "evidence-cohort/output/journal.sqlite3",
                 "live_orders": False,
@@ -179,7 +193,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
     (output / "freeze.json").write_text(
         json.dumps(
             {
-                "bundle_id": "bundle-a",
+                "bundle_id": f"bundle-{run_id}",
                 "code_revision": revision,
                 "evidence_class": "microstructure",
                 "live_orders": False,
@@ -188,7 +202,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
                 "out": "evidence-cohort/output/bundle.json",
                 "recording_session_digest": session_id,
                 "root": "evidence-cohort/recording",
-                "source_set_digest": "1" * 64,
+                "source_set_digest": segment_sha,
                 "starting_cash": "10000",
             },
             sort_keys=True,
@@ -198,7 +212,7 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
     (output / "bundle.json").write_text(
         json.dumps(
             {
-                "bundle_id": "bundle-a",
+                "bundle_id": f"bundle-{run_id}",
                 "manifest": {
                     "code_revision": revision,
                     "gap_refs": list(gap_refs),
@@ -207,17 +221,25 @@ def _write_cohort(root: Path, *, complete: bool) -> tuple[Path, ReplayResult]:
                 "recording_session_digest": session_id,
                 "replay_config": {},
                 "schema_version": 1,
-                "source_locator_bundle_id": "bundle-a",
+                "source_locator_bundle_id": f"bundle-{run_id}",
                 "source_root_relative": "../recording",
-                "source_set_digest": "1" * 64,
+                "source_set_digest": segment_sha,
             },
             sort_keys=True,
         ),
         encoding="utf-8",
     )
     (output / "workflow-head.txt").write_text(revision + "\n", encoding="utf-8")
-    (output / "trigger-head.txt").write_text("f" * 40 + "\n", encoding="utf-8")
+    (output / "trigger-head.txt").write_text(trigger_head + "\n", encoding="utf-8")
     return output, result
+
+
+def _store_hashes(target: Path) -> tuple[str, str, bytes]:
+    return (
+        hashlib.sha256((target / "journal.sqlite3").read_bytes()).hexdigest(),
+        hashlib.sha256((target / "facts.sqlite3").read_bytes()).hexdigest(),
+        (target / "mainnet-attestation.json").read_bytes(),
+    )
 
 
 def test_mainnet_aggregation_rejects_incomplete_cohort_before_target_write(
@@ -242,8 +264,6 @@ def test_mainnet_aggregation_rejects_incomplete_cohort_before_target_write(
 def test_complete_mainnet_cohort_creates_attestation_without_mutating_source(
     tmp_path: Path,
 ) -> None:
-    import hashlib
-
     module = _module()
     source, replay_result = _write_cohort(tmp_path / "artifact-a", complete=True)
     target = tmp_path / "aggregate"
@@ -336,6 +356,106 @@ def test_mainnet_aggregation_is_idempotent_with_verified_attestation(tmp_path: P
 
     assert first.run_ids == second.run_ids == (replay_result.run_id,)
     assert (target / "mainnet-attestation.json").read_bytes() == first_attestation
+
+
+def test_mainnet_aggregation_accepts_distinct_non_overlapping_cohorts(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source_a, result_a = _write_cohort(tmp_path / "artifact-a", complete=True)
+    source_b, result_b = _write_cohort(
+        tmp_path / "artifact-b",
+        complete=True,
+        run_id="run-mainnet-b",
+        start_ms=3_000,
+        end_ms=4_000,
+        session_id="c" * 64,
+        segment_sha="e" * 64,
+        trigger_head="d" * 40,
+    )
+    target = tmp_path / "aggregate"
+
+    module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source_a,),
+    )
+    result = module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source_b,),
+    )
+
+    assert result.run_ids == tuple(sorted((result_a.run_id, result_b.run_id)))
+    attestation = json.loads((target / "mainnet-attestation.json").read_text())
+    assert attestation["source_count"] == 2
+    assert attestation["run_ids"] == [result_a.run_id, result_b.run_id]
+
+
+def test_mainnet_aggregation_rejects_overlapping_cohort_without_mutating_target(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source_a, _ = _write_cohort(tmp_path / "artifact-a", complete=True)
+    source_b, _ = _write_cohort(
+        tmp_path / "artifact-b",
+        complete=True,
+        run_id="run-mainnet-b",
+        start_ms=1_500,
+        end_ms=2_500,
+        session_id="c" * 64,
+        segment_sha="e" * 64,
+        trigger_head="d" * 40,
+    )
+    target = tmp_path / "aggregate"
+    module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source_a,),
+    )
+    before = _store_hashes(target)
+
+    with pytest.raises(module.MainnetEvidenceError, match="overlap"):
+        module.aggregate_mainnet_evaluation_evidence(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            (source_b,),
+        )
+
+    assert _store_hashes(target) == before
+
+
+def test_mainnet_aggregation_rejects_reused_recording_session(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source_a, _ = _write_cohort(tmp_path / "artifact-a", complete=True)
+    source_b, _ = _write_cohort(
+        tmp_path / "artifact-b",
+        complete=True,
+        run_id="run-mainnet-b",
+        start_ms=3_000,
+        end_ms=4_000,
+        session_id="b" * 64,
+        segment_sha="e" * 64,
+        trigger_head="d" * 40,
+    )
+    target = tmp_path / "aggregate"
+    module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source_a,),
+    )
+    before = _store_hashes(target)
+
+    with pytest.raises(module.MainnetEvidenceError, match="recording session"):
+        module.aggregate_mainnet_evaluation_evidence(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            (source_b,),
+        )
+
+    assert _store_hashes(target) == before
 
 
 def test_mainnet_dataset_freeze_requires_exact_attested_run_set(tmp_path: Path) -> None:
