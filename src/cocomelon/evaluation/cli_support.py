@@ -7,18 +7,28 @@ from pathlib import Path
 from typing import Any
 
 from cocomelon.domain.evaluation import (
+    CandidateDefinition,
     EvaluationPolicy,
     EvaluationResult,
+    FrozenCandidateSet,
     FrozenSplitManifest,
     SplitName,
     TimePartition,
 )
+from cocomelon.evaluation.dataset import build_evaluation_dataset
+from cocomelon.evaluation.engine import EvaluationEngine, EvaluationRequest
 from cocomelon.evaluation.result_codec import (
     EvaluationResultCodecError,
     evaluation_result_from_payload,
 )
+from cocomelon.evaluation.sensitivity import (
+    CostStressProfile,
+    predeclared_cost_stress_profiles,
+)
 from cocomelon.evaluation.splits import freeze_split_manifest
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.evaluation.walkforward import WalkForwardPlan
+from cocomelon.journal.store import JournalStore
 
 
 def _read_json_mapping(path: str | Path, field: str) -> dict[str, Any]:
@@ -40,6 +50,12 @@ def _int(value: object, field: str) -> int:
     return value
 
 
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+    return value
+
+
 def _string(value: object, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a non-empty string")
@@ -55,6 +71,15 @@ def _decimal(value: object, field: str) -> Decimal:
         raise ValueError(f"{field} must be a decimal string") from exc
     if not result.is_finite():
         raise ValueError(f"{field} must be finite")
+    return result
+
+
+def _string_list(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{field} must be a string array")
+    result = tuple(value)
+    if not result or any(not item.strip() for item in result):
+        raise ValueError(f"{field} values must not be empty")
     return result
 
 
@@ -116,8 +141,10 @@ def evaluation_policy_from_payload(value: object) -> EvaluationPolicy:
 def _time_partition(value: object, name: SplitName) -> TimePartition:
     if not isinstance(value, dict):
         raise ValueError(f"{name.value} must be an object")
-    if set(value) != {"start_ms", "end_ms"}:
-        raise ValueError(f"{name.value} must contain only start_ms and end_ms")
+    if set(value) not in ({"start_ms", "end_ms"}, {"name", "start_ms", "end_ms"}):
+        raise ValueError(f"{name.value} has unsupported keys")
+    if "name" in value and value["name"] != name.value:
+        raise ValueError(f"{name.value} partition name does not match its field")
     return TimePartition(
         name=name,
         start_ms=_int(value["start_ms"], f"{name.value}.start_ms"),
@@ -142,6 +169,60 @@ def _split_payload(split: FrozenSplitManifest) -> dict[str, object]:
         "embargo_ms": split.embargo_ms,
         "policy_id": split.policy_id,
         "schema_version": split.schema_version,
+    }
+
+
+def freeze_evaluation_dataset_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    replay_run_ids: tuple[str, ...],
+) -> dict[str, object]:
+    if not replay_run_ids or any(not run_id.strip() for run_id in replay_run_ids):
+        raise ValueError("at least one non-empty replay run id is required")
+    run_ids = tuple(sorted(set(replay_run_ids)))
+    journal = JournalStore(journal_path)
+    facts = EvaluationFactStore(facts_path)
+    try:
+        source_manifests = []
+        for run_id in run_ids:
+            replay_result = journal.load_replay_result(run_id)
+            if replay_result is None:
+                raise ValueError(f"replay result not found: {run_id}")
+            source_manifest = journal.load_manifest(replay_result.manifest_id)
+            if source_manifest is None:
+                raise ValueError(f"replay manifest not found: {replay_result.manifest_id}")
+            source_manifests.append(source_manifest)
+        revisions = {item.code_revision for item in source_manifests}
+        if len(revisions) != 1:
+            raise ValueError("replay runs must share one source code revision")
+        code_revision = next(iter(revisions))
+        built = build_evaluation_dataset(
+            journal,
+            facts,
+            replay_run_ids=run_ids,
+            code_revision=code_revision,
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    manifest = built.manifest
+    return {
+        "dataset_manifest_id": manifest.manifest_id,
+        "source_run_ids": list(run_ids),
+        "source_manifest_ids": [item.manifest_id for item in source_manifests],
+        "evidence_class": (
+            None if manifest.evidence_class is None else manifest.evidence_class.value
+        ),
+        "start_ms": manifest.start_ms,
+        "end_ms": manifest.end_ms,
+        "code_revision": manifest.code_revision,
+        "trade_count": len(manifest.trade_ids),
+        "excluded_trade_count": len(built.excluded_trade_ids),
+        "exclusion_reasons": [list(item) for item in built.exclusion_reasons],
+        "data_complete": manifest.data_complete,
+        "gap_refs": list(manifest.gap_refs),
+        "network_access": False,
     }
 
 
@@ -205,6 +286,190 @@ def freeze_evaluation_splits_payload(
         **_split_payload(split),
         "network_access": False,
     }
+
+
+def _load_split(store: EvaluationFactStore, split_id: str) -> FrozenSplitManifest:
+    row = store.connection.execute(
+        "SELECT payload_json FROM evaluation_split_manifests WHERE split_manifest_id = ?",
+        (split_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"evaluation split not found: {split_id}")
+    try:
+        raw = json.loads(str(row[0]))
+    except json.JSONDecodeError as exc:
+        raise ValueError("stored evaluation split must contain valid JSON") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("stored evaluation split must be an object")
+    required = {
+        "dataset_manifest_id",
+        "train",
+        "validation",
+        "test",
+        "embargo_ms",
+        "policy_id",
+        "schema_version",
+    }
+    if set(raw) != required:
+        raise ValueError("stored evaluation split has unsupported keys")
+    split = FrozenSplitManifest(
+        dataset_manifest_id=_string(raw["dataset_manifest_id"], "dataset_manifest_id"),
+        train=_time_partition(raw["train"], SplitName.TRAIN),
+        validation=_time_partition(raw["validation"], SplitName.VALIDATION),
+        test=_time_partition(raw["test"], SplitName.TEST),
+        embargo_ms=_int(raw["embargo_ms"], "embargo_ms"),
+        policy_id=_string(raw["policy_id"], "policy_id"),
+        schema_version=_int(raw["schema_version"], "schema_version"),
+    )
+    if split.split_manifest_id != split_id:
+        raise ValueError("stored evaluation split id does not match canonical payload")
+    return split
+
+
+def _candidate_set_from_payload(
+    value: object,
+) -> tuple[EvaluationPolicy, FrozenCandidateSet, tuple[CostStressProfile, ...]]:
+    if not isinstance(value, dict):
+        raise ValueError("candidate spec must be an object")
+    if set(value) != {"policy", "candidates", "sensitivity_profile_ids"}:
+        raise ValueError(
+            "candidate spec must contain policy, candidates, and sensitivity_profile_ids"
+        )
+    policy = evaluation_policy_from_payload(value["policy"])
+    raw_candidates = value["candidates"]
+    if not isinstance(raw_candidates, list) or not raw_candidates:
+        raise ValueError("candidates must be a non-empty array")
+    candidates = []
+    required_candidate_keys = {
+        "name",
+        "strategy_version",
+        "risk_version",
+        "execution_config_version",
+        "code_revision",
+        "config_digest",
+    }
+    for index, raw_candidate in enumerate(raw_candidates):
+        if not isinstance(raw_candidate, dict) or set(raw_candidate) != required_candidate_keys:
+            raise ValueError(f"candidate {index} has unsupported keys")
+        candidates.append(
+            CandidateDefinition(
+                name=_string(raw_candidate["name"], f"candidate {index} name"),
+                strategy_version=_string(
+                    raw_candidate["strategy_version"],
+                    f"candidate {index} strategy_version",
+                ),
+                risk_version=_string(
+                    raw_candidate["risk_version"],
+                    f"candidate {index} risk_version",
+                ),
+                execution_config_version=_string(
+                    raw_candidate["execution_config_version"],
+                    f"candidate {index} execution_config_version",
+                ),
+                code_revision=_string(
+                    raw_candidate["code_revision"],
+                    f"candidate {index} code_revision",
+                ),
+                config_digest=_string(
+                    raw_candidate["config_digest"],
+                    f"candidate {index} config_digest",
+                ),
+            )
+        )
+    profile_ids = _string_list(
+        value["sensitivity_profile_ids"], "sensitivity_profile_ids"
+    )
+    available = {item.profile_id: item for item in predeclared_cost_stress_profiles()}
+    try:
+        selected_profiles = tuple(available[profile_id] for profile_id in profile_ids)
+    except KeyError as exc:
+        raise ValueError(f"unknown sensitivity profile: {exc.args[0]}") from exc
+    candidate_set = FrozenCandidateSet(
+        candidates=tuple(candidates),
+        sensitivity_profile_ids=profile_ids,
+        policy_id=policy.policy_id,
+    )
+    return policy, candidate_set, selected_profiles
+
+
+def _walkforward_plan_from_payload(
+    value: object,
+    *,
+    dataset_manifest_id: str,
+    policy_id: str,
+) -> WalkForwardPlan:
+    if not isinstance(value, dict):
+        raise ValueError("walk-forward spec must be an object")
+    required = {
+        "first_window_start_ms",
+        "development_duration_ms",
+        "validation_duration_ms",
+        "evaluation_duration_ms",
+        "step_ms",
+        "embargo_ms",
+        "expanding",
+    }
+    if set(value) != required:
+        raise ValueError("walk-forward spec has unsupported keys")
+    return WalkForwardPlan(
+        dataset_manifest_id=dataset_manifest_id,
+        first_window_start_ms=_int(
+            value["first_window_start_ms"], "first_window_start_ms"
+        ),
+        development_duration_ms=_int(
+            value["development_duration_ms"], "development_duration_ms"
+        ),
+        validation_duration_ms=_int(
+            value["validation_duration_ms"], "validation_duration_ms"
+        ),
+        evaluation_duration_ms=_int(
+            value["evaluation_duration_ms"], "evaluation_duration_ms"
+        ),
+        step_ms=_int(value["step_ms"], "step_ms"),
+        embargo_ms=_int(value["embargo_ms"], "embargo_ms"),
+        expanding=_boolean(value["expanding"], "expanding"),
+        policy_id=policy_id,
+    )
+
+
+def run_evaluation(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    dataset_id: str,
+    split_id: str,
+    candidate_spec_path: str | Path,
+    walkforward_spec_path: str | Path,
+) -> EvaluationResult:
+    if not dataset_id.strip() or not split_id.strip():
+        raise ValueError("dataset_id and split_id must not be empty")
+    candidate_spec = _read_json_mapping(candidate_spec_path, "candidate spec")
+    walkforward_spec = _read_json_mapping(walkforward_spec_path, "walk-forward spec")
+    policy, candidates, profiles = _candidate_set_from_payload(candidate_spec)
+
+    journal = JournalStore(journal_path)
+    facts = EvaluationFactStore(facts_path)
+    try:
+        dataset = facts.load_dataset_manifest(dataset_id)
+        if dataset is None:
+            raise ValueError(f"evaluation dataset not found: {dataset_id}")
+        split = _load_split(facts, split_id)
+        plan = _walkforward_plan_from_payload(
+            walkforward_spec,
+            dataset_manifest_id=dataset.manifest_id,
+            policy_id=policy.policy_id,
+        )
+        request = EvaluationRequest(
+            dataset=dataset,
+            split=split,
+            candidates=candidates,
+            policy=policy,
+            walkforward_plan=plan,
+            sensitivity_profiles=profiles,
+        )
+        return EvaluationEngine(journal, facts).run(request)
+    finally:
+        facts.close()
+        journal.close()
 
 
 def evaluation_result_payload(result: EvaluationResult) -> dict[str, object]:
