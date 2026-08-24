@@ -444,8 +444,8 @@ def aggregate_genuine_mainnet_evidence(
     for root in roots:
         attestation = _load_attestation(root)
         _validate_attested_store(root, attestation)
-        existing = new_attestations.get(attestation.run_id)
-        if existing is not None and existing != attestation:
+        existing_new = new_attestations.get(attestation.run_id)
+        if existing_new is not None and existing_new != attestation:
             raise EvidenceAggregationError(
                 "conflicting genuine mainnet attestation for run: "
                 f"{attestation.run_id}"
@@ -483,8 +483,8 @@ def aggregate_genuine_mainnet_evidence(
     merged_attestations = dict(existing_attestations)
     for run_id, attestation in new_attestations.items():
         payload = attestation.canonical_payload()
-        existing = merged_attestations.get(run_id)
-        if existing is not None and existing != payload:
+        existing_payload = merged_attestations.get(run_id)
+        if existing_payload is not None and existing_payload != payload:
             raise EvidenceAggregationError(
                 f"conflicting genuine mainnet source bytes for run: {run_id}"
             )
