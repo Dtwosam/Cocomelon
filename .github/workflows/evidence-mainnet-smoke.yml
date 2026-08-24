@@ -1,0 +1,135 @@
+name: Genuine Mainnet Evidence Smoke
+
+on:
+  push:
+    branches:
+      - evidence-mainnet-smoke-fixed-20260824
+  pull_request:
+    branches:
+      - evidence-mainnet-smoke-fixed-20260824
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-smoke:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' && github.base_ref == 'evidence-mainnet-smoke-fixed-20260824')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Record genuine public mainnet evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence-smoke/output evidence-smoke/recording
+          git rev-parse HEAD > evidence-smoke/output/workflow-head.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-smoke/output/started-at-utc.txt
+          cocomelon record-mainnet-evidence \
+            --root evidence-smoke/recording \
+            --seconds 1200 \
+            --deep-limit 5 \
+            > evidence-smoke/output/record.json
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-smoke/output/finished-at-utc.txt
+
+      - name: Validate and replay recorded evidence offline
+        run: |
+          set -euo pipefail
+          cocomelon validate-recording \
+            --root evidence-smoke/recording \
+            > evidence-smoke/output/validate.json
+          cocomelon freeze-baseline-replay \
+            --root evidence-smoke/recording \
+            --out evidence-smoke/output/bundle.json \
+            --starting-cash 10000 \
+            > evidence-smoke/output/freeze.json
+          cocomelon run-baseline-replay \
+            --bundle evidence-smoke/output/bundle.json \
+            --journal evidence-smoke/output/journal.sqlite3 \
+            --execution evidence-smoke/output/execution.sqlite3 \
+            --facts evidence-smoke/output/facts.sqlite3 \
+            > evidence-smoke/output/replay.json
+          RUN_ID=$(python -c 'import json; print(json.load(open("evidence-smoke/output/replay.json"))["run_id"])')
+          cocomelon freeze-evaluation-dataset \
+            --journal evidence-smoke/output/journal.sqlite3 \
+            --facts evidence-smoke/output/facts.sqlite3 \
+            --run-id "$RUN_ID" \
+            > evidence-smoke/output/dataset.json
+
+      - name: Assert paper-only evidence semantics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("evidence-smoke/output")
+          record = json.loads((root / "record.json").read_text())
+          validate = json.loads((root / "validate.json").read_text())
+          replay = json.loads((root / "replay.json").read_text())
+          dataset = json.loads((root / "dataset.json").read_text())
+
+          assert record["network_access"] is True
+          assert record["live_orders"] is False
+          assert replay["network_access"] is False
+          assert replay["live_orders"] is False
+          assert "edge" not in replay
+          assert "profitable" not in replay
+
+          summary = {
+              "evidence_kind": "genuine_public_hyperliquid_mainnet",
+              "economic_claim": "none",
+              "workflow_head": (root / "workflow-head.txt").read_text().strip(),
+              "recording_session_id": record["session_id"],
+              "selected_markets": record["selected_markets"],
+              "recorded_event_count": record["event_count"],
+              "recorded_gap_count": record["gap_count"],
+              "recorded_duplicate_count": record["duplicate_count"],
+              "validated_segment_count": validate["segment_count"],
+              "replay_run_id": replay["run_id"],
+              "replay_result_digest": replay["result_digest"],
+              "strategy_decisions": replay["strategy_decisions"],
+              "risk_approvals": replay["risk_approvals"],
+              "risk_rejections": replay["risk_rejections"],
+              "fills": replay["fills"],
+              "opened_positions": replay["opened_positions"],
+              "closed_positions": replay["closed_positions"],
+              "closed_trade_count": len(replay["closed_trade_ids"]),
+              "data_complete": replay["data_complete"],
+              "dataset_manifest_id": dataset["dataset_manifest_id"],
+              "dataset_trade_count": dataset["trade_count"],
+              "excluded_trade_count": dataset["excluded_trade_count"],
+          }
+          (root / "smoke-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload genuine evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genuine-mainnet-evidence-smoke-${{ github.run_id }}
+          path: evidence-smoke/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
