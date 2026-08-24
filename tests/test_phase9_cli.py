@@ -15,10 +15,16 @@ from cocomelon.domain.evaluation import (
     OOSStatus,
     ReplayEvaluationSource,
 )
-from cocomelon.domain.replay import EvidenceClass
+from cocomelon.domain.replay import (
+    EvidenceClass,
+    ReplayManifest,
+    ReplayResult,
+    SourceSegment,
+)
 from cocomelon.evaluation.engine import build_promotion_preview
 from cocomelon.evaluation.metrics import compute_performance_metrics
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.journal.store import JournalStore
 
 
 def _empty_result() -> EvaluationResult:
@@ -70,22 +76,79 @@ def _dataset() -> EvaluationDatasetManifest:
     )
 
 
-def _policy_payload() -> dict[str, object]:
-    policy = EvaluationPolicy()
+def _policy_payload(policy: EvaluationPolicy | None = None) -> dict[str, object]:
+    rules = policy or EvaluationPolicy()
     return {
-        "policy_version": policy.policy_version,
-        "min_oos_trades": policy.min_oos_trades,
-        "min_oos_days": policy.min_oos_days,
-        "min_walkforward_windows": policy.min_walkforward_windows,
-        "min_trades_per_walkforward_window": policy.min_trades_per_walkforward_window,
-        "min_score_bucket_trades": policy.min_score_bucket_trades,
-        "positive_walkforward_fraction": str(policy.positive_walkforward_fraction),
-        "bootstrap_confidence": str(policy.bootstrap_confidence),
-        "bootstrap_block_days": policy.bootstrap_block_days,
-        "bootstrap_resamples": policy.bootstrap_resamples,
-        "split_embargo_ms": policy.split_embargo_ms,
-        "no_trade_horizons_ms": list(policy.no_trade_horizons_ms),
+        "policy_version": rules.policy_version,
+        "min_oos_trades": rules.min_oos_trades,
+        "min_oos_days": rules.min_oos_days,
+        "min_walkforward_windows": rules.min_walkforward_windows,
+        "min_trades_per_walkforward_window": rules.min_trades_per_walkforward_window,
+        "min_score_bucket_trades": rules.min_score_bucket_trades,
+        "positive_walkforward_fraction": str(rules.positive_walkforward_fraction),
+        "bootstrap_confidence": str(rules.bootstrap_confidence),
+        "bootstrap_block_days": rules.bootstrap_block_days,
+        "bootstrap_resamples": rules.bootstrap_resamples,
+        "split_embargo_ms": rules.split_embargo_ms,
+        "no_trade_horizons_ms": list(rules.no_trade_horizons_ms),
     }
+
+
+def _persist_empty_replay(journal_path: Path) -> ReplayManifest:
+    manifest = ReplayManifest(
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        start_ms=0,
+        end_ms=100_000,
+        segments=(
+            SourceSegment(
+                relative_path="events/empty.jsonl",
+                partition="events/2026-08-24/l2book/SOL",
+                sha256="a" * 64,
+                byte_count=1,
+                row_count=1,
+                schema_version=1,
+                first_available_at_ms=0,
+                last_available_at_ms=100_000,
+            ),
+        ),
+        gap_refs=(),
+        code_revision="phase9-cli-source",
+        config_digest="c" * 64,
+        feature_version="phase4-v1",
+        strategy_version="phase5-v1",
+        risk_version="phase6-v1",
+        execution_config_version="phase7-v1",
+        fee_schedule_id="native-taker-v1",
+        replay_engine_version="phase8-v1",
+        dataset_manifest_id=None,
+    )
+    journal = JournalStore(journal_path)
+    journal.record_manifest(manifest)
+    journal.begin_run(manifest.manifest_id, "run-a")
+    journal.finish_run(
+        ReplayResult(
+            manifest_id=manifest.manifest_id,
+            run_id="run-a",
+            evidence_class=EvidenceClass.MICROSTRUCTURE,
+            start_ms=0,
+            end_ms=100_000,
+            processed_events=1,
+            processed_gaps=0,
+            strategy_decisions=0,
+            risk_approvals=0,
+            risk_rejections=0,
+            execution_attempts=0,
+            fills=0,
+            opened_positions=0,
+            closed_positions=0,
+            journal_observations=0,
+            closed_trade_ids=(),
+            final_account_state_id="account-final",
+            data_complete=True,
+        )
+    )
+    journal.close()
+    return manifest
 
 
 def test_phase9_parser_requires_explicit_local_inputs() -> None:
@@ -149,6 +212,29 @@ def test_phase9_parser_requires_explicit_local_inputs() -> None:
             )
 
 
+def test_freeze_evaluation_dataset_uses_existing_replay_lineage(tmp_path: Path) -> None:
+    journal_path = tmp_path / "journal.sqlite3"
+    facts_path = tmp_path / "facts.sqlite3"
+    source = _persist_empty_replay(journal_path)
+
+    payload = cli.freeze_evaluation_dataset_payload(
+        journal_path,
+        facts_path,
+        ("run-a",),
+    )
+
+    assert payload["dataset_manifest_id"]
+    assert payload["source_run_ids"] == ["run-a"]
+    assert payload["code_revision"] == source.code_revision
+    assert payload["trade_count"] == 0
+    assert payload["excluded_trade_count"] == 0
+    assert payload["network_access"] is False
+
+    store = EvaluationFactStore(facts_path)
+    assert store.load_dataset_manifest(str(payload["dataset_manifest_id"])) is not None
+    store.close()
+
+
 def test_freeze_evaluation_splits_persists_canonical_split(tmp_path: Path) -> None:
     facts_path = tmp_path / "facts.sqlite3"
     store = EvaluationFactStore(facts_path)
@@ -187,6 +273,98 @@ def test_freeze_evaluation_splits_persists_canonical_split(tmp_path: Path) -> No
     reopened.close()
     assert row is not None
     assert json.loads(str(row[0]))["policy_id"] == EvaluationPolicy().policy_id
+
+
+def test_evaluate_command_runs_only_from_frozen_local_specs(tmp_path: Path) -> None:
+    journal_path = tmp_path / "journal.sqlite3"
+    facts_path = tmp_path / "facts.sqlite3"
+    _persist_empty_replay(journal_path)
+    dataset_payload = cli.freeze_evaluation_dataset_payload(
+        journal_path,
+        facts_path,
+        ("run-a",),
+    )
+    dataset_id = str(dataset_payload["dataset_manifest_id"])
+    policy = EvaluationPolicy(
+        min_oos_trades=1,
+        min_oos_days=1,
+        min_walkforward_windows=1,
+        min_trades_per_walkforward_window=1,
+        min_score_bucket_trades=1,
+        bootstrap_block_days=1,
+        bootstrap_resamples=20,
+        split_embargo_ms=0,
+    )
+    split_spec_path = tmp_path / "split.json"
+    split_spec_path.write_text(
+        json.dumps(
+            {
+                "policy": _policy_payload(policy),
+                "train": {"start_ms": 0, "end_ms": 30_000},
+                "validation": {"start_ms": 30_000, "end_ms": 60_000},
+                "test": {"start_ms": 60_000, "end_ms": 100_000},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    split_payload = cli.freeze_evaluation_splits_payload(
+        facts_path,
+        dataset_id,
+        split_spec_path,
+    )
+    candidate_spec = tmp_path / "candidate.json"
+    candidate_spec.write_text(
+        json.dumps(
+            {
+                "policy": _policy_payload(policy),
+                "candidates": [
+                    {
+                        "name": "baseline",
+                        "strategy_version": "phase5-v1",
+                        "risk_version": "phase6-v1",
+                        "execution_config_version": "phase7-v1",
+                        "code_revision": "phase9-cli-source",
+                        "config_digest": "c" * 64,
+                    }
+                ],
+                "sensitivity_profile_ids": ["base", "combined_stress"],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    walkforward_spec = tmp_path / "walkforward.json"
+    walkforward_spec.write_text(
+        json.dumps(
+            {
+                "first_window_start_ms": 0,
+                "development_duration_ms": 30_000,
+                "validation_duration_ms": 30_000,
+                "evaluation_duration_ms": 40_000,
+                "step_ms": 40_000,
+                "embargo_ms": 0,
+                "expanding": True,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    payload = cli.evaluate_payload(
+        journal_path,
+        facts_path,
+        dataset_id,
+        str(split_payload["split_manifest_id"]),
+        candidate_spec,
+        walkforward_spec,
+    )
+
+    assert payload["edge_status"] == "insufficient_evidence"
+    assert payload["oos_status"] == "untouched"
+    assert payload["test_trade_count"] == 0
+    assert payload["promotion_preview"]["preview_only"] is True
+    assert payload["network_access"] is False
 
 
 def test_evaluation_summary_exposes_status_digest_counts_and_preview() -> None:
