@@ -101,6 +101,8 @@ def plan_reduce_only_order(
     instrument: InstrumentExecutionSpec,
     config: PaperExecutionConfig,
     *,
+    originating_risk_decision_id: str | None = None,
+    originating_strategy_decision_id: str | None = None,
     reference_price: Decimal,
     created_at_ms: int,
 ) -> PaperOrderPlan | PlanningRejection:
@@ -126,6 +128,16 @@ def plan_reduce_only_order(
         return PlanningRejection("FUTURE_INSTRUMENT_METADATA")
     if action.quantity is None or action.quantity <= ZERO:
         return PlanningRejection("INVALID_REDUCTION_QUANTITY")
+    if originating_risk_decision_id is not None:
+        if not originating_risk_decision_id.strip():
+            return PlanningRejection("ORIGINATING_RISK_DECISION_MISSING")
+        if originating_risk_decision_id != position.initial_risk_decision_id:
+            return PlanningRejection("ORIGINATING_RISK_DECISION_MISMATCH")
+    if (
+        originating_strategy_decision_id is not None
+        and not originating_strategy_decision_id.strip()
+    ):
+        return PlanningRejection("ORIGINATING_STRATEGY_DECISION_MISSING")
 
     with localcontext(AUTHORITATIVE_CONTEXT):
         target_quantity = min(action.quantity, position.quantity)
@@ -136,11 +148,19 @@ def plan_reduce_only_order(
         notional_ceiling = quantity * reference_price * (ONE + slippage_fraction)
 
     side = OrderSide.SELL if position.side is PositionSide.LONG else OrderSide.BUY
+    risk_decision_id = (
+        originating_risk_decision_id
+        if originating_risk_decision_id is not None
+        else f"reduce-only:{position.opening_plan_id}"
+    )
+    strategy_decision_id = (
+        originating_strategy_decision_id
+        if originating_strategy_decision_id is not None
+        else f"position-action:{action.action_type.value}:{action.timestamp_ms}"
+    )
     return PaperOrderPlan(
-        risk_decision_id=f"reduce-only:{position.opening_plan_id}",
-        strategy_decision_id=(
-            f"position-action:{action.action_type.value}:{action.timestamp_ms}"
-        ),
+        risk_decision_id=risk_decision_id,
+        strategy_decision_id=strategy_decision_id,
         market=position.market,
         side=side,
         requested_quantity=quantity,

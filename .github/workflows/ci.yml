@@ -19,3 +19,19 @@ jobs:
       - run: python -m ruff check src tests scripts
       - run: python -m mypy src
       - run: python -m pytest -q
+
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev,research]"
+      - run: >-
+          python -m pytest
+          tests/test_replay_compaction.py
+          tests/test_parquet_replay_source.py
+          -q

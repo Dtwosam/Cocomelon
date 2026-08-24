@@ -24,6 +24,7 @@ from cocomelon.execution.interface import (
     PositionManagement,
 )
 from cocomelon.execution.ioc import simulate_ioc
+from cocomelon.execution.lineage import load_plan_lineage
 from cocomelon.execution.manager import evaluate_position
 from cocomelon.execution.planner import (
     PlanningRejection,
@@ -211,11 +212,32 @@ class PaperExecutionAdapter:
                 account=self._account,
             )
 
+        try:
+            lineage = load_plan_lineage(self.store, position.opening_plan_id)
+        except ValueError:
+            return PositionManagement(
+                action=action,
+                plan=None,
+                rejection=PlanningRejection("OPENING_PLAN_LINEAGE_UNREADABLE"),
+                simulation=None,
+                account=self._account,
+            )
+        if lineage is None:
+            return PositionManagement(
+                action=action,
+                plan=None,
+                rejection=PlanningRejection("OPENING_PLAN_LINEAGE_MISSING"),
+                simulation=None,
+                account=self._account,
+            )
+        originating_risk_decision_id, originating_strategy_decision_id = lineage
         planned = plan_reduce_only_order(
             position,
             action,
             instrument,
             self._config,
+            originating_risk_decision_id=originating_risk_decision_id,
+            originating_strategy_decision_id=originating_strategy_decision_id,
             reference_price=reference_price,
             created_at_ms=timestamp_ms,
         )

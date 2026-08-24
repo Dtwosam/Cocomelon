@@ -17,6 +17,9 @@ dev = [
   "ruff>=0.12,<1",
   "mypy>=1.14,<2",
 ]
+research = [
+  "pyarrow>=25,<26",
+]
 
 [project.scripts]
 cocomelon = "cocomelon.cli:main"
