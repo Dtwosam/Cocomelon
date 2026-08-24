@@ -8,6 +8,7 @@ import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -27,7 +28,10 @@ from cocomelon.evaluation.cli_support import (
     inspect_evaluation_payload,
     run_evaluation,
 )
-from cocomelon.evidence.cli_support import record_mainnet_evidence_payload
+from cocomelon.evidence.cli_support import (
+    freeze_baseline_replay_payload,
+    record_mainnet_evidence_payload,
+)
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.hyperliquid.client import InfoClient
@@ -576,6 +580,11 @@ def build_parser() -> argparse.ArgumentParser:
     compact.add_argument("--root", required=True, type=Path)
     compact.add_argument("--out", required=True, type=Path)
 
+    freeze_baseline = subparsers.add_parser("freeze-baseline-replay")
+    freeze_baseline.add_argument("--root", required=True, type=Path)
+    freeze_baseline.add_argument("--out", required=True, type=Path)
+    freeze_baseline.add_argument("--starting-cash", type=Decimal, default=Decimal("10000"))
+
     replay = subparsers.add_parser("replay")
     replay.add_argument("--manifest", required=True, type=Path)
     replay.add_argument("--journal", required=True, type=Path)
@@ -615,6 +624,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         payload: dict[str, object] = validate_recording_payload(args.root)
     elif args.command == "compact-recording":
         payload = compact_recording_payload(args.root, args.out)
+    elif args.command == "freeze-baseline-replay":
+        payload = freeze_baseline_replay_payload(
+            args.root,
+            args.out,
+            args.starting_cash,
+        )
     elif args.command == "replay":
         payload = replay_payload(args.manifest, args.journal)
     elif args.command == "inspect-journal":
