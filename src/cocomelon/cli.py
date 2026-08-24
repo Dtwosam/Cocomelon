@@ -20,6 +20,13 @@ from cocomelon.domain.features import (
 from cocomelon.domain.market import MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceRecordKind, SourceSegment
 from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.evaluation.cli_support import (
+    evaluation_result_payload,
+    freeze_evaluation_dataset_payload,
+    freeze_evaluation_splits_payload,
+    inspect_evaluation_payload,
+    run_evaluation,
+)
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.hyperliquid.client import InfoClient
@@ -512,6 +519,25 @@ def inspect_journal_payload(
     return {str(key): value for key, value in payload.items()}
 
 
+def evaluate_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    dataset_id: str,
+    split_id: str,
+    candidate_spec_path: str | Path,
+    walkforward_spec_path: str | Path,
+) -> dict[str, object]:
+    result = run_evaluation(
+        journal_path,
+        facts_path,
+        dataset_id,
+        split_id,
+        candidate_spec_path,
+        walkforward_spec_path,
+    )
+    return evaluation_result_payload(result)
+
+
 def _scan_limit(value: str) -> int:
     try:
         resolved = int(value)
@@ -551,6 +577,28 @@ def build_parser() -> argparse.ArgumentParser:
     inspect = subparsers.add_parser("inspect-journal")
     inspect.add_argument("--journal", required=True, type=Path)
     inspect.add_argument("--trade-id", required=True)
+
+    freeze_dataset = subparsers.add_parser("freeze-evaluation-dataset")
+    freeze_dataset.add_argument("--journal", required=True, type=Path)
+    freeze_dataset.add_argument("--facts", required=True, type=Path)
+    freeze_dataset.add_argument("--run-id", required=True, action="append")
+
+    freeze_splits = subparsers.add_parser("freeze-evaluation-splits")
+    freeze_splits.add_argument("--facts", required=True, type=Path)
+    freeze_splits.add_argument("--dataset-id", required=True)
+    freeze_splits.add_argument("--spec", required=True, type=Path)
+
+    evaluate = subparsers.add_parser("evaluate")
+    evaluate.add_argument("--journal", required=True, type=Path)
+    evaluate.add_argument("--facts", required=True, type=Path)
+    evaluate.add_argument("--dataset-id", required=True)
+    evaluate.add_argument("--split-id", required=True)
+    evaluate.add_argument("--candidate-spec", required=True, type=Path)
+    evaluate.add_argument("--walkforward-spec", required=True, type=Path)
+
+    inspect_evaluation = subparsers.add_parser("inspect-evaluation")
+    inspect_evaluation.add_argument("--facts", required=True, type=Path)
+    inspect_evaluation.add_argument("--evaluation-id", required=True)
     return parser
 
 
@@ -565,6 +613,25 @@ def main(argv: Sequence[str] | None = None) -> None:
         payload = replay_payload(args.manifest, args.journal)
     elif args.command == "inspect-journal":
         payload = inspect_journal_payload(args.journal, args.trade_id)
+    elif args.command == "freeze-evaluation-dataset":
+        payload = freeze_evaluation_dataset_payload(
+            args.journal,
+            args.facts,
+            tuple(args.run_id),
+        )
+    elif args.command == "freeze-evaluation-splits":
+        payload = freeze_evaluation_splits_payload(args.facts, args.dataset_id, args.spec)
+    elif args.command == "evaluate":
+        payload = evaluate_payload(
+            args.journal,
+            args.facts,
+            args.dataset_id,
+            args.split_id,
+            args.candidate_spec,
+            args.walkforward_spec,
+        )
+    elif args.command == "inspect-evaluation":
+        payload = inspect_evaluation_payload(args.facts, args.evaluation_id)
     else:
         settings = Settings.from_env()
         if args.command == "status":
