@@ -95,7 +95,11 @@ def _quantity_at(
 ) -> Decimal:
     with localcontext(AUTHORITATIVE_CONTEXT):
         reduced = sum(
-            (quantity for timestamp_ms, quantity in reductions if timestamp_ms < record.available_at_ms),
+            (
+                quantity
+                for timestamp_ms, quantity in reductions
+                if timestamp_ms < record.available_at_ms
+            ),
             ZERO,
         )
         remaining = opened_quantity - reduced
