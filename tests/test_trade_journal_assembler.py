@@ -47,20 +47,37 @@ def opening_plan() -> PaperOrderPlan:
 
 
 def exit_plan(opening: PaperOrderPlan) -> PaperOrderPlan:
+    return partial_exit_plan(
+        opening,
+        quantity="10",
+        created_at_ms=1_900,
+        earliest_execution_ms=2_000,
+        reference_price="102.2",
+    )
+
+
+def partial_exit_plan(
+    opening: PaperOrderPlan,
+    *,
+    quantity: str,
+    created_at_ms: int,
+    earliest_execution_ms: int,
+    reference_price: str,
+) -> PaperOrderPlan:
     return PaperOrderPlan(
         risk_decision_id=opening.risk_decision_id,
         strategy_decision_id=opening.strategy_decision_id,
         market=MARKET,
         side=OrderSide.SELL,
-        requested_quantity=Decimal("10"),
+        requested_quantity=Decimal(quantity),
         order_type=OrderType.MARKETABLE_IOC,
         reduce_only=True,
-        execution_reference_price=Decimal("102.2"),
+        execution_reference_price=Decimal(reference_price),
         max_slippage_bps=Decimal("25"),
         stop_price=None,
         approved_notional_ceiling=Decimal("1100"),
-        created_at_ms=1_900,
-        earliest_execution_ms=2_000,
+        created_at_ms=created_at_ms,
+        earliest_execution_ms=earliest_execution_ms,
         execution_config_version="phase7-v1",
         instrument_metadata_received_at_ms=800,
     )
@@ -93,7 +110,7 @@ def fill(
     fee: str,
     ts: int,
 ) -> PaperFill:
-    quantity = Decimal("10")
+    quantity = plan.requested_quantity
     px = Decimal(price)
     return PaperFill(
         plan_id=plan.plan_id,
@@ -169,6 +186,77 @@ def lifecycle() -> TradeLifecycleInput:
     )
 
 
+def partial_reduction_lifecycle() -> TradeLifecycleInput:
+    open_plan = opening_plan()
+    first_exit = partial_exit_plan(
+        open_plan,
+        quantity="6",
+        created_at_ms=1_400,
+        earliest_execution_ms=1_500,
+        reference_price="102.2",
+    )
+    final_exit = partial_exit_plan(
+        open_plan,
+        quantity="4",
+        created_at_ms=1_900,
+        earliest_execution_ms=2_000,
+        reference_price="102.2",
+    )
+    open_attempt = attempt(open_plan, "100", 1_000, "open")
+    first_attempt = attempt(first_exit, "102", 1_500, "partial")
+    final_attempt = attempt(final_exit, "102", 2_000, "final")
+    funding = FundingAccrual(
+        market=MARKET,
+        boundary_ms=1_300,
+        position_id="position-1",
+        signed_quantity=Decimal("10"),
+        oracle_price=Decimal("100"),
+        funding_rate=Decimal("0.0001"),
+        cash_delta=Decimal("-0.1"),
+        oracle_event_key="ctx:1300",
+        funding_source="hyperliquid-mainnet-rest",
+        funding_received_at_ms=1_350,
+    )
+    return TradeLifecycleInput(
+        feature_snapshot_id="feature-1",
+        opening_plan=open_plan,
+        opening_attempt=open_attempt,
+        exit_plans=(first_exit, final_exit),
+        exit_attempts=(first_attempt, final_attempt),
+        fills=(
+            fill(open_plan, open_attempt, "100", "0.45", 1_000),
+            fill(first_exit, first_attempt, "102", "0.2754", 1_500),
+            fill(final_exit, final_attempt, "102", "0.1836", 2_000),
+        ),
+        position_actions=(
+            PositionAction(
+                action_type=PositionActionType.REDUCE,
+                market=MARKET,
+                quantity=Decimal("6"),
+                new_stop_price=None,
+                reason_codes=("EXPLICIT_VALIDATED_REDUCTION",),
+                timestamp_ms=1_450,
+            ),
+            PositionAction(
+                action_type=PositionActionType.EXIT_THESIS,
+                market=MARKET,
+                quantity=Decimal("4"),
+                new_stop_price=None,
+                reason_codes=("OPPOSING_THESIS",),
+                timestamp_ms=1_900,
+            ),
+        ),
+        funding_accruals=(funding,),
+        equity_before=Decimal("10000"),
+        equity_after=Decimal("10018.991"),
+        exit_reason="exit_thesis",
+        mark_observations=(mark(1_200, "98"), mark(1_800, "110")),
+        known_gap_intervals=(),
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        replay_run_id="run-1",
+    )
+
+
 def test_full_lifecycle_assembles_reconciled_trade_entry() -> None:
     result = assemble_trade_journal_entry(lifecycle())
 
@@ -181,6 +269,16 @@ def test_full_lifecycle_assembles_reconciled_trade_entry() -> None:
     assert result.net_r == Decimal("0.75964")
     assert result.funding_event_ids
     assert result.position_action_ids
+
+
+def test_partial_reduction_excursion_currency_uses_remaining_quantity() -> None:
+    result = assemble_trade_journal_entry(partial_reduction_lifecycle())
+
+    assert not isinstance(result, JournalInconsistency)
+    assert result.mfe is not None and result.mfe.price == Decimal("110")
+    assert result.mfe.currency == Decimal("40")
+    assert result.mfe.r_multiple == Decimal("1.6")
+    assert result.mae is not None and result.mae.currency == Decimal("20")
 
 
 def test_mismatched_fill_market_returns_structured_inconsistency() -> None:
