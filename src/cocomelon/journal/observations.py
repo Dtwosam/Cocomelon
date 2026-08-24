@@ -7,6 +7,7 @@ from cocomelon.domain.execution import ExecutionAttempt, PositionAction
 from cocomelon.domain.journal import JournalObservation, ObservationKind
 from cocomelon.domain.risk import RiskDecision
 from cocomelon.domain.strategy import StrategyDecision
+from cocomelon.execution.accounting import PaperAccountState
 from cocomelon.execution.funding import FundingAccrual, FundingGap
 
 
@@ -118,6 +119,28 @@ def observation_from_position_action(
         position_action_id=_position_action_id(action),
         account_state_id=None,
         reason_codes=action.reason_codes,
+        health_refs=(),
+        replay_run_id=replay_run_id,
+    )
+
+
+def observation_from_account_state(
+    account: PaperAccountState,
+    *,
+    replay_run_id: str | None,
+) -> JournalObservation:
+    return JournalObservation(
+        kind=ObservationKind.ACCOUNT_STATE,
+        timestamp_ms=account.updated_at_ms,
+        market=None,
+        feature_snapshot_id=None,
+        strategy_decision_id=None,
+        risk_decision_id=None,
+        plan_id=None,
+        attempt_id=None,
+        position_action_id=None,
+        account_state_id=account.state_id,
+        reason_codes=(),
         health_refs=(),
         replay_run_id=replay_run_id,
     )
