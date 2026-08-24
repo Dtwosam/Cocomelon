@@ -5,12 +5,6 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from cocomelon.evidence.openings import (
-    BaselineOpeningEngine,
-    conservative_cost_estimate,
-    paper_liquidation_surrogate,
-)
-
 from cocomelon.domain.execution import ExecutionResult, PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -25,6 +19,11 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
+from cocomelon.evidence.openings import (
+    BaselineOpeningEngine,
+    conservative_cost_estimate,
+    paper_liquidation_surrogate,
+)
 from cocomelon.execution.paper import PaperExecutionAdapter
 
 EVALUATED_AT_MS = 2_000_000
