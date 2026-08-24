@@ -315,3 +315,55 @@ def test_mainnet_aggregation_rejects_metadata_replay_digest_mismatch(
 
     assert not (target / "journal.sqlite3").exists()
     assert not (target / "facts.sqlite3").exists()
+
+
+def test_mainnet_aggregation_is_idempotent_with_verified_attestation(tmp_path: Path) -> None:
+    module = _module()
+    source, replay_result = _write_cohort(tmp_path / "artifact-a", complete=True)
+    target = tmp_path / "aggregate"
+
+    first = module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source,),
+    )
+    first_attestation = (target / "mainnet-attestation.json").read_bytes()
+    second = module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source,),
+    )
+
+    assert first.run_ids == second.run_ids == (replay_result.run_id,)
+    assert (target / "mainnet-attestation.json").read_bytes() == first_attestation
+
+
+def test_mainnet_dataset_freeze_requires_exact_attested_run_set(tmp_path: Path) -> None:
+    module = _module()
+    source, replay_result = _write_cohort(tmp_path / "artifact-a", complete=True)
+    target = tmp_path / "aggregate"
+    module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source,),
+    )
+
+    payload = module.freeze_mainnet_evaluation_dataset_payload(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (replay_result.run_id,),
+    )
+
+    assert payload["source_run_ids"] == [replay_result.run_id]
+    assert payload["data_complete"] is True
+    assert payload["gap_refs"] == []
+    assert payload["real_evidence_eligible"] is True
+    assert payload["evidence_kind"] == "genuine_public_hyperliquid_mainnet"
+    assert len(payload["mainnet_attestation_id"]) == 64
+
+    with pytest.raises(module.MainnetEvidenceError, match="exact attested run set"):
+        module.freeze_mainnet_evaluation_dataset_payload(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            ("unattested-run",),
+        )
