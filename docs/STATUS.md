@@ -6,48 +6,69 @@
 
 ## Current state
 
-**Last completed phase:** Phase 8 — deterministic journal, replay/backtesting, and offline analytical compaction  
-**Integration state:** MERGED into `main`  
-**Phase 8 PR:** #10  
-**Phase 8 final PR head:** `83454520fa652533c47688f6ab14c0d1fb19473f`  
+**Last completed/merged phase:** Phase 8 — deterministic journal, replay/backtesting, and offline analytical compaction  
 **Phase 8 merge commit:** `f7f37044997e13b3ffe91edd312756862343782b`  
-**Final PR-head CI:** `32713492047` — SUCCESS  
-**Core test job:** `97389733152` — SUCCESS  
-**Research job:** `97389733315` — SUCCESS  
+**Active implementation:** Phase 9 — evaluation, untouched OOS, walk-forward research gates  
+**Phase 9 PR:** #13 — closeout, not merged yet  
+**Phase 9 verified implementation head:** `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36`  
+**Verified implementation CI:** `32724357068` — SUCCESS  
+**Core job:** `97422236894` — SUCCESS  
+**Research job:** `97422237092` — SUCCESS  
 **Python:** `3.12.14`  
-**Active next phase:** Phase 9 — evaluation, untouched OOS, walk-forward research gates  
+**Real baseline evidence status:** **UNMEASURED** — no connector-accessible persisted real recording/journal corpus is available in the repository  
+**Phase 10:** BLOCKED pending a real Phase 9 baseline evaluation  
 **Live trading:** DISABLED
 
-## Phase 8 established
+## Phase 9 implementation established
 
-Phase 8 makes Phase 4-7 decisions and paper-trading outcomes reproducible from trusted Hyperliquid mainnet evidence without adding exchange-write capability.
+Phase 9 adds deterministic, fail-closed research gates around trusted Phase 8 replay/journal outputs. It does not add exchange-write, ML-training, or parameter-search capability.
 
-Implemented:
+Implemented and verified:
 
-- immutable deterministic journal/replay contracts, canonical semantic IDs, and fixed-precision Decimal financial semantics;
-- strict validation of recorder JSONL with exact byte SHA-256, row counts, partition/schema identity, availability windows, and corruption/duplicate rejection;
-- frozen replay manifests with exact source hashes plus code/config/schema/version provenance;
-- deterministic replay clock ordered by evidence availability, with explicit lookahead regressions;
-- mechanical separation of `CANDLE_CONTEXT` and `MICROSTRUCTURE` evidence classes; candle data cannot satisfy L2/trade requirements and is never converted into synthetic order flow;
-- restart-safe SQLite `JournalStore` for immutable observations, closed trades, references, replay manifests/runs, and compaction provenance;
-- lifecycle reconciliation across strategy/risk, plan/attempt/fill lineage, market/side semantics, position actions, funding, close-to-zero quantity, equity, and PnL;
-- trade analytics for gross/net PnL, fees, public funding, net R, signed entry/exit slippage amounts and fractions, holding duration, and mark-grounded MFE/MAE;
-- quantity-aware MFE/MAE currency attribution after partial reductions;
-- multi-exit slippage attribution using each exit plan's actual execution reference;
-- deterministic `ReplayEngine` around existing Phase 5 strategy, Phase 6 risk, and Phase 7 paper-execution boundaries rather than duplicate trading formulas;
-- deterministic LONG/SHORT Phase 5->8 replay plus NO_TRADE/risk-reject/no-fill zero-exposure regressions;
-- optional PyArrow genuine-Parquet compaction behind the `research` extra only;
-- JSONL/Parquet canonical replay equivalence, source/output hash validation, and derived-file corruption rejection;
-- offline recording-validation, compaction, frozen-manifest replay, and read-only journal-inspection commands;
-- executable Phase 8 boundaries excluding testnet, replay network/live exchange clients, wallet/private-key/signing/withdraw/transfer capability, private user/account data, ML/parameter-optimization leakage, and candle-derived microstructure.
+- immutable Phase 9 domain contracts with canonical dataset, split, candidate, policy, metric, confidence, walk-forward, promotion-preview, and evaluation identities;
+- typed, restart-safe Phase 8 journal accessors plus a separate immutable evaluation fact/result SQLite store;
+- exact trade/journal/decision/equity reconciliation with structured exclusion reasons instead of silent inclusion;
+- provenance-complete evaluation datasets tied to replay manifest IDs, replay result digests, evidence class, code revision, gap references, and completeness;
+- time-based train/validation/test partitions with full-lifecycle containment and a fixed six-hour purge/embargo boundary;
+- mechanical untouched-OOS consumption: same candidate/policy can reproduce, changed candidate/policy after reveal becomes `OOS_CONTAMINATED`;
+- deterministic cost-aware performance metrics including net R/PnL, fees, funding, signed slippage, win/loss statistics, profit factor, tail metrics, holding duration, realized/account drawdown, and concentration;
+- deterministic day-block bootstrap confidence intervals for mean net R;
+- anchored expanding/rolling walk-forward evaluation with minimum-trade readiness and future-sample isolation;
+- market/strategy/regime/direction/time/score-bucket slices and concentration diagnostics;
+- exactly predeclared cost-stress profiles (`base`, `fees_1_25x`, `adverse_slippage_1_50x`, `adverse_funding_1_50x`, `combined_stress`) with no best-profile search;
+- lookahead-safe sampled `NO_TRADE` missed-opportunity diagnostics using genuine marks only, never hypothetical fills or PnL;
+- five honest evaluation states: `INVALID_EVIDENCE`, `OOS_CONTAMINATED`, `INSUFFICIENT_EVIDENCE`, `NO_EDGE_DEMONSTRATED`, `CANDIDATE_EDGE`;
+- anti-lucky-window edge gates requiring positive test mean net R, positive bootstrap lower bound, positive/stable walk-forward behavior, market positive-PnL concentration <=35%, and seven-day concentration <=50%;
+- a read-only promotion preview for the later 500-trade/45-day/PF-1.20/drawdown-8%/concentration/invariant gates; preview cannot authorize execution;
+- restart-idempotent evaluation result persistence and one-way OOS consumption binding;
+- offline operator commands to freeze datasets/splits, evaluate a frozen candidate, and inspect a persisted evaluation without loading network settings;
+- synthetic closed-outcome fixtures that prove statistical status behavior but are explicitly not historical Hyperliquid performance evidence;
+- a genuine small Phase 8 `ReplayEngine` -> Phase 9 fact/dataset integration test proving replay digest preservation and exact typed lineage;
+- executable Phase 9 boundaries excluding testnet, Hyperliquid/network clients inside evaluation code, wallet/private-key/signing/transfer/withdrawal/live-order capability, ML libraries/training, optimizer/search helpers, and candle-derived book construction;
+- Phase 8 optional PyArrow research compaction/replay regression remains green and PyArrow remains outside core dependencies.
 
-## Phase 8 final verification and merge evidence
+## Phase 9 versioned research policy
 
-Final PR head `83454520fa652533c47688f6ab14c0d1fb19473f`:
+The Phase 9 V1 evaluation policy is a versioned research policy, not a profitability claim:
 
-- CI run `32713492047` — SUCCESS;
-- core job `97389733152` — SUCCESS;
-- research job `97389733315` — SUCCESS;
+- minimum untouched OOS trades: 100;
+- minimum OOS covered days: 30;
+- minimum eligible walk-forward windows: 3;
+- minimum trades per walk-forward window: 20;
+- minimum score-bucket trades: 20;
+- minimum positive walk-forward-window fraction: 60%;
+- bootstrap confidence: 95%;
+- day-block bootstrap size: 5 days;
+- bootstrap resamples: 2,000;
+- split embargo: 6 hours;
+- sampled `NO_TRADE` horizons: 1 hour and 4 hours.
+
+`CANDIDATE_EDGE` additionally requires positive test mean net R, confidence lower bound >0, positive aggregate eligible walk-forward mean, and the 35% market / 50% seven-day concentration limits.
+
+## Phase 9 verification evidence
+
+Verified implementation head `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36` passed CI run `32724357068`:
+
 - Python `3.12.14`;
 - editable `[dev]` install — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
@@ -55,16 +76,30 @@ Final PR head `83454520fa652533c47688f6ab14c0d1fb19473f`:
 - `python -m mypy src` — PASS;
 - full `python -m pytest -q` — PASS;
 - editable `[dev,research]` install — PASS;
-- `python -m pytest tests/test_replay_compaction.py tests/test_parquet_replay_source.py -q` — PASS;
-- PR #10 had no comments or review threads;
-- PR #10 was mergeable and the branch was `behind_by = 0` before merge;
-- changed-file audit was confined to Phase 8 implementation, tests, CI/research dependency, CLI, continuity docs, and Phase 8 spec/plan;
-- guarded merge used exact expected head `83454520fa652533c47688f6ab14c0d1fb19473f`;
-- GitHub returned merge commit `f7f37044997e13b3ffe91edd312756862343782b`;
-- `main` was verified immediately at that exact merge SHA;
-- post-merge comparison showed `main` ahead of `phase-8-journal-replay` by exactly one merge commit with an empty file diff.
+- `python -m pytest tests/test_replay_compaction.py tests/test_parquet_replay_source.py -q` — PASS.
 
-A post-merge continuity-doc commit updates this status; its own push CI must also remain green before Phase 9 implementation work begins.
+PR audit at that head:
+
+- PR #13 is mergeable;
+- feature branch is `behind_by = 0` from `main`;
+- 37 changed files are confined to the Phase 9 spec/plan, evaluation contracts/modules, offline CLI, Phase 8 read-only journal accessors, and Phase 9 tests;
+- no dependency change was made to `pyproject.toml`;
+- no PR comments, review submissions, or review threads exist;
+- boundary tests mechanically reject hidden network/live/order/wallet/ML/optimizer/candle-to-book capabilities.
+
+A final exact-head CI run is still required after these continuity-doc changes before guarded merge.
+
+## Real baseline evidence status
+
+The repository does **not** contain a connector-accessible persisted real mainnet replay/journal corpus to evaluate. The tracked root contains source, docs, tests, and configuration only; `.gitignore` excludes `data/`, `logs/`, `*.sqlite`, and `*.sqlite3`.
+
+Therefore Phase 9 does **not** claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any historical profitability result for the real baseline. The honest state is:
+
+**REAL BASELINE EDGE: UNMEASURED**
+
+The 120-trade positive/weak fixtures are statistical regression tests representing already-closed synthetic evaluation outcomes. They are not market-history or fill evidence and must never be presented as economic proof.
+
+Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 learning/champion-challenger work must not start merely because the evaluation software exists. The next research gate is to acquire/use genuine recorded mainnet paper/replay evidence and run the frozen Phase 9 evaluation. A real result may then honestly be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` as supported by the corpus.
 
 ## Completed phases
 
@@ -77,6 +112,7 @@ A post-merge continuity-doc commit updates this status; its own push CI must als
 - Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
 - Phase 7 — real-mainnet paper execution + position manager: MERGED at `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`.
 - Phase 8 — deterministic journal/replay/backtester + analytical compaction: MERGED at `f7f37044997e13b3ffe91edd312756862343782b`.
+- Phase 9 — implementation verified on PR #13; guarded merge pending final closeout-head CI and audit.
 
 ## Locked safety and product invariants
 
@@ -84,46 +120,28 @@ A post-merge continuity-doc commit updates this status; its own push CI must als
 - Market observations are Hyperliquid mainnet only.
 - Mainnet market-data endpoints remain `https://api.hyperliquid.xyz` and `wss://api.hyperliquid.xyz/ws`.
 - Default execution is paper/shadow and places no real exchange orders.
-- No live exchange adapter exists in the completed Phase 1-8 runtime.
-- No wallet/private-key signing, transfer, withdrawal, or private account/user subscription exists in paper/replay paths.
+- No live exchange adapter is enabled or authorized.
+- No wallet/private-key signing, transfer, withdrawal, or private account/user subscription exists in Phase 9 evaluation paths.
 - Whole-market discovery remains dynamic; eligibility is separate from ranking.
-- Explainable deterministic baselines remain first-class before ML; `NO_TRADE` is a valid outcome.
+- Explainable deterministic baselines remain first-class before ML; `NO_TRADE` is valid.
 - Strategy cannot size positions or send orders; independent risk has final veto.
 - Locked risk remains 0.25% planned account risk per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, 3% rolling weekly drawdown, and cooldown after three consecutive losing trades.
 - No averaging down, martingale, or stopless positions.
 - No historical L2/order flow may be fabricated from candles.
 - PyArrow remains optional research tooling only.
-- Real-money activation always requires explicit user authorization after later evidence gates pass.
-
-## Phase 9 objective
-
-Phase 9 is now the active design/spec phase. It must build rigorous evaluation gates around the deterministic Phase 8 replay outputs before any ML or long-running promotion.
-
-At minimum, Phase 9 must define and test:
-
-- trade-level and portfolio-level cost-aware performance statistics from valid Phase 8 journal/replay outputs;
-- untouched out-of-sample partitions whose boundaries are frozen before evaluation;
-- walk-forward evaluation with explicit train/calibration/evaluation windows and no future leakage;
-- regime, market, time-period, and concentration diagnostics rather than relying on aggregate win rate;
-- stability/sensitivity checks that detect fragile parameter dependence without silently optimizing on test data;
-- minimum sample-size and data-quality/evidence requirements before metrics can be called research-ready;
-- reproducible evaluation manifests/results with exact dataset/code/config provenance;
-- promotion gates that can reject weak strategies and preserve `NO_TRADE` rather than forcing activity;
-- explicit separation between Phase 9 evaluation and Phase 10 learning/ML.
-
-Do not begin Phase 10 ML, Phase 11 long-running shadow promotion, Phase 12 live-adapter construction, or any real-money execution early.
+- Real-money activation always requires explicit user authorization after all later promotion gates pass.
 
 ## Exact next action
 
-1. Verify post-merge continuity-doc push CI on `main`.
-2. Re-read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, and the merged Phase 8 contracts/results.
-3. Design the Phase 9 evaluation/OOS/walk-forward architecture.
-4. Write and review a Phase 9 design spec under `docs/superpowers/specs/`.
-5. Write a detailed Phase 9 TDD implementation plan under `docs/superpowers/plans/`.
-6. Implement Phase 9 on an isolated feature branch only after the spec/plan are coherent.
+1. Run exact-head CI on the Phase 9 closeout documentation head.
+2. Re-audit PR #13 mergeability, branch-behind state, changed files, comments/reviews/threads, and live/ML/optimizer boundaries.
+3. Mark PR #13 ready and merge with exact expected-head protection only if CI is green.
+4. Verify `main` at the returned merge SHA and require the feature-to-main file diff to be empty except for the merge commit.
+5. Reconcile this status and `docs/CHATGPT_PROJECT_SOURCE.md` on `main` with the actual merge SHA and final PR-head CI.
+6. Keep Phase 10 blocked until genuine recorded mainnet evidence has been evaluated through the frozen Phase 9 gate.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can discover, analyze, decide, independently risk-gate, paper-execute/manage, journal, and deterministically replay fake-capital outcomes against real Hyperliquid mainnet evidence. Phase 9 evaluates that behavior; it does not enable real-money order placement.
+Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, and now deterministically evaluate fake-capital outcomes against trusted evidence. It has not demonstrated a real economic edge in the connector-accessible environment, and it has no authority to place real-money orders.
