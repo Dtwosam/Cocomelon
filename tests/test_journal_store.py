@@ -4,9 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from cocomelon.domain.journal import JournalObservation, ObservationKind
+from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceSegment
+from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 
 MARKET = MarketId("", "SOL")
@@ -46,6 +47,46 @@ def funding_observation() -> JournalObservation:
         health_refs=("funding-history-mainnet",),
         replay_run_id="run-1",
         funding_event_id="funding-1",
+    )
+
+
+def trade_entry() -> TradeJournalEntry:
+    return TradeJournalEntry(
+        market=MARKET,
+        direction=Direction.LONG,
+        opened_at_ms=1_000,
+        closed_at_ms=2_000,
+        feature_snapshot_id="feature-1",
+        strategy_decision_id="strategy-1",
+        risk_decision_id="risk-1",
+        opening_plan_id="plan-open",
+        opening_attempt_id="attempt-open",
+        exit_plan_ids=("plan-close",),
+        exit_attempt_ids=("attempt-close",),
+        fill_ids=("fill-open", "fill-close"),
+        position_action_ids=("action-close",),
+        funding_event_ids=("funding-1",),
+        initial_stop=Decimal("95"),
+        initial_risk_amount=Decimal("25"),
+        entry_price=Decimal("100"),
+        exit_price=Decimal("102"),
+        filled_quantity=Decimal("10"),
+        gross_realized_pnl=Decimal("20"),
+        entry_fees=Decimal("0.45"),
+        exit_fees=Decimal("0.459"),
+        funding_cash_pnl=Decimal("-0.1"),
+        net_pnl=Decimal("18.991"),
+        entry_slippage_fraction=Decimal("0.001"),
+        exit_slippage_fraction=Decimal("0.002"),
+        mfe=None,
+        mae=None,
+        net_r=Decimal("0.75964"),
+        equity_before=Decimal("10000"),
+        equity_after=Decimal("10018.991"),
+        exit_reason="exit_thesis",
+        health_refs=("paper-state-healthy",),
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        replay_run_id="run-1",
     )
 
 
@@ -121,6 +162,18 @@ def test_funding_event_observation_round_trips_with_lineage(tmp_path: Path) -> N
 
     reopened = JournalStore(path)
     assert reopened.load_observation(item.observation_id) == item
+    reopened.close()
+
+
+def test_closed_trade_round_trips_after_restart(tmp_path: Path) -> None:
+    path = tmp_path / "journal.sqlite3"
+    item = trade_entry()
+    store = JournalStore(path)
+    store.record_trade(item)
+    store.close()
+
+    reopened = JournalStore(path)
+    assert reopened.load_trade(item.trade_id) == item
     reopened.close()
 
 
