@@ -11,13 +11,9 @@ from cocomelon.domain.market import (
 )
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyContext
-from cocomelon.evidence.baseline import (
-    BaselineDecisionEngine,
-    DecisionEpoch,
-    replay_record_candle,
-    replay_record_stream_event,
-)
+from cocomelon.evidence.baseline import replay_record_candle, replay_record_stream_event
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.epochs import BaselineDecisionEngine, DecisionEpoch
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.features.candles import calculate_candle_features
