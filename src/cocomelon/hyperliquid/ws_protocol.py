@@ -112,6 +112,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
     if channel == "allMids":
         mid_data = _mapping(message.get("data"), "data")
         mids = _mapping(mid_data.get("mids"), "mids")
+        receive_key = receive_time.isoformat(timespec="microseconds")
         mid_events: list[StreamEvent] = []
         for wire, value in mids.items():
             market = _market(wire)
@@ -124,7 +125,7 @@ def normalize_ws_message(raw: object, *, receive_time: datetime) -> list[StreamE
                     receive_time,
                     SCHEMA_VERSION,
                     SOURCE,
-                    f"allMids:{market.canonical}:{mid}",
+                    f"allMids:{market.canonical}:{receive_key}:{mid}",
                     {"mid_px": mid},
                 )
             )
