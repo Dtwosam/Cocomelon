@@ -73,8 +73,11 @@ def trade_entry(*, funding_event_ids: tuple[str, ...] = ("funding-1",)) -> Trade
         exit_fees=Decimal("0.459"),
         funding_cash_pnl=Decimal("-0.1"),
         net_pnl=Decimal("18.991"),
+        entry_slippage_amount=Decimal("1"),
+        exit_slippage_amount=Decimal("1.5"),
         entry_slippage_fraction=Decimal("0.001"),
         exit_slippage_fraction=Decimal("0.0015"),
+        holding_duration_ms=1_000,
         mfe=excursion("mfe", "103"),
         mae=excursion("mae", "98"),
         net_r=Decimal("0.75964"),
@@ -115,6 +118,25 @@ def test_trade_financial_values_must_be_finite_and_lifecycle_ordered() -> None:
 
     with pytest.raises(ValueError, match="net_pnl"):
         TradeJournalEntry(**{**trade_entry_kwargs(), "net_pnl": Decimal("NaN")})
+
+
+def test_trade_slippage_is_signed_and_holding_duration_must_reconcile() -> None:
+    favorable = TradeJournalEntry(
+        **{
+            **trade_entry_kwargs(),
+            "entry_slippage_amount": Decimal("-1"),
+            "exit_slippage_amount": Decimal("-2"),
+            "entry_slippage_fraction": Decimal("-0.001"),
+            "exit_slippage_fraction": Decimal("-0.002"),
+        }
+    )
+
+    assert favorable.entry_slippage_amount == Decimal("-1")
+    assert favorable.exit_slippage_fraction == Decimal("-0.002")
+    assert favorable.holding_duration_ms == 1_000
+
+    with pytest.raises(ValueError, match="holding_duration_ms"):
+        TradeJournalEntry(**{**trade_entry_kwargs(), "holding_duration_ms": 999})
 
 
 def test_excursion_requires_supported_kind_and_source_identity() -> None:
