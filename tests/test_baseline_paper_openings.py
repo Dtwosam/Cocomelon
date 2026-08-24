@@ -259,17 +259,13 @@ def test_epoch_candidates_execute_in_canonical_order_and_share_open_risk(
     )
     assert outcomes[0].risk_decision.approved is True
     assert outcomes[1].risk_decision.approved is True
-    assert (
-        "correlation_bucket" in outcomes[2].risk_decision.binding_caps
-        or outcomes[2].risk_decision.approved is False
-    )
-    total_planned_risk = sum(
-        (position.planned_risk for position in adapter.account.positions),
-        Decimal("0"),
-    )
-    assert total_planned_risk <= (
-        adapter.account.equity * config.risk_limits.correlation_bucket_risk_limit
-    )
+    assert outcomes[2].risk_decision.approved is False
+    assert outcomes[2].risk_decision.reason_codes == ("correlation_bucket_exhausted",)
+    assert outcomes[2].plan is None
+    assert outcomes[2].simulation is None
+    assert tuple(
+        position.market.canonical for position in adapter.account.positions
+    ) == ("BTC", "ETH")
     assert adapter.account.updated_at_ms == eligible_ms
     adapter.close()
 
