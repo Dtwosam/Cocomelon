@@ -4,10 +4,6 @@ from contextlib import nullcontext
 from decimal import ROUND_UP, Context, Decimal, localcontext
 
 import pytest
-
-from cocomelon.config import MAINNET_API_URL, MAINNET_WS_URL
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceSegment
 from cocomelon.evidence.contracts import (
     BaselineReplayConfig,
     EvidenceRecordingConfig,
@@ -16,6 +12,10 @@ from cocomelon.evidence.contracts import (
     SelectedEvidenceMarket,
     baseline_manifest_config_digest,
 )
+
+from cocomelon.config import MAINNET_API_URL, MAINNET_WS_URL
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceSegment
 
 
 def _selected(coin: str, rank: int, score: str = "50") -> SelectedEvidenceMarket:
@@ -227,7 +227,6 @@ def test_bundle_rejects_non_sha_provenance_digests() -> None:
 
 
 def test_contracts_do_not_depend_on_wall_clock() -> None:
-    # Constructing/digesting the same explicit payload repeatedly must stay pure.
     first = (_session().session_id, BaselineReplayConfig().config_digest)
     with nullcontext():
         second = (_session().session_id, BaselineReplayConfig().config_digest)
