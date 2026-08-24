@@ -11,12 +11,18 @@ from cocomelon.domain.evaluation import (
     DecisionEvaluationFact,
     EquityFactKind,
     EvaluationDatasetManifest,
+    EvaluationResult,
     ReplayEvaluationSource,
 )
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.evaluation.result_codec import (
+    EvaluationResultCodecError,
+    evaluation_result_from_payload,
+    evaluation_result_payload,
+)
 
 
 class EvaluationConsistencyError(RuntimeError):
@@ -547,6 +553,93 @@ class EvaluationFactStore:
                 "stored evaluation dataset manifest id does not match payload"
             )
         return result
+
+    def record_evaluation_result(self, result: EvaluationResult) -> None:
+        payload = self._canonical_json(evaluation_result_payload(result))
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            existing = self.connection.execute(
+                "SELECT payload_json FROM evaluation_results WHERE evaluation_id = ?",
+                (result.evaluation_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing[0] != payload:
+                    raise EvaluationConsistencyError(
+                        f"conflicting evaluation result: {result.evaluation_id}"
+                    )
+                self.connection.commit()
+                return
+            self.connection.execute(
+                "INSERT INTO evaluation_results(evaluation_id, payload_json) VALUES (?, ?)",
+                (result.evaluation_id, payload),
+            )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def load_evaluation_result(self, evaluation_id: str) -> EvaluationResult | None:
+        row = self.connection.execute(
+            "SELECT payload_json FROM evaluation_results WHERE evaluation_id = ?",
+            (evaluation_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            raw = json.loads(str(row[0]))
+            result = evaluation_result_from_payload(raw)
+        except (json.JSONDecodeError, EvaluationResultCodecError, TypeError, ValueError) as exc:
+            raise EvaluationConsistencyError("evaluation result payload is invalid") from exc
+        if result.evaluation_id != evaluation_id:
+            raise EvaluationConsistencyError(
+                "stored evaluation result id does not match canonical payload"
+            )
+        return result
+
+    def bind_oos_consumption(
+        self,
+        *,
+        test_partition_digest: str,
+        candidate_set_id: str,
+        policy_id: str,
+        evaluation_id: str,
+    ) -> None:
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            row = self.connection.execute(
+                """
+                SELECT candidate_set_id, policy_id, consumed_by_evaluation_id
+                FROM evaluation_oos_consumptions
+                WHERE test_partition_digest = ?
+                """,
+                (test_partition_digest,),
+            ).fetchone()
+            if row is None:
+                raise EvaluationConsistencyError(
+                    "cannot bind evaluation to missing OOS consumption"
+                )
+            if row[0] != candidate_set_id or row[1] != policy_id:
+                raise EvaluationConsistencyError(
+                    "cannot bind evaluation to conflicting OOS consumption"
+                )
+            existing_evaluation_id = row[2]
+            if existing_evaluation_id is not None and existing_evaluation_id != evaluation_id:
+                raise EvaluationConsistencyError(
+                    "OOS consumption is already bound to a different evaluation"
+                )
+            if existing_evaluation_id is None:
+                self.connection.execute(
+                    """
+                    UPDATE evaluation_oos_consumptions
+                    SET consumed_by_evaluation_id = ?
+                    WHERE test_partition_digest = ?
+                    """,
+                    (evaluation_id, test_partition_digest),
+                )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def close(self) -> None:
         self.connection.close()
