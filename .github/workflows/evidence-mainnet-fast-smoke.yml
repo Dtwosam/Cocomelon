@@ -1,0 +1,109 @@
+name: Genuine Mainnet Evidence Fast Smoke
+
+on:
+  pull_request:
+    branches:
+      - evidence-mainnet-smoke-fast-fixed-20260824
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-fast-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Record genuine public mainnet evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence-fast/output evidence-fast/recording
+          git rev-parse HEAD > evidence-fast/output/workflow-head.txt
+          cocomelon record-mainnet-evidence \
+            --root evidence-fast/recording \
+            --seconds 180 \
+            --deep-limit 3 \
+            > evidence-fast/output/record.json
+
+      - name: Validate and replay recorded evidence offline
+        run: |
+          set -euo pipefail
+          cocomelon validate-recording \
+            --root evidence-fast/recording \
+            > evidence-fast/output/validate.json
+          cocomelon freeze-baseline-replay \
+            --root evidence-fast/recording \
+            --out evidence-fast/output/bundle.json \
+            --starting-cash 10000 \
+            > evidence-fast/output/freeze.json
+          cocomelon run-baseline-replay \
+            --bundle evidence-fast/output/bundle.json \
+            --journal evidence-fast/output/journal.sqlite3 \
+            --execution evidence-fast/output/execution.sqlite3 \
+            --facts evidence-fast/output/facts.sqlite3 \
+            > evidence-fast/output/replay.json
+          RUN_ID=$(python -c 'import json; print(json.load(open("evidence-fast/output/replay.json"))["run_id"])')
+          cocomelon freeze-evaluation-dataset \
+            --journal evidence-fast/output/journal.sqlite3 \
+            --facts evidence-fast/output/facts.sqlite3 \
+            --run-id "$RUN_ID" \
+            > evidence-fast/output/dataset.json
+
+      - name: Assert paper-only plumbing semantics
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("evidence-fast/output")
+          record = json.loads((root / "record.json").read_text())
+          replay = json.loads((root / "replay.json").read_text())
+          dataset = json.loads((root / "dataset.json").read_text())
+          assert record["network_access"] is True
+          assert record["live_orders"] is False
+          assert replay["network_access"] is False
+          assert replay["live_orders"] is False
+          assert "edge" not in replay
+          assert "profitable" not in replay
+          summary = {
+              "economic_claim": "none",
+              "recorded_event_count": record["event_count"],
+              "recorded_duplicate_count": record["duplicate_count"],
+              "recorded_gap_count": record["gap_count"],
+              "strategy_decisions": replay["strategy_decisions"],
+              "closed_trade_count": len(replay["closed_trade_ids"]),
+              "data_complete": replay["data_complete"],
+              "dataset_trade_count": dataset["trade_count"],
+          }
+          (root / "fast-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload fast evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: genuine-mainnet-fast-smoke-${{ github.run_id }}
+          path: evidence-fast/
+          if-no-files-found: error
+          retention-days: 7
