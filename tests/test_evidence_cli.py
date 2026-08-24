@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 
 import pytest
 
+import cocomelon.cli as cli_module
 from cocomelon.cli import build_parser
 from cocomelon.config import ExecutionMode, Settings
 
@@ -115,4 +118,59 @@ def test_record_mainnet_evidence_payload_freezes_requested_public_config(tmp_pat
     assert observed["root"] == tmp_path
     assert payload["session_id"] == "session-1"
     assert payload["network_access"] is True
+    assert payload["live_orders"] is False
+
+
+def test_freeze_baseline_replay_cli_is_offline_and_does_not_load_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "recording"
+    output = tmp_path / "bundle.json"
+    observed: dict[str, object] = {}
+
+    def fail_from_env():  # type: ignore[no-untyped-def]
+        raise AssertionError("offline bundle freeze must not load runtime settings")
+
+    def freeze_payload(root_arg, out_arg, starting_cash):  # type: ignore[no-untyped-def]
+        observed["root"] = root_arg
+        observed["out"] = out_arg
+        observed["starting_cash"] = starting_cash
+        return {
+            "bundle_id": "bundle-1",
+            "manifest_id": "manifest-1",
+            "root": str(root_arg),
+            "out": str(out_arg),
+            "network_access": False,
+            "live_orders": False,
+        }
+
+    monkeypatch.setattr(Settings, "from_env", staticmethod(fail_from_env))
+    monkeypatch.setattr(
+        cli_module,
+        "freeze_baseline_replay_payload",
+        freeze_payload,
+        raising=False,
+    )
+
+    cli_module.main(
+        [
+            "freeze-baseline-replay",
+            "--root",
+            str(root),
+            "--out",
+            str(output),
+            "--starting-cash",
+            "12345.67",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert observed == {
+        "root": root,
+        "out": output,
+        "starting_cash": Decimal("12345.67"),
+    }
+    assert payload["network_access"] is False
     assert payload["live_orders"] is False
