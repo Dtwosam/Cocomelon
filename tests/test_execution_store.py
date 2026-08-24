@@ -14,6 +14,7 @@ from cocomelon.domain.execution import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.execution.accounting import apply_opening_fills, empty_account
+from cocomelon.execution.funding import FundingAccrual, funding_cash_delta
 from cocomelon.execution.store import PaperExecutionStore
 
 MARKET = MarketId("", "SOL")
@@ -82,6 +83,24 @@ def opened_state(order: PaperOrderPlan, paper_fill: PaperFill):
         (paper_fill,),
         correlation_bucket="crypto_beta",
         venue_max_leverage=Decimal("20"),
+    )
+
+
+def funding_accrual(account) -> FundingAccrual:
+    position = account.positions[0]
+    rate = Decimal("0.001")
+    oracle = Decimal("100")
+    return FundingAccrual(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        position_id=position.position_id,
+        signed_quantity=position.quantity,
+        oracle_price=oracle,
+        funding_rate=rate,
+        cash_delta=funding_cash_delta(position.quantity, oracle, rate),
+        oracle_event_key="ctx:SOL:store-funding",
+        funding_source="hyperliquid-mainnet-info",
+        funding_received_at_ms=3_601_000,
     )
 
 
@@ -168,6 +187,29 @@ def test_same_immutable_id_with_different_payload_fails_closed(tmp_path: Path) -
 
     with pytest.raises(ValueError, match="immutable payload mismatch"):
         store.persist_plan(order)
+    store.close()
+
+
+def test_funding_lookup_and_immutable_payload_guard(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    account = opened_state(order, paper_fill)
+    accrual = funding_accrual(account)
+    store = PaperExecutionStore(path)
+
+    assert store.has_funding_accrual(accrual.accrual_id) is False
+    store.persist_funding(accrual, account)
+    assert store.has_funding_accrual(accrual.accrual_id) is True
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_funding_events SET payload_json = '{}' WHERE accrual_id = ?",
+            (accrual.accrual_id,),
+        )
+
+    with pytest.raises(ValueError, match="immutable payload mismatch"):
+        store.persist_funding(accrual, account)
     store.close()
 
 
