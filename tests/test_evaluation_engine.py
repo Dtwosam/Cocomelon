@@ -3,8 +3,6 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
-from cocomelon.evaluation.engine import build_promotion_preview, derive_edge_status
-
 from cocomelon.domain.evaluation import (
     CandidateDefinition,
     ConfidenceInterval,
@@ -17,6 +15,7 @@ from cocomelon.domain.evaluation import (
     TimePartition,
     WalkForwardWindowResult,
 )
+from cocomelon.evaluation.engine import build_promotion_preview, derive_edge_status
 
 
 def metrics(
