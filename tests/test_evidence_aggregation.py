@@ -332,3 +332,74 @@ def test_aggregation_cli_is_offline_and_reports_imported_runs(
     assert payload["decision_fact_count"] == 2
     assert payload["network_access"] is False
     assert payload["live_orders"] is False
+
+
+def test_aggregate_reimport_is_semantically_idempotent(tmp_path: Path) -> None:
+    aggregate = _aggregate_module()
+    revision = "a" * 40
+    _source(
+        tmp_path / "source-a",
+        suffix="a",
+        run_id="run-a",
+        code_revision=revision,
+        start_ms=0,
+    )
+    target_root = tmp_path / "aggregate"
+    target_journal = target_root / "journal.sqlite3"
+    target_facts = target_root / "facts.sqlite3"
+
+    first = aggregate.aggregate_evaluation_evidence(
+        target_journal,
+        target_facts,
+        (tmp_path / "source-a",),
+    )
+    second = aggregate.aggregate_evaluation_evidence(
+        target_journal,
+        target_facts,
+        (tmp_path / "source-a",),
+    )
+
+    assert second == first
+    assert second.run_ids == ("run-a",)
+    assert second.trade_count == 1
+    assert second.decision_fact_count == 1
+
+
+def test_rejected_target_revision_preserves_targets_and_cleans_work_files(
+    tmp_path: Path,
+) -> None:
+    aggregate = _aggregate_module()
+    _source(
+        tmp_path / "source-a",
+        suffix="a",
+        run_id="run-a",
+        code_revision="a" * 40,
+        start_ms=0,
+    )
+    _source(
+        tmp_path / "source-b",
+        suffix="b",
+        run_id="run-b",
+        code_revision="b" * 40,
+        start_ms=10_000,
+    )
+    target_root = tmp_path / "aggregate"
+    target_journal = target_root / "journal.sqlite3"
+    target_facts = target_root / "facts.sqlite3"
+    aggregate.aggregate_evaluation_evidence(
+        target_journal,
+        target_facts,
+        (tmp_path / "source-a",),
+    )
+    before = (_sha256(target_journal), _sha256(target_facts))
+
+    with pytest.raises(aggregate.EvidenceAggregationError, match="target replay runs"):
+        aggregate.aggregate_evaluation_evidence(
+            target_journal,
+            target_facts,
+            (tmp_path / "source-b",),
+        )
+
+    assert (_sha256(target_journal), _sha256(target_facts)) == before
+    assert tuple(target_root.glob(".*.tmp")) == ()
+    assert tuple(target_root.glob(".*.bak")) == ()
