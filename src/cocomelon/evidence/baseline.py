@@ -202,12 +202,15 @@ def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
 
 def replay_record_stream_event(record: ReplayRecord) -> StreamEvent:
     market = _normalized_event(record)
-    if record.event_kind in {"market_snapshot", "funding_rate"}:
+    event_kind = record.event_kind
+    if event_kind is None:
+        raise ValueError("normalized replay event is missing event kind")
+    if event_kind in {"market_snapshot", "funding_rate"}:
         raise ValueError("REST evidence must be decoded by its typed decoder")
     try:
-        kind = StreamKind(record.event_kind)
+        kind = StreamKind(event_kind)
     except ValueError as exc:
-        raise ValueError(f"unsupported stream event kind: {record.event_kind}") from exc
+        raise ValueError(f"unsupported stream event kind: {event_kind}") from exc
     payload = _mapping(record.payload, "stream event payload")
     normalized: dict[str, object]
     if kind is StreamKind.ALL_MIDS:
