@@ -197,9 +197,9 @@ def _load_canonical_replay(source_root: Path) -> tuple[ReplayManifest, ReplayRes
 
 
 def _require_no_right_censoring(result: ReplayResult) -> None:
-    if result.closed_trade_ids and result.opened_positions != result.closed_positions:
+    if result.opened_positions != result.closed_positions:
         raise MainnetEvidenceError(
-            "mainnet cohort with closed trade samples must finish flat without open exposure"
+            "mainnet cohort must finish flat without open exposure"
         )
 
 
