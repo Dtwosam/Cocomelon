@@ -93,8 +93,14 @@ def _trade(tid: int, time_ms: int) -> dict[str, object]:
 
 
 class ScriptedConnection:
-    def __init__(self, rows: list[object]) -> None:
+    def __init__(
+        self,
+        rows: list[object],
+        *,
+        error_delay_seconds: float = 0.0,
+    ) -> None:
         self._rows = list(rows)
+        self._error_delay_seconds = error_delay_seconds
         self.closed = False
 
     async def send_json(self, message: dict[str, object]) -> None:
@@ -104,6 +110,8 @@ class ScriptedConnection:
         if self._rows:
             row = self._rows.pop(0)
             if isinstance(row, BaseException):
+                if self._error_delay_seconds:
+                    await asyncio.sleep(self._error_delay_seconds)
                 raise row
             assert isinstance(row, dict)
             return row
@@ -181,7 +189,8 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
         funding_poll_seconds=60,
     )
     primary = ScriptedConnection(
-        [_trade(1, 1_000), ConnectionError("primary dropped")]
+        [_trade(1, 1_000), ConnectionError("primary dropped")],
+        error_delay_seconds=0.01,
     )
     standby = ScriptedConnection([_trade(1, 1_000), _trade(2, 2_000)])
     pool = [primary, standby]
