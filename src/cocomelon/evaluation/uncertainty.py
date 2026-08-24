@@ -24,9 +24,7 @@ AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 def _bootstrap_seed(evaluation_manifest_id: str) -> int:
     if not evaluation_manifest_id.strip():
         raise ValueError("evaluation_manifest_id must not be empty")
-    seed_bytes = hashlib.sha256(
-        f"{evaluation_manifest_id}:mean_net_r".encode("utf-8")
-    ).digest()[:8]
+    seed_bytes = hashlib.sha256(f"{evaluation_manifest_id}:mean_net_r".encode()).digest()[:8]
     return int.from_bytes(seed_bytes, "big")
 
 
