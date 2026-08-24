@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: genuine-mainnet-evidence-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
@@ -21,11 +25,20 @@ jobs:
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COHORT_CODE_REVISION: 571c13bfe0bab0312940617540ec973ee3eee3c5
+      GAP_WATCH_REVISION: 390d4ba39abe4fe3f476af68587f13f2371d9cba
       COHORT_TRIGGER_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout pinned trading evidence revision
+        uses: actions/checkout@v4
         with:
           ref: 571c13bfe0bab0312940617540ec973ee3eee3c5
+          fetch-depth: 1
+
+      - name: Checkout pinned operational gap watcher
+        uses: actions/checkout@v4
+        with:
+          ref: 390d4ba39abe4fe3f476af68587f13f2371d9cba
+          path: runner-control
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -40,40 +53,67 @@ jobs:
 
       - name: Record clean genuine public mainnet evidence
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p evidence-cohort/output evidence-cohort/diagnostics
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
+          git -C runner-control rev-parse HEAD > evidence-cohort/output/gap-watch-head.txt
           printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
 
           CLEAN_ATTEMPT=""
           for ATTEMPT in 1 2; do
             ATTEMPT_ROOT="evidence-cohort/attempt-${ATTEMPT}"
-            mkdir -p "$ATTEMPT_ROOT/recording"
+            DIAG_ROOT="evidence-cohort/diagnostics/attempt-${ATTEMPT}"
+            mkdir -p "$ATTEMPT_ROOT/recording" "$DIAG_ROOT"
             date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/started-at-utc.txt"
-            if cocomelon record-mainnet-evidence \
+
+            cocomelon record-mainnet-evidence \
               --root "$ATTEMPT_ROOT/recording" \
               --seconds 2700 \
               --deep-limit 5 \
-              > "$ATTEMPT_ROOT/record.json"; then
-              date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
+              > "$ATTEMPT_ROOT/record.json" &
+            RECORDER_PID=$!
+
+            PYTHONPATH="$GITHUB_WORKSPACE/runner-control/src" \
+              python -m cocomelon.ops.gap_watch \
+              --root "$ATTEMPT_ROOT/recording" \
+              --pid "$RECORDER_PID" \
+              --poll-seconds 0.5 \
+              > "$ATTEMPT_ROOT/gap-watch.json" &
+            GAP_WATCH_PID=$!
+
+            if wait "$RECORDER_PID"; then
+              RECORDER_STATUS=0
             else
-              date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
-              cp "$ATTEMPT_ROOT/record.json" \
-                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-record.json" || true
-              cp "$ATTEMPT_ROOT/started-at-utc.txt" \
-                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-started-at-utc.txt"
-              cp "$ATTEMPT_ROOT/finished-at-utc.txt" \
-                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-finished-at-utc.txt"
+              RECORDER_STATUS=$?
+            fi
+            kill "$GAP_WATCH_PID" 2>/dev/null || true
+            if wait "$GAP_WATCH_PID"; then
+              GAP_WATCH_STATUS=0
+            else
+              GAP_WATCH_STATUS=$?
+            fi
+
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
+            printf '%s\n' "$RECORDER_STATUS" > "$ATTEMPT_ROOT/recorder-exit-status.txt"
+            printf '%s\n' "$GAP_WATCH_STATUS" > "$ATTEMPT_ROOT/gap-watch-exit-status.txt"
+
+            cp "$ATTEMPT_ROOT/record.json" "$DIAG_ROOT/record.json" || true
+            cp "$ATTEMPT_ROOT/gap-watch.json" "$DIAG_ROOT/gap-watch.json" || true
+            cp "$ATTEMPT_ROOT/started-at-utc.txt" "$DIAG_ROOT/started-at-utc.txt"
+            cp "$ATTEMPT_ROOT/finished-at-utc.txt" "$DIAG_ROOT/finished-at-utc.txt"
+            cp "$ATTEMPT_ROOT/recorder-exit-status.txt" "$DIAG_ROOT/recorder-exit-status.txt"
+            cp "$ATTEMPT_ROOT/gap-watch-exit-status.txt" "$DIAG_ROOT/gap-watch-exit-status.txt"
+            cp "$ATTEMPT_ROOT/recording/recording-session.json" \
+              "$DIAG_ROOT/recording-session.json" || true
+            cp "$ATTEMPT_ROOT/recording/manifest.json" "$DIAG_ROOT/manifest.json" || true
+            if [ -d "$ATTEMPT_ROOT/recording/gaps" ]; then
+              cp -R "$ATTEMPT_ROOT/recording/gaps" "$DIAG_ROOT/gaps"
+            fi
+
+            if [ "$RECORDER_STATUS" -ne 0 ] || [ "$GAP_WATCH_STATUS" -eq 20 ]; then
               rm -rf "$ATTEMPT_ROOT"
               continue
             fi
-
-            cp "$ATTEMPT_ROOT/record.json" \
-              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-record.json"
-            cp "$ATTEMPT_ROOT/started-at-utc.txt" \
-              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-started-at-utc.txt"
-            cp "$ATTEMPT_ROOT/finished-at-utc.txt" \
-              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-finished-at-utc.txt"
 
             if python - "$ATTEMPT_ROOT/record.json" <<'PY'
           import json
@@ -145,11 +185,14 @@ jobs:
           dataset = json.loads((root / "dataset.json").read_text())
           bundle = json.loads((root / "bundle.json").read_text())
           expected_revision = os.environ["COHORT_CODE_REVISION"]
+          expected_gap_watch_revision = os.environ["GAP_WATCH_REVISION"]
           workflow_head = (root / "workflow-head.txt").read_text().strip()
+          gap_watch_head = (root / "gap-watch-head.txt").read_text().strip()
           trigger_head = (root / "trigger-head.txt").read_text().strip()
           acquisition_attempt = int((root / "acquisition-attempt.txt").read_text().strip())
 
           assert workflow_head == expected_revision
+          assert gap_watch_head == expected_gap_watch_revision
           assert bundle["manifest"]["code_revision"] == expected_revision
           assert len(trigger_head) == 40
           assert trigger_head != expected_revision
@@ -171,6 +214,7 @@ jobs:
               "evidence_kind": "genuine_public_hyperliquid_mainnet",
               "economic_claim": "none",
               "checked_out_code_revision": workflow_head,
+              "gap_watch_revision": gap_watch_head,
               "trigger_head_sha": trigger_head,
               "acquisition_attempt": acquisition_attempt,
               "recording_session_id": record["session_id"],
