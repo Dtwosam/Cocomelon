@@ -6,6 +6,8 @@ from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 
 KIND_PRIORITY: dict[str, int] = {
     "data_gap": 0,
+    "market_snapshot": 5,
+    "funding_rate": 6,
     "all_mids": 10,
     "active_asset_ctx": 20,
     "candle": 30,
