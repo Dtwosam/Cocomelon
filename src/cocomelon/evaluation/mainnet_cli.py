@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+from cocomelon.evaluation.aggregate import EvidenceAggregationResult
 from cocomelon.evaluation.mainnet_aggregate import (
     aggregate_genuine_mainnet_evidence,
     corpus_attestation_path,
@@ -13,7 +14,7 @@ from cocomelon.evaluation.mainnet_aggregate import (
 
 
 def _result_payload(
-    result: object,
+    result: EvidenceAggregationResult,
     *,
     journal: Path,
     facts: Path,
