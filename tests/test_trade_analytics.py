@@ -84,6 +84,58 @@ def test_short_slippage_and_excursion_signs_reverse_correctly() -> None:
     assert result.mae is not None and result.mae.price == Decimal("104")
 
 
+def test_favorable_slippage_remains_signed_and_has_currency_amounts() -> None:
+    result = compute_trade_analytics(
+        direction=Direction.LONG,
+        entry_price=Decimal("99"),
+        entry_reference_price=Decimal("100"),
+        exit_price=Decimal("105"),
+        exit_reference_price=Decimal("104"),
+        opened_quantity=Decimal("10"),
+        gross_realized_pnl=Decimal("60"),
+        entry_fees=Decimal("0"),
+        exit_fees=Decimal("0"),
+        funding_cash_pnl=Decimal("0"),
+        initial_risk_amount=Decimal("25"),
+        opened_at_ms=1_000,
+        closed_at_ms=2_000,
+        mark_observations=(mark(1_500, "105", "ctx-favorable"),),
+        known_gap_intervals=(),
+    )
+
+    assert result.entry_slippage_amount == Decimal("-10")
+    assert result.exit_slippage_amount == Decimal("-10")
+    assert result.entry_slippage_fraction == Decimal("-0.01")
+    assert result.exit_slippage_fraction == Decimal("-0.009615384615384615384615384615")
+
+
+def test_partial_exit_slippage_uses_each_plan_reference_price() -> None:
+    result = compute_trade_analytics(
+        direction=Direction.LONG,
+        entry_price=Decimal("100"),
+        entry_reference_price=Decimal("100"),
+        exit_price=Decimal("102.8"),
+        exit_reference_price=Decimal("103"),
+        opened_quantity=Decimal("10"),
+        gross_realized_pnl=Decimal("28"),
+        entry_fees=Decimal("0"),
+        exit_fees=Decimal("0"),
+        funding_cash_pnl=Decimal("0"),
+        initial_risk_amount=Decimal("25"),
+        opened_at_ms=1_000,
+        closed_at_ms=2_000,
+        mark_observations=(mark(1_500, "103", "ctx-middle"),),
+        known_gap_intervals=(),
+        exit_slippage_legs=(
+            (Decimal("102"), Decimal("103"), Decimal("6")),
+            (Decimal("104"), Decimal("103"), Decimal("4")),
+        ),
+    )
+
+    assert result.exit_slippage_amount == Decimal("2")
+    assert result.exit_slippage_fraction == Decimal("0.001941747572815533980582524272")
+
+
 def test_partial_reduction_uses_quantity_open_at_excursion_extreme() -> None:
     result = compute_trade_analytics(
         direction=Direction.LONG,
