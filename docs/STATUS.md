@@ -1,88 +1,88 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-08-23  
+**Last updated:** 2026-08-24  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`
 
 ## Current state
 
-**Last completed phase:** Phase 7 — real-mainnet paper execution + position manager  
-**Integration state:** MERGED into `main`  
-**Phase 7 PR:** #9  
-**Phase 7 merge commit:** `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`  
-**Final Phase 7 PR head:** `f0059025f578524df56e4cdbff75710e9885f45c`  
-**Final Phase 7 PR-head CI:** `32667484578` — SUCCESS  
-**Final Phase 7 CI job:** `97263085563`  
+**Last completed and merged phase:** Phase 7 — real-mainnet paper execution + position manager  
+**Active phase:** Phase 8 — deterministic journal, replay/backtesting, and offline analytical compaction  
+**Phase 8 integration state:** IMPLEMENTATION COMPLETE; PR CLOSEOUT IN PROGRESS  
+**Phase 8 branch:** `phase-8-journal-replay`  
+**Phase 8 PR:** #10  
+**Latest verified implementation head:** `4447f7af169a0449f87dca86f665c6ccdbd0debb`  
+**Exact-head CI run:** `32713200269` — SUCCESS  
+**Core test job:** `97388844825` — SUCCESS  
+**Research job:** `97388844471` — SUCCESS  
 **Python:** `3.12.14`  
-**Active next phase:** Phase 8 — journal, deterministic replay/backtester, and offline raw-to-columnar compaction
+**Live trading:** DISABLED
 
-## Phase 7 established
+Phase 9 must not be marked active until Phase 8 is merged and post-merge continuity metadata is reconciled on `main`.
 
-Phase 7 is the first autonomous paper-execution layer. It trades fake capital against real normalized Hyperliquid mainnet observations while preserving Phase 6 risk approvals as hard ceilings.
+## Phase 8 established
+
+Phase 8 makes Phase 4-7 decisions and paper-trading outcomes reproducible from trusted recorded Hyperliquid mainnet evidence without adding exchange-write capability.
 
 Implemented:
 
-- immutable Decimal execution contracts and deterministic plan/attempt/fill/action IDs;
-- risk-approved opening planner with native-perp support checks, exact `szDecimals` round-down, minimum-notional rejection, deterministic 250 ms latency, and no forced upsizing;
-- exact carry-forward of Phase 6 approved notional, approved risk amount, stop-distance fraction, effective-loss fraction, and cost buffer;
-- public-only `activeAssetCtx` normalization for mark, optional mid, oracle, funding rate, and open interest, with no invented exchange timestamp;
-- public deep-watchlist subscription support for `activeAssetCtx` while private/user subscriptions remain rejected;
-- deterministic visible-book marketable-IOC simulation using normalized mainnet L2 only;
-- full, partial, zero-fill, slippage-bound, stale/future/crossed-book, latency, and IOC-remainder behavior;
-- no hidden-depth extrapolation, candle fill fabrication, passive maker fill, or maker-rebate path;
-- cumulative fill clipping so actual fill notional never exceeds Phase 6 approved notional and actual stop-distance plus inherited cost buffer never exceeds approved risk;
-- versioned taker-fee accounting on actual fills;
-- paper LONG/SHORT positions, weighted-average entries, reduce-only partial/full exits, realized/unrealized PnL, fees, funding, equity, gross notional, conservative reserved/available margin, daily net realized PnL, and closed-trade loss streak;
-- exact persisted rolling-seven-day equity peak candidates for Phase 6 drawdown state;
-- pure paper-account -> Phase 6 risk-account/open-position adapter;
-- funding reconciliation from actual public funding-history records paired with lookahead-safe pre-boundary public oracle context, including idempotency and unresolved-gap fail-closed behavior;
-- deterministic position manager precedence for emergency exits, mark stops, opposing fresh thesis exits, tighter same-direction stops, explicit reductions, and HOLD;
-- stop exits execute at actual reduce-only IOC book prices rather than being awarded at the stop trigger;
-- SQLite operational store with atomic fill/position/account/peak writes, deterministic uniqueness, rollback on injected failure, restart reconstruction, and fail-closed mismatch detection;
-- narrow `TradingExecution` abstraction and `PaperExecutionAdapter`; no generic private exchange-client escape hatch;
-- end-to-end Phase 5 -> Phase 6 -> Phase 7 LONG/SHORT/NO_TRADE coverage plus restart/no-fill/duplicate-exposure tests;
-- source-level Phase 7 boundary tests excluding wallet/private-key/signing/withdraw/transfer/testnet/ML/live-order capability and locking public-only market subscriptions.
+- immutable deterministic `JournalObservation`, `TradeJournalEntry`, replay source/manifest/result contracts, canonical hashes, and fixed-precision Decimal semantics;
+- strict validation of immutable recorder JSONL segments with exact byte SHA-256, row counts, schema/partition identity, availability windows, and duplicate/corruption rejection;
+- deterministic replay manifests containing exact source hashes, code/config/schema/version provenance and explicit evidence class;
+- explicit replay clock ordered by evidence availability rather than earlier WebSocket exchange timestamps, with lookahead regressions proving future evidence cannot affect earlier decisions;
+- mechanical separation between `CANDLE_CONTEXT` and `MICROSTRUCTURE` replay; candle evidence cannot satisfy L2/trade requirements and no candle-to-book construction exists;
+- separate SQLite `JournalStore` for immutable observations, closed trades, references, replay manifests/runs, and compaction provenance, with idempotency, conflict detection, atomic writes, restart reconstruction, and fail-closed corruption handling;
+- lifecycle assembler that reconciles opening/exit plan-attempt-fill lineage, market/side semantics, close-to-zero quantity, position actions, funding, equity, and account PnL before accepting research output;
+- trade analytics for gross/net PnL, fees, actual public funding, net R, signed entry/exit slippage amounts and fractions, holding duration, and mark-grounded MFE/MAE;
+- partial-reduction-aware MFE/MAE currency attribution using the quantity actually open at the extremum;
+- multi-exit slippage attribution using each exit plan's own execution reference instead of applying the final reference to earlier reductions;
+- favorable execution remains represented as negative signed slippage rather than being clipped to zero;
+- deterministic `ReplayEngine` and narrow pipeline adapter around existing Phase 5 strategy, Phase 6 risk, and Phase 7 paper execution boundaries rather than duplicating trading formulas;
+- end-to-end deterministic LONG and SHORT replay through Phase 5 -> 6 -> 7 -> 8, including NO_TRADE/risk-reject/no-fill outcomes with zero unintended exposure;
+- optional offline PyArrow Parquet compaction behind the `research` extra only; PyArrow is not a base dependency and does not enter recorder imports;
+- JSONL/Parquet canonical replay equivalence with source/output hash validation and corruption rejection;
+- offline operator commands for recording validation, compaction, frozen-manifest replay, and read-only journal inspection;
+- executable Phase 8 boundary tests rejecting testnet, wallet/private-key/signing/withdraw/transfer/live-order capability, ML/parameter-optimization leakage, replay network clients, and candle-derived synthetic microstructure.
 
-## Phase 7 verification evidence
+## Phase 8 verification evidence
 
-Final PR head `f0059025f578524df56e4cdbff75710e9885f45c`:
+Latest implementation head `4447f7af169a0449f87dca86f665c6ccdbd0debb`:
 
-- CI run `32667484578` — SUCCESS;
-- CI job `97263085563` — SUCCESS;
+- CI run `32713200269` — SUCCESS;
+- core job `97388844825` — SUCCESS;
+- research job `97388844471` — SUCCESS;
 - Python `3.12.14`;
-- editable install — PASS;
+- `python -m pip install -e ".[dev]"` — PASS;
 - `python -m compileall -q src tests scripts` — PASS;
-- Ruff `src tests scripts` — PASS;
-- mypy `src` — PASS;
-- full pytest — PASS to 100%;
-- PR #9 had no comments or inline review threads;
-- PR #9 was mergeable before merge;
-- merge used expected-head SHA protection against `f0059025f578524df56e4cdbff75710e9885f45c`;
-- GitHub returned merge commit `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`;
-- `main` was immediately verified at that exact SHA;
-- comparing `phase-7-paper-execution` to `main` after merge showed `main` ahead by exactly the merge commit and an empty file diff.
+- `python -m ruff check src tests scripts` — PASS;
+- `python -m mypy src` — PASS;
+- `python -m pytest -q` — PASS to 100%;
+- `python -m pip install -e ".[dev,research]"` — PASS;
+- `python -m pytest tests/test_replay_compaction.py tests/test_parquet_replay_source.py -q` — PASS with genuine Parquet output;
+- PR #10 has no comments or review threads;
+- PR #10 is mergeable;
+- branch comparison to `main`: ahead only, `behind_by = 0`;
+- changed-file audit contains only Phase 8 implementation, tests, CI, dependency-extra, CLI, and Phase 8 design/plan surfaces.
 
-The final boundary audit is executable in `tests/test_execution_boundaries.py`, rather than relying only on documentation assertions.
+A final CI run will be required on the exact documentation-closeout head before merge. No merge will rely on stale CI evidence.
 
-## Phase 7 exit-criteria audit
+## Phase 8 exit-criteria audit
 
-Verified against `docs/superpowers/specs/2026-08-23-phase-7-paper-execution-design.md`:
+Verified by code and tests rather than documentation assertion alone:
 
-- Decimal execution/accounting contracts replace the old float execution placeholder path;
-- public `ACTIVE_ASSET_CTX` context is normalized without private account data;
-- paper fills are grounded only in normalized mainnet L2 evidence;
-- latency, slippage, fees, funding, minimum notional, size precision, partial fills, and stop execution are explicit;
-- unsupported passive maker fills are impossible;
-- Phase 6 approved notional/risk cannot be exceeded or double-counted by execution;
-- one-position-per-market and reduce-only rules prevent duplicate/flipped positions;
-- deterministic paper account/equity/PnL/margin/daily-loss/weekly-peak state feeds Phase 6;
-- stop, thesis, tighter-stop, reduction, and emergency manager mechanics are covered;
-- restart/recovery is idempotent and fails closed on inconsistent materialized state;
-- SQLite critical state changes are atomic under failure injection;
-- deterministic Phase 5 -> Phase 6 -> paper execution lifecycle works unattended in tests;
-- complete Python 3.12 install/compile/Ruff/mypy/pytest CI passes;
-- live trading remains disabled;
-- no real-order, wallet/signing, transfer, withdrawal, private-user subscription, or private exchange-account capability exists in Phase 7.
+- deterministic journal IDs and replay result digests are stable for identical semantic inputs;
+- raw recorder sources are hash-validated and never rewritten by replay;
+- replay availability is receive/availability-time based and protected by lookahead tests;
+- candle/context and microstructure evidence classes are enforced mechanically;
+- replay requiring L2 fails when genuine recorded L2 is unavailable;
+- JSONL and compacted Parquet reconstruct the same canonical replay sequence;
+- corrupted source or derived Parquet hashes fail closed;
+- lifecycle fill/action/funding references and equity/PnL reconcile before a trade becomes valid research output;
+- signed slippage, quantity-aware excursions, net R, holding duration, fees, and funding attribution are persisted and restart-safe;
+- full Python 3.12 core CI is green;
+- research-extra compaction/Parquet CI is green;
+- source-level Phase 8 boundaries exclude network/live/private/ML/testnet capability from replay and research paths;
+- live trading remains disabled.
 
 ## Completed phases
 
@@ -94,51 +94,39 @@ Verified against `docs/superpowers/specs/2026-08-23-phase-7-paper-execution-desi
 - Phase 5 — explainable baseline strategy engines: MERGED at `82c3db2f9ce39676e089eac79e63c5043b72e331`.
 - Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
 - Phase 7 — real-mainnet paper execution + position manager: MERGED at `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`.
+- Phase 8 — journal + deterministic replay/backtester + offline analytical compaction: implementation complete on PR #10; merge pending exact closeout-head CI.
 
-## Safety invariants still locked
+## Locked safety and product invariants
 
 - Hyperliquid testnet is forbidden.
-- Runtime observations are Hyperliquid mainnet only.
-- Default execution mode is paper.
-- Live trading is disabled.
-- No live exchange adapter exists.
-- No wallet/private-key signing, transfer, or withdrawal capability exists.
-- No private exchange-account/user subscription exists in the paper execution layer.
-- Strategy cannot size positions or send orders.
-- Risk remains independent and authoritative.
-- Execution may use less than a risk approval but never more without a fresh risk decision.
-- No averaging down or martingale.
-- No ML/learning engine exists yet.
-- Solidity is outside V1.
-- No secrets may be committed or emitted in logs.
-
-## Phase 8 objective
-
-Phase 8 makes every decision and trade reproducible and measurable without weakening the existing data/evidence boundaries.
-
-Phase 8 must, at minimum:
-
-- build a complete durable decision/trade journal across scanner, strategy, risk, execution, position-management, funding, and account outcomes;
-- define deterministic replay manifests with exact code/config/data/schema/version provenance;
-- replay candle/context evidence without lookahead;
-- replay microstructure only from actually recorded book/trade evidence, never fabricated from candles;
-- deterministically compact validated Phase 3 JSONL partitions into versioned analytical columnar datasets such as Parquet while preserving provenance;
-- compute trade-level MFE/MAE, net R, fees/funding/slippage attribution, holding time, and reason-code traces;
-- make the same dataset + config + code version reproduce the same replay/backtest outputs;
-- keep execution paper-only and live trading disabled.
-
-Do not begin Phase 9 evaluation gates, Phase 10 ML, or Phase 12 live adapter early except for interfaces strictly required by Phase 8.
+- Runtime market observations are Hyperliquid mainnet only.
+- Mainnet market-data endpoints remain `https://api.hyperliquid.xyz` and `wss://api.hyperliquid.xyz/ws`.
+- Default execution is paper/shadow; no real exchange orders are permitted.
+- No live exchange adapter exists in the completed Phase 1-8 path.
+- No wallet/private-key signing, transfer, withdrawal, or private exchange-account subscription exists in paper/replay paths.
+- Dynamic whole-market discovery remains separate from eligibility and ranking.
+- Deterministic explainable baseline strategies remain the decision foundation before ML.
+- `NO_TRADE` remains a first-class strategy outcome.
+- Strategy cannot size positions or send orders; independent risk has final veto.
+- Locked risk remains 0.25% planned account risk per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, 3% rolling weekly drawdown, and cooldown after three consecutive losing trades.
+- No averaging down, martingale, or stopless positions.
+- No historical L2/order flow may be fabricated from candles.
+- PyArrow remains optional research tooling only.
+- Phase 8 does not optimize strategy parameters, train ML, or enable live trading.
+- Real-money activation always requires explicit user authorization after later evidence gates pass.
 
 ## Exact next action
 
-1. Treat Phase 8 as active.
-2. Re-read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, this status file, Phase 3 recorder formats, Phase 4-7 domain contracts, and existing fixture/replay-relevant tests.
-3. Design the Phase 8 journal/replay/backtester/compaction architecture and write the approved spec.
-4. Write a detailed Phase 8 TDD implementation plan.
-5. Implement on an isolated Phase 8 branch with deterministic replay and explicit evidence-class separation.
+1. Finish Phase 8 continuity-document closeout on PR #10.
+2. Run full CI on the exact closeout head.
+3. Re-audit PR mergeability, changed files, branch freshness, comments/review threads, and live-capability boundaries.
+4. Guarded-merge PR #10 only if the exact head is green.
+5. Verify `main` at the returned merge SHA and compare the feature branch to `main` for an empty file diff.
+6. Reconcile `docs/STATUS.md` and `docs/CHATGPT_PROJECT_SOURCE.md` on `main` with the actual Phase 8 merge metadata.
+7. Only then activate the Phase 9 evaluation/OOS/walk-forward design/spec workflow.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can now discover, analyze, decide, independently risk-gate, and execute/manage deterministic fake-capital positions against real Hyperliquid mainnet observations. Phase 8 will make those decisions and outcomes reproducible for rigorous research; it will not enable real exchange orders.
+Cocomelon can discover, analyze, decide, independently risk-gate, paper-execute/manage, journal, and deterministically replay fake-capital outcomes against real Hyperliquid mainnet evidence. None of Phase 8 enables real-money order placement.
