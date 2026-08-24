@@ -229,10 +229,10 @@ def _merge_snapshot(
         journal.record_trade(trade)
     for observation in snapshot.observations:
         journal.record_observation(observation)
-    for fact in snapshot.decision_facts:
-        facts.record_decision_fact(fact)
-    for fact in snapshot.equity_facts:
-        facts.record_equity_fact(fact)
+    for decision_fact in snapshot.decision_facts:
+        facts.record_decision_fact(decision_fact)
+    for equity_fact in snapshot.equity_facts:
+        facts.record_equity_fact(equity_fact)
     for result in snapshot.results:
         existing = journal.load_replay_result(result.run_id)
         if existing is not None:
