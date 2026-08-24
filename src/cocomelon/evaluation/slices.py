@@ -56,6 +56,7 @@ def evaluate_slices(
 
         for slice_key in sorted(grouped):
             values = tuple(grouped[slice_key])
+            reasons: tuple[str, ...]
             if slice_kind == "score_bucket" and len(values) < policy.min_score_bucket_trades:
                 ready = False
                 reasons = ("INSUFFICIENT_SCORE_BUCKET_TRADES",)
