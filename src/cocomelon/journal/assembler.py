@@ -257,6 +257,9 @@ def assemble_trade_journal_entry(
             closed_at_ms=closed_at_ms,
             mark_observations=lifecycle.mark_observations,
             known_gap_intervals=lifecycle.known_gap_intervals,
+            quantity_reductions=tuple(
+                (fill.timestamp_ms, fill.quantity) for fill in exit_fills
+            ),
         )
     except ValueError as exc:
         return _inconsistency("TRADE_ANALYTICS_INVALID", str(exc))
