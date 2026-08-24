@@ -196,6 +196,13 @@ def _load_canonical_replay(source_root: Path) -> tuple[ReplayManifest, ReplayRes
     return pairs[0]
 
 
+def _require_no_right_censoring(result: ReplayResult) -> None:
+    if result.closed_trade_ids and result.opened_positions != result.closed_positions:
+        raise MainnetEvidenceError(
+            "mainnet cohort with closed trade samples must finish flat without open exposure"
+        )
+
+
 def _cohort_source_digest(source_root: Path, recording_session_path: Path) -> str:
     paths = {
         "bundle.json": source_root / "bundle.json",
@@ -261,6 +268,7 @@ def _validate_complete_mainnet_cohort(source_root: Path) -> _ValidatedCohort:
     manifest, result = _load_canonical_replay(source_root)
     if result.data_complete is not True or result.processed_gaps != 0 or manifest.gap_refs:
         raise MainnetEvidenceError("canonical replay must be complete and gap-free")
+    _require_no_right_censoring(result)
 
     _require_equal(
         summary.get("checked_out_code_revision"),
@@ -498,6 +506,8 @@ def _verify_attested_target(
     pairs = _load_replay_pairs(target_journal)
     if not pairs:
         raise MainnetEvidenceError("mainnet aggregate must contain finished replay results")
+    for _, result in pairs:
+        _require_no_right_censoring(result)
     by_run = {result.run_id: (manifest, result) for manifest, result in pairs}
     if tuple(sorted(by_run)) != attestation.run_ids:
         raise MainnetEvidenceError("mainnet attestation run set does not match aggregate")
