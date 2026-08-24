@@ -37,6 +37,19 @@ class _PendingOpening:
         return self.evaluation.decision.market
 
 
+@dataclass(frozen=True, slots=True)
+class BaselineOpeningTrace:
+    evaluation: EpochMarketEvaluation
+    submission: OpeningSubmission
+    equity_before: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.equity_before.is_finite() or self.equity_before <= ZERO:
+            raise ValueError("equity_before must be positive and finite")
+        if self.evaluation.decision.decision_id != self.submission.risk_decision.strategy_decision_id:
+            raise ValueError("opening trace strategy lineage mismatch")
+
+
 def _receive_ms(event: StreamEvent) -> int:
     return int(event.receive_time.timestamp() * 1000)
 
@@ -108,10 +121,16 @@ class BaselineOpeningEngine:
         self._state = state_book
         self._pending: list[_PendingOpening] = []
         self._books: dict[str, StreamEvent] = {}
+        self._traces: list[BaselineOpeningTrace] = []
 
     @property
     def pending_markets(self) -> tuple[MarketId, ...]:
         return tuple(item.market for item in self._pending)
+
+    def take_traces(self) -> tuple[BaselineOpeningTrace, ...]:
+        traces = tuple(self._traces)
+        self._traces.clear()
+        return traces
 
     def stage_epoch(self, epoch: DecisionEpoch) -> None:
         directional = tuple(
@@ -259,9 +278,7 @@ class BaselineOpeningEngine:
             candidate_book = self._books.get(pending.market.canonical)
             if candidate_book is None:
                 break
-            earliest_ms = (
-                pending.evaluated_at_ms + self._config.execution.latency_ms
-            )
+            earliest_ms = pending.evaluated_at_ms + self._config.execution.latency_ms
             if _receive_ms(candidate_book) < earliest_ms:
                 break
 
@@ -270,14 +287,21 @@ class BaselineOpeningEngine:
                 candidate_book,
                 now_ms=now_ms,
             )
-            outcomes.append(
-                self._execution.submit_risk_request(
-                    request,
-                    instrument,
-                    candidate_book,
-                    reference_price=reference,
-                    created_at_ms=pending.evaluated_at_ms,
-                    attempt_timestamp_ms=now_ms,
+            equity_before = self._execution.account.equity
+            submission = self._execution.submit_risk_request(
+                request,
+                instrument,
+                candidate_book,
+                reference_price=reference,
+                created_at_ms=pending.evaluated_at_ms,
+                attempt_timestamp_ms=now_ms,
+            )
+            outcomes.append(submission)
+            self._traces.append(
+                BaselineOpeningTrace(
+                    evaluation=pending.evaluation,
+                    submission=submission,
+                    equity_before=equity_before,
                 )
             )
             self._pending.pop(0)
