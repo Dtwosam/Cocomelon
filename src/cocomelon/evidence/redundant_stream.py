@@ -16,9 +16,9 @@ class RedundantStreamMux:
     """Merge redundant normalized public streams without hiding true data loss.
 
     One lane is active per stream while the other continuously buffers normalized
-    events. A lane-local disconnect switches to a healthy standby and backfills
-    events the active lane did not emit. A durable gap is forwarded only once all
-    lanes are unavailable for the same stream.
+    events. A lane-local disconnect switches to a proven healthy standby and
+    backfills events the active lane did not emit. A durable gap is forwarded
+    whenever no lane has demonstrated continuous coverage for the stream.
     """
 
     def __init__(
@@ -48,6 +48,7 @@ class RedundantStreamMux:
         self._active: dict[str, int] = {}
         self._buffers: dict[tuple[int, str], deque[StreamEvent]] = defaultdict(deque)
         self._lane_gap_starts: dict[str, dict[int, int]] = defaultdict(dict)
+        self._observed_lanes: dict[str, set[int]] = defaultdict(set)
         self._aggregate_gap_starts: dict[str, int] = {}
         self._seen_keys: dict[str, set[str]] = defaultdict(set)
         self._seen_queues: dict[str, deque[str]] = defaultdict(deque)
@@ -137,7 +138,15 @@ class RedundantStreamMux:
         while len(buffer) > self._buffer_size:
             buffer.popleft()
 
+    def _lane_is_available(self, stream_id: str, lane: int) -> bool:
+        return (
+            lane in self._observed_lanes[stream_id]
+            and lane not in self._lane_gap_starts[stream_id]
+        )
+
     async def _switch(self, stream_id: str, lane: int) -> None:
+        if not self._lane_is_available(stream_id, lane):
+            return
         current = self.active_lane(stream_id)
         if current == lane:
             return
@@ -148,30 +157,34 @@ class RedundantStreamMux:
             await self._emit_candidate(stream_id, buffer.popleft())
 
     def _available_lane(self, stream_id: str, *, excluding: int) -> int | None:
-        gapped = self._lane_gap_starts[stream_id]
         for lane in range(self._lane_count):
-            if lane != excluding and lane not in gapped:
+            if lane != excluding and self._lane_is_available(stream_id, lane):
                 return lane
         return None
 
-    async def on_event(self, lane: int, event: StreamEvent) -> None:
-        self._require_lane(lane)
-        stream_id = event_stream_id(event)
-        if lane == self.active_lane(stream_id):
-            await self._emit_candidate(stream_id, event)
-            return
-        self._buffer(lane, stream_id, event)
+    def _has_any_available_lane(self, stream_id: str) -> bool:
+        return any(
+            self._lane_is_available(stream_id, lane)
+            for lane in range(self._lane_count)
+        )
 
-    async def _open_aggregate_gap_if_needed(self, stream_id: str) -> None:
-        starts = self._lane_gap_starts[stream_id]
-        if len(starts) != self._lane_count or stream_id in self._aggregate_gap_starts:
+    async def _open_aggregate_gap_if_needed(
+        self,
+        stream_id: str,
+        *,
+        started_ms: int,
+    ) -> None:
+        if self._has_any_available_lane(stream_id):
             return
-        started_ms = max(starts.values())
-        self._aggregate_gap_starts[stream_id] = started_ms
+        if stream_id in self._aggregate_gap_starts:
+            return
+        starts = self._lane_gap_starts[stream_id]
+        aggregate_start = max(starts.values(), default=started_ms)
+        self._aggregate_gap_starts[stream_id] = aggregate_start
         await self._gap_sink(
             DataGap(
                 stream_id=stream_id,
-                started_ms=started_ms,
+                started_ms=aggregate_start,
                 ended_ms=None,
                 reason="redundant_disconnect",
             )
@@ -195,6 +208,23 @@ class RedundantStreamMux:
             )
         )
 
+    async def on_event(self, lane: int, event: StreamEvent) -> None:
+        self._require_lane(lane)
+        stream_id = event_stream_id(event)
+        self._observed_lanes[stream_id].add(lane)
+        if lane not in self._lane_gap_starts[stream_id]:
+            await self._close_aggregate_gap_if_needed(
+                stream_id,
+                recovered_ms=self._receive_ms(event),
+            )
+        current = self.active_lane(stream_id)
+        if not self._lane_is_available(stream_id, current):
+            await self._switch(stream_id, lane)
+        if lane == self.active_lane(stream_id):
+            await self._emit_candidate(stream_id, event)
+            return
+        self._buffer(lane, stream_id, event)
+
     async def on_gap(self, lane: int, gap: DataGap) -> None:
         self._require_lane(lane)
         stream_id = gap.stream_id
@@ -202,13 +232,14 @@ class RedundantStreamMux:
 
         if gap.reason == "recovered":
             starts.pop(lane, None)
+            self._observed_lanes[stream_id].add(lane)
             recovered_ms = gap.ended_ms if gap.ended_ms is not None else gap.started_ms
             await self._close_aggregate_gap_if_needed(
                 stream_id,
                 recovered_ms=recovered_ms,
             )
             current = self.active_lane(stream_id)
-            if current in starts and lane not in starts:
+            if not self._lane_is_available(stream_id, current):
                 await self._switch(stream_id, lane)
             return
 
@@ -218,7 +249,10 @@ class RedundantStreamMux:
                 standby = self._available_lane(stream_id, excluding=lane)
                 if standby is not None:
                     await self._switch(stream_id, standby)
-            await self._open_aggregate_gap_if_needed(stream_id)
+            await self._open_aggregate_gap_if_needed(
+                stream_id,
+                started_ms=gap.started_ms,
+            )
             return
 
         if lane != self.active_lane(stream_id):
