@@ -473,12 +473,19 @@ class JournalStore:
                     raw.get("funding_cash_pnl"), "funding_cash_pnl"
                 ),
                 net_pnl=_decimal(raw.get("net_pnl"), "net_pnl"),
+                entry_slippage_amount=_decimal(
+                    raw.get("entry_slippage_amount"), "entry_slippage_amount"
+                ),
+                exit_slippage_amount=_decimal(
+                    raw.get("exit_slippage_amount"), "exit_slippage_amount"
+                ),
                 entry_slippage_fraction=_decimal(
                     raw.get("entry_slippage_fraction"), "entry_slippage_fraction"
                 ),
                 exit_slippage_fraction=_decimal(
                     raw.get("exit_slippage_fraction"), "exit_slippage_fraction"
                 ),
+                holding_duration_ms=int(raw["holding_duration_ms"]),
                 mfe=_excursion_metric(raw.get("mfe"), "mfe"),
                 mae=_excursion_metric(raw.get("mae"), "mae"),
                 net_r=_decimal(raw.get("net_r"), "net_r"),
