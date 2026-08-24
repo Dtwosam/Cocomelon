@@ -245,7 +245,11 @@ def _bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
     return candidate
 
 
-def _validated_bundle_source_root(bundle_path: Path, bundle_id: str, manifest_segments: object) -> Path:
+def _validated_bundle_source_root(
+    bundle_path: Path,
+    bundle_id: str,
+    manifest_segments: object,
+) -> Path:
     source_root = _bundle_source_root(bundle_path, bundle_id)
     actual_segments = validate_recording(source_root)
     if actual_segments != manifest_segments:
