@@ -12,6 +12,7 @@ from cocomelon.domain.execution import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.execution.accounting import PaperPosition, PositionSide
+from cocomelon.execution.lineage import load_plan_lineage
 from cocomelon.execution.planner import PlanningRejection, plan_reduce_only_order
 from cocomelon.execution.store import PaperExecutionStore
 
@@ -89,11 +90,11 @@ def test_store_recovers_originating_plan_lineage_after_restart(tmp_path: Path) -
 
     reopened = PaperExecutionStore(path)
     try:
-        assert reopened.load_plan_lineage(plan.plan_id) == (
+        assert load_plan_lineage(reopened, plan.plan_id) == (
             plan.risk_decision_id,
             plan.strategy_decision_id,
         )
-        assert reopened.load_plan_lineage("missing-plan") is None
+        assert load_plan_lineage(reopened, "missing-plan") is None
     finally:
         reopened.close()
 
