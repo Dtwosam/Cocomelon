@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -96,6 +96,12 @@ def _decimal(value: object, field: str) -> Decimal:
     if not resolved.is_finite():
         raise JournalConsistencyError(f"{field} must be finite")
     return resolved
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise JournalConsistencyError(f"{field} must be a boolean")
+    return value
 
 
 def _excursion_metric(value: object, field: str) -> ExcursionMetric | None:
@@ -294,6 +300,20 @@ class JournalStore:
         if result.observation_id != observation_id:
             raise JournalConsistencyError("stored observation id does not match canonical payload")
         return result
+
+    def iter_observations(self) -> Iterator[JournalObservation]:
+        rows = self.connection.execute(
+            """
+            SELECT observation_id
+            FROM journal_observations
+            ORDER BY timestamp_ms, observation_id
+            """
+        ).fetchall()
+        for row in rows:
+            observation = self.load_observation(str(row[0]))
+            if observation is None:
+                raise JournalConsistencyError("journal observation disappeared during iteration")
+            yield observation
 
     def record_manifest(self, manifest: ReplayManifest) -> None:
         payload = self._canonical_manifest(manifest)
@@ -505,6 +525,20 @@ class JournalStore:
             raise JournalConsistencyError("stored trade id does not match canonical payload")
         return result
 
+    def iter_trades(self) -> Iterator[TradeJournalEntry]:
+        rows = self.connection.execute(
+            """
+            SELECT trade_id
+            FROM journal_trades
+            ORDER BY opened_at_ms, closed_at_ms, trade_id
+            """
+        ).fetchall()
+        for row in rows:
+            trade = self.load_trade(str(row[0]))
+            if trade is None:
+                raise JournalConsistencyError("journal trade disappeared during iteration")
+            yield trade
+
     def begin_run(self, manifest_id: str, run_id: str) -> None:
         existing = self.connection.execute(
             "SELECT manifest_id, status, result_json FROM replay_runs WHERE run_id = ?",
@@ -540,6 +574,66 @@ class JournalStore:
             (payload, result.run_id),
         )
         self.connection.commit()
+
+    def load_replay_result(self, run_id: str) -> ReplayResult | None:
+        row = self.connection.execute(
+            "SELECT manifest_id, status, result_json FROM replay_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None or row[1] != "finished" or row[2] is None:
+            return None
+        try:
+            raw = json.loads(str(row[2]))
+        except json.JSONDecodeError as exc:
+            raise JournalConsistencyError("replay result payload must be valid JSON") from exc
+        if not isinstance(raw, dict):
+            raise JournalConsistencyError("replay result payload must be an object")
+        try:
+            result = ReplayResult(
+                manifest_id=str(raw["manifest_id"]),
+                run_id=str(raw["run_id"]),
+                evidence_class=EvidenceClass(str(raw["evidence_class"])),
+                start_ms=int(raw["start_ms"]),
+                end_ms=int(raw["end_ms"]),
+                processed_events=int(raw["processed_events"]),
+                processed_gaps=int(raw["processed_gaps"]),
+                strategy_decisions=int(raw["strategy_decisions"]),
+                risk_approvals=int(raw["risk_approvals"]),
+                risk_rejections=int(raw["risk_rejections"]),
+                execution_attempts=int(raw["execution_attempts"]),
+                fills=int(raw["fills"]),
+                opened_positions=int(raw["opened_positions"]),
+                closed_positions=int(raw["closed_positions"]),
+                journal_observations=int(raw["journal_observations"]),
+                closed_trade_ids=_tuple_strings(raw.get("closed_trade_ids"), "closed_trade_ids"),
+                final_account_state_id=str(raw["final_account_state_id"]),
+                data_complete=_boolean(raw.get("data_complete"), "data_complete"),
+                schema_version=int(raw["schema_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            if isinstance(exc, JournalConsistencyError):
+                raise
+            raise JournalConsistencyError("replay result payload is invalid") from exc
+        if result.run_id != run_id:
+            raise JournalConsistencyError("stored replay run id does not match payload")
+        if result.manifest_id != str(row[0]):
+            raise JournalConsistencyError("stored replay manifest id does not match payload")
+        return result
+
+    def iter_replay_results(self) -> Iterator[ReplayResult]:
+        rows = self.connection.execute(
+            """
+            SELECT run_id
+            FROM replay_runs
+            WHERE status = 'finished' AND result_json IS NOT NULL
+            ORDER BY run_id
+            """
+        ).fetchall()
+        for row in rows:
+            result = self.load_replay_result(str(row[0]))
+            if result is None:
+                raise JournalConsistencyError("replay result disappeared during iteration")
+            yield result
 
     def close(self) -> None:
         self.connection.close()
