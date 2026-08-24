@@ -117,7 +117,7 @@ def test_selected_market_validates_rank_score_and_native_execution_namespace() -
         _selected("BTC", 1, "101")
     with pytest.raises(ValueError, match="native"):
         SelectedEvidenceMarket(
-            market=MarketId("hip3", "hip3:ABC"),
+            market=MarketId("hip3", "ABC"),
             rank=1,
             feature_snapshot_id="feature",
             score=Decimal("50"),
