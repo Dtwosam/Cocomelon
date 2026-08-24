@@ -239,6 +239,23 @@ def assemble_trade_journal_entry(
 
     with localcontext(AUTHORITATIVE_CONTEXT):
         funding_cash_pnl = sum((item.cash_delta for item in funding_accruals), ZERO)
+        exit_reference_notional = sum(
+            (
+                exit_plan_by_id[fill.plan_id].execution_reference_price * fill.quantity
+                for fill in exit_fills
+            ),
+            ZERO,
+        )
+        exit_reference_price = exit_reference_notional / closed_quantity
+
+    exit_slippage_legs = tuple(
+        (
+            fill.price,
+            exit_plan_by_id[fill.plan_id].execution_reference_price,
+            fill.quantity,
+        )
+        for fill in exit_fills
+    )
 
     try:
         analytics = compute_trade_analytics(
@@ -246,7 +263,7 @@ def assemble_trade_journal_entry(
             entry_price=entry_price,
             entry_reference_price=opening_plan.execution_reference_price,
             exit_price=exit_price,
-            exit_reference_price=exit_plans[-1].execution_reference_price,
+            exit_reference_price=exit_reference_price,
             opened_quantity=opened_quantity,
             gross_realized_pnl=gross_realized_pnl,
             entry_fees=entry_fees,
@@ -260,6 +277,7 @@ def assemble_trade_journal_entry(
             quantity_reductions=tuple(
                 (fill.timestamp_ms, fill.quantity) for fill in exit_fills
             ),
+            exit_slippage_legs=exit_slippage_legs,
         )
     except ValueError as exc:
         return _inconsistency("TRADE_ANALYTICS_INVALID", str(exc))
@@ -293,8 +311,11 @@ def assemble_trade_journal_entry(
         exit_fees=exit_fees,
         funding_cash_pnl=funding_cash_pnl,
         net_pnl=analytics.net_pnl,
+        entry_slippage_amount=analytics.entry_slippage_amount,
+        exit_slippage_amount=analytics.exit_slippage_amount,
         entry_slippage_fraction=analytics.entry_slippage_fraction,
         exit_slippage_fraction=analytics.exit_slippage_fraction,
+        holding_duration_ms=closed_at_ms - opened_at_ms,
         mfe=analytics.mfe,
         mae=analytics.mae,
         net_r=analytics.net_r,
