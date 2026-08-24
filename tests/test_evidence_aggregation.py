@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import json
 from decimal import Decimal
 from pathlib import Path
 from types import ModuleType
 
 import pytest
 
+from cocomelon import cli
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
@@ -241,3 +243,92 @@ def test_aggregate_rejects_mixed_code_revisions_before_target_write(
 
     assert not target_journal.exists()
     assert not target_facts.exists()
+
+
+def test_aggregation_parser_requires_explicit_local_inputs() -> None:
+    parser = cli.build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["aggregate-evaluation-evidence"])
+
+    args = parser.parse_args(
+        [
+            "aggregate-evaluation-evidence",
+            "--journal",
+            "aggregate/journal.sqlite3",
+            "--facts",
+            "aggregate/facts.sqlite3",
+            "--source-root",
+            "artifact-a/output",
+            "--source-root",
+            "artifact-b/output",
+        ]
+    )
+    assert args.journal == Path("aggregate/journal.sqlite3")
+    assert args.facts == Path("aggregate/facts.sqlite3")
+    assert args.source_root == [Path("artifact-a/output"), Path("artifact-b/output")]
+
+    for forbidden in ("--testnet", "--live", "--api-url", "--ws-url"):
+        with pytest.raises(SystemExit):
+            parser.parse_args(
+                [
+                    "aggregate-evaluation-evidence",
+                    "--journal",
+                    "aggregate/journal.sqlite3",
+                    "--facts",
+                    "aggregate/facts.sqlite3",
+                    "--source-root",
+                    "artifact-a/output",
+                    forbidden,
+                ]
+            )
+
+
+def test_aggregation_cli_is_offline_and_reports_imported_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    revision = "a" * 40
+    _source(
+        tmp_path / "source-a",
+        suffix="a",
+        run_id="run-a",
+        code_revision=revision,
+        start_ms=0,
+    )
+    _source(
+        tmp_path / "source-b",
+        suffix="b",
+        run_id="run-b",
+        code_revision=revision,
+        start_ms=10_000,
+    )
+    target_root = tmp_path / "aggregate"
+
+    def forbidden_settings() -> object:
+        raise AssertionError("evidence aggregation must not load network settings")
+
+    monkeypatch.setattr("cocomelon.cli.Settings.from_env", forbidden_settings)
+    cli.main(
+        [
+            "aggregate-evaluation-evidence",
+            "--journal",
+            str(target_root / "journal.sqlite3"),
+            "--facts",
+            str(target_root / "facts.sqlite3"),
+            "--source-root",
+            str(tmp_path / "source-a"),
+            "--source-root",
+            str(tmp_path / "source-b"),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code_revision"] == revision
+    assert payload["run_ids"] == ["run-a", "run-b"]
+    assert payload["source_count"] == 2
+    assert payload["trade_count"] == 2
+    assert payload["decision_fact_count"] == 2
+    assert payload["network_access"] is False
+    assert payload["live_orders"] is False
