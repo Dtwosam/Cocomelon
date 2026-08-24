@@ -3,7 +3,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from cocomelon.evaluation.store import EvaluationConsistencyError, EvaluationFactStore
 
 from cocomelon.domain.evaluation import (
     AccountEquityFact,
@@ -13,6 +12,7 @@ from cocomelon.domain.evaluation import (
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
+from cocomelon.evaluation.store import EvaluationConsistencyError, EvaluationFactStore
 
 MARKET = MarketId("", "SOL")
 
