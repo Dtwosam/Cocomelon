@@ -1,12 +1,12 @@
 from decimal import Decimal
 
 import pytest
-from cocomelon.evaluation.facts import account_equity_fact, decision_evaluation_fact
 
 from cocomelon.domain.evaluation import EquityFactKind
 from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction, StrategyDecision
+from cocomelon.evaluation.facts import account_equity_fact, decision_evaluation_fact
 from cocomelon.execution.accounting import empty_account
 
 MARKET = MarketId("", "SOL")
