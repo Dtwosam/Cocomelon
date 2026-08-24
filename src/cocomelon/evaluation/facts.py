@@ -18,10 +18,10 @@ def decision_evaluation_fact(
 ) -> DecisionEvaluationFact:
     if not replay_run_id.strip():
         raise ValueError("replay_run_id must not be empty")
-    if decision.feature_snapshot_id != feature.snapshot_id:
-        raise ValueError("strategy decision feature snapshot does not match feature")
     if decision.market != feature.market:
         raise ValueError("strategy decision market does not match feature market")
+    if decision.feature_snapshot_id != feature.snapshot_id:
+        raise ValueError("strategy decision feature snapshot does not match feature")
     if feature.as_of_ms > decision.timestamp_ms:
         raise ValueError("feature timestamp cannot be after strategy decision timestamp")
     if feature.source_received_at_ms > decision.timestamp_ms:
