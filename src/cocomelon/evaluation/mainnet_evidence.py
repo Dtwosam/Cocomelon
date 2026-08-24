@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cocomelon.domain.evaluation import EvaluationPolicy
 from cocomelon.domain.replay import ReplayManifest, ReplayResult
 from cocomelon.evaluation.aggregate import (
     EvidenceAggregationError,
@@ -24,6 +25,7 @@ MAINNET_EVIDENCE_KIND = "genuine_public_hyperliquid_mainnet"
 MAINNET_API_URL = "https://api.hyperliquid.xyz"
 MAINNET_WS_URL = "wss://api.hyperliquid.xyz/ws"
 ATTESTATION_NAME = "mainnet-attestation.json"
+DAY_MS = 86_400_000
 
 
 class MainnetEvidenceError(RuntimeError):
@@ -145,6 +147,44 @@ def _load_replay_pairs(journal_path: Path) -> tuple[tuple[ReplayManifest, Replay
     if _sha256(journal_path) != before:
         raise MainnetEvidenceError("source journal changed during attestation")
     return tuple(pairs)
+
+
+def _load_closed_trade_timestamps(journal_path: Path) -> tuple[int, ...]:
+    if not journal_path.is_file():
+        raise MainnetEvidenceError(f"mainnet aggregate journal is missing: {journal_path}")
+    before = _sha256(journal_path)
+    with tempfile.TemporaryDirectory(prefix="cocomelon-mainnet-progress-") as temporary:
+        work_journal = Path(temporary) / "journal.sqlite3"
+        shutil.copy2(journal_path, work_journal)
+        if _sha256(work_journal) != before:
+            raise MainnetEvidenceError("mainnet aggregate journal copy checksum mismatch")
+        journal = JournalStore(work_journal)
+        try:
+            results = tuple(journal.iter_replay_results())
+            expected_trade_ids = {
+                trade_id
+                for result in results
+                for trade_id in result.closed_trade_ids
+            }
+            run_ids = {result.run_id for result in results}
+            trades = tuple(journal.iter_trades())
+            actual_trade_ids = {trade.trade_id for trade in trades}
+            if actual_trade_ids != expected_trade_ids:
+                raise MainnetEvidenceError(
+                    "mainnet aggregate closed trades do not match canonical replay results"
+                )
+            if any(trade.replay_run_id not in run_ids for trade in trades):
+                raise MainnetEvidenceError(
+                    "mainnet aggregate trade is not bound to an attested replay run"
+                )
+            timestamps = tuple(trade.closed_at_ms for trade in trades)
+        except JournalConsistencyError as exc:
+            raise MainnetEvidenceError("mainnet aggregate journal is invalid") from exc
+        finally:
+            journal.close()
+    if _sha256(journal_path) != before:
+        raise MainnetEvidenceError("mainnet aggregate journal changed during progress read")
+    return timestamps
 
 
 def _load_canonical_replay(source_root: Path) -> tuple[ReplayManifest, ReplayResult]:
@@ -643,6 +683,46 @@ def verify_mainnet_evidence_cohort_payload(
         "closed_positions": cohort.result.closed_positions,
         "closed_trade_count": len(cohort.result.closed_trade_ids),
         "data_complete": cohort.result.data_complete,
+        "network_access": False,
+        "live_orders": False,
+    }
+
+
+def mainnet_evidence_progress_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+) -> dict[str, object]:
+    journal = Path(journal_path)
+    facts = Path(facts_path)
+    if journal.parent.resolve() != facts.parent.resolve():
+        raise MainnetEvidenceError("mainnet progress stores must share one directory")
+    attestation = _verify_attested_target(
+        journal,
+        facts,
+        journal.parent / ATTESTATION_NAME,
+    )
+    timestamps = _load_closed_trade_timestamps(journal)
+    closed_trade_count = len(timestamps)
+    closed_trade_days = len({timestamp // DAY_MS for timestamp in timestamps})
+    policy = EvaluationPolicy()
+    trade_shortfall = max(0, policy.min_oos_trades - closed_trade_count)
+    day_shortfall = max(0, policy.min_oos_days - closed_trade_days)
+    return {
+        "mainnet_attestation_id": attestation.attestation_id,
+        "code_revision": attestation.code_revision,
+        "attested_run_count": len(attestation.run_ids),
+        "attested_source_count": len(attestation.sources),
+        "closed_trade_count": closed_trade_count,
+        "closed_trade_days": closed_trade_days,
+        "minimum_oos_trade_requirement": policy.min_oos_trades,
+        "minimum_oos_day_requirement": policy.min_oos_days,
+        "closed_trades_shortfall": trade_shortfall,
+        "closed_trade_days_shortfall": day_shortfall,
+        "raw_corpus_can_satisfy_oos_minimums": (
+            trade_shortfall == 0 and day_shortfall == 0
+        ),
+        "precheck_only": True,
+        "economic_claim": "none",
         "network_access": False,
         "live_orders": False,
     }
