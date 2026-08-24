@@ -21,6 +21,7 @@ from cocomelon.domain.features import (
 from cocomelon.domain.market import MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceRecordKind, SourceSegment
 from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.evaluation.aggregate import aggregate_evaluation_evidence
 from cocomelon.evaluation.cli_support import (
     evaluation_result_payload,
     freeze_evaluation_dataset_payload,
@@ -525,6 +526,27 @@ def inspect_journal_payload(
     return {str(key): value for key, value in payload.items()}
 
 
+def aggregate_evaluation_evidence_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    source_roots: Sequence[str | Path],
+) -> dict[str, object]:
+    result = aggregate_evaluation_evidence(journal_path, facts_path, source_roots)
+    return {
+        "code_revision": result.code_revision,
+        "run_ids": list(result.run_ids),
+        "source_count": result.source_count,
+        "trade_count": result.trade_count,
+        "observation_count": result.observation_count,
+        "decision_fact_count": result.decision_fact_count,
+        "equity_fact_count": result.equity_fact_count,
+        "journal": str(Path(journal_path)),
+        "facts": str(Path(facts_path)),
+        "network_access": False,
+        "live_orders": False,
+    }
+
+
 def evaluate_payload(
     journal_path: str | Path,
     facts_path: str | Path,
@@ -600,6 +622,11 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--journal", required=True, type=Path)
     inspect.add_argument("--trade-id", required=True)
 
+    aggregate = subparsers.add_parser("aggregate-evaluation-evidence")
+    aggregate.add_argument("--journal", required=True, type=Path)
+    aggregate.add_argument("--facts", required=True, type=Path)
+    aggregate.add_argument("--source-root", required=True, action="append", type=Path)
+
     freeze_dataset = subparsers.add_parser("freeze-evaluation-dataset")
     freeze_dataset.add_argument("--journal", required=True, type=Path)
     freeze_dataset.add_argument("--facts", required=True, type=Path)
@@ -648,6 +675,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         payload = replay_payload(args.manifest, args.journal)
     elif args.command == "inspect-journal":
         payload = inspect_journal_payload(args.journal, args.trade_id)
+    elif args.command == "aggregate-evaluation-evidence":
+        payload = aggregate_evaluation_evidence_payload(
+            args.journal,
+            args.facts,
+            tuple(args.source_root),
+        )
     elif args.command == "freeze-evaluation-dataset":
         payload = freeze_evaluation_dataset_payload(
             args.journal,
