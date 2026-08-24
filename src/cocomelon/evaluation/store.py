@@ -10,9 +10,12 @@ from cocomelon.domain.evaluation import (
     AccountEquityFact,
     DecisionEvaluationFact,
     EquityFactKind,
+    EvaluationDatasetManifest,
+    ReplayEvaluationSource,
 )
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
+from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 
 
@@ -63,6 +66,31 @@ def _int(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise EvaluationConsistencyError(f"{field} must be an integer")
     return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise EvaluationConsistencyError(f"{field} must be a boolean")
+    return value
+
+
+def _replay_evaluation_source(value: object) -> ReplayEvaluationSource:
+    if not isinstance(value, dict):
+        raise EvaluationConsistencyError("evaluation replay source must be an object")
+    try:
+        return ReplayEvaluationSource(
+            run_id=_string(value.get("run_id"), "run_id"),
+            manifest_id=_string(value.get("manifest_id"), "manifest_id"),
+            result_digest=_string(value.get("result_digest"), "result_digest"),
+            evidence_class=EvidenceClass(
+                _string(value.get("evidence_class"), "evidence_class")
+            ),
+            start_ms=_int(value.get("start_ms"), "start_ms"),
+            end_ms=_int(value.get("end_ms"), "end_ms"),
+            data_complete=_boolean(value.get("data_complete"), "data_complete"),
+        )
+    except ValueError as exc:
+        raise EvaluationConsistencyError("evaluation replay source is invalid") from exc
 
 
 class EvaluationFactStore:
@@ -162,6 +190,23 @@ class EvaluationFactStore:
                 "gross_open_notional": str(fact.gross_open_notional),
                 "open_position_count": fact.open_position_count,
                 "schema_version": fact.schema_version,
+            }
+        )
+
+    def _canonical_dataset_manifest(self, manifest: EvaluationDatasetManifest) -> str:
+        return self._canonical_json(
+            {
+                "sources": tuple(source.canonical_payload() for source in manifest.sources),
+                "trade_ids": manifest.trade_ids,
+                "decision_fact_ids": manifest.decision_fact_ids,
+                "equity_fact_ids": manifest.equity_fact_ids,
+                "start_ms": manifest.start_ms,
+                "end_ms": manifest.end_ms,
+                "code_revision": manifest.code_revision,
+                "data_complete": manifest.data_complete,
+                "gap_refs": manifest.gap_refs,
+                "mixed_evidence_diagnostic": manifest.mixed_evidence_diagnostic,
+                "schema_version": manifest.schema_version,
             }
         )
 
@@ -413,6 +458,95 @@ class EvaluationFactStore:
             if fact is None:
                 raise EvaluationConsistencyError("equity fact disappeared during iteration")
             yield fact
+
+    def record_dataset_manifest(self, manifest: EvaluationDatasetManifest) -> None:
+        payload = self._canonical_dataset_manifest(manifest)
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            existing = self.connection.execute(
+                """
+                SELECT payload_json
+                FROM evaluation_dataset_manifests
+                WHERE manifest_id = ?
+                """,
+                (manifest.manifest_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing[0] != payload:
+                    raise EvaluationConsistencyError(
+                        f"conflicting evaluation dataset manifest: {manifest.manifest_id}"
+                    )
+                self.connection.commit()
+                return
+            self.connection.execute(
+                """
+                INSERT INTO evaluation_dataset_manifests(manifest_id, payload_json)
+                VALUES (?, ?)
+                """,
+                (manifest.manifest_id, payload),
+            )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def load_dataset_manifest(
+        self,
+        manifest_id: str,
+    ) -> EvaluationDatasetManifest | None:
+        row = self.connection.execute(
+            """
+            SELECT payload_json
+            FROM evaluation_dataset_manifests
+            WHERE manifest_id = ?
+            """,
+            (manifest_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            raw = json.loads(str(row[0]))
+        except json.JSONDecodeError as exc:
+            raise EvaluationConsistencyError(
+                "evaluation dataset manifest payload must be valid JSON"
+            ) from exc
+        if not isinstance(raw, dict):
+            raise EvaluationConsistencyError(
+                "evaluation dataset manifest payload must be an object"
+            )
+        raw_sources = raw.get("sources")
+        if not isinstance(raw_sources, list):
+            raise EvaluationConsistencyError("evaluation dataset sources must be an array")
+        try:
+            result = EvaluationDatasetManifest(
+                sources=tuple(_replay_evaluation_source(value) for value in raw_sources),
+                trade_ids=_string_tuple(raw.get("trade_ids"), "trade_ids"),
+                decision_fact_ids=_string_tuple(
+                    raw.get("decision_fact_ids"), "decision_fact_ids"
+                ),
+                equity_fact_ids=_string_tuple(raw.get("equity_fact_ids"), "equity_fact_ids"),
+                start_ms=_int(raw.get("start_ms"), "start_ms"),
+                end_ms=_int(raw.get("end_ms"), "end_ms"),
+                code_revision=_string(raw.get("code_revision"), "code_revision"),
+                data_complete=_boolean(raw.get("data_complete"), "data_complete"),
+                gap_refs=_string_tuple(raw.get("gap_refs"), "gap_refs"),
+                mixed_evidence_diagnostic=_boolean(
+                    raw.get("mixed_evidence_diagnostic"),
+                    "mixed_evidence_diagnostic",
+                ),
+                schema_version=_int(raw.get("schema_version"), "schema_version"),
+            )
+        except (TypeError, ValueError) as exc:
+            if isinstance(exc, EvaluationConsistencyError):
+                raise
+            raise EvaluationConsistencyError(
+                "evaluation dataset manifest payload is invalid"
+            ) from exc
+        if result.manifest_id != manifest_id:
+            raise EvaluationConsistencyError(
+                "stored evaluation dataset manifest id does not match payload"
+            )
+        return result
 
     def close(self) -> None:
         self.connection.close()
