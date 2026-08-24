@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from cocomelon.execution.accounting import (
     apply_opening_fills,
     apply_reduce_only_fills,
     empty_account,
+    mark_to_market,
 )
 from cocomelon.execution.funding import FundingAccrual
 from cocomelon.execution.interface import (
@@ -72,6 +74,28 @@ class PaperExecutionAdapter:
 
     def _mark_store_failure(self, reason: str) -> None:
         self._health = ExecutionHealth(False, (reason,))
+
+    def mark_account_to_market(
+        self,
+        marks: Mapping[MarketId, Decimal],
+        *,
+        timestamp_ms: int,
+    ) -> PaperAccountState:
+        candidate = mark_to_market(
+            self._account,
+            marks,
+            timestamp_ms,
+            paper_max_gross_leverage=self._config.paper_max_gross_leverage,
+        )
+        connection = self.store.raw_connection()
+        try:
+            with connection:
+                self.store._write_materialized_account(candidate)
+        except Exception:
+            self._mark_store_failure("DURABLE_ACCOUNT_MARK_WRITE_FAILED")
+            raise
+        self._account = candidate
+        return self._account
 
     def apply_funding(
         self,
