@@ -46,7 +46,7 @@ NATIVE = (
     (_meta("SOL"), _ctx("180", volume="700000000", oi="350000")),
     (_meta("DOGE"), _ctx("0.20", volume="600000000", oi="300000")),
     (_meta("AVAX"), _ctx("40", volume="500000000", oi="250000")),
-    (_meta("XRP"), _ctx("1.20", volume="400000000", oi="200000")),
+    (_meta("XRP"), _ctx("1.20", volume="2000000000", oi="1000000")),
     (_meta("LOW"), _ctx("10", volume="1", oi="1")),
     (_meta("OLD", delisted=True), _ctx("5", volume="300000000", oi="150000")),
 )
@@ -165,13 +165,15 @@ def test_selection_is_permutation_stable_dynamic_and_native_only() -> None:
         (item.market.canonical, item.rank, item.score)
         for item in second.session.selected
     )
+    selected_markets = {market for market, _, _ in first_selected}
 
     assert first_selected == second_selected
     assert len(first_selected) == 4
     assert all(":" not in market for market, _, _ in first_selected)
-    assert "LOW" not in {market for market, _, _ in first_selected}
-    assert "OLD" not in {market for market, _, _ in first_selected}
-    assert {market for market, _, _ in first_selected} != {"BTC", "ETH", "SOL", "DOGE"}
+    assert "LOW" not in selected_markets
+    assert "OLD" not in selected_markets
+    assert "XRP" in selected_markets
+    assert "DOGE" not in selected_markets
 
 
 def test_warmup_uses_response_receive_time_and_requests_required_history() -> None:
