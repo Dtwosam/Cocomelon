@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: genuine-mainnet-evidence-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
