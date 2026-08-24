@@ -164,7 +164,9 @@ def _preflight_sources(
     for root in roots:
         journal_path, facts_path = _source_paths(root)
         if journal_path.resolve() in target_paths or facts_path.resolve() in target_paths:
-            raise EvidenceAggregationError("source evidence stores cannot also be aggregation targets")
+            raise EvidenceAggregationError(
+                "source evidence stores cannot also be aggregation targets"
+            )
         snapshot = _load_source(root)
         snapshots.append(snapshot)
         revisions.update(item.code_revision for item in snapshot.manifests)
