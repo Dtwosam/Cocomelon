@@ -21,8 +21,12 @@ def policy(*, min_window_trades: int = 2) -> EvaluationPolicy:
     )
 
 
-def plan(*, expanding: bool) -> WalkForwardPlan:
-    rules = policy()
+def plan(
+    *,
+    expanding: bool,
+    rules: EvaluationPolicy | None = None,
+) -> WalkForwardPlan:
+    active_rules = policy() if rules is None else rules
     return WalkForwardPlan(
         dataset_manifest_id="dataset-1",
         first_window_start_ms=0,
@@ -32,7 +36,7 @@ def plan(*, expanding: bool) -> WalkForwardPlan:
         step_ms=5_000,
         embargo_ms=0,
         expanding=expanding,
-        policy_id=rules.policy_id,
+        policy_id=active_rules.policy_id,
     )
 
 
@@ -107,7 +111,10 @@ def test_rolling_walkforward_generation_moves_development_window() -> None:
 
 def test_future_samples_do_not_change_earlier_window_result() -> None:
     rules = policy(min_window_trades=1)
-    windows = generate_walkforward_windows(plan(expanding=True), dataset_end_ms=20_000)
+    windows = generate_walkforward_windows(
+        plan(expanding=True, rules=rules),
+        dataset_end_ms=20_000,
+    )
     early = sample("early", opened_at_ms=12_500, closed_at_ms=13_000)
     future = sample("future", opened_at_ms=17_500, closed_at_ms=18_000, net_r="9")
 
@@ -121,7 +128,10 @@ def test_future_samples_do_not_change_earlier_window_result() -> None:
 
 def test_window_readiness_depends_only_on_evaluation_partition_trade_count() -> None:
     rules = policy(min_window_trades=2)
-    windows = generate_walkforward_windows(plan(expanding=True), dataset_end_ms=20_000)
+    windows = generate_walkforward_windows(
+        plan(expanding=True, rules=rules),
+        dataset_end_ms=20_000,
+    )
     first_only = sample("first", opened_at_ms=12_500, closed_at_ms=13_000)
     second_a = sample("second-a", opened_at_ms=17_500, closed_at_ms=18_000)
     second_b = sample("second-b", opened_at_ms=18_100, closed_at_ms=19_000)
@@ -142,7 +152,10 @@ def test_window_readiness_depends_only_on_evaluation_partition_trade_count() -> 
 
 def test_evaluation_boundary_crossing_trade_is_reported_excluded() -> None:
     rules = policy(min_window_trades=1)
-    window = generate_walkforward_windows(plan(expanding=True), dataset_end_ms=15_000)[0]
+    window = generate_walkforward_windows(
+        plan(expanding=True, rules=rules),
+        dataset_end_ms=15_000,
+    )[0]
     crossing = sample("crossing", opened_at_ms=14_500, closed_at_ms=15_500)
 
     result = evaluate_walkforward((crossing,), (window,), policy=rules)[0]
