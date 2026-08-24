@@ -1,7 +1,6 @@
 from decimal import ROUND_UP, Context, Decimal, localcontext
 
 import pytest
-
 from cocomelon.domain.evaluation import (
     AccountEquityFact,
     CandidateDefinition,
