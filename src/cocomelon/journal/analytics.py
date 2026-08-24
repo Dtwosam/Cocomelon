@@ -16,6 +16,8 @@ AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 class TradeAnalytics:
     net_pnl: Decimal
     net_r: Decimal
+    entry_slippage_amount: Decimal
+    exit_slippage_amount: Decimal
     entry_slippage_fraction: Decimal
     exit_slippage_fraction: Decimal
     mfe: ExcursionMetric
@@ -108,6 +110,74 @@ def _quantity_at(
     return remaining
 
 
+def _slippage_per_unit(
+    *,
+    direction: Direction,
+    fill_price: Decimal,
+    reference_price: Decimal,
+    entry: bool,
+) -> Decimal:
+    if entry:
+        if direction is Direction.LONG:
+            return fill_price - reference_price
+        return reference_price - fill_price
+    if direction is Direction.LONG:
+        return reference_price - fill_price
+    return fill_price - reference_price
+
+
+def _exit_slippage(
+    *,
+    direction: Direction,
+    exit_price: Decimal,
+    exit_reference_price: Decimal,
+    opened_quantity: Decimal,
+    legs: Sequence[tuple[Decimal, Decimal, Decimal]],
+) -> tuple[Decimal, Decimal]:
+    if not legs:
+        with localcontext(AUTHORITATIVE_CONTEXT):
+            amount = (
+                _slippage_per_unit(
+                    direction=direction,
+                    fill_price=exit_price,
+                    reference_price=exit_reference_price,
+                    entry=False,
+                )
+                * opened_quantity
+            )
+            reference_notional = exit_reference_price * opened_quantity
+            return amount, amount / reference_notional
+
+    total_quantity = ZERO
+    fill_notional = ZERO
+    reference_notional = ZERO
+    amount = ZERO
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        for index, (fill_price, reference_price, quantity) in enumerate(legs):
+            _positive(fill_price, f"exit_slippage_legs[{index}].fill_price")
+            _positive(reference_price, f"exit_slippage_legs[{index}].reference_price")
+            _positive(quantity, f"exit_slippage_legs[{index}].quantity")
+            total_quantity += quantity
+            fill_notional += fill_price * quantity
+            reference_notional += reference_price * quantity
+            amount += (
+                _slippage_per_unit(
+                    direction=direction,
+                    fill_price=fill_price,
+                    reference_price=reference_price,
+                    entry=False,
+                )
+                * quantity
+            )
+        if total_quantity != opened_quantity:
+            raise ValueError("exit slippage leg quantity must equal opened quantity")
+        if fill_notional / total_quantity != exit_price:
+            raise ValueError("exit slippage legs must reconcile to exit_price")
+        if reference_notional / total_quantity != exit_reference_price:
+            raise ValueError("exit slippage legs must reconcile to exit_reference_price")
+        return amount, amount / reference_notional
+
+
 def _excursion(
     *,
     kind: str,
@@ -159,6 +229,7 @@ def compute_trade_analytics(
     mark_observations: Sequence[ReplayRecord],
     known_gap_intervals: Sequence[tuple[int, int | None]],
     quantity_reductions: Sequence[tuple[int, Decimal]] = (),
+    exit_slippage_legs: Sequence[tuple[Decimal, Decimal, Decimal]] = (),
 ) -> TradeAnalytics:
     if direction is Direction.NO_TRADE:
         raise ValueError("trade analytics require LONG or SHORT")
@@ -218,20 +289,32 @@ def compute_trade_analytics(
     with localcontext(AUTHORITATIVE_CONTEXT):
         net_pnl = gross_realized_pnl - entry_fees - exit_fees + funding_cash_pnl
         net_r = net_pnl / initial_risk_amount
-        if direction is Direction.LONG:
-            entry_slippage = (entry_price - entry_reference_price) / entry_reference_price
-            exit_slippage = (exit_reference_price - exit_price) / exit_reference_price
-        else:
-            entry_slippage = (entry_reference_price - entry_price) / entry_reference_price
-            exit_slippage = (exit_price - exit_reference_price) / exit_reference_price
-        entry_slippage = max(ZERO, entry_slippage)
-        exit_slippage = max(ZERO, exit_slippage)
+        entry_slippage_amount = (
+            _slippage_per_unit(
+                direction=direction,
+                fill_price=entry_price,
+                reference_price=entry_reference_price,
+                entry=True,
+            )
+            * opened_quantity
+        )
+        entry_reference_notional = entry_reference_price * opened_quantity
+        entry_slippage_fraction = entry_slippage_amount / entry_reference_notional
+    exit_slippage_amount, exit_slippage_fraction = _exit_slippage(
+        direction=direction,
+        exit_price=exit_price,
+        exit_reference_price=exit_reference_price,
+        opened_quantity=opened_quantity,
+        legs=exit_slippage_legs,
+    )
 
     return TradeAnalytics(
         net_pnl=net_pnl,
         net_r=net_r,
-        entry_slippage_fraction=entry_slippage,
-        exit_slippage_fraction=exit_slippage,
+        entry_slippage_amount=entry_slippage_amount,
+        exit_slippage_amount=exit_slippage_amount,
+        entry_slippage_fraction=entry_slippage_fraction,
+        exit_slippage_fraction=exit_slippage_fraction,
         mfe=_excursion(
             kind="mfe",
             direction=direction,
