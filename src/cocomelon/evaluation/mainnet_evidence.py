@@ -17,6 +17,7 @@ from cocomelon.evaluation.aggregate import (
     EvidenceAggregationResult,
     aggregate_evaluation_evidence,
 )
+from cocomelon.evaluation.cli_support import freeze_evaluation_dataset_payload
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 
 MAINNET_EVIDENCE_KIND = "genuine_public_hyperliquid_mainnet"
@@ -38,6 +39,14 @@ class _ValidatedCohort:
     workflow_head_sha: str
     trigger_head_sha: str
     source_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class _VerifiedAttestation:
+    attestation_id: str
+    code_revision: str
+    run_ids: tuple[str, ...]
+    sources: tuple[dict[str, str], ...]
 
 
 def _read_mapping(path: Path, field: str) -> dict[str, Any]:
@@ -84,6 +93,11 @@ def _require_sha(value: str, field: str) -> None:
         raise MainnetEvidenceError(f"{field} must be a 40-character commit SHA")
 
 
+def _require_digest(value: str, field: str) -> None:
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value.lower()):
+        raise MainnetEvidenceError(f"{field} must be a 64-character digest")
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     try:
@@ -106,34 +120,40 @@ def _canonical_digest(payload: Mapping[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _load_canonical_replay(source_root: Path) -> tuple[ReplayManifest, ReplayResult]:
-    source_journal = source_root / "journal.sqlite3"
-    if not source_journal.is_file():
-        raise MainnetEvidenceError(f"source journal is missing: {source_journal}")
-    before = _sha256(source_journal)
+def _load_replay_pairs(journal_path: Path) -> tuple[tuple[ReplayManifest, ReplayResult], ...]:
+    if not journal_path.is_file():
+        raise MainnetEvidenceError(f"source journal is missing: {journal_path}")
+    before = _sha256(journal_path)
     with tempfile.TemporaryDirectory(prefix="cocomelon-mainnet-attestation-") as temporary:
         work_journal = Path(temporary) / "journal.sqlite3"
-        shutil.copy2(source_journal, work_journal)
+        shutil.copy2(journal_path, work_journal)
         if _sha256(work_journal) != before:
             raise MainnetEvidenceError("source journal copy checksum mismatch")
         journal = JournalStore(work_journal)
         try:
             results = tuple(journal.iter_replay_results())
-            if len(results) != 1:
-                raise MainnetEvidenceError(
-                    "mainnet cohort must contain exactly one finished replay result"
-                )
-            result = results[0]
-            manifest = journal.load_manifest(result.manifest_id)
-            if manifest is None:
-                raise MainnetEvidenceError("mainnet cohort replay manifest is missing")
+            pairs: list[tuple[ReplayManifest, ReplayResult]] = []
+            for result in results:
+                manifest = journal.load_manifest(result.manifest_id)
+                if manifest is None:
+                    raise MainnetEvidenceError("mainnet cohort replay manifest is missing")
+                pairs.append((manifest, result))
         except JournalConsistencyError as exc:
             raise MainnetEvidenceError("mainnet cohort journal is invalid") from exc
         finally:
             journal.close()
-    if _sha256(source_journal) != before:
+    if _sha256(journal_path) != before:
         raise MainnetEvidenceError("source journal changed during attestation")
-    return manifest, result
+    return tuple(pairs)
+
+
+def _load_canonical_replay(source_root: Path) -> tuple[ReplayManifest, ReplayResult]:
+    pairs = _load_replay_pairs(source_root / "journal.sqlite3")
+    if len(pairs) != 1:
+        raise MainnetEvidenceError(
+            "mainnet cohort must contain exactly one finished replay result"
+        )
+    return pairs[0]
 
 
 def _cohort_source_digest(source_root: Path, recording_session_path: Path) -> str:
@@ -288,31 +308,33 @@ def _validate_complete_mainnet_cohort(source_root: Path) -> _ValidatedCohort:
     )
 
 
+def _cohort_source_payload(cohort: _ValidatedCohort) -> dict[str, str]:
+    return {
+        "manifest_id": cohort.manifest.manifest_id,
+        "recording_session_id": cohort.recording_session_id,
+        "result_digest": cohort.result.result_digest,
+        "run_id": cohort.result.run_id,
+        "source_digest": cohort.source_digest,
+        "trigger_head_sha": cohort.trigger_head_sha,
+        "workflow_head_sha": cohort.workflow_head_sha,
+    }
+
+
 def _attestation_payload(
-    aggregation: EvidenceAggregationResult,
-    cohorts: Sequence[_ValidatedCohort],
+    code_revision: str,
+    run_ids: Sequence[str],
+    sources: Sequence[Mapping[str, str]],
 ) -> dict[str, object]:
-    sources = [
-        {
-            "manifest_id": cohort.manifest.manifest_id,
-            "recording_session_id": cohort.recording_session_id,
-            "result_digest": cohort.result.result_digest,
-            "run_id": cohort.result.run_id,
-            "source_digest": cohort.source_digest,
-            "trigger_head_sha": cohort.trigger_head_sha,
-            "workflow_head_sha": cohort.workflow_head_sha,
-        }
-        for cohort in sorted(cohorts, key=lambda item: item.result.run_id)
-    ]
+    source_payloads = [dict(item) for item in sorted(sources, key=lambda item: item["run_id"])]
     base: dict[str, object] = {
         "schema_version": 1,
         "evidence_kind": MAINNET_EVIDENCE_KIND,
         "economic_claim": "none",
         "real_evidence_eligible": True,
-        "code_revision": aggregation.code_revision,
-        "run_ids": list(aggregation.run_ids),
-        "source_count": len(sources),
-        "sources": sources,
+        "code_revision": code_revision,
+        "run_ids": sorted(run_ids),
+        "source_count": len(source_payloads),
+        "sources": source_payloads,
     }
     return {**base, "attestation_id": _canonical_digest(base)}
 
@@ -332,6 +354,143 @@ def _write_attestation(path: Path, payload: Mapping[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _string_list(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+        raise MainnetEvidenceError(f"{field} must be a non-empty string array")
+    return tuple(str(item) for item in value)
+
+
+def _attestation_source(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise MainnetEvidenceError("attestation source must be an object")
+    required = {
+        "manifest_id",
+        "recording_session_id",
+        "result_digest",
+        "run_id",
+        "source_digest",
+        "trigger_head_sha",
+        "workflow_head_sha",
+    }
+    if set(value) != required:
+        raise MainnetEvidenceError("attestation source fields are invalid")
+    result: dict[str, str] = {}
+    for field in sorted(required):
+        raw = value[field]
+        if not isinstance(raw, str) or not raw:
+            raise MainnetEvidenceError(f"attestation source {field} must be a string")
+        result[field] = raw
+    _require_digest(result["result_digest"], "attestation source result_digest")
+    _require_digest(result["source_digest"], "attestation source source_digest")
+    _require_sha(result["trigger_head_sha"], "attestation source trigger_head_sha")
+    _require_sha(result["workflow_head_sha"], "attestation source workflow_head_sha")
+    return result
+
+
+def _read_verified_attestation(path: Path) -> _VerifiedAttestation:
+    raw = _read_mapping(path, "mainnet attestation")
+    required = {
+        "attestation_id",
+        "code_revision",
+        "economic_claim",
+        "evidence_kind",
+        "real_evidence_eligible",
+        "run_ids",
+        "schema_version",
+        "source_count",
+        "sources",
+    }
+    if set(raw) != required:
+        raise MainnetEvidenceError("mainnet attestation fields are invalid")
+    if raw.get("schema_version") != 1:
+        raise MainnetEvidenceError("mainnet attestation schema version is unsupported")
+    if raw.get("evidence_kind") != MAINNET_EVIDENCE_KIND:
+        raise MainnetEvidenceError("mainnet attestation evidence kind is invalid")
+    if raw.get("economic_claim") != "none":
+        raise MainnetEvidenceError("mainnet attestation economic claim must be none")
+    _require_bool(raw.get("real_evidence_eligible"), True, "real_evidence_eligible")
+
+    code_revision = raw.get("code_revision")
+    attestation_id = raw.get("attestation_id")
+    if not isinstance(code_revision, str):
+        raise MainnetEvidenceError("mainnet attestation code_revision must be a string")
+    if not isinstance(attestation_id, str):
+        raise MainnetEvidenceError("mainnet attestation attestation_id must be a string")
+    _require_sha(code_revision, "mainnet attestation code_revision")
+    _require_digest(attestation_id, "mainnet attestation attestation_id")
+
+    run_ids = _string_list(raw.get("run_ids"), "mainnet attestation run_ids")
+    if tuple(sorted(set(run_ids))) != run_ids:
+        raise MainnetEvidenceError("mainnet attestation run_ids must be sorted and unique")
+    raw_sources = raw.get("sources")
+    if not isinstance(raw_sources, list) or not raw_sources:
+        raise MainnetEvidenceError("mainnet attestation sources must be a non-empty array")
+    sources = tuple(_attestation_source(item) for item in raw_sources)
+    if tuple(sorted(item["run_id"] for item in sources)) != run_ids:
+        raise MainnetEvidenceError("mainnet attestation sources must match run_ids")
+    if raw.get("source_count") != len(sources):
+        raise MainnetEvidenceError("mainnet attestation source_count is invalid")
+
+    base = {key: value for key, value in raw.items() if key != "attestation_id"}
+    if _canonical_digest(base) != attestation_id:
+        raise MainnetEvidenceError("mainnet attestation digest is invalid")
+    return _VerifiedAttestation(
+        attestation_id=attestation_id,
+        code_revision=code_revision,
+        run_ids=run_ids,
+        sources=sources,
+    )
+
+
+def _verify_attested_target(
+    target_journal: Path,
+    target_facts: Path,
+    attestation_path: Path,
+) -> _VerifiedAttestation:
+    exists = (target_journal.exists(), target_facts.exists(), attestation_path.exists())
+    if exists != (True, True, True):
+        raise MainnetEvidenceError(
+            "existing mainnet aggregate requires journal, facts, and attestation"
+        )
+    if not target_facts.is_file():
+        raise MainnetEvidenceError("mainnet aggregate facts must be a regular file")
+    attestation = _read_verified_attestation(attestation_path)
+    pairs = _load_replay_pairs(target_journal)
+    if not pairs:
+        raise MainnetEvidenceError("mainnet aggregate must contain finished replay results")
+    by_run = {result.run_id: (manifest, result) for manifest, result in pairs}
+    if tuple(sorted(by_run)) != attestation.run_ids:
+        raise MainnetEvidenceError("mainnet attestation run set does not match aggregate")
+    if {manifest.code_revision for manifest, _ in pairs} != {attestation.code_revision}:
+        raise MainnetEvidenceError("mainnet attestation revision does not match aggregate")
+    for source in attestation.sources:
+        manifest, result = by_run[source["run_id"]]
+        _require_equal(source["manifest_id"], manifest.manifest_id, "attested manifest_id")
+        _require_equal(source["result_digest"], result.result_digest, "attested result_digest")
+        _require_equal(
+            source["workflow_head_sha"],
+            manifest.code_revision,
+            "attested workflow head",
+        )
+    return attestation
+
+
+def _merge_sources(
+    existing: Sequence[Mapping[str, str]],
+    incoming: Sequence[_ValidatedCohort],
+) -> tuple[dict[str, str], ...]:
+    merged = {item["run_id"]: dict(item) for item in existing}
+    for cohort in incoming:
+        source = _cohort_source_payload(cohort)
+        current = merged.get(source["run_id"])
+        if current is not None and current != source:
+            raise MainnetEvidenceError(
+                f"conflicting mainnet attestation source: {source['run_id']}"
+            )
+        merged[source["run_id"]] = source
+    return tuple(merged[run_id] for run_id in sorted(merged))
+
+
 def aggregate_mainnet_evaluation_evidence(
     target_journal_path: str | Path,
     target_facts_path: str | Path,
@@ -344,9 +503,14 @@ def aggregate_mainnet_evaluation_evidence(
     if target_journal.parent.resolve() != target_facts.parent.resolve():
         raise MainnetEvidenceError("mainnet aggregation targets must share one directory")
     attestation_path = target_journal.parent / ATTESTATION_NAME
-    if target_journal.exists() or target_facts.exists() or attestation_path.exists():
-        raise MainnetEvidenceError(
-            "existing mainnet aggregate requires a verified attestation merge"
+
+    existing_attestation: _VerifiedAttestation | None = None
+    any_target = target_journal.exists() or target_facts.exists() or attestation_path.exists()
+    if any_target:
+        existing_attestation = _verify_attested_target(
+            target_journal,
+            target_facts,
+            attestation_path,
         )
 
     roots = tuple(Path(item).resolve() for item in source_roots)
@@ -354,10 +518,58 @@ def aggregate_mainnet_evaluation_evidence(
     revisions = {item.manifest.code_revision for item in cohorts}
     if len(revisions) != 1:
         raise MainnetEvidenceError("mainnet cohorts must use one fixed code revision")
+    incoming_revision = next(iter(revisions))
+    if existing_attestation is not None:
+        _require_equal(
+            incoming_revision,
+            existing_attestation.code_revision,
+            "mainnet aggregate code revision",
+        )
+    sources = _merge_sources(
+        () if existing_attestation is None else existing_attestation.sources,
+        cohorts,
+    )
 
     try:
         aggregation = aggregate_evaluation_evidence(target_journal, target_facts, roots)
     except EvidenceAggregationError as exc:
         raise MainnetEvidenceError("unable to aggregate validated mainnet evidence") from exc
-    _write_attestation(attestation_path, _attestation_payload(aggregation, cohorts))
+    payload = _attestation_payload(aggregation.code_revision, aggregation.run_ids, sources)
+    _write_attestation(attestation_path, payload)
     return aggregation
+
+
+def freeze_mainnet_evaluation_dataset_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    replay_run_ids: tuple[str, ...],
+) -> dict[str, object]:
+    journal = Path(journal_path)
+    facts = Path(facts_path)
+    if journal.parent.resolve() != facts.parent.resolve():
+        raise MainnetEvidenceError("mainnet dataset stores must share one directory")
+    attestation = _verify_attested_target(
+        journal,
+        facts,
+        journal.parent / ATTESTATION_NAME,
+    )
+    requested = tuple(sorted(set(replay_run_ids)))
+    if requested != attestation.run_ids:
+        raise MainnetEvidenceError("dataset freeze requires the exact attested run set")
+
+    payload = freeze_evaluation_dataset_payload(journal, facts, requested)
+    if payload.get("data_complete") is not True or payload.get("gap_refs") != []:
+        raise MainnetEvidenceError("attested mainnet dataset must remain complete and gap-free")
+    _require_equal(
+        payload.get("code_revision"),
+        attestation.code_revision,
+        "mainnet dataset code revision",
+    )
+    return {
+        **payload,
+        "evidence_kind": MAINNET_EVIDENCE_KIND,
+        "economic_claim": "none",
+        "real_evidence_eligible": True,
+        "mainnet_attestation_id": attestation.attestation_id,
+        "live_orders": False,
+    }
