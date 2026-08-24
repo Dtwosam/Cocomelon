@@ -198,9 +198,11 @@ Integration audit:
 - no PR comments, reviews, or review threads existed;
 - guarded merge used exact expected head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`;
 - `main` immediately pointed to `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`;
-- comparing `phase-9-evaluation-gates` to `main` showed exactly one merge commit and an empty file diff.
+- comparing `phase-9-evaluation-gates` to `main` showed exactly one merge commit and an empty file diff;
+- a disposable non-merged PR #14 pointed exactly at post-merge `main` head `23d60a92c9ba279fe2412e4369fc12aa29534e53` so the normal pull-request CI could be observed through the connector;
+- CI probe run `32726146583` passed core job `97427751752` and research job `97427751978`; PR #14 was closed without merge.
 
-The current post-merge continuity-doc head must itself remain CI-green before this integration is fully closed.
+The final wording-only continuity tree is re-verified before handoff. No source, dependency, or test surface changes after the verified Phase 9 merge.
 
 ---
 
@@ -236,15 +238,14 @@ When asked to continue Cocomelon:
 
 ## 10. Exact handoff now
 
-Phase 9 engineering infrastructure is merged into `main` at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`. The current work is only post-merge continuity reconciliation.
+Phase 9 engineering infrastructure is merged into `main` at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`, with pre-merge and post-merge exact-tree CI evidence recorded above. The economic/research gate remains open because no genuine persisted mainnet corpus is connector-accessible.
 
 Immediate sequence:
 
-1. require exact-head CI green after the `docs/STATUS.md` + this portable-source reconciliation on `main`;
-2. keep Phase 10 blocked;
-3. obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline;
-4. freeze a Phase 9 dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics;
-5. run and persist the genuine Phase 9 baseline evaluation;
-6. only after the real evidence result is known decide whether Phase 10 is allowed by the approved build order or whether more data/baseline evidence is required.
+1. keep Phase 10 blocked;
+2. obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline;
+3. freeze a Phase 9 dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics;
+4. run and persist the genuine Phase 9 baseline evaluation;
+5. only after the real evidence result is known decide whether Phase 10 is allowed by the approved build order or whether more data/baseline evidence is required.
 
 **Live trading status: DISABLED.**
