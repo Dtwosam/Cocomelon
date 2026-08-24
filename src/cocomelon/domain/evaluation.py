@@ -760,7 +760,8 @@ class PerformanceMetrics:
         if self.account_equity_max_drawdown_fraction is None:
             if self.account_drawdown_unavailable_reason is None:
                 raise ValueError(
-                    "account_drawdown_unavailable_reason is required when account drawdown is unavailable"
+                    "account_drawdown_unavailable_reason is required "
+                    "when account drawdown is unavailable"
                 )
             _require_nonempty(
                 self.account_drawdown_unavailable_reason,
@@ -775,14 +776,9 @@ class PerformanceMetrics:
     def metrics_id(self) -> str:
         return _digest(
             {
-                field: (
-                    str(value)
-                    if isinstance(value, Decimal)
-                    else value
-                )
+                field: str(value) if isinstance(value, Decimal) else value
                 for field, value in (
-                    (name, getattr(self, name))
-                    for name in self.__dataclass_fields__
+                    (name, getattr(self, name)) for name in self.__dataclass_fields__
                 )
             }
         )
