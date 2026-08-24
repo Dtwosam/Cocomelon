@@ -27,6 +27,7 @@ from cocomelon.evaluation.cli_support import (
     inspect_evaluation_payload,
     run_evaluation,
 )
+from cocomelon.evidence.cli_support import record_mainnet_evidence_payload
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.hyperliquid.client import InfoClient
@@ -563,6 +564,11 @@ def build_parser() -> argparse.ArgumentParser:
     smoke.add_argument("--seconds", type=float, default=DEFAULT_SMOKE_SECONDS)
     smoke.add_argument("--market", action="append")
 
+    record = subparsers.add_parser("record-mainnet-evidence")
+    record.add_argument("--root", required=True, type=Path)
+    record.add_argument("--seconds", required=True, type=int)
+    record.add_argument("--deep-limit", type=int, default=20)
+
     validate = subparsers.add_parser("validate-recording")
     validate.add_argument("--root", required=True, type=Path)
 
@@ -640,6 +646,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             payload = markets_payload(settings)
         elif args.command == "scan-once":
             payload = scan_once_payload(settings, limit=args.limit)
+        elif args.command == "record-mainnet-evidence":
+            payload = record_mainnet_evidence_payload(
+                settings,
+                root=args.root,
+                seconds=args.seconds,
+                deep_limit=args.deep_limit,
+            )
         else:
             markets = tuple(args.market) if args.market else DEFAULT_SMOKE_MARKETS
             payload = stream_smoke_payload(
