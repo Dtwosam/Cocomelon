@@ -3,10 +3,16 @@ from __future__ import annotations
 import asyncio
 import subprocess
 from collections.abc import Callable, Mapping
+from decimal import Decimal
 from pathlib import Path
 
 from cocomelon.config import ExecutionMode, Settings
-from cocomelon.evidence.contracts import EvidenceRecordingConfig
+from cocomelon.evidence.bundle import (
+    freeze_baseline_replay_bundle,
+    resolve_code_revision,
+    write_baseline_replay_bundle,
+)
+from cocomelon.evidence.contracts import BaselineReplayConfig, EvidenceRecordingConfig
 from cocomelon.evidence.recording import (
     EvidenceInfoReader,
     RecordingBootstrap,
@@ -131,3 +137,33 @@ def record_mainnet_evidence_payload(
     if result.get("network_access") is not True:
         raise ValueError("evidence recording runner must declare public network access")
     return result
+
+
+def freeze_baseline_replay_payload(
+    root: str | Path,
+    out: str | Path,
+    starting_cash: Decimal,
+) -> dict[str, object]:
+    recording_root = Path(root)
+    output_path = Path(out)
+    replay_config = BaselineReplayConfig(starting_cash=starting_cash)
+    code_revision = resolve_code_revision(None, cwd=Path.cwd())
+    bundle = freeze_baseline_replay_bundle(
+        recording_root,
+        replay_config=replay_config,
+        code_revision=code_revision,
+    )
+    write_baseline_replay_bundle(output_path, bundle)
+    return {
+        "bundle_id": bundle.bundle_id,
+        "manifest_id": bundle.manifest.manifest_id,
+        "evidence_class": bundle.manifest.evidence_class.value,
+        "recording_session_digest": bundle.recording_session_digest,
+        "source_set_digest": bundle.source_set_digest,
+        "code_revision": bundle.manifest.code_revision,
+        "starting_cash": str(bundle.replay_config.starting_cash),
+        "root": str(recording_root),
+        "out": str(output_path),
+        "network_access": False,
+        "live_orders": False,
+    }
