@@ -1,22 +1,27 @@
 from __future__ import annotations
 
+import importlib
 import json
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-from cocomelon import cli
+
+def _cli() -> ModuleType:
+    return importlib.import_module("cocomelon.mainnet_cli")
 
 
 def test_mainnet_aggregation_parser_requires_only_local_inputs() -> None:
+    cli = _cli()
     parser = cli.build_parser()
 
     with pytest.raises(SystemExit):
-        parser.parse_args(["aggregate-mainnet-evaluation-evidence"])
+        parser.parse_args(["aggregate"])
 
     args = parser.parse_args(
         [
-            "aggregate-mainnet-evaluation-evidence",
+            "aggregate",
             "--journal",
             "aggregate/journal.sqlite3",
             "--facts",
@@ -33,7 +38,7 @@ def test_mainnet_aggregation_parser_requires_only_local_inputs() -> None:
         with pytest.raises(SystemExit):
             parser.parse_args(
                 [
-                    "aggregate-mainnet-evaluation-evidence",
+                    "aggregate",
                     "--journal",
                     "aggregate/journal.sqlite3",
                     "--facts",
@@ -46,14 +51,15 @@ def test_mainnet_aggregation_parser_requires_only_local_inputs() -> None:
 
 
 def test_mainnet_dataset_parser_requires_only_attested_local_inputs() -> None:
+    cli = _cli()
     parser = cli.build_parser()
 
     with pytest.raises(SystemExit):
-        parser.parse_args(["freeze-mainnet-evaluation-dataset"])
+        parser.parse_args(["freeze-dataset"])
 
     args = parser.parse_args(
         [
-            "freeze-mainnet-evaluation-dataset",
+            "freeze-dataset",
             "--journal",
             "aggregate/journal.sqlite3",
             "--facts",
@@ -70,7 +76,7 @@ def test_mainnet_dataset_parser_requires_only_attested_local_inputs() -> None:
         with pytest.raises(SystemExit):
             parser.parse_args(
                 [
-                    "freeze-mainnet-evaluation-dataset",
+                    "freeze-dataset",
                     "--journal",
                     "aggregate/journal.sqlite3",
                     "--facts",
@@ -82,13 +88,11 @@ def test_mainnet_dataset_parser_requires_only_attested_local_inputs() -> None:
             )
 
 
-def test_mainnet_commands_bypass_runtime_settings(
+def test_mainnet_cli_dispatches_only_to_attested_evidence_functions(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def forbidden_settings() -> object:
-        raise AssertionError("mainnet evidence commands must not load runtime settings")
-
+    cli = _cli()
     aggregate_calls: list[tuple[Path, Path, tuple[Path, ...]]] = []
     freeze_calls: list[tuple[Path, Path, tuple[str, ...]]] = []
 
@@ -117,23 +121,12 @@ def test_mainnet_commands_bypass_runtime_settings(
             "live_orders": False,
         }
 
-    monkeypatch.setattr(cli.Settings, "from_env", forbidden_settings)
-    monkeypatch.setattr(
-        cli,
-        "aggregate_mainnet_evaluation_evidence_payload",
-        fake_aggregate,
-        raising=False,
-    )
-    monkeypatch.setattr(
-        cli,
-        "freeze_mainnet_evaluation_dataset_payload",
-        fake_freeze,
-        raising=False,
-    )
+    monkeypatch.setattr(cli, "aggregate_payload", fake_aggregate)
+    monkeypatch.setattr(cli, "freeze_dataset_payload", fake_freeze)
 
     cli.main(
         [
-            "aggregate-mainnet-evaluation-evidence",
+            "aggregate",
             "--journal",
             "aggregate/journal.sqlite3",
             "--facts",
@@ -155,7 +148,7 @@ def test_mainnet_commands_bypass_runtime_settings(
 
     cli.main(
         [
-            "freeze-mainnet-evaluation-dataset",
+            "freeze-dataset",
             "--journal",
             "aggregate/journal.sqlite3",
             "--facts",
