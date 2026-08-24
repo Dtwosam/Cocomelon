@@ -6,6 +6,12 @@ from decimal import Decimal
 from typing import Protocol
 
 from cocomelon.domain.evaluation import EquityFactKind
+from cocomelon.domain.execution import (
+    ExecutionAttempt,
+    PaperFill,
+    PaperOrderPlan,
+    PositionAction,
+)
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
@@ -31,11 +37,7 @@ from cocomelon.evidence.openings import (
     BaselineOpeningTrace,
     _instrument,
 )
-from cocomelon.execution.funding import (
-    FundingAccrual,
-    FundingGap,
-    reconcile_funding_boundary,
-)
+from cocomelon.execution.funding import FundingAccrual, reconcile_funding_boundary
 from cocomelon.execution.interface import PositionManagement
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.features.microstructure import calculate_microstructure_features
@@ -73,10 +75,10 @@ class DecisionEpochEngine(Protocol):
 class _OpenTradeLifecycle:
     evaluation: EpochMarketEvaluation
     opening: BaselineOpeningTrace
-    exit_plans: dict[str, object] = field(default_factory=dict)
-    exit_attempts: dict[str, object] = field(default_factory=dict)
-    fills: dict[str, object] = field(default_factory=dict)
-    actions: dict[tuple[str, int], object] = field(default_factory=dict)
+    exit_plans: dict[str, PaperOrderPlan] = field(default_factory=dict)
+    exit_attempts: dict[str, ExecutionAttempt] = field(default_factory=dict)
+    fills: dict[str, PaperFill] = field(default_factory=dict)
+    actions: dict[tuple[str, int], PositionAction] = field(default_factory=dict)
     funding: dict[str, FundingAccrual] = field(default_factory=dict)
     marks: dict[str, ReplayRecord] = field(default_factory=dict)
 
@@ -224,7 +226,7 @@ class BaselineReplayPipeline:
     def _oracle_before(self, market: MarketId, boundary_ms: int) -> StreamEvent | None:
         candidates = tuple(
             event
-            for event in self._oracle_history.get(market.canonical, ())
+            for event in self._oracle_history.get(market.canonical, [])
             if _receive_ms(event) <= boundary_ms
         )
         if not candidates:
@@ -320,11 +322,7 @@ class BaselineReplayPipeline:
             )
         )
 
-        if (
-            submission.plan is None
-            or simulation is None
-            or not simulation.fills
-        ):
+        if submission.plan is None or simulation is None or not simulation.fills:
             return tuple(observations)
 
         market_key = trace.evaluation.decision.market.canonical
