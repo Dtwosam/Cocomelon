@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Protocol
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol
 
 from cocomelon.domain.features import FeatureSnapshot, OpportunityRank
 from cocomelon.domain.market import Candle, FundingRate, MarketId, PerpMarketSnapshot
+from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evidence.contracts import (
     EvidenceRecordingConfig,
     EvidenceRecordingSession,
@@ -22,15 +26,28 @@ from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.hyperliquid.normalize import normalize_candles, normalize_funding_history
 from cocomelon.hyperliquid.registry import MarketRegistry
 from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
+from cocomelon.hyperliquid.ws_supervisor import (
+    ClockMs,
+    ConnectionFactory,
+    Sleep,
+    UtcNow,
+    WebSocketSupervisor,
+)
 from cocomelon.scanner.eligibility import (
     EligibilityConfig,
     derive_eligibility_thresholds,
     evaluate_eligibility,
 )
 from cocomelon.scanner.ranker import rank_opportunities
+from cocomelon.util.time import utc_now_ms
+
+if TYPE_CHECKING:
+    from cocomelon.recorder import DurableRecorder
 
 FUNDING_BOOTSTRAP_LOOKBACK_MS = 24 * 60 * 60 * 1_000
 SCORE_SCALE = Decimal("100")
+RECORDING_SESSION_FILENAME = "recording-session.json"
+REST_SOURCE = "hyperliquid-mainnet-info"
 
 
 class EvidenceInfoReader(Protocol):
@@ -63,6 +80,21 @@ class RecordingBootstrap:
     candles: tuple[Candle, ...]
     funding_rates: tuple[FundingRate, ...]
     subscriptions: tuple[dict[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class RecordingRunSummary:
+    session_id: str
+    selected_markets: tuple[str, ...]
+    duration_seconds: int
+    event_count: int
+    gap_count: int
+    reconnect_count: int
+    duplicate_count: int
+    anomaly_count: int
+    root: str
+    network_access: bool = True
+    live_orders: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +163,125 @@ def _payload_digest(payload: Mapping[str, object]) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()[:24]
+
+
+def _market_from_canonical(value: str) -> MarketId:
+    if ":" not in value:
+        return MarketId.from_wire_name("", value)
+    dex = value.split(":", 1)[0]
+    return MarketId.from_wire_name(dex, value)
+
+
+def _session_payload(session: EvidenceRecordingSession) -> dict[str, object]:
+    return {
+        "schema_version": session.schema_version,
+        "session_id": session.session_id,
+        "started_at_ms": session.started_at_ms,
+        "recorder_code_revision": session.recorder_code_revision,
+        "selected": [
+            {
+                "market": item.market.canonical,
+                "rank": item.rank,
+                "feature_snapshot_id": item.feature_snapshot_id,
+                "score": str(item.score),
+            }
+            for item in session.selected
+        ],
+        "recording_config_digest": session.recording_config_digest,
+        "api_url": session.api_url,
+        "ws_url": session.ws_url,
+        "selection_policy_id": session.selection_policy_id,
+    }
+
+
+def write_recording_session(root: Path, session: EvidenceRecordingSession) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    existing = load_recording_session(root)
+    if existing is not None:
+        if existing != session:
+            raise ValueError("recording session metadata conflicts with requested session")
+        return
+    if any(root.iterdir()):
+        raise ValueError("recording session metadata missing for populated root")
+
+    payload = _session_payload(session)
+    encoded = (
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    ).encode("utf-8")
+    target = root / RECORDING_SESSION_FILENAME
+    temporary = root / f"{RECORDING_SESSION_FILENAME}.tmp"
+    with temporary.open("wb") as handle:
+        written = handle.write(encoded)
+        if written != len(encoded):
+            raise OSError(f"short recording session write: {written} of {len(encoded)} bytes")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, target)
+
+
+def load_recording_session(root: Path) -> EvidenceRecordingSession | None:
+    path = root / RECORDING_SESSION_FILENAME
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise ValueError("recording session metadata must be a file")
+    try:
+        raw: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("recording session metadata must contain valid JSON") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("recording session metadata must be an object")
+    selected_raw = raw.get("selected")
+    if not isinstance(selected_raw, list) or not selected_raw:
+        raise ValueError("recording session selected must be a non-empty array")
+    selected: list[SelectedEvidenceMarket] = []
+    try:
+        for item in selected_raw:
+            if not isinstance(item, dict):
+                raise ValueError("recording session selected entry must be an object")
+            selected.append(
+                SelectedEvidenceMarket(
+                    market=_market_from_canonical(str(item["market"])),
+                    rank=int(item["rank"]),
+                    feature_snapshot_id=str(item["feature_snapshot_id"]),
+                    score=Decimal(str(item["score"])),
+                )
+            )
+        session = EvidenceRecordingSession(
+            started_at_ms=int(raw["started_at_ms"]),
+            recorder_code_revision=str(raw["recorder_code_revision"]),
+            selected=tuple(selected),
+            recording_config_digest=str(raw["recording_config_digest"]),
+            api_url=str(raw["api_url"]),
+            ws_url=str(raw["ws_url"]),
+            selection_policy_id=str(raw["selection_policy_id"]),
+            schema_version=int(raw["schema_version"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("recording session metadata is invalid") from exc
+    stored_id = raw.get("session_id")
+    if not isinstance(stored_id, str) or stored_id != session.session_id:
+        raise ValueError("recording session metadata session_id mismatch")
+    return session
+
+
+def verify_recording_resume(root: Path, requested: EvidenceRecordingSession) -> None:
+    if not root.exists():
+        return
+    existing = load_recording_session(root)
+    if existing is None:
+        if any(root.iterdir()):
+            raise ValueError("recording session metadata missing for populated root")
+        return
+    if existing != requested or existing.session_id != requested.session_id:
+        raise ValueError("recording session does not match requested session")
 
 
 def _startup_ranks(
@@ -300,6 +451,164 @@ def build_recording_bootstrap(
         candles=tuple(candles),
         funding_rates=tuple(funding_rates),
         subscriptions=plan.subscribe,
+    )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+async def run_bounded_recording(
+    *,
+    bootstrap: RecordingBootstrap,
+    reader: EvidenceInfoReader,
+    connection_factory: ConnectionFactory,
+    recorder: DurableRecorder,
+    config: EvidenceRecordingConfig,
+    sleep: Sleep = asyncio.sleep,
+    clock_ms: ClockMs = utc_now_ms,
+    utcnow: UtcNow = _utcnow,
+) -> RecordingRunSummary:
+    if bootstrap.session.recording_config_digest != config.config_digest:
+        raise ValueError("recording bootstrap config does not match requested config")
+    verify_recording_resume(recorder.root, bootstrap.session)
+    write_recording_session(recorder.root, bootstrap.session)
+
+    event_count = 0
+    gap_count = 0
+    funding_seen: set[tuple[str, int]] = set()
+    selected_markets = tuple(item.market for item in bootstrap.session.selected)
+
+    for snapshot in bootstrap.snapshots:
+        recorder.append_market_snapshot(snapshot)
+        event_count += 1
+    for candle in bootstrap.candles:
+        recorder.append_candle(candle)
+        event_count += 1
+    for rate in bootstrap.funding_rates:
+        key = (rate.market.canonical, rate.time_ms)
+        if key in funding_seen:
+            continue
+        recorder.append_funding_rate(rate)
+        funding_seen.add(key)
+        event_count += 1
+
+    async def event_sink(event: StreamEvent) -> None:
+        nonlocal event_count
+        recorder.append_event(event)
+        event_count += 1
+
+    async def gap_sink(gap: DataGap) -> None:
+        nonlocal gap_count
+        recorder.append_gap(gap)
+        gap_count += 1
+
+    async def record_rest_gap(stream_id: str, reason: str) -> None:
+        now = clock_ms()
+        await gap_sink(
+            DataGap(
+                stream_id=stream_id,
+                started_ms=now,
+                ended_ms=now,
+                reason=reason,
+                source=REST_SOURCE,
+            )
+        )
+
+    async def poll_context() -> None:
+        nonlocal event_count
+        while True:
+            try:
+                registry = MarketRegistry(reader, now_ms=clock_ms).refresh()
+                for market in selected_markets:
+                    snapshot = registry.markets.get(market.canonical)
+                    if snapshot is None:
+                        raise ValueError(
+                            f"selected market missing from context poll: {market.canonical}"
+                        )
+                    recorder.append_market_snapshot(snapshot)
+                    event_count += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                await record_rest_gap(
+                    "rest:market_snapshot",
+                    f"poll_error:{type(exc).__name__}",
+                )
+            await sleep(float(config.context_poll_seconds))
+
+    async def poll_funding() -> None:
+        nonlocal event_count
+        while True:
+            for market in selected_markets:
+                try:
+                    end_ms = clock_ms()
+                    raw = reader.funding_history(
+                        market,
+                        start_ms=max(0, end_ms - FUNDING_BOOTSTRAP_LOOKBACK_MS),
+                        end_ms=end_ms,
+                    )
+                    received_at_ms = clock_ms()
+                    rates = normalize_funding_history(
+                        market,
+                        raw,
+                        received_at_ms=received_at_ms,
+                    )
+                    for rate in rates:
+                        key = (rate.market.canonical, rate.time_ms)
+                        if key in funding_seen:
+                            continue
+                        recorder.append_funding_rate(rate)
+                        funding_seen.add(key)
+                        event_count += 1
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    await record_rest_gap(
+                        f"rest:funding_rate:{market.canonical}",
+                        f"poll_error:{type(exc).__name__}",
+                    )
+            await sleep(float(config.funding_poll_seconds))
+
+    supervisor = WebSocketSupervisor(
+        connection_factory,
+        bootstrap.subscriptions,
+        event_sink=event_sink,
+        gap_sink=gap_sink,
+        clock_ms=clock_ms,
+        utcnow=utcnow,
+        sleep=sleep,
+    )
+    tasks = (
+        asyncio.create_task(supervisor.run()),
+        asyncio.create_task(poll_context()),
+        asyncio.create_task(poll_funding()),
+    )
+    try:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*tasks),
+                timeout=float(config.duration_seconds),
+            )
+        except TimeoutError:
+            pass
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    health = supervisor.health
+    return RecordingRunSummary(
+        session_id=bootstrap.session.session_id,
+        selected_markets=tuple(item.market.canonical for item in bootstrap.session.selected),
+        duration_seconds=config.duration_seconds,
+        event_count=event_count,
+        gap_count=gap_count,
+        reconnect_count=health.reconnect_count,
+        duplicate_count=health.duplicate_count,
+        anomaly_count=health.anomaly_count,
+        root=str(recorder.root),
     )
 
 
