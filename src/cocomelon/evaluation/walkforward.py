@@ -58,7 +58,11 @@ def generate_walkforward_windows(
     ordinal = 0
     while True:
         shift = ordinal * plan.step_ms
-        train_start = plan.first_window_start_ms if plan.expanding else plan.first_window_start_ms + shift
+        train_start = (
+            plan.first_window_start_ms
+            if plan.expanding
+            else plan.first_window_start_ms + shift
+        )
         train_end = plan.first_window_start_ms + plan.development_duration_ms + shift
         validation_start = train_end
         validation_end = validation_start + plan.validation_duration_ms
