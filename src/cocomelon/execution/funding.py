@@ -81,14 +81,6 @@ class FundingAccrual:
             {
                 "market": self.market.canonical,
                 "boundary_ms": self.boundary_ms,
-                "position_id": self.position_id,
-                "signed_quantity": str(self.signed_quantity),
-                "oracle_price": str(self.oracle_price),
-                "funding_rate": str(self.funding_rate),
-                "cash_delta": str(self.cash_delta),
-                "oracle_event_key": self.oracle_event_key,
-                "funding_source": self.funding_source,
-                "funding_received_at_ms": self.funding_received_at_ms,
             }
         )
 
