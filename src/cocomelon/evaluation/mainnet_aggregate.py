@@ -112,32 +112,63 @@ def _load_attestation(root: Path) -> GenuineMainnetAttestation:
     replay = _load_json_object(root / REPLAY_NAME, "replay summary")
 
     if summary.get("evidence_kind") != EVIDENCE_KIND:
-        raise EvidenceAggregationError("source is not genuine public Hyperliquid mainnet evidence")
+        raise EvidenceAggregationError(
+            "source is not genuine public Hyperliquid mainnet evidence"
+        )
     if summary.get("economic_claim") != "none":
         raise EvidenceAggregationError("source cohort must not carry an economic claim")
 
-    summary_complete = _boolean(summary.get("data_complete"), "summary.data_complete")
-    replay_complete = _boolean(replay.get("data_complete"), "replay.data_complete")
-    recorded_gaps = _integer(summary.get("recorded_gap_count"), "summary.recorded_gap_count")
+    summary_complete = _boolean(
+        summary.get("data_complete"),
+        "summary.data_complete",
+    )
+    replay_complete = _boolean(
+        replay.get("data_complete"),
+        "replay.data_complete",
+    )
+    recorded_gaps = _integer(
+        summary.get("recorded_gap_count"),
+        "summary.recorded_gap_count",
+    )
     record_gaps = _integer(record.get("gap_count"), "record.gap_count")
-    if not summary_complete or not replay_complete or recorded_gaps != 0 or record_gaps != 0:
-        raise EvidenceAggregationError("genuine mainnet source must be complete and gap-free")
+    if (
+        not summary_complete
+        or not replay_complete
+        or recorded_gaps != 0
+        or record_gaps != 0
+    ):
+        raise EvidenceAggregationError(
+            "genuine mainnet source must be complete and gap-free"
+        )
 
     if _boolean(record.get("live_orders"), "record.live_orders"):
-        raise EvidenceAggregationError("genuine mainnet economic evidence must be paper-only")
+        raise EvidenceAggregationError(
+            "genuine mainnet economic evidence must be paper-only"
+        )
     if not _boolean(record.get("network_access"), "record.network_access"):
-        raise EvidenceAggregationError("genuine mainnet recording must use public network evidence")
+        raise EvidenceAggregationError(
+            "genuine mainnet recording must use public network evidence"
+        )
     if _boolean(replay.get("live_orders"), "replay.live_orders"):
-        raise EvidenceAggregationError("genuine mainnet economic evidence must be paper-only")
+        raise EvidenceAggregationError(
+            "genuine mainnet economic evidence must be paper-only"
+        )
     if _boolean(replay.get("network_access"), "replay.network_access"):
         raise EvidenceAggregationError("genuine mainnet replay must be offline")
 
     run_id = _string(summary.get("replay_run_id"), "summary.replay_run_id")
     if _string(replay.get("run_id"), "replay.run_id") != run_id:
-        raise EvidenceAggregationError("attested replay run id does not match replay summary")
-    session_id = _string(summary.get("recording_session_id"), "summary.recording_session_id")
+        raise EvidenceAggregationError(
+            "attested replay run id does not match replay summary"
+        )
+    session_id = _string(
+        summary.get("recording_session_id"),
+        "summary.recording_session_id",
+    )
     if _string(record.get("session_id"), "record.session_id") != session_id:
-        raise EvidenceAggregationError("attested recording session does not match recording summary")
+        raise EvidenceAggregationError(
+            "attested recording session does not match recording summary"
+        )
 
     code_revision = _string(
         summary.get("checked_out_code_revision"),
@@ -155,14 +186,21 @@ def _load_attestation(root: Path) -> GenuineMainnetAttestation:
     if not isinstance(closed_trade_ids, list) or not all(
         isinstance(item, str) for item in closed_trade_ids
     ):
-        raise EvidenceAggregationError("replay.closed_trade_ids must be a string array")
-    if dataset_trade_count != closed_trade_count or len(closed_trade_ids) != closed_trade_count:
+        raise EvidenceAggregationError(
+            "replay.closed_trade_ids must be a string array"
+        )
+    if (
+        dataset_trade_count != closed_trade_count
+        or len(closed_trade_ids) != closed_trade_count
+    ):
         raise EvidenceAggregationError("attested closed-trade counts do not agree")
 
     journal_path = root / JOURNAL_NAME
     facts_path = root / FACTS_NAME
     if not journal_path.is_file() or not facts_path.is_file():
-        raise EvidenceAggregationError("attested source is missing journal or fact stores")
+        raise EvidenceAggregationError(
+            "attested source is missing journal or fact stores"
+        )
 
     return GenuineMainnetAttestation(
         run_id=run_id,
@@ -175,20 +213,33 @@ def _load_attestation(root: Path) -> GenuineMainnetAttestation:
     )
 
 
-def _validate_attested_store(root: Path, attestation: GenuineMainnetAttestation) -> None:
+def _validate_attested_store(
+    root: Path,
+    attestation: GenuineMainnetAttestation,
+) -> None:
     snapshot = _load_source(root)
     if len(snapshot.results) != 1 or len(snapshot.manifests) != 1:
-        raise EvidenceAggregationError("each attested cohort source must contain exactly one replay run")
+        raise EvidenceAggregationError(
+            "each attested cohort source must contain exactly one replay run"
+        )
     result = snapshot.results[0]
     manifest = snapshot.manifests[0]
     if result.run_id != attestation.run_id:
-        raise EvidenceAggregationError("attested replay run id does not match source store run id")
+        raise EvidenceAggregationError(
+            "attested replay run id does not match source store run id"
+        )
     if manifest.code_revision != attestation.code_revision:
-        raise EvidenceAggregationError("attested code revision does not match source replay manifest")
+        raise EvidenceAggregationError(
+            "attested code revision does not match source replay manifest"
+        )
     if not result.data_complete or result.processed_gaps != 0 or manifest.gap_refs:
-        raise EvidenceAggregationError("attested replay store must be complete and gap-free")
+        raise EvidenceAggregationError(
+            "attested replay store must be complete and gap-free"
+        )
     if len(result.closed_trade_ids) != attestation.closed_trade_count:
-        raise EvidenceAggregationError("attested closed-trade count does not match source store")
+        raise EvidenceAggregationError(
+            "attested closed-trade count does not match source store"
+        )
 
 
 def _target_root(journal_path: Path, facts_path: Path) -> Path:
@@ -197,7 +248,9 @@ def _target_root(journal_path: Path, facts_path: Path) -> Path:
             f"strict corpus targets must be named {JOURNAL_NAME} and {FACTS_NAME}"
         )
     if journal_path.parent.resolve() != facts_path.parent.resolve():
-        raise EvidenceAggregationError("strict corpus targets must share one directory")
+        raise EvidenceAggregationError(
+            "strict corpus targets must share one directory"
+        )
     return journal_path.parent
 
 
@@ -206,51 +259,88 @@ def _load_corpus_payload(path: Path) -> dict[str, object]:
     if payload.get("schema_version") != CORPUS_SCHEMA_VERSION:
         raise EvidenceAggregationError("unsupported genuine mainnet corpus schema")
     if payload.get("evidence_kind") != EVIDENCE_KIND:
-        raise EvidenceAggregationError("target corpus is not genuine public mainnet evidence")
+        raise EvidenceAggregationError(
+            "target corpus is not genuine public mainnet evidence"
+        )
     return payload
 
 
 def _string_list(value: object, field: str) -> tuple[str, ...]:
-    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) for item in value
+    ):
         raise EvidenceAggregationError(f"{field} must be a string array")
     return tuple(value)
 
 
-def _existing_attestations(payload: Mapping[str, object]) -> dict[str, dict[str, object]]:
+def _existing_attestations(
+    payload: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
     raw = payload.get("source_attestations")
     if not isinstance(raw, list):
-        raise EvidenceAggregationError("corpus source_attestations must be an array")
+        raise EvidenceAggregationError(
+            "corpus source_attestations must be an array"
+        )
     attestations: dict[str, dict[str, object]] = {}
     for item in raw:
         if not isinstance(item, dict):
-            raise EvidenceAggregationError("corpus source attestation must be an object")
+            raise EvidenceAggregationError(
+                "corpus source attestation must be an object"
+            )
         normalized = {str(key): value for key, value in item.items()}
         run_id = _string(normalized.get("run_id"), "corpus source run_id")
         if run_id in attestations and attestations[run_id] != normalized:
-            raise EvidenceAggregationError(f"conflicting corpus attestation for run: {run_id}")
+            raise EvidenceAggregationError(
+                f"conflicting corpus attestation for run: {run_id}"
+            )
         attestations[run_id] = normalized
     return attestations
 
 
-def _validate_existing_corpus(root: Path) -> tuple[str, dict[str, dict[str, object]]]:
+def _validate_existing_corpus(
+    root: Path,
+) -> tuple[str, dict[str, dict[str, object]]]:
     payload = _load_corpus_payload(root / CORPUS_NAME)
     snapshot = _load_source(root)
     revisions = {item.code_revision for item in snapshot.manifests}
     if len(revisions) != 1:
-        raise EvidenceAggregationError("existing genuine mainnet corpus has mixed code revisions")
+        raise EvidenceAggregationError(
+            "existing genuine mainnet corpus has mixed code revisions"
+        )
     code_revision = next(iter(revisions))
-    if _string(payload.get("code_revision"), "corpus.code_revision") != code_revision:
-        raise EvidenceAggregationError("corpus attestation code revision does not match target stores")
+    if _string(
+        payload.get("code_revision"),
+        "corpus.code_revision",
+    ) != code_revision:
+        raise EvidenceAggregationError(
+            "corpus attestation code revision does not match target stores"
+        )
     actual_run_ids = tuple(sorted(item.run_id for item in snapshot.results))
-    attested_run_ids = tuple(sorted(_string_list(payload.get("run_ids"), "corpus.run_ids")))
+    attested_run_ids = tuple(
+        sorted(_string_list(payload.get("run_ids"), "corpus.run_ids"))
+    )
     if actual_run_ids != attested_run_ids:
-        raise EvidenceAggregationError("corpus attestation run ids do not match target stores")
-    for result, manifest in zip(snapshot.results, snapshot.manifests, strict=True):
-        if not result.data_complete or result.processed_gaps != 0 or manifest.gap_refs:
-            raise EvidenceAggregationError("existing genuine mainnet corpus contains incomplete evidence")
+        raise EvidenceAggregationError(
+            "corpus attestation run ids do not match target stores"
+        )
+    for result, manifest in zip(
+        snapshot.results,
+        snapshot.manifests,
+        strict=True,
+    ):
+        if (
+            not result.data_complete
+            or result.processed_gaps != 0
+            or manifest.gap_refs
+        ):
+            raise EvidenceAggregationError(
+                "existing genuine mainnet corpus contains incomplete evidence"
+            )
     attestations = _existing_attestations(payload)
     if tuple(sorted(attestations)) != actual_run_ids:
-        raise EvidenceAggregationError("corpus source attestations do not cover every target run")
+        raise EvidenceAggregationError(
+            "corpus source attestations do not cover every target run"
+        )
     return code_revision, attestations
 
 
@@ -261,13 +351,18 @@ def validate_genuine_mainnet_corpus(
     journal = Path(journal_path)
     facts = Path(facts_path)
     root = _target_root(journal, facts)
-    present = (journal.exists(), facts.exists(), (root / CORPUS_NAME).exists())
+    present = (
+        journal.exists(),
+        facts.exists(),
+        (root / CORPUS_NAME).exists(),
+    )
     if present != (True, True, True):
-        raise EvidenceAggregationError("genuine mainnet corpus requires both stores and attestation")
+        raise EvidenceAggregationError(
+            "genuine mainnet corpus requires both stores and attestation"
+        )
     code_revision, _ = _validate_existing_corpus(root)
     snapshot = _load_source(root)
     run_ids = tuple(sorted(item.run_id for item in snapshot.results))
-    run_id_set = set(run_ids)
     return EvidenceAggregationResult(
         code_revision=code_revision,
         run_ids=run_ids,
@@ -288,11 +383,18 @@ def _corpus_payload(
         "evidence_kind": EVIDENCE_KIND,
         "code_revision": result.code_revision,
         "run_ids": list(result.run_ids),
-        "source_attestations": [attestations[run_id] for run_id in sorted(attestations)],
+        "source_attestations": [
+            attestations[run_id] for run_id in sorted(attestations)
+        ],
     }
 
 
-def _commit_staged_corpus(staging: Path, target: Path, *, existed: bool) -> None:
+def _commit_staged_corpus(
+    staging: Path,
+    target: Path,
+    *,
+    existed: bool,
+) -> None:
     target.mkdir(parents=True, exist_ok=True)
     names = (JOURNAL_NAME, FACTS_NAME, CORPUS_NAME)
     token = uuid.uuid4().hex
@@ -327,11 +429,15 @@ def aggregate_genuine_mainnet_evidence(
     target_facts = Path(target_facts_path)
     target_root = _target_root(target_journal, target_facts)
     if not source_roots:
-        raise EvidenceAggregationError("at least one genuine mainnet source root is required")
+        raise EvidenceAggregationError(
+            "at least one genuine mainnet source root is required"
+        )
 
     roots = tuple(Path(item).resolve() for item in source_roots)
     if len(set(roots)) != len(roots):
-        raise EvidenceAggregationError("genuine mainnet source roots must be unique")
+        raise EvidenceAggregationError(
+            "genuine mainnet source roots must be unique"
+        )
 
     new_attestations: dict[str, GenuineMainnetAttestation] = {}
     revisions: set[str] = set()
@@ -341,23 +447,34 @@ def aggregate_genuine_mainnet_evidence(
         existing = new_attestations.get(attestation.run_id)
         if existing is not None and existing != attestation:
             raise EvidenceAggregationError(
-                f"conflicting genuine mainnet attestation for run: {attestation.run_id}"
+                "conflicting genuine mainnet attestation for run: "
+                f"{attestation.run_id}"
             )
         new_attestations[attestation.run_id] = attestation
         revisions.add(attestation.code_revision)
     if len(revisions) != 1:
-        raise EvidenceAggregationError("genuine mainnet sources must share one code revision")
+        raise EvidenceAggregationError(
+            "genuine mainnet sources must share one code revision"
+        )
     source_revision = next(iter(revisions))
 
     corpus_path = target_root / CORPUS_NAME
-    present = (target_journal.exists(), target_facts.exists(), corpus_path.exists())
+    present = (
+        target_journal.exists(),
+        target_facts.exists(),
+        corpus_path.exists(),
+    )
     if any(present) and not all(present):
-        raise EvidenceAggregationError("genuine mainnet corpus target is partially initialized")
+        raise EvidenceAggregationError(
+            "genuine mainnet corpus target is partially initialized"
+        )
     existed = all(present)
 
     existing_attestations: dict[str, dict[str, object]] = {}
     if existed:
-        existing_revision, existing_attestations = _validate_existing_corpus(target_root)
+        existing_revision, existing_attestations = _validate_existing_corpus(
+            target_root
+        )
         if existing_revision != source_revision:
             raise EvidenceAggregationError(
                 "target genuine mainnet corpus must share the source code revision"
@@ -373,7 +490,9 @@ def aggregate_genuine_mainnet_evidence(
             )
         merged_attestations[run_id] = payload
 
-    with tempfile.TemporaryDirectory(prefix="cocomelon-mainnet-corpus-") as temporary:
+    with tempfile.TemporaryDirectory(
+        prefix="cocomelon-mainnet-corpus-"
+    ) as temporary:
         staging = Path(temporary)
         staging_journal = staging / JOURNAL_NAME
         staging_facts = staging / FACTS_NAME
@@ -386,9 +505,13 @@ def aggregate_genuine_mainnet_evidence(
             roots,
         )
         if result.code_revision != source_revision:
-            raise EvidenceAggregationError("aggregated corpus revision does not match attestation")
+            raise EvidenceAggregationError(
+                "aggregated corpus revision does not match attestation"
+            )
         if set(result.run_ids) != set(merged_attestations):
-            raise EvidenceAggregationError("aggregated corpus runs do not match source attestations")
+            raise EvidenceAggregationError(
+                "aggregated corpus runs do not match source attestations"
+            )
         (staging / CORPUS_NAME).write_text(
             json.dumps(
                 _corpus_payload(result, merged_attestations),
@@ -401,5 +524,7 @@ def aggregate_genuine_mainnet_evidence(
         try:
             _commit_staged_corpus(staging, target_root, existed=existed)
         except OSError as exc:
-            raise EvidenceAggregationError("unable to commit genuine mainnet corpus") from exc
+            raise EvidenceAggregationError(
+                "unable to commit genuine mainnet corpus"
+            ) from exc
     return result
