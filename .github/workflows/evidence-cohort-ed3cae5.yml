@@ -15,7 +15,7 @@ permissions:
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 110
     env:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
@@ -38,19 +38,74 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Record genuine public mainnet evidence
+      - name: Record clean genuine public mainnet evidence
         run: |
-          set -euo pipefail
-          mkdir -p evidence-cohort/output evidence-cohort/recording
+          set -uo pipefail
+          mkdir -p evidence-cohort/output evidence-cohort/diagnostics
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
           printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
-          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/started-at-utc.txt
-          cocomelon record-mainnet-evidence \
-            --root evidence-cohort/recording \
-            --seconds 1800 \
-            --deep-limit 5 \
-            > evidence-cohort/output/record.json
-          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/finished-at-utc.txt
+
+          CLEAN_ATTEMPT=""
+          for ATTEMPT in 1 2; do
+            ATTEMPT_ROOT="evidence-cohort/attempt-${ATTEMPT}"
+            mkdir -p "$ATTEMPT_ROOT/recording"
+            date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/started-at-utc.txt"
+            if cocomelon record-mainnet-evidence \
+              --root "$ATTEMPT_ROOT/recording" \
+              --seconds 2700 \
+              --deep-limit 5 \
+              > "$ATTEMPT_ROOT/record.json"; then
+              date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
+            else
+              date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
+              cp "$ATTEMPT_ROOT/record.json" \
+                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-record.json" || true
+              cp "$ATTEMPT_ROOT/started-at-utc.txt" \
+                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-started-at-utc.txt"
+              cp "$ATTEMPT_ROOT/finished-at-utc.txt" \
+                "evidence-cohort/diagnostics/attempt-${ATTEMPT}-finished-at-utc.txt"
+              rm -rf "$ATTEMPT_ROOT"
+              continue
+            fi
+
+            cp "$ATTEMPT_ROOT/record.json" \
+              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-record.json"
+            cp "$ATTEMPT_ROOT/started-at-utc.txt" \
+              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-started-at-utc.txt"
+            cp "$ATTEMPT_ROOT/finished-at-utc.txt" \
+              "evidence-cohort/diagnostics/attempt-${ATTEMPT}-finished-at-utc.txt"
+
+            if python - "$ATTEMPT_ROOT/record.json" <<'PY'
+          import json
+          import sys
+
+          record = json.load(open(sys.argv[1], encoding="utf-8"))
+          clean = (
+              record["gap_count"] == 0
+              and record["duplicate_count"] == 0
+              and record["anomaly_count"] == 0
+              and record["live_orders"] is False
+              and record["network_access"] is True
+          )
+          raise SystemExit(0 if clean else 1)
+          PY
+            then
+              CLEAN_ATTEMPT="$ATTEMPT"
+              mv "$ATTEMPT_ROOT/recording" evidence-cohort/recording
+              cp "$ATTEMPT_ROOT/record.json" evidence-cohort/output/record.json
+              cp "$ATTEMPT_ROOT/started-at-utc.txt" evidence-cohort/output/started-at-utc.txt
+              cp "$ATTEMPT_ROOT/finished-at-utc.txt" evidence-cohort/output/finished-at-utc.txt
+              printf '%s\n' "$ATTEMPT" > evidence-cohort/output/acquisition-attempt.txt
+              rm -rf "$ATTEMPT_ROOT"
+              break
+            fi
+            rm -rf "$ATTEMPT_ROOT"
+          done
+
+          if [ -z "$CLEAN_ATTEMPT" ]; then
+            echo "No gap-free mainnet capture completed in the bounded retry cohort" >&2
+            exit 1
+          fi
 
       - name: Validate and replay recorded evidence offline
         run: |
@@ -76,7 +131,7 @@ jobs:
             --run-id "$RUN_ID" \
             > evidence-cohort/output/dataset.json
 
-      - name: Assert pinned paper-only evidence semantics
+      - name: Assert pinned paper-only complete evidence semantics
         run: |
           python - <<'PY'
           import json
@@ -92,15 +147,23 @@ jobs:
           expected_revision = os.environ["COHORT_CODE_REVISION"]
           workflow_head = (root / "workflow-head.txt").read_text().strip()
           trigger_head = (root / "trigger-head.txt").read_text().strip()
+          acquisition_attempt = int((root / "acquisition-attempt.txt").read_text().strip())
 
           assert workflow_head == expected_revision
           assert bundle["manifest"]["code_revision"] == expected_revision
           assert len(trigger_head) == 40
           assert trigger_head != expected_revision
+          assert acquisition_attempt in (1, 2)
           assert record["network_access"] is True
           assert record["live_orders"] is False
+          assert record["gap_count"] == 0
+          assert record["duplicate_count"] == 0
+          assert record["anomaly_count"] == 0
           assert replay["network_access"] is False
           assert replay["live_orders"] is False
+          assert replay["data_complete"] is True
+          assert dataset["data_complete"] is True
+          assert dataset["gap_refs"] == []
           assert "edge" not in replay
           assert "profitable" not in replay
 
@@ -109,6 +172,7 @@ jobs:
               "economic_claim": "none",
               "checked_out_code_revision": workflow_head,
               "trigger_head_sha": trigger_head,
+              "acquisition_attempt": acquisition_attempt,
               "recording_session_id": record["session_id"],
               "selected_markets": record["selected_markets"],
               "recorded_event_count": record["event_count"],
