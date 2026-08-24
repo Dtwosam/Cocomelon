@@ -174,3 +174,66 @@ def test_freeze_baseline_replay_cli_is_offline_and_does_not_load_settings(
     }
     assert payload["network_access"] is False
     assert payload["live_orders"] is False
+
+
+def test_run_baseline_replay_cli_is_offline_and_routes_all_stores(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bundle = tmp_path / "bundle.json"
+    journal = tmp_path / "journal.sqlite3"
+    execution = tmp_path / "execution.sqlite3"
+    facts = tmp_path / "facts.sqlite3"
+    observed: dict[str, object] = {}
+
+    def fail_from_env():  # type: ignore[no-untyped-def]
+        raise AssertionError("offline baseline replay must not load runtime settings")
+
+    def replay_payload(bundle_arg, journal_arg, execution_arg, facts_arg):  # type: ignore[no-untyped-def]
+        observed.update(
+            bundle=bundle_arg,
+            journal=journal_arg,
+            execution=execution_arg,
+            facts=facts_arg,
+        )
+        return {
+            "bundle_id": "bundle-1",
+            "manifest_id": "manifest-1",
+            "run_id": "run-1",
+            "result_digest": "a" * 64,
+            "network_access": False,
+            "live_orders": False,
+        }
+
+    monkeypatch.setattr(Settings, "from_env", staticmethod(fail_from_env))
+    monkeypatch.setattr(
+        cli_module,
+        "run_baseline_replay_payload",
+        replay_payload,
+        raising=False,
+    )
+
+    cli_module.main(
+        [
+            "run-baseline-replay",
+            "--bundle",
+            str(bundle),
+            "--journal",
+            str(journal),
+            "--execution",
+            str(execution),
+            "--facts",
+            str(facts),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert observed == {
+        "bundle": bundle,
+        "journal": journal,
+        "execution": execution,
+        "facts": facts,
+    }
+    assert payload["network_access"] is False
+    assert payload["live_orders"] is False
