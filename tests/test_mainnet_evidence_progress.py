@@ -71,7 +71,12 @@ def test_progress_payload_reports_only_necessary_evidence_floor(
         return (1_000, DAY_MS + 1_000, DAY_MS + 2_000)
 
     monkeypatch.setattr(module, "_verify_attested_target", fake_verify)
-    monkeypatch.setattr(module, "_load_closed_trade_timestamps", fake_trade_timestamps, raising=False)
+    monkeypatch.setattr(
+        module,
+        "_load_closed_trade_timestamps",
+        fake_trade_timestamps,
+        raising=False,
+    )
 
     journal = tmp_path / "aggregate" / "journal.sqlite3"
     facts = tmp_path / "aggregate" / "facts.sqlite3"
