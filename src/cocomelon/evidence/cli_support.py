@@ -7,6 +7,13 @@ from pathlib import Path
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.evidence.contracts import EvidenceRecordingConfig
+from cocomelon.evidence.recording import (
+    EvidenceInfoReader,
+    RecordingBootstrap,
+    build_recording_bootstrap,
+    load_recording_session,
+)
+from cocomelon.evidence.resume import build_recording_resume_bootstrap
 
 RecordCommandRunner = Callable[
     [Settings, Path, EvidenceRecordingConfig],
@@ -31,6 +38,34 @@ def _resolve_git_head(cwd: Path) -> str:
     return revision
 
 
+def _recording_bootstrap_for_root(
+    reader: EvidenceInfoReader,
+    root: Path,
+    config: EvidenceRecordingConfig,
+    *,
+    now_ms: Callable[[], int],
+    code_revision: str,
+) -> RecordingBootstrap:
+    existing = load_recording_session(root)
+    if existing is not None:
+        if existing.recorder_code_revision != code_revision:
+            raise ValueError("recording session code revision does not match current revision")
+        return build_recording_resume_bootstrap(
+            reader,
+            config,
+            existing,
+            now_ms=now_ms,
+        )
+    if root.exists() and any(root.iterdir()):
+        raise ValueError("recording session metadata missing for populated root")
+    return build_recording_bootstrap(
+        reader,
+        config,
+        now_ms=now_ms,
+        code_revision=code_revision,
+    )
+
+
 def _run_mainnet_evidence(
     settings: Settings,
     root: Path,
@@ -38,21 +73,20 @@ def _run_mainnet_evidence(
 ) -> Mapping[str, object]:
     from dataclasses import asdict
 
-    from cocomelon.evidence.recording import (
-        build_recording_bootstrap,
-        run_bounded_recording,
-    )
+    from cocomelon.evidence.recording import run_bounded_recording
     from cocomelon.hyperliquid.client import InfoClient
     from cocomelon.hyperliquid.ws_client import WsConnection, connect_mainnet_ws
     from cocomelon.recorder import DurableRecorder
     from cocomelon.util.time import utc_now_ms
 
+    code_revision = _resolve_git_head(Path.cwd())
     reader = InfoClient(settings)
-    bootstrap = build_recording_bootstrap(
+    bootstrap = _recording_bootstrap_for_root(
         reader,
+        root,
         config,
         now_ms=utc_now_ms,
-        code_revision=_resolve_git_head(Path.cwd()),
+        code_revision=code_revision,
     )
     recorder = DurableRecorder(
         root,
