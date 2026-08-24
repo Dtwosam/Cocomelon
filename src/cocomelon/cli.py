@@ -31,6 +31,7 @@ from cocomelon.evaluation.cli_support import (
 from cocomelon.evidence.cli_support import (
     freeze_baseline_replay_payload,
     record_mainnet_evidence_payload,
+    run_baseline_replay_payload,
 )
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
@@ -585,6 +586,12 @@ def build_parser() -> argparse.ArgumentParser:
     freeze_baseline.add_argument("--out", required=True, type=Path)
     freeze_baseline.add_argument("--starting-cash", type=Decimal, default=Decimal("10000"))
 
+    run_baseline = subparsers.add_parser("run-baseline-replay")
+    run_baseline.add_argument("--bundle", required=True, type=Path)
+    run_baseline.add_argument("--journal", required=True, type=Path)
+    run_baseline.add_argument("--execution", required=True, type=Path)
+    run_baseline.add_argument("--facts", required=True, type=Path)
+
     replay = subparsers.add_parser("replay")
     replay.add_argument("--manifest", required=True, type=Path)
     replay.add_argument("--journal", required=True, type=Path)
@@ -629,6 +636,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             args.root,
             args.out,
             args.starting_cash,
+        )
+    elif args.command == "run-baseline-replay":
+        payload = run_baseline_replay_payload(
+            args.bundle,
+            args.journal,
+            args.execution,
+            args.facts,
         )
     elif args.command == "replay":
         payload = replay_payload(args.manifest, args.journal)
