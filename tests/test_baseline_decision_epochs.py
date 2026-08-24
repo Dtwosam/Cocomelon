@@ -3,10 +3,20 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
-from cocomelon.domain.market import MarketId, PerpMarketContext, PerpMarketMeta, PerpMarketSnapshot
+from cocomelon.domain.market import (
+    MarketId,
+    PerpMarketContext,
+    PerpMarketMeta,
+    PerpMarketSnapshot,
+)
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyContext
-from cocomelon.evidence.baseline import BaselineDecisionEngine
+from cocomelon.evidence.baseline import (
+    BaselineDecisionEngine,
+    DecisionEpoch,
+    replay_record_candle,
+    replay_record_stream_event,
+)
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
@@ -34,10 +44,15 @@ def _record(
     key: str | None = None,
     source: str | None = None,
 ) -> ReplayRecord:
+    default_source = (
+        "hyperliquid-mainnet-info"
+        if kind == "market_snapshot"
+        else "hyperliquid-mainnet-ws"
+    )
     return ReplayRecord(
         record_kind=SourceRecordKind.NORMALIZED_EVENT,
         available_at_ms=available_at_ms,
-        source=source or ("hyperliquid-mainnet-info" if kind == "market_snapshot" else "hyperliquid-mainnet-ws"),
+        source=source or default_source,
         schema_version=1,
         market=market.canonical,
         exchange_time_ms=exchange_time_ms,
@@ -73,6 +88,7 @@ def _snapshot_payload(market: MarketId, *, mark: str) -> dict[str, object]:
 
 
 def _candle_payload(market: MarketId, *, close: str) -> dict[str, object]:
+    del market
     price = Decimal(close)
     return {
         "start_ms": BOUNDARY_MS - INTERVAL_MS,
@@ -134,9 +150,12 @@ def _ordered_rows(reverse_same_time: bool) -> tuple[ReplayRecord, ...]:
     return tuple(rows)
 
 
-def _run_epoch(rows: tuple[ReplayRecord, ...], markets: tuple[MarketId, ...]) -> object:
+def _run_epoch(
+    rows: tuple[ReplayRecord, ...],
+    markets: tuple[MarketId, ...],
+) -> DecisionEpoch:
     engine = BaselineDecisionEngine(markets, replay_config=BaselineReplayConfig())
-    emitted = []
+    emitted: list[DecisionEpoch] = []
     for row in rows:
         emitted.extend(engine.observe(row, row.available_at_ms))
     trigger = _record(
@@ -176,7 +195,7 @@ def test_epoch_identity_is_invariant_to_same_time_market_arrival_order() -> None
 
 def test_epoch_never_borrows_evidence_arriving_after_evaluated_at() -> None:
     engine = BaselineDecisionEngine((BTC,), replay_config=BaselineReplayConfig())
-    emitted = []
+    emitted: list[DecisionEpoch] = []
     for row in _market_rows(BTC, mark="100"):
         emitted.extend(engine.observe(row, row.available_at_ms))
 
@@ -241,8 +260,6 @@ def test_epoch_reuses_existing_feature_eligibility_and_strategy_formulas() -> No
         received_at_ms=snapshot_row.available_at_ms,
         schema_version=1,
     )
-    from cocomelon.evidence.baseline import replay_record_candle, replay_record_stream_event
-
     candle = replay_record_candle(candle_row)
     book = replay_record_stream_event(book_row)
     broad = calculate_broad_features(snapshot, None, as_of_ms=EVALUATED_AT_MS)
@@ -261,18 +278,22 @@ def test_epoch_reuses_existing_feature_eligibility_and_strategy_formulas() -> No
         provenance=(snapshot.source, candle.source, book.source),
     )
     expected_feature = assign_volatility_regimes((feature,))[0]
-    thresholds = derive_eligibility_thresholds((expected_feature,), BaselineReplayConfig().eligibility)
+    replay_config = BaselineReplayConfig()
+    thresholds = derive_eligibility_thresholds(
+        (expected_feature,),
+        replay_config.eligibility,
+    )
     eligibility = evaluate_eligibility(
         snapshot,
         expected_feature,
         thresholds,
-        BaselineReplayConfig().eligibility,
+        replay_config.eligibility,
     )
     micro_window = build_microstructure_window(
         (book,),
         market=BTC,
         as_of_ms=EVALUATED_AT_MS,
-        window_ms=BaselineReplayConfig().microstructure_window_ms,
+        window_ms=replay_config.microstructure_window_ms,
     )
     expected_decision = evaluate_strategies(
         StrategyContext(
