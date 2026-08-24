@@ -5,6 +5,12 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from cocomelon.evidence.openings import (
+    BaselineOpeningEngine,
+    conservative_cost_estimate,
+    paper_liquidation_surrogate,
+)
+
 from cocomelon.domain.execution import ExecutionResult, PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
@@ -19,11 +25,6 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
-from cocomelon.evidence.openings import (
-    BaselineOpeningEngine,
-    conservative_cost_estimate,
-    paper_liquidation_surrogate,
-)
 from cocomelon.execution.paper import PaperExecutionAdapter
 
 EVALUATED_AT_MS = 2_000_000
@@ -230,7 +231,10 @@ def test_books_before_latency_never_fill_and_later_recorded_book_may_fill(
         ExecutionResult.PARTIAL,
     }
     assert submission.simulation.fills
-    assert all(fill.source_event_key.startswith(eligible.event_key) for fill in submission.simulation.fills)
+    assert all(
+        fill.source_event_key.startswith(eligible.event_key)
+        for fill in submission.simulation.fills
+    )
     assert len(adapter.account.positions) == 1
     adapter.close()
 
