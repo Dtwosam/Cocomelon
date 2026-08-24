@@ -229,6 +229,24 @@ def test_mark_to_market_updates_unrealized_equity_and_gross_notional() -> None:
     assert marked.equity == Decimal("10049.5")
 
 
+def test_position_id_is_stable_across_mark_updates() -> None:
+    plan = opening_plan()
+    entry = fill(
+        plan_id=plan.plan_id,
+        side=OrderSide.BUY,
+        price="100",
+        quantity="10",
+        fee="0.5",
+        suffix="entry",
+    )
+    opened = apply_opening_fills(empty_account(Decimal("10000"), 1_000), plan, (entry,))
+    opening_position_id = opened.positions[0].position_id
+
+    marked = mark_to_market(opened, {MARKET: Decimal("105")}, 3_000)
+
+    assert marked.positions[0].position_id == opening_position_id
+
+
 def test_replaying_same_account_events_produces_same_state_id() -> None:
     plan = opening_plan()
     entry = fill(
