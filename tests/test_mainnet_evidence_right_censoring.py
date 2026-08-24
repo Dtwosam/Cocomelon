@@ -30,10 +30,22 @@ def test_right_censoring_guard_accepts_flat_closed_samples() -> None:
     module._require_no_right_censoring(result)
 
 
-def test_right_censoring_guard_allows_zero_trade_diagnostics() -> None:
+def test_right_censoring_guard_rejects_zero_trade_open_exposure() -> None:
     module = importlib.import_module("cocomelon.evaluation.mainnet_evidence")
     result = SimpleNamespace(
         opened_positions=1,
+        closed_positions=0,
+        closed_trade_ids=(),
+    )
+
+    with pytest.raises(module.MainnetEvidenceError, match="finish flat"):
+        module._require_no_right_censoring(result)
+
+
+def test_right_censoring_guard_accepts_flat_zero_trade_diagnostic() -> None:
+    module = importlib.import_module("cocomelon.evaluation.mainnet_evidence")
+    result = SimpleNamespace(
+        opened_positions=0,
         closed_positions=0,
         closed_trade_ids=(),
     )
