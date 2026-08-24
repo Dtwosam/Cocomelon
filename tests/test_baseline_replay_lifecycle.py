@@ -1,4 +1,3 @@
-# ruff: noqa: I001
 from __future__ import annotations
 
 import json
@@ -6,8 +5,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
-from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 
 from cocomelon.domain.evaluation import EquityFactKind
 from cocomelon.domain.execution import PaperExecutionConfig
@@ -17,6 +14,7 @@ from cocomelon.domain.features import (
     TrendRegime,
     VolatilityRegime,
 )
+from cocomelon.domain.journal import JournalObservation
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyDecision
@@ -24,6 +22,7 @@ from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
+from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.replay.engine import ReplayInvariantError
 
@@ -265,8 +264,8 @@ def _pipeline(
 def _run_records(
     pipeline: BaselineReplayPipeline,
     records: tuple[ReplayRecord, ...],
-) -> tuple[object, ...]:
-    observations: list[object] = []
+) -> tuple[JournalObservation, ...]:
+    observations: list[JournalObservation] = []
     for record in records:
         observations.extend(pipeline.on_record(record, record.available_at_ms))
     return tuple(observations)
@@ -302,7 +301,7 @@ def test_long_lifecycle_applies_funding_closes_and_records_evaluation_facts(
     assert trade.mae is not None
     assert execution.account.positions == ()
 
-    kinds = tuple(getattr(observation, "kind").value for observation in observations)
+    kinds = tuple(observation.kind.value for observation in observations)
     assert "funding_event" in kinds
     assert "position_action" in kinds
     assert "account_state" in kinds
@@ -339,7 +338,7 @@ def test_unresolved_funding_boundary_emits_gap_and_marks_pipeline_inconsistent(
     gaps = [
         observation
         for observation in observations
-        if getattr(observation, "kind").value == "funding_gap"
+        if observation.kind.value == "funding_gap"
     ]
     assert len(gaps) == 1
     assert gaps[0].reason_codes == ("FUNDING_RECORD_MISSING",)
