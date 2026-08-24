@@ -100,7 +100,7 @@ Hard boundaries:
 
 ---
 
-## 4. Merge history and active integration
+## 4. Merge history and current gate
 
 Merged engineering phases:
 
@@ -113,20 +113,27 @@ Merged engineering phases:
 - Phase 7: `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab` — PR #9
 - Phase 8: `f7f37044997e13b3ffe91edd312756862343782b` — PR #10
 - Phase 9 evaluator: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7` — PR #13
+- Phase 9 Evidence Bridge: `dec15b53d00bf5e65ba4c017aba0159c98d0088d` — PR #15
 
-Active integration at this handoff:
+Evidence Bridge final integration evidence:
 
-- PR #15 — **Phase 9: production evidence bridge**
-- branch: `phase-9-evidence-bridge`
-- base: `main` at `9ff81397e8d8f179eee42a83aeaffe14134fa1fc`
-- latest verified implementation/test head before continuity-only docs: `13297a2fa5bd353e7bd8e111f70844c40bd91f7a`
-- exact CI: `32757257536` — SUCCESS
-- core job: `97527559694` — SUCCESS
-- research job: `97527559475` — SUCCESS
+- final PR head: `2987044659d0bd45891a6ca33316629fc6eda7ab`
+- final PR-head CI: `32757592156` — SUCCESS
+- core job: `97528596940` — SUCCESS
+- research job: `97528596569` — SUCCESS
 - Python: `3.12.14`
-- branch was `behind_by = 0`, PR mergeable, with zero comments/reviews/review threads at audit.
+- pre-merge branch divergence: `behind_by = 0`
+- no comments, submitted reviews, or review threads
+- guarded merge used the exact expected head SHA
+- merge commit: `dec15b53d00bf5e65ba4c017aba0159c98d0088d`
+- `main` was verified immediately at that merge SHA
+- comparing `phase-9-evidence-bridge` to `main` showed one merge commit and an empty file diff.
 
-The continuity docs themselves are the only changes after that verified implementation head and require their own exact-head CI before guarded merge.
+Current gate:
+
+- Phase 9 **economic/research exit gate** — PENDING genuine recorded mainnet evidence.
+- Phase 10 — champion/challenger learning engine — **BLOCKED pending genuine Phase 9 baseline evaluation**.
+- Live trading — **DISABLED**.
 
 ---
 
@@ -138,7 +145,7 @@ Phase 8 final merge commit: `f7f37044997e13b3ffe91edd312756862343782b`.
 
 ---
 
-## 6. Phase 9 evaluator already merged
+## 6. Phase 9 evaluator
 
 Phase 9 wraps trusted Phase 8 outputs in deterministic anti-p-hacking research gates.
 
@@ -176,11 +183,11 @@ Versioned `phase9-v1` research defaults:
 
 ---
 
-## 7. Phase 9 Evidence Bridge implementation
+## 7. Phase 9 Evidence Bridge
 
 The Evidence Bridge makes genuine public mainnet recordings evaluation-ready without adding exchange-write or learning capability.
 
-Implemented on PR #15:
+Merged capability:
 
 - deterministic evidence-recording contracts and immutable recording-session IDs;
 - bounded public mainnet recording allowed only in paper mode;
@@ -203,19 +210,9 @@ Implemented on PR #15:
 - end-to-end proof of `recorded rows -> frozen bundle -> baseline replay -> journal/facts -> Phase 9 dataset`;
 - executable boundaries excluding testnet, live/order/wallet/private/signing/transfer/withdrawal capability, ML/training, optimizer/search helpers, offline network clients, and candle-derived L2/trades.
 
-A useful regression discovered during closeout: a strategy decision may still be eligible on a 60-second broad context window while Phase 7 execution correctly refuses a context older than 5 seconds. The integration fixture was corrected by supplying a genuine fresh `activeAssetCtx` before the latency-eligible book. No production freshness limit was weakened.
+A useful closeout regression: a strategy decision can still be eligible under the 60-second broad-context window while Phase 7 execution correctly refuses a context older than 5 seconds. The integration fixture was corrected by supplying a genuine fresh `activeAssetCtx` before the latency-eligible book. No production freshness limit was weakened.
 
-Verified implementation head `13297a2fa5bd353e7bd8e111f70844c40bd91f7a` passed:
-
-- editable `[dev]` install;
-- compileall;
-- Ruff;
-- mypy;
-- full pytest;
-- editable `[dev,research]` install;
-- Phase 8 PyArrow research replay/compaction regression.
-
-CI run: `32757257536`.
+The exact final PR head `2987044659d0bd45891a6ca33316629fc6eda7ab` passed editable installs, compileall, Ruff, mypy, full pytest, and the Phase 8 PyArrow replay/compaction regression under CI `32757592156`.
 
 ---
 
@@ -237,7 +234,7 @@ When asked to continue Cocomelon:
 
 1. Treat this file as bootstrap context; the live repository is stronger authority.
 2. Inspect `Dtwosam/Cocomelon` with connected GitHub tools.
-3. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, `docs/STATUS.md`, then the active phase spec/plan.
+3. Read `AGENTS.md`, `docs/MASTER_SPEC.md`, `docs/DECISIONS.md`, `docs/BUILD_ORDER.md`, `docs/STATUS.md`, then any active spec/plan.
 4. Check `main`, open PRs, branch/compare state, review threads, and exact-head CI.
 5. Continue from the precise active task; never rebuild merged phases.
 6. Use design/spec -> detailed TDD plan -> implementation -> verification -> guarded integration.
@@ -251,16 +248,16 @@ When asked to continue Cocomelon:
 
 ## 10. Exact handoff now
 
-PR #15 has completed implementation and executable boundary verification. The last verified implementation/test head is `13297a2fa5bd353e7bd8e111f70844c40bd91f7a`, CI `32757257536`, with core and research jobs green. The branch was not behind `main`, the PR was mergeable, and there were no comments/reviews/review threads.
+Phase 9 Evidence Bridge is merged. Final PR head `2987044659d0bd45891a6ca33316629fc6eda7ab` passed CI `32757592156`; guarded merge returned `dec15b53d00bf5e65ba4c017aba0159c98d0088d`, and `main` was verified at that SHA with an empty feature-branch file diff after merge.
 
-Immediate sequence:
+The only remaining Phase 9 work is economic evidence, not engineering infrastructure. Immediate sequence:
 
-1. obtain exact-head CI for the continuity-only docs commits now at the tip of `phase-9-evidence-bridge`;
-2. re-audit PR #15 and confirm `behind_by = 0`;
-3. mark PR ready and guarded-merge using the exact expected head SHA;
-4. verify the returned merge SHA is `main` and compare branch -> `main` for an empty file diff;
-5. verify post-merge continuity through an observable CI path;
-6. keep Phase 10 blocked;
-7. next economic action is external-runtime evidence collection: `record-mainnet-evidence`, freeze the corpus, run `run-baseline-replay`, then run the merged Phase 9 evaluation on genuine evidence.
+1. keep Phase 10 blocked;
+2. in an environment that can persist runtime data, run `record-mainnet-evidence` against public Hyperliquid mainnet evidence;
+3. freeze the recording into an immutable baseline replay bundle;
+4. run `run-baseline-replay` into journal/execution/evaluation-fact stores;
+5. freeze Phase 9 dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before untouched-test reveal;
+6. run and persist the genuine Phase 9 baseline evaluation;
+7. only after the real evidence result is known decide whether Phase 10 is permitted or more baseline evidence is required.
 
 **Live trading status: DISABLED.**
