@@ -6,14 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from cocomelon import cli
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult, SourceSegment
 from cocomelon.domain.strategy import Direction
-from cocomelon.evaluation import aggregate
+from cocomelon.evaluation import mainnet_aggregate, mainnet_cli
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
 
@@ -149,7 +148,7 @@ def _source(
     facts.record_decision_fact(fact)
     facts.close()
 
-    session_id = "session-a"
+    session_id = f"session-{run_id}"
     _write_json(
         root / "cohort-summary.json",
         {
@@ -190,7 +189,7 @@ def test_genuine_mainnet_aggregation_accepts_attested_complete_source(tmp_path: 
     _source(source)
     target = tmp_path / "aggregate"
 
-    result = aggregate.aggregate_genuine_mainnet_evidence(
+    result = mainnet_aggregate.aggregate_genuine_mainnet_evidence(
         target / "journal.sqlite3",
         target / "facts.sqlite3",
         (source,),
@@ -199,6 +198,14 @@ def test_genuine_mainnet_aggregation_accepts_attested_complete_source(tmp_path: 
     assert result.code_revision == "a" * 40
     assert result.run_ids == ("run-a",)
     assert result.trade_count == 1
+    corpus = json.loads((target / "genuine-mainnet-corpus.json").read_text(encoding="utf-8"))
+    assert corpus["run_ids"] == ["run-a"]
+    assert corpus["evidence_kind"] == "genuine_public_hyperliquid_mainnet"
+    validated = mainnet_aggregate.validate_genuine_mainnet_corpus(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+    )
+    assert validated == result
 
 
 def test_genuine_mainnet_aggregation_rejects_incomplete_source_before_write(
@@ -208,8 +215,8 @@ def test_genuine_mainnet_aggregation_rejects_incomplete_source_before_write(
     _source(source, data_complete=False, gap_count=2)
     target = tmp_path / "aggregate"
 
-    with pytest.raises(aggregate.EvidenceAggregationError, match="complete"):
-        aggregate.aggregate_genuine_mainnet_evidence(
+    with pytest.raises(mainnet_aggregate.EvidenceAggregationError, match="complete"):
+        mainnet_aggregate.aggregate_genuine_mainnet_evidence(
             target / "journal.sqlite3",
             target / "facts.sqlite3",
             (source,),
@@ -226,14 +233,14 @@ def test_genuine_mainnet_aggregation_rejects_wrong_kind_and_live_semantics(
     live = tmp_path / "live"
     _source(live, run_id="run-live", record_live_orders=True)
 
-    with pytest.raises(aggregate.EvidenceAggregationError, match="genuine public"):
-        aggregate.aggregate_genuine_mainnet_evidence(
+    with pytest.raises(mainnet_aggregate.EvidenceAggregationError, match="genuine public"):
+        mainnet_aggregate.aggregate_genuine_mainnet_evidence(
             tmp_path / "target-a" / "journal.sqlite3",
             tmp_path / "target-a" / "facts.sqlite3",
             (wrong_kind,),
         )
-    with pytest.raises(aggregate.EvidenceAggregationError, match="paper-only"):
-        aggregate.aggregate_genuine_mainnet_evidence(
+    with pytest.raises(mainnet_aggregate.EvidenceAggregationError, match="paper-only"):
+        mainnet_aggregate.aggregate_genuine_mainnet_evidence(
             tmp_path / "target-b" / "journal.sqlite3",
             tmp_path / "target-b" / "facts.sqlite3",
             (live,),
@@ -248,19 +255,44 @@ def test_genuine_mainnet_aggregation_rejects_attestation_store_mismatch(tmp_path
     summary["replay_run_id"] = "different-run"
     _write_json(summary_path, summary)
 
-    with pytest.raises(aggregate.EvidenceAggregationError, match="run id"):
-        aggregate.aggregate_genuine_mainnet_evidence(
+    with pytest.raises(mainnet_aggregate.EvidenceAggregationError, match="run id"):
+        mainnet_aggregate.aggregate_genuine_mainnet_evidence(
             tmp_path / "target" / "journal.sqlite3",
             tmp_path / "target" / "facts.sqlite3",
             (source,),
         )
 
 
+def test_genuine_mainnet_corpus_accumulates_only_attested_runs(tmp_path: Path) -> None:
+    revision = "a" * 40
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    _source(first, run_id="run-a", code_revision=revision)
+    _source(second, run_id="run-b", code_revision=revision)
+    target = tmp_path / "aggregate"
+
+    mainnet_aggregate.aggregate_genuine_mainnet_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (first,),
+    )
+    result = mainnet_aggregate.aggregate_genuine_mainnet_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (second,),
+    )
+
+    assert result.run_ids == ("run-a", "run-b")
+    corpus = json.loads((target / "genuine-mainnet-corpus.json").read_text(encoding="utf-8"))
+    assert corpus["run_ids"] == ["run-a", "run-b"]
+    assert [item["run_id"] for item in corpus["source_attestations"]] == ["run-a", "run-b"]
+
+
 def test_genuine_mainnet_aggregation_cli_requires_local_attested_sources() -> None:
-    parser = cli.build_parser()
+    parser = mainnet_cli.build_parser()
     args = parser.parse_args(
         [
-            "aggregate-genuine-mainnet-evidence",
+            "aggregate",
             "--journal",
             "aggregate/journal.sqlite3",
             "--facts",
@@ -269,5 +301,5 @@ def test_genuine_mainnet_aggregation_cli_requires_local_attested_sources() -> No
             "artifact/output",
         ]
     )
-    assert args.command == "aggregate-genuine-mainnet-evidence"
+    assert args.command == "aggregate"
     assert args.source_root == [Path("artifact/output")]
