@@ -11,6 +11,7 @@ from cocomelon.evaluation.mainnet_evidence import (
     MAINNET_EVIDENCE_KIND,
     aggregate_mainnet_evaluation_evidence,
     freeze_mainnet_evaluation_dataset_payload,
+    mainnet_evidence_progress_payload,
     verify_mainnet_evidence_cohort_payload,
 )
 
@@ -82,12 +83,23 @@ def verify_payload(source_root: str | Path) -> dict[str, object]:
     return verify_mainnet_evidence_cohort_payload(source_root)
 
 
+def progress_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+) -> dict[str, object]:
+    return mainnet_evidence_progress_payload(journal_path, facts_path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cocomelon-mainnet-evidence")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     verify = subparsers.add_parser("verify")
     verify.add_argument("--source-root", required=True, type=Path)
+
+    progress = subparsers.add_parser("progress")
+    progress.add_argument("--journal", required=True, type=Path)
+    progress.add_argument("--facts", required=True, type=Path)
 
     aggregate = subparsers.add_parser("aggregate")
     aggregate.add_argument("--journal", required=True, type=Path)
@@ -106,6 +118,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     payload: dict[str, Any]
     if args.command == "verify":
         payload = verify_payload(args.source_root)
+    elif args.command == "progress":
+        payload = progress_payload(args.journal, args.facts)
     elif args.command == "aggregate":
         payload = aggregate_payload(
             args.journal,
