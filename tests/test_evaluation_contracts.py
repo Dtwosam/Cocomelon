@@ -21,6 +21,7 @@ from cocomelon.domain.evaluation import (
     TimePartition,
     TradeEvaluationSample,
 )
+
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
