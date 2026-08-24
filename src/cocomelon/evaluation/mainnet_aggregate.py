@@ -464,10 +464,9 @@ def aggregate_genuine_mainnet_evidence(
     for root in roots:
         attestation = _load_attestation(root)
         _validate_attested_store(root, attestation)
-        existing_new = new_attestations.get(attestation.run_id)
-        if existing_new is not None and existing_new != attestation:
+        if attestation.run_id in new_attestations:
             raise EvidenceAggregationError(
-                "conflicting genuine mainnet attestation for run: "
+                "duplicate replay run across genuine mainnet source roots: "
                 f"{attestation.run_id}"
             )
         new_attestations[attestation.run_id] = attestation
