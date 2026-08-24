@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 from decimal import Decimal
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -12,15 +14,15 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult, SourceSegment
 from cocomelon.domain.strategy import Direction
-from cocomelon.evaluation.aggregate import (
-    EvidenceAggregationError,
-    aggregate_evaluation_evidence,
-)
 from cocomelon.evaluation.cli_support import freeze_evaluation_dataset_payload
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
 
 SOL = MarketId("", "SOL")
+
+
+def _aggregate_module() -> ModuleType:
+    return importlib.import_module("cocomelon.evaluation.aggregate")
 
 
 def _trade(*, suffix: str, run_id: str, opened_at_ms: int) -> TradeJournalEntry:
@@ -163,6 +165,7 @@ def _sha256(path: Path) -> str:
 def test_aggregate_combines_fixed_revision_runs_without_mutating_sources(
     tmp_path: Path,
 ) -> None:
+    aggregate = _aggregate_module()
     revision = "a" * 40
     first = _source(
         tmp_path / "source-a",
@@ -183,7 +186,7 @@ def test_aggregate_combines_fixed_revision_runs_without_mutating_sources(
     target_journal = tmp_path / "aggregate" / "journal.sqlite3"
     target_facts = tmp_path / "aggregate" / "facts.sqlite3"
 
-    result = aggregate_evaluation_evidence(
+    result = aggregate.aggregate_evaluation_evidence(
         target_journal,
         target_facts,
         (tmp_path / "source-a", tmp_path / "source-b"),
@@ -211,6 +214,7 @@ def test_aggregate_combines_fixed_revision_runs_without_mutating_sources(
 def test_aggregate_rejects_mixed_code_revisions_before_target_write(
     tmp_path: Path,
 ) -> None:
+    aggregate = _aggregate_module()
     _source(
         tmp_path / "source-a",
         suffix="a",
@@ -228,8 +232,8 @@ def test_aggregate_rejects_mixed_code_revisions_before_target_write(
     target_journal = tmp_path / "aggregate" / "journal.sqlite3"
     target_facts = tmp_path / "aggregate" / "facts.sqlite3"
 
-    with pytest.raises(EvidenceAggregationError, match="one code revision"):
-        aggregate_evaluation_evidence(
+    with pytest.raises(aggregate.EvidenceAggregationError, match="one code revision"):
+        aggregate.aggregate_evaluation_evidence(
             target_journal,
             target_facts,
             (tmp_path / "source-a", tmp_path / "source-b"),
