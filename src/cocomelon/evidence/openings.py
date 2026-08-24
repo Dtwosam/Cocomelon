@@ -46,7 +46,10 @@ class BaselineOpeningTrace:
     def __post_init__(self) -> None:
         if not self.equity_before.is_finite() or self.equity_before <= ZERO:
             raise ValueError("equity_before must be positive and finite")
-        if self.evaluation.decision.decision_id != self.submission.risk_decision.strategy_decision_id:
+        if (
+            self.evaluation.decision.decision_id
+            != self.submission.risk_decision.strategy_decision_id
+        ):
             raise ValueError("opening trace strategy lineage mismatch")
 
 
