@@ -414,6 +414,15 @@ class PaperExecutionStore:
             self._conn.rollback()
             raise
 
+    def has_funding_accrual(self, accrual_id: str) -> bool:
+        if not accrual_id.strip():
+            raise ValueError("accrual_id must not be empty")
+        row = self._conn.execute(
+            "SELECT 1 FROM paper_funding_events WHERE accrual_id = ?",
+            (accrual_id,),
+        ).fetchone()
+        return row is not None
+
     def persist_funding(
         self,
         accrual: FundingAccrual,
