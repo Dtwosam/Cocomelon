@@ -203,8 +203,11 @@ class TradeJournalEntry:
     exit_fees: Decimal
     funding_cash_pnl: Decimal
     net_pnl: Decimal
+    entry_slippage_amount: Decimal
+    exit_slippage_amount: Decimal
     entry_slippage_fraction: Decimal
     exit_slippage_fraction: Decimal
+    holding_duration_ms: int
     mfe: ExcursionMetric | None
     mae: ExcursionMetric | None
     net_r: Decimal
@@ -223,6 +226,10 @@ class TradeJournalEntry:
             raise ValueError("opened_at_ms must be non-negative")
         if self.closed_at_ms < self.opened_at_ms:
             raise ValueError("closed_at_ms must be >= opened_at_ms")
+        if self.holding_duration_ms < 0:
+            raise ValueError("holding_duration_ms must be non-negative")
+        if self.holding_duration_ms != self.closed_at_ms - self.opened_at_ms:
+            raise ValueError("holding_duration_ms must equal closed_at_ms - opened_at_ms")
         if self.schema_version <= 0:
             raise ValueError("schema_version must be positive")
         for field in (
@@ -266,6 +273,8 @@ class TradeJournalEntry:
             "exit_fees",
             "funding_cash_pnl",
             "net_pnl",
+            "entry_slippage_amount",
+            "exit_slippage_amount",
             "entry_slippage_fraction",
             "exit_slippage_fraction",
             "net_r",
@@ -273,12 +282,7 @@ class TradeJournalEntry:
             "equity_after",
         ):
             _require_finite(getattr(self, field), field)
-        for field in (
-            "entry_fees",
-            "exit_fees",
-            "entry_slippage_fraction",
-            "exit_slippage_fraction",
-        ):
+        for field in ("entry_fees", "exit_fees"):
             if getattr(self, field) < ZERO:
                 raise ValueError(f"{field} must be non-negative")
         if self.equity_before <= ZERO or self.equity_after <= ZERO:
@@ -324,8 +328,11 @@ class TradeJournalEntry:
                 "exit_fees": str(self.exit_fees),
                 "funding_cash_pnl": str(self.funding_cash_pnl),
                 "net_pnl": str(self.net_pnl),
+                "entry_slippage_amount": str(self.entry_slippage_amount),
+                "exit_slippage_amount": str(self.exit_slippage_amount),
                 "entry_slippage_fraction": str(self.entry_slippage_fraction),
                 "exit_slippage_fraction": str(self.exit_slippage_fraction),
+                "holding_duration_ms": self.holding_duration_ms,
                 "mfe": None if self.mfe is None else self.mfe.canonical_payload(),
                 "mae": None if self.mae is None else self.mae.canonical_payload(),
                 "net_r": str(self.net_r),
