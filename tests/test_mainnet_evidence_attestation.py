@@ -158,6 +158,7 @@ def _source(
             "dataset_trade_count": 1,
             "economic_claim": "none",
             "evidence_kind": evidence_kind,
+            "recorded_duplicate_count": 0,
             "recorded_gap_count": gap_count,
             "recording_session_id": session_id,
             "replay_run_id": run_id,
@@ -166,6 +167,8 @@ def _source(
     _write_json(
         root / "record.json",
         {
+            "anomaly_count": 0,
+            "duplicate_count": 0,
             "gap_count": gap_count,
             "live_orders": record_live_orders,
             "network_access": True,
