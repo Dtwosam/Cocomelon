@@ -84,6 +84,35 @@ def test_short_slippage_and_excursion_signs_reverse_correctly() -> None:
     assert result.mae is not None and result.mae.price == Decimal("104")
 
 
+def test_partial_reduction_uses_quantity_open_at_excursion_extreme() -> None:
+    result = compute_trade_analytics(
+        direction=Direction.LONG,
+        entry_price=Decimal("100"),
+        entry_reference_price=Decimal("100"),
+        exit_price=Decimal("104"),
+        exit_reference_price=Decimal("104"),
+        opened_quantity=Decimal("10"),
+        gross_realized_pnl=Decimal("40"),
+        entry_fees=Decimal("0"),
+        exit_fees=Decimal("0"),
+        funding_cash_pnl=Decimal("0"),
+        initial_risk_amount=Decimal("25"),
+        opened_at_ms=1_000,
+        closed_at_ms=2_000,
+        mark_observations=(
+            mark(1_200, "99", "ctx-low"),
+            mark(1_600, "110", "ctx-high-after-reduction"),
+        ),
+        known_gap_intervals=(),
+        quantity_reductions=((1_500, Decimal("6")),),
+    )
+
+    assert result.mfe.price == Decimal("110")
+    assert result.mfe.currency == Decimal("40")
+    assert result.mfe.r_multiple == Decimal("1.6")
+    assert result.mae.currency == Decimal("10")
+
+
 def test_gap_intersection_marks_mfe_and_mae_incomplete() -> None:
     result = compute_trade_analytics(
         direction=Direction.LONG,
