@@ -148,9 +148,13 @@ def test_fixed_score_bucket_does_not_move_when_distribution_changes() -> None:
     )
 
     original_70 = next(
-        report for report in original if report.slice_kind == "score_bucket" and report.slice_key == "[70,80)"
+        report
+        for report in original
+        if report.slice_kind == "score_bucket" and report.slice_key == "[70,80)"
     )
     changed_70 = next(
-        report for report in changed if report.slice_kind == "score_bucket" and report.slice_key == "[70,80)"
+        report
+        for report in changed
+        if report.slice_kind == "score_bucket" and report.slice_key == "[70,80)"
     )
     assert original_70.metrics == changed_70.metrics
