@@ -17,10 +17,16 @@ def test_verify_parser_requires_only_local_source() -> None:
     args = parser.parse_args(["verify", "--source-root", "artifact/output"])
     assert args.source_root == Path("artifact/output")
 
-    for forbidden in ("--testnet", "--live", "--api-url", "--ws-url"):
+    forbidden_args = (
+        ("--testnet",),
+        ("--live",),
+        ("--api-url", "https://example.invalid"),
+        ("--ws-url", "wss://example.invalid/ws"),
+    )
+    for forbidden in forbidden_args:
         with pytest.raises(SystemExit):
             parser.parse_args(
-                ["verify", "--source-root", "artifact/output", forbidden]
+                ["verify", "--source-root", "artifact/output", *forbidden]
             )
 
 
