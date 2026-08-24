@@ -6,13 +6,6 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from cocomelon.evidence.baseline import (
-    RecordedStateBook,
-    replay_record_candle,
-    replay_record_funding_rate,
-    replay_record_market_snapshot,
-    replay_record_stream_event,
-)
 
 from cocomelon.domain.market import (
     Candle,
@@ -24,6 +17,13 @@ from cocomelon.domain.market import (
 )
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import StreamEvent, StreamKind
+from cocomelon.evidence.baseline import (
+    RecordedStateBook,
+    replay_record_candle,
+    replay_record_funding_rate,
+    replay_record_market_snapshot,
+    replay_record_stream_event,
+)
 from cocomelon.evidence.bundle import freeze_baseline_replay_bundle
 from cocomelon.evidence.contracts import (
     BaselineReplayConfig,
