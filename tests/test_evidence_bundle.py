@@ -8,16 +8,16 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass
-from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.bundle import (
     freeze_baseline_replay_bundle,
     load_baseline_replay_bundle,
     resolve_code_revision,
     write_baseline_replay_bundle,
 )
+
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.replay import EvidenceClass
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.contracts import (
     BaselineReplayConfig,
     EvidenceRecordingConfig,
