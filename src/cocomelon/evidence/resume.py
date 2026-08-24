@@ -36,7 +36,9 @@ def build_recording_resume_bootstrap(
     for market in selected_markets:
         snapshot = registry.markets.get(market.canonical)
         if snapshot is None:
-            raise ValueError(f"selected recording market is no longer discoverable: {market.canonical}")
+            raise ValueError(
+                f"selected recording market is no longer discoverable: {market.canonical}"
+            )
         if snapshot.meta.is_delisted:
             raise ValueError(f"selected recording market is now delisted: {market.canonical}")
         snapshots.append(snapshot)
