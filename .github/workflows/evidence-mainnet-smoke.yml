@@ -1,7 +1,7 @@
 name: Genuine Mainnet Evidence Smoke
 
 on:
-  push:
+  pull_request:
     branches:
       - evidence-mainnet-smoke-20260824
 
