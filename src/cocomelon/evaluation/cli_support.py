@@ -186,7 +186,11 @@ def freeze_evaluation_splits_payload(
                 raise ValueError(f"conflicting evaluation split: {split.split_manifest_id}")
             if existing is None:
                 store.connection.execute(
-                    "INSERT INTO evaluation_split_manifests(split_manifest_id, payload_json) VALUES (?, ?)",
+                    """
+                    INSERT INTO evaluation_split_manifests(
+                        split_manifest_id, payload_json
+                    ) VALUES (?, ?)
+                    """,
                     (split.split_manifest_id, canonical),
                 )
             store.connection.commit()
