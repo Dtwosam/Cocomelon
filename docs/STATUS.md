@@ -6,24 +6,24 @@
 
 ## Current state
 
-**Last completed/merged phase:** Phase 8 — deterministic journal, replay/backtesting, and offline analytical compaction  
-**Phase 8 merge commit:** `f7f37044997e13b3ffe91edd312756862343782b`  
-**Active implementation:** Phase 9 — evaluation, untouched OOS, walk-forward research gates  
-**Phase 9 PR:** #13 — closeout, not merged yet  
-**Phase 9 verified implementation head:** `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36`  
-**Verified implementation CI:** `32724357068` — SUCCESS  
-**Core job:** `97422236894` — SUCCESS  
-**Research job:** `97422237092` — SUCCESS  
+**Latest merged engineering milestone:** Phase 9 — deterministic evaluation, untouched OOS, and walk-forward research gates  
+**Phase 9 PR:** #13 — MERGED  
+**Phase 9 final PR head:** `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`  
+**Phase 9 merge commit:** `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`  
+**Final PR-head CI:** `32725387221` — SUCCESS  
+**Core job:** `97425382295` — SUCCESS  
+**Research job:** `97425382551` — SUCCESS  
 **Python:** `3.12.14`  
 **Real baseline evidence status:** **UNMEASURED** — no connector-accessible persisted real recording/journal corpus is available in the repository  
-**Phase 10:** BLOCKED pending a real Phase 9 baseline evaluation  
+**Phase 9 economic/research exit gate:** PENDING genuine recorded mainnet evidence  
+**Phase 10:** BLOCKED pending a genuine Phase 9 baseline evaluation  
 **Live trading:** DISABLED
 
-## Phase 9 implementation established
+## Phase 9 established
 
 Phase 9 adds deterministic, fail-closed research gates around trusted Phase 8 replay/journal outputs. It does not add exchange-write, ML-training, or parameter-search capability.
 
-Implemented and verified:
+Implemented and merged:
 
 - immutable Phase 9 domain contracts with canonical dataset, split, candidate, policy, metric, confidence, walk-forward, promotion-preview, and evaluation identities;
 - typed, restart-safe Phase 8 journal accessors plus a separate immutable evaluation fact/result SQLite store;
@@ -65,9 +65,9 @@ The Phase 9 V1 evaluation policy is a versioned research policy, not a profitabi
 
 `CANDIDATE_EDGE` additionally requires positive test mean net R, confidence lower bound >0, positive aggregate eligible walk-forward mean, and the 35% market / 50% seven-day concentration limits.
 
-## Phase 9 verification evidence
+## Phase 9 final verification and merge evidence
 
-Verified implementation head `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36` passed CI run `32724357068`:
+Final PR head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21` passed CI run `32725387221`:
 
 - Python `3.12.14`;
 - editable `[dev]` install — PASS;
@@ -78,30 +78,34 @@ Verified implementation head `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36` passed C
 - editable `[dev,research]` install — PASS;
 - `python -m pytest tests/test_replay_compaction.py tests/test_parquet_replay_source.py -q` — PASS.
 
-PR audit at that head:
+Final integration audit:
 
-- PR #13 is mergeable;
-- feature branch is `behind_by = 0` from `main`;
-- 37 changed files are confined to the Phase 9 spec/plan, evaluation contracts/modules, offline CLI, Phase 8 read-only journal accessors, and Phase 9 tests;
-- no dependency change was made to `pyproject.toml`;
-- no PR comments, review submissions, or review threads exist;
-- boundary tests mechanically reject hidden network/live/order/wallet/ML/optimizer/candle-to-book capabilities.
+- PR #13 was mergeable and marked ready before merge;
+- the feature branch was `behind_by = 0` from `main`;
+- 39 changed files were confined to Phase 9 spec/plan, evaluation contracts/modules, offline CLI, Phase 8 read-only journal accessors, Phase 9 tests, and continuity docs;
+- `pyproject.toml` had no Phase 9 dependency change;
+- no PR comments, submitted reviews, or review threads existed;
+- boundary tests mechanically rejected hidden network/live/order/wallet/ML/optimizer/candle-to-book capabilities;
+- guarded merge used exact expected head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`;
+- GitHub returned merge commit `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`;
+- `main` was verified immediately at that exact merge SHA;
+- post-merge comparison showed `main` ahead of `phase-9-evaluation-gates` by exactly one merge commit with an empty file diff.
 
-A final exact-head CI run is still required after these continuity-doc changes before guarded merge.
+This continuity-doc reconciliation is a post-merge `main` change and must itself remain green before the integration is considered fully closed.
 
 ## Real baseline evidence status
 
-The repository does **not** contain a connector-accessible persisted real mainnet replay/journal corpus to evaluate. The tracked root contains source, docs, tests, and configuration only; `.gitignore` excludes `data/`, `logs/`, `*.sqlite`, and `*.sqlite3`.
+The repository does **not** contain a connector-accessible persisted real mainnet replay/journal corpus to evaluate. The tracked repository contains source, docs, tests, and configuration, while `.gitignore` excludes `data/`, `logs/`, `*.sqlite`, and `*.sqlite3`.
 
 Therefore Phase 9 does **not** claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any historical profitability result for the real baseline. The honest state is:
 
 **REAL BASELINE EDGE: UNMEASURED**
 
-The 120-trade positive/weak fixtures are statistical regression tests representing already-closed synthetic evaluation outcomes. They are not market-history or fill evidence and must never be presented as economic proof.
+The synthetic positive/weak closed-outcome fixtures are statistical regression tests representing already-closed synthetic evaluation outcomes. They are not market-history or fill evidence and must never be presented as economic proof.
 
-Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 learning/champion-challenger work must not start merely because the evaluation software exists. The next research gate is to acquire/use genuine recorded mainnet paper/replay evidence and run the frozen Phase 9 evaluation. A real result may then honestly be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` as supported by the corpus.
+Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 learning/champion-challenger work must not start merely because the evaluation software is merged. The next research gate is to acquire/use genuine recorded mainnet paper/replay evidence and run the frozen Phase 9 evaluation. A real result may then honestly be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` as supported by the corpus.
 
-## Completed phases
+## Completed engineering phases
 
 - Phase 0 — governance/source-of-truth anchor: COMPLETE.
 - Phase 1 — Python foundation/domain/config/CI: MERGED at `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`.
@@ -112,7 +116,9 @@ Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 learning/champion-challenger
 - Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
 - Phase 7 — real-mainnet paper execution + position manager: MERGED at `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`.
 - Phase 8 — deterministic journal/replay/backtester + analytical compaction: MERGED at `f7f37044997e13b3ffe91edd312756862343782b`.
-- Phase 9 — implementation verified on PR #13; guarded merge pending final closeout-head CI and audit.
+- Phase 9 — deterministic evaluation/OOS/walk-forward infrastructure: MERGED at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`.
+
+Phase 9's **engineering implementation** is merged. Its **economic research exit gate** remains pending because no genuine persisted corpus is connector-accessible to evaluate.
 
 ## Locked safety and product invariants
 
@@ -133,15 +139,15 @@ Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 learning/champion-challenger
 
 ## Exact next action
 
-1. Run exact-head CI on the Phase 9 closeout documentation head.
-2. Re-audit PR #13 mergeability, branch-behind state, changed files, comments/reviews/threads, and live/ML/optimizer boundaries.
-3. Mark PR #13 ready and merge with exact expected-head protection only if CI is green.
-4. Verify `main` at the returned merge SHA and require the feature-to-main file diff to be empty except for the merge commit.
-5. Reconcile this status and `docs/CHATGPT_PROJECT_SOURCE.md` on `main` with the actual merge SHA and final PR-head CI.
-6. Keep Phase 10 blocked until genuine recorded mainnet evidence has been evaluated through the frozen Phase 9 gate.
+1. Verify post-merge continuity-doc CI on the exact current `main` head.
+2. Keep Phase 10 blocked.
+3. Obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline.
+4. Freeze a Phase 9 evaluation dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
+5. Run the genuine Phase 9 baseline evaluation and persist its result.
+6. Only after the real evidence state is known decide whether the approved build order permits Phase 10 learning work or requires more baseline evidence/data collection.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, and now deterministically evaluate fake-capital outcomes against trusted evidence. It has not demonstrated a real economic edge in the connector-accessible environment, and it has no authority to place real-money orders.
+Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, and deterministically evaluate fake-capital outcomes against trusted evidence. It has not demonstrated a real economic edge in the connector-accessible environment, and it has no authority to place real-money orders.
