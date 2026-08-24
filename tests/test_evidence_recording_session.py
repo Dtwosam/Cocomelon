@@ -6,7 +6,10 @@ from decimal import Decimal
 
 from cocomelon.domain.market import MarketId
 from cocomelon.evidence.contracts import EvidenceRecordingConfig
-from cocomelon.evidence.recording import build_recording_bootstrap
+from cocomelon.evidence.recording import (
+    build_recording_bootstrap,
+    build_recording_resume_bootstrap,
+)
 from cocomelon.hyperliquid.ws_protocol import subscription_id
 
 BASE_MS = 1_787_573_000_000
@@ -174,6 +177,38 @@ def test_selection_is_permutation_stable_dynamic_and_native_only() -> None:
     assert "OLD" not in selected_markets
     assert "XRP" in selected_markets
     assert "DOGE" not in selected_markets
+
+
+def test_resume_bootstrap_preserves_frozen_session_and_refreshes_only_its_cohort() -> None:
+    config = EvidenceRecordingConfig(duration_seconds=3_600, deep_limit=3)
+    initial_clock, _ = _clock()
+    initial = build_recording_bootstrap(
+        FakeReader(),
+        config,
+        now_ms=initial_clock,
+        code_revision="a" * 40,
+    )
+    resumed_reader = FakeReader(reverse=True)
+    resumed_clock, observed = _clock()
+
+    resumed = build_recording_resume_bootstrap(
+        resumed_reader,
+        config,
+        initial.session,
+        now_ms=resumed_clock,
+    )
+
+    assert resumed.session == initial.session
+    assert resumed.session.session_id == initial.session.session_id
+    assert tuple(item.market for item in resumed.session.selected) == tuple(
+        item.market for item in initial.session.selected
+    )
+    selected = {item.market.canonical for item in initial.session.selected}
+    assert {item.meta.market.canonical for item in resumed.snapshots} == selected
+    assert {call[0] for call in resumed_reader.candle_calls} == selected
+    assert {call[0] for call in resumed_reader.funding_calls} == selected
+    assert all(item.received_at_ms in observed for item in resumed.candles)
+    assert all(item.received_at_ms in observed for item in resumed.funding_rates)
 
 
 def test_warmup_uses_response_receive_time_and_requests_required_history() -> None:
