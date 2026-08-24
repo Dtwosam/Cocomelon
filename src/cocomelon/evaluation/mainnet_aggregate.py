@@ -131,6 +131,18 @@ def _load_attestation(root: Path) -> GenuineMainnetAttestation:
         "summary.recorded_gap_count",
     )
     record_gaps = _integer(record.get("gap_count"), "record.gap_count")
+    recorded_duplicates = _integer(
+        summary.get("recorded_duplicate_count"),
+        "summary.recorded_duplicate_count",
+    )
+    record_duplicates = _integer(
+        record.get("duplicate_count"),
+        "record.duplicate_count",
+    )
+    record_anomalies = _integer(
+        record.get("anomaly_count"),
+        "record.anomaly_count",
+    )
     if (
         not summary_complete
         or not replay_complete
@@ -139,6 +151,14 @@ def _load_attestation(root: Path) -> GenuineMainnetAttestation:
     ):
         raise EvidenceAggregationError(
             "genuine mainnet source must be complete and gap-free"
+        )
+    if recorded_duplicates != record_duplicates:
+        raise EvidenceAggregationError(
+            "attested duplicate count does not match recording summary"
+        )
+    if record_duplicates != 0 or record_anomalies != 0:
+        raise EvidenceAggregationError(
+            "genuine mainnet source must be duplicate-free and anomaly-free"
         )
 
     if _boolean(record.get("live_orders"), "record.live_orders"):
