@@ -14,10 +14,12 @@ from cocomelon.domain.strategy import StrategyDecision
 from cocomelon.domain.stream import StreamEvent
 from cocomelon.execution.accounting import (
     PaperAccountState,
+    apply_funding_accrual,
     apply_opening_fills,
     apply_reduce_only_fills,
     empty_account,
 )
+from cocomelon.execution.funding import FundingAccrual
 from cocomelon.execution.interface import (
     ExecutionHealth,
     OpeningSubmission,
@@ -70,6 +72,23 @@ class PaperExecutionAdapter:
 
     def _mark_store_failure(self, reason: str) -> None:
         self._health = ExecutionHealth(False, (reason,))
+
+    def apply_funding(
+        self,
+        accrual: FundingAccrual,
+        *,
+        timestamp_ms: int,
+    ) -> PaperAccountState:
+        if self.store.has_funding_accrual(accrual.accrual_id):
+            return self._account
+        candidate = apply_funding_accrual(self._account, accrual, timestamp_ms)
+        try:
+            self.store.persist_funding(accrual, candidate)
+        except Exception:
+            self._mark_store_failure("DURABLE_FUNDING_WRITE_FAILED")
+            raise
+        self._account = candidate
+        return self._account
 
     def submit_risk_request(
         self,
