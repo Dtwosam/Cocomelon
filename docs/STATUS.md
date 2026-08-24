@@ -7,21 +7,16 @@
 
 ## Current state
 
-**Latest merged engineering milestone:** Phase 9 Evidence Bridge — genuine public mainnet recording to deterministic evaluator handoff  
-**Phase 9 evaluator PR:** #13 — MERGED  
-**Phase 9 evaluator merge:** `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`  
-**Evidence Bridge PR:** #15 — MERGED  
-**Final Evidence Bridge PR head:** `2987044659d0bd45891a6ca33316629fc6eda7ab`  
-**Final PR-head CI:** `32757592156` — SUCCESS  
-**Core job:** `97528596940` — SUCCESS  
-**Research job:** `97528596569` — SUCCESS  
-**Evidence Bridge merge commit:** `dec15b53d00bf5e65ba4c017aba0159c98d0088d`  
-**Python:** `3.12.14`  
+**Latest merged engineering milestone:** Phase 9 genuine-mainnet evidence attestation and fail-closed economic corpus boundary  
+**Phase 9 evaluator:** MERGED  
+**Phase 9 evidence aggregation:** PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`  
+**Phase 9 genuine-mainnet attestation:** PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`  
+**Pinned trading/evidence revision under test:** `571c13bfe0bab0312940617540ec973ee3eee3c5`  
 **Real baseline evidence status:** **UNMEASURED**  
-**Phase 9 economic/research exit gate:** PENDING genuine recorded mainnet evidence  
-**Phase 10:** BLOCKED pending a genuine Phase 9 baseline evaluation
+**Phase 9 economic/research exit gate:** PENDING sufficient clean attested genuine-mainnet evidence  
+**Phase 10:** BLOCKED pending a genuine Phase 9 baseline evaluation that satisfies the locked evidence policy
 
-Immediately after merge, `main` was verified at `dec15b53d00bf5e65ba4c017aba0159c98d0088d`. Comparing `phase-9-evidence-bridge` to `main` showed `main` ahead by exactly one merge commit with an empty file diff.
+`main` was verified at `ef3c728e310be6a5b1ed94934a77453fba9c63cd` after merging PR #25.
 
 ## Phase 9 evaluator
 
@@ -49,74 +44,69 @@ Its versioned V1 research policy remains:
 
 `CANDIDATE_EDGE` additionally requires positive untouched-test mean net R, bootstrap lower bound > 0, positive/stable eligible walk-forward behavior, market positive-PnL concentration <=35%, and seven-day concentration <=50%.
 
-## Phase 9 Evidence Bridge merged
+## Genuine-mainnet evidence pipeline
 
-The Evidence Bridge closes the operational gap between genuine Hyperliquid mainnet public recordings and the merged evaluator. It does **not** add live trading, private account access, ML, or optimizer/search capability.
+The Phase 9 evidence path now supports genuine public Hyperliquid mainnet recordings through deterministic paper replay and evaluation without enabling live trading.
 
-Merged capability:
+Merged capability includes:
 
-- deterministic evidence-recording contracts and immutable recording-session identity;
-- bounded public Hyperliquid **mainnet-only** evidence capture in paper mode;
-- dynamic ranked native-perp cohort selection rather than favorite-token hard-coding;
-- public REST evidence recording for full market snapshots, candles, and funding with actual response receive-time provenance;
-- WebSocket evidence recording for genuine asset context, L2, trades, and candles;
-- funding dedupe by `(market, funding_time_ms)` preserving first-observation provenance;
-- restart-safe recording sessions and immutable frozen baseline replay bundles;
-- bundle/source/session/config/code-revision binding with exact source hashes;
-- a fully offline `run-baseline-replay` path routed before runtime network settings;
-- production deterministic decision epochs using existing Phase 4/5 feature, eligibility, regime, and strategy formulas;
-- shared-account Phase 6 risk gating and Phase 7 paper opening/fill mechanics against recorded genuine L2;
-- hard staleness/health/state-consistency gates for new exposure;
-- paper liquidation surrogate used only for deterministic risk-buffer simulation, never presented as a venue liquidation quote;
-- deterministic position management using genuine recorded mark/book evidence;
-- funding reconciliation and accounting using exact recorded public funding boundaries and genuine pre-boundary oracle evidence;
-- funding idempotency corrected to the locked Phase 7 identity contract: market + funding boundary, preventing duplicate cash application when mutable position state changes;
-- complete Phase 8 journal lifecycle assembly and Phase 9 decision/equity fact persistence;
-- deterministic same-bundle reruns across fresh stores and idempotent reopening of completed stores;
-- end-to-end fixture proving `recorded rows -> frozen bundle -> production baseline replay -> journal/facts -> Phase 9 dataset`;
-- offline summaries explicitly declare `network_access: false` and `live_orders: false` and make no profitability/edge claim;
-- executable Evidence Bridge boundaries excluding testnet, live/order/wallet/signing/private-account/withdraw/transfer capability, ML/training, optimizer/grid/random search, offline network-client imports, and candle-derived L2/trade construction.
+- public Hyperliquid mainnet-only recording with immutable recording-session identity;
+- pinned source-code revision binding for the strategy/risk/execution code under test;
+- offline frozen replay bundles and deterministic baseline replay;
+- canonical replay/journal/fact aggregation across separate cohort artifacts sharing one fixed code revision;
+- idempotent evidence-store merging with rollback-safe pair replacement;
+- genuine-mainnet attestation that binds cohort metadata to canonical replay results, bundle/session identity, code revision, and source-file digests;
+- rejection of non-mainnet endpoints, live-order semantics, gaps, duplicates, anomalies, incomplete replays, metadata/replay mismatches, reused recording sessions, and overlapping cohort time windows;
+- exact-attested-run-set dataset freezing to prevent post-hoc favorable-run selection;
+- a dedicated offline-only `cocomelon-mainnet-evidence` command surface for attested aggregation and dataset freezing;
+- no testnet, live-order, wallet, signing, transfer, withdrawal, private-account, optimizer/search, or Phase 10 activation path in the evidence tool.
 
-The end-to-end fixture intentionally includes fresh genuine `activeAssetCtx` before a latency-eligible entry book. This preserves the locked 5-second execution-context freshness gate instead of weakening risk controls to make a test trade pass.
+## First genuine 30-minute mainnet cohort
 
-## Evidence Bridge final verification and merge evidence
+GitHub Actions run `32770800218` produced immutable artifact `genuine-mainnet-evidence-cohort-32770800218-attempt-1` from the pinned trading revision `571c13bfe0bab0312940617540ec973ee3eee3c5`.
 
-The exact final PR head `2987044659d0bd45891a6ca33316629fc6eda7ab` passed CI run `32757592156`:
+The artifact is genuine public Hyperliquid mainnet evidence and paper-only:
 
-- Python `3.12.14`;
-- editable `[dev]` install — PASS;
-- `python -m compileall -q src tests scripts` — PASS;
-- `python -m ruff check src tests scripts` — PASS;
-- `python -m mypy src` — PASS;
-- full `python -m pytest -q` — PASS;
-- editable `[dev,research]` install — PASS;
-- `python -m pytest tests/test_replay_compaction.py tests/test_parquet_replay_source.py -q` — PASS.
+- workflow checkout revision: `571c13bfe0bab0312940617540ec973ee3eee3c5`;
+- runner trigger head: `6ea9915738dd80930a36a749b5f5a5e0343e8fe2`;
+- recording network access: `true`;
+- replay network access: `false`;
+- live orders: `false` throughout;
+- duration: 1,800 seconds;
+- selected markets: `AERO`, `CASHCAT`, `ENA`, `PUMP`, `PURR`;
+- recorded market events: 360,404;
+- duplicate events: 0;
+- anomalies: 0;
+- reconnects: 1;
+- recorded gaps: 60;
+- validated rows including gap records: 360,464 across 980 segments;
+- strategy decisions: 10;
+- risk approvals: 2;
+- risk rejections: 0;
+- execution attempts: 1;
+- fills: 3;
+- opened positions: 1;
+- closed positions: 0;
+- closed trades: 0;
+- final paper equity: `9992.897173445500000000000000` while an ENA short remained open;
+- replay `data_complete`: `false`;
+- frozen evaluation dataset trades: 0.
 
-Final PR audit:
+The 60 gaps came from one websocket disconnect/recovery episode across subscribed channels. Because the cohort is incomplete and has no closed trades, it is **not admissible economic evidence** and the merged attestation path rejects it before it can enter the real Phase 9 aggregate.
 
-- PR #15 mergeable and marked ready before merge;
-- `behind_by = 0` from `main`;
-- 38 changed files confined to the Evidence Bridge spec/plan/docs, evidence orchestration, minimum required execution/replay hooks, and tests;
-- no `pyproject.toml` dependency drift;
-- no PR comments;
-- no submitted reviews;
-- no review threads;
-- guarded merge used exact expected head `2987044659d0bd45891a6ca33316629fc6eda7ab`;
-- GitHub returned merge commit `dec15b53d00bf5e65ba4c017aba0159c98d0088d`;
-- `main` was verified immediately at that exact merge SHA;
-- post-merge branch comparison showed one merge commit and an empty file diff.
-
-The present continuity wording on `main` is documentation-only after the merge and is verified through an observable continuity CI probe before handoff.
-
-## Real baseline evidence status
-
-The repository still does **not** contain a connector-accessible persisted real mainnet replay/journal corpus to evaluate economically. Tracked source/tests prove engineering behavior only; runtime evidence and SQLite outputs are intentionally outside tracked source history.
+The final equity value above is not a realized profitability result because the cohort ended with an open paper position and incomplete market-data coverage.
 
 Therefore:
 
 **REAL BASELINE EDGE: UNMEASURED**
 
-The production-shaped bridge fixtures are deterministic engineering regressions, not historical Hyperliquid performance evidence. They must not be presented as economic proof, and Phase 9 does not currently claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any real historical profitability result.
+This result is not `NO_EDGE_DEMONSTRATED`; it is insufficient/inadmissible evidence for an economic conclusion.
+
+## Evidence campaign status
+
+A second non-overlapping genuine-mainnet paper cohort has been launched under the same pinned trading revision using a stricter workflow that requires complete, gap-free evidence before artifact acceptance. Its result must be inspected and attested before inclusion in the economic corpus.
+
+The 30-day untouched-OOS coverage requirement cannot be accelerated by overlapping captures. Evidence collection should therefore favor temporally distinct, non-overlapping cohorts while preserving the same fixed revision for the evaluation campaign.
 
 ## Completed engineering phases
 
@@ -131,6 +121,9 @@ The production-shaped bridge fixtures are deterministic engineering regressions,
 - Phase 8 — deterministic journal/replay/backtester + analytical compaction: MERGED at `f7f37044997e13b3ffe91edd312756862343782b`.
 - Phase 9 — deterministic evaluation/OOS/walk-forward infrastructure: MERGED at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`.
 - Phase 9 Evidence Bridge: MERGED at `dec15b53d00bf5e65ba4c017aba0159c98d0088d`.
+- Phase 9 execution-activity replay accounting repair: PR #21 — MERGED at `ed3cae5af4a7b971babecec28448675c19d10bf6`.
+- Phase 9 fixed-revision evidence-store aggregation: PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`.
+- Phase 9 genuine-mainnet attestation and economic-corpus boundary: PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`.
 
 ## Locked safety and product invariants
 
@@ -139,7 +132,7 @@ The production-shaped bridge fixtures are deterministic engineering regressions,
 - Mainnet market-data endpoints remain `https://api.hyperliquid.xyz` and `wss://api.hyperliquid.xyz/ws`.
 - Default execution is paper/shadow and places no real exchange orders.
 - No live exchange adapter is enabled or authorized.
-- No wallet/private-key signing, transfer, withdrawal, or private account/user subscription exists in the Evidence Bridge.
+- No wallet/private-key signing, transfer, withdrawal, or private account/user subscription exists in the current evidence path.
 - Whole-market discovery remains dynamic; eligibility is separate from ranking.
 - Explainable deterministic baselines remain first-class before ML; `NO_TRADE` is valid.
 - Strategy cannot size positions or send orders; independent risk has final veto.
@@ -152,15 +145,16 @@ The production-shaped bridge fixtures are deterministic engineering regressions,
 ## Exact next action
 
 1. Keep Phase 10 blocked.
-2. In an environment that can persist runtime data, run `record-mainnet-evidence` against public Hyperliquid mainnet evidence.
-3. Freeze that corpus into an immutable baseline replay bundle.
-4. Run `run-baseline-replay` into journal/execution/fact stores.
-5. Freeze the Phase 9 evaluation dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
-6. Run and persist the genuine Phase 9 baseline evaluation.
-7. Only after the real evidence result is known decide whether the approved build order permits Phase 10 or requires more baseline evidence.
+2. Complete and inspect the second non-overlapping pinned genuine-mainnet paper cohort.
+3. Admit only cohorts that pass the genuine-mainnet attestation boundary: complete, gap-free, duplicate-free, anomaly-free, paper-only, fixed revision, unique recording session, and non-overlapping time window.
+4. Continue collecting temporally distinct cohorts under the same pinned revision until the Phase 9 untouched-OOS evidence thresholds can be evaluated honestly.
+5. Aggregate admitted cohorts through `cocomelon-mainnet-evidence aggregate` and freeze only the exact attested run set.
+6. Freeze time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
+7. Run and persist the genuine Phase 9 baseline evaluation.
+8. Only after the real evidence result is known decide whether the approved build order permits Phase 10 or requires more baseline evidence.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, and deterministically evaluate fake-capital outcomes against trusted evidence. The Evidence Bridge now connects genuine public mainnet recordings to that pipeline, but no genuine corpus has yet demonstrated economic edge and no real-money order is authorized.
+Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, aggregate, attest, and deterministically evaluate fake-capital outcomes against genuine public mainnet evidence. No genuine corpus has yet demonstrated economic edge, and no real-money order is authorized.
