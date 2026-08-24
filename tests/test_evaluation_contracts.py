@@ -1,6 +1,7 @@
 from decimal import ROUND_UP, Context, Decimal, localcontext
 
 import pytest
+
 from cocomelon.domain.evaluation import (
     AccountEquityFact,
     CandidateDefinition,
@@ -20,7 +21,6 @@ from cocomelon.domain.evaluation import (
     TimePartition,
     TradeEvaluationSample,
 )
-
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
@@ -295,10 +295,7 @@ def test_confidence_interval_requires_ordered_finite_bounds() -> None:
 
 
 def test_profit_factor_unavailable_requires_reason() -> None:
-    kwargs = {
-        field: getattr(metrics(), field)
-        for field in metrics().__dataclass_fields__
-    }
+    kwargs = {field: getattr(metrics(), field) for field in metrics().__dataclass_fields__}
     kwargs["profit_factor"] = None
     kwargs["profit_factor_unavailable_reason"] = None
 
