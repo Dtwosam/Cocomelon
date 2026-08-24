@@ -289,22 +289,23 @@ def _commit_pair(
 ) -> None:
     backup_journal = _backup_path(target_journal, token)
     backup_facts = _backup_path(target_facts, token)
-    if existed:
-        shutil.copy2(target_journal, backup_journal)
-        shutil.copy2(target_facts, backup_facts)
     try:
-        os.replace(work_journal, target_journal)
-        os.replace(work_facts, target_facts)
-    except Exception:
         if existed:
-            if backup_journal.exists():
-                os.replace(backup_journal, target_journal)
-            if backup_facts.exists():
-                os.replace(backup_facts, target_facts)
-        else:
-            target_journal.unlink(missing_ok=True)
-            target_facts.unlink(missing_ok=True)
-        raise
+            shutil.copy2(target_journal, backup_journal)
+            shutil.copy2(target_facts, backup_facts)
+        try:
+            os.replace(work_journal, target_journal)
+            os.replace(work_facts, target_facts)
+        except Exception:
+            if existed:
+                if backup_journal.exists():
+                    os.replace(backup_journal, target_journal)
+                if backup_facts.exists():
+                    os.replace(backup_facts, target_facts)
+            else:
+                target_journal.unlink(missing_ok=True)
+                target_facts.unlink(missing_ok=True)
+            raise
     finally:
         backup_journal.unlink(missing_ok=True)
         backup_facts.unlink(missing_ok=True)
@@ -337,40 +338,46 @@ def aggregate_evaluation_evidence(
     token = uuid.uuid4().hex
     work_journal = _work_path(target_journal, token)
     work_facts = _work_path(target_facts, token)
-    _prepare_work_store(target_journal, work_journal, exists=journal_exists)
-    _prepare_work_store(target_facts, work_facts, exists=facts_exists)
-
-    journal: JournalStore | None = None
-    facts: EvaluationFactStore | None = None
     try:
-        journal = JournalStore(work_journal)
-        facts = EvaluationFactStore(work_facts)
-        _validate_target_revision(journal, code_revision)
-        for snapshot in snapshots:
-            _merge_snapshot(snapshot, journal, facts)
-        result = _result_from_target(
-            journal,
-            facts,
-            code_revision=code_revision,
-            source_count=len(snapshots),
-        )
-    except (JournalConsistencyError, EvaluationConsistencyError) as exc:
-        raise EvidenceAggregationError("conflicting evaluation evidence") from exc
+        _prepare_work_store(target_journal, work_journal, exists=journal_exists)
+        _prepare_work_store(target_facts, work_facts, exists=facts_exists)
+
+        journal: JournalStore | None = None
+        facts: EvaluationFactStore | None = None
+        try:
+            journal = JournalStore(work_journal)
+            facts = EvaluationFactStore(work_facts)
+            _validate_target_revision(journal, code_revision)
+            for snapshot in snapshots:
+                _merge_snapshot(snapshot, journal, facts)
+            result = _result_from_target(
+                journal,
+                facts,
+                code_revision=code_revision,
+                source_count=len(snapshots),
+            )
+        except (JournalConsistencyError, EvaluationConsistencyError) as exc:
+            raise EvidenceAggregationError("conflicting evaluation evidence") from exc
+        finally:
+            if facts is not None:
+                facts.close()
+            if journal is not None:
+                journal.close()
+
+        try:
+            _commit_pair(
+                target_journal,
+                target_facts,
+                work_journal,
+                work_facts,
+                existed=journal_exists,
+                token=token,
+            )
+        except OSError as exc:
+            raise EvidenceAggregationError(
+                "unable to commit aggregated evidence stores"
+            ) from exc
+        return result
     finally:
-        if facts is not None:
-            facts.close()
-        if journal is not None:
-            journal.close()
-
-    try:
-        _commit_pair(
-            target_journal,
-            target_facts,
-            work_journal,
-            work_facts,
-            existed=journal_exists,
-            token=token,
-        )
-    except OSError as exc:
-        raise EvidenceAggregationError("unable to commit aggregated evidence stores") from exc
-    return result
+        work_journal.unlink(missing_ok=True)
+        work_facts.unlink(missing_ok=True)
