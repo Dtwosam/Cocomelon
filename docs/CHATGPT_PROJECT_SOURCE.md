@@ -12,7 +12,7 @@
 
 ## 1. Mission
 
-Cocomelon is an autonomous intraday Hyperliquid perpetual-futures research/trading system under staged development. It dynamically discovers the real perp universe, rejects poor/stale markets, ranks opportunities, deeply analyzes a bounded shortlist, chooses LONG/SHORT/NO_TRADE, passes every directional proposal through an independent risk engine, paper-executes approved trades against real mainnet observations, manages positions, journals/replays outcomes without lookahead, and evaluates baselines through frozen OOS/walk-forward gates before any learning phase.
+Cocomelon is an autonomous intraday Hyperliquid perpetual-futures research/trading system under staged development. It dynamically discovers the real perp universe, rejects poor/stale markets, ranks opportunities, deeply analyzes a bounded shortlist, chooses LONG/SHORT/NO_TRADE, passes every directional proposal through an independent risk engine, paper-executes approved trades against real mainnet observations, manages positions, journals/replays outcomes without lookahead, and evaluates deterministic baselines through frozen OOS/walk-forward gates before any learning phase.
 
 Economic objective: **positive net risk-adjusted expectancy after fees, funding, slippage, and realistic execution costs while preserving capital**. Profit is never guaranteed.
 
@@ -56,7 +56,7 @@ No fixed favorite-token universe. Eligibility is mechanically separate from rank
 - no position without stop/invalidation
 - stale/inconsistent state blocks new exposure
 
-Leverage is subordinate to dollar risk. Strategy score cannot scale the risk percentage upward. Authoritative risk arithmetic uses fixed deterministic Decimal semantics.
+Leverage is subordinate to dollar risk. Strategy score cannot scale the risk percentage upward. Authoritative risk arithmetic uses deterministic fixed-precision Decimal semantics.
 
 ### Deterministic baselines before ML
 
@@ -98,7 +98,7 @@ Hard boundaries:
 - strategy cannot size positions or send orders;
 - risk is independent and has final veto;
 - replay preserves evidence classes and availability time;
-- Phase 9 is offline/read-only relative to exchange and execution state;
+- Phase 9 evaluation is offline/read-only relative to exchange and execution state;
 - Phase 9 has no Hyperliquid network client, wallet/signing, private account, live-order, ML-training, or optimizer capability;
 - models may never call exchange APIs directly;
 - live trading remains disabled until later gates and explicit user authorization.
@@ -107,7 +107,7 @@ Hard boundaries:
 
 ## 4. Approved build order and merge history
 
-Completed/merged:
+Merged engineering phases:
 
 - Phase 1: `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`
 - Phase 2: `b95352e238d6a9eabd63e13c1f8300e654a7e636`
@@ -117,11 +117,12 @@ Completed/merged:
 - Phase 6: `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912` — PR #8
 - Phase 7: `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab` — PR #9
 - Phase 8: `f7f37044997e13b3ffe91edd312756862343782b` — PR #10
+- Phase 9 engineering infrastructure: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7` — PR #13
 
-Current integration:
+Current gate:
 
-- Phase 9 — evaluation/OOS/walk-forward research gates — PR #13, implementation verified, closeout pending guarded merge.
-- Phase 10 — champion/challenger learning engine — **BLOCKED pending genuine real Phase 9 baseline evaluation**.
+- Phase 9 **economic/research exit gate** — PENDING genuine recorded mainnet evidence.
+- Phase 10 — champion/challenger learning engine — **BLOCKED pending genuine Phase 9 baseline evaluation**.
 - Phase 11 — long-running mainnet shadow.
 - Phase 12 — mainnet live adapter built but disabled.
 - Phase 13 — explicit user-approved live promotion.
@@ -139,7 +140,7 @@ Phase 8 final PR head `83454520fa652533c47688f6ab14c0d1fb19473f` passed CI `3271
 
 ---
 
-## 6. Phase 9 implementation established
+## 6. Phase 9 merged engineering implementation
 
 Phase 9 wraps trusted Phase 8 outputs in deterministic anti-p-hacking research gates.
 
@@ -179,21 +180,27 @@ Versioned `phase9-v1` research defaults:
 
 ---
 
-## 7. Phase 9 verification evidence
+## 7. Phase 9 final verification and merge evidence
 
-Verified implementation head: `fe5bf1dc69179bc0ba799ae7093cd9caf5084d36`  
-Implementation CI: `32724357068` — SUCCESS  
-Core job: `97422236894` — SUCCESS  
-Research job: `97422237092` — SUCCESS
+Final PR head: `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`  
+Final PR-head CI: `32725387221` — SUCCESS  
+Core job: `97425382295` — SUCCESS  
+Research job: `97425382551` — SUCCESS  
+Merge commit: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`
 
-Pre-merge continuity head before this portable-source update: `477462f8c29e98309ad5603d2e4fcb014f109e94`  
-Continuity CI: `32724793433` — SUCCESS  
-Core job: `97423555250` — SUCCESS  
-Research job: `97423555460` — SUCCESS
+The exact PR head passed Python 3.12 editable installs, compileall, Ruff, mypy, full pytest, and the dedicated Phase 8 PyArrow research regression.
 
-The green CI proves Python 3.12 editable installs, compileall, Ruff, mypy, full pytest, and the dedicated Phase 8 PyArrow research regression on those exact trees.
+Integration audit:
 
-PR #13 was mergeable and `behind_by = 0` at the last pre-closeout audit, with no comments, submitted reviews, or review threads. A fresh audit and exact-head CI are required after this file update before merge.
+- PR #13 was mergeable, ready, and `behind_by = 0`;
+- 39 changed files were confined to Phase 9 spec/plan, evaluation implementation/tests, offline CLI, Phase 8 read-only journal accessors, and continuity docs;
+- no Phase 9 dependency change was made to `pyproject.toml`;
+- no PR comments, reviews, or review threads existed;
+- guarded merge used exact expected head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`;
+- `main` immediately pointed to `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`;
+- comparing `phase-9-evaluation-gates` to `main` showed exactly one merge commit and an empty file diff.
+
+The current post-merge continuity-doc head must itself remain CI-green before this integration is fully closed.
 
 ---
 
@@ -203,9 +210,9 @@ PR #13 was mergeable and `behind_by = 0` at the last pre-closeout audit, with no
 
 The repository does not contain a connector-accessible persisted real mainnet replay/journal corpus to score economically. The tracked repo contains source/docs/tests/configuration while `.gitignore` excludes `data/`, `logs/`, `*.sqlite`, and `*.sqlite3`.
 
-Therefore the synthetic 120-trade positive/weak fixtures are **only statistical regression tests**. They are not historical Hyperliquid evidence, fills, or a profitability claim. Phase 9 currently does not claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any real historical baseline outcome.
+Therefore the synthetic positive/weak closed-outcome fixtures are **only statistical regression tests**. They are not historical Hyperliquid evidence, fills, or a profitability claim. Phase 9 currently does not claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any real historical baseline outcome.
 
-Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 must not start merely because the evaluator exists. Genuine recorded mainnet paper/replay evidence must first be frozen and evaluated through Phase 9. The correct real result may be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` according to the corpus.
+Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 must not start merely because the evaluator is merged. Genuine recorded mainnet paper/replay evidence must first be frozen and evaluated through Phase 9. The correct real result may be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` according to the corpus.
 
 ---
 
@@ -229,16 +236,15 @@ When asked to continue Cocomelon:
 
 ## 10. Exact handoff now
 
-Phase 9 implementation is complete on PR #13 but not yet merged. `docs/STATUS.md` has been updated and passed CI at `477462f8c29e98309ad5603d2e4fcb014f109e94`; this portable source update creates the final pre-merge closeout head.
+Phase 9 engineering infrastructure is merged into `main` at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`. The current work is only post-merge continuity reconciliation.
 
 Immediate sequence:
 
-1. require exact-head core + research CI green after this update;
-2. re-audit PR #13 mergeability, `behind_by`, changed-file scope, comments/reviews/threads, and Phase 9 safety boundaries;
-3. mark PR #13 ready for review;
-4. guarded-merge only the exact verified head into `main`;
-5. verify `main` at the returned merge SHA and require feature-to-main file diff to be empty except for the merge commit;
-6. reconcile `docs/STATUS.md` and this file on `main` with the actual merge SHA/final PR-head CI, then require post-merge continuity CI green;
-7. keep Phase 10 blocked until genuine recorded mainnet evidence is evaluated through Phase 9.
+1. require exact-head CI green after the `docs/STATUS.md` + this portable-source reconciliation on `main`;
+2. keep Phase 10 blocked;
+3. obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline;
+4. freeze a Phase 9 dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics;
+5. run and persist the genuine Phase 9 baseline evaluation;
+6. only after the real evidence result is known decide whether Phase 10 is allowed by the approved build order or whether more data/baseline evidence is required.
 
 **Live trading status: DISABLED.**
