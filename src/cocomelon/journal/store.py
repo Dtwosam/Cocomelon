@@ -149,6 +149,7 @@ class JournalStore:
                 "attempt_id": observation.attempt_id,
                 "position_action_id": observation.position_action_id,
                 "account_state_id": observation.account_state_id,
+                "funding_event_id": observation.funding_event_id,
                 "reason_codes": observation.reason_codes,
                 "health_refs": observation.health_refs,
                 "replay_run_id": observation.replay_run_id,
@@ -224,6 +225,7 @@ class JournalStore:
             reason_codes=_tuple_strings(raw.get("reason_codes"), "reason_codes"),
             health_refs=_tuple_strings(raw.get("health_refs"), "health_refs"),
             replay_run_id=_optional_string(raw.get("replay_run_id")),
+            funding_event_id=_optional_string(raw.get("funding_event_id")),
             schema_version=int(raw["schema_version"]),
         )
         if result.observation_id != observation_id:
