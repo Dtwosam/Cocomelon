@@ -49,7 +49,7 @@ jobs:
 
       - name: Record clean genuine public mainnet evidence
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p evidence-cohort/output evidence-cohort/diagnostics
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
           git -C runner-control rev-parse HEAD > evidence-cohort/output/gap-watch-head.txt
@@ -77,11 +77,17 @@ jobs:
               > "$ATTEMPT_ROOT/gap-watch.json" &
             GAP_WATCH_PID=$!
 
-            wait "$RECORDER_PID"
-            RECORDER_STATUS=$?
+            if wait "$RECORDER_PID"; then
+              RECORDER_STATUS=0
+            else
+              RECORDER_STATUS=$?
+            fi
             kill "$GAP_WATCH_PID" 2>/dev/null || true
-            wait "$GAP_WATCH_PID"
-            GAP_WATCH_STATUS=$?
+            if wait "$GAP_WATCH_PID"; then
+              GAP_WATCH_STATUS=0
+            else
+              GAP_WATCH_STATUS=$?
+            fi
 
             date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
             printf '%s\n' "$RECORDER_STATUS" > "$ATTEMPT_ROOT/recorder-exit-status.txt"
