@@ -55,6 +55,23 @@ def test_canonical_order_uses_explicit_kind_priority_and_stable_ties() -> None:
     assert KIND_PRIORITY["data_gap"] < KIND_PRIORITY["l2_book"] < KIND_PRIORITY["trade"]
 
 
+def test_canonical_order_supports_public_rest_evidence_kinds() -> None:
+    rows = (
+        record(available_at_ms=1_000, event_kind="funding_rate", event_key="funding"),
+        record(available_at_ms=1_000, event_kind="market_snapshot", event_key="snapshot"),
+        record(available_at_ms=1_000, event_kind="active_asset_ctx", event_key="ctx"),
+    )
+
+    ordered = canonical_record_order(rows)
+
+    assert [item.event_key for item in ordered] == ["snapshot", "funding", "ctx"]
+    assert (
+        KIND_PRIORITY["market_snapshot"]
+        < KIND_PRIORITY["funding_rate"]
+        < KIND_PRIORITY["active_asset_ctx"]
+    )
+
+
 def test_canonical_order_does_not_depend_on_input_enumeration() -> None:
     first = record(available_at_ms=1_000, event_kind="candle", market="BTC", event_key="a")
     second = record(available_at_ms=1_000, event_kind="candle", market="SOL", event_key="b")

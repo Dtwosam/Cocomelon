@@ -66,29 +66,25 @@ Explainable deterministic strategies remain first-class. `NO_TRADE` is valid. Ph
 
 Historical L2/order-flow evidence may only come from genuinely recorded/trusted book or trade observations. Candles can never be converted into synthetic L2/order flow.
 
-### Storage boundary
+### Real-money boundary
 
-Always-on normalized streaming evidence is durable fsynced JSONL. Phase 8 validates immutable JSONL and can compact it offline into genuine Parquet behind an optional research dependency while preserving source hashes/provenance. SQLite is for lower-volume operational/journal/evaluation metadata.
+No wallet/private-key/signing/private-account/transfer/withdrawal capability belongs in paper/replay/evaluation paths. No real-money order may be enabled without later promotion gates and explicit user authorization.
 
 ---
 
-## 3. Architecture and hard boundaries
+## 3. Architecture
 
 ```text
 Hyperliquid Mainnet
-  -> REST/WebSocket Data
+  -> Public REST/WebSocket Evidence
   -> Durable Recorder / Data Quality
-  -> Discovery + Eligibility
-  -> Broad Scanner / Ranker
-  -> Dynamic Deep Shortlist
-  -> Deterministic Strategy Context
+  -> Dynamic Discovery + Eligibility + Ranking
+  -> Deep Features / Deterministic Strategies
   -> LONG / SHORT / NO_TRADE
   -> Independent Risk APPROVE / REJECT
-  -> Narrow Execution Interface
-  -> Paper First / Live Much Later
-  -> Position Manager
+  -> Paper Execution / Position Management
   -> Journal / Deterministic Replay
-  -> Evaluation / OOS / Walk-Forward
+  -> Phase 9 Evaluation / OOS / Walk-Forward
   -> Champion / Challenger Learning (blocked until real Phase 9 evidence)
 ```
 
@@ -97,15 +93,14 @@ Hard boundaries:
 - scanner rank is attention priority, not directional evidence;
 - strategy cannot size positions or send orders;
 - risk is independent and has final veto;
-- replay preserves evidence classes and availability time;
-- Phase 9 evaluation is offline/read-only relative to exchange and execution state;
-- Phase 9 has no Hyperliquid network client, wallet/signing, private account, live-order, ML-training, or optimizer capability;
+- replay preserves evidence class and availability time;
+- Phase 9 evaluation is offline/read-only relative to exchange state;
 - models may never call exchange APIs directly;
 - live trading remains disabled until later gates and explicit user authorization.
 
 ---
 
-## 4. Approved build order and merge history
+## 4. Merge history and active integration
 
 Merged engineering phases:
 
@@ -117,18 +112,21 @@ Merged engineering phases:
 - Phase 6: `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912` — PR #8
 - Phase 7: `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab` — PR #9
 - Phase 8: `f7f37044997e13b3ffe91edd312756862343782b` — PR #10
-- Phase 9 engineering infrastructure: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7` — PR #13
+- Phase 9 evaluator: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7` — PR #13
 
-Current gate:
+Active integration at this handoff:
 
-- Phase 9 **economic/research exit gate** — PENDING genuine recorded mainnet evidence.
-- Phase 10 — champion/challenger learning engine — **BLOCKED pending genuine Phase 9 baseline evaluation**.
-- Phase 11 — long-running mainnet shadow.
-- Phase 12 — mainnet live adapter built but disabled.
-- Phase 13 — explicit user-approved live promotion.
-- Phase 14 — evidence-based optimization/scaling.
+- PR #15 — **Phase 9: production evidence bridge**
+- branch: `phase-9-evidence-bridge`
+- base: `main` at `9ff81397e8d8f179eee42a83aeaffe14134fa1fc`
+- latest verified implementation/test head before continuity-only docs: `13297a2fa5bd353e7bd8e111f70844c40bd91f7a`
+- exact CI: `32757257536` — SUCCESS
+- core job: `97527559694` — SUCCESS
+- research job: `97527559475` — SUCCESS
+- Python: `3.12.14`
+- branch was `behind_by = 0`, PR mergeable, with zero comments/reviews/review threads at audit.
 
-`docs/STATUS.md` is the exact current state.
+The continuity docs themselves are the only changes after that verified implementation head and require their own exact-head CI before guarded merge.
 
 ---
 
@@ -136,15 +134,15 @@ Current gate:
 
 Phase 8 established deterministic journal/replay contracts, source hashing/validation, frozen replay manifests, availability-time replay clocks, restart-safe journal persistence, lifecycle/PnL reconciliation, signed slippage attribution, quantity-aware MFE/MAE, deterministic LONG/SHORT/NO_TRADE/risk-reject/no-fill replay coverage, optional PyArrow Parquet compaction, JSONL/Parquet semantic equivalence, and offline recording/replay/journal-inspection commands.
 
-Phase 8 final PR head `83454520fa652533c47688f6ab14c0d1fb19473f` passed CI `32713492047`; merge commit is `f7f37044997e13b3ffe91edd312756862343782b`.
+Phase 8 final merge commit: `f7f37044997e13b3ffe91edd312756862343782b`.
 
 ---
 
-## 6. Phase 9 merged engineering implementation
+## 6. Phase 9 evaluator already merged
 
 Phase 9 wraps trusted Phase 8 outputs in deterministic anti-p-hacking research gates.
 
-Implemented:
+Implemented and merged:
 
 - immutable evaluation facts/contracts and canonical IDs;
 - restart-safe separate `EvaluationFactStore`;
@@ -158,9 +156,7 @@ Implemented:
 - lookahead-safe sampled `NO_TRADE` missed-opportunity diagnostics using genuine marks only;
 - five explicit evidence states: `INVALID_EVIDENCE`, `OOS_CONTAMINATED`, `INSUFFICIENT_EVIDENCE`, `NO_EDGE_DEMONSTRATED`, `CANDIDATE_EDGE`;
 - read-only promotion previews that cannot authorize execution;
-- offline CLI commands to freeze datasets/splits, evaluate, and inspect evaluation results without network settings;
-- end-to-end synthetic closed-outcome regression fixtures plus a genuine small Phase 8 ReplayEngine -> Phase 9 lineage integration test;
-- executable boundaries excluding testnet, network/live exchange capability, wallet/private keys/signing/transfers/withdrawals, ML training, optimizer/search helpers, and candle-derived microstructure.
+- offline CLI commands to freeze datasets/splits, evaluate, and inspect evaluation results without network settings.
 
 Versioned `phase9-v1` research defaults:
 
@@ -180,29 +176,46 @@ Versioned `phase9-v1` research defaults:
 
 ---
 
-## 7. Phase 9 final verification and merge evidence
+## 7. Phase 9 Evidence Bridge implementation
 
-Final PR head: `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`  
-Final PR-head CI: `32725387221` — SUCCESS  
-Core job: `97425382295` — SUCCESS  
-Research job: `97425382551` — SUCCESS  
-Merge commit: `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`
+The Evidence Bridge makes genuine public mainnet recordings evaluation-ready without adding exchange-write or learning capability.
 
-The exact PR head passed Python 3.12 editable installs, compileall, Ruff, mypy, full pytest, and the dedicated Phase 8 PyArrow research regression.
+Implemented on PR #15:
 
-Integration audit:
+- deterministic evidence-recording contracts and immutable recording-session IDs;
+- bounded public mainnet recording allowed only in paper mode;
+- dynamic ranked native-perp selection;
+- real receive-time preservation for REST snapshots/candles/funding;
+- genuine WebSocket asset-context/L2/trade/candle recording;
+- funding dedupe by `(market, funding_time_ms)` preserving first receive provenance;
+- restart-safe recording sessions;
+- immutable replay bundles binding source bytes, recording session, replay config, and code revision;
+- fully offline `run-baseline-replay` CLI routed before `Settings.from_env()`;
+- deterministic decision epochs with lookahead protection and cross-market arrival-order invariance;
+- reuse of existing Phase 4/5 feature, regime, eligibility, and strategy formulas;
+- shared-account Phase 6 risk and Phase 7 paper fills against genuine recorded L2;
+- execution staleness/health/state-consistency hard gates;
+- deterministic position management against recorded marks/books;
+- exact recorded funding reconciliation and signed paper cash accounting;
+- funding application idempotency keyed by the locked Phase 7 market + funding-boundary identity, rather than mutable position payload;
+- Phase 8 journal lifecycle assembly and Phase 9 decision/equity facts;
+- deterministic fresh-store reruns and idempotent completed-store reopening;
+- end-to-end proof of `recorded rows -> frozen bundle -> baseline replay -> journal/facts -> Phase 9 dataset`;
+- executable boundaries excluding testnet, live/order/wallet/private/signing/transfer/withdrawal capability, ML/training, optimizer/search helpers, offline network clients, and candle-derived L2/trades.
 
-- PR #13 was mergeable, ready, and `behind_by = 0`;
-- 39 changed files were confined to Phase 9 spec/plan, evaluation implementation/tests, offline CLI, Phase 8 read-only journal accessors, and continuity docs;
-- no Phase 9 dependency change was made to `pyproject.toml`;
-- no PR comments, reviews, or review threads existed;
-- guarded merge used exact expected head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`;
-- `main` immediately pointed to `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`;
-- comparing `phase-9-evaluation-gates` to `main` showed exactly one merge commit and an empty file diff;
-- a disposable non-merged PR #14 pointed exactly at post-merge `main` head `23d60a92c9ba279fe2412e4369fc12aa29534e53` so the normal pull-request CI could be observed through the connector;
-- CI probe run `32726146583` passed core job `97427751752` and research job `97427751978`; PR #14 was closed without merge.
+A useful regression discovered during closeout: a strategy decision may still be eligible on a 60-second broad context window while Phase 7 execution correctly refuses a context older than 5 seconds. The integration fixture was corrected by supplying a genuine fresh `activeAssetCtx` before the latency-eligible book. No production freshness limit was weakened.
 
-The final wording-only continuity tree is re-verified before handoff. No source, dependency, or test surface changes after the verified Phase 9 merge.
+Verified implementation head `13297a2fa5bd353e7bd8e111f70844c40bd91f7a` passed:
+
+- editable `[dev]` install;
+- compileall;
+- Ruff;
+- mypy;
+- full pytest;
+- editable `[dev,research]` install;
+- Phase 8 PyArrow research replay/compaction regression.
+
+CI run: `32757257536`.
 
 ---
 
@@ -210,11 +223,11 @@ The final wording-only continuity tree is re-verified before handoff. No source,
 
 **REAL BASELINE EDGE: UNMEASURED**
 
-The repository does not contain a connector-accessible persisted real mainnet replay/journal corpus to score economically. The tracked repo contains source/docs/tests/configuration while `.gitignore` excludes `data/`, `logs/`, `*.sqlite`, and `*.sqlite3`.
+The tracked repository does not contain a connector-accessible persisted genuine mainnet replay/journal corpus. Runtime evidence and SQLite outputs remain outside tracked source history.
 
-Therefore the synthetic positive/weak closed-outcome fixtures are **only statistical regression tests**. They are not historical Hyperliquid evidence, fills, or a profitability claim. Phase 9 currently does not claim `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, or any real historical baseline outcome.
+The Evidence Bridge integration fixtures are production-shaped deterministic engineering tests, not historical market-performance evidence. They prove lineage, fills, accounting, replay, and evaluator handoff only. They are not an economic edge claim.
 
-Per `BUILD_ORDER.md` and `MASTER_SPEC.md`, Phase 10 must not start merely because the evaluator is merged. Genuine recorded mainnet paper/replay evidence must first be frozen and evaluated through Phase 9. The correct real result may be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` according to the corpus.
+Phase 10 remains **BLOCKED** until genuine recorded mainnet evidence is frozen, replayed, and evaluated by the merged Phase 9 gates. A real result may honestly be `CANDIDATE_EDGE`, `NO_EDGE_DEMONSTRATED`, `INSUFFICIENT_EVIDENCE`, or `INVALID_EVIDENCE` according to the corpus.
 
 ---
 
@@ -238,14 +251,16 @@ When asked to continue Cocomelon:
 
 ## 10. Exact handoff now
 
-Phase 9 engineering infrastructure is merged into `main` at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`, with pre-merge and post-merge exact-tree CI evidence recorded above. The economic/research gate remains open because no genuine persisted mainnet corpus is connector-accessible.
+PR #15 has completed implementation and executable boundary verification. The last verified implementation/test head is `13297a2fa5bd353e7bd8e111f70844c40bd91f7a`, CI `32757257536`, with core and research jobs green. The branch was not behind `main`, the PR was mergeable, and there were no comments/reviews/review threads.
 
 Immediate sequence:
 
-1. keep Phase 10 blocked;
-2. obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline;
-3. freeze a Phase 9 dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics;
-4. run and persist the genuine Phase 9 baseline evaluation;
-5. only after the real evidence result is known decide whether Phase 10 is allowed by the approved build order or whether more data/baseline evidence is required.
+1. obtain exact-head CI for the continuity-only docs commits now at the tip of `phase-9-evidence-bridge`;
+2. re-audit PR #15 and confirm `behind_by = 0`;
+3. mark PR ready and guarded-merge using the exact expected head SHA;
+4. verify the returned merge SHA is `main` and compare branch -> `main` for an empty file diff;
+5. verify post-merge continuity through an observable CI path;
+6. keep Phase 10 blocked;
+7. next economic action is external-runtime evidence collection: `record-mainnet-evidence`, freeze the corpus, run `run-baseline-replay`, then run the merged Phase 9 evaluation on genuine evidence.
 
 **Live trading status: DISABLED.**

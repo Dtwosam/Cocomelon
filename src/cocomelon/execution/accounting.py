@@ -6,11 +6,15 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from cocomelon.domain.execution import OrderSide, PaperFill, PaperOrderPlan
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import OpenPositionRisk, RiskAccountState
 from cocomelon.domain.strategy import Direction
+
+if TYPE_CHECKING:
+    from cocomelon.execution.funding import FundingAccrual
 
 ZERO = Decimal("0")
 THREE = Decimal("3")
@@ -495,6 +499,92 @@ def apply_reduce_only_fills(
     )
 
 
+def _mark_derived_state(
+    positions: Sequence[PaperPosition],
+    *,
+    paper_max_gross_leverage: Decimal = THREE,
+) -> tuple[Decimal, Decimal, Decimal]:
+    _require_positive(paper_max_gross_leverage, "paper_max_gross_leverage")
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        unrealized = ZERO
+        gross_notional = ZERO
+        reserved_margin = ZERO
+        for position in positions:
+            mark = position.latest_mark
+            if mark is None or not mark.is_finite() or mark <= ZERO:
+                raise ValueError(
+                    f"missing or invalid latest mark for {position.market.canonical}"
+                )
+            mark_notional = mark * position.quantity
+            gross_notional += mark_notional
+            leverage = min(paper_max_gross_leverage, position.venue_max_leverage)
+            reserved_margin += mark_notional / leverage
+            if position.side is PositionSide.LONG:
+                unrealized += (mark - position.average_entry_price) * position.quantity
+            else:
+                unrealized += (position.average_entry_price - mark) * position.quantity
+    return unrealized, gross_notional, reserved_margin
+
+
+def apply_funding_accrual(
+    account: PaperAccountState,
+    accrual: FundingAccrual,
+    timestamp_ms: int,
+) -> PaperAccountState:
+    if timestamp_ms < account.updated_at_ms:
+        raise ValueError("timestamp_ms must not move backward")
+    if timestamp_ms < accrual.boundary_ms:
+        raise ValueError("timestamp_ms must be at or after funding boundary")
+
+    matches = tuple(
+        position for position in account.positions if position.market == accrual.market
+    )
+    if len(matches) != 1:
+        raise ValueError("funding accrual requires exactly one matching open position")
+    position = matches[0]
+    if position.position_id != accrual.position_id:
+        raise ValueError("funding accrual position_id does not match open position")
+    expected_signed_quantity = (
+        position.quantity if position.side is PositionSide.LONG else -position.quantity
+    )
+    if accrual.signed_quantity != expected_signed_quantity:
+        raise ValueError("funding accrual signed quantity does not match open position")
+
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        expected_cash_delta = -(
+            accrual.signed_quantity * accrual.oracle_price * accrual.funding_rate
+        )
+        if accrual.cash_delta != expected_cash_delta:
+            raise ValueError("funding accrual cash_delta is inconsistent")
+        updated_position = replace(
+            position,
+            cumulative_funding=position.cumulative_funding + accrual.cash_delta,
+            updated_at_ms=timestamp_ms,
+        )
+        positions = tuple(
+            updated_position if existing.market == accrual.market else existing
+            for existing in account.positions
+        )
+        cash = account.cash + accrual.cash_delta
+        cumulative_funding = account.cumulative_funding + accrual.cash_delta
+        daily_realized_pnl = account.daily_realized_pnl + accrual.cash_delta
+
+    unrealized, gross_notional, reserved_margin = _mark_derived_state(positions)
+    return _state_with_equity(
+        account,
+        cash=cash,
+        positions=positions,
+        realized_gross_pnl=account.realized_gross_pnl,
+        cumulative_fees=account.cumulative_fees,
+        cumulative_funding=cumulative_funding,
+        unrealized_pnl=unrealized,
+        gross_open_notional=gross_notional,
+        reserved_margin=reserved_margin,
+        daily_realized_pnl=daily_realized_pnl,
+        timestamp_ms=timestamp_ms,
+    )
+
+
 def mark_to_market(
     account: PaperAccountState,
     marks: Mapping[MarketId, Decimal],
@@ -506,30 +596,24 @@ def mark_to_market(
         raise ValueError("timestamp_ms must not move backward")
     _require_positive(paper_max_gross_leverage, "paper_max_gross_leverage")
     with localcontext(AUTHORITATIVE_CONTEXT):
-        unrealized = ZERO
-        gross_notional = ZERO
-        reserved_margin = ZERO
         updated_positions: list[PaperPosition] = []
         for position in account.positions:
             mark = marks.get(position.market)
             if mark is None or not mark.is_finite() or mark <= ZERO:
                 raise ValueError(f"missing or invalid mark for {position.market.canonical}")
-            mark_notional = mark * position.quantity
-            gross_notional += mark_notional
-            leverage = min(paper_max_gross_leverage, position.venue_max_leverage)
-            reserved_margin += mark_notional / leverage
-            if position.side is PositionSide.LONG:
-                unrealized += (mark - position.average_entry_price) * position.quantity
-            else:
-                unrealized += (position.average_entry_price - mark) * position.quantity
             updated_positions.append(
                 replace(position, latest_mark=mark, updated_at_ms=timestamp_ms)
             )
 
+    positions = tuple(updated_positions)
+    unrealized, gross_notional, reserved_margin = _mark_derived_state(
+        positions,
+        paper_max_gross_leverage=paper_max_gross_leverage,
+    )
     return _state_with_equity(
         account,
         cash=account.cash,
-        positions=tuple(updated_positions),
+        positions=positions,
         realized_gross_pnl=account.realized_gross_pnl,
         cumulative_fees=account.cumulative_fees,
         cumulative_funding=account.cumulative_funding,

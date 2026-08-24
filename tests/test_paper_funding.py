@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -143,6 +144,37 @@ def test_deterministic_event_id_makes_reconciliation_idempotent_for_store_layer(
 
     assert isinstance(first, FundingAccrual)
     assert isinstance(second, FundingAccrual)
+    assert first.accrual_id == second.accrual_id
+
+
+def test_funding_event_id_ignores_mutable_position_state_for_same_boundary() -> None:
+    original = position()
+    mutated = replace(
+        original,
+        updated_at_ms=BOUNDARY + 500,
+        cumulative_funding=Decimal("-0.2"),
+        latest_mark=Decimal("99"),
+    )
+    first = reconcile_funding_boundary(
+        original,
+        BOUNDARY,
+        oracle_ctx(),
+        funding_record(),
+        now_ms=BOUNDARY + 2_000,
+        config=PaperExecutionConfig(),
+    )
+    second = reconcile_funding_boundary(
+        mutated,
+        BOUNDARY,
+        oracle_ctx(),
+        funding_record(),
+        now_ms=BOUNDARY + 50_000,
+        config=PaperExecutionConfig(),
+    )
+
+    assert isinstance(first, FundingAccrual)
+    assert isinstance(second, FundingAccrual)
+    assert first.position_id != second.position_id
     assert first.accrual_id == second.accrual_id
 
 

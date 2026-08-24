@@ -24,7 +24,7 @@ class ReplayPipeline:
     requirements: ReplayRequirements = ReplayRequirements()
 
 
-def _run_id(manifest: ReplayManifest, requirements: ReplayRequirements) -> str:
+def replay_run_id(manifest: ReplayManifest, requirements: ReplayRequirements) -> str:
     payload = {
         "manifest_id": manifest.manifest_id,
         "replay_engine_version": manifest.replay_engine_version,
@@ -112,7 +112,7 @@ class ReplayEngine:
         ordered = canonical_record_order(records)
         validate_replay_evidence(manifest, ordered, self.pipeline.requirements)
 
-        run_id = _run_id(manifest, self.pipeline.requirements)
+        run_id = replay_run_id(manifest, self.pipeline.requirements)
         self.journal.record_manifest(manifest)
         _prepare_run(self.journal, manifest.manifest_id, run_id)
 
