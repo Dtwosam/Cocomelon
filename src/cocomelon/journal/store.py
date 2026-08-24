@@ -5,14 +5,20 @@ import sqlite3
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from typing import Any, cast
 
-from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJournalEntry
+from cocomelon.domain.journal import (
+    ExcursionMetric,
+    JournalObservation,
+    ObservationKind,
+    TradeJournalEntry,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult, SourceSegment
+from cocomelon.domain.strategy import Direction
 
 SCHEMA_VERSION = 1
 
@@ -59,10 +65,67 @@ def _market(value: str | None) -> MarketId | None:
     return MarketId.from_wire_name("", value)
 
 
+def _payload_market(value: object) -> MarketId:
+    if isinstance(value, str):
+        market = _market(value)
+        if market is None:
+            raise JournalConsistencyError("trade market must not be empty")
+        return market
+    if isinstance(value, dict):
+        dex = value.get("dex")
+        coin = value.get("coin")
+        if not isinstance(dex, str) or not isinstance(coin, str):
+            raise JournalConsistencyError("trade market payload is invalid")
+        return MarketId(dex=dex, coin=coin)
+    raise JournalConsistencyError("trade market payload is invalid")
+
+
 def _tuple_strings(value: object, field: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise JournalConsistencyError(f"{field} must be a string array")
     return tuple(value)
+
+
+def _decimal(value: object, field: str) -> Decimal:
+    if not isinstance(value, str):
+        raise JournalConsistencyError(f"{field} must be a decimal string")
+    try:
+        resolved = Decimal(value)
+    except InvalidOperation as exc:
+        raise JournalConsistencyError(f"{field} must be a decimal string") from exc
+    if not resolved.is_finite():
+        raise JournalConsistencyError(f"{field} must be finite")
+    return resolved
+
+
+def _excursion_metric(value: object, field: str) -> ExcursionMetric | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise JournalConsistencyError(f"{field} must be an object or null")
+    complete = value.get("complete")
+    timestamp_ms = value.get("timestamp_ms")
+    if not isinstance(complete, bool):
+        raise JournalConsistencyError(f"{field}.complete must be a boolean")
+    if isinstance(timestamp_ms, bool) or not isinstance(timestamp_ms, int):
+        raise JournalConsistencyError(f"{field}.timestamp_ms must be an integer")
+    kind = value.get("kind")
+    source_event_key = value.get("source_event_key")
+    if not isinstance(kind, str) or not isinstance(source_event_key, str):
+        raise JournalConsistencyError(f"{field} string fields are invalid")
+    raw_r_multiple = value.get("r_multiple")
+    r_multiple = None if raw_r_multiple is None else _decimal(raw_r_multiple, f"{field}.r_multiple")
+    return ExcursionMetric(
+        kind=kind,
+        price=_decimal(value.get("price"), f"{field}.price"),
+        per_unit=_decimal(value.get("per_unit"), f"{field}.per_unit"),
+        fraction=_decimal(value.get("fraction"), f"{field}.fraction"),
+        currency=_decimal(value.get("currency"), f"{field}.currency"),
+        r_multiple=r_multiple,
+        timestamp_ms=timestamp_ms,
+        source_event_key=source_event_key,
+        complete=complete,
+    )
 
 
 class JournalStore:
@@ -356,6 +419,84 @@ class JournalStore:
         except Exception:
             self.connection.rollback()
             raise
+
+    def load_trade(self, trade_id: str) -> TradeJournalEntry | None:
+        row = self.connection.execute(
+            "SELECT payload_json FROM journal_trades WHERE trade_id = ?",
+            (trade_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            raw = json.loads(str(row[0]))
+        except json.JSONDecodeError as exc:
+            raise JournalConsistencyError("journal trade payload must be valid JSON") from exc
+        if not isinstance(raw, dict):
+            raise JournalConsistencyError("journal trade payload must be an object")
+        try:
+            direction = Direction(str(raw["direction"]))
+            evidence_class = EvidenceClass(str(raw["evidence_class"]))
+            result = TradeJournalEntry(
+                market=_payload_market(raw.get("market")),
+                direction=direction,
+                opened_at_ms=int(raw["opened_at_ms"]),
+                closed_at_ms=int(raw["closed_at_ms"]),
+                feature_snapshot_id=str(raw["feature_snapshot_id"]),
+                strategy_decision_id=str(raw["strategy_decision_id"]),
+                risk_decision_id=str(raw["risk_decision_id"]),
+                opening_plan_id=str(raw["opening_plan_id"]),
+                opening_attempt_id=str(raw["opening_attempt_id"]),
+                exit_plan_ids=_tuple_strings(raw.get("exit_plan_ids"), "exit_plan_ids"),
+                exit_attempt_ids=_tuple_strings(
+                    raw.get("exit_attempt_ids"), "exit_attempt_ids"
+                ),
+                fill_ids=_tuple_strings(raw.get("fill_ids"), "fill_ids"),
+                position_action_ids=_tuple_strings(
+                    raw.get("position_action_ids"), "position_action_ids"
+                ),
+                funding_event_ids=_tuple_strings(
+                    raw.get("funding_event_ids"), "funding_event_ids"
+                ),
+                initial_stop=_decimal(raw.get("initial_stop"), "initial_stop"),
+                initial_risk_amount=_decimal(
+                    raw.get("initial_risk_amount"), "initial_risk_amount"
+                ),
+                entry_price=_decimal(raw.get("entry_price"), "entry_price"),
+                exit_price=_decimal(raw.get("exit_price"), "exit_price"),
+                filled_quantity=_decimal(raw.get("filled_quantity"), "filled_quantity"),
+                gross_realized_pnl=_decimal(
+                    raw.get("gross_realized_pnl"), "gross_realized_pnl"
+                ),
+                entry_fees=_decimal(raw.get("entry_fees"), "entry_fees"),
+                exit_fees=_decimal(raw.get("exit_fees"), "exit_fees"),
+                funding_cash_pnl=_decimal(
+                    raw.get("funding_cash_pnl"), "funding_cash_pnl"
+                ),
+                net_pnl=_decimal(raw.get("net_pnl"), "net_pnl"),
+                entry_slippage_fraction=_decimal(
+                    raw.get("entry_slippage_fraction"), "entry_slippage_fraction"
+                ),
+                exit_slippage_fraction=_decimal(
+                    raw.get("exit_slippage_fraction"), "exit_slippage_fraction"
+                ),
+                mfe=_excursion_metric(raw.get("mfe"), "mfe"),
+                mae=_excursion_metric(raw.get("mae"), "mae"),
+                net_r=_decimal(raw.get("net_r"), "net_r"),
+                equity_before=_decimal(raw.get("equity_before"), "equity_before"),
+                equity_after=_decimal(raw.get("equity_after"), "equity_after"),
+                exit_reason=str(raw["exit_reason"]),
+                health_refs=_tuple_strings(raw.get("health_refs"), "health_refs"),
+                evidence_class=evidence_class,
+                replay_run_id=_optional_string(raw.get("replay_run_id")),
+                schema_version=int(raw["schema_version"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            if isinstance(exc, JournalConsistencyError):
+                raise
+            raise JournalConsistencyError("journal trade payload is invalid") from exc
+        if result.trade_id != trade_id:
+            raise JournalConsistencyError("stored trade id does not match canonical payload")
+        return result
 
     def begin_run(self, manifest_id: str, run_id: str) -> None:
         existing = self.connection.execute(
