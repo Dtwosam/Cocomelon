@@ -1,9 +1,13 @@
 name: Genuine Mainnet Evidence Cohort ed3cae5
 
 on:
-  push:
+  pull_request:
     branches:
-      - evidence-cohort-ed3cae5-20260824
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: read
@@ -16,9 +20,12 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      COHORT_CODE_REVISION: 571c13bfe0bab0312940617540ec973ee3eee3c5
+      COHORT_TRIGGER_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: 571c13bfe0bab0312940617540ec973ee3eee3c5
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -36,6 +43,7 @@ jobs:
           set -euo pipefail
           mkdir -p evidence-cohort/output evidence-cohort/recording
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
+          printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
           date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/started-at-utc.txt
           cocomelon record-mainnet-evidence \
             --root evidence-cohort/recording \
@@ -68,10 +76,11 @@ jobs:
             --run-id "$RUN_ID" \
             > evidence-cohort/output/dataset.json
 
-      - name: Assert paper-only evidence semantics
+      - name: Assert pinned paper-only evidence semantics
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
 
           root = Path("evidence-cohort/output")
@@ -79,7 +88,15 @@ jobs:
           validate = json.loads((root / "validate.json").read_text())
           replay = json.loads((root / "replay.json").read_text())
           dataset = json.loads((root / "dataset.json").read_text())
+          bundle = json.loads((root / "bundle.json").read_text())
+          expected_revision = os.environ["COHORT_CODE_REVISION"]
+          workflow_head = (root / "workflow-head.txt").read_text().strip()
+          trigger_head = (root / "trigger-head.txt").read_text().strip()
 
+          assert workflow_head == expected_revision
+          assert bundle["manifest"]["code_revision"] == expected_revision
+          assert len(trigger_head) == 40
+          assert trigger_head != expected_revision
           assert record["network_access"] is True
           assert record["live_orders"] is False
           assert replay["network_access"] is False
@@ -90,7 +107,8 @@ jobs:
           summary = {
               "evidence_kind": "genuine_public_hyperliquid_mainnet",
               "economic_claim": "none",
-              "workflow_head": (root / "workflow-head.txt").read_text().strip(),
+              "checked_out_code_revision": workflow_head,
+              "trigger_head_sha": trigger_head,
               "recording_session_id": record["session_id"],
               "selected_markets": record["selected_markets"],
               "recorded_event_count": record["event_count"],
