@@ -10,7 +10,14 @@ from enum import Enum
 from pathlib import Path
 from urllib.parse import quote
 
+from cocomelon.domain.market import Candle, FundingRate, PerpMarketSnapshot
 from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.evidence.recording import (
+    RecordedPublicEvent,
+    candle_record_event,
+    funding_rate_record_event,
+    market_snapshot_record_event,
+)
 
 MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_MAX_RECORDS = 100_000
@@ -58,6 +65,33 @@ class DurableRecorder:
             "schema_version": event.schema_version,
             "source": event.source,
             "kind": event.kind.value,
+            "market": event.market.canonical,
+            "exchange_time_ms": event.exchange_time_ms,
+            "receive_time": receive_time,
+            "event_key": event.event_key,
+            "payload": _json_value(event.payload),
+        }
+        return self._append(partition, record)
+
+    def append_market_snapshot(self, snapshot: PerpMarketSnapshot) -> Path:
+        return self._append_public_event(market_snapshot_record_event(snapshot))
+
+    def append_funding_rate(self, rate: FundingRate) -> Path:
+        return self._append_public_event(funding_rate_record_event(rate))
+
+    def append_candle(self, candle: Candle) -> Path:
+        return self._append_public_event(candle_record_event(candle))
+
+    def _append_public_event(self, event: RecordedPublicEvent) -> Path:
+        receive_time = _format_datetime(event.receive_time)
+        receive_date = event.receive_time.astimezone(UTC).date().isoformat()
+        market_path = quote(event.market.canonical, safe="-_.")
+        partition = (Path("events") / receive_date / event.kind / market_path).as_posix()
+        record: dict[str, object] = {
+            "record_type": "normalized_event",
+            "schema_version": event.schema_version,
+            "source": event.source,
+            "kind": event.kind,
             "market": event.market.canonical,
             "exchange_time_ms": event.exchange_time_ms,
             "receive_time": receive_time,
