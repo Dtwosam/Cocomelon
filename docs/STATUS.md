@@ -7,16 +7,21 @@
 
 ## Current state
 
-**Latest merged engineering milestone:** Phase 9 genuine-mainnet evidence attestation and fail-closed economic corpus boundary  
+**Latest merged engineering milestone:** Phase 9 genuine-mainnet evidence campaign controls and fail-fast acquisition support  
 **Phase 9 evaluator:** MERGED  
 **Phase 9 evidence aggregation:** PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`  
 **Phase 9 genuine-mainnet attestation:** PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`  
+**Phase 9 offline cohort verification:** PR #27 — MERGED at `7be48ed59aa073015042881cbfbe75caa7e08f08`  
+**Phase 9 evidence-progress precheck:** PR #28 — MERGED at `ae31c1f7445fb8622a393e5e6223157a6c0cf54b`  
+**Phase 9 fail-fast gap watcher:** PR #29 — MERGED at `390d4ba39abe4fe3f476af68587f13f2371d9cba`  
 **Pinned trading/evidence revision under test:** `571c13bfe0bab0312940617540ec973ee3eee3c5`  
+**Pinned operational gap-watcher revision:** `390d4ba39abe4fe3f476af68587f13f2371d9cba`  
+**Current evidence-runner head:** `7f577c6cf19d6c001183247c3736037fe95bffee` on intentionally unmerged PR #22  
 **Real baseline evidence status:** **UNMEASURED**  
 **Phase 9 economic/research exit gate:** PENDING sufficient clean attested genuine-mainnet evidence  
 **Phase 10:** BLOCKED pending a genuine Phase 9 baseline evaluation that satisfies the locked evidence policy
 
-`main` was verified at `ef3c728e310be6a5b1ed94934a77453fba9c63cd` after merging PR #25.
+`main` was verified at `390d4ba39abe4fe3f476af68587f13f2371d9cba` after merging PR #29.
 
 ## Phase 9 evaluator
 
@@ -46,7 +51,7 @@ Its versioned V1 research policy remains:
 
 ## Genuine-mainnet evidence pipeline
 
-The Phase 9 evidence path now supports genuine public Hyperliquid mainnet recordings through deterministic paper replay and evaluation without enabling live trading.
+The Phase 9 evidence path supports genuine public Hyperliquid mainnet recordings through deterministic paper replay and evaluation without enabling live trading.
 
 Merged capability includes:
 
@@ -58,8 +63,25 @@ Merged capability includes:
 - genuine-mainnet attestation that binds cohort metadata to canonical replay results, bundle/session identity, code revision, and source-file digests;
 - rejection of non-mainnet endpoints, live-order semantics, gaps, duplicates, anomalies, incomplete replays, metadata/replay mismatches, reused recording sessions, and overlapping cohort time windows;
 - exact-attested-run-set dataset freezing to prevent post-hoc favorable-run selection;
-- a dedicated offline-only `cocomelon-mainnet-evidence` command surface for attested aggregation and dataset freezing;
+- a dedicated offline-only `cocomelon-mainnet-evidence` command surface with `verify`, `aggregate`, `progress`, and `freeze-dataset`;
+- a counts-only `progress` precheck that reports attested run count, closed trades, closed-trade days, and shortfalls versus the locked 100-trade/30-day minimum without computing PnL or edge;
+- canonical closed-trade cross-checking before progress counts are reported, preventing post-attestation journal additions from inflating campaign progress;
 - no testnet, live-order, wallet, signing, transfer, withdrawal, private-account, optimizer/search, or Phase 10 activation path in the evidence tool.
+
+## Evidence acquisition controls
+
+PR #29 added a small stdlib-only operational watcher that observes the durable recorder `gaps/` partition and sends `SIGTERM` to the known recorder child process on the first non-empty fsynced gap segment. The helper does not import market-data, strategy, risk, execution, wallet, or network capability.
+
+The intentionally unmerged evidence-runner PR #22 is now at `7f577c6cf19d6c001183247c3736037fe95bffee` and has been hardened to:
+
+- keep trading/replay code pinned independently at `571c13bfe0bab0312940617540ec973ee3eee3c5`;
+- pin the operational gap watcher independently at `390d4ba39abe4fe3f476af68587f13f2371d9cba`;
+- terminate a dirty 45-minute acquisition attempt after the first durable gap instead of knowingly spending the rest of the attempt on inadmissible evidence;
+- preserve per-attempt recorder/watcher exit statuses, timestamps, recording-session metadata, recorder manifest, watcher output, and gap rows as diagnostics before retrying;
+- still require final recorder-reported zero gaps, zero duplicates, zero anomalies, public-network recording, and `live_orders=false` before accepting a cohort;
+- serialize future PR #22 workflow runs with a per-PR concurrency group and `cancel-in-progress=false`, preserving the active cohort while preventing overlapping successors.
+
+The runner-control integration was staged and CI-checked on PR #30 against the runner branch. PR #22 was temporarily retargeted away from `main` while that staging PR was merged into its head, then restored to `main`; verification showed only normal CI was launched for the new runner head, not another evidence cohort. This avoided overlapping the still-running cohort.
 
 ## First genuine 30-minute mainnet cohort
 
@@ -104,9 +126,11 @@ This result is not `NO_EDGE_DEMONSTRATED`; it is insufficient/inadmissible evide
 
 ## Evidence campaign status
 
-A second non-overlapping genuine-mainnet paper cohort has been launched under the same pinned trading revision using a stricter workflow that requires complete, gap-free evidence before artifact acceptance. Its result must be inspected and attested before inclusion in the economic corpus.
+GitHub Actions run `32781582212` is the second non-overlapping genuine-mainnet paper cohort under the same pinned trading revision. It was triggered at runner head `164d58c343afde64d422aa472442d39b46b3041b`, before the fail-fast watcher and concurrency hardening were promoted to PR #22, so those controls do not retroactively change this in-flight run. Its result must be inspected and attested before any inclusion in the economic corpus.
 
-The 30-day untouched-OOS coverage requirement cannot be accelerated by overlapping captures. Evidence collection should therefore favor temporally distinct, non-overlapping cohorts while preserving the same fixed revision for the evaluation campaign.
+Future PR #22 cohorts use the hardened runner head `7f577c6cf19d6c001183247c3736037fe95bffee` and therefore inherit fail-fast gap handling plus serialized execution.
+
+The 30-day untouched-OOS coverage requirement cannot be accelerated by overlapping captures. Evidence collection must therefore favor temporally distinct, non-overlapping cohorts while preserving the same fixed trading revision for the evaluation campaign.
 
 ## Completed engineering phases
 
@@ -124,6 +148,9 @@ The 30-day untouched-OOS coverage requirement cannot be accelerated by overlappi
 - Phase 9 execution-activity replay accounting repair: PR #21 — MERGED at `ed3cae5af4a7b971babecec28448675c19d10bf6`.
 - Phase 9 fixed-revision evidence-store aggregation: PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`.
 - Phase 9 genuine-mainnet attestation and economic-corpus boundary: PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`.
+- Phase 9 single-cohort offline verifier: PR #27 — MERGED at `7be48ed59aa073015042881cbfbe75caa7e08f08`.
+- Phase 9 attested evidence progress precheck: PR #28 — MERGED at `ae31c1f7445fb8622a393e5e6223157a6c0cf54b`.
+- Phase 9 fail-fast durable-gap watcher: PR #29 — MERGED at `390d4ba39abe4fe3f476af68587f13f2371d9cba`.
 
 ## Locked safety and product invariants
 
@@ -145,16 +172,17 @@ The 30-day untouched-OOS coverage requirement cannot be accelerated by overlappi
 ## Exact next action
 
 1. Keep Phase 10 blocked.
-2. Complete and inspect the second non-overlapping pinned genuine-mainnet paper cohort.
-3. Admit only cohorts that pass the genuine-mainnet attestation boundary: complete, gap-free, duplicate-free, anomaly-free, paper-only, fixed revision, unique recording session, and non-overlapping time window.
-4. Continue collecting temporally distinct cohorts under the same pinned revision until the Phase 9 untouched-OOS evidence thresholds can be evaluated honestly.
-5. Aggregate admitted cohorts through `cocomelon-mainnet-evidence aggregate` and freeze only the exact attested run set.
-6. Freeze time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
-7. Run and persist the genuine Phase 9 baseline evaluation.
-8. Only after the real evidence result is known decide whether the approved build order permits Phase 10 or requires more baseline evidence.
+2. Complete and inspect GitHub Actions run `32781582212` without making an economic claim from workflow success alone.
+3. Run the offline `cocomelon-mainnet-evidence verify` boundary against any complete artifact before aggregation.
+4. Admit only cohorts that pass genuine-mainnet attestation: complete, gap-free, duplicate-free, anomaly-free, paper-only, fixed revision, unique recording session, and non-overlapping time window.
+5. Aggregate admitted cohorts through `cocomelon-mainnet-evidence aggregate`, then use the counts-only `progress` precheck to track the raw corpus toward the locked 100-trade/30-day evidence floor without revealing edge metrics early.
+6. Continue collecting temporally distinct cohorts under the same pinned trading revision; future runs use serialized fail-fast acquisition.
+7. Freeze only the exact attested run set, then freeze time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
+8. Run and persist the genuine Phase 9 baseline evaluation only when the evidence policy can be evaluated honestly.
+9. Only after the real evidence result is known decide whether the approved build order permits Phase 10 or requires more baseline evidence.
 
 ## Live trading status
 
 **DISABLED.**
 
-Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, aggregate, attest, and deterministically evaluate fake-capital outcomes against genuine public mainnet evidence. No genuine corpus has yet demonstrated economic edge, and no real-money order is authorized.
+Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, verify, aggregate, attest, report counts-only evidence progress, and deterministically evaluate fake-capital outcomes against genuine public mainnet evidence. No genuine corpus has yet demonstrated economic edge, and no real-money order is authorized.
