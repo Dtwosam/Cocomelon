@@ -237,3 +237,81 @@ def test_mainnet_aggregation_rejects_incomplete_cohort_before_target_write(
     assert not (target / "journal.sqlite3").exists()
     assert not (target / "facts.sqlite3").exists()
     assert not (target / "mainnet-attestation.json").exists()
+
+
+def test_complete_mainnet_cohort_creates_attestation_without_mutating_source(
+    tmp_path: Path,
+) -> None:
+    import hashlib
+
+    module = _module()
+    source, replay_result = _write_cohort(tmp_path / "artifact-a", complete=True)
+    target = tmp_path / "aggregate"
+    source_hashes = {
+        name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+        for name in ("journal.sqlite3", "facts.sqlite3")
+    }
+
+    result = module.aggregate_mainnet_evaluation_evidence(
+        target / "journal.sqlite3",
+        target / "facts.sqlite3",
+        (source,),
+    )
+
+    attestation = json.loads((target / "mainnet-attestation.json").read_text())
+    assert result.run_ids == (replay_result.run_id,)
+    assert attestation["evidence_kind"] == "genuine_public_hyperliquid_mainnet"
+    assert attestation["code_revision"] == "a" * 40
+    assert attestation["run_ids"] == [replay_result.run_id]
+    assert attestation["real_evidence_eligible"] is True
+    assert len(attestation["attestation_id"]) == 64
+    assert attestation["sources"][0]["manifest_id"] == replay_result.manifest_id
+    assert attestation["sources"][0]["result_digest"] == replay_result.result_digest
+    assert {
+        name: hashlib.sha256((source / name).read_bytes()).hexdigest()
+        for name in source_hashes
+    } == source_hashes
+
+
+def test_mainnet_aggregation_rejects_wrong_endpoint_before_target_write(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source, _ = _write_cohort(tmp_path / "artifact-a", complete=True)
+    session_path = source.parent / "recording" / "recording-session.json"
+    session = json.loads(session_path.read_text())
+    session["api_url"] = "https://example.invalid"
+    session_path.write_text(json.dumps(session, sort_keys=True), encoding="utf-8")
+    target = tmp_path / "aggregate"
+
+    with pytest.raises(module.MainnetEvidenceError, match="mainnet"):
+        module.aggregate_mainnet_evaluation_evidence(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            (source,),
+        )
+
+    assert not (target / "journal.sqlite3").exists()
+    assert not (target / "facts.sqlite3").exists()
+
+
+def test_mainnet_aggregation_rejects_metadata_replay_digest_mismatch(
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    source, _ = _write_cohort(tmp_path / "artifact-a", complete=True)
+    summary_path = source / "cohort-summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["replay_result_digest"] = "0" * 64
+    summary_path.write_text(json.dumps(summary, sort_keys=True), encoding="utf-8")
+    target = tmp_path / "aggregate"
+
+    with pytest.raises(module.MainnetEvidenceError, match="result_digest"):
+        module.aggregate_mainnet_evaluation_evidence(
+            target / "journal.sqlite3",
+            target / "facts.sqlite3",
+            (source,),
+        )
+
+    assert not (target / "journal.sqlite3").exists()
+    assert not (target / "facts.sqlite3").exists()
