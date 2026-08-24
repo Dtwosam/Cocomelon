@@ -22,8 +22,10 @@ from cocomelon.domain.replay import EvidenceClass, ReplayManifest, SourceRecordK
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evaluation.cli_support import (
     evaluation_result_payload,
+    freeze_evaluation_dataset_payload,
     freeze_evaluation_splits_payload,
     inspect_evaluation_payload,
+    run_evaluation,
 )
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
@@ -517,6 +519,25 @@ def inspect_journal_payload(
     return {str(key): value for key, value in payload.items()}
 
 
+def evaluate_payload(
+    journal_path: str | Path,
+    facts_path: str | Path,
+    dataset_id: str,
+    split_id: str,
+    candidate_spec_path: str | Path,
+    walkforward_spec_path: str | Path,
+) -> dict[str, object]:
+    result = run_evaluation(
+        journal_path,
+        facts_path,
+        dataset_id,
+        split_id,
+        candidate_spec_path,
+        walkforward_spec_path,
+    )
+    return evaluation_result_payload(result)
+
+
 def _scan_limit(value: str) -> int:
     try:
         resolved = int(value)
@@ -592,14 +613,25 @@ def main(argv: Sequence[str] | None = None) -> None:
         payload = replay_payload(args.manifest, args.journal)
     elif args.command == "inspect-journal":
         payload = inspect_journal_payload(args.journal, args.trade_id)
+    elif args.command == "freeze-evaluation-dataset":
+        payload = freeze_evaluation_dataset_payload(
+            args.journal,
+            args.facts,
+            tuple(args.run_id),
+        )
     elif args.command == "freeze-evaluation-splits":
         payload = freeze_evaluation_splits_payload(args.facts, args.dataset_id, args.spec)
+    elif args.command == "evaluate":
+        payload = evaluate_payload(
+            args.journal,
+            args.facts,
+            args.dataset_id,
+            args.split_id,
+            args.candidate_spec,
+            args.walkforward_spec,
+        )
     elif args.command == "inspect-evaluation":
         payload = inspect_evaluation_payload(args.facts, args.evaluation_id)
-    elif args.command == "freeze-evaluation-dataset":
-        raise ValueError("freeze-evaluation-dataset payload routing is not implemented yet")
-    elif args.command == "evaluate":
-        raise ValueError("evaluate payload routing is not implemented yet")
     else:
         settings = Settings.from_env()
         if args.command == "status":
