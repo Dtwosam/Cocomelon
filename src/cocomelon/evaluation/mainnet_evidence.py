@@ -613,3 +613,36 @@ def freeze_mainnet_evaluation_dataset_payload(
         "mainnet_attestation_id": attestation.attestation_id,
         "live_orders": False,
     }
+
+
+def verify_mainnet_evidence_cohort_payload(
+    source_root: str | Path,
+) -> dict[str, object]:
+    cohort = _validate_complete_mainnet_cohort(Path(source_root).resolve())
+    return {
+        "evidence_kind": MAINNET_EVIDENCE_KIND,
+        "economic_claim": "none",
+        "real_evidence_eligible": True,
+        "code_revision": cohort.manifest.code_revision,
+        "run_id": cohort.result.run_id,
+        "manifest_id": cohort.manifest.manifest_id,
+        "recording_session_id": cohort.recording_session_id,
+        "source_digest": cohort.source_digest,
+        "result_digest": cohort.result.result_digest,
+        "workflow_head_sha": cohort.workflow_head_sha,
+        "trigger_head_sha": cohort.trigger_head_sha,
+        "start_ms": cohort.manifest.start_ms,
+        "end_ms": cohort.manifest.end_ms,
+        "duration_ms": cohort.manifest.end_ms - cohort.manifest.start_ms,
+        "strategy_decisions": cohort.result.strategy_decisions,
+        "risk_approvals": cohort.result.risk_approvals,
+        "risk_rejections": cohort.result.risk_rejections,
+        "execution_attempts": cohort.result.execution_attempts,
+        "fills": cohort.result.fills,
+        "opened_positions": cohort.result.opened_positions,
+        "closed_positions": cohort.result.closed_positions,
+        "closed_trade_count": len(cohort.result.closed_trade_ids),
+        "data_complete": cohort.result.data_complete,
+        "network_access": False,
+        "live_orders": False,
+    }

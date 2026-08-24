@@ -11,6 +11,7 @@ from cocomelon.evaluation.mainnet_evidence import (
     MAINNET_EVIDENCE_KIND,
     aggregate_mainnet_evaluation_evidence,
     freeze_mainnet_evaluation_dataset_payload,
+    verify_mainnet_evidence_cohort_payload,
 )
 
 
@@ -77,9 +78,16 @@ def freeze_dataset_payload(
     )
 
 
+def verify_payload(source_root: str | Path) -> dict[str, object]:
+    return verify_mainnet_evidence_cohort_payload(source_root)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cocomelon-mainnet-evidence")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--source-root", required=True, type=Path)
 
     aggregate = subparsers.add_parser("aggregate")
     aggregate.add_argument("--journal", required=True, type=Path)
@@ -96,7 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     payload: dict[str, Any]
-    if args.command == "aggregate":
+    if args.command == "verify":
+        payload = verify_payload(args.source_root)
+    elif args.command == "aggregate":
         payload = aggregate_payload(
             args.journal,
             args.facts,
