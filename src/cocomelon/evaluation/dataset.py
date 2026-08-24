@@ -60,12 +60,12 @@ def _source_for_run(
     result = journal.load_replay_result(run_id)
     if result is None:
         raise EvaluationDatasetError(f"UNKNOWN_REPLAY_RESULT:{run_id}")
-    manifest = journal.load_manifest(result.manifest_id)
-    if manifest is None:
+    source_manifest = journal.load_manifest(result.manifest_id)
+    if source_manifest is None:
         raise EvaluationDatasetError(f"MISSING_REPLAY_MANIFEST:{result.manifest_id}")
-    if manifest.evidence_class is not result.evidence_class:
+    if source_manifest.evidence_class is not result.evidence_class:
         raise EvaluationDatasetError(f"REPLAY_EVIDENCE_MISMATCH:{run_id}")
-    if manifest.start_ms != result.start_ms or manifest.end_ms != result.end_ms:
+    if source_manifest.start_ms != result.start_ms or source_manifest.end_ms != result.end_ms:
         raise EvaluationDatasetError(f"REPLAY_WINDOW_MISMATCH:{run_id}")
     return (
         ReplayEvaluationSource(
@@ -77,7 +77,7 @@ def _source_for_run(
             end_ms=result.end_ms,
             data_complete=result.data_complete,
         ),
-        manifest,
+        source_manifest,
         result,
     )
 
@@ -156,15 +156,13 @@ def build_evaluation_dataset(
     run_ids = tuple(sorted(set(replay_run_ids)))
 
     sources: list[ReplayEvaluationSource] = []
-    manifests: dict[str, ReplayManifest] = {}
-    results: dict[str, ReplayResult] = {}
+    source_manifests: dict[str, ReplayManifest] = {}
     expected_trade_runs: dict[str, set[str]] = {}
     for run_id in run_ids:
-        source, manifest, result = _source_for_run(journal, run_id)
+        source, source_manifest, replay_result = _source_for_run(journal, run_id)
         sources.append(source)
-        manifests[run_id] = manifest
-        results[run_id] = result
-        for trade_id in result.closed_trade_ids:
+        source_manifests[run_id] = source_manifest
+        for trade_id in replay_result.closed_trade_ids:
             expected_trade_runs.setdefault(trade_id, set()).add(run_id)
 
     evidence_classes = {source.evidence_class for source in sources}
@@ -173,10 +171,12 @@ def build_evaluation_dataset(
         raise EvaluationDatasetError("MIXED_EVIDENCE")
 
     trade_by_id: dict[str, TradeJournalEntry] = {}
-    for trade in journal.iter_trades():
-        if trade.trade_id in trade_by_id:
-            raise EvaluationDatasetError(f"DUPLICATE_JOURNAL_TRADE:{trade.trade_id}")
-        trade_by_id[trade.trade_id] = trade
+    for journal_trade in journal.iter_trades():
+        if journal_trade.trade_id in trade_by_id:
+            raise EvaluationDatasetError(
+                f"DUPLICATE_JOURNAL_TRADE:{journal_trade.trade_id}"
+            )
+        trade_by_id[journal_trade.trade_id] = journal_trade
 
     samples: list[TradeEvaluationSample] = []
     included_fact_ids: list[str] = []
@@ -184,21 +184,26 @@ def build_evaluation_dataset(
     duplicate_source_ids = {
         trade_id for trade_id, run_set in expected_trade_runs.items() if len(run_set) > 1
     }
+    source_by_run = {source.run_id: source for source in sources}
     for trade_id in sorted(expected_trade_runs):
         run_set = expected_trade_runs[trade_id]
         if trade_id in duplicate_source_ids:
             exclusions.append((trade_id, "DUPLICATE_TRADE_REFERENCE"))
             continue
         run_id = next(iter(run_set))
-        trade = trade_by_id.get(trade_id)
-        if trade is None:
+        matched_trade = trade_by_id.get(trade_id)
+        if matched_trade is None:
             exclusions.append((trade_id, "MISSING_TRADE"))
             continue
-        if trade.replay_run_id != run_id:
+        if matched_trade.replay_run_id != run_id:
             exclusions.append((trade_id, "REPLAY_RUN_MISMATCH"))
             continue
-        source = next(item for item in sources if item.run_id == run_id)
-        sample, fact_id, reason = _sample_from_trade(trade, facts=facts, source=source)
+        source = source_by_run[run_id]
+        sample, fact_id, reason = _sample_from_trade(
+            matched_trade,
+            facts=facts,
+            source=source,
+        )
         if reason is not None:
             exclusions.append((trade_id, reason))
             continue
@@ -209,12 +214,12 @@ def build_evaluation_dataset(
 
     requested_run_set = set(run_ids)
     unexpected_trades = tuple(
-        trade
-        for trade in trade_by_id.values()
-        if trade.replay_run_id in requested_run_set and trade.trade_id not in expected_trade_runs
+        item
+        for item in trade_by_id.values()
+        if item.replay_run_id in requested_run_set and item.trade_id not in expected_trade_runs
     )
-    for trade in unexpected_trades:
-        exclusions.append((trade.trade_id, "REPLAY_RESULT_TRADE_MISMATCH"))
+    for unexpected_trade in unexpected_trades:
+        exclusions.append((unexpected_trade.trade_id, "REPLAY_RESULT_TRADE_MISMATCH"))
 
     exclusion_counts = Counter(trade_id for trade_id, _ in exclusions)
     if any(count > 1 for count in exclusion_counts.values()):
@@ -228,9 +233,9 @@ def build_evaluation_dataset(
     gap_refs = tuple(
         gap_ref
         for run_id in run_ids
-        for gap_ref in manifests[run_id].gap_refs
+        for gap_ref in source_manifests[run_id].gap_refs
     )
-    manifest = EvaluationDatasetManifest(
+    dataset_manifest = EvaluationDatasetManifest(
         sources=tuple(sources),
         trade_ids=tuple(sample.trade_id for sample in samples),
         decision_fact_ids=tuple(included_fact_ids),
@@ -242,10 +247,10 @@ def build_evaluation_dataset(
         gap_refs=gap_refs,
         mixed_evidence_diagnostic=mixed,
     )
-    facts.record_dataset_manifest(manifest)
+    facts.record_dataset_manifest(dataset_manifest)
     exclusion_reasons = tuple(sorted(exclusions))
     return DatasetBuildResult(
-        manifest=manifest,
+        manifest=dataset_manifest,
         samples=tuple(samples),
         excluded_trade_ids=tuple(trade_id for trade_id, _ in exclusion_reasons),
         exclusion_reasons=exclusion_reasons,
