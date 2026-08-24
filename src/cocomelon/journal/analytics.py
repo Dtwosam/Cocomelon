@@ -67,6 +67,43 @@ def _gap_intersects(
     return False
 
 
+def _validated_reductions(
+    reductions: Sequence[tuple[int, Decimal]],
+    *,
+    opened_quantity: Decimal,
+    opened_at_ms: int,
+    closed_at_ms: int,
+) -> tuple[tuple[int, Decimal], ...]:
+    ordered = tuple(sorted(reductions, key=lambda item: (item[0], item[1])))
+    reduced = ZERO
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        for timestamp_ms, quantity in ordered:
+            if timestamp_ms < opened_at_ms or timestamp_ms > closed_at_ms:
+                raise ValueError("quantity reduction timestamp must be inside the trade lifecycle")
+            _positive(quantity, "quantity reduction")
+            reduced += quantity
+            if reduced > opened_quantity:
+                raise ValueError("quantity reductions must not exceed opened quantity")
+    return ordered
+
+
+def _quantity_at(
+    record: ReplayRecord,
+    *,
+    opened_quantity: Decimal,
+    reductions: Sequence[tuple[int, Decimal]],
+) -> Decimal:
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        reduced = sum(
+            (quantity for timestamp_ms, quantity in reductions if timestamp_ms < record.available_at_ms),
+            ZERO,
+        )
+        remaining = opened_quantity - reduced
+    if remaining <= ZERO:
+        raise ValueError("mark observation has no open quantity remaining")
+    return remaining
+
+
 def _excursion(
     *,
     kind: str,
@@ -117,6 +154,7 @@ def compute_trade_analytics(
     closed_at_ms: int,
     mark_observations: Sequence[ReplayRecord],
     known_gap_intervals: Sequence[tuple[int, int | None]],
+    quantity_reductions: Sequence[tuple[int, Decimal]] = (),
 ) -> TradeAnalytics:
     if direction is Direction.NO_TRADE:
         raise ValueError("trade analytics require LONG or SHORT")
@@ -141,6 +179,12 @@ def compute_trade_analytics(
     if entry_fees < ZERO or exit_fees < ZERO:
         raise ValueError("fees must be non-negative")
 
+    reductions = _validated_reductions(
+        quantity_reductions,
+        opened_quantity=opened_quantity,
+        opened_at_ms=opened_at_ms,
+        closed_at_ms=closed_at_ms,
+    )
     in_window = tuple(
         record
         for record in mark_observations
@@ -156,6 +200,16 @@ def compute_trade_analytics(
         mfe_record = min(prices, key=lambda item: (item[1], item[0].sort_key))[0]
         mae_record = max(prices, key=lambda item: (item[1], item[0].sort_key))[0]
 
+    mfe_quantity = _quantity_at(
+        mfe_record,
+        opened_quantity=opened_quantity,
+        reductions=reductions,
+    )
+    mae_quantity = _quantity_at(
+        mae_record,
+        opened_quantity=opened_quantity,
+        reductions=reductions,
+    )
     complete = not _gap_intersects(opened_at_ms, closed_at_ms, known_gap_intervals)
     with localcontext(AUTHORITATIVE_CONTEXT):
         net_pnl = gross_realized_pnl - entry_fees - exit_fees + funding_cash_pnl
@@ -178,7 +232,7 @@ def compute_trade_analytics(
             kind="mfe",
             direction=direction,
             entry_price=entry_price,
-            quantity=opened_quantity,
+            quantity=mfe_quantity,
             initial_risk_amount=initial_risk_amount,
             record=mfe_record,
             complete=complete,
@@ -187,7 +241,7 @@ def compute_trade_analytics(
             kind="mae",
             direction=direction,
             entry_price=entry_price,
-            quantity=opened_quantity,
+            quantity=mae_quantity,
             initial_risk_amount=initial_risk_amount,
             record=mae_record,
             complete=complete,
