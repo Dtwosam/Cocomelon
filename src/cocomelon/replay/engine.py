@@ -18,10 +18,25 @@ class ReplayInvariantError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class ReplayActivity:
+    fills: int
+    opened_positions: int
+    closed_positions: int
+
+    def __post_init__(self) -> None:
+        for field in ("fills", "opened_positions", "closed_positions"):
+            if getattr(self, field) < 0:
+                raise ValueError(f"{field} must be non-negative")
+        if self.closed_positions > self.opened_positions:
+            raise ValueError("closed_positions cannot exceed opened_positions")
+
+
+@dataclass(frozen=True, slots=True)
 class ReplayPipeline:
     on_record: Callable[[ReplayRecord, int], Sequence[JournalObservation]]
     finalize: Callable[[int], Sequence[TradeJournalEntry]]
     requirements: ReplayRequirements = ReplayRequirements()
+    activity: Callable[[], ReplayActivity] | None = None
 
 
 def replay_run_id(manifest: ReplayManifest, requirements: ReplayRequirements) -> str:
@@ -93,6 +108,34 @@ def _latest_account_state(observations: Sequence[JournalObservation]) -> str:
     return latest.account_state_id
 
 
+def _closed_trade_activity(trades: Sequence[TradeJournalEntry]) -> ReplayActivity:
+    unique_fill_ids = {
+        fill_id
+        for trade in trades
+        for fill_id in trade.fill_ids
+    }
+    return ReplayActivity(
+        fills=len(unique_fill_ids),
+        opened_positions=len(trades),
+        closed_positions=len(trades),
+    )
+
+
+def _resolve_activity(
+    trades: Sequence[TradeJournalEntry],
+    activity_provider: Callable[[], ReplayActivity] | None,
+) -> ReplayActivity:
+    closed_activity = _closed_trade_activity(trades)
+    if activity_provider is None:
+        return closed_activity
+    activity = activity_provider()
+    if activity.closed_positions != len(trades):
+        raise ReplayInvariantError("replay activity closed_positions does not match closed trades")
+    if activity.fills < closed_activity.fills:
+        raise ReplayInvariantError("replay activity omits fills referenced by closed trades")
+    return activity
+
+
 class ReplayEngine:
     def __init__(
         self,
@@ -151,11 +194,7 @@ class ReplayEngine:
             observation.kind is ObservationKind.EXECUTION_ATTEMPT
             for observation in observations
         )
-        unique_fill_ids = {
-            fill_id
-            for trade in trades
-            for fill_id in trade.fill_ids
-        }
+        activity = _resolve_activity(trades, self.pipeline.activity)
         data_complete = processed_gaps == 0 and not any(
             observation.kind is ObservationKind.FUNDING_GAP for observation in observations
         )
@@ -171,9 +210,9 @@ class ReplayEngine:
             risk_approvals=risk_approvals,
             risk_rejections=risk_rejections,
             execution_attempts=execution_attempts,
-            fills=len(unique_fill_ids),
-            opened_positions=len(trades),
-            closed_positions=len(trades),
+            fills=activity.fills,
+            opened_positions=activity.opened_positions,
+            closed_positions=activity.closed_positions,
             journal_observations=len(observations),
             closed_trade_ids=tuple(trade.trade_id for trade in trades),
             final_account_state_id=_latest_account_state(observations),

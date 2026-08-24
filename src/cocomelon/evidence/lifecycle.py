@@ -56,7 +56,7 @@ from cocomelon.journal.observations import (
     observation_from_strategy,
 )
 from cocomelon.replay.adapters import ReplayRequirements
-from cocomelon.replay.engine import ReplayInvariantError, ReplayPipeline
+from cocomelon.replay.engine import ReplayActivity, ReplayInvariantError, ReplayPipeline
 
 HOUR_MS = 3_600_000
 ZERO = Decimal("0")
@@ -547,9 +547,24 @@ class BaselineReplayPipeline:
             )
         )
 
+    def replay_activity(self) -> ReplayActivity:
+        fill_ids = {
+            fill_id
+            for trade in self._completed.values()
+            for fill_id in trade.fill_ids
+        }
+        for lifecycle in self._lifecycles.values():
+            fill_ids.update(lifecycle.fills)
+        return ReplayActivity(
+            fills=len(fill_ids),
+            opened_positions=len(self._completed) + len(self._lifecycles),
+            closed_positions=len(self._completed),
+        )
+
     def replay_pipeline(self) -> ReplayPipeline:
         return ReplayPipeline(
             on_record=self.on_record,
             finalize=self.finalize,
             requirements=ReplayRequirements(requires_l2=True),
+            activity=self.replay_activity,
         )
