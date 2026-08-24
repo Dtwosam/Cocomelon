@@ -35,6 +35,7 @@ WARMUP_RECEIVE_MS = BOUNDARY_MS - 20_000
 EVALUATED_AT_MS = BOUNDARY_MS + 30_000
 PRE_DECISION_BOOK_MS = EVALUATED_AT_MS - 1_000
 TRIGGER_MS = EVALUATED_AT_MS + 1
+PRE_OPEN_CONTEXT_MS = EVALUATED_AT_MS + 100
 OPEN_BOOK_MS = EVALUATED_AT_MS + 250
 STOP_MARK_MS = EVALUATED_AT_MS + 500
 CLOSE_BOOK_MS = EVALUATED_AT_MS + 800
@@ -133,19 +134,19 @@ def _trade_trigger() -> StreamEvent:
     )
 
 
-def _stop_mark() -> StreamEvent:
+def _active_ctx(timestamp_ms: int, *, mark: str, suffix: str) -> StreamEvent:
     return StreamEvent(
         kind=StreamKind.ACTIVE_ASSET_CTX,
         market=MARKET,
         exchange_time_ms=None,
-        receive_time=_dt(STOP_MARK_MS),
+        receive_time=_dt(timestamp_ms),
         schema_version=1,
         source="hyperliquid-mainnet-ws",
-        event_key=f"activeAssetCtx:BTC:{STOP_MARK_MS}",
+        event_key=f"activeAssetCtx:BTC:{suffix}:{timestamp_ms}",
         payload={
-            "mark_px": Decimal("95"),
-            "mid_px": Decimal("95"),
-            "oracle_px": Decimal("95"),
+            "mark_px": Decimal(mark),
+            "mid_px": Decimal(mark),
+            "oracle_px": Decimal(mark),
             "funding": Decimal("0"),
             "open_interest": Decimal("1000000"),
         },
@@ -185,9 +186,12 @@ def _recording(root: Path) -> None:
     )
     recorder.append_event(_trade_trigger())
     recorder.append_event(
+        _active_ctx(PRE_OPEN_CONTEXT_MS, mark="100", suffix="pre-open")
+    )
+    recorder.append_event(
         _book(OPEN_BOOK_MS, bid="99.99", ask="100.01", suffix="open")
     )
-    recorder.append_event(_stop_mark())
+    recorder.append_event(_active_ctx(STOP_MARK_MS, mark="95", suffix="stop"))
     recorder.append_event(
         _book(CLOSE_BOOK_MS, bid="94.99", ask="95.01", suffix="close")
     )
