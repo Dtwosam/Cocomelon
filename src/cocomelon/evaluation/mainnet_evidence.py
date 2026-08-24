@@ -202,15 +202,27 @@ def _validate_complete_mainnet_cohort(source_root: Path) -> _ValidatedCohort:
     if result.data_complete is not True or result.processed_gaps != 0 or manifest.gap_refs:
         raise MainnetEvidenceError("canonical replay must be complete and gap-free")
 
-    _require_equal(summary.get("checked_out_code_revision"), manifest.code_revision, "code_revision")
+    _require_equal(
+        summary.get("checked_out_code_revision"),
+        manifest.code_revision,
+        "code_revision",
+    )
     _require_equal(summary.get("replay_run_id"), result.run_id, "replay run_id")
     _require_equal(summary.get("replay_result_digest"), result.result_digest, "result_digest")
     _require_equal(summary.get("recorded_event_count"), record.get("event_count"), "event count")
     _require_equal(summary.get("recording_session_id"), record.get("session_id"), "session_id")
-    _require_equal(summary.get("strategy_decisions"), result.strategy_decisions, "strategy decisions")
+    _require_equal(
+        summary.get("strategy_decisions"),
+        result.strategy_decisions,
+        "strategy decisions",
+    )
     _require_equal(summary.get("risk_approvals"), result.risk_approvals, "risk approvals")
     _require_equal(summary.get("risk_rejections"), result.risk_rejections, "risk rejections")
-    _require_equal(summary.get("execution_attempts"), result.execution_attempts, "execution attempts")
+    _require_equal(
+        summary.get("execution_attempts"),
+        result.execution_attempts,
+        "execution attempts",
+    )
     _require_equal(summary.get("fills"), result.fills, "fills")
     _require_equal(summary.get("opened_positions"), result.opened_positions, "opened positions")
     _require_equal(summary.get("closed_positions"), result.closed_positions, "closed positions")
@@ -224,17 +236,41 @@ def _validate_complete_mainnet_cohort(source_root: Path) -> _ValidatedCohort:
     _require_equal(replay.get("risk_rejections"), result.risk_rejections, "replay rejections")
     _require_equal(replay.get("execution_attempts"), result.execution_attempts, "replay attempts")
     _require_equal(replay.get("fills"), result.fills, "replay fills")
-    _require_equal(replay.get("opened_positions"), result.opened_positions, "replay opened positions")
-    _require_equal(replay.get("closed_positions"), result.closed_positions, "replay closed positions")
-    _require_equal(replay.get("closed_trade_ids"), list(result.closed_trade_ids), "replay closed trades")
+    _require_equal(
+        replay.get("opened_positions"),
+        result.opened_positions,
+        "replay opened positions",
+    )
+    _require_equal(
+        replay.get("closed_positions"),
+        result.closed_positions,
+        "replay closed positions",
+    )
+    _require_equal(
+        replay.get("closed_trade_ids"),
+        list(result.closed_trade_ids),
+        "replay closed trades",
+    )
 
     session_id = str(summary.get("recording_session_id"))
     _require_equal(session.get("session_id"), session_id, "recording session_id")
-    _require_equal(session.get("recorder_code_revision"), manifest.code_revision, "recorder code_revision")
+    _require_equal(
+        session.get("recorder_code_revision"),
+        manifest.code_revision,
+        "recorder code_revision",
+    )
     _require_equal(freeze.get("code_revision"), manifest.code_revision, "freeze code_revision")
     _require_equal(freeze.get("manifest_id"), manifest.manifest_id, "freeze manifest_id")
-    _require_equal(freeze.get("recording_session_digest"), session_id, "freeze recording session")
-    _require_equal(bundle_manifest.get("code_revision"), manifest.code_revision, "bundle code_revision")
+    _require_equal(
+        freeze.get("recording_session_digest"),
+        session_id,
+        "freeze recording session",
+    )
+    _require_equal(
+        bundle_manifest.get("code_revision"),
+        manifest.code_revision,
+        "bundle code_revision",
+    )
     _require_equal(bundle_manifest.get("manifest_id"), manifest.manifest_id, "bundle manifest_id")
     _require_equal(bundle_manifest.get("gap_refs"), [], "bundle gap_refs")
     _require_equal(bundle.get("recording_session_digest"), session_id, "bundle recording session")
