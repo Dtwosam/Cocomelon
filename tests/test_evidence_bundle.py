@@ -15,6 +15,7 @@ from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.bundle import (
     freeze_baseline_replay_bundle,
     load_baseline_replay_bundle,
+    resolve_baseline_replay_source_root,
     resolve_code_revision,
     write_baseline_replay_bundle,
 )
@@ -190,6 +191,21 @@ def test_bundle_identity_changes_with_source_session_or_replay_config(tmp_path: 
     assert changed_session.bundle_id != first.bundle_id
     assert changed_config.manifest.config_digest != first.manifest.config_digest
     assert changed_config.bundle_id != first.bundle_id
+
+
+def test_bundle_source_locator_resolves_and_revalidates_recording(tmp_path: Path) -> None:
+    root = tmp_path / "recording"
+    _recording(root)
+    bundle = freeze_baseline_replay_bundle(
+        root,
+        replay_config=BaselineReplayConfig(),
+        code_revision="b" * 40,
+    )
+    path = tmp_path / "artifacts" / "bundle.json"
+
+    write_baseline_replay_bundle(path, bundle, source_root=root)
+
+    assert resolve_baseline_replay_source_root(path, bundle) == root.resolve()
 
 
 def test_resolve_code_revision_prefers_explicit_and_fails_without_git(tmp_path: Path) -> None:
