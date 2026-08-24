@@ -30,6 +30,25 @@ def observation(*, reason_codes: tuple[str, ...] = ("trend",)) -> JournalObserva
     )
 
 
+def funding_observation() -> JournalObservation:
+    return JournalObservation(
+        kind=ObservationKind.FUNDING_EVENT,
+        timestamp_ms=1_500,
+        market=MARKET,
+        feature_snapshot_id=None,
+        strategy_decision_id="strategy-1",
+        risk_decision_id="risk-1",
+        plan_id="plan-1",
+        attempt_id=None,
+        position_action_id=None,
+        account_state_id="account-2",
+        reason_codes=("FUNDING_APPLIED",),
+        health_refs=("funding-history-mainnet",),
+        replay_run_id="run-1",
+        funding_event_id="funding-1",
+    )
+
+
 def manifest() -> ReplayManifest:
     segment = SourceSegment(
         relative_path="events/a.jsonl",
@@ -91,6 +110,18 @@ def test_identical_observation_retry_is_idempotent(tmp_path: Path) -> None:
 
     assert store.load_observation(item.observation_id) == item
     store.close()
+
+
+def test_funding_event_observation_round_trips_with_lineage(tmp_path: Path) -> None:
+    path = tmp_path / "journal.sqlite3"
+    item = funding_observation()
+    store = JournalStore(path)
+    store.record_observation(item)
+    store.close()
+
+    reopened = JournalStore(path)
+    assert reopened.load_observation(item.observation_id) == item
+    reopened.close()
 
 
 def test_conflicting_duplicate_observation_id_fails_closed(tmp_path: Path) -> None:
