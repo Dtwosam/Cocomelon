@@ -266,8 +266,7 @@ def test_populated_root_without_session_metadata_cannot_be_claimed(tmp_path: Pat
         verify_recording_resume(tmp_path, _session())
 
 
-@pytest.mark.asyncio
-async def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_funding(
+def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_funding(
     tmp_path: Path,
 ) -> None:
     config = _config()
@@ -285,14 +284,16 @@ async def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_
     async def connection_factory() -> FakeConnection:
         return connection
 
-    summary = await run_bounded_recording(
-        bootstrap=bootstrap,
-        reader=reader,
-        connection_factory=connection_factory,
-        recorder=recorder,
-        config=config,
-        clock_ms=clock_ms,
-        utcnow=lambda: RECEIVED,
+    summary = asyncio.run(
+        run_bounded_recording(
+            bootstrap=bootstrap,
+            reader=reader,
+            connection_factory=connection_factory,
+            recorder=recorder,
+            config=config,
+            clock_ms=clock_ms,
+            utcnow=lambda: RECEIVED,
+        )
     )
 
     rows = _jsonl_rows(tmp_path)
@@ -312,8 +313,7 @@ async def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_
     assert connection.closed is True
 
 
-@pytest.mark.asyncio
-async def test_rest_poll_failure_records_gap_instead_of_fabricating_data(tmp_path: Path) -> None:
+def test_rest_poll_failure_records_gap_instead_of_fabricating_data(tmp_path: Path) -> None:
     config = _config()
     bootstrap = _bootstrap(config)
     reader = FakeReader(fail_context=True)
@@ -323,14 +323,16 @@ async def test_rest_poll_failure_records_gap_instead_of_fabricating_data(tmp_pat
     async def connection_factory() -> FakeConnection:
         return connection
 
-    summary = await run_bounded_recording(
-        bootstrap=bootstrap,
-        reader=reader,
-        connection_factory=connection_factory,
-        recorder=recorder,
-        config=config,
-        clock_ms=lambda: 5_000,
-        utcnow=lambda: RECEIVED,
+    summary = asyncio.run(
+        run_bounded_recording(
+            bootstrap=bootstrap,
+            reader=reader,
+            connection_factory=connection_factory,
+            recorder=recorder,
+            config=config,
+            clock_ms=lambda: 5_000,
+            utcnow=lambda: RECEIVED,
+        )
     )
 
     rows = _jsonl_rows(tmp_path)
@@ -340,8 +342,7 @@ async def test_rest_poll_failure_records_gap_instead_of_fabricating_data(tmp_pat
     assert any("rest" in str(row.get("stream_id")) for row in gap_rows)
 
 
-@pytest.mark.asyncio
-async def test_recorder_sink_failure_terminates_bounded_run(tmp_path: Path) -> None:
+def test_recorder_sink_failure_terminates_bounded_run(tmp_path: Path) -> None:
     config = _config(duration_seconds=1)
     bootstrap = _bootstrap(config)
     reader = FakeReader()
@@ -352,14 +353,16 @@ async def test_recorder_sink_failure_terminates_bounded_run(tmp_path: Path) -> N
         return connection
 
     with pytest.raises(OSError, match="injected recorder failure"):
-        await run_bounded_recording(
-            bootstrap=bootstrap,
-            reader=reader,
-            connection_factory=connection_factory,
-            recorder=recorder,
-            config=config,
-            clock_ms=lambda: 6_000,
-            utcnow=lambda: RECEIVED,
+        asyncio.run(
+            run_bounded_recording(
+                bootstrap=bootstrap,
+                reader=reader,
+                connection_factory=connection_factory,
+                recorder=recorder,
+                config=config,
+                clock_ms=lambda: 6_000,
+                utcnow=lambda: RECEIVED,
+            )
         )
 
 
