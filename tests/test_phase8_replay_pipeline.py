@@ -68,7 +68,7 @@ EXECUTION_CONFIG = PaperExecutionConfig()
 
 def _feature(direction: Direction, *, deep_ready: bool = True) -> FeatureSnapshot:
     sign = Decimal("1") if direction is not Direction.SHORT else Decimal("-1")
-    return FeatureSnapshot(
+    snapshot = FeatureSnapshot(
         market=MARKET,
         as_of_ms=AS_OF_MS,
         source_received_at_ms=29_000,
@@ -98,6 +98,12 @@ def _feature(direction: Direction, *, deep_ready: bool = True) -> FeatureSnapsho
         volatility_regime=VolatilityRegime.NORMAL,
         provenance=("phase8-replay-fixture",),
     )
+    if not deep_ready:
+        return replace(
+            snapshot,
+            provenance=(*snapshot.provenance, "deep-readiness-disabled"),
+        )
+    return snapshot
 
 
 def _market_snapshot(feature: FeatureSnapshot) -> PerpMarketSnapshot:
@@ -644,9 +650,10 @@ def test_no_trade_and_risk_rejection_replay_create_zero_exposure(tmp_path: Path)
         Direction.LONG,
         deep_ready=False,
     )
+    rejected_journal = JournalStore(tmp_path / "journal-reject.sqlite3")
     rejected, rejected_harness = _run(
         root,
-        JournalStore(tmp_path / "journal-reject.sqlite3"),
+        rejected_journal,
         tmp_path / "paper-reject.sqlite3",
         Direction.LONG,
         reject_health=True,
@@ -662,6 +669,7 @@ def test_no_trade_and_risk_rejection_replay_create_zero_exposure(tmp_path: Path)
     assert rejected.execution_attempts == 0
     assert rejected.closed_positions == 0
     assert rejected_harness.adapter.account.positions == ()
+    rejected_journal.close()
     journal.close()
 
 
