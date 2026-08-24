@@ -13,6 +13,9 @@
 **Final PR-head CI:** `32725387221` — SUCCESS  
 **Core job:** `97425382295` — SUCCESS  
 **Research job:** `97425382551` — SUCCESS  
+**Post-merge continuity proof:** head `23d60a92c9ba279fe2412e4369fc12aa29534e53`, CI probe `32726146583` — SUCCESS  
+**Post-merge core job:** `97427751752` — SUCCESS  
+**Post-merge research job:** `97427751978` — SUCCESS  
 **Python:** `3.12.14`  
 **Real baseline evidence status:** **UNMEASURED** — no connector-accessible persisted real recording/journal corpus is available in the repository  
 **Phase 9 economic/research exit gate:** PENDING genuine recorded mainnet evidence  
@@ -89,9 +92,11 @@ Final integration audit:
 - guarded merge used exact expected head `80f9d1fcbb26b858022e6fbd4d13b68ae01a5b21`;
 - GitHub returned merge commit `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`;
 - `main` was verified immediately at that exact merge SHA;
-- post-merge comparison showed `main` ahead of `phase-9-evaluation-gates` by exactly one merge commit with an empty file diff.
+- post-merge comparison showed `main` ahead of `phase-9-evaluation-gates` by exactly one merge commit with an empty file diff;
+- because the connector cannot enumerate push-triggered Actions runs by SHA, a disposable non-merged PR #14 pointed exactly at post-merge `main` head `23d60a92c9ba279fe2412e4369fc12aa29534e53` and exercised the normal pull-request CI;
+- CI probe run `32726146583` passed both core job `97427751752` and research job `97427751978`; PR #14 was then closed without merge.
 
-This continuity-doc reconciliation is a post-merge `main` change and must itself remain green before the integration is considered fully closed.
+The remaining wording-only continuity update is re-verified on its exact final tree before handoff; no code or test surface changes after the verified Phase 9 merge.
 
 ## Real baseline evidence status
 
@@ -139,12 +144,11 @@ Phase 9's **engineering implementation** is merged. Its **economic research exit
 
 ## Exact next action
 
-1. Verify post-merge continuity-doc CI on the exact current `main` head.
-2. Keep Phase 10 blocked.
-3. Obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline.
-4. Freeze a Phase 9 evaluation dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
-5. Run the genuine Phase 9 baseline evaluation and persist its result.
-6. Only after the real evidence state is known decide whether the approved build order permits Phase 10 learning work or requires more baseline evidence/data collection.
+1. Keep Phase 10 blocked.
+2. Obtain/use genuine recorded Hyperliquid mainnet paper/replay evidence through the existing Phase 3-8 pipeline.
+3. Freeze a Phase 9 evaluation dataset, time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
+4. Run the genuine Phase 9 baseline evaluation and persist its result.
+5. Only after the real evidence state is known decide whether the approved build order permits Phase 10 learning work or requires more baseline evidence/data collection.
 
 ## Live trading status
 
