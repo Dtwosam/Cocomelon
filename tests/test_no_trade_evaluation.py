@@ -1,12 +1,13 @@
 from decimal import Decimal
 from pathlib import Path
 
+from cocomelon.evaluation.no_trade import evaluate_no_trade_outcomes
+
 from cocomelon.domain.evaluation import DecisionEvaluationFact, EvaluationPolicy
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction
-from cocomelon.evaluation.no_trade import evaluate_no_trade_outcomes
 
 SOL = MarketId("", "SOL")
 HOUR_MS = 3_600_000
