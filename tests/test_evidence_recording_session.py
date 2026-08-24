@@ -6,10 +6,8 @@ from decimal import Decimal
 
 from cocomelon.domain.market import MarketId
 from cocomelon.evidence.contracts import EvidenceRecordingConfig
-from cocomelon.evidence.recording import (
-    build_recording_bootstrap,
-    build_recording_resume_bootstrap,
-)
+from cocomelon.evidence.recording import build_recording_bootstrap
+from cocomelon.evidence.resume import build_recording_resume_bootstrap
 from cocomelon.hyperliquid.ws_protocol import subscription_id
 
 BASE_MS = 1_787_573_000_000
