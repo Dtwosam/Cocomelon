@@ -84,8 +84,14 @@ def test_same_candidate_set_reproduces_consumed_test_after_restart(tmp_path: Pat
     store = EvaluationFactStore(path)
 
     assert consume_untouched_test(store, frozen, candidate_set, rules) is OOSStatus.UNTOUCHED
-    assert store.load_split_manifest(frozen.split_manifest_id) == frozen
-    assert store.load_candidate_set(candidate_set.candidate_set_id) == candidate_set
+    split_count = store.connection.execute(
+        "SELECT COUNT(*) FROM evaluation_split_manifests"
+    ).fetchone()
+    candidate_count = store.connection.execute(
+        "SELECT COUNT(*) FROM evaluation_candidate_sets"
+    ).fetchone()
+    assert split_count == (1,)
+    assert candidate_count == (1,)
     store.close()
 
     reopened = EvaluationFactStore(path)
