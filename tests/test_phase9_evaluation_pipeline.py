@@ -118,6 +118,37 @@ def _trade(
     )
 
 
+def _synthetic_feature(market: MarketId, *, opened_at_ms: int) -> FeatureSnapshot:
+    return FeatureSnapshot(
+        market=market,
+        as_of_ms=opened_at_ms - 2_000,
+        source_received_at_ms=opened_at_ms - 2_000,
+        schema_version=1,
+        day_return=None,
+        funding=Decimal("0"),
+        open_interest=Decimal("1"),
+        day_notional_volume=Decimal("1"),
+        oi_change_fraction=None,
+        funding_change=None,
+        mark_oracle_dislocation_bps=None,
+        return_5m=None,
+        return_15m=None,
+        return_1h=None,
+        return_4h=None,
+        realized_vol_15m=None,
+        range_expansion_15m=None,
+        relative_volume_15m=None,
+        spread_bps=None,
+        bid_depth_25bps=None,
+        ask_depth_25bps=None,
+        book_imbalance=None,
+        book_age_ms=None,
+        trend_regime=TrendRegime.UP,
+        volatility_regime=VolatilityRegime.NORMAL,
+        provenance=("synthetic-evaluation-only",),
+    )
+
+
 def _source_manifest(*, row_count: int, evidence_class: EvidenceClass) -> ReplayManifest:
     return ReplayManifest(
         evidence_class=evidence_class,
@@ -177,56 +208,33 @@ def _fixture(
             market = MARKETS[0] if index < trade_count // 2 else MARKETS[1 + index % 2]
         else:
             market = MARKETS[index % len(MARKETS)]
+        feature = _synthetic_feature(market, opened_at_ms=opened_at_ms)
+        decision = StrategyDecision(
+            market=market,
+            direction=Direction.LONG,
+            score=Decimal("70"),
+            timestamp_ms=opened_at_ms - 1_000,
+            feature_snapshot_id=feature.snapshot_id,
+            lead_strategy="trend",
+            invalidation_price=Decimal("95"),
+            signal_ids=(f"signal-{index}",),
+            reason_codes=("SYNTHETIC_EVALUATION_ONLY",),
+        )
         item = _trade(
             index,
             market=market,
             opened_at_ms=opened_at_ms,
             net_r=net_r,
             replay_run_id=replay_run_id,
+            feature_snapshot_id=feature.snapshot_id,
+            strategy_decision_id=decision.decision_id,
         )
         trades.append(item)
         journal.record_trade(item)
         facts.record_decision_fact(
             decision_evaluation_fact(
-                StrategyDecision(
-                    market=market,
-                    direction=Direction.LONG,
-                    score=Decimal("70"),
-                    timestamp_ms=opened_at_ms - 1_000,
-                    feature_snapshot_id=item.feature_snapshot_id,
-                    lead_strategy="trend",
-                    invalidation_price=Decimal("95"),
-                    signal_ids=(f"signal-{index}",),
-                    reason_codes=("SYNTHETIC_EVALUATION_ONLY",),
-                ),
-                FeatureSnapshot(
-                    market=market,
-                    as_of_ms=opened_at_ms - 2_000,
-                    source_received_at_ms=opened_at_ms - 2_000,
-                    schema_version=1,
-                    day_return=None,
-                    funding=Decimal("0"),
-                    open_interest=Decimal("1"),
-                    day_notional_volume=Decimal("1"),
-                    oi_change_fraction=None,
-                    funding_change=None,
-                    mark_oracle_dislocation_bps=None,
-                    return_5m=None,
-                    return_15m=None,
-                    return_1h=None,
-                    return_4h=None,
-                    realized_vol_15m=None,
-                    range_expansion_15m=None,
-                    relative_volume_15m=None,
-                    spread_bps=None,
-                    bid_depth_25bps=None,
-                    ask_depth_25bps=None,
-                    book_imbalance=None,
-                    book_age_ms=None,
-                    trend_regime=TrendRegime.UP,
-                    volatility_regime=VolatilityRegime.NORMAL,
-                    provenance=("synthetic-evaluation-only",),
-                ),
+                decision,
+                feature,
                 replay_run_id=replay_run_id,
             )
         )
@@ -461,7 +469,7 @@ def test_real_replay_lineage_joins_phase9_facts_without_digest_change(
     manifest = ReplayManifest(
         evidence_class=EvidenceClass.CANDLE_CONTEXT,
         start_ms=1_000,
-        end_ms=2_000,
+        end_ms=2_500,
         segments=(
             SourceSegment(
                 relative_path="integration/candle.jsonl",
