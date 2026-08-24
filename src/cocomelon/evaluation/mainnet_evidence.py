@@ -491,6 +491,45 @@ def _merge_sources(
     return tuple(merged[run_id] for run_id in sorted(merged))
 
 
+def _reject_reused_or_overlapping_cohorts(
+    target_journal: Path,
+    existing_attestation: _VerifiedAttestation | None,
+    incoming: Sequence[_ValidatedCohort],
+) -> None:
+    existing_run_ids = (
+        set() if existing_attestation is None else set(existing_attestation.run_ids)
+    )
+    new_cohorts = tuple(
+        cohort for cohort in incoming if cohort.result.run_id not in existing_run_ids
+    )
+    existing_sessions = (
+        set()
+        if existing_attestation is None
+        else {item["recording_session_id"] for item in existing_attestation.sources}
+    )
+    seen_sessions = set(existing_sessions)
+    intervals: list[tuple[str, int, int]] = []
+    if existing_attestation is not None:
+        intervals.extend(
+            (result.run_id, manifest.start_ms, manifest.end_ms)
+            for manifest, result in _load_replay_pairs(target_journal)
+        )
+
+    for cohort in new_cohorts:
+        if cohort.recording_session_id in seen_sessions:
+            raise MainnetEvidenceError("mainnet recording session was already aggregated")
+        for run_id, start_ms, end_ms in intervals:
+            if cohort.manifest.start_ms < end_ms and start_ms < cohort.manifest.end_ms:
+                raise MainnetEvidenceError(
+                    "mainnet cohort time windows overlap: "
+                    f"{run_id} and {cohort.result.run_id}"
+                )
+        seen_sessions.add(cohort.recording_session_id)
+        intervals.append(
+            (cohort.result.run_id, cohort.manifest.start_ms, cohort.manifest.end_ms)
+        )
+
+
 def aggregate_mainnet_evaluation_evidence(
     target_journal_path: str | Path,
     target_facts_path: str | Path,
@@ -529,6 +568,7 @@ def aggregate_mainnet_evaluation_evidence(
         () if existing_attestation is None else existing_attestation.sources,
         cohorts,
     )
+    _reject_reused_or_overlapping_cohorts(target_journal, existing_attestation, cohorts)
 
     try:
         aggregation = aggregate_evaluation_evidence(target_journal, target_facts, roots)
