@@ -1,0 +1,123 @@
+name: Phase 9 Mainnet Heartbeat Smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/phase9-mainnet-heartbeat-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      COHORT_CODE_REVISION: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+    steps:
+      - name: Checkout heartbeat-safe pinned cohort
+        uses: actions/checkout@v4
+        with:
+          ref: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Record mainnet heartbeat diagnostic
+        run: |
+          set -euo pipefail
+          mkdir -p heartbeat-smoke/output heartbeat-smoke/recording
+          git rev-parse HEAD > heartbeat-smoke/output/cohort-head.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > heartbeat-smoke/output/started-at-utc.txt
+          START_EPOCH=$(date +%s)
+
+          cocomelon record-mainnet-evidence \
+            --root heartbeat-smoke/recording \
+            --seconds 90 \
+            --deep-limit 5 \
+            > heartbeat-smoke/output/record-transport.json
+
+          END_EPOCH=$(date +%s)
+          ELAPSED_SECONDS=$((END_EPOCH - START_EPOCH))
+          printf '%s\n' "$ELAPSED_SECONDS" > heartbeat-smoke/output/elapsed-seconds.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > heartbeat-smoke/output/finished-at-utc.txt
+          if [ "$ELAPSED_SECONDS" -lt 85 ]; then
+            echo "heartbeat smoke ended before crossing the old disconnect boundary" >&2
+            exit 1
+          fi
+
+      - name: Normalize and assert heartbeat transport health
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.evidence.transport_health import normalize_redundant_record_payload
+
+          root = Path("heartbeat-smoke/output")
+          raw = json.loads((root / "record-transport.json").read_text(encoding="utf-8"))
+          record = normalize_redundant_record_payload(raw)
+          (root / "record.json").write_text(
+              json.dumps(record, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          elapsed_seconds = int((root / "elapsed-seconds.txt").read_text().strip())
+          cohort_head = (root / "cohort-head.txt").read_text().strip()
+          assert cohort_head == os.environ["COHORT_CODE_REVISION"]
+          assert elapsed_seconds >= 85
+          assert record["network_access"] is True
+          assert record["live_orders"] is False
+          assert record["gap_count"] == 0
+          assert record["duplicate_count"] == 0
+          assert record["anomaly_count"] == 0
+          assert record["reconnect_count"] == 0
+          assert record["transport_reconnect_count"] == 0
+          assert record["redundant_ws_lane_count"] == 2
+          assert record["transport_health_semantics"] == "redundant-mainnet-merged-feed-v1"
+
+          summary = {
+              "purpose": "transport-heartbeat-smoke",
+              "diagnostic_only": True,
+              "cohort_revision": cohort_head,
+              "elapsed_seconds": elapsed_seconds,
+              "session_id": record["session_id"],
+              "selected_markets": record["selected_markets"],
+              "event_count": record["event_count"],
+              "gap_count": record["gap_count"],
+              "reconnect_count": record["reconnect_count"],
+              "transport_reconnect_count": record["transport_reconnect_count"],
+              "redundant_ws_lane_count": record["redundant_ws_lane_count"],
+              "network_access": record["network_access"],
+              "live_orders": record["live_orders"],
+          }
+          (root / "heartbeat-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload heartbeat diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase9-mainnet-heartbeat-smoke-${{ github.run_id }}
+          path: heartbeat-smoke/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
