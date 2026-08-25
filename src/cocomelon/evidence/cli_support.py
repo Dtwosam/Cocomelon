@@ -127,7 +127,7 @@ def _build_spaced_mainnet_connection_factory[ConnectionT](
                 if delay > 0:
                     await sleep(delay)
             last_start = monotonic()
-            return await connect(settings)
+        return await connect(settings)
 
     return spaced_connection_factory
 
