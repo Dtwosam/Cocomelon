@@ -93,16 +93,15 @@ def test_curator_requires_selection_audit_for_post_introduction_campaigns() -> N
 
     assert f"SELECTION_AUDIT_INTRO_SHA: {SELECTION_AUDIT_INTRO_SHA}" in text
     assert f"EXPECTED_ATTEMPT_LEDGER_REVISION: {LEDGER_REVISION}" in text
-    assert "SOURCE_TRIGGER_SHA: ${{ github.event.workflow_run.head_sha }}" in text
-    assert 'compare/$SELECTION_AUDIT_INTRO_SHA...$SOURCE_TRIGGER_SHA' in text
-    assert "--expected-trigger-sha \"$SOURCE_TRIGGER_SHA\"" in text
+    assert 'compare/$SELECTION_AUDIT_INTRO_SHA...$TRIGGER_SHA' in text
     assert "selection_audit_required" in text
     assert "legacy_pre_selection_audit" in text
     assert "cocomelon.ops.selection_audit" in text
     verify = text.index("cocomelon-mainnet-evidence verify")
+    trigger_classification = text.index('TRIGGER_SHA=$(cat "$SOURCE_ROOT/trigger-head.txt")')
     selection = text.index("cocomelon.ops.selection_audit")
     aggregate = text.index("cocomelon-mainnet-evidence aggregate")
-    assert verify < selection < aggregate
+    assert verify < trigger_classification < selection < aggregate
 
 
 def test_curator_rolls_verified_selection_audit_into_corpus() -> None:
