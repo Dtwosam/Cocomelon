@@ -46,7 +46,7 @@ def _require_sha(value: str, *, label: str) -> str:
     return value
 
 
-def _workflow_run_head_sha_from_event() -> str | None:
+def _workflow_run_head_sha_from_event(*, expected_source_run_id: int) -> str | None:
     raw_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
     if not raw_path:
         return None
@@ -58,6 +58,8 @@ def _workflow_run_head_sha_from_event() -> str | None:
     if not isinstance(workflow_run, dict):
         raise ValueError("GitHub workflow_run event payload is invalid")
 
+    if workflow_run.get("id") != expected_source_run_id:
+        raise ValueError("source workflow run id does not match selection audit source run")
     repository = workflow_run.get("repository")
     expected_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
     if not expected_repository:
@@ -106,7 +108,9 @@ def build_selection_audit(
         expected_ledger_revision,
         label="expected attempt ledger revision",
     )
-    workflow_run_trigger = _workflow_run_head_sha_from_event()
+    workflow_run_trigger = _workflow_run_head_sha_from_event(
+        expected_source_run_id=source_run_id,
+    )
     authoritative_trigger = (
         _require_sha(expected_trigger_sha, label="expected trigger head sha")
         if expected_trigger_sha is not None
