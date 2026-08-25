@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v2-30c0de4b
+  group: genuine-mainnet-evidence-v2-0df13a9d
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +23,8 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-      COHORT_CODE_REVISION: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+      COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
+      COHORT_CODE_REVISION: 0df13a9d9694d7e12cca787ef198fdff359b4741
       COHORT_TRIGGER_SHA: ${{ github.sha }}
     steps:
       - name: Check durable Phase 9 final state
@@ -95,7 +96,7 @@ jobs:
         if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+          ref: 0df13a9d9694d7e12cca787ef198fdff359b4741
           fetch-depth: 1
 
       - name: Checkout pinned attempt ledger tooling
