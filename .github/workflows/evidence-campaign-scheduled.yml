@@ -103,7 +103,7 @@ jobs:
         if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: 2a9f01d86218dca98d2d84a4ae0e2e28c69975a7
+          ref: e87a575a755074e36e22729c63c4831b474cf339
           path: campaign-tooling
           fetch-depth: 1
           persist-credentials: false
@@ -213,7 +213,7 @@ jobs:
               continue
             fi
 
-            if python - "$ATTEMPT_ROOT/record.json" <<'PY'
+            if ! python - "$ATTEMPT_ROOT/record.json" <<'PY'
           import json
           import sys
 
@@ -231,6 +231,79 @@ jobs:
           raise SystemExit(0 if clean else 1)
           PY
             then
+              rm -rf "$ATTEMPT_ROOT"
+              continue
+            fi
+
+            PROBE_ROOT="$ATTEMPT_ROOT/probe"
+            mkdir -p "$PROBE_ROOT"
+            cocomelon validate-recording \
+              --root "$ATTEMPT_ROOT/recording" \
+              > "$PROBE_ROOT/validate.json"
+            cocomelon freeze-baseline-replay \
+              --root "$ATTEMPT_ROOT/recording" \
+              --out "$PROBE_ROOT/bundle.json" \
+              --starting-cash 10000 \
+              > "$PROBE_ROOT/freeze.json"
+            cocomelon run-baseline-replay \
+              --bundle "$PROBE_ROOT/bundle.json" \
+              --journal "$PROBE_ROOT/journal.sqlite3" \
+              --execution "$PROBE_ROOT/execution.sqlite3" \
+              --facts "$PROBE_ROOT/facts.sqlite3" \
+              > "$PROBE_ROOT/replay.json"
+            PROBE_RUN_ID=$(python -c "import json; print(json.load(open('$PROBE_ROOT/replay.json'))['run_id'])")
+            cocomelon freeze-evaluation-dataset \
+              --journal "$PROBE_ROOT/journal.sqlite3" \
+              --facts "$PROBE_ROOT/facts.sqlite3" \
+              --run-id "$PROBE_RUN_ID" \
+              > "$PROBE_ROOT/dataset.json"
+
+            python - "$PROBE_ROOT/replay.json" "$PROBE_ROOT/dataset.json" \
+              "$DIAG_ROOT/eligibility-probe.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          replay = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          dataset = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          reasons = []
+          if replay["data_complete"] is not True:
+              reasons.append("replay_incomplete")
+          if dataset["data_complete"] is not True or dataset["gap_refs"] != []:
+              reasons.append("dataset_incomplete")
+          opened_positions = replay["opened_positions"]
+          closed_positions = replay["closed_positions"]
+          flat_replay = opened_positions == closed_positions
+          if not flat_replay:
+              reasons.append("open_exposure")
+          payload = {
+              "schema_version": 1,
+              "economic_claim": "none",
+              "economic_eligible": not reasons,
+              "economic_ineligibility_reasons": reasons,
+              "replay_data_complete": replay["data_complete"] is True,
+              "dataset_data_complete": dataset["data_complete"] is True,
+              "dataset_gap_refs_empty": dataset["gap_refs"] == [],
+              "opened_positions": opened_positions,
+              "closed_positions": closed_positions,
+              "flat_replay": flat_replay,
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path(sys.argv[3]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+            if python - "$DIAG_ROOT/eligibility-probe.json" <<'PY'
+          import json
+          import sys
+
+          probe = json.load(open(sys.argv[1], encoding="utf-8"))
+          raise SystemExit(0 if probe["economic_eligible"] is True else 1)
+          PY
+            then
               CLEAN_ATTEMPT="$ATTEMPT"
               mv "$ATTEMPT_ROOT/recording" evidence-cohort/recording
               cp "$ATTEMPT_ROOT/record.json" evidence-cohort/output/record.json
@@ -239,10 +312,12 @@ jobs:
               cp "$ATTEMPT_ROOT/gap-watch.json" evidence-cohort/output/gap-watch.json || true
               cp "$ATTEMPT_ROOT/started-at-utc.txt" evidence-cohort/output/started-at-utc.txt
               cp "$ATTEMPT_ROOT/finished-at-utc.txt" evidence-cohort/output/finished-at-utc.txt
+              cp "$DIAG_ROOT/eligibility-probe.json" evidence-cohort/output/eligibility-probe.json
               printf '%s\n' "$ATTEMPT" > evidence-cohort/output/acquisition-attempt.txt
               rm -rf "$ATTEMPT_ROOT"
               break
             fi
+
             rm -rf "$ATTEMPT_ROOT"
           done
 
@@ -255,7 +330,7 @@ jobs:
             > evidence-cohort/diagnostics/cohort-attempts-command.json
 
           if [ -z "$CLEAN_ATTEMPT" ]; then
-            echo "No merged-gap-free mainnet capture completed in the bounded retry cohort" >&2
+            echo "No transport-clean, complete, flat mainnet capture completed in the bounded retry cohort" >&2
             exit 1
           fi
 

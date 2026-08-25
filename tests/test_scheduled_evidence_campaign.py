@@ -4,7 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
 PINNED_CODE = "6de9d86aa7c36fce4f459e0bcc4e004de9215f25"
-ATTEMPT_LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
+ATTEMPT_LEDGER_REVISION = "e87a575a755074e36e22729c63c4831b474cf339"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
 
@@ -49,6 +49,34 @@ def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> Non
     assert 'record["transport_health_semantics"]' in text
     assert 'record["transport_duplicate_count"]' in text
     assert 'record["transport_anomaly_count"]' in text
+
+
+def test_scheduled_campaign_retries_nonperformance_admission_failures() -> None:
+    text = _workflow_text()
+    record_step = text[
+        text.index("Record clean genuine public mainnet evidence") :
+        text.index("Validate and replay recorded evidence offline")
+    ]
+
+    assert "eligibility-probe.json" in record_step
+    assert "cocomelon validate-recording" in record_step
+    assert "cocomelon freeze-baseline-replay" in record_step
+    assert "cocomelon run-baseline-replay" in record_step
+    assert "cocomelon freeze-evaluation-dataset" in record_step
+    assert '"replay_data_complete"' in record_step
+    assert '"dataset_data_complete"' in record_step
+    assert '"dataset_gap_refs_empty"' in record_step
+    assert '"opened_positions"' in record_step
+    assert '"closed_positions"' in record_step
+    assert '"flat_replay"' in record_step
+    assert '"economic_claim": "none"' in record_step
+    assert '"economic_eligible"' in record_step
+    assert '"economic_ineligibility_reasons"' in record_step
+    assert "final_equity" not in record_step
+    assert "profitable" not in record_step
+    probe = record_step.index("eligibility-probe.json")
+    admission = record_step.index('CLEAN_ATTEMPT="$ATTEMPT"')
+    assert probe < admission
 
 
 def test_scheduled_campaign_v2_requires_complete_flat_replay_for_economics() -> None:

@@ -26,7 +26,7 @@ jobs:
       PHASE9_STATE_BRANCH: phase9-v2-protocol-state
       PHASE9_STATE_FILE: phase9-v2-final.json
       SELECTION_AUDIT_INTRO_SHA: 70e51d1e897cdafa236dc4ef06787939d2b726b4
-      EXPECTED_ATTEMPT_LEDGER_REVISION: 2a9f01d86218dca98d2d84a4ae0e2e28c69975a7
+      EXPECTED_ATTEMPT_LEDGER_REVISION: e87a575a755074e36e22729c63c4831b474cf339
     steps:
       - name: Inspect durable one-shot Phase 9 state
         id: phase9_durable
