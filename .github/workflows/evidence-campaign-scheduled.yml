@@ -102,7 +102,7 @@ jobs:
         if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: 21da9c24b78fea89bb525af32132d103e82cf245
+          ref: 2a9f01d86218dca98d2d84a4ae0e2e28c69975a7
           path: campaign-tooling
           fetch-depth: 1
           persist-credentials: false
@@ -354,8 +354,8 @@ jobs:
               "recorded_duplicate_count": record["duplicate_count"],
               "recorded_anomaly_count": record["anomaly_count"],
               "recorded_transport_reconnect_count": record["transport_reconnect_count"],
-              "recorded_transport_duplicate_count": record["transport_duplicate_count"],
-              "recorded_transport_anomaly_count": record["transport_anomaly_count"],
+              "recorded_transport_duplicate_count": record["duplicate_count"],
+              "recorded_transport_anomaly_count": record["anomaly_count"],
               "redundant_ws_lane_count": record["redundant_ws_lane_count"],
               "transport_health_semantics": record["transport_health_semantics"],
               "validated_segment_count": validate["segment_count"],
