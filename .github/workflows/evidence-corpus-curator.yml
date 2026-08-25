@@ -66,8 +66,8 @@ jobs:
                   "scheduled-genuine-mainnet-evidence-v2-"
               )
           ]
-          if len(matches) == 1:
-              item = matches[0]
+          if matches:
+              item = max(matches, key=lambda candidate: candidate.get("created_at", ""))
               print(f"{item['id']}\t{item['name']}")
           PY
             )
