@@ -10,6 +10,7 @@ from cocomelon.ops.attempt_ledger import build_attempt_ledger
 
 LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 TRIGGER_SHA = "70e51d1e897cdafa236dc4ef06787939d2b726b4"
+OTHER_TRIGGER_SHA = "61fab78355c4bac4a644b59dbd6011a65d70c9d8"
 
 
 def _write_text(path: Path, value: str) -> None:
@@ -60,7 +61,12 @@ def _make_cohort(root: Path) -> None:
     _write_text(root / "output" / "trigger-head.txt", TRIGGER_SHA)
 
 
-def _run_audit(cohort: Path, output: Path) -> subprocess.CompletedProcess[str]:
+def _run_audit(
+    cohort: Path,
+    output: Path,
+    *,
+    expected_trigger_sha: str = TRIGGER_SHA,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
@@ -74,6 +80,8 @@ def _run_audit(cohort: Path, output: Path) -> subprocess.CompletedProcess[str]:
             "67890",
             "--expected-ledger-revision",
             LEDGER_REVISION,
+            "--expected-trigger-sha",
+            expected_trigger_sha,
             "--out",
             str(output),
         ],
@@ -149,4 +157,20 @@ def test_selection_audit_rejects_mismatched_admitted_attempt(tmp_path: Path) -> 
 
     assert result.returncode != 0
     assert "admitted attempt does not match acquisition attempt" in result.stderr
+    assert not output.exists()
+
+
+def test_selection_audit_rejects_artifact_trigger_mismatch(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort"
+    _make_cohort(cohort)
+    output = tmp_path / "selection-audit.json"
+
+    result = _run_audit(
+        cohort,
+        output,
+        expected_trigger_sha=OTHER_TRIGGER_SHA,
+    )
+
+    assert result.returncode != 0
+    assert "trigger head sha does not match authoritative workflow run" in result.stderr
     assert not output.exists()
