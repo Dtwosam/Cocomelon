@@ -479,6 +479,7 @@ async def run_bounded_recording(
     gap_count = 0
     funding_seen: set[tuple[str, int]] = set()
     selected_markets = tuple(item.market for item in bootstrap.session.selected)
+    rest_lock = asyncio.Lock()
 
     for snapshot in bootstrap.snapshots:
         recorder.append_market_snapshot(snapshot)
@@ -522,7 +523,10 @@ async def run_bounded_recording(
         nonlocal event_count
         while True:
             try:
-                registry = MarketRegistry(reader, now_ms=clock_ms).refresh()
+                async with rest_lock:
+                    registry = await asyncio.to_thread(
+                        MarketRegistry(reader, now_ms=clock_ms).refresh
+                    )
                 for market in selected_markets:
                     snapshot = registry.markets.get(market.canonical)
                     if snapshot is None:
@@ -546,11 +550,13 @@ async def run_bounded_recording(
             for market in selected_markets:
                 try:
                     end_ms = clock_ms()
-                    raw = reader.funding_history(
-                        market,
-                        start_ms=max(0, end_ms - FUNDING_BOOTSTRAP_LOOKBACK_MS),
-                        end_ms=end_ms,
-                    )
+                    async with rest_lock:
+                        raw = await asyncio.to_thread(
+                            reader.funding_history,
+                            market,
+                            start_ms=max(0, end_ms - FUNDING_BOOTSTRAP_LOOKBACK_MS),
+                            end_ms=end_ms,
+                        )
                     received_at_ms = clock_ms()
                     rates = normalize_funding_history(
                         market,
