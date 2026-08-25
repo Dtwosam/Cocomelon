@@ -1,0 +1,299 @@
+name: Verified V2 Mainnet Evidence Corpus Curator
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Genuine Mainnet Evidence Campaign V2"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: genuine-mainnet-evidence-v2-corpus
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+    steps:
+      - name: Checkout current evaluation tooling
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Download and independently verify source intake
+        id: intake
+        run: |
+          set -euo pipefail
+          mkdir -p intake source
+          git rev-parse HEAD > intake/curator-head.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > intake/source-run-id.txt
+          printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
+
+          SOURCE_ARTIFACT_ID=""
+          SOURCE_ARTIFACT_NAME=""
+          for POLL in 1 2 3 4 5 6; do
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+              > intake/source-artifacts.json
+            SOURCE_SELECTION=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(
+                  "scheduled-genuine-mainnet-evidence-v2-"
+              )
+          ]
+          if len(matches) == 1:
+              item = matches[0]
+              print(f"{item['id']}\t{item['name']}")
+          PY
+            )
+            if [ -n "$SOURCE_SELECTION" ]; then
+              SOURCE_ARTIFACT_ID=${SOURCE_SELECTION%%$'\t'*}
+              SOURCE_ARTIFACT_NAME=${SOURCE_SELECTION#*$'\t'}
+              break
+            fi
+            sleep 5
+          done
+
+          printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+          printf '%s\n' "$SOURCE_ARTIFACT_NAME" > intake/source-artifact-name.txt
+
+          if [ -z "$SOURCE_ARTIFACT_ID" ]; then
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_artifact_found": False,
+              "source_verified": False,
+              "source_verify_status": None,
+              "corpus_mutated": False,
+              "economic_claim": "none",
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+            echo "source_artifact_found=false" >> "$GITHUB_OUTPUT"
+            echo "source_verified=false" >> "$GITHUB_OUTPUT"
+            echo "source_root=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            > intake/source-artifact.zip
+          unzip -q intake/source-artifact.zip -d source
+
+          mapfile -t SUMMARIES < <(find source -type f -name cohort-summary.json -path '*/output/*' -print)
+          if [ "${#SUMMARIES[@]}" -ne 1 ]; then
+            SOURCE_ROOT=""
+            SOURCE_VERIFY_STATUS=90
+          else
+            SOURCE_ROOT=$(dirname "${SUMMARIES[0]}")
+            set +e
+            cocomelon-mainnet-evidence verify \
+              --source-root "$SOURCE_ROOT" \
+              > intake/source-verify.json \
+              2> intake/source-verify.stderr
+            SOURCE_VERIFY_STATUS=$?
+            set -e
+          fi
+          printf '%s\n' "$SOURCE_VERIFY_STATUS" > intake/source-verify-status.txt
+
+          SOURCE_VERIFIED=false
+          if [ "$SOURCE_CONCLUSION" = "success" ] \
+            && [ "$SOURCE_VERIFY_STATUS" -eq 0 ]; then
+            SOURCE_VERIFIED=true
+          fi
+
+          SOURCE_ARTIFACT_ID="$SOURCE_ARTIFACT_ID" \
+          SOURCE_ARTIFACT_NAME="$SOURCE_ARTIFACT_NAME" \
+          SOURCE_VERIFY_STATUS="$SOURCE_VERIFY_STATUS" \
+          SOURCE_VERIFIED="$SOURCE_VERIFIED" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_artifact_found": True,
+              "source_artifact_id": int(os.environ["SOURCE_ARTIFACT_ID"]),
+              "source_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
+              "source_verified": os.environ["SOURCE_VERIFIED"] == "true",
+              "source_verify_status": int(os.environ["SOURCE_VERIFY_STATUS"]),
+              "corpus_mutated": False,
+              "economic_claim": "none",
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+          echo "source_artifact_found=true" >> "$GITHUB_OUTPUT"
+          echo "source_verified=$SOURCE_VERIFIED" >> "$GITHUB_OUTPUT"
+          echo "source_root=$SOURCE_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Roll verified source into latest attested corpus
+        id: aggregate
+        if: ${{ always() && steps.intake.outputs.source_verified == 'true' }}
+        env:
+          SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
+        run: |
+          set -euo pipefail
+          mkdir -p corpus prior
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-mainnet-corpus&per_page=100" \
+            > intake/prior-artifacts.json
+          PRIOR_ARTIFACT_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/prior-artifacts.json").read_text())
+          candidates = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == "v2-mainnet-corpus"
+              and not item.get("expired", False)
+          ]
+          if candidates:
+              latest = max(candidates, key=lambda item: item.get("created_at", ""))
+              print(latest["id"])
+          PY
+          )
+          printf '%s\n' "$PRIOR_ARTIFACT_ID" > intake/prior-corpus-artifact-id.txt
+
+          if [ -n "$PRIOR_ARTIFACT_ID" ]; then
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRIOR_ARTIFACT_ID/zip" \
+              > intake/prior-corpus.zip
+            unzip -q intake/prior-corpus.zip -d prior
+            mapfile -t ATTESTATIONS < <(find prior -type f -name mainnet-attestation.json -print)
+            if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
+              echo "Prior corpus artifact does not contain exactly one attestation" >&2
+              exit 31
+            fi
+            PRIOR_ROOT=$(dirname "${ATTESTATIONS[0]}")
+            cp -a "$PRIOR_ROOT/." corpus/
+          fi
+
+          cocomelon-mainnet-evidence aggregate \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            --source-root "$SOURCE_ROOT" \
+            > corpus/aggregate-latest.json
+          cocomelon-mainnet-evidence progress \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            > corpus/progress.json
+
+          PRIOR_ARTIFACT_ID="$PRIOR_ARTIFACT_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          verify = json.loads(Path("intake/source-verify.json").read_text())
+          aggregate = json.loads(Path("corpus/aggregate-latest.json").read_text())
+          progress = json.loads(Path("corpus/progress.json").read_text())
+          curator_head = Path("intake/curator-head.txt").read_text().strip()
+          source_artifact_id = int(Path("intake/source-artifact-id.txt").read_text())
+          prior_raw = os.environ.get("PRIOR_ARTIFACT_ID", "")
+          index = {
+              "schema_version": 1,
+              "economic_claim": "none",
+              "corpus_mutated": True,
+              "curator_code_revision": curator_head,
+              "campaign_code_revision": verify["code_revision"],
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_artifact_id": source_artifact_id,
+              "previous_corpus_artifact_id": int(prior_raw) if prior_raw else None,
+              "mainnet_attestation_id": progress["mainnet_attestation_id"],
+              "attested_run_count": progress["attested_run_count"],
+              "closed_trade_count": progress["closed_trade_count"],
+              "closed_trade_days": progress["closed_trade_days"],
+              "raw_corpus_can_satisfy_oos_minimums": progress[
+                  "raw_corpus_can_satisfy_oos_minimums"
+              ],
+              "latest_aggregate": aggregate,
+          }
+          Path("corpus/corpus-index.json").write_text(
+              json.dumps(index, indent=2, sort_keys=True) + "\n"
+          )
+
+          intake = json.loads(Path("intake/intake-report.json").read_text())
+          intake.update(
+              {
+                  "corpus_mutated": True,
+                  "mainnet_attestation_id": progress["mainnet_attestation_id"],
+                  "attested_run_count": progress["attested_run_count"],
+                  "closed_trade_count": progress["closed_trade_count"],
+                  "closed_trade_days": progress["closed_trade_days"],
+              }
+          )
+          Path("intake/intake-report.json").write_text(
+              json.dumps(intake, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+      - name: Upload intake audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-mainnet-intake-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: intake/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload rolled attested corpus
+        if: ${{ steps.intake.outputs.source_verified == 'true' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-mainnet-corpus
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Enforce successful source verification
+        if: always()
+        env:
+          SOURCE_VERIFIED: ${{ steps.intake.outputs.source_verified }}
+          SOURCE_ARTIFACT_FOUND: ${{ steps.intake.outputs.source_artifact_found }}
+        run: |
+          if [ "$SOURCE_CONCLUSION" = "success" ] \
+            && { [ "$SOURCE_ARTIFACT_FOUND" != "true" ] \
+              || [ "$SOURCE_VERIFIED" != "true" ]; }; then
+            echo "Successful V2 campaign did not produce independently verified evidence" >&2
+            exit 1
+          fi
