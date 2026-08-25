@@ -30,6 +30,19 @@ def _trade() -> StreamEvent:
     )
 
 
+def _book() -> StreamEvent:
+    return StreamEvent(
+        kind=StreamKind.L2_BOOK,
+        market=MARKET,
+        exchange_time_ms=1_050,
+        receive_time=datetime(2026, 8, 25, tzinfo=UTC),
+        schema_version=1,
+        source="hyperliquid-mainnet-ws",
+        event_key="l2Book:BTC:1050:book",
+        payload={"levels": ((), ())},
+    )
+
+
 def test_unobserved_standby_does_not_hide_primary_startup_disconnect() -> None:
     async def run() -> None:
         from cocomelon.evidence.redundant_stream import RedundantStreamMux
@@ -55,32 +68,7 @@ def test_unobserved_standby_does_not_hide_primary_startup_disconnect() -> None:
     asyncio.run(run())
 
 
-def test_subscription_ready_standby_covers_primary_disconnect_before_first_event() -> None:
-    async def run() -> None:
-        from cocomelon.evidence.redundant_stream import RedundantStreamMux
-
-        gaps: list[DataGap] = []
-        events: list[StreamEvent] = []
-
-        async def event_sink(event: StreamEvent) -> None:
-            events.append(event)
-
-        async def gap_sink(gap: DataGap) -> None:
-            gaps.append(gap)
-
-        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
-        await mux.on_lane_ready(0, ("trades:BTC",))
-        await mux.on_lane_ready(1, ("trades:BTC",))
-        await mux.on_event(0, _trade())
-        await mux.on_gap(0, DataGap("trades:BTC", 1_100, None, "disconnect"))
-
-        assert gaps == []
-        assert mux.active_lane("trades:BTC") == 1
-
-    asyncio.run(run())
-
-
-def test_lane_ready_does_not_close_a_previously_open_disconnect_gap() -> None:
+def test_lane_activity_proves_standby_ready_for_all_session_subscriptions() -> None:
     async def run() -> None:
         from cocomelon.evidence.redundant_stream import RedundantStreamMux
 
@@ -93,14 +81,37 @@ def test_lane_ready_does_not_close_a_previously_open_disconnect_gap() -> None:
             gaps.append(gap)
 
         mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
-        await mux.on_lane_ready(0, ("trades:BTC",))
-        await mux.on_lane_ready(1, ("trades:BTC",))
+        await mux.on_event(0, _trade())
+        await mux.on_event(1, _book())
+        await mux.on_gap(0, DataGap("trades:BTC", 1_100, None, "disconnect"))
+
+        assert gaps == []
+        assert mux.active_lane("trades:BTC") == 1
+
+    asyncio.run(run())
+
+
+def test_other_stream_activity_does_not_close_an_open_recovery_gap() -> None:
+    async def run() -> None:
+        from cocomelon.evidence.redundant_stream import RedundantStreamMux
+
+        gaps: list[DataGap] = []
+
+        async def event_sink(event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+        await mux.on_event(0, _trade())
+        await mux.on_event(1, _book())
         await mux.on_gap(0, DataGap("trades:BTC", 1_100, None, "disconnect"))
         await mux.on_gap(1, DataGap("trades:BTC", 1_200, None, "disconnect"))
         assert len(gaps) == 1
         assert gaps[0].reason == "redundant_disconnect"
 
-        await mux.on_lane_ready(0, ("trades:BTC",))
+        await mux.on_event(1, _book())
 
         assert len(gaps) == 1
         assert gaps[0].ended_ms is None
