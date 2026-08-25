@@ -19,6 +19,7 @@ from cocomelon.evaluation.mainnet_protocol import (
     V2_VALIDATION_DAYS,
     build_v2_protocol,
     evaluate_v2_readiness,
+    select_v2_snapshot_run_ids,
 )
 
 MARKET = MarketId("", "BTC")
@@ -62,6 +63,18 @@ def _samples(count: int = 120) -> tuple[TradeEvaluationSample, ...]:
     # of 30 UTC close days satisfy the Phase 9 count/coverage minimums and give
     # each predeclared 7-day walk-forward window enough observations.
     return tuple(_sample(index, day=2 + index // 4) for index in range(count))
+
+
+def _source(run_id: str, start_day: Decimal, end_day: Decimal) -> ReplayEvaluationSource:
+    return ReplayEvaluationSource(
+        run_id=run_id,
+        manifest_id=f"manifest-{run_id}",
+        result_digest=(run_id.encode().hex() + "0" * 64)[:64],
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        start_ms=int(start_day * DAY_MS),
+        end_ms=int(end_day * DAY_MS),
+        data_complete=True,
+    )
 
 
 def _dataset(
@@ -112,6 +125,31 @@ def test_v2_protocol_is_predeclared_and_leaves_full_untouched_test() -> None:
     assert protocol.walkforward.evaluation_duration_ms == 7 * DAY_MS
     assert protocol.walkforward.step_ms == 7 * DAY_MS
     assert protocol.walkforward.expanding is True
+
+
+def test_v2_snapshot_source_set_stops_growing_after_calendar_cutoff() -> None:
+    initial = (
+        _source("run-a", Decimal("0"), Decimal("0.04")),
+        _source("run-b", Decimal("46.75"), Decimal("46.79")),
+        _source("run-c", Decimal("47.25"), Decimal("47.29")),
+    )
+    later = initial + (
+        _source("run-d", Decimal("48"), Decimal("48.04")),
+        _source("run-e", Decimal("60"), Decimal("60.04")),
+    )
+
+    assert select_v2_snapshot_run_ids(initial) == ("run-a", "run-b", "run-c")
+    assert select_v2_snapshot_run_ids(later) == ("run-a", "run-b", "run-c")
+
+
+def test_v2_snapshot_source_set_needs_no_bridge_when_cutoff_is_covered() -> None:
+    sources = (
+        _source("run-a", Decimal("0"), Decimal("0.04")),
+        _source("run-b", Decimal("46.98"), Decimal("47.02")),
+        _source("run-c", Decimal("47.25"), Decimal("47.29")),
+    )
+
+    assert select_v2_snapshot_run_ids(sources) == ("run-a", "run-b")
 
 
 def test_v2_readiness_requires_window_trades_days_and_walkforward_counts() -> None:
