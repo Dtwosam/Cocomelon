@@ -7,6 +7,7 @@ from cocomelon.domain.evaluation import (
     EvaluationDatasetManifest,
     EvaluationPolicy,
     FrozenSplitManifest,
+    ReplayEvaluationSource,
     SplitName,
     TimePartition,
     TradeEvaluationSample,
@@ -41,6 +42,35 @@ class MainnetPhase9Readiness:
     minimum_trades_per_walkforward_window: int
     ready: bool
     reason_codes: tuple[str, ...]
+
+
+def select_v2_snapshot_run_ids(
+    sources: Sequence[ReplayEvaluationSource],
+) -> tuple[str, ...]:
+    if not sources:
+        raise ValueError("V2 snapshot sources must not be empty")
+    if len({source.run_id for source in sources}) != len(sources):
+        raise ValueError("V2 snapshot sources must use unique run ids")
+    ordered = tuple(
+        sorted(
+            sources,
+            key=lambda source: (source.start_ms, source.end_ms, source.run_id),
+        )
+    )
+    first_start = ordered[0].start_ms
+    cutoff = first_start + (
+        V2_TRAIN_DAYS + V2_VALIDATION_DAYS + V2_TEST_DAYS
+    ) * DAY_MS
+    selected = [source for source in ordered if source.start_ms < cutoff]
+    covered_end = max(source.end_ms for source in selected)
+    if covered_end < cutoff:
+        bridge = next(
+            (source for source in ordered if source.start_ms >= cutoff),
+            None,
+        )
+        if bridge is not None:
+            selected.append(bridge)
+    return tuple(sorted(source.run_id for source in selected))
 
 
 def build_v2_protocol(
