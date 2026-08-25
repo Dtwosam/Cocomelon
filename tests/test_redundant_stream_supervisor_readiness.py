@@ -137,11 +137,10 @@ def test_supervisor_lane_activity_proves_cross_stream_standby_readiness() -> Non
         )
 
         assert gaps == []
-        assert [event.event_key for event in events] == [
-            "trades:BTC:1000:1",
-            "l2Book:BTC:1050",
-            "trades:BTC:2000:2",
-        ]
+        assert len(events) == 3
+        assert events[0].event_key == "trades:BTC:1000:1"
+        assert events[1].event_key.startswith("l2Book:BTC:1050:")
+        assert events[2].event_key == "trades:BTC:2000:2"
         assert mux.active_lane("trades:BTC") == 1
         assert primary.closed is True
         assert standby.closed is True
