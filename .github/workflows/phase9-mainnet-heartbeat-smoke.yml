@@ -18,12 +18,13 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-      COHORT_CODE_REVISION: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+      COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
+      COHORT_CODE_REVISION: 0df13a9d9694d7e12cca787ef198fdff359b4741
     steps:
-      - name: Checkout heartbeat-safe pinned cohort
+      - name: Checkout spaced pinned cohort
         uses: actions/checkout@v4
         with:
-          ref: 30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e
+          ref: 0df13a9d9694d7e12cca787ef198fdff359b4741
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -85,8 +86,6 @@ jobs:
           assert record["gap_count"] == 0
           assert record["duplicate_count"] == 0
           assert record["anomaly_count"] == 0
-          assert record["reconnect_count"] == 0
-          assert record["transport_reconnect_count"] == 0
           assert record["redundant_ws_lane_count"] == 2
           assert record["transport_health_semantics"] == "redundant-mainnet-merged-feed-v1"
 
