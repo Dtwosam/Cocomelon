@@ -23,11 +23,22 @@ def _read_optional_int(path: Path) -> int | None:
     return int(value)
 
 
-def _read_optional_json(path: Path) -> dict[str, object] | None:
+def _read_optional_json(
+    path: Path,
+    *,
+    tolerate_invalid: bool = False,
+) -> dict[str, object] | None:
     if not path.is_file() or path.stat().st_size == 0:
         return None
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        if tolerate_invalid:
+            return None
+        raise
     if not isinstance(payload, dict):
+        if tolerate_invalid:
+            return None
         raise ValueError(f"expected a JSON object in {path}")
     return cast(dict[str, object], payload)
 
@@ -141,7 +152,10 @@ def build_attempt_ledger(
     for attempt_root in attempt_dirs:
         attempt = _attempt_number(attempt_root)
         record = _read_optional_json(attempt_root / "record.json")
-        transport = _read_optional_json(attempt_root / "record-transport.json")
+        transport = _read_optional_json(
+            attempt_root / "record-transport.json",
+            tolerate_invalid=True,
+        )
         session = _read_optional_json(attempt_root / "recording-session.json")
         counter_source = record if record is not None else transport
         recorder_status = _read_optional_int(attempt_root / "recorder-exit-status.txt")
