@@ -30,6 +30,9 @@ jobs:
         id: phase9_final
         run: |
           set -euo pipefail
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-state-branch.json
           STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
           set +e
           gh api "$STATE_ENDPOINT" > /tmp/phase9-state-meta.json 2> /tmp/phase9-state.stderr
@@ -40,7 +43,6 @@ jobs:
           import base64
           import hashlib
           import json
-          import os
           from pathlib import Path
 
           meta = json.loads(Path("/tmp/phase9-state-meta.json").read_text())
