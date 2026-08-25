@@ -276,6 +276,9 @@ jobs:
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-frozen-snapshot&per_page=100" \
             > intake/phase9-snapshot-artifacts.json
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-terminal-insufficient&per_page=100" \
+            > intake/phase9-terminal-artifacts.json
 
           PHASE9_EVALUATION_ID=$(python - <<'PY'
           import json
@@ -305,28 +308,50 @@ jobs:
               print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
           PY
           )
+          PHASE9_TERMINAL_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/phase9-terminal-artifacts.json").read_text())
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == "v2-phase9-terminal-insufficient"
+              and not item.get("expired", False)
+          ]
+          if matches:
+              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
+          PY
+          )
 
           PHASE9_EVALUATION_EXISTS=false
           PHASE9_SNAPSHOT_EXISTS=false
+          PHASE9_TERMINAL_EXISTS=false
           if [ -n "$PHASE9_EVALUATION_ID" ]; then
             PHASE9_EVALUATION_EXISTS=true
           fi
           if [ -n "$PHASE9_SNAPSHOT_ID" ]; then
             PHASE9_SNAPSHOT_EXISTS=true
           fi
+          if [ -n "$PHASE9_TERMINAL_ID" ]; then
+            PHASE9_TERMINAL_EXISTS=true
+          fi
 
           printf '%s\n' "$PHASE9_EVALUATION_ID" > intake/phase9-evaluation-artifact-id.txt
           printf '%s\n' "$PHASE9_SNAPSHOT_ID" > intake/phase9-snapshot-artifact-id.txt
+          printf '%s\n' "$PHASE9_TERMINAL_ID" > intake/phase9-terminal-artifact-id.txt
           printf '%s\n' "$PHASE9_EVALUATION_EXISTS" > intake/phase9-evaluation-exists.txt
           printf '%s\n' "$PHASE9_SNAPSHOT_EXISTS" > intake/phase9-snapshot-exists.txt
+          printf '%s\n' "$PHASE9_TERMINAL_EXISTS" > intake/phase9-terminal-exists.txt
 
           echo "evaluation_exists=$PHASE9_EVALUATION_EXISTS" >> "$GITHUB_OUTPUT"
           echo "evaluation_id=$PHASE9_EVALUATION_ID" >> "$GITHUB_OUTPUT"
           echo "snapshot_exists=$PHASE9_SNAPSHOT_EXISTS" >> "$GITHUB_OUTPUT"
           echo "snapshot_id=$PHASE9_SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+          echo "terminal_exists=$PHASE9_TERMINAL_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "terminal_id=$PHASE9_TERMINAL_ID" >> "$GITHUB_OUTPUT"
 
       - name: Checkout frozen Phase 9 evaluator
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         uses: actions/checkout@v4
         with:
           ref: 629db6294822c97690c006591802f8a47e08652e
@@ -335,7 +360,7 @@ jobs:
           persist-credentials: false
 
       - name: Install frozen Phase 9 evaluator
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
           EXPECTED_PHASE9_REVISION=629db6294822c97690c006591802f8a47e08652e
@@ -349,7 +374,7 @@ jobs:
 
       - name: Download existing frozen Phase 9 snapshot
         id: phase9_existing
-        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
         env:
           SNAPSHOT_ARTIFACT_ID: ${{ steps.phase9_artifacts.outputs.snapshot_id }}
         run: |
@@ -369,7 +394,7 @@ jobs:
 
       - name: Prepare one-shot Phase 9 V2 snapshot candidate
         id: phase9_prepare
-        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
           rm -rf phase9-candidate
@@ -378,21 +403,76 @@ jobs:
             --out-root phase9-candidate \
             > intake/phase9-prepare.json
           cp phase9-candidate/phase9-readiness.json intake/phase9-readiness.json
-          READY=$(python - <<'PY'
+          PHASE9_STATE=$(python - <<'PY'
           import json
           from pathlib import Path
 
           payload = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
           if payload.get("one_shot_oos") is not True:
               raise SystemExit("Phase 9 readiness is not one_shot_oos")
-          print("true" if payload.get("ready_for_untouched_evaluation") is True else "false")
+          ready = payload.get("ready_for_untouched_evaluation") is True
+          test_window_complete = payload.get("test_window_complete") is True
+          terminal_insufficient = test_window_complete and not ready
+          print(f"{str(ready).lower()}\t{str(terminal_insufficient).lower()}")
           PY
           )
+          READY=${PHASE9_STATE%%$'\t'*}
+          TERMINAL_INSUFFICIENT=${PHASE9_STATE#*$'\t'}
           echo "ready=$READY" >> "$GITHUB_OUTPUT"
+          echo "terminal_insufficient=$TERMINAL_INSUFFICIENT" >> "$GITHUB_OUTPUT"
           echo "snapshot_root=phase9-candidate" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare terminal insufficient-evidence artifact
+        if: ${{ steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-terminal
+          mkdir -p phase9-terminal
+          cp phase9-candidate/phase9-readiness.json phase9-terminal/phase9-readiness.json
+          cp phase9-candidate/snapshot.json phase9-terminal/snapshot.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          readiness = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
+          snapshot = json.loads(Path("phase9-candidate/snapshot.json").read_text())
+          if readiness.get("test_window_complete") is not True:
+              raise SystemExit("terminal Phase 9 state requires a complete test window")
+          if readiness.get("ready_for_untouched_evaluation") is True:
+              raise SystemExit("ready Phase 9 state must not be marked insufficient")
+          terminal = {
+              "schema_version": 1,
+              "edge_status": "insufficient_evidence",
+              "economic_claim": "phase9_readiness_only",
+              "one_shot_oos": True,
+              "ready_for_untouched_evaluation": False,
+              "test_window_complete": True,
+              "snapshot_id": snapshot["snapshot_id"],
+              "dataset_manifest_id": readiness["dataset_manifest_id"],
+              "test_trade_count": readiness["test_trade_count"],
+              "test_covered_days": readiness["test_covered_days"],
+              "eligible_walkforward_windows": readiness["eligible_walkforward_windows"],
+              "reason_codes": readiness["reason_codes"],
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("phase9-terminal/terminal-status.json").write_text(
+              json.dumps(terminal, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+      - name: Upload terminal insufficient-evidence result
+        if: ${{ steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-phase9-terminal-insufficient
+          path: phase9-terminal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Upload frozen one-shot Phase 9 snapshot
-        if: ${{ steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        if: ${{ steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-phase9-frozen-snapshot
@@ -403,7 +483,7 @@ jobs:
 
       - name: Evaluate frozen one-shot Phase 9 snapshot
         id: phase9_evaluate
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
         env:
           EXISTING_SNAPSHOT_ROOT: ${{ steps.phase9_existing.outputs.snapshot_root }}
           NEW_SNAPSHOT_ROOT: ${{ steps.phase9_prepare.outputs.snapshot_root }}
