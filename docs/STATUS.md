@@ -3,21 +3,23 @@
 **Last updated:** 2026-08-25  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified main revision:** `bedd05cfafe5e22b358fc49d0d3e67855c28ca80`  
+**Verified main revision:** `47a4e9d48396eb313fc663613cd4ea372e18750e`  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
 
 ## Current state
 
-The engineering path through genuine-mainnet evidence collection, attestation, accumulation, and a one-shot Phase 9 OOS evaluation is now automated and fail-closed.
+The engineering path through genuine-mainnet evidence collection, attestation, accumulation, and a one-shot Phase 9 OOS evaluation is automated and fail-closed. The public-mainnet transport path has now crossed its previous failure boundary in a genuine redundant-lane smoke capture with zero merged gaps, duplicates, anomalies, or reconnects.
 
 The two immutable revisions that matter for the current research campaign are:
 
-- **Campaign V2 strategy/risk/execution/evidence revision:** `7cf19ab81fa609fed4171ea8ed1f06d85f91e793`;
+- **Campaign V2 strategy/risk/execution/evidence runtime revision:** `6de9d86aa7c36fce4f459e0bcc4e004de9215f25`;
 - **Frozen one-shot Phase 9 evaluator revision:** `629db6294822c97690c006591802f8a47e08652e`.
 
-The curator may continue to evolve operationally, but untouched-test snapshot preparation and evaluation are executed with the frozen evaluator revision above. Strategy, risk, sizing, and paper execution are not changed by the curator.
+The current campaign runtime revision includes the lane-wide standby-readiness transport semantics, 15-second redundant WebSocket connection spacing, and recording-time REST polling offloaded from the asyncio event loop. The scheduled workflow itself may evolve operationally, but every evidence capture checks out the immutable runtime revision above. Untouched-test snapshot preparation and evaluation remain bound to the frozen evaluator revision. Strategy, risk, sizing, and paper execution are not changed by the curator.
+
+At this status update, immediate paper-only Campaign V2 run `32880737422` is actively recording a 45-minute genuine-mainnet cohort from the immutable runtime revision above. It was launched through a temporary main-only path-scoped push hook after the runtime passed the bounded transport smoke. That hook was removed immediately in PR #69; the production scheduler is again cron/manual-only. The active run uses its frozen workflow snapshot and remains isolated from later workflow cleanup.
 
 No real-money order path is enabled or authorized.
 
@@ -51,16 +53,20 @@ Phase 10 remains blocked unless a genuine one-shot Phase 9 result satisfies the 
 
 ## Scheduled genuine-mainnet Campaign V2
 
-`.github/workflows/evidence-campaign-scheduled.yml` is the sole production evidence-acquisition path. It is scheduled at `37 1,7,13,19 * * *` UTC and also supports manual workflow dispatch.
+`.github/workflows/evidence-campaign-scheduled.yml` is the sole production evidence-acquisition path. It is scheduled at `37 1,7,13,19 * * *` UTC and also supports manual workflow dispatch. Ordinary repository pushes do not launch the expensive campaign.
 
-Campaign V2 is pinned to `7cf19ab81fa609fed4171ea8ed1f06d85f91e793` and enforces:
+Campaign V2 is pinned to `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` and enforces:
 
 - public Hyperliquid **mainnet** only;
 - API endpoint `https://api.hyperliquid.xyz`;
 - WebSocket endpoint `wss://api.hyperliquid.xyz/ws`;
 - paper execution only;
 - two independent public-mainnet WebSocket lanes;
+- 15-second connection phasing between redundant lanes;
 - merged-feed failover/backfill and cross-lane duplicate suppression;
+- lane-wide session readiness after subscription setup is proven by live data;
+- immediate readiness revocation when a lane disconnects;
+- recording-time REST context/funding calls offloaded from the asyncio WebSocket loop and serialized behind an async lock;
 - durable fail-fast termination when the merged feed records a real gap;
 - up to two bounded 45-minute acquisition attempts;
 - zero merged gaps, duplicates, and anomalies for an economically eligible capture;
@@ -74,7 +80,7 @@ Lane-local reconnect, duplicate, and anomaly counters remain preserved as transp
 
 ## Genuine-mainnet admission boundary
 
-The dedicated offline `cocomelon-mainnet-evidence` surface now provides:
+The dedicated offline `cocomelon-mainnet-evidence` surface provides:
 
 - `verify` — independently validate one downloaded genuine-mainnet cohort;
 - `aggregate` — idempotently append eligible cohorts to the attested corpus;
@@ -99,6 +105,8 @@ Genuine-mainnet attestation rejects or fails closed on, among other things:
 
 Existing attested aggregates are re-verified when they are read for append, progress, or freeze operations.
 
+The curator also requires the source campaign itself to conclude successfully before a verified artifact may mutate the corpus. Retry-selection audit lineage is recomputed from the persisted attempt ledger and bound to the authoritative campaign workflow-run head SHA; the workflow trigger type is provenance metadata rather than an economic-admission criterion.
+
 ## Automatic corpus curator
 
 `.github/workflows/evidence-corpus-curator.yml` listens for completed Campaign V2 runs and serializes corpus mutation.
@@ -106,12 +114,13 @@ Existing attested aggregates are re-verified when they are read for append, prog
 For each campaign completion it:
 
 1. downloads the immutable campaign artifact;
-2. independently verifies the cohort;
-3. rejects diagnostic/ineligible evidence without mutating the corpus;
-4. idempotently aggregates an eligible cohort into the latest `v2-mainnet-corpus` artifact;
-5. writes counts-only progress;
-6. preserves intake diagnostics;
-7. preserves a successfully aggregated corpus even if a later Phase 9 lifecycle step fails.
+2. requires a successful source workflow conclusion and independently verifies the cohort;
+3. recomputes and binds the retry-selection audit when required;
+4. rejects diagnostic/ineligible evidence without mutating the corpus;
+5. idempotently aggregates an eligible cohort into the latest `v2-mainnet-corpus` artifact;
+6. writes counts-only progress;
+7. preserves intake diagnostics;
+8. preserves a successfully aggregated corpus even if a later Phase 9 lifecycle step fails.
 
 The curator does not make an economic claim from workflow success alone.
 
@@ -145,7 +154,29 @@ The bootstrap path is deterministic for a fixed evaluation lineage, so a retry c
 
 If the fixed test window completes but the count/day/walk-forward readiness floor is not met, the curator does **not** reveal performance metrics and does **not** keep retrying OOS evaluation indefinitely. It persists a readiness-only `v2-phase9-terminal-insufficient` artifact with `edge_status = insufficient_evidence` and blocks later V2 OOS attempts.
 
-## Historical genuine-mainnet diagnostics
+## Genuine-mainnet transport qualification and diagnostics
+
+### Gap-free REST-offload heartbeat qualification
+
+The bounded heartbeat workflow was promoted to runtime revision `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` after a deterministic regression reproduced event-loop starvation from synchronous REST polling.
+
+GitHub Actions run `32878425117` then completed successfully on genuine public Hyperliquid mainnet with:
+
+- 98 seconds elapsed;
+- 2,972 recorded real mainnet events;
+- 0 merged gaps;
+- 0 duplicate events;
+- 0 anomalies;
+- 0 reconnects;
+- 2 healthy redundant WebSocket lanes;
+- `network_access = true` for public data capture;
+- `live_orders = false`.
+
+Lane 0 connected in roughly 386 ms. Lane 1 started approximately 15 seconds later and connected in roughly 352 ms. Both lanes became session-ready and neither disconnected during the capture. This is transport qualification only and makes no economic claim.
+
+### Earlier spaced-lane diagnostic
+
+Before the REST-offload fix, run `32859045430` proved connection spacing successfully de-phased redundant lanes but still recorded 62 gap rows after one lane disconnected. That evidence isolated standby/readiness and event-loop scheduling defects; it is diagnostic-only and excluded from economics.
 
 ### First 30-minute cohort
 
@@ -190,6 +221,14 @@ Those repeated single-socket failures motivated the merged redundant-mainnet acq
 - PR #40 — immutable evaluator pin — merged at `61371d16ffaa56f961e61637c94da68b7b54d020`.
 - PR #41 — terminal underpowered V2 state — merged at `c63973592e52992319218e6804673457ff813258`.
 - PR #42 — offline Phase 9 CLI regression hardening — merged at `bedd05cfafe5e22b358fc49d0d3e67855c28ca80`.
+- PR #50 — durable selection-audit archive canonical revalidation.
+- PR #51 — durable Phase 9 final-state canonical revalidation.
+- PR #54 — repinned evidence workflows to the spaced redundant-WebSocket cohort.
+- PR #65 — offloaded recording-time REST polls from the recorder event loop — runtime merge `6de9d86aa7c36fce4f459e0bcc4e004de9215f25`.
+- PR #66 — promoted the REST-offload runtime to the genuine mainnet heartbeat smoke.
+- PR #67 — promoted the transport-qualified runtime to the 45-minute scheduled Campaign V2.
+- PR #68 — added the bounded one-shot launch hook used to start run `32880737422` immediately.
+- PR #69 — removed the one-shot launch hook and permanently guarded against ordinary push-triggered 45-minute campaigns — merged at `47a4e9d48396eb313fc663613cd4ea372e18750e`.
 
 PR #22, the earlier PR-triggered evidence runner, was closed without merging after the scheduled Campaign V2 superseded it.
 
@@ -210,13 +249,14 @@ PR #22, the earlier PR-triggered evidence runner, was closed without merging aft
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let scheduled Campaign V2 collect temporally distinct genuine-mainnet paper cohorts at the immutable campaign revision.
-3. Admit only independently verified, attested, non-overlapping, complete, merged-gap-free, flat cohorts.
-4. Allow the curator to accumulate the corpus and report counts-only progress without early PnL inspection.
-5. At the deterministic V2 cutoff, persist either:
+2. Let active run `32880737422` complete its genuine-mainnet paper capture and unchanged offline validation/replay gates.
+3. Admit it only if the campaign succeeds and independent curator verification confirms non-overlapping, complete, merged-gap-free, flat evidence with valid retry-selection lineage.
+4. Let scheduled Campaign V2 continue collecting temporally distinct cohorts at immutable runtime revision `6de9d86aa7c36fce4f459e0bcc4e004de9215f25`.
+5. Allow the curator to accumulate the corpus and report counts-only progress without early PnL inspection.
+6. At the deterministic V2 cutoff, persist either:
    - the frozen ready one-shot snapshot followed by the genuine Phase 9 evaluation; or
    - the readiness-only terminal `INSUFFICIENT_EVIDENCE` result.
-6. Only if the genuine one-shot result is `CANDIDATE_EDGE` and all locked promotion criteria pass may the approved build order advance toward Phase 10.
+7. Only if the genuine one-shot result is `CANDIDATE_EDGE` and all locked promotion criteria pass may the approved build order advance toward Phase 10.
 
 ## Profitability and live-trading status
 
