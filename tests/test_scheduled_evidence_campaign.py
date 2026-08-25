@@ -4,6 +4,8 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
 PINNED_CODE = "7cf19ab81fa609fed4171ea8ed1f06d85f91e793"
+STATE_BRANCH = "phase9-v2-protocol-state"
+STATE_FILE = "phase9-v2-final.json"
 
 
 def _workflow_text() -> str:
@@ -59,3 +61,18 @@ def test_scheduled_campaign_v2_requires_complete_flat_replay_for_economics() -> 
     assert 'assert "edge" not in replay' in text
     assert 'assert "profitable" not in replay' in text
     assert "retention-days: 90" in text
+
+
+def test_scheduled_campaign_stops_after_durable_phase9_finalization() -> None:
+    text = _workflow_text()
+
+    assert STATE_BRANCH in text
+    assert STATE_FILE in text
+    assert "Check durable Phase 9 final state" in text
+    assert "final_exists" in text
+    guard = "steps.phase9_final.outputs.final_exists != 'true'"
+    assert text.count(guard) >= 5
+    check = text.index("Check durable Phase 9 final state")
+    checkout = text.index("Checkout pinned V2 evidence revision")
+    record = text.index("Record clean genuine public mainnet evidence")
+    assert check < checkout < record

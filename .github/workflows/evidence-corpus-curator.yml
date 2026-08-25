@@ -17,29 +17,103 @@ jobs:
   curate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      phase9_state_candidate_ready: ${{ steps.phase9_state_candidate.outputs.ready }}
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
       SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
     steps:
+      - name: Inspect durable one-shot Phase 9 state
+        id: phase9_durable
+        run: |
+          set -euo pipefail
+          mkdir -p intake
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > intake/phase9-state-branch.json
+          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$STATE_ENDPOINT" > intake/phase9-durable-state-meta.json \
+            2> intake/phase9-durable-state.stderr
+          STATE_STATUS=$?
+          set -e
+          if [ "$STATE_STATUS" -eq 0 ]; then
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("intake/phase9-durable-state-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          expected = hashlib.sha256(encoded).hexdigest()
+          if final_id != expected:
+              raise SystemExit("durable Phase 9 final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("durable Phase 9 protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("durable Phase 9 state is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("durable Phase 9 state violates offline-only semantics")
+          Path("intake/phase9-durable-state.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          audit = {
+              "durable_final_exists": True,
+              "final_id": final_id,
+              "protocol_state": payload.get("protocol_state"),
+          }
+          Path("intake/phase9-durable-audit.json").write_text(
+              json.dumps(audit, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "final_exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "HTTP 404" intake/phase9-durable-state.stderr; then
+            printf '%s\n' \
+              '{"durable_final_exists": false, "economic_claim": "none"}' \
+              > intake/phase9-durable-audit.json
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat intake/phase9-durable-state.stderr >&2
+            exit "$STATE_STATUS"
+          fi
+
       - name: Checkout current evaluation tooling
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install Cocomelon
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
 
       - name: Download and independently verify source intake
         id: intake
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
         run: |
           set -euo pipefail
           mkdir -p intake source
@@ -165,7 +239,7 @@ jobs:
 
       - name: Roll verified source into latest attested corpus
         id: aggregate
-        if: ${{ always() && steps.intake.outputs.source_verified == 'true' }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && always() && steps.intake.outputs.source_verified == 'true' }}
         env:
           SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
         run: |
@@ -267,7 +341,7 @@ jobs:
 
       - name: Inspect existing one-shot Phase 9 artifacts
         id: phase9_artifacts
-        if: ${{ steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
           gh api \
@@ -350,8 +424,41 @@ jobs:
           echo "terminal_exists=$PHASE9_TERMINAL_EXISTS" >> "$GITHUB_OUTPUT"
           echo "terminal_id=$PHASE9_TERMINAL_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Download existing Phase 9 final artifact for durable backfill
+        id: phase9_existing_final
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && (steps.phase9_artifacts.outputs.evaluation_exists == 'true' || steps.phase9_artifacts.outputs.terminal_exists == 'true') && success() }}
+        env:
+          EVALUATION_EXISTS: ${{ steps.phase9_artifacts.outputs.evaluation_exists }}
+          EVALUATION_ID: ${{ steps.phase9_artifacts.outputs.evaluation_id }}
+          TERMINAL_EXISTS: ${{ steps.phase9_artifacts.outputs.terminal_exists }}
+          TERMINAL_ID: ${{ steps.phase9_artifacts.outputs.terminal_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVALUATION_EXISTS" = "true" ] && [ "$TERMINAL_EXISTS" = "true" ]; then
+            echo "Phase 9 cannot have both evaluation and terminal final artifacts" >&2
+            exit 44
+          fi
+          FINAL_ARTIFACT_ID="$EVALUATION_ID"
+          if [ "$TERMINAL_EXISTS" = "true" ]; then
+            FINAL_ARTIFACT_ID="$TERMINAL_ID"
+          fi
+          rm -rf phase9-final-existing
+          mkdir -p phase9-final-existing
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$FINAL_ARTIFACT_ID/zip" \
+            > intake/phase9-existing-final.zip
+          unzip -q intake/phase9-existing-final.zip -d phase9-final-existing
+          mapfile -t SNAPSHOTS < <(find phase9-final-existing -type f -name snapshot.json -print)
+          mapfile -t READINESS < <(find phase9-final-existing -type f -name phase9-readiness.json -print)
+          if [ "${#SNAPSHOTS[@]}" -ne 1 ] || [ "${#READINESS[@]}" -ne 1 ]; then
+            echo "Existing Phase 9 final artifact is incomplete" >&2
+            exit 45
+          fi
+          FINAL_ROOT=$(dirname "${SNAPSHOTS[0]}")
+          echo "final_root=$FINAL_ROOT" >> "$GITHUB_OUTPUT"
+
       - name: Checkout frozen Phase 9 evaluator
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         uses: actions/checkout@v4
         with:
           ref: 629db6294822c97690c006591802f8a47e08652e
@@ -360,7 +467,7 @@ jobs:
           persist-credentials: false
 
       - name: Install frozen Phase 9 evaluator
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
           EXPECTED_PHASE9_REVISION=629db6294822c97690c006591802f8a47e08652e
@@ -374,7 +481,7 @@ jobs:
 
       - name: Download existing frozen Phase 9 snapshot
         id: phase9_existing
-        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
         env:
           SNAPSHOT_ARTIFACT_ID: ${{ steps.phase9_artifacts.outputs.snapshot_id }}
         run: |
@@ -394,7 +501,7 @@ jobs:
 
       - name: Prepare one-shot Phase 9 V2 snapshot candidate
         id: phase9_prepare
-        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
           rm -rf phase9-candidate
@@ -423,7 +530,8 @@ jobs:
           echo "snapshot_root=phase9-candidate" >> "$GITHUB_OUTPUT"
 
       - name: Prepare terminal insufficient-evidence artifact
-        if: ${{ steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        id: phase9_terminal
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
         run: |
           set -euo pipefail
           rm -rf phase9-terminal
@@ -462,7 +570,7 @@ jobs:
           PY
 
       - name: Upload terminal insufficient-evidence result
-        if: ${{ steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-phase9-terminal-insufficient
@@ -472,7 +580,7 @@ jobs:
           compression-level: 6
 
       - name: Upload frozen one-shot Phase 9 snapshot
-        if: ${{ steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-phase9-frozen-snapshot
@@ -483,7 +591,7 @@ jobs:
 
       - name: Evaluate frozen one-shot Phase 9 snapshot
         id: phase9_evaluate
-        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
         env:
           EXISTING_SNAPSHOT_ROOT: ${{ steps.phase9_existing.outputs.snapshot_root }}
           NEW_SNAPSHOT_ROOT: ${{ steps.phase9_prepare.outputs.snapshot_root }}
@@ -508,13 +616,119 @@ jobs:
           printf '%s\n' "$SNAPSHOT_ROOT" > phase9-evaluation/snapshot-root.txt
 
       - name: Upload one-shot Phase 9 evaluation
-        if: ${{ steps.phase9_evaluate.outcome == 'success' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_evaluate.outcome == 'success' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-phase9-evaluation
           path: phase9-evaluation/
           if-no-files-found: error
           retention-days: 90
+          compression-level: 6
+
+      - name: Build durable Phase 9 final state candidate
+        id: phase9_state_candidate
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' && (steps.phase9_existing_final.outcome == 'success' || steps.phase9_terminal.outcome == 'success' || steps.phase9_evaluate.outcome == 'success') }}
+        env:
+          EXISTING_FINAL_ROOT: ${{ steps.phase9_existing_final.outputs.final_root }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-persist
+          mkdir -p phase9-persist
+          EXISTING_ROOT="$EXISTING_FINAL_ROOT"
+          EXISTING_ROOT="$EXISTING_ROOT" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          existing_root = os.environ.get("EXISTING_ROOT", "").strip()
+          if existing_root:
+              root = Path(existing_root)
+          elif Path("phase9-evaluation/evaluation.json").is_file():
+              root = Path("phase9-evaluation")
+          elif Path("phase9-terminal/terminal-status.json").is_file():
+              root = Path("phase9-terminal")
+          else:
+              raise SystemExit("no Phase 9 final payload is available for persistence")
+
+          snapshot = json.loads((root / "snapshot.json").read_text(encoding="utf-8"))
+          readiness = json.loads(
+              (root / "phase9-readiness.json").read_text(encoding="utf-8")
+          )
+          evaluation_path = root / "evaluation.json"
+          terminal_path = root / "terminal-status.json"
+          evaluation = (
+              json.loads(evaluation_path.read_text(encoding="utf-8"))
+              if evaluation_path.is_file()
+              else None
+          )
+          terminal = (
+              json.loads(terminal_path.read_text(encoding="utf-8"))
+              if terminal_path.is_file()
+              else None
+          )
+          if (evaluation is None) == (terminal is None):
+              raise SystemExit("Phase 9 durable state requires exactly one final outcome")
+          if snapshot.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 durable snapshot must be one-shot OOS")
+          if readiness.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 durable readiness must be one-shot OOS")
+          if evaluation is not None:
+              if evaluation.get("one_shot_oos") is not True:
+                  raise SystemExit("Phase 9 evaluation must be one-shot OOS")
+              if evaluation.get("snapshot_id") != snapshot.get("snapshot_id"):
+                  raise SystemExit("Phase 9 evaluation snapshot id mismatch")
+              protocol_state = "evaluated"
+              economic_claim = evaluation.get("economic_claim")
+          else:
+              if terminal.get("one_shot_oos") is not True:
+                  raise SystemExit("Phase 9 terminal state must be one-shot OOS")
+              if terminal.get("snapshot_id") != snapshot.get("snapshot_id"):
+                  raise SystemExit("Phase 9 terminal snapshot id mismatch")
+              protocol_state = "insufficient_evidence"
+              economic_claim = terminal.get("economic_claim")
+
+          base = {
+              "schema_version": 1,
+              "protocol_id": "v2-phase9-one-shot",
+              "protocol_state": protocol_state,
+              "one_shot_oos": True,
+              "economic_claim": economic_claim,
+              "evaluator_revision": "629db6294822c97690c006591802f8a47e08652e",
+              "curator_code_revision": Path("intake/curator-head.txt").read_text().strip(),
+              "source_curator_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_curator_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "mainnet_attestation_id": snapshot.get("mainnet_attestation_id"),
+              "snapshot": snapshot,
+              "readiness": readiness,
+              "evaluation": evaluation,
+              "terminal": terminal,
+              "network_access": False,
+              "live_orders": False,
+          }
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          payload = {**base, "final_id": hashlib.sha256(encoded).hexdigest()}
+          Path("phase9-persist/phase9-v2-final.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload durable Phase 9 state candidate
+        if: ${{ steps.phase9_state_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-phase9-state-candidate-${{ github.run_id }}
+          path: phase9-persist/
+          if-no-files-found: error
+          retention-days: 7
           compression-level: 6
 
       - name: Upload intake audit
@@ -528,7 +742,7 @@ jobs:
           compression-level: 6
 
       - name: Upload rolled attested corpus
-        if: ${{ always() && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-mainnet-corpus
@@ -538,7 +752,7 @@ jobs:
           compression-level: 6
 
       - name: Enforce successful source verification
-        if: always()
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' }}
         env:
           SOURCE_VERIFIED: ${{ steps.intake.outputs.source_verified }}
           SOURCE_ARTIFACT_FOUND: ${{ steps.intake.outputs.source_artifact_found }}
@@ -548,4 +762,115 @@ jobs:
               || [ "$SOURCE_VERIFIED" != "true" ]; }; then
             echo "Successful V2 campaign did not produce independently verified evidence" >&2
             exit 1
+          fi
+
+  persist-phase9-state:
+    needs: curate
+    if: ${{ always() && needs.curate.outputs.phase9_state_candidate_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
+    steps:
+      - name: Download durable state candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: v2-phase9-state-candidate-${{ github.run_id }}
+          path: phase9-state-candidate
+
+      - name: Persist append-once Phase 9 final state
+        run: |
+          set -euo pipefail
+          CANDIDATE=phase9-state-candidate/phase9-v2-final.json
+          if [ ! -f "$CANDIDATE" ]; then
+            echo "Phase 9 durable state candidate is missing" >&2
+            exit 51
+          fi
+          CANDIDATE_ID=$(python3 - "$CANDIDATE" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          expected = hashlib.sha256(encoded).hexdigest()
+          if final_id != expected:
+              raise SystemExit("Phase 9 candidate final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("Phase 9 candidate protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 candidate is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("Phase 9 candidate violates offline-only semantics")
+          print(final_id)
+          PY
+          )
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-state-branch.json
+          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$STATE_ENDPOINT" > /tmp/phase9-existing-meta.json 2> /tmp/phase9-existing.stderr
+          EXISTING_STATUS=$?
+          set -e
+          if [ "$EXISTING_STATUS" -eq 0 ]; then
+            EXISTING_ID=$(python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-existing-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          print(payload.get("final_id", ""))
+          PY
+            )
+            if [ "$EXISTING_ID" = "$CANDIDATE_ID" ]; then
+              echo "Durable Phase 9 state already exists with identical final_id"
+              exit 0
+            fi
+            echo "Refusing to replace existing durable Phase 9 final state" >&2
+            exit 52
+          elif ! grep -q "HTTP 404" /tmp/phase9-existing.stderr; then
+            cat /tmp/phase9-existing.stderr >&2
+            exit "$EXISTING_STATUS"
+          fi
+
+          ENCODED=$(base64 -w0 "$CANDIDATE")
+          gh api --method PUT \
+            "repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE" \
+            -f message="Persist immutable Phase 9 V2 final state" \
+            -f content="$ENCODED" \
+            -f branch="$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-persist-result.json
+
+          gh api "$STATE_ENDPOINT" > /tmp/phase9-confirm-meta.json
+          CONFIRMED_ID=$(python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-confirm-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          print(payload.get("final_id", ""))
+          PY
+          )
+          if [ "$CONFIRMED_ID" != "$CANDIDATE_ID" ]; then
+            echo "Persisted Phase 9 final state does not match candidate" >&2
+            exit 53
           fi
