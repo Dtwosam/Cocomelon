@@ -1,0 +1,431 @@
+name: Phase 9 Selection Audit Archive
+
+on:
+  workflow_run:
+    workflows: ["Verified V2 Mainnet Evidence Corpus Curator"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: phase9-v2-selection-audit-archive
+  cancel-in-progress: false
+
+jobs:
+  build-archive:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      ready: ${{ steps.build_candidate.outputs.ready }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_CURATOR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
+      PHASE9_SELECTION_AUDIT_ARCHIVE_FILE: phase9-v2-selection-audits.json
+      ARCHIVE_TOOL_REVISION: 0d3c4240bf49987e8ffe16deecddfe18405006ee
+    steps:
+      - name: Inspect durable Phase 9 final and audit archive state
+        id: state
+        run: |
+          set -euo pipefail
+          mkdir -p archive-input
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > archive-input/phase9-state-branch.json
+
+          FINAL_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$FINAL_ENDPOINT" \
+            > archive-input/phase9-final-meta.json \
+            2> archive-input/phase9-final.stderr
+          FINAL_STATUS=$?
+          set -e
+          if [ "$FINAL_STATUS" -ne 0 ]; then
+            if ! grep -q "HTTP 404" archive-input/phase9-final.stderr; then
+              cat archive-input/phase9-final.stderr >&2
+              exit "$FINAL_STATUS"
+            fi
+            gh api \
+              "repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1" \
+              > archive-input/phase9-final-history.json
+            if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("archive-input/phase9-final-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PY
+            then
+              echo "Phase 9 final state was previously recorded but is now missing" >&2
+              exit 61
+            fi
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+            echo "archive_exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("archive-input/phase9-final-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if final_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Durable Phase 9 final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("Durable Phase 9 protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Durable Phase 9 final is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("Durable Phase 9 final violates offline-only semantics")
+          Path("archive-input/phase9-v2-final.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          Path("archive-input/phase9-final-id.txt").write_text(
+              str(final_id) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "final_exists=true" >> "$GITHUB_OUTPUT"
+
+          ARCHIVE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_SELECTION_AUDIT_ARCHIVE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$ARCHIVE_ENDPOINT" \
+            > archive-input/phase9-archive-meta.json \
+            2> archive-input/phase9-archive.stderr
+          ARCHIVE_STATUS=$?
+          set -e
+          if [ "$ARCHIVE_STATUS" -eq 0 ]; then
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("archive-input/phase9-archive-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          archive_id = payload.get("archive_id")
+          base = {key: value for key, value in payload.items() if key != "archive_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if archive_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Durable selection audit archive_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot-selection-audits":
+              raise SystemExit("Durable selection audit archive protocol id is invalid")
+          expected_final_id = Path("archive-input/phase9-final-id.txt").read_text().strip()
+          if payload.get("phase9_final_id") != expected_final_id:
+              raise SystemExit("Durable selection audit archive does not match Phase 9 final")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("Durable selection audit archive violates offline-only semantics")
+          PY
+            echo "archive_exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! grep -q "HTTP 404" archive-input/phase9-archive.stderr; then
+            cat archive-input/phase9-archive.stderr >&2
+            exit "$ARCHIVE_STATUS"
+          fi
+          gh api \
+            "repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_SELECTION_AUDIT_ARCHIVE_FILE&per_page=1" \
+            > archive-input/phase9-archive-history.json
+          if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("archive-input/phase9-archive-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PY
+          then
+            echo "Phase 9 selection audit archive was previously recorded but is now missing" >&2
+            exit 62
+          fi
+          echo "archive_exists=false" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout pinned selection audit archive tooling
+        if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: 0d3c4240bf49987e8ffe16deecddfe18405006ee
+          path: archive-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install and assert pinned archive tooling
+        if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          ACTUAL_ARCHIVE_TOOL_REVISION=$(git -C archive-tooling rev-parse HEAD)
+          if [ "$ACTUAL_ARCHIVE_TOOL_REVISION" != "$ARCHIVE_TOOL_REVISION" ]; then
+            echo "Archive tooling revision mismatch" >&2
+            exit 41
+          fi
+          python -m pip install --upgrade pip
+          python -m pip install -e ./archive-tooling
+
+      - name: Fetch exact finalizing curator corpus
+        id: corpus
+        if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p corpus-download
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_CURATOR_RUN_ID/artifacts?per_page=100" \
+            > archive-input/source-curator-artifacts.json
+          CORPUS_ARTIFACT_ID=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("archive-input/source-curator-artifacts.json").read_text())
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == "v2-mainnet-corpus"
+              and item.get("expired", False) is False
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  "Finalized Phase 9 run does not contain exactly one current corpus artifact"
+              )
+          print(matches[0]["id"])
+          PY
+          )
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$CORPUS_ARTIFACT_ID/zip" \
+            > archive-input/finalizing-corpus.zip
+          unzip -q archive-input/finalizing-corpus.zip -d corpus-download
+          mapfile -t ATTESTATIONS < <(find corpus-download -type f -name mainnet-attestation.json -print)
+          if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
+            echo "Finalizing corpus must contain exactly one mainnet-attestation.json" >&2
+            exit 42
+          fi
+          CORPUS_ROOT=$(dirname "${ATTESTATIONS[0]}")
+          if [ ! -f "$CORPUS_ROOT/corpus-index.json" ]; then
+            echo "Finalizing corpus is missing corpus-index.json" >&2
+            exit 42
+          fi
+          echo "corpus_root=$CORPUS_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Build immutable selection audit archive candidate
+        id: build_candidate
+        if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' && steps.corpus.outcome == 'success' }}
+        env:
+          CORPUS_ROOT: ${{ steps.corpus.outputs.corpus_root }}
+        run: |
+          set -euo pipefail
+          mkdir -p archive-candidate
+          python -m cocomelon.ops.selection_audit_archive \
+            --corpus-root "$CORPUS_ROOT" \
+            --phase9-final archive-input/phase9-v2-final.json \
+            --archive-tool-revision "$ARCHIVE_TOOL_REVISION" \
+            --out archive-candidate/phase9-v2-selection-audits.json \
+            > archive-input/selection-audit-archive-command.json
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload durable selection audit archive candidate
+        if: ${{ steps.build_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-phase9-selection-audit-archive-candidate-${{ github.run_id }}
+          path: archive-candidate/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+
+  persist-archive:
+    needs: build-archive
+    if: ${{ always() && needs.build-archive.outputs.ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
+      PHASE9_SELECTION_AUDIT_ARCHIVE_FILE: phase9-v2-selection-audits.json
+    steps:
+      - name: Download archive candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: v2-phase9-selection-audit-archive-candidate-${{ github.run_id }}
+          path: archive-candidate
+
+      - name: Persist append-once Phase 9 selection audit archive
+        run: |
+          set -euo pipefail
+          CANDIDATE=archive-candidate/phase9-v2-selection-audits.json
+          if [ ! -f "$CANDIDATE" ]; then
+            echo "Selection audit archive candidate is missing" >&2
+            exit 51
+          fi
+          CANDIDATE_IDS=$(python3 - "$CANDIDATE" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          archive_id = payload.get("archive_id")
+          base = {key: value for key, value in payload.items() if key != "archive_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if archive_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Selection audit archive candidate archive_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot-selection-audits":
+              raise SystemExit("Selection audit archive candidate protocol id is invalid")
+          if payload.get("economic_claim") != "none":
+              raise SystemExit("Selection audit archive candidate economic claim is invalid")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("Selection audit archive candidate violates offline-only semantics")
+          print(f"{archive_id}\t{payload.get('phase9_final_id', '')}")
+          PY
+          )
+          CANDIDATE_ARCHIVE_ID=${CANDIDATE_IDS%%$'\t'*}
+          CANDIDATE_FINAL_ID=${CANDIDATE_IDS#*$'\t'}
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-state-branch.json
+          FINAL_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          gh api "$FINAL_ENDPOINT" > /tmp/phase9-final-meta.json
+          CURRENT_FINAL_ID=$(python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-final-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if final_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Durable Phase 9 final_id is invalid during archive persistence")
+          print(final_id)
+          PY
+          )
+          if [ "$CURRENT_FINAL_ID" != "$CANDIDATE_FINAL_ID" ]; then
+            echo "Durable Phase 9 final changed before archive persistence" >&2
+            exit 52
+          fi
+
+          ARCHIVE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_SELECTION_AUDIT_ARCHIVE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$ARCHIVE_ENDPOINT" > /tmp/phase9-existing-archive-meta.json \
+            2> /tmp/phase9-existing-archive.stderr
+          EXISTING_STATUS=$?
+          set -e
+          if [ "$EXISTING_STATUS" -eq 0 ]; then
+            EXISTING_ARCHIVE_ID=$(python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-existing-archive-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          archive_id = payload.get("archive_id")
+          base = {key: value for key, value in payload.items() if key != "archive_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if archive_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Existing durable selection audit archive_id is invalid")
+          print(archive_id)
+          PY
+            )
+            if [ "$EXISTING_ARCHIVE_ID" = "$CANDIDATE_ARCHIVE_ID" ]; then
+              echo "Durable selection audit archive already exists with identical archive_id"
+              exit 0
+            fi
+            echo "Refusing to replace existing durable selection audit archive" >&2
+            exit 53
+          elif ! grep -q "HTTP 404" /tmp/phase9-existing-archive.stderr; then
+            cat /tmp/phase9-existing-archive.stderr >&2
+            exit "$EXISTING_STATUS"
+          fi
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_SELECTION_AUDIT_ARCHIVE_FILE&per_page=1" \
+            > /tmp/phase9-archive-history.json
+          if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("/tmp/phase9-archive-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PY
+          then
+            echo "Phase 9 selection audit archive was previously recorded but is now missing" >&2
+            exit 54
+          fi
+
+          ENCODED=$(base64 -w0 "$CANDIDATE")
+          gh api --method PUT \
+            "repos/$GITHUB_REPOSITORY/contents/$PHASE9_SELECTION_AUDIT_ARCHIVE_FILE" \
+            -f message="Persist immutable Phase 9 V2 selection audit archive" \
+            -f content="$ENCODED" \
+            -f branch="$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-archive-persist-result.json
+
+          gh api "$ARCHIVE_ENDPOINT" > /tmp/phase9-confirm-archive-meta.json
+          CONFIRMED_ARCHIVE_ID=$(python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-confirm-archive-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          print(payload.get("archive_id", ""))
+          PY
+          )
+          if [ "$CONFIRMED_ARCHIVE_ID" != "$CANDIDATE_ARCHIVE_ID" ]; then
+            echo "Persisted selection audit archive does not match candidate" >&2
+            exit 55
+          fi
