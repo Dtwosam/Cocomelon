@@ -68,6 +68,33 @@ def _make_attempt(
     return attempt_root
 
 
+def _write_eligibility_probe(
+    attempt_root: Path,
+    *,
+    economic_eligible: bool,
+    reasons: list[str],
+    opened_positions: int,
+    closed_positions: int,
+) -> None:
+    _write_json(
+        attempt_root / "eligibility-probe.json",
+        {
+            "schema_version": 1,
+            "economic_claim": "none",
+            "economic_eligible": economic_eligible,
+            "economic_ineligibility_reasons": reasons,
+            "replay_data_complete": True,
+            "dataset_data_complete": True,
+            "dataset_gap_refs_empty": True,
+            "opened_positions": opened_positions,
+            "closed_positions": closed_positions,
+            "flat_replay": opened_positions == closed_positions,
+            "network_access": False,
+            "live_orders": False,
+        },
+    )
+
+
 def test_attempt_ledger_records_rejected_gap_attempt(tmp_path: Path) -> None:
     diagnostics = tmp_path / "diagnostics"
     _make_attempt(diagnostics, 1, gap_count=1, gap_watch_status=20)
@@ -118,6 +145,55 @@ def test_attempt_ledger_is_deterministic_and_marks_exact_admission(tmp_path: Pat
     assert payload["attempts"][1]["status"] == "admitted"
     assert payload["attempts"][1]["admitted"] is True
     assert payload["attempts"][1]["rejection_reasons"] == []
+
+
+def test_attempt_ledger_records_right_censored_retry_selection(tmp_path: Path) -> None:
+    diagnostics = tmp_path / "diagnostics"
+    first_attempt = _make_attempt(diagnostics, 1, gap_count=0)
+    second_attempt = _make_attempt(diagnostics, 2, gap_count=0)
+    _write_eligibility_probe(
+        first_attempt,
+        economic_eligible=False,
+        reasons=["open_exposure"],
+        opened_positions=1,
+        closed_positions=0,
+    )
+    _write_eligibility_probe(
+        second_attempt,
+        economic_eligible=True,
+        reasons=[],
+        opened_positions=1,
+        closed_positions=1,
+    )
+    output = diagnostics / "cohort-attempts.json"
+
+    result = _run_ledger(diagnostics, output, admitted_attempt="2")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["attempt_count"] == 2
+    assert payload["admitted_attempt"] == 2
+    first = payload["attempts"][0]
+    second = payload["attempts"][1]
+    assert first["status"] == "rejected"
+    assert first["rejection_reasons"] == ["admission_open_exposure"]
+    assert first["eligibility_probe"] == {
+        "dataset_data_complete": True,
+        "dataset_gap_refs_empty": True,
+        "economic_claim": "none",
+        "economic_eligible": False,
+        "economic_ineligibility_reasons": ["open_exposure"],
+        "flat_replay": False,
+        "network_access": False,
+        "opened_positions": 1,
+        "closed_positions": 0,
+        "replay_data_complete": True,
+        "schema_version": 1,
+        "live_orders": False,
+    }
+    assert second["status"] == "admitted"
+    assert second["rejection_reasons"] == []
+    assert second["eligibility_probe"]["economic_eligible"] is True
 
 
 def test_attempt_ledger_survives_truncated_transport_after_gap_abort(tmp_path: Path) -> None:
