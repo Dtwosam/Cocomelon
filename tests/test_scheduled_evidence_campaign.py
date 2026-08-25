@@ -89,3 +89,18 @@ def test_scheduled_campaign_fails_closed_if_durable_state_branch_disappears() ->
     assert branch_check in text
     assert state_endpoint in text
     assert text.index(branch_check) < text.index(state_endpoint)
+
+
+def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
+    text = _workflow_text()
+
+    history_endpoint = (
+        'STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha='
+        '$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"'
+    )
+    assert history_endpoint in text
+    assert "phase9-state-history.json" in text
+    assert "previously recorded but is now missing" in text
+    check = text.index("Check durable Phase 9 final state")
+    checkout = text.index("Checkout pinned V2 evidence revision")
+    assert check < text.index(history_endpoint) < checkout
