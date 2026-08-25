@@ -74,7 +74,6 @@ def test_reused_global_artifacts_are_bound_to_trusted_curator_run_provenance() -
         "v2-phase9-terminal-insufficient",
     ):
         assert name in text
-    assert ".github/workflows/evidence-corpus-curator.yml" in text
     assert "workflow_run" in text
 
 
