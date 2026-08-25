@@ -249,3 +249,60 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
     assert summary.reconnect_count >= 1
     assert primary.closed is True
     assert standby.closed is True
+
+
+def test_subscribed_standby_covers_disconnect_before_its_first_market_event(
+    tmp_path: Path,
+) -> None:
+    config = EvidenceRecordingConfig(
+        duration_seconds=0.20,  # type: ignore[arg-type]
+        deep_limit=1,
+        context_poll_seconds=60,
+        funding_poll_seconds=60,
+    )
+    primary = ScriptedConnection(
+        [_trade(1, 1_000), ConnectionError("primary dropped")],
+        row_delays_seconds=[0.0, 0.04],
+    )
+    standby = ScriptedConnection(
+        [_trade(2, 2_000)],
+        row_delays_seconds=[0.08],
+    )
+    pool = [primary, standby]
+    tick = 3_000
+
+    async def connection_factory() -> ScriptedConnection:
+        return pool.pop(0)
+
+    def clock_ms() -> int:
+        nonlocal tick
+        tick += 1
+        return tick
+
+    summary = asyncio.run(
+        run_bounded_recording(
+            bootstrap=_bootstrap(config),
+            reader=Reader(),
+            connection_factory=connection_factory,
+            recorder=DurableRecorder(tmp_path),
+            config=config,
+            clock_ms=clock_ms,
+            utcnow=lambda: RECEIVED,
+        )
+    )
+
+    rows = _rows(tmp_path)
+    trade_rows = [
+        row
+        for row in rows
+        if row.get("record_type") == "normalized_event" and row.get("kind") == "trade"
+    ]
+    gap_rows = [row for row in rows if row.get("record_type") == "data_gap"]
+
+    assert [row["event_key"] for row in trade_rows] == [
+        "trades:BTC:1000:1",
+        "trades:BTC:2000:2",
+    ]
+    assert gap_rows == []
+    assert summary.gap_count == 0
+    assert summary.reconnect_count >= 1
