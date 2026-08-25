@@ -88,6 +88,15 @@ def test_curator_can_skip_newer_untrusted_artifact_for_older_trusted_candidate()
     assert "TRUSTED_RUN_ID" in text
 
 
+def test_curator_recreates_intake_directory_after_checkout_before_selector() -> None:
+    text = _text()
+
+    prepare = text.index("- name: Prepare trusted curator artifact selector")
+    selector = text.index("cat > intake/select-trusted-curator-artifact.sh", prepare)
+    mkdir = text.find("mkdir -p intake", prepare, selector)
+    assert mkdir != -1
+
+
 def test_curator_requires_selection_audit_for_post_introduction_campaigns() -> None:
     text = _text()
 
