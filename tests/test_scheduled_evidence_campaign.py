@@ -4,7 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
 PINNED_CODE = "7cf19ab81fa609fed4171ea8ed1f06d85f91e793"
-ATTEMPT_LEDGER_REVISION = "21da9c24b78fea89bb525af32132d103e82cf245"
+ATTEMPT_LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
 
