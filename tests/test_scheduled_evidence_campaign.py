@@ -122,3 +122,11 @@ def test_scheduled_campaign_persists_attempt_ledger_before_terminal_failure() ->
     assert "--admitted-attempt \"$CLEAN_ATTEMPT\"" in text
     assert "attempt-ledger-revision.txt" in text
     assert text.index(ledger_command) < text.index(terminal_failure)
+
+
+def test_scheduled_campaign_has_bounded_main_push_launch_hook() -> None:
+    text = _workflow_text()
+
+    assert "push:" in text
+    assert "branches: [main]" in text
+    assert '      - ".github/workflows/evidence-campaign-scheduled.yml"' in text
