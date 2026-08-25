@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-corpus-curator.yml")
+FROZEN_EVALUATOR_SHA = "629db6294822c97690c006591802f8a47e08652e"
 
 
 def _text() -> str:
@@ -51,3 +52,20 @@ def test_curator_preserves_corpus_if_phase9_downstream_fails() -> None:
     guard = text[max(0, upload - 300) : upload]
     assert "always()" in guard
     assert "steps.aggregate.outcome == 'success'" in guard
+
+
+def test_curator_uses_immutable_phase9_evaluator_revision() -> None:
+    text = _text()
+
+    checkout = f"ref: {FROZEN_EVALUATOR_SHA}"
+    install = "python -m pip install -e ./phase9-tooling"
+    prepare = "cocomelon-mainnet-evidence prepare-phase9-v2"
+    evaluate = "cocomelon-mainnet-evidence evaluate-phase9-v2"
+
+    assert checkout in text
+    assert "path: phase9-tooling" in text
+    assert "git -C phase9-tooling rev-parse HEAD" in text
+    assert "phase9-tooling-revision.txt" in text
+    assert install in text
+    assert text.index(checkout) < text.index(install) < text.index(prepare)
+    assert text.index(install) < text.index(evaluate)
