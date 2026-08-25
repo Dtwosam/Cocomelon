@@ -98,6 +98,15 @@ jobs:
           ref: 7cf19ab81fa609fed4171ea8ed1f06d85f91e793
           fetch-depth: 1
 
+      - name: Checkout pinned attempt ledger tooling
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: 2a9f01d86218dca98d2d84a4ae0e2e28c69975a7
+          path: campaign-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
       - uses: actions/setup-python@v5
         if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         with:
@@ -235,6 +244,14 @@ jobs:
             fi
             rm -rf "$ATTEMPT_ROOT"
           done
+
+          git -C campaign-tooling rev-parse HEAD \
+            > evidence-cohort/diagnostics/attempt-ledger-revision.txt
+          python campaign-tooling/src/cocomelon/ops/attempt_ledger.py \
+            --diagnostics-root evidence-cohort/diagnostics \
+            --out evidence-cohort/diagnostics/cohort-attempts.json \
+            --admitted-attempt "$CLEAN_ATTEMPT" \
+            > evidence-cohort/diagnostics/cohort-attempts-command.json
 
           if [ -z "$CLEAN_ATTEMPT" ]; then
             echo "No merged-gap-free mainnet capture completed in the bounded retry cohort" >&2
