@@ -1,188 +1,227 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-08-24  
+**Last updated:** 2026-08-25  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Live trading:** **DISABLED**
+**Verified main revision:** `bedd05cfafe5e22b358fc49d0d3e67855c28ca80`  
+**Live trading:** **DISABLED**  
+**Real baseline edge:** **UNMEASURED**  
+**Phase 10:** **BLOCKED**
 
 ## Current state
 
-**Latest merged engineering milestone:** Phase 9 genuine-mainnet evidence campaign controls and fail-fast acquisition support  
-**Phase 9 evaluator:** MERGED  
-**Phase 9 evidence aggregation:** PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`  
-**Phase 9 genuine-mainnet attestation:** PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`  
-**Phase 9 offline cohort verification:** PR #27 — MERGED at `7be48ed59aa073015042881cbfbe75caa7e08f08`  
-**Phase 9 evidence-progress precheck:** PR #28 — MERGED at `ae31c1f7445fb8622a393e5e6223157a6c0cf54b`  
-**Phase 9 fail-fast gap watcher:** PR #29 — MERGED at `390d4ba39abe4fe3f476af68587f13f2371d9cba`  
-**Pinned trading/evidence revision under test:** `571c13bfe0bab0312940617540ec973ee3eee3c5`  
-**Pinned operational gap-watcher revision:** `390d4ba39abe4fe3f476af68587f13f2371d9cba`  
-**Current evidence-runner head:** `7f577c6cf19d6c001183247c3736037fe95bffee` on intentionally unmerged PR #22  
-**Real baseline evidence status:** **UNMEASURED**  
-**Phase 9 economic/research exit gate:** PENDING sufficient clean attested genuine-mainnet evidence  
-**Phase 10:** BLOCKED pending a genuine Phase 9 baseline evaluation that satisfies the locked evidence policy
+The engineering path through genuine-mainnet evidence collection, attestation, accumulation, and a one-shot Phase 9 OOS evaluation is now automated and fail-closed.
 
-`main` was verified at `390d4ba39abe4fe3f476af68587f13f2371d9cba` after merging PR #29.
+The two immutable revisions that matter for the current research campaign are:
 
-## Phase 9 evaluator
+- **Campaign V2 strategy/risk/execution/evidence revision:** `7cf19ab81fa609fed4171ea8ed1f06d85f91e793`;
+- **Frozen one-shot Phase 9 evaluator revision:** `629db6294822c97690c006591802f8a47e08652e`.
 
-The merged Phase 9 evaluator provides deterministic, fail-closed research gates around trusted Phase 8 replay/journal outputs. It includes immutable evaluation facts and datasets, time-based train/validation/test partitions, six-hour purge/embargo, untouched-OOS consumption tracking, deterministic cost-aware metrics and bootstrap confidence intervals, walk-forward evaluation, market/regime/strategy/direction/time/score-bucket diagnostics, fixed predeclared fee/slippage/funding stress profiles, sampled `NO_TRADE` diagnostics, and five explicit evidence states:
+The curator may continue to evolve operationally, but untouched-test snapshot preparation and evaluation are executed with the frozen evaluator revision above. Strategy, risk, sizing, and paper execution are not changed by the curator.
 
-- `INVALID_EVIDENCE`
-- `OOS_CONTAMINATED`
-- `INSUFFICIENT_EVIDENCE`
-- `NO_EDGE_DEMONSTRATED`
-- `CANDIDATE_EDGE`
+No real-money order path is enabled or authorized.
 
-Its versioned V1 research policy remains:
+## Locked Phase 9 evidence policy
 
-- minimum untouched OOS trades: 100;
-- minimum OOS covered days: 30;
-- minimum eligible walk-forward windows: 3;
-- minimum trades per walk-forward window: 20;
-- minimum score-bucket trades: 20;
-- minimum positive walk-forward-window fraction: 60%;
-- bootstrap confidence: 95%;
-- day-block bootstrap size: 5 days;
-- bootstrap resamples: 2,000;
-- split embargo: 6 hours;
-- sampled `NO_TRADE` horizons: 1 hour and 4 hours.
+The merged Phase 9 evaluator remains the authoritative economic gate. Its locked policy requires:
 
-`CANDIDATE_EDGE` additionally requires positive untouched-test mean net R, bootstrap lower bound > 0, positive/stable eligible walk-forward behavior, market positive-PnL concentration <=35%, and seven-day concentration <=50%.
+- at least 100 untouched OOS closed trades;
+- at least 30 OOS covered days;
+- at least 3 eligible walk-forward windows;
+- at least 20 trades per eligible walk-forward window;
+- at least 20 trades per score bucket;
+- at least 60% positive eligible walk-forward windows;
+- 95% bootstrap confidence;
+- 5-day day-block bootstrap;
+- 2,000 bootstrap resamples;
+- 6-hour split embargo;
+- sampled `NO_TRADE` horizons of 1 hour and 4 hours.
 
-## Genuine-mainnet evidence pipeline
+`CANDIDATE_EDGE` additionally requires positive untouched-test mean net R, a bootstrap lower confidence bound above zero, stable positive walk-forward behavior, market positive-PnL concentration no greater than 35%, and seven-day concentration no greater than 50%.
 
-The Phase 9 evidence path supports genuine public Hyperliquid mainnet recordings through deterministic paper replay and evaluation without enabling live trading.
+The evaluator exposes the explicit evidence states:
 
-Merged capability includes:
+- `INVALID_EVIDENCE`;
+- `OOS_CONTAMINATED`;
+- `INSUFFICIENT_EVIDENCE`;
+- `NO_EDGE_DEMONSTRATED`;
+- `CANDIDATE_EDGE`.
 
-- public Hyperliquid mainnet-only recording with immutable recording-session identity;
-- pinned source-code revision binding for the strategy/risk/execution code under test;
-- offline frozen replay bundles and deterministic baseline replay;
-- canonical replay/journal/fact aggregation across separate cohort artifacts sharing one fixed code revision;
-- idempotent evidence-store merging with rollback-safe pair replacement;
-- genuine-mainnet attestation that binds cohort metadata to canonical replay results, bundle/session identity, code revision, and source-file digests;
-- rejection of non-mainnet endpoints, live-order semantics, gaps, duplicates, anomalies, incomplete replays, metadata/replay mismatches, reused recording sessions, and overlapping cohort time windows;
-- exact-attested-run-set dataset freezing to prevent post-hoc favorable-run selection;
-- a dedicated offline-only `cocomelon-mainnet-evidence` command surface with `verify`, `aggregate`, `progress`, and `freeze-dataset`;
-- a counts-only `progress` precheck that reports attested run count, closed trades, closed-trade days, and shortfalls versus the locked 100-trade/30-day minimum without computing PnL or edge;
-- canonical closed-trade cross-checking before progress counts are reported, preventing post-attestation journal additions from inflating campaign progress;
-- no testnet, live-order, wallet, signing, transfer, withdrawal, private-account, optimizer/search, or Phase 10 activation path in the evidence tool.
+Phase 10 remains blocked unless a genuine one-shot Phase 9 result satisfies the locked policy.
 
-## Evidence acquisition controls
+## Scheduled genuine-mainnet Campaign V2
 
-PR #29 added a small stdlib-only operational watcher that observes the durable recorder `gaps/` partition and sends `SIGTERM` to the known recorder child process on the first non-empty fsynced gap segment. The helper does not import market-data, strategy, risk, execution, wallet, or network capability.
+`.github/workflows/evidence-campaign-scheduled.yml` is the sole production evidence-acquisition path. It is scheduled at `37 1,7,13,19 * * *` UTC and also supports manual workflow dispatch.
 
-The intentionally unmerged evidence-runner PR #22 is now at `7f577c6cf19d6c001183247c3736037fe95bffee` and has been hardened to:
+Campaign V2 is pinned to `7cf19ab81fa609fed4171ea8ed1f06d85f91e793` and enforces:
 
-- keep trading/replay code pinned independently at `571c13bfe0bab0312940617540ec973ee3eee3c5`;
-- pin the operational gap watcher independently at `390d4ba39abe4fe3f476af68587f13f2371d9cba`;
-- terminate a dirty 45-minute acquisition attempt after the first durable gap instead of knowingly spending the rest of the attempt on inadmissible evidence;
-- preserve per-attempt recorder/watcher exit statuses, timestamps, recording-session metadata, recorder manifest, watcher output, and gap rows as diagnostics before retrying;
-- still require final recorder-reported zero gaps, zero duplicates, zero anomalies, public-network recording, and `live_orders=false` before accepting a cohort;
-- serialize future PR #22 workflow runs with a per-PR concurrency group and `cancel-in-progress=false`, preserving the active cohort while preventing overlapping successors.
+- public Hyperliquid **mainnet** only;
+- API endpoint `https://api.hyperliquid.xyz`;
+- WebSocket endpoint `wss://api.hyperliquid.xyz/ws`;
+- paper execution only;
+- two independent public-mainnet WebSocket lanes;
+- merged-feed failover/backfill and cross-lane duplicate suppression;
+- durable fail-fast termination when the merged feed records a real gap;
+- up to two bounded 45-minute acquisition attempts;
+- zero merged gaps, duplicates, and anomalies for an economically eligible capture;
+- replay and dataset completeness;
+- flat paper exposure at replay end;
+- no edge/PnL scoring during acquisition;
+- 90-day artifact retention;
+- serialized campaign execution with `cancel-in-progress=false`.
 
-The runner-control integration was staged and CI-checked on PR #30 against the runner branch. PR #22 was temporarily retargeted away from `main` while that staging PR was merged into its head, then restored to `main`; verification showed only normal CI was launched for the new runner head, not another evidence cohort. This avoided overlapping the still-running cohort.
+Lane-local reconnect, duplicate, and anomaly counters remain preserved as transport diagnostics. They are not silently erased, but covered lane-local defects do not masquerade as merged-feed corruption. Real merged coverage loss remains fatal.
 
-## First genuine 30-minute mainnet cohort
+## Genuine-mainnet admission boundary
 
-GitHub Actions run `32770800218` produced immutable artifact `genuine-mainnet-evidence-cohort-32770800218-attempt-1` from the pinned trading revision `571c13bfe0bab0312940617540ec973ee3eee3c5`.
+The dedicated offline `cocomelon-mainnet-evidence` surface now provides:
 
-The artifact is genuine public Hyperliquid mainnet evidence and paper-only:
+- `verify` — independently validate one downloaded genuine-mainnet cohort;
+- `aggregate` — idempotently append eligible cohorts to the attested corpus;
+- `progress` — counts-only corpus readiness without revealing PnL;
+- `freeze-dataset` — freeze the exact attested run set;
+- `prepare-phase9-v2` — create the deterministic one-shot Phase 9 snapshot candidate;
+- `evaluate-phase9-v2` — consume only a ready frozen snapshot through the existing Phase 9 evaluator.
 
-- workflow checkout revision: `571c13bfe0bab0312940617540ec973ee3eee3c5`;
-- runner trigger head: `6ea9915738dd80930a36a749b5f5a5e0343e8fe2`;
-- recording network access: `true`;
-- replay network access: `false`;
-- live orders: `false` throughout;
-- duration: 1,800 seconds;
-- selected markets: `AERO`, `CASHCAT`, `ENA`, `PUMP`, `PURR`;
-- recorded market events: 360,404;
-- duplicate events: 0;
-- anomalies: 0;
-- reconnects: 1;
-- recorded gaps: 60;
-- validated rows including gap records: 360,464 across 980 segments;
-- strategy decisions: 10;
-- risk approvals: 2;
-- risk rejections: 0;
-- execution attempts: 1;
-- fills: 3;
-- opened positions: 1;
-- closed positions: 0;
-- closed trades: 0;
-- final paper equity: `9992.897173445500000000000000` while an ENA short remained open;
-- replay `data_complete`: `false`;
-- frozen evaluation dataset trades: 0.
+The command surface is local/offline only. Regression tests explicitly reject `--testnet`, `--live`, `--api-url`, and `--ws-url`, including value-bearing API/WS forms.
 
-The 60 gaps came from one websocket disconnect/recovery episode across subscribed channels. Because the cohort is incomplete and has no closed trades, it is **not admissible economic evidence** and the merged attestation path rejects it before it can enter the real Phase 9 aggregate.
+Genuine-mainnet attestation rejects or fails closed on, among other things:
 
-The final equity value above is not a realized profitability result because the cohort ended with an open paper position and incomplete market-data coverage.
+- wrong/non-mainnet endpoints;
+- live-order semantics;
+- incomplete replay evidence;
+- persisted merged data gaps;
+- metadata/replay lineage mismatches;
+- reused recording-session IDs across distinct runs;
+- overlapping cohort time windows;
+- conflicting incremental source payloads;
+- right-censored paper exposure at cohort end.
 
-Therefore:
+Existing attested aggregates are re-verified when they are read for append, progress, or freeze operations.
 
-**REAL BASELINE EDGE: UNMEASURED**
+## Automatic corpus curator
 
-This result is not `NO_EDGE_DEMONSTRATED`; it is insufficient/inadmissible evidence for an economic conclusion.
+`.github/workflows/evidence-corpus-curator.yml` listens for completed Campaign V2 runs and serializes corpus mutation.
 
-## Evidence campaign status
+For each campaign completion it:
 
-GitHub Actions run `32781582212` is the second non-overlapping genuine-mainnet paper cohort under the same pinned trading revision. It was triggered at runner head `164d58c343afde64d422aa472442d39b46b3041b`, before the fail-fast watcher and concurrency hardening were promoted to PR #22, so those controls do not retroactively change this in-flight run. Its result must be inspected and attested before any inclusion in the economic corpus.
+1. downloads the immutable campaign artifact;
+2. independently verifies the cohort;
+3. rejects diagnostic/ineligible evidence without mutating the corpus;
+4. idempotently aggregates an eligible cohort into the latest `v2-mainnet-corpus` artifact;
+5. writes counts-only progress;
+6. preserves intake diagnostics;
+7. preserves a successfully aggregated corpus even if a later Phase 9 lifecycle step fails.
 
-Future PR #22 cohorts use the hardened runner head `7f577c6cf19d6c001183247c3736037fe95bffee` and therefore inherit fail-fast gap handling plus serialized execution.
+The curator does not make an economic claim from workflow success alone.
 
-The 30-day untouched-OOS coverage requirement cannot be accelerated by overlapping captures. Evidence collection must therefore favor temporally distinct, non-overlapping cohorts while preserving the same fixed trading revision for the evaluation campaign.
+## One-shot V2 OOS protocol
 
-## Completed engineering phases
+PR #39 introduced a deterministic one-shot Phase 9 protocol. PR #40 permanently pinned the evaluator used by that protocol. PR #41 added a terminal underpowered-evidence state. PR #42 strengthened the offline CLI regression boundary.
 
-- Phase 0 — governance/source-of-truth anchor: COMPLETE.
-- Phase 1 — Python foundation/domain/config/CI: MERGED at `3efd9e28b84eaa5dcd75f6949d8df02e2928d163`.
-- Phase 2 — mainnet REST discovery/normalization: MERGED at `b95352e238d6a9eabd63e13c1f8300e654a7e636`.
-- Phase 3 — WebSocket collector/durable recorder: MERGED at `e0c1eb6a9893de48ec3dee9e4ac2a57c9f660d57`.
-- Phase 4 — feature engine/scanner/ranking/shortlist: MERGED at `dae7cf6cf51af9def0a027529d2b0900a6a4d5f6`.
-- Phase 5 — explainable baseline strategy engines: MERGED at `82c3db2f9ce39676e089eac79e63c5043b72e331`.
-- Phase 6 — independent risk engine: MERGED at `cb25d9e76f5db998b2e9298d1e1ca8b825ae8912`.
-- Phase 7 — real-mainnet paper execution + position manager: MERGED at `5cd4b3603cf05d2e5dc2cc3a165c026a01b2fcab`.
-- Phase 8 — deterministic journal/replay/backtester + analytical compaction: MERGED at `f7f37044997e13b3ffe91edd312756862343782b`.
-- Phase 9 — deterministic evaluation/OOS/walk-forward infrastructure: MERGED at `97218fdec7b8896ce63cf5889dbe41fb39f97bd7`.
-- Phase 9 Evidence Bridge: MERGED at `dec15b53d00bf5e65ba4c017aba0159c98d0088d`.
-- Phase 9 execution-activity replay accounting repair: PR #21 — MERGED at `ed3cae5af4a7b971babecec28448675c19d10bf6`.
-- Phase 9 fixed-revision evidence-store aggregation: PR #23 — MERGED at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`.
-- Phase 9 genuine-mainnet attestation and economic-corpus boundary: PR #25 — MERGED at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`.
-- Phase 9 single-cohort offline verifier: PR #27 — MERGED at `7be48ed59aa073015042881cbfbe75caa7e08f08`.
-- Phase 9 attested evidence progress precheck: PR #28 — MERGED at `ae31c1f7445fb8622a393e5e6223157a6c0cf54b`.
-- Phase 9 fail-fast durable-gap watcher: PR #29 — MERGED at `390d4ba39abe4fe3f476af68587f13f2371d9cba`.
+The V2 protocol is fixed from the first attested V2 source timestamp:
 
-## Locked safety and product invariants
+- 1 calendar day of train bookkeeping;
+- 1 calendar day of validation bookkeeping;
+- 45 calendar days of untouched test;
+- 7-day expanding walk-forward evaluation windows stepped every 7 days;
+- the locked 6-hour embargo remains in force.
+
+Snapshot run selection is calendar-driven and independent of performance. All attested sources beginning before the fixed 47-day protocol cutoff are selected, plus at most the first source needed to bridge the cutoff. Later cohorts cannot roll the V2 test window forward.
+
+Readiness uses only timestamps and counts. It does **not** inspect PnL, net R, bootstrap results, win rate, profit factor, or edge status.
+
+A ready one-shot path is:
+
+1. create a snapshot candidate from the deterministic selected run set;
+2. verify the locked 100-trade / 30-day / 3-window readiness floor;
+3. freeze split, candidate, policy, sensitivity, and walk-forward specifications;
+4. hash-bind the copied journal, facts, attestation, and specification files into the snapshot identity;
+5. upload `v2-phase9-frozen-snapshot` **before** economic evaluation;
+6. evaluate that exact snapshot with frozen evaluator revision `629db6294822c97690c006591802f8a47e08652e`;
+7. upload the final `v2-phase9-evaluation` artifact.
+
+The bootstrap path is deterministic for a fixed evaluation lineage, so a retry cannot obtain a new favorable bootstrap draw.
+
+If the fixed test window completes but the count/day/walk-forward readiness floor is not met, the curator does **not** reveal performance metrics and does **not** keep retrying OOS evaluation indefinitely. It persists a readiness-only `v2-phase9-terminal-insufficient` artifact with `edge_status = insufficient_evidence` and blocks later V2 OOS attempts.
+
+## Historical genuine-mainnet diagnostics
+
+### First 30-minute cohort
+
+GitHub Actions run `32770800218` produced genuine public Hyperliquid mainnet, paper-only evidence from the earlier pinned revision `571c13bfe0bab0312940617540ec973ee3eee3c5`.
+
+Verified activity included:
+
+- 360,404 recorded market events;
+- 0 duplicate events;
+- 0 anomalies;
+- 1 WebSocket reconnect;
+- 60 durable gap records;
+- 10 strategy decisions;
+- 2 risk approvals;
+- 1 execution attempt;
+- 3 partial fills;
+- 1 opened position;
+- 0 closed positions/trades.
+
+The replay was incomplete and ended with open ENA short exposure. The cohort is diagnostic-only and cannot support an economic claim.
+
+### Legacy 45-minute retry cohort
+
+The later legacy run `32781582212` attempted two independent 45-minute captures before redundant WebSocket acquisition was introduced. Each attempt recorded roughly 550k events with zero duplicates/anomalies but suffered one socket reconnect and 60 durable gap records. Both attempts were diagnostic-only and excluded from economics.
+
+Those repeated single-socket failures motivated the merged redundant-mainnet acquisition architecture now used by Campaign V2.
+
+## Major Phase 9 evidence milestones
+
+- PR #21 — replay execution-activity accounting repair — merged at `ed3cae5af4a7b971babecec28448675c19d10bf6`.
+- PR #23 — fixed-revision evidence-store aggregation — merged at `d404fa8c077c2721de55eda7f7fb2854d590ce4f`.
+- PR #25 — genuine-mainnet attestation/economic boundary — merged at `ef3c728e310be6a5b1ed94934a77453fba9c63cd`.
+- PR #27 — offline single-cohort verifier — merged at `7be48ed59aa073015042881cbfbe75caa7e08f08`.
+- PR #28 — counts-only attested-corpus progress — merged at `ae31c1f7445fb8622a393e5e6223157a6c0cf54b`.
+- PR #29 — fail-fast durable-gap watcher — merged at `390d4ba39abe4fe3f476af68587f13f2371d9cba`.
+- PR #34 — flat-exposure economic admission — merged at `f6bc36ca...`.
+- PR #35 — redundant public-mainnet WebSocket acquisition — merged at `5fa4a6d2...`.
+- PR #36 — merged-feed vs transport-health semantics — merged at `7cf19ab8...`.
+- PR #37 — scheduled Campaign V2 — merged at `be925d25...`.
+- PR #38 — automatic verified evidence-corpus curator — merged at `b36b4d5a...`.
+- PR #39 — frozen one-shot V2 OOS snapshot/evaluation protocol — merged at `629db6294822c97690c006591802f8a47e08652e`.
+- PR #40 — immutable evaluator pin — merged at `61371d16ffaa56f961e61637c94da68b7b54d020`.
+- PR #41 — terminal underpowered V2 state — merged at `c63973592e52992319218e6804673457ff813258`.
+- PR #42 — offline Phase 9 CLI regression hardening — merged at `bedd05cfafe5e22b358fc49d0d3e67855c28ca80`.
+
+PR #22, the earlier PR-triggered evidence runner, was closed without merging after the scheduled Campaign V2 superseded it.
+
+## Locked safety/product invariants
 
 - Hyperliquid testnet is forbidden.
-- Market observations are Hyperliquid mainnet only.
-- Mainnet market-data endpoints remain `https://api.hyperliquid.xyz` and `wss://api.hyperliquid.xyz/ws`.
-- Default execution is paper/shadow and places no real exchange orders.
+- Market observation is Hyperliquid mainnet only.
+- Default and current execution is paper/shadow.
 - No live exchange adapter is enabled or authorized.
-- No wallet/private-key signing, transfer, withdrawal, or private account/user subscription exists in the current evidence path.
+- No wallet/private-key signing, transfer, withdrawal, or private-account execution path is part of the evidence campaign.
 - Whole-market discovery remains dynamic; eligibility is separate from ranking.
 - Explainable deterministic baselines remain first-class before ML; `NO_TRADE` is valid.
 - Strategy cannot size positions or send orders; independent risk has final veto.
-- Locked risk remains 0.25% planned account risk per trade, 0.75% aggregate planned open risk, 1% daily realized-loss lockout, 3% rolling weekly drawdown, and cooldown after three consecutive losing trades.
 - No averaging down, martingale, or stopless positions.
 - No historical L2/order flow may be fabricated from candles.
-- PyArrow remains optional research tooling only.
-- Real-money activation always requires explicit user authorization after all later promotion gates pass.
+- Real-money activation requires explicit later authorization after all promotion gates pass.
 
 ## Exact next action
 
-1. Keep Phase 10 blocked.
-2. Complete and inspect GitHub Actions run `32781582212` without making an economic claim from workflow success alone.
-3. Run the offline `cocomelon-mainnet-evidence verify` boundary against any complete artifact before aggregation.
-4. Admit only cohorts that pass genuine-mainnet attestation: complete, gap-free, duplicate-free, anomaly-free, paper-only, fixed revision, unique recording session, and non-overlapping time window.
-5. Aggregate admitted cohorts through `cocomelon-mainnet-evidence aggregate`, then use the counts-only `progress` precheck to track the raw corpus toward the locked 100-trade/30-day evidence floor without revealing edge metrics early.
-6. Continue collecting temporally distinct cohorts under the same pinned trading revision; future runs use serialized fail-fast acquisition.
-7. Freeze only the exact attested run set, then freeze time splits, candidate set, policy, and predeclared sensitivity profiles before revealing untouched-test metrics.
-8. Run and persist the genuine Phase 9 baseline evaluation only when the evidence policy can be evaluated honestly.
-9. Only after the real evidence result is known decide whether the approved build order permits Phase 10 or requires more baseline evidence.
+1. Keep Phase 10 and live trading blocked.
+2. Let scheduled Campaign V2 collect temporally distinct genuine-mainnet paper cohorts at the immutable campaign revision.
+3. Admit only independently verified, attested, non-overlapping, complete, merged-gap-free, flat cohorts.
+4. Allow the curator to accumulate the corpus and report counts-only progress without early PnL inspection.
+5. At the deterministic V2 cutoff, persist either:
+   - the frozen ready one-shot snapshot followed by the genuine Phase 9 evaluation; or
+   - the readiness-only terminal `INSUFFICIENT_EVIDENCE` result.
+6. Only if the genuine one-shot result is `CANDIDATE_EDGE` and all locked promotion criteria pass may the approved build order advance toward Phase 10.
 
-## Live trading status
+## Profitability and live-trading status
 
-**DISABLED.**
+**REAL BASELINE EDGE: UNMEASURED.**
 
-Cocomelon can discover, analyze, decide, risk-gate, paper-execute/manage, journal, replay, verify, aggregate, attest, report counts-only evidence progress, and deterministically evaluate fake-capital outcomes against genuine public mainnet evidence. No genuine corpus has yet demonstrated economic edge, and no real-money order is authorized.
+No currently verified result in this status document demonstrates repeatable economic edge. `UNMEASURED` is not the same as `NO_EDGE_DEMONSTRATED`.
+
+**LIVE TRADING: DISABLED.**
