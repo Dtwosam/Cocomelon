@@ -57,9 +57,10 @@ Locked V1 risk includes 0.25% planned account risk per trade, 0.75% aggregate pl
 
 ## 3. Current immutable research revisions
 
-The two revisions that matter for the current evidence program are:
+The three revisions that matter for the current evidence program are:
 
 - **Campaign V2 strategy/risk/execution/evidence runtime:** `6de9d86aa7c36fce4f459e0bcc4e004de9215f25`;
+- **Campaign retry-selection ledger tooling:** `e87a575a755074e36e22729c63c4831b474cf339`;
 - **Frozen one-shot Phase 9 evaluator:** `629db6294822c97690c006591802f8a47e08652e`.
 
 The campaign runtime contains the qualified redundant-mainnet transport stack:
@@ -142,6 +143,8 @@ Before any successful source artifact can mutate the corpus, the curator indepen
 
 PRs #71 and #72 hardened this provenance chain so a valid-looking artifact cannot be rebound to a non-authoritative workflow/branch/run.
 
+PR #76 repaired the curator staging lifecycle after the checkout step was proven to remove the pre-created `intake/` directory before trusted-artifact selector preparation. The fix keeps that directory present across checkout without changing admission semantics. A rerun of previously failing curator workflow run `32885277066` then passed selector preparation, independent source intake, and intake-audit upload; because source campaign `32880737422` concluded failure, selection-audit, corpus aggregation, and Phase 9 lifecycle steps remained skipped. The persisted intake report recorded `corpus_mutated=false`, `economic_claim=none`, `source_verified=false`, and `source_conclusion=failure`. The tracked hidden directory marker was not included in the uploaded artifact.
+
 Eligible cohorts are aggregated idempotently into the attested V2 mainnet corpus. Existing aggregates are re-verified when read for append/progress/freeze. Ineligible/diagnostic/right-censored evidence is preserved for diagnosis but does not mutate the economic corpus.
 
 The curator exposes **counts-only readiness**, not early PnL. It must not reveal or optimize on untouched-test performance before the deterministic one-shot cutoff.
@@ -206,12 +209,12 @@ When asked to continue Cocomelon:
 
 Current engineering focus is **evidence accumulation**, not transport repair or manual replay orchestration.
 
-The transport-qualified runtime is deployed to the scheduled Campaign V2. The first full 45-minute clean corpus, run `32880737422`, was excluded only because one paper position remained open at the replay horizon. PR #74 now spends the pre-existing second bounded acquisition attempt when a clean attempt is non-performance-ineligible for completeness or right-censoring, with every rejection recorded and selection explicitly forbidden from using PnL/equity/edge.
+The transport-qualified runtime is deployed to the scheduled Campaign V2. The first full 45-minute clean corpus, run `32880737422`, was excluded only because one paper position remained open at the replay horizon. PR #74 now spends the pre-existing second bounded acquisition attempt when a clean attempt is non-performance-ineligible for completeness or right-censoring, with every rejection recorded and selection explicitly forbidden from using PnL/equity/edge. PR #76 has also operationally restored the curator's post-checkout staging path, so the next successful source campaign can reach independent verification and aggregation without the earlier `intake/` lifecycle failure.
 
 Continue in this order:
 
 1. keep Phase 10 and live trading blocked;
-2. let scheduled Campaign V2 collect temporally distinct genuine-mainnet paper cohorts from immutable runtime `6de9d86aa7c36fce4f459e0bcc4e004de9215f25`;
+2. let scheduled Campaign V2 collect temporally distinct genuine-mainnet paper cohorts from immutable runtime `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` using retry-ledger revision `e87a575a755074e36e22729c63c4831b474cf339`;
 3. admit only source-workflow-successful, independently verified, non-overlapping, complete, merged-gap-free, flat-exposure cohorts with valid retry-selection lineage;
 4. let the automatic curator accumulate the attested corpus and expose counts-only readiness;
 5. at the deterministic V2 cutoff, persist either the frozen ready one-shot snapshot followed by the genuine Phase 9 evaluation, or the readiness-only terminal `INSUFFICIENT_EVIDENCE` state;
