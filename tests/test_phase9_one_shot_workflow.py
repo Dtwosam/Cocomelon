@@ -141,3 +141,14 @@ def test_normal_curator_job_remains_read_only() -> None:
     curator_text = text[curate:persist]
     assert "contents: write" not in curator_text
     assert "contents: read" in text[:persist]
+
+
+def test_existing_ephemeral_final_is_backfilled_to_durable_state() -> None:
+    text = _text()
+
+    assert "Download existing Phase 9 final artifact for durable backfill" in text
+    assert "phase9_existing_final" in text
+    assert "phase9-final-existing" in text
+    backfill = text.index("Download existing Phase 9 final artifact for durable backfill")
+    candidate = text.index("Build durable Phase 9 final state candidate")
+    assert backfill < candidate
