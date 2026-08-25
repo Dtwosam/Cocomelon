@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,9 @@ from cocomelon.ops.attempt_ledger import build_attempt_ledger
 LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 TRIGGER_SHA = "70e51d1e897cdafa236dc4ef06787939d2b726b4"
 OTHER_TRIGGER_SHA = "61fab78355c4bac4a644b59dbd6011a65d70c9d8"
+CAMPAIGN_WORKFLOW_ID = 341636172
+CAMPAIGN_WORKFLOW_PATH = ".github/workflows/evidence-campaign-scheduled.yml"
+REPOSITORY = "Dtwosam/Cocomelon"
 
 
 def _write_text(path: Path, value: str) -> None:
@@ -61,33 +65,61 @@ def _make_cohort(root: Path) -> None:
     _write_text(root / "output" / "trigger-head.txt", TRIGGER_SHA)
 
 
+def _write_workflow_event(
+    path: Path,
+    *,
+    head_branch: str = "main",
+    workflow_id: int = CAMPAIGN_WORKFLOW_ID,
+    workflow_path: str = CAMPAIGN_WORKFLOW_PATH,
+    repository: str = REPOSITORY,
+) -> None:
+    _write_json(
+        path,
+        {
+            "workflow_run": {
+                "head_sha": TRIGGER_SHA,
+                "head_branch": head_branch,
+                "workflow_id": workflow_id,
+                "path": workflow_path,
+                "repository": {"full_name": repository},
+            }
+        },
+    )
+
+
 def _run_audit(
     cohort: Path,
     output: Path,
     *,
-    expected_trigger_sha: str = TRIGGER_SHA,
+    expected_trigger_sha: str | None = TRIGGER_SHA,
+    event_path: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "cocomelon.ops.selection_audit",
+        "--cohort-root",
+        str(cohort),
+        "--source-run-id",
+        "12345",
+        "--source-artifact-id",
+        "67890",
+        "--expected-ledger-revision",
+        LEDGER_REVISION,
+    ]
+    if expected_trigger_sha is not None:
+        command.extend(["--expected-trigger-sha", expected_trigger_sha])
+    command.extend(["--out", str(output)])
+    env = os.environ.copy()
+    if event_path is not None:
+        env["GITHUB_EVENT_PATH"] = str(event_path)
+        env["GITHUB_REPOSITORY"] = REPOSITORY
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "cocomelon.ops.selection_audit",
-            "--cohort-root",
-            str(cohort),
-            "--source-run-id",
-            "12345",
-            "--source-artifact-id",
-            "67890",
-            "--expected-ledger-revision",
-            LEDGER_REVISION,
-            "--expected-trigger-sha",
-            expected_trigger_sha,
-            "--out",
-            str(output),
-        ],
+        command,
         check=False,
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -129,6 +161,51 @@ def test_selection_audit_recomputes_and_binds_attempt_ledger(tmp_path: Path) -> 
         allow_nan=False,
     ).encode("utf-8")
     assert audit_id == hashlib.sha256(encoded).hexdigest()
+
+
+def test_selection_audit_accepts_authoritative_campaign_event(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort"
+    _make_cohort(cohort)
+    event_path = tmp_path / "event.json"
+    _write_workflow_event(event_path)
+    output = tmp_path / "selection-audit.json"
+
+    result = _run_audit(
+        cohort,
+        output,
+        expected_trigger_sha=None,
+        event_path=event_path,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert output.exists()
+
+
+def test_selection_audit_rejects_untrusted_campaign_event_provenance(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort"
+    _make_cohort(cohort)
+    cases = (
+        ({"head_branch": "feature"}, "source workflow branch"),
+        ({"workflow_id": CAMPAIGN_WORKFLOW_ID + 1}, "source workflow id"),
+        ({"workflow_path": ".github/workflows/fake.yml"}, "source workflow path"),
+        ({"repository": "other/repo"}, "source workflow repository"),
+    )
+
+    for index, (overrides, expected_error) in enumerate(cases):
+        event_path = tmp_path / f"event-{index}.json"
+        _write_workflow_event(event_path, **overrides)  # type: ignore[arg-type]
+        output = tmp_path / f"selection-audit-{index}.json"
+
+        result = _run_audit(
+            cohort,
+            output,
+            expected_trigger_sha=None,
+            event_path=event_path,
+        )
+
+        assert result.returncode != 0
+        assert expected_error in result.stderr
+        assert not output.exists()
 
 
 def test_selection_audit_rejects_tampered_persisted_ledger(tmp_path: Path) -> None:
