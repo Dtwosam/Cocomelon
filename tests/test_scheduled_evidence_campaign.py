@@ -3,15 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "571c13bfe0bab0312940617540ec973ee3eee3c5"
-PINNED_WATCHER = "390d4ba39abe4fe3f476af68587f13f2371d9cba"
+PINNED_CODE = "7cf19ab81fa609fed4171ea8ed1f06d85f91e793"
 
 
 def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_scheduled_campaign_is_fixed_revision_mainnet_paper_only() -> None:
+def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
     text = _workflow_text()
 
     assert "schedule:" in text
@@ -21,28 +20,41 @@ def test_scheduled_campaign_is_fixed_revision_mainnet_paper_only() -> None:
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text
     assert "COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws" in text
     assert f"COHORT_CODE_REVISION: {PINNED_CODE}" in text
-    assert f"GAP_WATCH_REVISION: {PINNED_WATCHER}" in text
     assert f"ref: {PINNED_CODE}" in text
-    assert f"ref: {PINNED_WATCHER}" in text
+    assert "GAP_WATCH_REVISION" not in text
+    assert "runner-control" not in text
     assert "testnet" not in text.lower()
     assert "COCOMELON_EXECUTION_MODE: live" not in text
 
 
-def test_scheduled_campaign_collects_bounded_nonoverlapping_artifacts() -> None:
+def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-571c13" in text
+    assert "group: genuine-mainnet-evidence-v2-7cf19ab8" in text
     assert "cancel-in-progress: false" in text
     assert "--seconds 2700" in text
     assert "--deep-limit 5" in text
     assert "for ATTEMPT in 1 2" in text
     assert "python -m cocomelon.ops.gap_watch" in text
-    assert 'GAP_WATCH_STATUS" -eq 20' in text
+    assert "record-transport.json" in text
+    assert "normalize_redundant_record_payload" in text
     assert 'record["gap_count"] == 0' in text
     assert 'record["duplicate_count"] == 0' in text
     assert 'record["anomaly_count"] == 0' in text
+    assert 'record["redundant_ws_lane_count"] == 2' in text
+    assert 'record["transport_health_semantics"]' in text
+    assert 'record["transport_duplicate_count"]' in text
+    assert 'record["transport_anomaly_count"]' in text
+
+
+def test_scheduled_campaign_v2_requires_complete_flat_replay_for_economics() -> None:
+    text = _workflow_text()
+
     assert 'replay["data_complete"] is True' in text
     assert 'dataset["data_complete"] is True' in text
+    assert 'replay["opened_positions"] == replay["closed_positions"]' in text
+    assert '"economic_eligible"' in text
+    assert '"economic_ineligibility_reasons"' in text
     assert '"economic_claim": "none"' in text
     assert 'assert "edge" not in replay' in text
     assert 'assert "profitable" not in replay' in text
