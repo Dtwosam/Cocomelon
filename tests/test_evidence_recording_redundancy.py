@@ -247,5 +247,10 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
     assert gap_rows == []
     assert summary.gap_count == 0
     assert summary.reconnect_count >= 1
+    assert summary.lane_reconnect_counts == (1, 0)
+    assert len(summary.lane_first_event_ms) == 2
+    assert all(value is not None for value in summary.lane_first_event_ms)
+    assert len(summary.lane_last_server_message_ms) == 2
+    assert all(value is not None for value in summary.lane_last_server_message_ms)
     assert primary.closed is True
     assert standby.closed is True
