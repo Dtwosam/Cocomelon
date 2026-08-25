@@ -97,10 +97,18 @@ class ScriptedConnection:
         self,
         rows: list[object],
         *,
-        error_delay_seconds: float = 0.0,
+        row_delays_seconds: list[float] | None = None,
     ) -> None:
         self._rows = list(rows)
-        self._error_delay_seconds = error_delay_seconds
+        self._row_delays_seconds = (
+            list(row_delays_seconds)
+            if row_delays_seconds is not None
+            else [0.0] * len(rows)
+        )
+        if len(self._row_delays_seconds) != len(self._rows):
+            raise ValueError("row delays must match scripted rows")
+        if any(delay < 0 for delay in self._row_delays_seconds):
+            raise ValueError("row delays must be non-negative")
         self.closed = False
 
     async def send_json(self, message: dict[str, object]) -> None:
@@ -108,10 +116,11 @@ class ScriptedConnection:
 
     async def recv_json(self) -> dict[str, object]:
         if self._rows:
+            delay = self._row_delays_seconds.pop(0)
+            if delay:
+                await asyncio.sleep(delay)
             row = self._rows.pop(0)
             if isinstance(row, BaseException):
-                if self._error_delay_seconds:
-                    await asyncio.sleep(self._error_delay_seconds)
                 raise row
             assert isinstance(row, dict)
             return row
@@ -183,16 +192,19 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
     tmp_path: Path,
 ) -> None:
     config = EvidenceRecordingConfig(
-        duration_seconds=0.08,  # type: ignore[arg-type]
+        duration_seconds=0.20,  # type: ignore[arg-type]
         deep_limit=1,
         context_poll_seconds=60,
         funding_poll_seconds=60,
     )
     primary = ScriptedConnection(
         [_trade(1, 1_000), ConnectionError("primary dropped")],
-        error_delay_seconds=0.01,
+        row_delays_seconds=[0.0, 0.04],
     )
-    standby = ScriptedConnection([_trade(1, 1_000), _trade(2, 2_000)])
+    standby = ScriptedConnection(
+        [_trade(1, 1_000), _trade(2, 2_000)],
+        row_delays_seconds=[0.0, 0.08],
+    )
     pool = [primary, standby]
     factory_calls = 0
     tick = 2_000
