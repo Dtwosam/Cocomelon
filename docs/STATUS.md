@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-25  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified main revision:** `4bcab2c64ee12fe53e434872a763592c0468dcaa`  
+**Verified main revision:** `d37973da72276a3d08e15c54ed92d96e82811000`  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -25,6 +25,8 @@ Immediate paper-only Campaign V2 run `32880737422` completed its first full 45-m
 PRs #73 and #74 subsequently made the already-budgeted second 45-minute attempt usable for this exact non-performance failure mode. A transport-clean attempt is now probed offline for replay completeness, dataset completeness/gaps, and flat exposure before it may become `CLEAN_ATTEMPT`. If it is right-censored or incomplete, that reason is persisted in the deterministic selection-audit ledger and the workflow may spend attempt 2. Final canonical replay and all economic-admission assertions still run unchanged after selection.
 
 PR #76 repaired the curator's post-checkout staging invariant after workflow run `32885277066` exposed that `actions/checkout` removed the pre-created `intake/` directory before trusted-artifact selector preparation. The repair is operationally verified: rerunning the same curator job now passes selector preparation and independent source intake, uploads the intake audit, and still skips selection audit, aggregation, and Phase 9 lifecycle steps for the failed source campaign. The uploaded intake report records `corpus_mutated = false`, `economic_claim = none`, `source_conclusion = failure`, and `source_verified = false`; the tracked hidden directory marker is not included in the artifact.
+
+PR #78 closed the remaining right-censor selection-audit regression gap by proving that an attempt 1 rejected as `admission_open_exposure` and a flat/admitted attempt 2 can be recomputed and bound exactly from the persisted retry ledger. PR #79 then doubled the fixed, performance-blind Campaign V2 acquisition cadence from four to eight evenly spaced UTC windows per day. This changes evidence collection frequency only; the immutable runtime, retry-ledger tooling, frozen evaluator, strategy, risk, sizing, paper execution, and admission semantics remain unchanged.
 
 No real-money order path is enabled or authorized.
 
@@ -58,7 +60,7 @@ Phase 10 remains blocked unless a genuine one-shot Phase 9 result satisfies the 
 
 ## Scheduled genuine-mainnet Campaign V2
 
-`.github/workflows/evidence-campaign-scheduled.yml` is the sole production evidence-acquisition path. It is scheduled at `37 1,7,13,19 * * *` UTC and also supports manual workflow dispatch. Ordinary repository pushes do not launch the expensive campaign.
+`.github/workflows/evidence-campaign-scheduled.yml` is the sole production evidence-acquisition path. It is scheduled at `37 1,4,7,10,13,16,19,22 * * *` UTC and also supports manual workflow dispatch. Ordinary repository pushes do not launch the expensive campaign.
 
 Campaign V2 is pinned to `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` and enforces:
 
@@ -270,6 +272,8 @@ Those repeated single-socket failures motivated the merged redundant-mainnet acq
 - PR #74 — made Campaign V2 spend its second bounded attempt after transport-clean completeness/flatness rejection and repinned the curator to the new ledger — merged at `93fc14fc2f771d686714be6d661686c71a26bc86`.
 - PR #75 — refreshed `STATUS.md` and the portable ChatGPT handoff after the right-censor retry integration — merged at `2d19df86561b03996d1c975d52965315b0aae14c`.
 - PR #76 — preserved curator `intake/` staging across checkout and operationally restored independent source intake — merged at `4bcab2c64ee12fe53e434872a763592c0468dcaa`.
+- PR #78 — added deterministic regression coverage for right-censored retry selection-audit lineage — merged at `89c0a341b2fc336c917512e24933519d587a3723`.
+- PR #79 — doubled fixed Campaign V2 evidence coverage from four to eight UTC windows per day without changing economic selection — merged at `d37973da72276a3d08e15c54ed92d96e82811000`.
 
 PR #22, the earlier PR-triggered evidence runner, was closed without merging after the scheduled Campaign V2 superseded it. Obsolete PR #24 was also closed after its attestation design was superseded by later merged hardening.
 
@@ -290,7 +294,7 @@ PR #22, the earlier PR-triggered evidence runner, was closed without merging aft
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let scheduled Campaign V2 continue collecting temporally distinct paper-only cohorts at immutable runtime `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` using immutable retry-ledger tooling `e87a575a755074e36e22729c63c4831b474cf339`.
+2. Let scheduled Campaign V2 continue collecting temporally distinct paper-only cohorts at the fixed eight-window UTC cadence using immutable runtime `6de9d86aa7c36fce4f459e0bcc4e004de9215f25` and immutable retry-ledger tooling `e87a575a755074e36e22729c63c4831b474cf339`.
 3. For each run, admit only an attempt that is transport-clean, replay/dataset complete, and flat at the replay horizon; use attempt 2 only after an auditable non-performance rejection of attempt 1.
 4. Let the curator independently verify source workflow provenance, retry-selection lineage, and cohort eligibility before any corpus mutation.
 5. Accumulate the corpus and report counts-only progress without early PnL inspection.
