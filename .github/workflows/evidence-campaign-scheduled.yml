@@ -72,6 +72,19 @@ jobs:
           PY
             echo "final_exists=true" >> "$GITHUB_OUTPUT"
           elif grep -q "HTTP 404" /tmp/phase9-state.stderr; then
+            STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"
+            gh api "$STATE_HISTORY_ENDPOINT" > /tmp/phase9-state-history.json
+            if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("/tmp/phase9-state-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PY
+            then
+              echo "Phase 9 final state was previously recorded but is now missing" >&2
+              exit 61
+            fi
             echo "final_exists=false" >> "$GITHUB_OUTPUT"
           else
             cat /tmp/phase9-state.stderr >&2
