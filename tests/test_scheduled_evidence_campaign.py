@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e"
+PINNED_CODE = "0df13a9d9694d7e12cca787ef198fdff359b4741"
 ATTEMPT_LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
@@ -22,6 +22,7 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
     assert "COCOMELON_EXECUTION_MODE: paper" in text
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text
     assert "COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws" in text
+    assert "COCOMELON_WS_CONNECT_SPACING_SECONDS: 15" in text
     assert f"COHORT_CODE_REVISION: {PINNED_CODE}" in text
     assert f"ref: {PINNED_CODE}" in text
     assert "GAP_WATCH_REVISION" not in text
@@ -33,7 +34,7 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
 def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-v2-30c0de4b" in text
+    assert "group: genuine-mainnet-evidence-v2-0df13a9d" in text
     assert "cancel-in-progress: false" in text
     assert "--seconds 2700" in text
     assert "--deep-limit 5" in text
