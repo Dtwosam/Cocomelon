@@ -9,7 +9,6 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
 from pathlib import Path
-from typing import TypeVar
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -38,7 +37,6 @@ RecordCommandRunner = Callable[
     [Settings, Path, EvidenceRecordingConfig],
     Mapping[str, object],
 ]
-ConnectionT = TypeVar("ConnectionT")
 AsyncSleep = Callable[[float], Awaitable[None]]
 SOURCE_ROOT_FIELD = "source_root_relative"
 SOURCE_LOCATOR_BUNDLE_ID_FIELD = "source_locator_bundle_id"
@@ -102,7 +100,7 @@ def _ws_connect_spacing_seconds(environ: Mapping[str, str] | None = None) -> flo
     return spacing
 
 
-def _build_spaced_mainnet_connection_factory(
+def _build_spaced_mainnet_connection_factory[ConnectionT](
     settings: Settings,
     *,
     connect: Callable[[Settings], Awaitable[ConnectionT]],
