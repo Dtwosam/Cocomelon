@@ -124,9 +124,7 @@ def test_scheduled_campaign_persists_attempt_ledger_before_terminal_failure() ->
     assert text.index(ledger_command) < text.index(terminal_failure)
 
 
-def test_scheduled_campaign_has_bounded_main_push_launch_hook() -> None:
+def test_scheduled_campaign_does_not_run_on_repository_push() -> None:
     text = _workflow_text()
 
-    assert "push:" in text
-    assert "branches: [main]" in text
-    assert '      - ".github/workflows/evidence-campaign-scheduled.yml"' in text
+    assert "push:" not in text
