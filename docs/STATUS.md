@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-25  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified main revision:** `93fc14fc2f771d686714be6d661686c71a26bc86`  
+**Verified main revision:** `4bcab2c64ee12fe53e434872a763592c0468dcaa`  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -23,6 +23,8 @@ The current campaign runtime revision includes lane-wide standby-readiness trans
 Immediate paper-only Campaign V2 run `32880737422` completed its first full 45-minute capture from the immutable runtime. The capture was transport-clean and replay/dataset complete, but it was correctly excluded from economics because one PUMP paper position remained open at the replay horizon (`opened_positions = 1`, `closed_positions = 0`). The run therefore failed the locked flat-exposure gate rather than being admitted to the corpus. No PnL-based retry or admission decision was made.
 
 PRs #73 and #74 subsequently made the already-budgeted second 45-minute attempt usable for this exact non-performance failure mode. A transport-clean attempt is now probed offline for replay completeness, dataset completeness/gaps, and flat exposure before it may become `CLEAN_ATTEMPT`. If it is right-censored or incomplete, that reason is persisted in the deterministic selection-audit ledger and the workflow may spend attempt 2. Final canonical replay and all economic-admission assertions still run unchanged after selection.
+
+PR #76 repaired the curator's post-checkout staging invariant after workflow run `32885277066` exposed that `actions/checkout` removed the pre-created `intake/` directory before trusted-artifact selector preparation. The repair is operationally verified: rerunning the same curator job now passes selector preparation and independent source intake, uploads the intake audit, and still skips selection audit, aggregation, and Phase 9 lifecycle steps for the failed source campaign. The uploaded intake report records `corpus_mutated = false`, `economic_claim = none`, `source_conclusion = failure`, and `source_verified = false`; the tracked hidden directory marker is not included in the artifact.
 
 No real-money order path is enabled or authorized.
 
@@ -128,7 +130,7 @@ For each campaign completion it:
 7. preserves intake diagnostics;
 8. preserves a successfully aggregated corpus even if a later Phase 9 lifecycle step fails.
 
-The curator checks out current `main` evaluation/admission tooling, while acquisition itself remains fixed to the immutable runtime. The curator does not make an economic claim from workflow success alone.
+The curator checks out current `main` evaluation/admission tooling, while acquisition itself remains fixed to the immutable runtime. PR #76 guarantees its `intake/` staging directory survives that checkout and has been verified on a rerun of the previously failing curator source. The curator does not make an economic claim from workflow success alone.
 
 ## One-shot V2 OOS protocol
 
@@ -266,6 +268,8 @@ Those repeated single-socket failures motivated the merged redundant-mainnet acq
 - PR #72 — bound selection audits to the exact source workflow run ID — merged at `029fff54de7eb87d42d4ce7b16fceabbfb0fceb1`.
 - PR #73 — added fail-closed deterministic ledger support for non-performance right-censor retry reasons; immutable tooling revision `e87a575a755074e36e22729c63c4831b474cf339`, merged at `91c3f38595b33557076a21897f6fb9672bcc8c79`.
 - PR #74 — made Campaign V2 spend its second bounded attempt after transport-clean completeness/flatness rejection and repinned the curator to the new ledger — merged at `93fc14fc2f771d686714be6d661686c71a26bc86`.
+- PR #75 — refreshed `STATUS.md` and the portable ChatGPT handoff after the right-censor retry integration — merged at `2d19df86561b03996d1c975d52965315b0aae14c`.
+- PR #76 — preserved curator `intake/` staging across checkout and operationally restored independent source intake — merged at `4bcab2c64ee12fe53e434872a763592c0468dcaa`.
 
 PR #22, the earlier PR-triggered evidence runner, was closed without merging after the scheduled Campaign V2 superseded it. Obsolete PR #24 was also closed after its attestation design was superseded by later merged hardening.
 
