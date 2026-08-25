@@ -11,22 +11,24 @@ from cocomelon.domain.evaluation import (
     EvaluationPolicy,
     FrozenCandidateSet,
     ReplayEvaluationSource,
+    TimePartition,
 )
 from cocomelon.evaluation.cli_support import (
     evaluation_result_payload,
+    freeze_evaluation_dataset_payload,
     freeze_evaluation_splits_payload,
     run_evaluation,
 )
 from cocomelon.evaluation.dataset import DatasetBuildResult, build_evaluation_dataset
 from cocomelon.evaluation.mainnet_evidence import (
     ATTESTATION_NAME,
-    freeze_mainnet_evaluation_dataset_payload,
     mainnet_evidence_progress_payload,
 )
 from cocomelon.evaluation.mainnet_protocol import (
     MainnetPhase9Readiness,
     build_v2_protocol,
     evaluate_v2_readiness,
+    select_v2_snapshot_run_ids,
 )
 from cocomelon.evaluation.sensitivity import predeclared_cost_stress_profiles
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -96,10 +98,10 @@ def _policy_payload(policy: EvaluationPolicy) -> dict[str, object]:
     }
 
 
-def _partition_payload(partition: object) -> dict[str, object]:
+def _partition_payload(partition: TimePartition) -> dict[str, object]:
     return {
-        "start_ms": int(getattr(partition, "start_ms")),
-        "end_ms": int(getattr(partition, "end_ms")),
+        "start_ms": partition.start_ms,
+        "end_ms": partition.end_ms,
     }
 
 
@@ -114,6 +116,44 @@ def _read_attested_run_ids(attestation_path: Path) -> tuple[str, ...]:
     if tuple(sorted(set(run_ids))) != run_ids:
         raise MainnetPhase9Error("mainnet attestation run_ids must be sorted and unique")
     return run_ids
+
+
+def _attested_sources(
+    journal_path: Path,
+    run_ids: tuple[str, ...],
+    *,
+    code_revision: str,
+) -> tuple[ReplayEvaluationSource, ...]:
+    journal = JournalStore(journal_path)
+    try:
+        sources: list[ReplayEvaluationSource] = []
+        for run_id in run_ids:
+            result = journal.load_replay_result(run_id)
+            if result is None:
+                raise MainnetPhase9Error(f"replay result is missing: {run_id}")
+            manifest = journal.load_manifest(result.manifest_id)
+            if manifest is None:
+                raise MainnetPhase9Error(
+                    f"replay manifest is missing: {result.manifest_id}"
+                )
+            if manifest.code_revision != code_revision:
+                raise MainnetPhase9Error("attested source revision is inconsistent")
+            if not result.data_complete or result.processed_gaps != 0 or manifest.gap_refs:
+                raise MainnetPhase9Error("attested source must remain complete and gap-free")
+            sources.append(
+                ReplayEvaluationSource(
+                    run_id=result.run_id,
+                    manifest_id=result.manifest_id,
+                    result_digest=result.result_digest,
+                    evidence_class=result.evidence_class,
+                    start_ms=result.start_ms,
+                    end_ms=result.end_ms,
+                    data_complete=result.data_complete,
+                )
+            )
+    finally:
+        journal.close()
+    return tuple(sources)
 
 
 def _build_dataset(
@@ -232,19 +272,27 @@ def prepare_phase9_v2_snapshot(
     facts_source = corpus / "facts.sqlite3"
     attestation_source = corpus / ATTESTATION_NAME
     progress = mainnet_evidence_progress_payload(journal_source, facts_source)
-    run_ids = _read_attested_run_ids(attestation_source)
-    if progress.get("attested_run_count") != len(run_ids):
+    attested_run_ids = _read_attested_run_ids(attestation_source)
+    if progress.get("attested_run_count") != len(attested_run_ids):
         raise MainnetPhase9Error("attested run count does not match run_ids")
     code_revision = progress.get("code_revision")
     if not isinstance(code_revision, str) or not code_revision.strip():
         raise MainnetPhase9Error("attested code revision is invalid")
+    sources = _attested_sources(
+        journal_source,
+        attested_run_ids,
+        code_revision=code_revision,
+    )
+    run_ids = select_v2_snapshot_run_ids(sources)
+    if not run_ids or not set(run_ids).issubset(attested_run_ids):
+        raise MainnetPhase9Error("selected snapshot runs must be attested")
 
     out.mkdir(parents=True)
     shutil.copy2(journal_source, out / "journal.sqlite3")
     shutil.copy2(facts_source, out / "facts.sqlite3")
     shutil.copy2(attestation_source, out / ATTESTATION_NAME)
 
-    dataset_payload = freeze_mainnet_evaluation_dataset_payload(
+    dataset_payload = freeze_evaluation_dataset_payload(
         out / "journal.sqlite3",
         out / "facts.sqlite3",
         run_ids,
@@ -260,6 +308,8 @@ def prepare_phase9_v2_snapshot(
     )
     if built.manifest.manifest_id != dataset_id:
         raise MainnetPhase9Error("rebuilt dataset does not match frozen dataset")
+    if not built.manifest.data_complete or built.manifest.gap_refs:
+        raise MainnetPhase9Error("selected snapshot dataset must remain complete and gap-free")
 
     policy = EvaluationPolicy()
     protocol = build_v2_protocol(built.manifest, policy=policy)
@@ -332,8 +382,10 @@ def prepare_phase9_v2_snapshot(
         "one_shot_oos": True,
         "economic_claim": "none",
         "mainnet_attestation_id": progress["mainnet_attestation_id"],
+        "full_attested_run_count": len(attested_run_ids),
         "code_revision": code_revision,
         "run_ids": list(run_ids),
+        "protocol_test_end_ms": protocol.split.test.end_ms,
         "dataset_manifest_id": dataset_id,
         "split_manifest_id": split_id,
         "candidate_set_id": candidate_set.candidate_set_id,
