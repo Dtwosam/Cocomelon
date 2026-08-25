@@ -45,11 +45,78 @@ jobs:
           date -u +%Y-%m-%dT%H:%M:%SZ > heartbeat-smoke/output/started-at-utc.txt
           START_EPOCH=$(date +%s)
 
-          cocomelon record-mainnet-evidence \
-            --root heartbeat-smoke/recording \
-            --seconds 90 \
-            --deep-limit 5 \
-            > heartbeat-smoke/output/record-transport.json
+          python - <<'PY' > heartbeat-smoke/output/record-transport.json
+          import json
+          from pathlib import Path
+
+          from cocomelon.config import Settings
+          from cocomelon.evidence.cli_support import (
+              _run_mainnet_evidence,
+              record_mainnet_evidence_payload,
+          )
+          from cocomelon.evidence.redundant_stream import RedundantStreamMux
+          from cocomelon.hyperliquid.ws_supervisor import event_stream_id
+
+          trace_path = Path("heartbeat-smoke/output/lane-trace.jsonl")
+          trace_path.touch()
+          first_event_lanes: set[int] = set()
+          original_on_event = RedundantStreamMux.on_event
+          original_on_gap = RedundantStreamMux.on_gap
+
+          def write_trace(payload: dict[str, object]) -> None:
+              with trace_path.open("a", encoding="utf-8") as handle:
+                  handle.write(json.dumps(payload, sort_keys=True) + "\n")
+                  handle.flush()
+
+          async def traced_on_event(self, lane, event):  # type: ignore[no-untyped-def]
+              first = lane not in first_event_lanes
+              result = await original_on_event(self, lane, event)
+              if first:
+                  first_event_lanes.add(lane)
+                  write_trace(
+                      {
+                          "type": "first_event",
+                          "lane": lane,
+                          "stream_id": event_stream_id(event),
+                          "receive_ms": int(event.receive_time.timestamp() * 1_000),
+                          "session_ready_lanes_after": sorted(self._session_ready_lanes),
+                      }
+                  )
+              return result
+
+          async def traced_on_gap(self, lane, gap):  # type: ignore[no-untyped-def]
+              ready_before = sorted(self._session_ready_lanes)
+              active_before = self.active_lane(gap.stream_id)
+              result = await original_on_gap(self, lane, gap)
+              write_trace(
+                  {
+                      "type": "gap",
+                      "lane": lane,
+                      "stream_id": gap.stream_id,
+                      "started_ms": gap.started_ms,
+                      "ended_ms": gap.ended_ms,
+                      "reason": gap.reason,
+                      "session_ready_lanes_before": ready_before,
+                      "session_ready_lanes_after": sorted(self._session_ready_lanes),
+                      "active_lane_before": active_before,
+                      "active_lane_after": self.active_lane(gap.stream_id),
+                  }
+              )
+              return result
+
+          RedundantStreamMux.on_event = traced_on_event
+          RedundantStreamMux.on_gap = traced_on_gap
+
+          duration_seconds=90
+          payload = record_mainnet_evidence_payload(
+              Settings.from_env(),
+              root="heartbeat-smoke/recording",
+              seconds=duration_seconds,
+              deep_limit=5,
+              runner=_run_mainnet_evidence,
+          )
+          print(json.dumps(payload, sort_keys=True))
+          PY
 
           END_EPOCH=$(date +%s)
           ELAPSED_SECONDS=$((END_EPOCH - START_EPOCH))
