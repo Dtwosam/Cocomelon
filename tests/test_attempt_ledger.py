@@ -16,7 +16,11 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _run_ledger(diagnostics: Path, output: Path, admitted_attempt: str = "") -> subprocess.CompletedProcess[str]:
+def _run_ledger(
+    diagnostics: Path,
+    output: Path,
+    admitted_attempt: str = "",
+) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
         "-m",
