@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "9a80de1ffcd781278520cfe911812b10284af616"
+PINNED_CODE = "6de9d86aa7c36fce4f459e0bcc4e004de9215f25"
 ATTEMPT_LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
@@ -34,7 +34,7 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
 def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-v2-9a80de1f" in text
+    assert "group: genuine-mainnet-evidence-v2-6de9d86a" in text
     assert "cancel-in-progress: false" in text
     assert "--seconds 2700" in text
     assert "--deep-limit 5" in text
