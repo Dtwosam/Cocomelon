@@ -4,6 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
 PINNED_CODE = "7cf19ab81fa609fed4171ea8ed1f06d85f91e793"
+ATTEMPT_LEDGER_REVISION = "21da9c24b78fea89bb525af32132d103e82cf245"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
 
@@ -109,11 +110,14 @@ def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
 def test_scheduled_campaign_persists_attempt_ledger_before_terminal_failure() -> None:
     text = _workflow_text()
 
-    ledger_command = "python -m cocomelon.ops.attempt_ledger"
+    ledger_command = "python campaign-tooling/src/cocomelon/ops/attempt_ledger.py"
     ledger_path = "evidence-cohort/diagnostics/cohort-attempts.json"
     terminal_failure = 'if [ -z "$CLEAN_ATTEMPT" ]; then'
+    assert f"ref: {ATTEMPT_LEDGER_REVISION}" in text
+    assert "path: campaign-tooling" in text
     assert ledger_command in text
     assert "--diagnostics-root evidence-cohort/diagnostics" in text
     assert ledger_path in text
     assert "--admitted-attempt \"$CLEAN_ATTEMPT\"" in text
+    assert "attempt-ledger-revision.txt" in text
     assert text.index(ledger_command) < text.index(terminal_failure)
