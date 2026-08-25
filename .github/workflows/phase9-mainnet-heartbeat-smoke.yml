@@ -19,12 +19,12 @@ jobs:
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: 9c3ff4727f885050806b7f8db6b90ef1066c52f9
+      COHORT_CODE_REVISION: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
     steps:
       - name: Checkout spaced pinned cohort
         uses: actions/checkout@v4
         with:
-          ref: 9c3ff4727f885050806b7f8db6b90ef1066c52f9
+          ref: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
