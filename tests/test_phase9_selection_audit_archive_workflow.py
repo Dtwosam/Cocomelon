@@ -99,6 +99,7 @@ def test_archive_persistence_is_append_once_and_rechecks_final_id() -> None:
     assert "archive_id" in text
     assert "Persist append-once Phase 9 selection audit archive" in text
     assert "Durable Phase 9 final changed before archive persistence" in text
+    assert "Existing durable selection audit archive_id is invalid" in text
     assert "Durable selection audit archive already exists with identical archive_id" in text
     assert "Refusing to replace existing durable selection audit archive" in text
     assert "Persisted selection audit archive does not match candidate" in text
