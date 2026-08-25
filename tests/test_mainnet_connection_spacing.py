@@ -54,6 +54,47 @@ def test_mainnet_connection_factory_enforces_shared_start_spacing() -> None:
     assert sleeps == [15.0, 15.0]
 
 
+def test_hung_handshake_does_not_block_next_reserved_connection_start() -> None:
+    build_factory = cli_support._build_spaced_mainnet_connection_factory
+    now = 100.0
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    second_started = asyncio.Event()
+    calls = 0
+
+    def monotonic() -> float:
+        return now
+
+    async def connect(settings: Settings) -> FakeConnection:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_started.set()
+            await release_first.wait()
+        else:
+            second_started.set()
+        return FakeConnection()
+
+    factory = build_factory(
+        Settings(),
+        environ={"COCOMELON_WS_CONNECT_SPACING_SECONDS": "15"},
+        connect=connect,
+        monotonic=monotonic,
+    )
+
+    async def run() -> None:
+        nonlocal now
+        first = asyncio.create_task(factory())
+        await first_started.wait()
+        now = 115.0
+        second = asyncio.create_task(factory())
+        await asyncio.wait_for(second_started.wait(), timeout=0.1)
+        release_first.set()
+        await asyncio.gather(first, second)
+
+    asyncio.run(run())
+
+
 def test_mainnet_connection_spacing_env_fails_closed_on_invalid_values() -> None:
     parse_spacing = cli_support._ws_connect_spacing_seconds
 
