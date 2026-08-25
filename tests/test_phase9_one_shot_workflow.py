@@ -69,3 +69,24 @@ def test_curator_uses_immutable_phase9_evaluator_revision() -> None:
     assert install in text
     assert text.index(checkout) < text.index(install) < text.index(prepare)
     assert text.index(install) < text.index(evaluate)
+
+
+def test_completed_underpowered_protocol_becomes_terminal_without_evaluation() -> None:
+    text = _text()
+
+    assert "v2-phase9-terminal-insufficient" in text
+    assert "phase9-terminal-artifacts.json" in text
+    assert "PHASE9_TERMINAL_EXISTS" in text
+    assert "test_window_complete" in text
+    assert "terminal_insufficient" in text
+    assert '"edge_status": "insufficient_evidence"' in text
+    assert '"economic_claim": "phase9_readiness_only"' in text
+
+
+def test_existing_terminal_insufficient_artifact_stops_future_oos_attempts() -> None:
+    text = _text()
+
+    assert "steps.phase9_artifacts.outputs.terminal_exists != 'true'" in text
+    terminal_upload = text.index("name: v2-phase9-terminal-insufficient")
+    evaluate = text.index("cocomelon-mainnet-evidence evaluate-phase9-v2")
+    assert terminal_upload < evaluate
