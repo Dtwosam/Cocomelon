@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -42,6 +43,23 @@ def _require_sha(value: str, *, label: str) -> str:
     return value
 
 
+def _workflow_run_head_sha_from_event() -> str | None:
+    raw_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not raw_path:
+        return None
+    event_path = Path(raw_path)
+    payload = _read_json_object(event_path)
+    workflow_run = payload.get("workflow_run")
+    if workflow_run is None:
+        return None
+    if not isinstance(workflow_run, dict):
+        raise ValueError("GitHub workflow_run event payload is invalid")
+    head_sha = workflow_run.get("head_sha")
+    if not isinstance(head_sha, str):
+        raise ValueError("GitHub workflow_run head sha is missing")
+    return _require_sha(head_sha, label="GitHub workflow_run head sha")
+
+
 def _canonical_id(payload: dict[str, object]) -> str:
     encoded = json.dumps(
         payload,
@@ -59,6 +77,7 @@ def build_selection_audit(
     source_run_id: int,
     source_artifact_id: int,
     expected_ledger_revision: str,
+    expected_trigger_sha: str | None = None,
 ) -> dict[str, object]:
     root = Path(cohort_root)
     if source_run_id <= 0 or source_artifact_id <= 0:
@@ -66,6 +85,11 @@ def build_selection_audit(
     expected_revision = _require_sha(
         expected_ledger_revision,
         label="expected attempt ledger revision",
+    )
+    authoritative_trigger = (
+        _require_sha(expected_trigger_sha, label="expected trigger head sha")
+        if expected_trigger_sha is not None
+        else _workflow_run_head_sha_from_event()
     )
 
     diagnostics = root / "diagnostics"
@@ -81,6 +105,9 @@ def build_selection_audit(
         _read_required_text(output / "trigger-head.txt"),
         label="trigger head sha",
     )
+    if authoritative_trigger is not None and trigger_sha != authoritative_trigger:
+        raise ValueError("trigger head sha does not match authoritative workflow run")
+
     acquisition_attempt = _read_positive_int(output / "acquisition-attempt.txt")
     ledger_path = diagnostics / "cohort-attempts.json"
     if not ledger_path.is_file():
@@ -129,6 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-run-id", required=True, type=int)
     parser.add_argument("--source-artifact-id", required=True, type=int)
     parser.add_argument("--expected-ledger-revision", required=True)
+    parser.add_argument("--expected-trigger-sha")
     parser.add_argument("--out", required=True, type=Path)
     return parser
 
@@ -140,6 +168,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         source_run_id=int(args.source_run_id),
         source_artifact_id=int(args.source_artifact_id),
         expected_ledger_revision=str(args.expected_ledger_revision),
+        expected_trigger_sha=(
+            str(args.expected_trigger_sha) if args.expected_trigger_sha else None
+        ),
     )
     output = cast(Path, args.out)
     output.parent.mkdir(parents=True, exist_ok=True)
