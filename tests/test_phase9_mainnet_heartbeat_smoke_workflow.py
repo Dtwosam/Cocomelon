@@ -29,7 +29,7 @@ def test_heartbeat_smoke_is_one_shot_mainnet_paper_diagnostic() -> None:
 def test_heartbeat_smoke_requires_gap_free_merged_feed_and_keeps_reconnect_diagnostics() -> None:
     text = _workflow_text()
 
-    assert "--seconds 90" in text
+    assert "duration_seconds=90" in text
     assert 'record["gap_count"] == 0' in text
     assert 'record["duplicate_count"] == 0' in text
     assert 'record["anomaly_count"] == 0' in text
@@ -42,3 +42,14 @@ def test_heartbeat_smoke_requires_gap_free_merged_feed_and_keeps_reconnect_diagn
     assert 'record["network_access"] is True' in text
     assert "retention-days: 7" in text
     assert "economic_claim" not in text
+
+
+def test_heartbeat_smoke_records_lane_readiness_trace_without_changing_acceptance() -> None:
+    text = _workflow_text()
+
+    assert "lane-trace.jsonl" in text
+    assert "RedundantStreamMux" in text
+    assert '"first_event"' in text
+    assert '"gap"' in text
+    assert "record_mainnet_evidence_payload" in text
+    assert "runner=_run_mainnet_evidence" in text
