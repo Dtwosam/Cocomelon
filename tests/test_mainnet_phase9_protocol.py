@@ -3,11 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.domain.evaluation import EvaluationDatasetManifest, ReplayEvaluationSource, TradeEvaluationSample
-from cocomelon.domain.features import TrendRegime, VolatilityRegime
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass
-from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.mainnet_protocol import (
     DAY_MS,
     V2_TEST_DAYS,
@@ -16,6 +11,15 @@ from cocomelon.evaluation.mainnet_protocol import (
     build_v2_protocol,
     evaluate_v2_readiness,
 )
+from cocomelon.domain.evaluation import (
+    EvaluationDatasetManifest,
+    ReplayEvaluationSource,
+    TradeEvaluationSample,
+)
+from cocomelon.domain.features import TrendRegime, VolatilityRegime
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.replay import EvidenceClass
+from cocomelon.domain.strategy import Direction
 
 MARKET = MarketId("", "BTC")
 
@@ -60,7 +64,11 @@ def _samples(count: int = 120) -> tuple[TradeEvaluationSample, ...]:
     return tuple(_sample(index, day=2 + index // 4) for index in range(count))
 
 
-def _dataset(samples: tuple[TradeEvaluationSample, ...], *, end_day: int = 47) -> EvaluationDatasetManifest:
+def _dataset(
+    samples: tuple[TradeEvaluationSample, ...],
+    *,
+    end_day: int = 47,
+) -> EvaluationDatasetManifest:
     return EvaluationDatasetManifest(
         sources=(
             ReplayEvaluationSource(
