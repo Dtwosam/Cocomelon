@@ -360,12 +360,24 @@ jobs:
           if [ "$EXISTING_STATUS" -eq 0 ]; then
             EXISTING_ARCHIVE_ID=$(python3 - <<'PY'
           import base64
+          import hashlib
           import json
           from pathlib import Path
 
           meta = json.loads(Path("/tmp/phase9-existing-archive-meta.json").read_text())
           payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
-          print(payload.get("archive_id", ""))
+          archive_id = payload.get("archive_id")
+          base = {key: value for key, value in payload.items() if key != "archive_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if archive_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Existing durable selection audit archive_id is invalid")
+          print(archive_id)
           PY
             )
             if [ "$EXISTING_ARCHIVE_ID" = "$CANDIDATE_ARCHIVE_ID" ]; then
