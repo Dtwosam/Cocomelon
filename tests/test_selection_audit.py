@@ -9,7 +9,7 @@ from pathlib import Path
 
 from cocomelon.ops.attempt_ledger import build_attempt_ledger
 
-LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
+LEDGER_REVISION = "e87a575a755074e36e22729c63c4831b474cf339"
 TRIGGER_SHA = "70e51d1e897cdafa236dc4ef06787939d2b726b4"
 OTHER_TRIGGER_SHA = "61fab78355c4bac4a644b59dbd6011a65d70c9d8"
 CAMPAIGN_WORKFLOW_ID = 341636172
@@ -54,15 +54,71 @@ def _make_attempt(
     )
 
 
+def _write_eligibility_probe(
+    diagnostics: Path,
+    attempt: int,
+    *,
+    economic_eligible: bool,
+    reasons: list[str],
+    opened_positions: int,
+    closed_positions: int,
+) -> None:
+    _write_json(
+        diagnostics / f"attempt-{attempt}" / "eligibility-probe.json",
+        {
+            "schema_version": 1,
+            "economic_claim": "none",
+            "economic_eligible": economic_eligible,
+            "economic_ineligibility_reasons": reasons,
+            "replay_data_complete": True,
+            "dataset_data_complete": True,
+            "dataset_gap_refs_empty": True,
+            "opened_positions": opened_positions,
+            "closed_positions": closed_positions,
+            "flat_replay": opened_positions == closed_positions,
+            "network_access": False,
+            "live_orders": False,
+        },
+    )
+
+
+def _persist_cohort_selection(root: Path, *, admitted_attempt: int) -> None:
+    diagnostics = root / "diagnostics"
+    ledger = build_attempt_ledger(diagnostics, admitted_attempt=admitted_attempt)
+    _write_json(diagnostics / "cohort-attempts.json", ledger)
+    _write_text(diagnostics / "attempt-ledger-revision.txt", LEDGER_REVISION)
+    _write_text(root / "output" / "acquisition-attempt.txt", str(admitted_attempt))
+    _write_text(root / "output" / "trigger-head.txt", TRIGGER_SHA)
+
+
 def _make_cohort(root: Path) -> None:
     diagnostics = root / "diagnostics"
     _make_attempt(diagnostics, 1, duplicate_count=1)
     _make_attempt(diagnostics, 2)
-    ledger = build_attempt_ledger(diagnostics, admitted_attempt=2)
-    _write_json(diagnostics / "cohort-attempts.json", ledger)
-    _write_text(diagnostics / "attempt-ledger-revision.txt", LEDGER_REVISION)
-    _write_text(root / "output" / "acquisition-attempt.txt", "2")
-    _write_text(root / "output" / "trigger-head.txt", TRIGGER_SHA)
+    _persist_cohort_selection(root, admitted_attempt=2)
+
+
+def _make_right_censored_retry_cohort(root: Path) -> None:
+    diagnostics = root / "diagnostics"
+    _make_attempt(diagnostics, 1)
+    _make_attempt(diagnostics, 2)
+    _write_eligibility_probe(
+        diagnostics,
+        1,
+        economic_eligible=False,
+        reasons=["open_exposure"],
+        opened_positions=1,
+        closed_positions=0,
+    )
+    _write_eligibility_probe(
+        diagnostics,
+        2,
+        economic_eligible=True,
+        reasons=[],
+        opened_positions=1,
+        closed_positions=1,
+    )
+    _persist_cohort_selection(root, admitted_attempt=2)
 
 
 def _write_workflow_event(
@@ -163,6 +219,28 @@ def test_selection_audit_recomputes_and_binds_attempt_ledger(tmp_path: Path) -> 
         allow_nan=False,
     ).encode("utf-8")
     assert audit_id == hashlib.sha256(encoded).hexdigest()
+
+
+def test_selection_audit_recomputes_right_censored_retry_lineage(tmp_path: Path) -> None:
+    cohort = tmp_path / "cohort"
+    _make_right_censored_retry_cohort(cohort)
+    output = tmp_path / "selection-audit.json"
+
+    result = _run_audit(cohort, output)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["attempt_ledger_revision"] == LEDGER_REVISION
+    assert payload["attempt_count"] == 2
+    assert payload["rejected_attempt_count"] == 1
+    assert payload["admitted_attempt"] == 2
+    attempts = payload["attempt_ledger"]["attempts"]
+    assert attempts[0]["status"] == "rejected"
+    assert attempts[0]["rejection_reasons"] == ["admission_open_exposure"]
+    assert attempts[0]["eligibility_probe"]["economic_eligible"] is False
+    assert attempts[1]["status"] == "admitted"
+    assert attempts[1]["rejection_reasons"] == []
+    assert attempts[1]["eligibility_probe"]["economic_eligible"] is True
 
 
 def test_selection_audit_accepts_authoritative_campaign_event(tmp_path: Path) -> None:
