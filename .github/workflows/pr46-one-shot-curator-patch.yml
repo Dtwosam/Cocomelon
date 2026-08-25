@@ -1,0 +1,66 @@
+name: PR46 One-Shot Curator Patch
+
+on:
+  push:
+    branches:
+      - phase-9-final-state-history-20260825
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ github.ref == 'refs/heads/phase-9-final-state-history-20260825' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: phase-9-final-state-history-20260825
+          fetch-depth: 1
+
+      - name: Apply exact curator history guard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/evidence-corpus-curator.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''          elif grep -q "HTTP 404" intake/phase9-durable-state.stderr; then
+            printf '%s\\n' \\
+              '{"durable_final_exists": false, "economic_claim": "none"}' \\
+              > intake/phase9-durable-audit.json
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+'''
+          new = '''          elif grep -q "HTTP 404" intake/phase9-durable-state.stderr; then
+            STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"
+            gh api "$STATE_HISTORY_ENDPOINT" > intake/phase9-state-history.json
+            if python3 - <<'PYHISTORY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("intake/phase9-state-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PYHISTORY
+            then
+              echo "Phase 9 final state was previously recorded but is now missing" >&2
+              exit 61
+            fi
+            printf '%s\\n' \\
+              '{"durable_final_exists": false, "economic_claim": "none"}' \\
+              > intake/phase9-durable-audit.json
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+'''
+          if text.count(old) != 1:
+              raise SystemExit('expected exact curator 404 block once')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+
+      - name: Commit branch-only patch
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/evidence-corpus-curator.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Fail closed when curator durable final was deleted"
+          git push origin HEAD:phase-9-final-state-history-20260825
