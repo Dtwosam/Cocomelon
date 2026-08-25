@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-corpus-curator.yml")
+INTAKE_MARKER = Path("intake/.gitkeep")
 CAMPAIGN = "Scheduled Genuine Mainnet Evidence Campaign V2"
 SELECTION_AUDIT_INTRO_SHA = "70e51d1e897cdafa236dc4ef06787939d2b726b4"
 LEDGER_REVISION = "e87a575a755074e36e22729c63c4831b474cf339"
@@ -86,6 +87,17 @@ def test_curator_can_skip_newer_untrusted_artifact_for_older_trusted_candidate()
     assert "continue" in text
     assert "TRUSTED_ARTIFACT_ID" in text
     assert "TRUSTED_RUN_ID" in text
+
+
+def test_curator_has_intake_directory_after_checkout_before_selector() -> None:
+    text = _text()
+
+    checkout = text.index("- name: Checkout current evaluation tooling")
+    prepare = text.index("- name: Prepare trusted curator artifact selector")
+    selector = text.index("cat > intake/select-trusted-curator-artifact.sh", prepare)
+    mkdir = text.find("mkdir -p intake", prepare, selector)
+    assert checkout < prepare < selector
+    assert mkdir != -1 or INTAKE_MARKER.is_file()
 
 
 def test_curator_requires_selection_audit_for_post_introduction_campaigns() -> None:
