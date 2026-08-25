@@ -69,7 +69,11 @@ def test_archive_workflow_requires_exact_triggering_curator_corpus_when_unarchiv
 
     assert "SOURCE_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}" in text
     assert "SOURCE_CURATOR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}" in text
-    assert '"repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_CURATOR_RUN_ID/artifacts?per_page=100"' in text
+    artifacts_endpoint = (
+        '"repos/$GITHUB_REPOSITORY/actions/runs/'
+        '$SOURCE_CURATOR_RUN_ID/artifacts?per_page=100"'
+    )
+    assert artifacts_endpoint in text
     assert 'item.get("name") == "v2-mainnet-corpus"' in text
     assert "Finalized Phase 9 run does not contain exactly one current corpus artifact" in text
     assert '"repos/$GITHUB_REPOSITORY/actions/artifacts/$CORPUS_ARTIFACT_ID/zip"' in text
@@ -98,7 +102,7 @@ def test_archive_persistence_is_append_once_and_rechecks_final_id() -> None:
     assert "Durable selection audit archive already exists with identical archive_id" in text
     assert "Refusing to replace existing durable selection audit archive" in text
     assert "Persisted selection audit archive does not match candidate" in text
-    assert f'-f branch="$PHASE9_STATE_BRANCH"' in text
+    assert '-f branch="$PHASE9_STATE_BRANCH"' in text
 
 
 def test_archive_workflow_is_offline_audit_plumbing_only() -> None:
