@@ -17,29 +17,86 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 110
     env:
+      GH_TOKEN: ${{ github.token }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COHORT_CODE_REVISION: 7cf19ab81fa609fed4171ea8ed1f06d85f91e793
       COHORT_TRIGGER_SHA: ${{ github.sha }}
     steps:
+      - name: Check durable Phase 9 final state
+        id: phase9_final
+        run: |
+          set -euo pipefail
+          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$STATE_ENDPOINT" > /tmp/phase9-state-meta.json 2> /tmp/phase9-state.stderr
+          STATE_STATUS=$?
+          set -e
+          if [ "$STATE_STATUS" -eq 0 ]; then
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-state-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          expected = hashlib.sha256(encoded).hexdigest()
+          if final_id != expected:
+              raise SystemExit("durable Phase 9 final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("durable Phase 9 protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("durable Phase 9 state is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("durable Phase 9 state violates offline-only semantics")
+          Path("/tmp/phase9-v2-final.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "final_exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "HTTP 404" /tmp/phase9-state.stderr; then
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat /tmp/phase9-state.stderr >&2
+            exit "$STATE_STATUS"
+          fi
+
       - name: Checkout pinned V2 evidence revision
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
           ref: 7cf19ab81fa609fed4171ea8ed1f06d85f91e793
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install Cocomelon
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
 
       - name: Record clean genuine public mainnet evidence
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           set -euo pipefail
           mkdir -p evidence-cohort/output evidence-cohort/diagnostics
@@ -170,6 +227,7 @@ jobs:
           fi
 
       - name: Validate and replay recorded evidence offline
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           set -euo pipefail
           cocomelon validate-recording \
@@ -194,6 +252,7 @@ jobs:
             > evidence-cohort/output/dataset.json
 
       - name: Assert pinned paper-only economic evidence semantics
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           python - <<'PY'
           import json
@@ -298,7 +357,7 @@ jobs:
           PY
 
       - name: Upload genuine evidence artifact
-        if: always()
+        if: ${{ steps.phase9_final.outputs.final_exists != 'true' && always() }}
         uses: actions/upload-artifact@v4
         with:
           name: scheduled-genuine-mainnet-evidence-v2-${{ github.run_id }}-attempt-${{ github.run_attempt }}
