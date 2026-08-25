@@ -104,3 +104,16 @@ def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
     check = text.index("Check durable Phase 9 final state")
     checkout = text.index("Checkout pinned V2 evidence revision")
     assert check < text.index(history_endpoint) < checkout
+
+
+def test_scheduled_campaign_persists_attempt_ledger_before_terminal_failure() -> None:
+    text = _workflow_text()
+
+    ledger_command = "python -m cocomelon.ops.attempt_ledger"
+    ledger_path = "evidence-cohort/diagnostics/cohort-attempts.json"
+    terminal_failure = 'if [ -z "$CLEAN_ATTEMPT" ]; then'
+    assert ledger_command in text
+    assert "--diagnostics-root evidence-cohort/diagnostics" in text
+    assert ledger_path in text
+    assert "--admitted-attempt \"$CLEAN_ATTEMPT\"" in text
+    assert text.index(ledger_command) < text.index(terminal_failure)
