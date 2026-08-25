@@ -1036,12 +1036,24 @@ jobs:
           if [ "$EXISTING_STATUS" -eq 0 ]; then
             EXISTING_ID=$(python3 - <<'PY'
           import base64
+          import hashlib
           import json
           from pathlib import Path
 
           meta = json.loads(Path("/tmp/phase9-existing-meta.json").read_text())
           payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
-          print(payload.get("final_id", ""))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if final_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Existing durable Phase 9 final_id is invalid during persistence")
+          print(final_id)
           PY
             )
             if [ "$EXISTING_ID" = "$CANDIDATE_ID" ]; then
