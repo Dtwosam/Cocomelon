@@ -118,3 +118,35 @@ def test_attempt_ledger_is_deterministic_and_marks_exact_admission(tmp_path: Pat
     assert payload["attempts"][1]["status"] == "admitted"
     assert payload["attempts"][1]["admitted"] is True
     assert payload["attempts"][1]["rejection_reasons"] == []
+
+
+def test_attempt_ledger_survives_truncated_transport_after_gap_abort(tmp_path: Path) -> None:
+    diagnostics = tmp_path / "diagnostics"
+    attempt_root = diagnostics / "attempt-1"
+    _write_text(attempt_root / "started-at-utc.txt", "2026-08-25T01:00:00Z")
+    _write_text(attempt_root / "finished-at-utc.txt", "2026-08-25T01:00:10Z")
+    _write_text(attempt_root / "recorder-exit-status.txt", "143")
+    _write_text(attempt_root / "gap-watch-exit-status.txt", "20")
+    _write_text(attempt_root / "normalize-exit-status.txt", "1")
+    _write_text(attempt_root / "record-transport.json", '{"session_id":')
+    _write_json(attempt_root / "recording-session.json", {"session_id": "aborted-session"})
+    gap = attempt_root / "gaps" / "2026-08-25" / "segment-0001.jsonl"
+    _write_text(gap, '{"record_type":"data_gap"}')
+    output = diagnostics / "cohort-attempts.json"
+
+    result = _run_ledger(diagnostics, output)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    attempt = payload["attempts"][0]
+    assert attempt["recording_session_id"] == "aborted-session"
+    assert attempt["gap_count"] is None
+    assert attempt["duplicate_count"] is None
+    assert attempt["anomaly_count"] is None
+    assert attempt["status"] == "rejected"
+    assert attempt["rejection_reasons"] == [
+        "recorder_exit_nonzero",
+        "gap_detected",
+        "normalization_failed",
+        "missing_normalized_record",
+    ]
