@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "7cf19ab81fa609fed4171ea8ed1f06d85f91e793"
+PINNED_CODE = "30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e"
 ATTEMPT_LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 STATE_BRANCH = "phase9-v2-protocol-state"
 STATE_FILE = "phase9-v2-final.json"
@@ -33,7 +33,7 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
 def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-v2-7cf19ab8" in text
+    assert "group: genuine-mainnet-evidence-v2-30c0de4b" in text
     assert "cancel-in-progress: false" in text
     assert "--seconds 2700" in text
     assert "--deep-limit 5" in text
@@ -102,7 +102,7 @@ def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
     assert history_endpoint in text
     assert "phase9-state-history.json" in text
     assert "previously recorded but is now missing" in text
-    check = text.index("Check durable Phase 9 final state")
+    check = text.index("Check durable one-shot Phase 9 state") if "Check durable one-shot Phase 9 state" in text else text.index("Check durable Phase 9 final state")
     checkout = text.index("Checkout pinned V2 evidence revision")
     assert check < text.index(history_endpoint) < checkout
 
