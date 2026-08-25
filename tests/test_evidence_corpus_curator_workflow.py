@@ -59,3 +59,29 @@ def test_curator_preserves_rejected_intake_without_corpus_mutation() -> None:
     assert "intake-report.json" in text
     assert '"corpus_mutated": False' in text
     assert "if: always()" in text
+
+
+def test_reused_global_artifacts_are_bound_to_trusted_curator_run_provenance() -> None:
+    text = _text()
+
+    assert "ranked_artifact_candidates" in text
+    assert "trusted_curator_run" in text
+    assert '"repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID"' in text
+    for name in (
+        "v2-mainnet-corpus",
+        "v2-phase9-evaluation",
+        "v2-phase9-frozen-snapshot",
+        "v2-phase9-terminal-insufficient",
+    ):
+        assert name in text
+    assert ".github/workflows/evidence-corpus-curator.yml" in text
+    assert "workflow_run" in text
+
+
+def test_curator_can_skip_newer_untrusted_artifact_for_older_trusted_candidate() -> None:
+    text = _text()
+
+    assert "for CANDIDATE in" in text
+    assert "continue" in text
+    assert "TRUSTED_ARTIFACT_ID" in text
+    assert "TRUSTED_RUN_ID" in text
