@@ -14,6 +14,10 @@ from cocomelon.evaluation.mainnet_evidence import (
     mainnet_evidence_progress_payload,
     verify_mainnet_evidence_cohort_payload,
 )
+from cocomelon.evaluation.mainnet_phase9 import (
+    evaluate_phase9_v2_snapshot,
+    prepare_phase9_v2_snapshot,
+)
 
 
 def _attestation_metadata(journal_path: str | Path) -> tuple[str, int]:
@@ -110,6 +114,13 @@ def build_parser() -> argparse.ArgumentParser:
     freeze_dataset.add_argument("--journal", required=True, type=Path)
     freeze_dataset.add_argument("--facts", required=True, type=Path)
     freeze_dataset.add_argument("--run-id", required=True, action="append")
+
+    prepare_phase9 = subparsers.add_parser("prepare-phase9-v2")
+    prepare_phase9.add_argument("--corpus-root", required=True, type=Path)
+    prepare_phase9.add_argument("--out-root", required=True, type=Path)
+
+    evaluate_phase9 = subparsers.add_parser("evaluate-phase9-v2")
+    evaluate_phase9.add_argument("--snapshot-root", required=True, type=Path)
     return parser
 
 
@@ -126,12 +137,16 @@ def main(argv: Sequence[str] | None = None) -> None:
             args.facts,
             tuple(args.source_root),
         )
-    else:
+    elif args.command == "freeze-dataset":
         payload = freeze_dataset_payload(
             args.journal,
             args.facts,
             tuple(args.run_id),
         )
+    elif args.command == "prepare-phase9-v2":
+        payload = prepare_phase9_v2_snapshot(args.corpus_root, args.out_root)
+    else:
+        payload = evaluate_phase9_v2_snapshot(args.snapshot_root)
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 

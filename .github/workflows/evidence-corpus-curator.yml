@@ -16,7 +16,7 @@ concurrency:
 jobs:
   curate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
@@ -265,6 +265,156 @@ jobs:
           )
           PY
 
+      - name: Inspect existing one-shot Phase 9 artifacts
+        id: phase9_artifacts
+        if: ${{ steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-evaluation&per_page=100" \
+            > intake/phase9-evaluation-artifacts.json
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-frozen-snapshot&per_page=100" \
+            > intake/phase9-snapshot-artifacts.json
+
+          PHASE9_EVALUATION_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/phase9-evaluation-artifacts.json").read_text())
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == "v2-phase9-evaluation"
+              and not item.get("expired", False)
+          ]
+          if matches:
+              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
+          PY
+          )
+          PHASE9_SNAPSHOT_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/phase9-snapshot-artifacts.json").read_text())
+          matches = [
+              item for item in payload.get("artifacts", [])
+              if item.get("name") == "v2-phase9-frozen-snapshot"
+              and not item.get("expired", False)
+          ]
+          if matches:
+              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
+          PY
+          )
+
+          PHASE9_EVALUATION_EXISTS=false
+          PHASE9_SNAPSHOT_EXISTS=false
+          if [ -n "$PHASE9_EVALUATION_ID" ]; then
+            PHASE9_EVALUATION_EXISTS=true
+          fi
+          if [ -n "$PHASE9_SNAPSHOT_ID" ]; then
+            PHASE9_SNAPSHOT_EXISTS=true
+          fi
+
+          printf '%s\n' "$PHASE9_EVALUATION_ID" > intake/phase9-evaluation-artifact-id.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_ID" > intake/phase9-snapshot-artifact-id.txt
+          printf '%s\n' "$PHASE9_EVALUATION_EXISTS" > intake/phase9-evaluation-exists.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_EXISTS" > intake/phase9-snapshot-exists.txt
+
+          echo "evaluation_exists=$PHASE9_EVALUATION_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "evaluation_id=$PHASE9_EVALUATION_ID" >> "$GITHUB_OUTPUT"
+          echo "snapshot_exists=$PHASE9_SNAPSHOT_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "snapshot_id=$PHASE9_SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download existing frozen Phase 9 snapshot
+        id: phase9_existing
+        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        env:
+          SNAPSHOT_ARTIFACT_ID: ${{ steps.phase9_artifacts.outputs.snapshot_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p phase9-existing
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SNAPSHOT_ARTIFACT_ID/zip" \
+            > intake/phase9-existing-snapshot.zip
+          unzip -q intake/phase9-existing-snapshot.zip -d phase9-existing
+          mapfile -t SNAPSHOTS < <(find phase9-existing -type f -name snapshot.json -print)
+          if [ "${#SNAPSHOTS[@]}" -ne 1 ]; then
+            echo "Frozen Phase 9 artifact must contain exactly one snapshot.json" >&2
+            exit 41
+          fi
+          SNAPSHOT_ROOT=$(dirname "${SNAPSHOTS[0]}")
+          echo "snapshot_root=$SNAPSHOT_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare one-shot Phase 9 V2 snapshot candidate
+        id: phase9_prepare
+        if: ${{ steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-candidate
+          cocomelon-mainnet-evidence prepare-phase9-v2 \
+            --corpus-root corpus \
+            --out-root phase9-candidate \
+            > intake/phase9-prepare.json
+          cp phase9-candidate/phase9-readiness.json intake/phase9-readiness.json
+          READY=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 readiness is not one_shot_oos")
+          print("true" if payload.get("ready_for_untouched_evaluation") is True else "false")
+          PY
+          )
+          echo "ready=$READY" >> "$GITHUB_OUTPUT"
+          echo "snapshot_root=phase9-candidate" >> "$GITHUB_OUTPUT"
+
+      - name: Upload frozen one-shot Phase 9 snapshot
+        if: ${{ steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-phase9-frozen-snapshot
+          path: phase9-candidate/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Evaluate frozen one-shot Phase 9 snapshot
+        id: phase9_evaluate
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
+        env:
+          EXISTING_SNAPSHOT_ROOT: ${{ steps.phase9_existing.outputs.snapshot_root }}
+          NEW_SNAPSHOT_ROOT: ${{ steps.phase9_prepare.outputs.snapshot_root }}
+        run: |
+          set -euo pipefail
+          SNAPSHOT_ROOT="$EXISTING_SNAPSHOT_ROOT"
+          if [ -z "$SNAPSHOT_ROOT" ]; then
+            SNAPSHOT_ROOT="$NEW_SNAPSHOT_ROOT"
+          fi
+          if [ -z "$SNAPSHOT_ROOT" ]; then
+            echo "No frozen Phase 9 snapshot root is available" >&2
+            exit 42
+          fi
+          cocomelon-mainnet-evidence evaluate-phase9-v2 \
+            --snapshot-root "$SNAPSHOT_ROOT" \
+            > intake/phase9-evaluate.json
+          mkdir -p phase9-evaluation
+          cp "$SNAPSHOT_ROOT/evaluation.json" phase9-evaluation/evaluation.json
+          cp "$SNAPSHOT_ROOT/snapshot.json" phase9-evaluation/snapshot.json
+          cp "$SNAPSHOT_ROOT/phase9-readiness.json" phase9-evaluation/phase9-readiness.json
+          cp intake/phase9-evaluate.json phase9-evaluation/evaluation-command.json
+          printf '%s\n' "$SNAPSHOT_ROOT" > phase9-evaluation/snapshot-root.txt
+
+      - name: Upload one-shot Phase 9 evaluation
+        if: ${{ steps.phase9_evaluate.outcome == 'success' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-phase9-evaluation
+          path: phase9-evaluation/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Upload intake audit
         if: always()
         uses: actions/upload-artifact@v4
@@ -276,7 +426,7 @@ jobs:
           compression-level: 6
 
       - name: Upload rolled attested corpus
-        if: ${{ steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ always() && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-mainnet-corpus
