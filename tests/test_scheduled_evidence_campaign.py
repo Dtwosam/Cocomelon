@@ -102,7 +102,7 @@ def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
     assert history_endpoint in text
     assert "phase9-state-history.json" in text
     assert "previously recorded but is now missing" in text
-    check = text.index("Check durable one-shot Phase 9 state") if "Check durable one-shot Phase 9 state" in text else text.index("Check durable Phase 9 final state")
+    check = text.index("Check durable Phase 9 final state")
     checkout = text.index("Checkout pinned V2 evidence revision")
     assert check < text.index(history_endpoint) < checkout
 
