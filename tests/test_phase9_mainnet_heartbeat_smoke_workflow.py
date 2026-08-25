@@ -53,3 +53,18 @@ def test_heartbeat_smoke_records_lane_readiness_trace_without_changing_acceptanc
     assert '"gap"' in text
     assert "record_mainnet_evidence_payload" in text
     assert "runner=_run_mainnet_evidence" in text
+
+
+def test_heartbeat_smoke_traces_websocket_startup_stages() -> None:
+    text = _workflow_text()
+
+    assert "TracedConnection" in text
+    assert '"connection_start"' in text
+    assert '"connection_ready"' in text
+    assert '"connection_error"' in text
+    assert '"send_start"' in text
+    assert '"send_done"' in text
+    assert '"recv_start"' in text
+    assert '"recv_done"' in text
+    assert '"recv_error"' in text
+    assert "ws_client.connect_mainnet_ws = traced_connect_mainnet_ws" in text

@@ -47,6 +47,7 @@ jobs:
 
           python - <<'PY' > heartbeat-smoke/output/record-transport.json
           import json
+          import time
           from pathlib import Path
 
           from cocomelon.config import Settings
@@ -55,6 +56,7 @@ jobs:
               record_mainnet_evidence_payload,
           )
           from cocomelon.evidence.redundant_stream import RedundantStreamMux
+          from cocomelon.hyperliquid import ws_client
           from cocomelon.hyperliquid.ws_supervisor import event_stream_id
 
           trace_path = Path("heartbeat-smoke/output/lane-trace.jsonl")
@@ -62,11 +64,132 @@ jobs:
           first_event_lanes: set[int] = set()
           original_on_event = RedundantStreamMux.on_event
           original_on_gap = RedundantStreamMux.on_gap
+          original_connect_mainnet_ws = ws_client.connect_mainnet_ws
+          connection_seq = 0
+
+          def wall_ms() -> int:
+              return time.time_ns() // 1_000_000
 
           def write_trace(payload: dict[str, object]) -> None:
+              payload = {"trace_ms": wall_ms(), **payload}
               with trace_path.open("a", encoding="utf-8") as handle:
                   handle.write(json.dumps(payload, sort_keys=True) + "\n")
                   handle.flush()
+
+          class TracedConnection:
+              def __init__(self, connection, connection_id):  # type: ignore[no-untyped-def]
+                  self._connection = connection
+                  self._connection_id = connection_id
+                  self._send_index = 0
+                  self._recv_index = 0
+
+              async def send_json(self, value):  # type: ignore[no-untyped-def]
+                  send_index = self._send_index
+                  self._send_index += 1
+                  write_trace(
+                      {
+                          "type": "send_start",
+                          "connection_id": self._connection_id,
+                          "send_index": send_index,
+                          "method": value.get("method") if isinstance(value, dict) else None,
+                          "subscription": value.get("subscription") if isinstance(value, dict) else None,
+                      }
+                  )
+                  try:
+                      result = await self._connection.send_json(value)
+                  except Exception as exc:
+                      write_trace(
+                          {
+                              "type": "send_error",
+                              "connection_id": self._connection_id,
+                              "send_index": send_index,
+                              "error_type": type(exc).__name__,
+                              "error": str(exc),
+                          }
+                      )
+                      raise
+                  write_trace(
+                      {
+                          "type": "send_done",
+                          "connection_id": self._connection_id,
+                          "send_index": send_index,
+                      }
+                  )
+                  return result
+
+              async def recv_json(self):  # type: ignore[no-untyped-def]
+                  recv_index = self._recv_index
+                  self._recv_index += 1
+                  write_trace(
+                      {
+                          "type": "recv_start",
+                          "connection_id": self._connection_id,
+                          "recv_index": recv_index,
+                      }
+                  )
+                  try:
+                      raw = await self._connection.recv_json()
+                  except Exception as exc:
+                      write_trace(
+                          {
+                              "type": "recv_error",
+                              "connection_id": self._connection_id,
+                              "recv_index": recv_index,
+                              "error_type": type(exc).__name__,
+                              "error": str(exc),
+                          }
+                      )
+                      raise
+                  write_trace(
+                      {
+                          "type": "recv_done",
+                          "connection_id": self._connection_id,
+                          "recv_index": recv_index,
+                          "channel": raw.get("channel") if isinstance(raw, dict) else None,
+                      }
+                  )
+                  return raw
+
+              async def close(self):  # type: ignore[no-untyped-def]
+                  write_trace(
+                      {
+                          "type": "connection_close",
+                          "connection_id": self._connection_id,
+                      }
+                  )
+                  return await self._connection.close()
+
+          async def traced_connect_mainnet_ws(settings):  # type: ignore[no-untyped-def]
+              nonlocal_connection_id = None
+              global connection_seq
+              connection_id = connection_seq
+              connection_seq += 1
+              nonlocal_connection_id = connection_id
+              write_trace(
+                  {
+                      "type": "connection_start",
+                      "connection_id": nonlocal_connection_id,
+                  }
+              )
+              try:
+                  connection = await original_connect_mainnet_ws(settings)
+              except Exception as exc:
+                  write_trace(
+                      {
+                          "type": "connection_error",
+                          "connection_id": nonlocal_connection_id,
+                          "error_type": type(exc).__name__,
+                          "error": str(exc),
+                      }
+                  )
+                  raise
+              write_trace(
+                  {
+                      "type": "connection_ready",
+                      "connection_id": nonlocal_connection_id,
+                  }
+              )
+              return TracedConnection(connection, nonlocal_connection_id)
 
           async def traced_on_event(self, lane, event):  # type: ignore[no-untyped-def]
               first = lane not in first_event_lanes
@@ -104,6 +227,7 @@ jobs:
               )
               return result
 
+          ws_client.connect_mainnet_ws = traced_connect_mainnet_ws
           RedundantStreamMux.on_event = traced_on_event
           RedundantStreamMux.on_gap = traced_on_gap
 
