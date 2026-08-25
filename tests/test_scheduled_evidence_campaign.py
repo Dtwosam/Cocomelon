@@ -76,3 +76,13 @@ def test_scheduled_campaign_stops_after_durable_phase9_finalization() -> None:
     checkout = text.index("Checkout pinned V2 evidence revision")
     record = text.index("Record clean genuine public mainnet evidence")
     assert check < checkout < record
+
+
+def test_scheduled_campaign_fails_closed_if_durable_state_branch_disappears() -> None:
+    text = _workflow_text()
+
+    branch_check = '"repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH"'
+    state_endpoint = 'STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"'
+    assert branch_check in text
+    assert state_endpoint in text
+    assert text.index(branch_check) < text.index(state_endpoint)
