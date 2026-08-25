@@ -111,6 +111,62 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
+      - name: Prepare trusted curator artifact selector
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          cat > intake/select-trusted-curator-artifact.sh <<'SH'
+          select_trusted_curator_artifact() {
+            local LIST_FILE="$1"
+            local ARTIFACT_NAME="$2"
+            local AUDIT_PREFIX="$3"
+            TRUSTED_ARTIFACT_ID=""
+            TRUSTED_RUN_ID=""
+            mapfile -t CANDIDATES < <(python - "$LIST_FILE" "$ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cocomelon.ops.artifact_provenance import ranked_artifact_candidates
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          for item in ranked_artifact_candidates(payload, sys.argv[2]):
+              print(f"{item.artifact_id}\t{item.workflow_run_id}")
+          PY
+            )
+            for CANDIDATE in "${CANDIDATES[@]}"; do
+              CANDIDATE_ARTIFACT_ID=${CANDIDATE%%$'\t'*}
+              CANDIDATE_RUN_ID=${CANDIDATE#*$'\t'}
+              RUN_FILE="${AUDIT_PREFIX}-run-${CANDIDATE_RUN_ID}.json"
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+                > "$RUN_FILE"
+              if python - "$RUN_FILE" "$CANDIDATE_RUN_ID" "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cocomelon.ops.artifact_provenance import trusted_curator_run
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          trusted = trusted_curator_run(
+              payload,
+              repository=sys.argv[3],
+              expected_run_id=int(sys.argv[2]),
+          )
+          raise SystemExit(0 if trusted else 1)
+          PY
+              then
+                TRUSTED_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+                TRUSTED_RUN_ID="$CANDIDATE_RUN_ID"
+                return 0
+              fi
+              continue
+            done
+            return 0
+          }
+          SH
+
       - name: Download and independently verify source intake
         id: intake
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
@@ -245,27 +301,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p corpus prior
+          source intake/select-trusted-curator-artifact.sh
 
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-mainnet-corpus&per_page=100" \
             > intake/prior-artifacts.json
-          PRIOR_ARTIFACT_ID=$(python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(Path("intake/prior-artifacts.json").read_text())
-          candidates = [
-              item
-              for item in payload.get("artifacts", [])
-              if item.get("name") == "v2-mainnet-corpus"
-              and not item.get("expired", False)
-          ]
-          if candidates:
-              latest = max(candidates, key=lambda item: item.get("created_at", ""))
-              print(latest["id"])
-          PY
-          )
+          select_trusted_curator_artifact \
+            intake/prior-artifacts.json \
+            v2-mainnet-corpus \
+            intake/prior-corpus-provenance
+          PRIOR_ARTIFACT_ID="$TRUSTED_ARTIFACT_ID"
+          PRIOR_RUN_ID="$TRUSTED_RUN_ID"
           printf '%s\n' "$PRIOR_ARTIFACT_ID" > intake/prior-corpus-artifact-id.txt
+          printf '%s\n' "$PRIOR_RUN_ID" > intake/prior-corpus-producer-run-id.txt
 
           if [ -n "$PRIOR_ARTIFACT_ID" ]; then
             gh api \
@@ -291,7 +339,9 @@ jobs:
             --facts corpus/facts.sqlite3 \
             > corpus/progress.json
 
-          PRIOR_ARTIFACT_ID="$PRIOR_ARTIFACT_ID" python - <<'PY'
+          PRIOR_ARTIFACT_ID="$PRIOR_ARTIFACT_ID" \
+          PRIOR_RUN_ID="$PRIOR_RUN_ID" \
+          python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -302,6 +352,7 @@ jobs:
           curator_head = Path("intake/curator-head.txt").read_text().strip()
           source_artifact_id = int(Path("intake/source-artifact-id.txt").read_text())
           prior_raw = os.environ.get("PRIOR_ARTIFACT_ID", "")
+          prior_run_raw = os.environ.get("PRIOR_RUN_ID", "")
           index = {
               "schema_version": 1,
               "economic_claim": "none",
@@ -311,6 +362,9 @@ jobs:
               "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
               "source_artifact_id": source_artifact_id,
               "previous_corpus_artifact_id": int(prior_raw) if prior_raw else None,
+              "previous_corpus_producer_run_id": (
+                  int(prior_run_raw) if prior_run_raw else None
+              ),
               "mainnet_attestation_id": progress["mainnet_attestation_id"],
               "attested_run_count": progress["attested_run_count"],
               "closed_trade_count": progress["closed_trade_count"],
@@ -344,6 +398,7 @@ jobs:
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
         run: |
           set -euo pipefail
+          source intake/select-trusted-curator-artifact.sh
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-evaluation&per_page=100" \
             > intake/phase9-evaluation-artifacts.json
@@ -354,48 +409,26 @@ jobs:
             "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-terminal-insufficient&per_page=100" \
             > intake/phase9-terminal-artifacts.json
 
-          PHASE9_EVALUATION_ID=$(python - <<'PY'
-          import json
-          from pathlib import Path
+          select_trusted_curator_artifact \
+            intake/phase9-evaluation-artifacts.json \
+            v2-phase9-evaluation \
+            intake/phase9-evaluation-provenance
+          PHASE9_EVALUATION_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_EVALUATION_RUN_ID="$TRUSTED_RUN_ID"
 
-          payload = json.loads(Path("intake/phase9-evaluation-artifacts.json").read_text())
-          matches = [
-              item for item in payload.get("artifacts", [])
-              if item.get("name") == "v2-phase9-evaluation"
-              and not item.get("expired", False)
-          ]
-          if matches:
-              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
-          PY
-          )
-          PHASE9_SNAPSHOT_ID=$(python - <<'PY'
-          import json
-          from pathlib import Path
+          select_trusted_curator_artifact \
+            intake/phase9-snapshot-artifacts.json \
+            v2-phase9-frozen-snapshot \
+            intake/phase9-snapshot-provenance
+          PHASE9_SNAPSHOT_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_SNAPSHOT_RUN_ID="$TRUSTED_RUN_ID"
 
-          payload = json.loads(Path("intake/phase9-snapshot-artifacts.json").read_text())
-          matches = [
-              item for item in payload.get("artifacts", [])
-              if item.get("name") == "v2-phase9-frozen-snapshot"
-              and not item.get("expired", False)
-          ]
-          if matches:
-              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
-          PY
-          )
-          PHASE9_TERMINAL_ID=$(python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(Path("intake/phase9-terminal-artifacts.json").read_text())
-          matches = [
-              item for item in payload.get("artifacts", [])
-              if item.get("name") == "v2-phase9-terminal-insufficient"
-              and not item.get("expired", False)
-          ]
-          if matches:
-              print(max(matches, key=lambda item: item.get("created_at", ""))["id"])
-          PY
-          )
+          select_trusted_curator_artifact \
+            intake/phase9-terminal-artifacts.json \
+            v2-phase9-terminal-insufficient \
+            intake/phase9-terminal-provenance
+          PHASE9_TERMINAL_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_TERMINAL_RUN_ID="$TRUSTED_RUN_ID"
 
           PHASE9_EVALUATION_EXISTS=false
           PHASE9_SNAPSHOT_EXISTS=false
@@ -413,6 +446,9 @@ jobs:
           printf '%s\n' "$PHASE9_EVALUATION_ID" > intake/phase9-evaluation-artifact-id.txt
           printf '%s\n' "$PHASE9_SNAPSHOT_ID" > intake/phase9-snapshot-artifact-id.txt
           printf '%s\n' "$PHASE9_TERMINAL_ID" > intake/phase9-terminal-artifact-id.txt
+          printf '%s\n' "$PHASE9_EVALUATION_RUN_ID" > intake/phase9-evaluation-producer-run-id.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_RUN_ID" > intake/phase9-snapshot-producer-run-id.txt
+          printf '%s\n' "$PHASE9_TERMINAL_RUN_ID" > intake/phase9-terminal-producer-run-id.txt
           printf '%s\n' "$PHASE9_EVALUATION_EXISTS" > intake/phase9-evaluation-exists.txt
           printf '%s\n' "$PHASE9_SNAPSHOT_EXISTS" > intake/phase9-snapshot-exists.txt
           printf '%s\n' "$PHASE9_TERMINAL_EXISTS" > intake/phase9-terminal-exists.txt
@@ -634,8 +670,7 @@ jobs:
           set -euo pipefail
           rm -rf phase9-persist
           mkdir -p phase9-persist
-          EXISTING_ROOT="$EXISTING_FINAL_ROOT"
-          EXISTING_ROOT="$EXISTING_ROOT" python - <<'PY'
+          EXISTING_ROOT="$EXISTING_FINAL_ROOT" python - <<'PY'
           import hashlib
           import json
           import os
