@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 WORKFLOW = Path(".github/workflows/phase9-mainnet-heartbeat-smoke.yml")
 PINNED_COHORT = "30c0de4bf76a5eda74c9bb71f17db00f1f9ce17e"
 
