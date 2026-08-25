@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-from importlib import import_module
 
 import pytest
 
 from cocomelon.config import Settings
+from cocomelon.evidence import cli_support
 
 
 class FakeConnection:
@@ -20,8 +20,7 @@ class FakeConnection:
 
 
 def test_mainnet_connection_factory_enforces_shared_start_spacing() -> None:
-    support = import_module("cocomelon.evidence.cli_support")
-    build_factory = getattr(support, "_build_spaced_mainnet_connection_factory")
+    build_factory = cli_support._build_spaced_mainnet_connection_factory
     now = 100.0
     starts: list[float] = []
     sleeps: list[float] = []
@@ -56,8 +55,7 @@ def test_mainnet_connection_factory_enforces_shared_start_spacing() -> None:
 
 
 def test_mainnet_connection_spacing_env_fails_closed_on_invalid_values() -> None:
-    support = import_module("cocomelon.evidence.cli_support")
-    parse_spacing = getattr(support, "_ws_connect_spacing_seconds")
+    parse_spacing = cli_support._ws_connect_spacing_seconds
 
     assert parse_spacing({}) == 0.0
     assert parse_spacing({"COCOMELON_WS_CONNECT_SPACING_SECONDS": "15"}) == 15.0
