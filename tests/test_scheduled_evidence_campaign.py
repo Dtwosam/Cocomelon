@@ -17,7 +17,7 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
     text = _workflow_text()
 
     assert "schedule:" in text
-    assert "37 1,7,13,19 * * *" in text
+    assert "37 1,4,7,10,13,16,19,22 * * *" in text
     assert "workflow_dispatch:" in text
     assert "COCOMELON_EXECUTION_MODE: paper" in text
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text
