@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import subprocess
-from collections.abc import Callable, Mapping
+import time
+from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +28,7 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.resume import build_recording_resume_bootstrap
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.hyperliquid.ws_client import WsConnection, connect_mainnet_ws
 from cocomelon.journal.store import JournalStore
 from cocomelon.replay.adapters import ReplayRequirements
 from cocomelon.replay.engine import ReplayEngine, replay_run_id
@@ -35,8 +38,11 @@ RecordCommandRunner = Callable[
     [Settings, Path, EvidenceRecordingConfig],
     Mapping[str, object],
 ]
+WsConnector = Callable[[Settings], Awaitable[WsConnection]]
+AsyncSleep = Callable[[float], Awaitable[None]]
 SOURCE_ROOT_FIELD = "source_root_relative"
 SOURCE_LOCATOR_BUNDLE_ID_FIELD = "source_locator_bundle_id"
+WS_CONNECT_SPACING_ENV = "COCOMELON_WS_CONNECT_SPACING_SECONDS"
 
 
 def _resolve_git_head(cwd: Path) -> str:
@@ -84,6 +90,50 @@ def _recording_bootstrap_for_root(
     )
 
 
+def _ws_connect_spacing_seconds(environ: Mapping[str, str] | None = None) -> float:
+    source = os.environ if environ is None else environ
+    raw = source.get(WS_CONNECT_SPACING_ENV, "0").strip()
+    try:
+        spacing = float(raw)
+    except ValueError as exc:
+        raise ValueError("websocket connect spacing must be a finite non-negative number") from exc
+    if not math.isfinite(spacing) or spacing < 0:
+        raise ValueError("websocket connect spacing must be a finite non-negative number")
+    return spacing
+
+
+def _build_spaced_mainnet_connection_factory(
+    settings: Settings,
+    *,
+    environ: Mapping[str, str] | None = None,
+    connect: WsConnector = connect_mainnet_ws,
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: AsyncSleep = asyncio.sleep,
+) -> Callable[[], Awaitable[WsConnection]]:
+    spacing = _ws_connect_spacing_seconds(environ)
+    if spacing == 0:
+        async def direct_connection_factory() -> WsConnection:
+            return await connect(settings)
+
+        return direct_connection_factory
+
+    lock = asyncio.Lock()
+    last_start: float | None = None
+
+    async def spaced_connection_factory() -> WsConnection:
+        nonlocal last_start
+        async with lock:
+            now = monotonic()
+            if last_start is not None:
+                delay = last_start + spacing - now
+                if delay > 0:
+                    await sleep(delay)
+            last_start = monotonic()
+            return await connect(settings)
+
+    return spaced_connection_factory
+
+
 def _run_mainnet_evidence(
     settings: Settings,
     root: Path,
@@ -93,7 +143,6 @@ def _run_mainnet_evidence(
 
     from cocomelon.evidence.recording import run_bounded_recording
     from cocomelon.hyperliquid.client import InfoClient
-    from cocomelon.hyperliquid.ws_client import WsConnection, connect_mainnet_ws
     from cocomelon.recorder import DurableRecorder
     from cocomelon.util.time import utc_now_ms
 
@@ -111,9 +160,7 @@ def _run_mainnet_evidence(
         max_records=config.max_records,
         max_bytes=config.max_bytes,
     )
-
-    async def connection_factory() -> WsConnection:
-        return await connect_mainnet_ws(settings)
+    connection_factory = _build_spaced_mainnet_connection_factory(settings)
 
     summary = asyncio.run(
         run_bounded_recording(
