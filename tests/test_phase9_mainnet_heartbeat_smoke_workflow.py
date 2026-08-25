@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/phase9-mainnet-heartbeat-smoke.yml")
-PINNED_COHORT = "9c3ff4727f885050806b7f8db6b90ef1066c52f9"
+PINNED_COHORT = "6de9d86aa7c36fce4f459e0bcc4e004de9215f25"
 
 
 def _workflow_text() -> str:
