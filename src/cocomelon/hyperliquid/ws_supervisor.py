@@ -130,7 +130,7 @@ class WebSocketSupervisor:
     async def _open_disconnect_gaps(self, now_ms: int) -> None:
         for subscription in self._subscriptions:
             stream_id = subscription_id(subscription)
-            if stream_id.startswith("allMids") or stream_id in self._open_gaps:
+            if stream_id in self._open_gaps:
                 continue
             gap = DataGap(
                 stream_id=stream_id,

@@ -20,6 +20,7 @@ from cocomelon.evidence.contracts import (
     EvidenceRecordingSession,
     SelectedEvidenceMarket,
 )
+from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.features.assemble import assemble_feature_snapshot
 from cocomelon.features.broad import calculate_broad_features
 from cocomelon.hyperliquid.client import INTERVAL_MS
@@ -503,6 +504,8 @@ async def run_bounded_recording(
         recorder.append_gap(gap)
         gap_count += 1
 
+    mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+
     async def record_rest_gap(stream_id: str, reason: str) -> None:
         now = clock_ms()
         await gap_sink(
@@ -570,17 +573,29 @@ async def run_bounded_recording(
                     )
             await sleep(float(config.funding_poll_seconds))
 
-    supervisor = WebSocketSupervisor(
-        connection_factory,
-        bootstrap.subscriptions,
-        event_sink=event_sink,
-        gap_sink=gap_sink,
-        clock_ms=clock_ms,
-        utcnow=utcnow,
-        sleep=sleep,
-    )
-    tasks = (
-        asyncio.create_task(supervisor.run()),
+    supervisors: list[WebSocketSupervisor] = []
+    for lane in range(2):
+        async def lane_event_sink(event: StreamEvent, lane: int = lane) -> None:
+            await mux.on_event(lane, event)
+
+        async def lane_gap_sink(gap: DataGap, lane: int = lane) -> None:
+            await mux.on_gap(lane, gap)
+
+        supervisors.append(
+            WebSocketSupervisor(
+                connection_factory,
+                bootstrap.subscriptions,
+                event_sink=lane_event_sink,
+                gap_sink=lane_gap_sink,
+                clock_ms=clock_ms,
+                utcnow=utcnow,
+                sleep=sleep,
+            )
+        )
+
+    tasks = tuple(
+        asyncio.create_task(supervisor.run()) for supervisor in supervisors
+    ) + (
         asyncio.create_task(poll_context()),
         asyncio.create_task(poll_funding()),
     )
@@ -598,16 +613,16 @@ async def run_bounded_recording(
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    health = supervisor.health
+    health = tuple(supervisor.health for supervisor in supervisors)
     return RecordingRunSummary(
         session_id=bootstrap.session.session_id,
         selected_markets=tuple(item.market.canonical for item in bootstrap.session.selected),
         duration_seconds=config.duration_seconds,
         event_count=event_count,
         gap_count=gap_count,
-        reconnect_count=health.reconnect_count,
-        duplicate_count=health.duplicate_count,
-        anomaly_count=health.anomaly_count,
+        reconnect_count=sum(item.reconnect_count for item in health),
+        duplicate_count=0,
+        anomaly_count=0,
         root=str(recorder.root),
     )
 
