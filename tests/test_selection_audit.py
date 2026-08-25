@@ -68,6 +68,7 @@ def _make_cohort(root: Path) -> None:
 def _write_workflow_event(
     path: Path,
     *,
+    run_id: int = 12345,
     head_branch: str = "main",
     workflow_id: int = CAMPAIGN_WORKFLOW_ID,
     workflow_path: str = CAMPAIGN_WORKFLOW_PATH,
@@ -77,6 +78,7 @@ def _write_workflow_event(
         path,
         {
             "workflow_run": {
+                "id": run_id,
                 "head_sha": TRIGGER_SHA,
                 "head_branch": head_branch,
                 "workflow_id": workflow_id,
@@ -185,6 +187,7 @@ def test_selection_audit_rejects_untrusted_campaign_event_provenance(tmp_path: P
     cohort = tmp_path / "cohort"
     _make_cohort(cohort)
     cases = (
+        ({"run_id": 54321}, "source workflow run id"),
         ({"head_branch": "feature"}, "source workflow branch"),
         ({"workflow_id": CAMPAIGN_WORKFLOW_ID + 1}, "source workflow id"),
         ({"workflow_path": ".github/workflows/fake.yml"}, "source workflow path"),
