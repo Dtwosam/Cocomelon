@@ -32,6 +32,7 @@ def test_curator_verifies_source_before_mutating_corpus() -> None:
     assert "scheduled-genuine-mainnet-evidence-v2-" in text
     assert "source-artifacts.json" in text
     assert "source-artifact.zip" in text
+    assert "max(matches" in text
     assert "cocomelon-mainnet-evidence verify" in text
     assert "SOURCE_VERIFY_STATUS" in text
     assert 'SOURCE_CONCLUSION" = "success"' in text
