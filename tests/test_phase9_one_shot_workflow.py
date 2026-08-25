@@ -152,3 +152,18 @@ def test_existing_ephemeral_final_is_backfilled_to_durable_state() -> None:
     backfill = text.index("Download existing Phase 9 final artifact for durable backfill")
     candidate = text.index("Build durable Phase 9 final state candidate")
     assert backfill < candidate
+
+
+def test_curator_fails_closed_if_durable_final_was_deleted() -> None:
+    text = _text()
+
+    history_endpoint = (
+        'STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha='
+        '$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"'
+    )
+    assert history_endpoint in text
+    assert "phase9-state-history.json" in text
+    assert "previously recorded but is now missing" in text
+    durable = text.index("Inspect durable one-shot Phase 9 state")
+    checkout = text.index("Checkout current evaluation tooling")
+    assert durable < text.index(history_endpoint) < checkout
