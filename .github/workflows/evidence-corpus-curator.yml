@@ -25,6 +25,8 @@ jobs:
       SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
       PHASE9_STATE_BRANCH: phase9-v2-protocol-state
       PHASE9_STATE_FILE: phase9-v2-final.json
+      SELECTION_AUDIT_INTRO_SHA: 70e51d1e897cdafa236dc4ef06787939d2b726b4
+      EXPECTED_ATTEMPT_LEDGER_REVISION: 2a9f01d86218dca98d2d84a4ae0e2e28c69975a7
     steps:
       - name: Inspect durable one-shot Phase 9 state
         id: phase9_durable
@@ -237,6 +239,10 @@ jobs:
               "source_artifact_found": False,
               "source_verified": False,
               "source_verify_status": None,
+              "selection_audit_required": False,
+              "selection_audit_verified": False,
+              "selection_audit_status": "source_not_verified",
+              "selection_audit_id": None,
               "corpus_mutated": False,
               "economic_claim": "none",
           }
@@ -294,6 +300,13 @@ jobs:
               "source_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
               "source_verified": os.environ["SOURCE_VERIFIED"] == "true",
               "source_verify_status": int(os.environ["SOURCE_VERIFY_STATUS"]),
+              "selection_audit_required": False,
+              "selection_audit_verified": False,
+              "selection_audit_status": (
+                  "pending" if os.environ["SOURCE_VERIFIED"] == "true"
+                  else "source_not_verified"
+              ),
+              "selection_audit_id": None,
               "corpus_mutated": False,
               "economic_claim": "none",
           }
@@ -306,11 +319,124 @@ jobs:
           echo "source_verified=$SOURCE_VERIFIED" >> "$GITHUB_OUTPUT"
           echo "source_root=$SOURCE_ROOT" >> "$GITHUB_OUTPUT"
 
-      - name: Roll verified source into latest attested corpus
-        id: aggregate
-        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && always() && steps.intake.outputs.source_verified == 'true' }}
+      - name: Verify and bind retry-selection audit
+        id: selection_audit
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' }}
         env:
           SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
+        run: |
+          set -euo pipefail
+          TRIGGER_SHA=$(cat "$SOURCE_ROOT/trigger-head.txt")
+          if ! [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Selection-audit trigger sha is invalid" >&2
+            exit 35
+          fi
+          gh api \
+            "repos/$GITHUB_REPOSITORY/compare/$SELECTION_AUDIT_INTRO_SHA...$TRIGGER_SHA" \
+            > intake/selection-audit-introduction-compare.json
+          COMPARE_STATUS=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("intake/selection-audit-introduction-compare.json").read_text()
+          )
+          print(payload.get("status", ""))
+          PY
+          )
+
+          SELECTION_AUDIT_REQUIRED=false
+          SELECTION_AUDIT_VERIFIED=false
+          SELECTION_AUDIT_STATUS=legacy_pre_selection_audit
+          SELECTION_AUDIT_ID=""
+          case "$COMPARE_STATUS" in
+            behind)
+              ;;
+            identical|ahead)
+              SELECTION_AUDIT_REQUIRED=true
+              SELECTION_AUDIT_STATUS=required_pending
+              ;;
+            *)
+              echo "Selection-audit trigger history is not comparable to introduction" >&2
+              exit 35
+              ;;
+          esac
+
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ]; then
+            SOURCE_COHORT_ROOT=$(dirname "$SOURCE_ROOT")
+            SOURCE_ARTIFACT_ID=$(cat intake/source-artifact-id.txt)
+            set +e
+            python -m cocomelon.ops.selection_audit \
+              --cohort-root "$SOURCE_COHORT_ROOT" \
+              --source-run-id "$SOURCE_RUN_ID" \
+              --source-artifact-id "$SOURCE_ARTIFACT_ID" \
+              --expected-ledger-revision "$EXPECTED_ATTEMPT_LEDGER_REVISION" \
+              --out intake/selection-audit.json \
+              > intake/selection-audit-command.json \
+              2> intake/selection-audit.stderr
+            AUDIT_STATUS=$?
+            set -e
+            if [ "$AUDIT_STATUS" -eq 0 ]; then
+              SELECTION_AUDIT_VERIFIED=true
+              SELECTION_AUDIT_STATUS=verified
+              SELECTION_AUDIT_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/selection-audit.json").read_text())
+          print(payload["selection_audit_id"])
+          PY
+              )
+            else
+              SELECTION_AUDIT_STATUS=invalid_selection_audit
+            fi
+          fi
+
+          SELECTION_AUDIT_REQUIRED="$SELECTION_AUDIT_REQUIRED" \
+          SELECTION_AUDIT_VERIFIED="$SELECTION_AUDIT_VERIFIED" \
+          SELECTION_AUDIT_STATUS="$SELECTION_AUDIT_STATUS" \
+          SELECTION_AUDIT_ID="$SELECTION_AUDIT_ID" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("intake/intake-report.json")
+          report = json.loads(path.read_text())
+          report.update(
+              {
+                  "selection_audit_required": os.environ[
+                      "SELECTION_AUDIT_REQUIRED"
+                  ] == "true",
+                  "selection_audit_verified": os.environ[
+                      "SELECTION_AUDIT_VERIFIED"
+                  ] == "true",
+                  "selection_audit_status": os.environ["SELECTION_AUDIT_STATUS"],
+                  "selection_audit_id": os.environ["SELECTION_AUDIT_ID"] or None,
+              }
+          )
+          path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          PY
+
+          echo "required=$SELECTION_AUDIT_REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "verified=$SELECTION_AUDIT_VERIFIED" >> "$GITHUB_OUTPUT"
+          echo "id=$SELECTION_AUDIT_ID" >> "$GITHUB_OUTPUT"
+          echo "status=$SELECTION_AUDIT_STATUS" >> "$GITHUB_OUTPUT"
+
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ] \
+            && [ "$SELECTION_AUDIT_VERIFIED" != "true" ]; then
+            cat intake/selection-audit.stderr >&2 || true
+            exit 36
+          fi
+
+      - name: Roll verified source into latest attested corpus
+        id: aggregate
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && always() && steps.intake.outputs.source_verified == 'true' && steps.selection_audit.outcome == 'success' }}
+        env:
+          SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
+          SELECTION_AUDIT_REQUIRED: ${{ steps.selection_audit.outputs.required }}
+          SELECTION_AUDIT_VERIFIED: ${{ steps.selection_audit.outputs.verified }}
+          SELECTION_AUDIT_ID: ${{ steps.selection_audit.outputs.id }}
         run: |
           set -euo pipefail
           mkdir -p corpus prior
@@ -342,6 +468,24 @@ jobs:
             cp -a "$PRIOR_ROOT/." corpus/
           fi
 
+          mkdir -p corpus/selection-audits
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ]; then
+            if [ "$SELECTION_AUDIT_VERIFIED" != "true" ] \
+              || [ -z "$SELECTION_AUDIT_ID" ]; then
+              echo "Required selection audit is not verified" >&2
+              exit 32
+            fi
+            SELECTION_AUDIT_TARGET="corpus/selection-audits/$SOURCE_RUN_ID.json"
+            if [ -f "$SELECTION_AUDIT_TARGET" ]; then
+              if ! cmp -s "$SELECTION_AUDIT_TARGET" intake/selection-audit.json; then
+                echo "Refusing conflicting selection audit for source run" >&2
+                exit 32
+              fi
+            else
+              cp intake/selection-audit.json "$SELECTION_AUDIT_TARGET"
+            fi
+          fi
+
           cocomelon-mainnet-evidence aggregate \
             --journal corpus/journal.sqlite3 \
             --facts corpus/facts.sqlite3 \
@@ -366,6 +510,10 @@ jobs:
           source_artifact_id = int(Path("intake/source-artifact-id.txt").read_text())
           prior_raw = os.environ.get("PRIOR_ARTIFACT_ID", "")
           prior_run_raw = os.environ.get("PRIOR_RUN_ID", "")
+          selection_audit_id = os.environ.get("SELECTION_AUDIT_ID", "") or None
+          selection_audit_files = sorted(
+              (Path("corpus") / "selection-audits").glob("*.json")
+          )
           index = {
               "schema_version": 1,
               "economic_claim": "none",
@@ -385,6 +533,14 @@ jobs:
               "raw_corpus_can_satisfy_oos_minimums": progress[
                   "raw_corpus_can_satisfy_oos_minimums"
               ],
+              "selection_audit_required": os.environ.get(
+                  "SELECTION_AUDIT_REQUIRED", "false"
+              ) == "true",
+              "selection_audit_verified": os.environ.get(
+                  "SELECTION_AUDIT_VERIFIED", "false"
+              ) == "true",
+              "selection_audit_id": selection_audit_id,
+              "selection_audit_count": len(selection_audit_files),
               "latest_aggregate": aggregate,
           }
           Path("corpus/corpus-index.json").write_text(

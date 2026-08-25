@@ -4,6 +4,8 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-corpus-curator.yml")
 CAMPAIGN = "Scheduled Genuine Mainnet Evidence Campaign V2"
+SELECTION_AUDIT_INTRO_SHA = "70e51d1e897cdafa236dc4ef06787939d2b726b4"
+LEDGER_REVISION = "2a9f01d86218dca98d2d84a4ae0e2e28c69975a7"
 
 
 def _text() -> str:
@@ -84,3 +86,31 @@ def test_curator_can_skip_newer_untrusted_artifact_for_older_trusted_candidate()
     assert "continue" in text
     assert "TRUSTED_ARTIFACT_ID" in text
     assert "TRUSTED_RUN_ID" in text
+
+
+def test_curator_requires_selection_audit_for_post_introduction_campaigns() -> None:
+    text = _text()
+
+    assert f"SELECTION_AUDIT_INTRO_SHA: {SELECTION_AUDIT_INTRO_SHA}" in text
+    assert f"EXPECTED_ATTEMPT_LEDGER_REVISION: {LEDGER_REVISION}" in text
+    assert 'compare/$SELECTION_AUDIT_INTRO_SHA...$TRIGGER_SHA' in text
+    assert "selection_audit_required" in text
+    assert "legacy_pre_selection_audit" in text
+    assert "cocomelon.ops.selection_audit" in text
+    verify = text.index("cocomelon-mainnet-evidence verify")
+    trigger_classification = text.index('TRIGGER_SHA=$(cat "$SOURCE_ROOT/trigger-head.txt")')
+    selection = text.index("cocomelon.ops.selection_audit")
+    aggregate = text.index("cocomelon-mainnet-evidence aggregate")
+    assert verify < trigger_classification < selection < aggregate
+
+
+def test_curator_rolls_verified_selection_audit_into_corpus() -> None:
+    text = _text()
+
+    assert "selection-audit.json" in text
+    assert 'corpus/selection-audits/$SOURCE_RUN_ID.json' in text
+    assert '"selection_audit_id"' in text
+    assert '"selection_audit_count"' in text
+    assert '"selection_audit_required"' in text
+    assert '"selection_audit_verified"' in text
+    assert "refusing conflicting selection audit" in text.lower()

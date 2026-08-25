@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -104,6 +105,7 @@ def test_verify_payload_reports_canonical_admission(
     assert payload["recording_session_id"] == "c" * 64
     assert payload["source_digest"] == "d" * 64
     assert payload["result_digest"] == "b" * 64
+    assert payload["trigger_head_sha"] == "e" * 40
     assert payload["start_ms"] == 1_000
     assert payload["end_ms"] == 2_000
     assert payload["duration_ms"] == 1_000
@@ -111,3 +113,47 @@ def test_verify_payload_reports_canonical_admission(
     assert payload["data_complete"] is True
     assert payload["network_access"] is False
     assert payload["live_orders"] is False
+
+
+def test_verify_payload_accepts_matching_workflow_run_head(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cli = importlib.import_module("cocomelon.mainnet_cli")
+    event_path = tmp_path / "event.json"
+    head_sha = "e" * 40
+    event_path.write_text(
+        json.dumps({"workflow_run": {"head_sha": head_sha}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setattr(
+        cli,
+        "verify_mainnet_evidence_cohort_payload",
+        lambda _root: {"trigger_head_sha": head_sha, "network_access": False},
+    )
+
+    payload = cli.verify_payload(tmp_path / "artifact" / "output")
+
+    assert payload["trigger_head_sha"] == head_sha
+
+
+def test_verify_payload_rejects_mismatched_workflow_run_head(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    cli = importlib.import_module("cocomelon.mainnet_cli")
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps({"workflow_run": {"head_sha": "f" * 40}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+    monkeypatch.setattr(
+        cli,
+        "verify_mainnet_evidence_cohort_payload",
+        lambda _root: {"trigger_head_sha": "e" * 40, "network_access": False},
+    )
+
+    with pytest.raises(RuntimeError, match="authoritative workflow run head"):
+        cli.verify_payload(tmp_path / "artifact" / "output")

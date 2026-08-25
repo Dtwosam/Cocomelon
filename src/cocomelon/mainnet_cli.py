@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,31 @@ def _attestation_metadata(journal_path: str | Path) -> tuple[str, int]:
     if isinstance(source_count, bool) or not isinstance(source_count, int) or source_count <= 0:
         raise RuntimeError("mainnet evidence attestation source count is invalid")
     return attestation_id, source_count
+
+
+def _workflow_run_head_sha_from_event() -> str | None:
+    raw_path = os.environ.get("GITHUB_EVENT_PATH", "").strip()
+    if not raw_path:
+        return None
+    try:
+        payload = json.loads(Path(raw_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("GitHub event payload is unreadable") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("GitHub event payload must be an object")
+    workflow_run = payload.get("workflow_run")
+    if workflow_run is None:
+        return None
+    if not isinstance(workflow_run, dict):
+        raise RuntimeError("GitHub workflow_run event payload is invalid")
+    head_sha = workflow_run.get("head_sha")
+    if (
+        not isinstance(head_sha, str)
+        or len(head_sha) != 40
+        or any(char not in "0123456789abcdef" for char in head_sha)
+    ):
+        raise RuntimeError("GitHub workflow_run head sha is invalid")
+    return head_sha
 
 
 def aggregate_payload(
@@ -84,7 +110,13 @@ def freeze_dataset_payload(
 
 
 def verify_payload(source_root: str | Path) -> dict[str, object]:
-    return verify_mainnet_evidence_cohort_payload(source_root)
+    payload = verify_mainnet_evidence_cohort_payload(source_root)
+    authoritative_head = _workflow_run_head_sha_from_event()
+    if authoritative_head is not None and payload.get("trigger_head_sha") != authoritative_head:
+        raise RuntimeError(
+            "mainnet evidence trigger head does not match authoritative workflow run head"
+        )
+    return payload
 
 
 def progress_payload(
