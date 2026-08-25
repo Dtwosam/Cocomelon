@@ -42,3 +42,12 @@ def test_curator_never_rolls_or_replaces_existing_oos_snapshot() -> None:
     assert "one_shot_oos" in text
     assert "COCOMELON_EXECUTION_MODE: live" not in text
     assert "testnet" not in text.lower()
+
+
+def test_curator_preserves_corpus_if_phase9_downstream_fails() -> None:
+    text = _text()
+
+    upload = text.index("name: v2-mainnet-corpus")
+    guard = text[max(0, upload - 300) : upload]
+    assert "always()" in guard
+    assert "steps.aggregate.outcome == 'success'" in guard
