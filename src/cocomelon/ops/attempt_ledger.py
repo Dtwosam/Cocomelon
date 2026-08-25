@@ -7,6 +7,22 @@ from pathlib import Path
 from typing import cast
 
 EXPECTED_TRANSPORT_SEMANTICS = "redundant-mainnet-merged-feed-v1"
+_ELIGIBILITY_PROBE_KEYS = frozenset(
+    {
+        "schema_version",
+        "economic_claim",
+        "economic_eligible",
+        "economic_ineligibility_reasons",
+        "replay_data_complete",
+        "dataset_data_complete",
+        "dataset_gap_refs_empty",
+        "opened_positions",
+        "closed_positions",
+        "flat_replay",
+        "network_access",
+        "live_orders",
+    }
+)
 
 
 def _read_optional_text(path: Path) -> str | None:
@@ -81,6 +97,76 @@ def _has_gap_files(attempt_root: Path) -> bool:
     if not gap_root.is_dir():
         return False
     return any(path.is_file() and path.stat().st_size > 0 for path in gap_root.rglob("*.jsonl"))
+
+
+def _validated_eligibility_probe(
+    attempt_root: Path,
+) -> tuple[dict[str, object] | None, list[str]]:
+    path = attempt_root / "eligibility-probe.json"
+    if not path.is_file():
+        return None, []
+    try:
+        probe = _read_optional_json(path)
+    except (json.JSONDecodeError, ValueError):
+        return None, ["eligibility_probe_invalid"]
+    if probe is None or frozenset(probe) != _ELIGIBILITY_PROBE_KEYS:
+        return None, ["eligibility_probe_invalid"]
+
+    opened = _int_field(probe, "opened_positions")
+    closed = _int_field(probe, "closed_positions")
+    replay_complete = _bool_field(probe, "replay_data_complete")
+    dataset_complete = _bool_field(probe, "dataset_data_complete")
+    gap_refs_empty = _bool_field(probe, "dataset_gap_refs_empty")
+    flat_replay = _bool_field(probe, "flat_replay")
+    economic_eligible = _bool_field(probe, "economic_eligible")
+    raw_reasons = probe.get("economic_ineligibility_reasons")
+
+    invalid = (
+        probe.get("schema_version") != 1
+        or probe.get("economic_claim") != "none"
+        or probe.get("network_access") is not False
+        or probe.get("live_orders") is not False
+        or opened is None
+        or opened < 0
+        or closed is None
+        or closed < 0
+        or closed > opened
+        or replay_complete is None
+        or dataset_complete is None
+        or gap_refs_empty is None
+        or flat_replay is None
+        or economic_eligible is None
+        or not isinstance(raw_reasons, list)
+        or any(not isinstance(reason, str) for reason in raw_reasons)
+    )
+    if invalid:
+        return None, ["eligibility_probe_invalid"]
+
+    assert opened is not None
+    assert closed is not None
+    assert replay_complete is not None
+    assert dataset_complete is not None
+    assert gap_refs_empty is not None
+    assert flat_replay is not None
+    assert economic_eligible is not None
+    assert isinstance(raw_reasons, list)
+
+    derived: list[str] = []
+    if not replay_complete:
+        derived.append("replay_incomplete")
+    if not dataset_complete or not gap_refs_empty:
+        derived.append("dataset_incomplete")
+    if opened != closed:
+        derived.append("open_exposure")
+
+    if flat_replay is not (opened == closed):
+        return None, ["eligibility_probe_invalid"]
+    if raw_reasons != derived:
+        return None, ["eligibility_probe_invalid"]
+    if economic_eligible is not (not derived):
+        return None, ["eligibility_probe_invalid"]
+
+    return probe, [f"admission_{reason}" for reason in derived]
 
 
 def _rejection_reasons(
@@ -174,6 +260,8 @@ def build_attempt_ledger(
             duplicate_count=duplicate_count,
             anomaly_count=anomaly_count,
         )
+        eligibility_probe, eligibility_reasons = _validated_eligibility_probe(attempt_root)
+        reasons.extend(eligibility_reasons)
         admitted = admitted_attempt == attempt
         if admitted:
             admitted_seen = True
@@ -197,6 +285,7 @@ def build_attempt_ledger(
                 "gap_count": gap_count,
                 "duplicate_count": duplicate_count,
                 "anomaly_count": anomaly_count,
+                "eligibility_probe": eligibility_probe,
                 "admitted": admitted,
                 "status": "admitted" if admitted else "rejected",
                 "rejection_reasons": reasons,
