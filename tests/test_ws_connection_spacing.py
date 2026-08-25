@@ -25,7 +25,9 @@ def test_connection_spacing_gate_separates_successive_connect_slots() -> None:
     asyncio.run(run())
 
 
-def test_connection_spacing_env_is_explicit_and_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_connection_spacing_env_is_explicit_and_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("COCOMELON_WS_CONNECT_SPACING_SECONDS", raising=False)
     assert _connect_spacing_seconds() == 0.0
 
