@@ -325,6 +325,28 @@ jobs:
           echo "snapshot_exists=$PHASE9_SNAPSHOT_EXISTS" >> "$GITHUB_OUTPUT"
           echo "snapshot_id=$PHASE9_SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout frozen Phase 9 evaluator
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        uses: actions/checkout@v4
+        with:
+          ref: 629db6294822c97690c006591802f8a47e08652e
+          path: phase9-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install frozen Phase 9 evaluator
+        if: ${{ steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          EXPECTED_PHASE9_REVISION=629db6294822c97690c006591802f8a47e08652e
+          ACTUAL_PHASE9_REVISION=$(git -C phase9-tooling rev-parse HEAD)
+          printf '%s\n' "$ACTUAL_PHASE9_REVISION" > intake/phase9-tooling-revision.txt
+          if [ "$ACTUAL_PHASE9_REVISION" != "$EXPECTED_PHASE9_REVISION" ]; then
+            echo "Frozen Phase 9 evaluator revision mismatch" >&2
+            exit 43
+          fi
+          python -m pip install -e ./phase9-tooling
+
       - name: Download existing frozen Phase 9 snapshot
         id: phase9_existing
         if: ${{ steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
