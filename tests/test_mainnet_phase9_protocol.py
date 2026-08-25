@@ -3,14 +3,6 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
-from cocomelon.evaluation.mainnet_protocol import (
-    DAY_MS,
-    V2_TEST_DAYS,
-    V2_TRAIN_DAYS,
-    V2_VALIDATION_DAYS,
-    build_v2_protocol,
-    evaluate_v2_readiness,
-)
 from cocomelon.domain.evaluation import (
     EvaluationDatasetManifest,
     ReplayEvaluationSource,
@@ -20,6 +12,14 @@ from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.evaluation.mainnet_protocol import (
+    DAY_MS,
+    V2_TEST_DAYS,
+    V2_TRAIN_DAYS,
+    V2_VALIDATION_DAYS,
+    build_v2_protocol,
+    evaluate_v2_readiness,
+)
 
 MARKET = MarketId("", "BTC")
 
