@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v2-0df13a9d
+  group: genuine-mainnet-evidence-v2-1a2e524e
   cancel-in-progress: false
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: 0df13a9d9694d7e12cca787ef198fdff359b4741
+      COHORT_CODE_REVISION: 1a2e524e8db06bb9b512085bbd59b494f612808f
       COHORT_TRIGGER_SHA: ${{ github.sha }}
     steps:
       - name: Check durable Phase 9 final state
@@ -96,7 +96,7 @@ jobs:
         if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: 0df13a9d9694d7e12cca787ef198fdff359b4741
+          ref: 1a2e524e8db06bb9b512085bbd59b494f612808f
           fetch-depth: 1
 
       - name: Checkout pinned attempt ledger tooling
@@ -337,7 +337,6 @@ jobs:
           if not flat_replay:
               economic_ineligibility_reasons.append("open_exposure")
           economic_eligible = not economic_ineligibility_reasons
-
           summary = {
               "evidence_kind": "genuine_public_hyperliquid_mainnet",
               "economic_claim": "none",

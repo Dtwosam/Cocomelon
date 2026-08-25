@@ -192,18 +192,18 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
     tmp_path: Path,
 ) -> None:
     config = EvidenceRecordingConfig(
-        duration_seconds=0.20,  # type: ignore[arg-type]
+        duration_seconds=0.50,  # type: ignore[arg-type]
         deep_limit=1,
         context_poll_seconds=60,
         funding_poll_seconds=60,
     )
     primary = ScriptedConnection(
         [_trade(1, 1_000), ConnectionError("primary dropped")],
-        row_delays_seconds=[0.0, 0.04],
+        row_delays_seconds=[0.0, 0.02],
     )
     standby = ScriptedConnection(
         [_trade(1, 1_000), _trade(2, 2_000)],
-        row_delays_seconds=[0.0, 0.08],
+        row_delays_seconds=[0.0, 0.04],
     )
     pool = [primary, standby]
     factory_calls = 0
