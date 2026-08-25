@@ -212,6 +212,10 @@ def _candidate_from_sources(
             "attested V2 sources do not share one frozen candidate definition"
         )
     strategy, risk, execution, revision, config_digest = next(iter(definitions))
+    if execution is None or not execution.strip():
+        raise MainnetPhase9Error(
+            "attested V2 sources require an execution_config_version"
+        )
     return CandidateDefinition(
         name="v2-baseline-fixed",
         strategy_version=strategy,
