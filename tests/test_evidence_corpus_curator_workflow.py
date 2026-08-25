@@ -56,7 +56,11 @@ def test_curator_requires_authoritative_source_workflow_provenance_before_artifa
     assert 'payload.get("head_branch")' in text
     assert 'payload.get("repository", {}).get("full_name")' in text
     provenance = text.index("Verify authoritative source workflow provenance")
-    artifacts = text.index('"repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100"')
+    artifact_endpoint = (
+        '"repos/$GITHUB_REPOSITORY/actions/runs/'
+        '$SOURCE_RUN_ID/artifacts?per_page=100"'
+    )
+    artifacts = text.index(artifact_endpoint)
     assert provenance < artifacts
 
 
