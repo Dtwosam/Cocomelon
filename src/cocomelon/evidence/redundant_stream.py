@@ -19,6 +19,12 @@ class RedundantStreamMux:
     events. A lane-local disconnect switches to a proven healthy standby and
     backfills events the active lane did not emit. A durable gap is forwarded
     whenever no lane has demonstrated continuous coverage for the stream.
+
+    Supervisors send every subscription before they begin receiving messages. The
+    first normalized event from a lane therefore proves that the whole websocket
+    session completed its subscription phase, so that lane can cover any sibling
+    subscription until a disconnect revokes session readiness. Per-stream recovery
+    gaps remain authoritative after a disconnect.
     """
 
     def __init__(
@@ -49,6 +55,7 @@ class RedundantStreamMux:
         self._buffers: dict[tuple[int, str], deque[StreamEvent]] = defaultdict(deque)
         self._lane_gap_starts: dict[str, dict[int, int]] = defaultdict(dict)
         self._observed_lanes: dict[str, set[int]] = defaultdict(set)
+        self._session_ready_lanes: set[int] = set()
         self._aggregate_gap_starts: dict[str, int] = {}
         self._seen_keys: dict[str, set[str]] = defaultdict(set)
         self._seen_queues: dict[str, deque[str]] = defaultdict(deque)
@@ -140,7 +147,7 @@ class RedundantStreamMux:
 
     def _lane_is_available(self, stream_id: str, lane: int) -> bool:
         return (
-            lane in self._observed_lanes[stream_id]
+            lane in self._session_ready_lanes
             and lane not in self._lane_gap_starts[stream_id]
         )
 
@@ -211,6 +218,7 @@ class RedundantStreamMux:
     async def on_event(self, lane: int, event: StreamEvent) -> None:
         self._require_lane(lane)
         stream_id = event_stream_id(event)
+        self._session_ready_lanes.add(lane)
         self._observed_lanes[stream_id].add(lane)
         if lane not in self._lane_gap_starts[stream_id]:
             await self._close_aggregate_gap_if_needed(
@@ -232,6 +240,7 @@ class RedundantStreamMux:
 
         if gap.reason == "recovered":
             starts.pop(lane, None)
+            self._session_ready_lanes.add(lane)
             self._observed_lanes[stream_id].add(lane)
             recovered_ms = gap.ended_ms if gap.ended_ms is not None else gap.started_ms
             await self._close_aggregate_gap_if_needed(
@@ -244,6 +253,7 @@ class RedundantStreamMux:
             return
 
         if gap.is_open:
+            self._session_ready_lanes.discard(lane)
             starts[lane] = gap.started_ms
             if lane == self.active_lane(stream_id):
                 standby = self._available_lane(stream_id, excluding=lane)
