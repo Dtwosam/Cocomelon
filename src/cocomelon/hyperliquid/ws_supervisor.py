@@ -195,18 +195,30 @@ class WebSocketSupervisor:
     ) -> None:
         await self._subscribe_all(connection)
         received = 0
+        heartbeat_ms = max(1, int(self._heartbeat_seconds * 1000))
+        next_heartbeat_ms = self._clock_ms() + heartbeat_ms
         while max_messages is None or received < max_messages:
+            now_ms = self._clock_ms()
+            remaining_seconds = max(0.0, (next_heartbeat_ms - now_ms) / 1000)
+            if remaining_seconds == 0.0:
+                await connection.send_json({"method": "ping"})
+                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
+                continue
             try:
                 raw = await asyncio.wait_for(
                     connection.recv_json(),
-                    timeout=self._heartbeat_seconds,
+                    timeout=remaining_seconds,
                 )
             except TimeoutError:
                 await connection.send_json({"method": "ping"})
+                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
                 continue
             self._last_server_message_ms = self._clock_ms()
             await self._dispatch(raw)
             received += 1
+            if self._clock_ms() >= next_heartbeat_ms:
+                await connection.send_json({"method": "ping"})
+                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
 
     async def run(
         self,
