@@ -361,6 +361,8 @@ jobs:
           from pathlib import Path
 
           payload = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 readiness is not one_shot_oos")
           print("true" if payload.get("ready_for_untouched_evaluation") is True else "false")
           PY
           )
@@ -424,7 +426,7 @@ jobs:
           compression-level: 6
 
       - name: Upload rolled attested corpus
-        if: ${{ steps.intake.outputs.source_verified == 'true' && success() }}
+        if: ${{ always() && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: v2-mainnet-corpus
