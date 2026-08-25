@@ -12,6 +12,9 @@ from typing import cast
 from cocomelon.ops.attempt_ledger import build_attempt_ledger
 
 _SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+_CAMPAIGN_WORKFLOW_ID = 341636172
+_CAMPAIGN_WORKFLOW_PATH = ".github/workflows/evidence-campaign-scheduled.yml"
+_CAMPAIGN_BRANCH = "main"
 
 
 def _read_json_object(path: Path) -> dict[str, object]:
@@ -54,6 +57,23 @@ def _workflow_run_head_sha_from_event() -> str | None:
         return None
     if not isinstance(workflow_run, dict):
         raise ValueError("GitHub workflow_run event payload is invalid")
+
+    repository = workflow_run.get("repository")
+    expected_repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
+    if not expected_repository:
+        raise ValueError("current GitHub repository identity is missing")
+    if (
+        not isinstance(repository, dict)
+        or repository.get("full_name") != expected_repository
+    ):
+        raise ValueError("source workflow repository does not match current repository")
+    if workflow_run.get("head_branch") != _CAMPAIGN_BRANCH:
+        raise ValueError("source workflow branch must be main")
+    if workflow_run.get("workflow_id") != _CAMPAIGN_WORKFLOW_ID:
+        raise ValueError("source workflow id does not match Campaign V2")
+    if workflow_run.get("path") != _CAMPAIGN_WORKFLOW_PATH:
+        raise ValueError("source workflow path does not match Campaign V2")
+
     head_sha = workflow_run.get("head_sha")
     if not isinstance(head_sha, str):
         raise ValueError("GitHub workflow_run head sha is missing")
@@ -86,11 +106,18 @@ def build_selection_audit(
         expected_ledger_revision,
         label="expected attempt ledger revision",
     )
+    workflow_run_trigger = _workflow_run_head_sha_from_event()
     authoritative_trigger = (
         _require_sha(expected_trigger_sha, label="expected trigger head sha")
         if expected_trigger_sha is not None
-        else _workflow_run_head_sha_from_event()
+        else workflow_run_trigger
     )
+    if (
+        expected_trigger_sha is not None
+        and workflow_run_trigger is not None
+        and authoritative_trigger != workflow_run_trigger
+    ):
+        raise ValueError("expected trigger head sha does not match authoritative workflow run")
 
     diagnostics = root / "diagnostics"
     output = root / "output"
