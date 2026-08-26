@@ -1,5 +1,6 @@
-from pathlib import Path
+from __future__ import annotations
 
+from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
 
