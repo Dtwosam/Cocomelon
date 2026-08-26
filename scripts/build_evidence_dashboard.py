@@ -5,23 +5,22 @@ import json
 import os
 import subprocess
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from io import BytesIO
-from pathlib import PurePosixPath
-from typing import Any
+from pathlib import Path, PurePosixPath
 
 CURATOR_NAME = "Verified V2 Mainnet Evidence Corpus Curator"
 CURATOR_PATH = ".github/workflows/evidence-corpus-curator.yml"
 CAMPAIGN_NAME = "Scheduled Genuine Mainnet Evidence Campaign V2"
 CAMPAIGN_PATH = ".github/workflows/evidence-campaign-scheduled.yml"
-CORPUS_ARTIFACT_NAME = "v2-mainnet-corpus"
+CORPUS_NAME = "v2-mainnet-corpus"
 
-JsonObject = dict[str, Any]
+JsonObject = dict[str, object]
 
 
-def _gh_json(endpoint: str) -> JsonObject:
+def _gh_json(repo: str, endpoint: str) -> JsonObject:
     result = subprocess.run(
-        ["gh", "api", endpoint],
+        ["gh", "api", f"repos/{repo}/{endpoint}"],
         check=True,
         capture_output=True,
         text=True,
@@ -32,108 +31,126 @@ def _gh_json(endpoint: str) -> JsonObject:
     return payload
 
 
-def _gh_bytes(endpoint: str) -> bytes:
-    result = subprocess.run(
-        ["gh", "api", endpoint],
+def _gh_bytes(repo: str, endpoint: str) -> bytes:
+    return subprocess.run(
+        ["gh", "api", f"repos/{repo}/{endpoint}"],
         check=True,
         capture_output=True,
-    )
-    return result.stdout
+    ).stdout
 
 
-def _latest_run(
+def _matching_runs(
     payload: JsonObject,
     *,
     name: str,
     path: str,
     completed_only: bool = False,
-) -> JsonObject:
-    raw_runs = payload.get("workflow_runs", [])
-    if not isinstance(raw_runs, list):
+) -> list[JsonObject]:
+    raw = payload.get("workflow_runs", [])
+    if not isinstance(raw, list):
         raise RuntimeError("workflow_runs is invalid")
-    matches = [
-        item
-        for item in raw_runs
-        if isinstance(item, dict)
-        and item.get("name") == name
-        and item.get("path") == path
-        and (not completed_only or item.get("status") == "completed")
-    ]
-    if not matches:
-        raise RuntimeError(f"No matching workflow run is available: {name}")
-    return max(matches, key=lambda item: str(item.get("created_at", "")))
+    matches: list[JsonObject] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        if item.get("name") != name or item.get("path") != path:
+            continue
+        if completed_only and item.get("status") != "completed":
+            continue
+        matches.append(item)
+    return matches
 
 
-def _assert_trusted_curator(run: JsonObject) -> None:
-    if run.get("name") != CURATOR_NAME:
-        raise RuntimeError("unexpected curator workflow name")
-    if run.get("path") != CURATOR_PATH:
-        raise RuntimeError("unexpected curator workflow path")
-    if run.get("status") != "completed":
-        raise RuntimeError("curator workflow is not complete")
+def _latest(items: list[JsonObject], label: str) -> JsonObject:
+    if not items:
+        raise RuntimeError(f"No {label} is available")
+    return max(items, key=lambda item: str(item.get("created_at", "")))
 
 
-def _resolve_curator_run(repo: str) -> JsonObject:
-    event_run_id = os.environ.get("EVENT_CURATOR_RUN_ID", "").strip()
-    if event_run_id and event_run_id != "null":
-        run = _gh_json(f"repos/{repo}/actions/runs/{int(event_run_id)}")
+def _assert_curator(run: JsonObject) -> None:
+    trusted = (
+        run.get("name") == CURATOR_NAME
+        and run.get("path") == CURATOR_PATH
+        and run.get("status") == "completed"
+    )
+    if not trusted:
+        raise RuntimeError("curator run provenance is invalid")
+
+
+def _curator_run(repo: str) -> JsonObject:
+    event_id = os.environ.get("EVENT_CURATOR_RUN_ID", "").strip()
+    if event_id and event_id != "null":
+        run = _gh_json(repo, f"actions/runs/{int(event_id)}")
     else:
-        runs = _gh_json(f"repos/{repo}/actions/runs?per_page=100")
-        run = _latest_run(
-            runs,
-            name=CURATOR_NAME,
-            path=CURATOR_PATH,
-            completed_only=True,
+        runs = _gh_json(repo, "actions/runs?per_page=100")
+        run = _latest(
+            _matching_runs(
+                runs,
+                name=CURATOR_NAME,
+                path=CURATOR_PATH,
+                completed_only=True,
+            ),
+            "completed curator run",
         )
-    _assert_trusted_curator(run)
+    _assert_curator(run)
     return run
 
 
-def _artifact_candidates(payload: JsonObject) -> list[JsonObject]:
+def _run_id(payload: JsonObject, field: str = "id") -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError(f"{field} is invalid")
+    return value
+
+
+def _artifacts(payload: JsonObject) -> list[JsonObject]:
     raw = payload.get("artifacts", [])
     if not isinstance(raw, list):
         raise RuntimeError("artifacts is invalid")
+    items: list[JsonObject] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        if item.get("name") != CORPUS_NAME or item.get("expired") is True:
+            continue
+        items.append(item)
     return sorted(
-        [
-            item
-            for item in raw
-            if isinstance(item, dict)
-            and item.get("name") == CORPUS_ARTIFACT_NAME
-            and item.get("expired") is not True
-        ],
+        items,
         key=lambda item: str(item.get("created_at", "")),
         reverse=True,
     )
 
 
-def _artifact_run_id(artifact: JsonObject) -> int:
-    raw = artifact.get("workflow_run")
-    if not isinstance(raw, dict) or not isinstance(raw.get("id"), int):
-        raise RuntimeError("corpus artifact producer run id is invalid")
-    return int(raw["id"])
+def _producer_run_id(artifact: JsonObject) -> int:
+    workflow_run = artifact.get("workflow_run")
+    if not isinstance(workflow_run, dict):
+        raise RuntimeError("corpus artifact producer is invalid")
+    value = workflow_run.get("id")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("corpus artifact producer id is invalid")
+    return value
 
 
-def _resolve_corpus_artifact(repo: str, curator_run_id: int) -> tuple[JsonObject, int]:
-    direct = _gh_json(
-        f"repos/{repo}/actions/runs/{curator_run_id}/artifacts?per_page=100"
+def _corpus_artifact(repo: str, curator_id: int) -> tuple[JsonObject, int]:
+    direct = _gh_json(repo, f"actions/runs/{curator_id}/artifacts?per_page=100")
+    direct_items = _artifacts(direct)
+    if direct_items:
+        artifact = direct_items[0]
+        return artifact, _producer_run_id(artifact)
+
+    candidates = _gh_json(
+        repo,
+        f"actions/artifacts?name={CORPUS_NAME}&per_page=100",
     )
-    direct_candidates = _artifact_candidates(direct)
-    if direct_candidates:
-        artifact = direct_candidates[0]
-        return artifact, _artifact_run_id(artifact)
-
-    fallback = _gh_json(
-        f"repos/{repo}/actions/artifacts?name={CORPUS_ARTIFACT_NAME}&per_page=100"
-    )
-    for artifact in _artifact_candidates(fallback):
-        producer_run_id = _artifact_run_id(artifact)
-        producer = _gh_json(f"repos/{repo}/actions/runs/{producer_run_id}")
+    for artifact in _artifacts(candidates):
+        producer_id = _producer_run_id(artifact)
+        producer = _gh_json(repo, f"actions/runs/{producer_id}")
         try:
-            _assert_trusted_curator(producer)
+            _assert_curator(producer)
         except RuntimeError:
             continue
-        return artifact, producer_run_id
-    raise RuntimeError("No trusted v2-mainnet-corpus artifact is available")
+        return artifact, producer_id
+    raise RuntimeError("No trusted mainnet corpus artifact is available")
 
 
 def _json_from_zip(blob: bytes, filename: str) -> JsonObject:
@@ -144,9 +161,7 @@ def _json_from_zip(blob: bytes, filename: str) -> JsonObject:
             if PurePosixPath(name).name == filename and not name.endswith("/")
         ]
         if len(matches) != 1:
-            raise RuntimeError(
-                f"trusted corpus artifact must contain exactly one {filename}"
-            )
+            raise RuntimeError(f"corpus must contain exactly one {filename}")
         payload = json.loads(archive.read(matches[0]).decode("utf-8"))
     if not isinstance(payload, dict):
         raise RuntimeError(f"{filename} is not a JSON object")
@@ -154,18 +169,21 @@ def _json_from_zip(blob: bytes, filename: str) -> JsonObject:
 
 
 def _latest_campaign(repo: str) -> JsonObject:
-    runs = _gh_json(f"repos/{repo}/actions/runs?per_page=100")
-    return _latest_run(runs, name=CAMPAIGN_NAME, path=CAMPAIGN_PATH)
+    runs = _gh_json(repo, "actions/runs?per_page=100")
+    return _latest(
+        _matching_runs(runs, name=CAMPAIGN_NAME, path=CAMPAIGN_PATH),
+        "Campaign V2 run",
+    )
 
 
-def _int_field(payload: JsonObject, field: str, default: int) -> int:
+def _int(payload: JsonObject, field: str, default: int = 0) -> int:
     value = payload.get(field, default)
     if isinstance(value, bool) or not isinstance(value, int):
         raise RuntimeError(f"{field} is invalid")
     return value
 
 
-def _render_body(
+def _body(
     *,
     repo: str,
     progress: JsonObject,
@@ -173,97 +191,106 @@ def _render_body(
     curator: JsonObject,
     campaign: JsonObject,
     artifact_id: int,
-    corpus_producer_run_id: int,
+    producer_id: int,
 ) -> str:
-    trades = _int_field(progress, "closed_trade_count", 0)
-    trade_days = _int_field(progress, "closed_trade_days", 0)
-    min_trades = _int_field(progress, "minimum_oos_trade_requirement", 100)
-    min_days = _int_field(progress, "minimum_oos_day_requirement", 30)
-    cohorts = _int_field(progress, "attested_run_count", 0)
-
-    latest_aggregate = index.get("latest_aggregate", {})
-    if not isinstance(latest_aggregate, dict):
+    aggregate = index.get("latest_aggregate", {})
+    if not isinstance(aggregate, dict):
         raise RuntimeError("latest_aggregate is invalid")
-    decisions = _int_field(latest_aggregate, "decision_fact_count", 0)
 
-    raw_ready = progress.get("raw_corpus_can_satisfy_oos_minimums") is True
-    live_orders = progress.get("live_orders") is True
-    economic_claim = str(progress.get("economic_claim", "none"))
-    attestation = str(progress.get("mainnet_attestation_id", ""))
-
-    curator_run_id = _int_field(curator, "id", 0)
-    campaign_run_id = _int_field(campaign, "id", 0)
-    curator_conclusion = str(curator.get("conclusion") or "unknown")
     campaign_status = str(campaign.get("status", "unknown"))
-    campaign_conclusion = campaign.get("conclusion")
-    campaign_state = (
-        campaign_status
-        if campaign_status != "completed"
-        else str(campaign_conclusion or "completed")
-    )
+    campaign_state = campaign_status
+    if campaign_status == "completed":
+        campaign_state = str(campaign.get("conclusion") or "completed")
 
-    readiness = "YES" if raw_ready else "NO"
-    orders = "ENABLED" if live_orders else "DISABLED"
-    edge = economic_claim if economic_claim != "none" else "Not measured yet"
-    updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    attestation_short = f"{attestation[:16]}…" if attestation else "unavailable"
+    edge = str(progress.get("economic_claim", "none"))
+    if edge == "none":
+        edge = "Not measured yet"
+    raw_ready = progress.get("raw_corpus_can_satisfy_oos_minimums") is True
+    orders = "ENABLED" if progress.get("live_orders") is True else "DISABLED"
+    attestation = str(progress.get("mainnet_attestation_id", ""))
+    attestation = f"{attestation[:16]}…" if attestation else "unavailable"
 
-    return f"""# Cocomelon Evidence Dashboard
+    campaign_id = _run_id(campaign)
+    curator_id = _run_id(curator)
+    updated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    curator_result = str(curator.get("conclusion") or "unknown")
 
-> Auto-refreshed from trusted GitHub evidence artifacts. Last updated **{updated}**.
-
-## Phase 9 progress
-
-| Metric | Current | Target |
-| --- | ---: | ---: |
-| Accepted genuine-mainnet cohorts | **{cohorts}** | — |
-| Closed paper trades | **{trades}** | **{min_trades}** |
-| Closed-trade days | **{trade_days}** | **{min_days}** |
-| Strategy decisions in corpus | **{decisions}** | — |
-
-**Raw Phase 9 minimums met:** {readiness}  
-**Economic edge:** {edge}  
-**Live orders:** {orders}
-
-## Pipeline health
-
-- Latest Campaign V2: **{campaign_state}** — [run {campaign_run_id}](https://github.com/{repo}/actions/runs/{campaign_run_id})
-- Triggering curator: **{curator_conclusion}** — [run {curator_run_id}](https://github.com/{repo}/actions/runs/{curator_run_id})
-- Corpus producer: [run {corpus_producer_run_id}](https://github.com/{repo}/actions/runs/{corpus_producer_run_id})
-- Corpus artifact ID: `{artifact_id}`
-- Mainnet attestation: `{attestation_short}`
-
-A curator can finish red **after** safely writing a verified corpus artifact; the dashboard therefore shows curator outcome separately from accepted-corpus counts. Failed or unverified campaign evidence is never counted just because a job ran.
-
-## Direct tracking links
-
-- [Campaign V2 runs](https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)
-- [Evidence corpus curator](https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)
-- [Repository status](https://github.com/{repo}/blob/main/docs/STATUS.md)
-
-This page is informational only. It does not enable real-money trading or change strategy/risk rules.
-"""
+    lines = [
+        "# Cocomelon Evidence Dashboard",
+        "",
+        "> Auto-refreshed from trusted GitHub evidence artifacts. "
+        f"Last updated **{updated}**.",
+        "",
+        "## Phase 9 progress",
+        "",
+        "| Metric | Current | Target |",
+        "| --- | ---: | ---: |",
+        "| Accepted genuine-mainnet cohorts | "
+        f"**{_int(progress, 'attested_run_count')}** | — |",
+        "| Closed paper trades | "
+        f"**{_int(progress, 'closed_trade_count')}** | "
+        f"**{_int(progress, 'minimum_oos_trade_requirement', 100)}** |",
+        "| Closed-trade days | "
+        f"**{_int(progress, 'closed_trade_days')}** | "
+        f"**{_int(progress, 'minimum_oos_day_requirement', 30)}** |",
+        "| Strategy decisions in corpus | "
+        f"**{_int(aggregate, 'decision_fact_count')}** | — |",
+        "",
+        f"**Raw Phase 9 minimums met:** {'YES' if raw_ready else 'NO'}  ",
+        f"**Economic edge:** {edge}  ",
+        f"**Live orders:** {orders}",
+        "",
+        "## Pipeline health",
+        "",
+        f"- Latest Campaign V2: **{campaign_state}** — "
+        f"[run {campaign_id}](https://github.com/{repo}/actions/runs/{campaign_id})",
+        f"- Triggering curator: **{curator_result}** — "
+        f"[run {curator_id}](https://github.com/{repo}/actions/runs/{curator_id})",
+        f"- Corpus producer: [run {producer_id}]"
+        f"(https://github.com/{repo}/actions/runs/{producer_id})",
+        f"- Corpus artifact ID: `{artifact_id}`",
+        f"- Mainnet attestation: `{attestation}`",
+        "",
+        "A curator can finish red after safely writing a verified corpus artifact. "
+        "The dashboard keeps curator outcome separate from accepted-corpus counts.",
+        "Failed or unverified campaign evidence is never counted just because a job ran.",
+        "",
+        "## Direct tracking links",
+        "",
+        "- [Campaign V2 runs]"
+        f"(https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)",
+        "- [Evidence corpus curator]"
+        f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)",
+        "- [Repository status]"
+        f"(https://github.com/{repo}/blob/main/docs/STATUS.md)",
+        "",
+        "This page is informational only. It does not enable real-money trading "
+        "or change strategy/risk rules.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def build_issue_patch(repo: str) -> JsonObject:
-    curator = _resolve_curator_run(repo)
-    curator_run_id = _int_field(curator, "id", 0)
-    artifact, producer_run_id = _resolve_corpus_artifact(repo, curator_run_id)
-    artifact_id = _int_field(artifact, "id", 0)
-    blob = _gh_bytes(f"repos/{repo}/actions/artifacts/{artifact_id}/zip")
+    curator = _curator_run(repo)
+    curator_id = _run_id(curator)
+    artifact, producer_id = _corpus_artifact(repo, curator_id)
+    artifact_id = _run_id(artifact)
+    blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
     progress = _json_from_zip(blob, "progress.json")
     index = _json_from_zip(blob, "corpus-index.json")
     campaign = _latest_campaign(repo)
-    body = _render_body(
-        repo=repo,
-        progress=progress,
-        index=index,
-        curator=curator,
-        campaign=campaign,
-        artifact_id=artifact_id,
-        corpus_producer_run_id=producer_run_id,
-    )
-    return {"body": body}
+    return {
+        "body": _body(
+            repo=repo,
+            progress=progress,
+            index=index,
+            curator=curator,
+            campaign=campaign,
+            artifact_id=artifact_id,
+            producer_id=producer_id,
+        )
+    }
 
 
 def main() -> int:
@@ -274,12 +301,12 @@ def main() -> int:
     repo = os.environ.get("GITHUB_REPOSITORY", "").strip()
     if not repo or "/" not in repo:
         raise RuntimeError("GITHUB_REPOSITORY is invalid")
-    payload = build_issue_patch(repo)
-    output = os.path.abspath(args.output)
-    os.makedirs(os.path.dirname(output), exist_ok=True)
-    with open(output, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False)
-        handle.write("\n")
+    output = Path(args.output).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(build_issue_patch(repo), ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
     return 0
 
 
