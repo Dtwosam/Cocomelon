@@ -197,32 +197,38 @@ def _candidate_from_sources(
     finally:
         journal.close()
 
-    definitions = {
-        (
-            item.strategy_version,
-            item.risk_version,
-            item.execution_config_version,
-            item.code_revision,
-            item.config_digest,
-        )
+    semantic_payloads = [
+        {
+            "code_revision": item.code_revision,
+            "evidence_class": item.evidence_class.value,
+            "execution_config_version": item.execution_config_version,
+            "feature_version": item.feature_version,
+            "fee_schedule_id": item.fee_schedule_id,
+            "replay_engine_version": item.replay_engine_version,
+            "risk_version": item.risk_version,
+            "strategy_version": item.strategy_version,
+        }
         for item in manifests
-    }
-    if len(definitions) != 1:
+    ]
+    semantic_digests = {_canonical_digest(payload) for payload in semantic_payloads}
+    if len(semantic_digests) != 1:
         raise MainnetPhase9Error(
             "attested V2 sources do not share one frozen candidate definition"
         )
-    strategy, risk, execution, revision, config_digest = next(iter(definitions))
+
+    first = manifests[0]
+    execution = first.execution_config_version
     if execution is None or not execution.strip():
         raise MainnetPhase9Error(
             "attested V2 sources require an execution_config_version"
         )
     return CandidateDefinition(
         name="v2-baseline-fixed",
-        strategy_version=strategy,
-        risk_version=risk,
+        strategy_version=first.strategy_version,
+        risk_version=first.risk_version,
         execution_config_version=execution,
-        code_revision=revision,
-        config_digest=config_digest,
+        code_revision=first.code_revision,
+        config_digest=next(iter(semantic_digests)),
     )
 
 
