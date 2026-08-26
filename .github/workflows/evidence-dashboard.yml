@@ -1,0 +1,42 @@
+name: Cocomelon Evidence Dashboard Refresh
+
+on:
+  workflow_run:
+    workflows: ["Verified V2 Mainnet Evidence Corpus Curator"]
+    types: [completed]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: cocomelon-evidence-dashboard
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DASHBOARD_ISSUE: "82"
+      EVENT_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - name: Checkout dashboard builder
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Build trusted evidence dashboard payload
+        run: |
+          python scripts/build_evidence_dashboard.py \
+            --output dashboard/issue-patch.json
+
+      - name: Update Cocomelon Evidence Dashboard
+        run: |
+          gh api --method PATCH \
+            "repos/$GITHUB_REPOSITORY/issues/$DASHBOARD_ISSUE" \
+            --input dashboard/issue-patch.json
