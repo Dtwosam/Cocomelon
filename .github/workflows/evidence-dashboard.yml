@@ -2,7 +2,9 @@ name: Cocomelon Evidence Dashboard Refresh
 
 on:
   workflow_run:
-    workflows: ["Verified V2 Mainnet Evidence Corpus Curator"]
+    workflows:
+      - "Verified V2 Mainnet Evidence Corpus Curator"
+      - "Verified V3 Mainnet Evidence Corpus Curator"
     types: [completed]
   workflow_dispatch: {}
 
