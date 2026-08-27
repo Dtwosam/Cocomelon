@@ -102,9 +102,12 @@ class BaselineReplayPipeline:
         replay_run_id: str,
         evidence_class: EvidenceClass,
         decision_engine: DecisionEpochEngine | None = None,
+        new_exposure_cutoff_ms: int | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
+        if new_exposure_cutoff_ms is not None and new_exposure_cutoff_ms < 0:
+            raise ValueError("new_exposure_cutoff_ms must be non-negative")
         markets = tuple(sorted(selected_markets, key=lambda item: item.canonical))
         if not markets:
             raise ValueError("selected_markets must not be empty")
@@ -118,6 +121,7 @@ class BaselineReplayPipeline:
         self._facts = facts
         self._run_id = replay_run_id
         self._evidence_class = evidence_class
+        self._new_exposure_cutoff_ms = new_exposure_cutoff_ms
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
             replay_config=replay_config,
@@ -143,6 +147,10 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
+        cutoff_ms = self._new_exposure_cutoff_ms
+        return cutoff_ms is None or timestamp_ms < cutoff_ms
 
     def _account_observation(
         self,
@@ -181,7 +189,7 @@ class BaselineReplayPipeline:
             observations.append(
                 observation_from_strategy(decision, replay_run_id=self._run_id)
             )
-        if not self._funding_inconsistent:
+        if not self._funding_inconsistent and self._new_exposure_allowed(epoch.evaluated_at_ms):
             self._opening.stage_epoch(epoch)
         return tuple(observations)
 
@@ -494,7 +502,7 @@ class BaselineReplayPipeline:
     ) -> tuple[JournalObservation, ...]:
         del record
         observations = list(self._manage_book(book, now_ms))
-        if not self._funding_inconsistent:
+        if not self._funding_inconsistent and self._new_exposure_allowed(now_ms):
             self._opening.on_book(book, now_ms)
             for trace in self._opening.take_traces():
                 observations.extend(self._record_opening_trace(trace))
