@@ -3,19 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "6de9d86aa7c36fce4f459e0bcc4e004de9215f25"
-ATTEMPT_LEDGER_REVISION = "e87a575a755074e36e22729c63c4831b474cf339"
-STATE_BRANCH = "phase9-v2-protocol-state"
-STATE_FILE = "phase9-v2-final.json"
+PINNED_CODE = "f21ad7be581bc662127e75f832cd8fcbf4f5f93b"
+ENTRY_WINDOW_SECONDS = 2700
+CAPTURE_WINDOW_SECONDS = 5400
 
 
 def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
+def test_scheduled_campaign_v3_is_fixed_revision_mainnet_paper_only() -> None:
     text = _workflow_text()
 
+    assert "name: Scheduled Genuine Mainnet Evidence Campaign V3" in text
     assert "schedule:" in text
     assert "37 1,4,7,10,13,16,19,22 * * *" in text
     assert "workflow_dispatch:" in text
@@ -25,20 +25,20 @@ def test_scheduled_campaign_v2_is_fixed_revision_mainnet_paper_only() -> None:
     assert "COCOMELON_WS_CONNECT_SPACING_SECONDS: 15" in text
     assert f"COHORT_CODE_REVISION: {PINNED_CODE}" in text
     assert f"ref: {PINNED_CODE}" in text
-    assert "GAP_WATCH_REVISION" not in text
-    assert "runner-control" not in text
     assert "testnet" not in text.lower()
     assert "COCOMELON_EXECUTION_MODE: live" not in text
 
 
-def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> None:
+def test_scheduled_campaign_v3_records_one_fixed_lifecycle_window() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-v2-6de9d86a" in text
+    assert "group: genuine-mainnet-evidence-v3-f21ad7be" in text
     assert "cancel-in-progress: false" in text
-    assert "--seconds 2700" in text
+    assert f"--seconds {CAPTURE_WINDOW_SECONDS}" in text
     assert "--deep-limit 5" in text
-    assert "for ATTEMPT in 1 2" in text
+    assert "for ATTEMPT in 1 2" not in text
+    assert "attempt_ledger.py" not in text
+    assert "selection_audit" not in text
     assert "python -m cocomelon.ops.gap_watch" in text
     assert "record-transport.json" in text
     assert "normalize_redundant_record_payload" in text
@@ -47,39 +47,25 @@ def test_scheduled_campaign_v2_uses_redundant_transport_health_contract() -> Non
     assert 'record["anomaly_count"] == 0' in text
     assert 'record["redundant_ws_lane_count"] == 2' in text
     assert 'record["transport_health_semantics"]' in text
-    assert 'record["transport_duplicate_count"]' in text
-    assert 'record["transport_anomaly_count"]' in text
 
 
-def test_scheduled_campaign_retries_nonperformance_admission_failures() -> None:
+def test_scheduled_campaign_v3_freezes_lifecycle_aware_replay() -> None:
     text = _workflow_text()
-    record_step = text[
-        text.index("Record clean genuine public mainnet evidence") :
-        text.index("Validate and replay recorded evidence offline")
-    ]
 
-    assert "eligibility-probe.json" in record_step
-    assert "cocomelon validate-recording" in record_step
-    assert "cocomelon freeze-baseline-replay" in record_step
-    assert "cocomelon run-baseline-replay" in record_step
-    assert "cocomelon freeze-evaluation-dataset" in record_step
-    assert '"replay_data_complete"' in record_step
-    assert '"dataset_data_complete"' in record_step
-    assert '"dataset_gap_refs_empty"' in record_step
-    assert '"opened_positions"' in record_step
-    assert '"closed_positions"' in record_step
-    assert '"flat_replay"' in record_step
-    assert '"economic_claim": "none"' in record_step
-    assert '"economic_eligible"' in record_step
-    assert '"economic_ineligibility_reasons"' in record_step
-    assert "final_equity" not in record_step
-    assert "profitable" not in record_step
-    probe = record_step.index("eligibility-probe.json")
-    admission = record_step.index('CLEAN_ATTEMPT="$ATTEMPT"')
-    assert probe < admission
+    assert "freeze_baseline_replay_payload" in text
+    assert "lifecycle_aware=True" in text
+    assert f'assert replay["entry_window_ms"] == {ENTRY_WINDOW_SECONDS * 1000}' in text
+    assert (
+        'assert replay["replay_engine_version"] == "phase8-v2-lifecycle-aware"'
+        in text
+    )
+    assert (
+        'assert replay["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"'
+        in text
+    )
 
 
-def test_scheduled_campaign_v2_requires_complete_flat_replay_for_economics() -> None:
+def test_scheduled_campaign_v3_requires_clean_complete_flat_replay() -> None:
     text = _workflow_text()
 
     assert 'replay["data_complete"] is True' in text
@@ -93,66 +79,32 @@ def test_scheduled_campaign_v2_requires_complete_flat_replay_for_economics() -> 
     assert "retention-days: 90" in text
 
 
-def test_scheduled_campaign_stops_after_durable_phase9_finalization() -> None:
+def test_scheduled_campaign_v3_is_performance_blind() -> None:
+    text = _workflow_text()
+    acquisition = text[
+        text.index("Record lifecycle-aware genuine public mainnet evidence") :
+        text.index("Validate and replay recorded evidence offline")
+    ]
+
+    assert "final_equity" not in acquisition
+    assert "profitable" not in acquisition
+    assert "pnl" not in acquisition.lower()
+    assert "retry" not in acquisition.lower()
+    assert 'reasons.append("open_exposure")' in acquisition
+
+
+def test_scheduled_campaign_v3_records_protocol_metadata() -> None:
     text = _workflow_text()
 
-    assert STATE_BRANCH in text
-    assert STATE_FILE in text
-    assert "Check durable Phase 9 final state" in text
-    assert "final_exists" in text
-    guard = "steps.phase9_final.outputs.final_exists != 'true'"
-    assert text.count(guard) >= 5
-    check = text.index("Check durable Phase 9 final state")
-    checkout = text.index("Checkout pinned V2 evidence revision")
-    record = text.index("Record clean genuine public mainnet evidence")
-    assert check < checkout < record
-
-
-def test_scheduled_campaign_fails_closed_if_durable_state_branch_disappears() -> None:
-    text = _workflow_text()
-
-    branch_check = '"repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH"'
-    state_endpoint = (
-        'STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/'
-        '$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"'
-    )
-    assert branch_check in text
-    assert state_endpoint in text
-    assert text.index(branch_check) < text.index(state_endpoint)
-
-
-def test_scheduled_campaign_fails_closed_if_durable_final_was_deleted() -> None:
-    text = _workflow_text()
-
-    history_endpoint = (
-        'STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha='
-        '$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"'
-    )
-    assert history_endpoint in text
-    assert "phase9-state-history.json" in text
-    assert "previously recorded but is now missing" in text
-    check = text.index("Check durable Phase 9 final state")
-    checkout = text.index("Checkout pinned V2 evidence revision")
-    assert check < text.index(history_endpoint) < checkout
-
-
-def test_scheduled_campaign_persists_attempt_ledger_before_terminal_failure() -> None:
-    text = _workflow_text()
-
-    ledger_command = "python campaign-tooling/src/cocomelon/ops/attempt_ledger.py"
-    ledger_path = "evidence-cohort/diagnostics/cohort-attempts.json"
-    terminal_failure = 'if [ -z "$CLEAN_ATTEMPT" ]; then'
-    assert f"ref: {ATTEMPT_LEDGER_REVISION}" in text
-    assert "path: campaign-tooling" in text
-    assert ledger_command in text
-    assert "--diagnostics-root evidence-cohort/diagnostics" in text
-    assert ledger_path in text
-    assert "--admitted-attempt \"$CLEAN_ATTEMPT\"" in text
-    assert "attempt-ledger-revision.txt" in text
-    assert text.index(ledger_command) < text.index(terminal_failure)
+    assert '"campaign_version": "v3-lifecycle-aware-mainnet"' in text
+    assert f'"entry_window_seconds": {ENTRY_WINDOW_SECONDS}' in text
+    assert f'"capture_window_seconds": {CAPTURE_WINDOW_SECONDS}' in text
+    assert '"replay_engine_version": replay["replay_engine_version"]' in text
+    assert '"config_version": replay["config_version"]' in text
+    assert '"new_exposure_cutoff_ms": replay["new_exposure_cutoff_ms"]' in text
+    assert "scheduled-genuine-mainnet-evidence-v3-${{ github.run_id }}" in text
 
 
 def test_scheduled_campaign_does_not_run_on_repository_push() -> None:
     text = _workflow_text()
-
     assert "push:" not in text

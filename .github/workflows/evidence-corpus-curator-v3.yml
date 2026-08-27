@@ -1,0 +1,352 @@
+name: Verified V3 Mainnet Evidence Corpus Curator
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Genuine Mainnet Evidence Campaign V3"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: genuine-mainnet-evidence-v3-corpus
+  cancel-in-progress: false
+
+jobs:
+  curate-v3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      V3_CODE_REVISION: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+    steps:
+      - name: Checkout pinned V3 verification tooling
+        uses: actions/checkout@v4
+        with:
+          ref: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Curate verified V3 source
+        id: curate
+        run: |
+          set -euo pipefail
+          mkdir -p intake source prior corpus
+          git rev-parse HEAD > intake/curator-head.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > intake/source-run-id.txt
+          printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
+
+          if [ "$SOURCE_CONCLUSION" != "success" ]; then
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "schema_version": 1,
+              "protocol": "v3-lifecycle-aware-mainnet",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_verified": False,
+              "corpus_mutated": False,
+              "reason": "source_workflow_not_successful",
+              "economic_claim": "none",
+              "live_orders": False,
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "corpus_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > intake/source-artifacts.json
+          SOURCE_ARTIFACT_ID=$(python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          prefix = f"scheduled-genuine-mainnet-evidence-v3-{os.environ['SOURCE_RUN_ID']}-"
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(prefix)
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one unexpired V3 source artifact, found {len(matches)}"
+              )
+          print(matches[0]["id"])
+          PY
+          )
+          printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            > intake/source-artifact.zip
+          unzip -q intake/source-artifact.zip -d source
+
+          mapfile -t SUMMARIES < <(find source -type f -name cohort-summary.json -path '*/output/*' -print)
+          if [ "${#SUMMARIES[@]}" -ne 1 ]; then
+            echo "V3 source artifact must contain exactly one cohort summary" >&2
+            exit 40
+          fi
+          SOURCE_ROOT=$(dirname "${SUMMARIES[0]}")
+          printf '%s\n' "$SOURCE_ROOT" > intake/source-root.txt
+
+          cocomelon-mainnet-evidence verify \
+            --source-root "$SOURCE_ROOT" \
+            > intake/source-verify.json
+
+          python - "$SOURCE_ROOT" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          summary = json.loads((root / "cohort-summary.json").read_text())
+          replay = json.loads((root / "replay.json").read_text())
+          freeze = json.loads((root / "freeze.json").read_text())
+
+          assert summary["campaign_version"] == "v3-lifecycle-aware-mainnet"
+          assert summary["checked_out_code_revision"] == os.environ["V3_CODE_REVISION"]
+          assert summary["entry_window_seconds"] == 2700
+          assert summary["capture_window_seconds"] == 5400
+          assert summary["economic_claim"] == "none"
+          assert summary["economic_eligible"] is True
+          assert summary["economic_ineligibility_reasons"] == []
+          assert summary["replay_engine_version"] == "phase8-v2-lifecycle-aware"
+          assert summary["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"
+          assert replay["replay_engine_version"] == "phase8-v2-lifecycle-aware"
+          assert replay["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"
+          assert replay["entry_window_ms"] == 2700000
+          assert replay["new_exposure_cutoff_ms"] is not None
+          assert replay["opened_positions"] == replay["closed_positions"]
+          assert replay["network_access"] is False
+          assert replay["live_orders"] is False
+          assert freeze["replay_engine_version"] == "phase8-v2-lifecycle-aware"
+          assert freeze["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"
+          assert freeze["entry_window_ms"] == 2700000
+          PY
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v3-mainnet-corpus&per_page=100" \
+            > intake/prior-artifacts.json
+          mapfile -t CANDIDATES < <(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/prior-artifacts.json").read_text())
+          candidates = []
+          for item in payload.get("artifacts", []):
+              run = item.get("workflow_run")
+              if (
+                  item.get("name") == "v3-mainnet-corpus"
+                  and item.get("expired") is False
+                  and isinstance(run, dict)
+                  and isinstance(run.get("id"), int)
+              ):
+                  candidates.append(
+                      (str(item.get("created_at", "")), int(item["id"]), int(run["id"]))
+                  )
+          for _, artifact_id, run_id in sorted(candidates, reverse=True):
+              print(f"{artifact_id}\t{run_id}")
+          PY
+          )
+
+          TRUSTED_PRIOR_ARTIFACT_ID=""
+          TRUSTED_PRIOR_RUN_ID=""
+          for CANDIDATE in "${CANDIDATES[@]}"; do
+            CANDIDATE_ARTIFACT_ID=${CANDIDATE%%$'\t'*}
+            CANDIDATE_RUN_ID=${CANDIDATE#*$'\t'}
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+              > "intake/prior-run-$CANDIDATE_RUN_ID.json"
+            if python - "$CANDIDATE_RUN_ID" "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          run_id = int(sys.argv[1])
+          repository = sys.argv[2]
+          payload = json.loads(Path(f"intake/prior-run-{run_id}.json").read_text())
+          trusted = (
+              payload.get("id") == run_id
+              and payload.get("name") == "Verified V3 Mainnet Evidence Corpus Curator"
+              and payload.get("path") == ".github/workflows/evidence-corpus-curator-v3.yml"
+              and payload.get("event") == "workflow_run"
+              and payload.get("conclusion") == "success"
+              and payload.get("repository", {}).get("full_name") == repository
+              and payload.get("head_repository", {}).get("full_name") == repository
+          )
+          raise SystemExit(0 if trusted else 1)
+          PY
+            then
+              TRUSTED_PRIOR_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+              TRUSTED_PRIOR_RUN_ID="$CANDIDATE_RUN_ID"
+              break
+            fi
+          done
+          printf '%s\n' "$TRUSTED_PRIOR_ARTIFACT_ID" > intake/prior-corpus-artifact-id.txt
+          printf '%s\n' "$TRUSTED_PRIOR_RUN_ID" > intake/prior-corpus-producer-run-id.txt
+
+          if [ -n "$TRUSTED_PRIOR_ARTIFACT_ID" ]; then
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$TRUSTED_PRIOR_ARTIFACT_ID/zip" \
+              > intake/prior-corpus.zip
+            unzip -q intake/prior-corpus.zip -d prior
+            mapfile -t ATTESTATIONS < <(find prior -type f -name mainnet-attestation.json -print)
+            if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
+              echo "Prior V3 corpus must contain exactly one mainnet attestation" >&2
+              exit 41
+            fi
+            PRIOR_ROOT=$(dirname "${ATTESTATIONS[0]}")
+            cp -a "$PRIOR_ROOT/." corpus/
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          protocol = json.loads(Path("corpus/protocol.json").read_text())
+          expected = {
+              "capture_window_seconds": 5400,
+              "config_version": "phase9-baseline-replay-v2-lifecycle-aware",
+              "economic_claim": "none",
+              "entry_window_seconds": 2700,
+              "live_orders": False,
+              "pinned_code_revision": "f21ad7be581bc662127e75f832cd8fcbf4f5f93b",
+              "protocol": "v3-lifecycle-aware-mainnet",
+              "replay_engine_version": "phase8-v2-lifecycle-aware",
+              "schema_version": 1,
+          }
+          if protocol != expected:
+              raise SystemExit("Prior V3 corpus protocol identity is inconsistent")
+          PY
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          protocol = {
+              "schema_version": 1,
+              "protocol": "v3-lifecycle-aware-mainnet",
+              "pinned_code_revision": "f21ad7be581bc662127e75f832cd8fcbf4f5f93b",
+              "replay_engine_version": "phase8-v2-lifecycle-aware",
+              "config_version": "phase9-baseline-replay-v2-lifecycle-aware",
+              "entry_window_seconds": 2700,
+              "capture_window_seconds": 5400,
+              "economic_claim": "none",
+              "live_orders": False,
+          }
+          Path("corpus/protocol.json").write_text(
+              json.dumps(protocol, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          mkdir -p corpus/sources/$SOURCE_RUN_ID
+          cp intake/source-verify.json corpus/sources/$SOURCE_RUN_ID/source-verify.json
+          cp "$SOURCE_ROOT/cohort-summary.json" corpus/sources/$SOURCE_RUN_ID/cohort-summary.json
+
+          cocomelon-mainnet-evidence aggregate \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            --source-root "$SOURCE_ROOT" \
+            > corpus/aggregate-latest.json
+          cocomelon-mainnet-evidence progress \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            > corpus/progress.json
+
+          TRUSTED_PRIOR_ARTIFACT_ID="$TRUSTED_PRIOR_ARTIFACT_ID" \
+          TRUSTED_PRIOR_RUN_ID="$TRUSTED_PRIOR_RUN_ID" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          aggregate = json.loads(Path("corpus/aggregate-latest.json").read_text())
+          progress = json.loads(Path("corpus/progress.json").read_text())
+          index = {
+              "schema_version": 1,
+              "protocol": "v3-lifecycle-aware-mainnet",
+              "economic_claim": "none",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "prior_corpus_artifact_id": (
+                  int(os.environ["TRUSTED_PRIOR_ARTIFACT_ID"])
+                  if os.environ.get("TRUSTED_PRIOR_ARTIFACT_ID")
+                  else None
+              ),
+              "prior_corpus_producer_run_id": (
+                  int(os.environ["TRUSTED_PRIOR_RUN_ID"])
+                  if os.environ.get("TRUSTED_PRIOR_RUN_ID")
+                  else None
+              ),
+              "latest_aggregate": aggregate,
+              "progress": progress,
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("corpus/corpus-index.json").write_text(
+              json.dumps(index, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          report = {
+              "schema_version": 1,
+              "protocol": "v3-lifecycle-aware-mainnet",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_verified": True,
+              "corpus_mutated": True,
+              "economic_claim": "none",
+              "live_orders": False,
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          test -f corpus/mainnet-attestation.json
+          echo "corpus_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V3 mainnet corpus
+        if: ${{ steps.curate.outputs.corpus_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-mainnet-corpus
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload V3 intake report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-mainnet-intake-${{ github.event.workflow_run.id }}
+          path: intake/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6

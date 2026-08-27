@@ -5,17 +5,42 @@ import json
 import os
 import subprocess
 import zipfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 
-CURATOR_NAME = "Verified V2 Mainnet Evidence Corpus Curator"
-CURATOR_PATH = ".github/workflows/evidence-corpus-curator.yml"
-CAMPAIGN_NAME = "Scheduled Genuine Mainnet Evidence Campaign V2"
-CAMPAIGN_PATH = ".github/workflows/evidence-campaign-scheduled.yml"
-CORPUS_NAME = "v2-mainnet-corpus"
+
+@dataclass(frozen=True, slots=True)
+class ProtocolSpec:
+    label: str
+    curator_name: str
+    curator_path: str
+    campaign_name: str
+    campaign_path: str
+    corpus_name: str
+
+
+V3 = ProtocolSpec(
+    label="V3 lifecycle-aware",
+    curator_name="Verified V3 Mainnet Evidence Corpus Curator",
+    curator_path=".github/workflows/evidence-corpus-curator-v3.yml",
+    campaign_name="Scheduled Genuine Mainnet Evidence Campaign V3",
+    campaign_path=".github/workflows/evidence-campaign-scheduled.yml",
+    corpus_name="v3-mainnet-corpus",
+)
+V2 = ProtocolSpec(
+    label="V2 historical",
+    curator_name="Verified V2 Mainnet Evidence Corpus Curator",
+    curator_path=".github/workflows/evidence-corpus-curator.yml",
+    campaign_name="Scheduled Genuine Mainnet Evidence Campaign V2",
+    campaign_path=".github/workflows/evidence-campaign-scheduled.yml",
+    corpus_name="v2-mainnet-corpus",
+)
+TRUSTED_PROTOCOLS = (V3, V2)
 
 JsonObject = dict[str, object]
+CorpusSnapshot = tuple[JsonObject, JsonObject, int, int]
 
 
 def _gh_json(repo: str, endpoint: str) -> JsonObject:
@@ -39,61 +64,61 @@ def _gh_bytes(repo: str, endpoint: str) -> bytes:
     ).stdout
 
 
-def _matching_runs(
-    payload: JsonObject,
-    *,
-    name: str,
-    path: str,
-    completed_only: bool = False,
-) -> list[JsonObject]:
+def _repository_name(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    full_name = value.get("full_name")
+    return full_name if isinstance(full_name, str) and full_name else None
+
+
+def _protocol_for_curator(run: JsonObject, repo: str) -> ProtocolSpec:
+    for spec in TRUSTED_PROTOCOLS:
+        trusted = (
+            run.get("name") == spec.curator_name
+            and run.get("path") == spec.curator_path
+            and run.get("event") == "workflow_run"
+            and run.get("status") == "completed"
+            and _repository_name(run.get("repository")) == repo
+            and _repository_name(run.get("head_repository")) == repo
+        )
+        if trusted:
+            return spec
+    raise RuntimeError("curator run provenance is invalid")
+
+
+def _event_curator(repo: str) -> JsonObject | None:
+    event_id = os.environ.get("EVENT_CURATOR_RUN_ID", "").strip()
+    if not event_id or event_id == "null":
+        return None
+    run = _gh_json(repo, f"actions/runs/{int(event_id)}")
+    _protocol_for_curator(run, repo)
+    return run
+
+
+def _runs(payload: JsonObject) -> list[JsonObject]:
     raw = payload.get("workflow_runs", [])
     if not isinstance(raw, list):
         raise RuntimeError("workflow_runs is invalid")
-    matches: list[JsonObject] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        if item.get("name") != name or item.get("path") != path:
-            continue
-        if completed_only and item.get("status") != "completed":
-            continue
-        matches.append(item)
-    return matches
+    return [item for item in raw if isinstance(item, dict)]
 
 
-def _latest(items: list[JsonObject], label: str) -> JsonObject:
-    if not items:
-        raise RuntimeError(f"No {label} is available")
-    return max(items, key=lambda item: str(item.get("created_at", "")))
-
-
-def _assert_curator(run: JsonObject) -> None:
-    trusted = (
-        run.get("name") == CURATOR_NAME
-        and run.get("path") == CURATOR_PATH
-        and run.get("status") == "completed"
-    )
-    if not trusted:
-        raise RuntimeError("curator run provenance is invalid")
-
-
-def _curator_run(repo: str) -> JsonObject:
-    event_id = os.environ.get("EVENT_CURATOR_RUN_ID", "").strip()
-    if event_id and event_id != "null":
-        run = _gh_json(repo, f"actions/runs/{int(event_id)}")
-    else:
-        runs = _gh_json(repo, "actions/runs?per_page=100")
-        run = _latest(
-            _matching_runs(
-                runs,
-                name=CURATOR_NAME,
-                path=CURATOR_PATH,
-                completed_only=True,
-            ),
-            "completed curator run",
-        )
-    _assert_curator(run)
-    return run
+def _latest_protocol_run(
+    runs: list[JsonObject],
+    *,
+    name: str,
+    path: str,
+    event: str | None = None,
+) -> JsonObject | None:
+    matches = [
+        item
+        for item in runs
+        if item.get("name") == name
+        and item.get("path") == path
+        and (event is None or item.get("event") == event)
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda item: str(item.get("created_at", "")))
 
 
 def _run_id(payload: JsonObject, field: str = "id") -> int:
@@ -103,17 +128,17 @@ def _run_id(payload: JsonObject, field: str = "id") -> int:
     return value
 
 
-def _artifacts(payload: JsonObject) -> list[JsonObject]:
+def _artifact_items(payload: JsonObject, corpus_name: str) -> list[JsonObject]:
     raw = payload.get("artifacts", [])
     if not isinstance(raw, list):
         raise RuntimeError("artifacts is invalid")
-    items: list[JsonObject] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        if item.get("name") != CORPUS_NAME or item.get("expired") is True:
-            continue
-        items.append(item)
+    items = [
+        item
+        for item in raw
+        if isinstance(item, dict)
+        and item.get("name") == corpus_name
+        and item.get("expired") is False
+    ]
     return sorted(
         items,
         key=lambda item: str(item.get("created_at", "")),
@@ -131,26 +156,35 @@ def _producer_run_id(artifact: JsonObject) -> int:
     return value
 
 
-def _corpus_artifact(repo: str, curator_id: int) -> tuple[JsonObject, int]:
-    direct = _gh_json(repo, f"actions/runs/{curator_id}/artifacts?per_page=100")
-    direct_items = _artifacts(direct)
-    if direct_items:
-        artifact = direct_items[0]
-        return artifact, _producer_run_id(artifact)
+def _trusted_artifact(
+    repo: str,
+    spec: ProtocolSpec,
+    *,
+    preferred_curator_id: int | None = None,
+) -> tuple[JsonObject, int] | None:
+    if preferred_curator_id is not None:
+        direct = _gh_json(
+            repo,
+            f"actions/runs/{preferred_curator_id}/artifacts?per_page=100",
+        )
+        direct_items = _artifact_items(direct, spec.corpus_name)
+        if direct_items:
+            return direct_items[0], preferred_curator_id
 
     candidates = _gh_json(
         repo,
-        f"actions/artifacts?name={CORPUS_NAME}&per_page=100",
+        f"actions/artifacts?name={spec.corpus_name}&per_page=100",
     )
-    for artifact in _artifacts(candidates):
+    for artifact in _artifact_items(candidates, spec.corpus_name):
         producer_id = _producer_run_id(artifact)
         producer = _gh_json(repo, f"actions/runs/{producer_id}")
         try:
-            _assert_curator(producer)
+            producer_spec = _protocol_for_curator(producer, repo)
         except RuntimeError:
             continue
-        return artifact, producer_id
-    raise RuntimeError("No trusted mainnet corpus artifact is available")
+        if producer_spec == spec:
+            return artifact, producer_id
+    return None
 
 
 def _json_from_zip(blob: bytes, filename: str) -> JsonObject:
@@ -168,12 +202,25 @@ def _json_from_zip(blob: bytes, filename: str) -> JsonObject:
     return payload
 
 
-def _latest_campaign(repo: str) -> JsonObject:
-    runs = _gh_json(repo, "actions/runs?per_page=100")
-    return _latest(
-        _matching_runs(runs, name=CAMPAIGN_NAME, path=CAMPAIGN_PATH),
-        "Campaign V2 run",
+def _corpus_snapshot(
+    repo: str,
+    spec: ProtocolSpec,
+    *,
+    preferred_curator_id: int | None = None,
+) -> CorpusSnapshot | None:
+    selected = _trusted_artifact(
+        repo,
+        spec,
+        preferred_curator_id=preferred_curator_id,
     )
+    if selected is None:
+        return None
+    artifact, producer_id = selected
+    artifact_id = _run_id(artifact)
+    blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
+    progress = _json_from_zip(blob, "progress.json")
+    index = _json_from_zip(blob, "corpus-index.json")
+    return progress, index, artifact_id, producer_id
 
 
 def _int(payload: JsonObject, field: str, default: int = 0) -> int:
@@ -183,37 +230,61 @@ def _int(payload: JsonObject, field: str, default: int = 0) -> int:
     return value
 
 
-def _body(
-    *,
-    repo: str,
-    progress: JsonObject,
-    index: JsonObject,
-    curator: JsonObject,
-    campaign: JsonObject,
-    artifact_id: int,
-    producer_id: int,
-) -> str:
+def _decision_count(index: JsonObject) -> int:
     aggregate = index.get("latest_aggregate", {})
     if not isinstance(aggregate, dict):
         raise RuntimeError("latest_aggregate is invalid")
+    return _int(aggregate, "decision_fact_count")
 
-    campaign_status = str(campaign.get("status", "unknown"))
-    campaign_state = campaign_status
-    if campaign_status == "completed":
-        campaign_state = str(campaign.get("conclusion") or "completed")
 
-    edge = str(progress.get("economic_claim", "none"))
+def _state(run: JsonObject | None) -> str:
+    if run is None:
+        return "not run yet"
+    status = str(run.get("status", "unknown"))
+    if status == "completed":
+        return str(run.get("conclusion") or "completed")
+    return status
+
+
+def _run_link(repo: str, run: JsonObject | None) -> str:
+    if run is None:
+        return "not run yet"
+    run_id = _run_id(run)
+    return f"[{run_id}](https://github.com/{repo}/actions/runs/{run_id})"
+
+
+def _zero_v3_progress() -> JsonObject:
+    return {
+        "attested_run_count": 0,
+        "closed_trade_count": 0,
+        "closed_trade_days": 0,
+        "minimum_oos_trade_requirement": 100,
+        "minimum_oos_day_requirement": 30,
+        "raw_corpus_can_satisfy_oos_minimums": False,
+        "economic_claim": "none",
+        "live_orders": False,
+    }
+
+
+def _body(
+    *,
+    repo: str,
+    active_progress: JsonObject,
+    active_index: JsonObject | None,
+    active_snapshot: CorpusSnapshot | None,
+    historical_v2_progress: JsonObject | None,
+    historical_v2_snapshot: CorpusSnapshot | None,
+    latest_v3_campaign: JsonObject | None,
+    latest_v3_curator: JsonObject | None,
+    event_curator: JsonObject | None,
+) -> str:
+    active_decisions = _decision_count(active_index) if active_index is not None else 0
+    raw_ready = active_progress.get("raw_corpus_can_satisfy_oos_minimums") is True
+    edge = str(active_progress.get("economic_claim", "none"))
     if edge == "none":
         edge = "Not measured yet"
-    raw_ready = progress.get("raw_corpus_can_satisfy_oos_minimums") is True
-    orders = "ENABLED" if progress.get("live_orders") is True else "DISABLED"
-    attestation = str(progress.get("mainnet_attestation_id", ""))
-    attestation = f"{attestation[:16]}…" if attestation else "unavailable"
-
-    campaign_id = _run_id(campaign)
-    curator_id = _run_id(curator)
+    orders = "ENABLED" if active_progress.get("live_orders") is True else "DISABLED"
     updated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    curator_result = str(curator.get("conclusion") or "unknown")
 
     lines = [
         "# Cocomelon Evidence Dashboard",
@@ -221,74 +292,159 @@ def _body(
         "> Auto-refreshed from trusted GitHub evidence artifacts. "
         f"Last updated **{updated}**.",
         "",
-        "## Phase 9 progress",
+        "**Active evidence protocol: V3 lifecycle-aware**  ",
+        "V3 uses a fixed 45-minute entry window followed by a bounded "
+        "closeout-only window. Historical V2 evidence is shown separately and "
+        "is not counted as V3 progress.",
+        "",
+        "## Active V3 evidence progress",
         "",
         "| Metric | Current | Target |",
         "| --- | ---: | ---: |",
         "| Accepted genuine-mainnet cohorts | "
-        f"**{_int(progress, 'attested_run_count')}** | — |",
+        f"**{_int(active_progress, 'attested_run_count')}** | — |",
         "| Closed paper trades | "
-        f"**{_int(progress, 'closed_trade_count')}** | "
-        f"**{_int(progress, 'minimum_oos_trade_requirement', 100)}** |",
+        f"**{_int(active_progress, 'closed_trade_count')}** | "
+        f"**{_int(active_progress, 'minimum_oos_trade_requirement', 100)}** |",
         "| Closed-trade days | "
-        f"**{_int(progress, 'closed_trade_days')}** | "
-        f"**{_int(progress, 'minimum_oos_day_requirement', 30)}** |",
-        "| Strategy decisions in corpus | "
-        f"**{_int(aggregate, 'decision_fact_count')}** | — |",
-        "",
-        f"**Raw Phase 9 minimums met:** {'YES' if raw_ready else 'NO'}  ",
-        f"**Economic edge:** {edge}  ",
-        f"**Live orders:** {orders}",
-        "",
-        "## Pipeline health",
-        "",
-        f"- Latest Campaign V2: **{campaign_state}** — "
-        f"[run {campaign_id}](https://github.com/{repo}/actions/runs/{campaign_id})",
-        f"- Triggering curator: **{curator_result}** — "
-        f"[run {curator_id}](https://github.com/{repo}/actions/runs/{curator_id})",
-        f"- Corpus producer: [run {producer_id}]"
-        f"(https://github.com/{repo}/actions/runs/{producer_id})",
-        f"- Corpus artifact ID: `{artifact_id}`",
-        f"- Mainnet attestation: `{attestation}`",
-        "",
-        "A curator can finish red after safely writing a verified corpus artifact. "
-        "The dashboard keeps curator outcome separate from accepted-corpus counts.",
-        "Failed or unverified campaign evidence is never counted just because a job ran.",
-        "",
-        "## Direct tracking links",
-        "",
-        "- [Campaign V2 runs]"
-        f"(https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)",
-        "- [Evidence corpus curator]"
-        f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)",
-        "- [Repository status]"
-        f"(https://github.com/{repo}/blob/main/docs/STATUS.md)",
-        "",
-        "This page is informational only. It does not enable real-money trading "
-        "or change strategy/risk rules.",
+        f"**{_int(active_progress, 'closed_trade_days')}** | "
+        f"**{_int(active_progress, 'minimum_oos_day_requirement', 30)}** |",
+        f"| Strategy decisions in corpus | **{active_decisions}** | — |",
         "",
     ]
+    if active_snapshot is None:
+        lines.extend(["**V3 accepted corpus not established yet.**", ""])
+
+    lines.extend(
+        [
+            f"**Raw Phase 9 minimums met:** {'YES' if raw_ready else 'NO'}  ",
+            f"**Economic edge:** {edge}  ",
+            f"**Live orders:** {orders}",
+            "",
+            "## Historical V2 evidence",
+            "",
+        ]
+    )
+    if historical_v2_progress is None:
+        lines.append("Historical V2 accepted cohorts: unavailable.")
+    else:
+        lines.extend(
+            [
+                "Historical V2 accepted cohorts: "
+                f"**{_int(historical_v2_progress, 'attested_run_count')}**  ",
+                "Historical V2 closed paper trades: "
+                f"**{_int(historical_v2_progress, 'closed_trade_count')}**  ",
+                "Historical V2 closed-trade days: "
+                f"**{_int(historical_v2_progress, 'closed_trade_days')}**",
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "These V2 counts are retained for audit/history only and do not "
+            "advance the V3 evidence gate.",
+            "",
+            "## Pipeline health",
+            "",
+            f"- Latest Campaign V3: **{_state(latest_v3_campaign)}** — "
+            f"{_run_link(repo, latest_v3_campaign)}",
+            f"- Latest V3 curator: **{_state(latest_v3_curator)}** — "
+            f"{_run_link(repo, latest_v3_curator)}",
+        ]
+    )
+    if event_curator is not None:
+        lines.append(
+            f"- Dashboard trigger curator: **{_state(event_curator)}** — "
+            f"{_run_link(repo, event_curator)}"
+        )
+    if active_snapshot is not None:
+        active_artifact_id = active_snapshot[2]
+        active_producer_id = active_snapshot[3]
+        attestation = str(active_progress.get("mainnet_attestation_id", ""))
+        attestation = f"{attestation[:16]}…" if attestation else "unavailable"
+        lines.extend(
+            [
+                f"- V3 corpus producer: [run {active_producer_id}]"
+                f"(https://github.com/{repo}/actions/runs/{active_producer_id})",
+                f"- V3 corpus artifact ID: `{active_artifact_id}`",
+                f"- V3 mainnet attestation: `{attestation}`",
+            ]
+        )
+    if historical_v2_snapshot is not None:
+        lines.append(f"- Historical V2 corpus artifact ID: `{historical_v2_snapshot[2]}`")
+
+    lines.extend(
+        [
+            "",
+            "A curator can finish red after safely writing a verified corpus artifact. "
+            "Curator outcome is therefore kept separate from accepted-corpus counts. "
+            "Failed or unverified campaign evidence is never counted just because a job ran.",
+            "",
+            "## Direct tracking links",
+            "",
+            "- [Campaign V3 runs]"
+            f"(https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)",
+            "- [V3 evidence corpus curator]"
+            f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator-v3.yml)",
+            "- [Historical V2 curator]"
+            f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)",
+            "- [Repository status]"
+            f"(https://github.com/{repo}/blob/main/docs/STATUS.md)",
+            "",
+            "This page is informational only. It does not enable real-money trading "
+            "or change strategy/risk rules.",
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
 def build_issue_patch(repo: str) -> JsonObject:
-    curator = _curator_run(repo)
-    curator_id = _run_id(curator)
-    artifact, producer_id = _corpus_artifact(repo, curator_id)
-    artifact_id = _run_id(artifact)
-    blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
-    progress = _json_from_zip(blob, "progress.json")
-    index = _json_from_zip(blob, "corpus-index.json")
-    campaign = _latest_campaign(repo)
+    event_curator = _event_curator(repo)
+    event_spec = _protocol_for_curator(event_curator, repo) if event_curator else None
+    event_id = _run_id(event_curator) if event_curator else None
+
+    runs_payload = _gh_json(repo, "actions/runs?per_page=100")
+    runs = _runs(runs_payload)
+    latest_v3_campaign = _latest_protocol_run(
+        runs,
+        name=V3.campaign_name,
+        path=V3.campaign_path,
+    )
+    latest_v3_curator = _latest_protocol_run(
+        runs,
+        name=V3.curator_name,
+        path=V3.curator_path,
+        event="workflow_run",
+    )
+
+    active_snapshot = _corpus_snapshot(
+        repo,
+        V3,
+        preferred_curator_id=event_id if event_spec == V3 else None,
+    )
+    historical_v2_snapshot = _corpus_snapshot(
+        repo,
+        V2,
+        preferred_curator_id=event_id if event_spec == V2 else None,
+    )
+
+    active_progress = active_snapshot[0] if active_snapshot else _zero_v3_progress()
+    active_index = active_snapshot[1] if active_snapshot else None
+    historical_v2_progress = (
+        historical_v2_snapshot[0] if historical_v2_snapshot else None
+    )
     return {
         "body": _body(
             repo=repo,
-            progress=progress,
-            index=index,
-            curator=curator,
-            campaign=campaign,
-            artifact_id=artifact_id,
-            producer_id=producer_id,
+            active_progress=active_progress,
+            active_index=active_index,
+            active_snapshot=active_snapshot,
+            historical_v2_progress=historical_v2_progress,
+            historical_v2_snapshot=historical_v2_snapshot,
+            latest_v3_campaign=latest_v3_campaign,
+            latest_v3_curator=latest_v3_curator,
+            event_curator=event_curator,
         )
     }
 
