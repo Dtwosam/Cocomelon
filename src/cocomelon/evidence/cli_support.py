@@ -41,6 +41,9 @@ AsyncSleep = Callable[[float], Awaitable[None]]
 SOURCE_ROOT_FIELD = "source_root_relative"
 SOURCE_LOCATOR_BUNDLE_ID_FIELD = "source_locator_bundle_id"
 WS_CONNECT_SPACING_ENV = "COCOMELON_WS_CONNECT_SPACING_SECONDS"
+LIFECYCLE_ENTRY_WINDOW_MS = 2_700_000
+LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION = "phase8-v2-lifecycle-aware"
+LIFECYCLE_AWARE_CONFIG_VERSION = "phase9-baseline-replay-v2-lifecycle-aware"
 
 
 def _resolve_git_head(cwd: Path) -> str:
@@ -239,14 +242,46 @@ def _attach_source_locator(
     os.replace(temporary, bundle_path)
 
 
+def replay_config_for_protocol(
+    starting_cash: Decimal,
+    *,
+    lifecycle_aware: bool,
+) -> BaselineReplayConfig:
+    if not lifecycle_aware:
+        return BaselineReplayConfig(starting_cash=starting_cash)
+    return BaselineReplayConfig(
+        starting_cash=starting_cash,
+        replay_engine_version=LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION,
+        config_version=LIFECYCLE_AWARE_CONFIG_VERSION,
+    )
+
+
+def lifecycle_new_exposure_cutoff_ms(
+    replay_config: BaselineReplayConfig,
+    session_started_at_ms: int,
+) -> int | None:
+    if session_started_at_ms < 0:
+        raise ValueError("recording session start must be non-negative")
+    if replay_config.replay_engine_version != LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION:
+        return None
+    if replay_config.config_version != LIFECYCLE_AWARE_CONFIG_VERSION:
+        raise ValueError("lifecycle-aware replay config version does not match replay engine")
+    return session_started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
+
+
 def freeze_baseline_replay_payload(
     root: str | Path,
     out: str | Path,
     starting_cash: Decimal,
+    *,
+    lifecycle_aware: bool = False,
 ) -> dict[str, object]:
     recording_root = Path(root)
     output_path = Path(out)
-    replay_config = BaselineReplayConfig(starting_cash=starting_cash)
+    replay_config = replay_config_for_protocol(
+        starting_cash,
+        lifecycle_aware=lifecycle_aware,
+    )
     code_revision = resolve_code_revision(None, cwd=Path.cwd())
     bundle = freeze_baseline_replay_bundle(
         recording_root,
@@ -263,6 +298,9 @@ def freeze_baseline_replay_payload(
         "source_set_digest": bundle.source_set_digest,
         "code_revision": bundle.manifest.code_revision,
         "starting_cash": str(bundle.replay_config.starting_cash),
+        "replay_engine_version": bundle.replay_config.replay_engine_version,
+        "config_version": bundle.replay_config.config_version,
+        "entry_window_ms": LIFECYCLE_ENTRY_WINDOW_MS if lifecycle_aware else None,
         "root": str(recording_root),
         "out": str(output_path),
         "network_access": False,
@@ -277,7 +315,6 @@ def _bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
         raise ValueError("baseline replay bundle must contain valid JSON") from exc
     if not isinstance(raw, dict):
         raise ValueError("baseline replay bundle must be an object")
-
     locator = raw.get(SOURCE_ROOT_FIELD)
     locator_bundle_id = raw.get(SOURCE_LOCATOR_BUNDLE_ID_FIELD)
     if locator is None:
@@ -340,6 +377,10 @@ def run_baseline_replay_payload(
     session = load_recording_session(source_root)
     if session is None or session.session_id != bundle.recording_session_digest:
         raise ValueError("baseline replay recording session does not match frozen bundle")
+    new_exposure_cutoff_ms = lifecycle_new_exposure_cutoff_ms(
+        bundle.replay_config,
+        session.started_at_ms,
+    )
 
     requirements = ReplayRequirements(requires_l2=True)
     run_id = replay_run_id(bundle.manifest, requirements)
@@ -372,6 +413,7 @@ def run_baseline_replay_payload(
                 selected_markets=tuple(item.market for item in session.selected),
                 replay_run_id=run_id,
                 evidence_class=bundle.manifest.evidence_class,
+                new_exposure_cutoff_ms=new_exposure_cutoff_ms,
             )
             result = ReplayEngine(
                 JsonlReplaySource(source_root),
@@ -398,6 +440,14 @@ def run_baseline_replay_payload(
             "final_account_state_id": result.final_account_state_id,
             "final_equity": str(execution.account.equity),
             "data_complete": result.data_complete,
+            "replay_engine_version": bundle.replay_config.replay_engine_version,
+            "config_version": bundle.replay_config.config_version,
+            "new_exposure_cutoff_ms": new_exposure_cutoff_ms,
+            "entry_window_ms": (
+                LIFECYCLE_ENTRY_WINDOW_MS
+                if new_exposure_cutoff_ms is not None
+                else None
+            ),
             "journal": str(Path(journal_path)),
             "execution": str(Path(execution_path)),
             "facts": str(Path(facts_path)),
