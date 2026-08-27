@@ -69,7 +69,7 @@ def test_v3_curator_rebuilds_aggregate_from_attested_sources() -> None:
 def test_v3_curator_rejected_runs_cannot_mutate_corpus() -> None:
     text = _text()
 
-    assert 'SOURCE_CONCLUSION="${{ github.event.workflow_run.conclusion }}"' in text
+    assert "SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}" in text
     assert 'if [ "$SOURCE_CONCLUSION" != "success" ]; then' in text
     assert '"corpus_mutated": False' in text
     assert "exit 0" in text
