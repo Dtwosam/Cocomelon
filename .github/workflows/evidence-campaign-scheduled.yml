@@ -1,4 +1,4 @@
-name: Scheduled Genuine Mainnet Evidence Campaign V2
+name: Scheduled Genuine Mainnet Evidence Campaign V3
 
 on:
   schedule:
@@ -9,215 +9,102 @@ permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v2-6de9d86a
+  group: genuine-mainnet-evidence-v3-f21ad7be
   cancel-in-progress: false
 
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 125
     env:
-      GH_TOKEN: ${{ github.token }}
-      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
-      PHASE9_STATE_FILE: phase9-v2-final.json
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
+      COHORT_CODE_REVISION: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
       COHORT_TRIGGER_SHA: ${{ github.sha }}
+      ENTRY_WINDOW_SECONDS: 2700
+      CAPTURE_WINDOW_SECONDS: 5400
     steps:
-      - name: Check durable Phase 9 final state
-        id: phase9_final
-        run: |
-          set -euo pipefail
-          gh api \
-            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
-            > /tmp/phase9-state-branch.json
-          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
-          set +e
-          gh api "$STATE_ENDPOINT" > /tmp/phase9-state-meta.json 2> /tmp/phase9-state.stderr
-          STATE_STATUS=$?
-          set -e
-          if [ "$STATE_STATUS" -eq 0 ]; then
-            python3 - <<'PY'
-          import base64
-          import hashlib
-          import json
-          from pathlib import Path
-
-          meta = json.loads(Path("/tmp/phase9-state-meta.json").read_text())
-          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
-          final_id = payload.get("final_id")
-          base = {key: value for key, value in payload.items() if key != "final_id"}
-          encoded = json.dumps(
-              base,
-              sort_keys=True,
-              separators=(",", ":"),
-              ensure_ascii=False,
-              allow_nan=False,
-          ).encode("utf-8")
-          expected = hashlib.sha256(encoded).hexdigest()
-          if final_id != expected:
-              raise SystemExit("durable Phase 9 final_id is invalid")
-          if payload.get("protocol_id") != "v2-phase9-one-shot":
-              raise SystemExit("durable Phase 9 protocol id is invalid")
-          if payload.get("one_shot_oos") is not True:
-              raise SystemExit("durable Phase 9 state is not one-shot OOS")
-          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
-              raise SystemExit("durable Phase 9 state violates offline-only semantics")
-          Path("/tmp/phase9-v2-final.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          PY
-            echo "final_exists=true" >> "$GITHUB_OUTPUT"
-          elif grep -q "HTTP 404" /tmp/phase9-state.stderr; then
-            STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"
-            gh api "$STATE_HISTORY_ENDPOINT" > /tmp/phase9-state-history.json
-            if python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          history = json.loads(Path("/tmp/phase9-state-history.json").read_text())
-          raise SystemExit(0 if history else 1)
-          PY
-            then
-              echo "Phase 9 final state was previously recorded but is now missing" >&2
-              exit 61
-            fi
-            echo "final_exists=false" >> "$GITHUB_OUTPUT"
-          else
-            cat /tmp/phase9-state.stderr >&2
-            exit "$STATE_STATUS"
-          fi
-
-      - name: Checkout pinned V2 evidence revision
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
+      - name: Checkout pinned V3 evidence revision
         uses: actions/checkout@v4
         with:
-          ref: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
+          ref: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
           fetch-depth: 1
-
-      - name: Checkout pinned attempt ledger tooling
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
-        uses: actions/checkout@v4
-        with:
-          ref: e87a575a755074e36e22729c63c4831b474cf339
-          path: campaign-tooling
-          fetch-depth: 1
-          persist-credentials: false
 
       - uses: actions/setup-python@v5
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         with:
           python-version: "3.12"
           cache: pip
 
       - name: Install Cocomelon
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Record clean genuine public mainnet evidence
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
+      - name: Record lifecycle-aware genuine public mainnet evidence
         run: |
           set -euo pipefail
-          mkdir -p evidence-cohort/output evidence-cohort/diagnostics
+          mkdir -p evidence-cohort/recording evidence-cohort/output evidence-cohort/diagnostics
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
           printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
+          printf '1\n' > evidence-cohort/output/acquisition-attempt.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/started-at-utc.txt
 
-          CLEAN_ATTEMPT=""
-          for ATTEMPT in 1 2; do
-            ATTEMPT_ROOT="evidence-cohort/attempt-${ATTEMPT}"
-            DIAG_ROOT="evidence-cohort/diagnostics/attempt-${ATTEMPT}"
-            mkdir -p "$ATTEMPT_ROOT/recording" "$DIAG_ROOT"
-            date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/started-at-utc.txt"
+          cocomelon record-mainnet-evidence \
+            --root evidence-cohort/recording \
+            --seconds 5400 \
+            --deep-limit 5 \
+            > evidence-cohort/output/record-transport.json &
+          RECORDER_PID=$!
 
-            cocomelon record-mainnet-evidence \
-              --root "$ATTEMPT_ROOT/recording" \
-              --seconds 2700 \
-              --deep-limit 5 \
-              > "$ATTEMPT_ROOT/record-transport.json" &
-            RECORDER_PID=$!
+          python -m cocomelon.ops.gap_watch \
+            --root evidence-cohort/recording \
+            --pid "$RECORDER_PID" \
+            --poll-seconds 0.5 \
+            > evidence-cohort/output/gap-watch.json &
+          GAP_WATCH_PID=$!
 
-            python -m cocomelon.ops.gap_watch \
-              --root "$ATTEMPT_ROOT/recording" \
-              --pid "$RECORDER_PID" \
-              --poll-seconds 0.5 \
-              > "$ATTEMPT_ROOT/gap-watch.json" &
-            GAP_WATCH_PID=$!
+          if wait "$RECORDER_PID"; then
+            RECORDER_STATUS=0
+          else
+            RECORDER_STATUS=$?
+          fi
+          kill "$GAP_WATCH_PID" 2>/dev/null || true
+          if wait "$GAP_WATCH_PID"; then
+            GAP_WATCH_STATUS=0
+          else
+            GAP_WATCH_STATUS=$?
+          fi
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/finished-at-utc.txt
+          printf '%s\n' "$RECORDER_STATUS" > evidence-cohort/diagnostics/recorder-exit-status.txt
+          printf '%s\n' "$GAP_WATCH_STATUS" > evidence-cohort/diagnostics/gap-watch-exit-status.txt
 
-            if wait "$RECORDER_PID"; then
-              RECORDER_STATUS=0
-            else
-              RECORDER_STATUS=$?
-            fi
-            kill "$GAP_WATCH_PID" 2>/dev/null || true
-            if wait "$GAP_WATCH_PID"; then
-              GAP_WATCH_STATUS=0
-            else
-              GAP_WATCH_STATUS=$?
-            fi
+          if [ "$RECORDER_STATUS" -ne 0 ] || [ "$GAP_WATCH_STATUS" -eq 20 ]; then
+            echo "Lifecycle-aware mainnet capture did not complete cleanly" >&2
+            exit 1
+          fi
 
-            NORMALIZE_STATUS=1
-            if [ "$RECORDER_STATUS" -eq 0 ]; then
-              if python - "$ATTEMPT_ROOT/record-transport.json" "$ATTEMPT_ROOT/record.json" <<'PY'
+          python - <<'PY'
           import json
-          import sys
           from pathlib import Path
 
           from cocomelon.evidence.transport_health import normalize_redundant_record_payload
 
-          source = Path(sys.argv[1])
-          target = Path(sys.argv[2])
-          raw = json.loads(source.read_text(encoding="utf-8"))
+          root = Path("evidence-cohort/output")
+          raw = json.loads((root / "record-transport.json").read_text(encoding="utf-8"))
           normalized = normalize_redundant_record_payload(raw)
-          target.write_text(
+          (root / "record.json").write_text(
               json.dumps(normalized, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
           PY
-              then
-                NORMALIZE_STATUS=0
-              else
-                NORMALIZE_STATUS=$?
-              fi
-            fi
 
-            date -u +%Y-%m-%dT%H:%M:%SZ > "$ATTEMPT_ROOT/finished-at-utc.txt"
-            printf '%s\n' "$RECORDER_STATUS" > "$ATTEMPT_ROOT/recorder-exit-status.txt"
-            printf '%s\n' "$GAP_WATCH_STATUS" > "$ATTEMPT_ROOT/gap-watch-exit-status.txt"
-            printf '%s\n' "$NORMALIZE_STATUS" > "$ATTEMPT_ROOT/normalize-exit-status.txt"
-
-            cp "$ATTEMPT_ROOT/record-transport.json" "$DIAG_ROOT/record-transport.json" || true
-            cp "$ATTEMPT_ROOT/record.json" "$DIAG_ROOT/record.json" || true
-            cp "$ATTEMPT_ROOT/gap-watch.json" "$DIAG_ROOT/gap-watch.json" || true
-            cp "$ATTEMPT_ROOT/started-at-utc.txt" "$DIAG_ROOT/started-at-utc.txt"
-            cp "$ATTEMPT_ROOT/finished-at-utc.txt" "$DIAG_ROOT/finished-at-utc.txt"
-            cp "$ATTEMPT_ROOT/recorder-exit-status.txt" "$DIAG_ROOT/recorder-exit-status.txt"
-            cp "$ATTEMPT_ROOT/gap-watch-exit-status.txt" "$DIAG_ROOT/gap-watch-exit-status.txt"
-            cp "$ATTEMPT_ROOT/normalize-exit-status.txt" "$DIAG_ROOT/normalize-exit-status.txt"
-            cp "$ATTEMPT_ROOT/recording/recording-session.json" \
-              "$DIAG_ROOT/recording-session.json" || true
-            cp "$ATTEMPT_ROOT/recording/manifest.json" "$DIAG_ROOT/manifest.json" || true
-            if [ -d "$ATTEMPT_ROOT/recording/gaps" ]; then
-              cp -R "$ATTEMPT_ROOT/recording/gaps" "$DIAG_ROOT/gaps"
-            fi
-
-            if [ "$RECORDER_STATUS" -ne 0 ] \
-              || [ "$GAP_WATCH_STATUS" -eq 20 ] \
-              || [ "$NORMALIZE_STATUS" -ne 0 ]; then
-              rm -rf "$ATTEMPT_ROOT"
-              continue
-            fi
-
-            if ! python - "$ATTEMPT_ROOT/record.json" <<'PY'
+          python - <<'PY'
           import json
-          import sys
+          from pathlib import Path
 
-          record = json.load(open(sys.argv[1], encoding="utf-8"))
+          record = json.loads(Path("evidence-cohort/output/record.json").read_text())
           clean = (
               record["gap_count"] == 0
               and record["duplicate_count"] == 0
@@ -228,44 +115,47 @@ jobs:
               and record["live_orders"] is False
               and record["network_access"] is True
           )
-          raise SystemExit(0 if clean else 1)
+          if not clean:
+              raise SystemExit("mainnet transport capture is not evidence-clean")
           PY
-            then
-              rm -rf "$ATTEMPT_ROOT"
-              continue
-            fi
 
-            PROBE_ROOT="$ATTEMPT_ROOT/probe"
-            mkdir -p "$PROBE_ROOT"
-            cocomelon validate-recording \
-              --root "$ATTEMPT_ROOT/recording" \
-              > "$PROBE_ROOT/validate.json"
-            cocomelon freeze-baseline-replay \
-              --root "$ATTEMPT_ROOT/recording" \
-              --out "$PROBE_ROOT/bundle.json" \
-              --starting-cash 10000 \
-              > "$PROBE_ROOT/freeze.json"
-            cocomelon run-baseline-replay \
-              --bundle "$PROBE_ROOT/bundle.json" \
-              --journal "$PROBE_ROOT/journal.sqlite3" \
-              --execution "$PROBE_ROOT/execution.sqlite3" \
-              --facts "$PROBE_ROOT/facts.sqlite3" \
-              > "$PROBE_ROOT/replay.json"
-            PROBE_RUN_ID=$(python -c "import json; print(json.load(open('$PROBE_ROOT/replay.json'))['run_id'])")
-            cocomelon freeze-evaluation-dataset \
-              --journal "$PROBE_ROOT/journal.sqlite3" \
-              --facts "$PROBE_ROOT/facts.sqlite3" \
-              --run-id "$PROBE_RUN_ID" \
-              > "$PROBE_ROOT/dataset.json"
-
-            python - "$PROBE_ROOT/replay.json" "$PROBE_ROOT/dataset.json" \
-              "$DIAG_ROOT/eligibility-probe.json" <<'PY'
+          mkdir -p evidence-cohort/probe
+          cocomelon validate-recording \
+            --root evidence-cohort/recording \
+            > evidence-cohort/probe/validate.json
+          python - <<'PY' > evidence-cohort/probe/freeze.json
           import json
-          import sys
+          from decimal import Decimal
+
+          from cocomelon.evidence.cli_support import freeze_baseline_replay_payload
+
+          payload = freeze_baseline_replay_payload(
+              "evidence-cohort/recording",
+              "evidence-cohort/probe/bundle.json",
+              Decimal("10000"),
+              lifecycle_aware=True,
+          )
+          print(json.dumps(payload, sort_keys=True))
+          PY
+          cocomelon run-baseline-replay \
+            --bundle evidence-cohort/probe/bundle.json \
+            --journal evidence-cohort/probe/journal.sqlite3 \
+            --execution evidence-cohort/probe/execution.sqlite3 \
+            --facts evidence-cohort/probe/facts.sqlite3 \
+            > evidence-cohort/probe/replay.json
+          PROBE_RUN_ID=$(python -c 'import json; print(json.load(open("evidence-cohort/probe/replay.json"))["run_id"])')
+          cocomelon freeze-evaluation-dataset \
+            --journal evidence-cohort/probe/journal.sqlite3 \
+            --facts evidence-cohort/probe/facts.sqlite3 \
+            --run-id "$PROBE_RUN_ID" \
+            > evidence-cohort/probe/dataset.json
+
+          python - <<'PY'
+          import json
           from pathlib import Path
 
-          replay = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          dataset = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          replay = json.loads(Path("evidence-cohort/probe/replay.json").read_text())
+          dataset = json.loads(Path("evidence-cohort/probe/dataset.json").read_text())
           reasons = []
           if replay["data_complete"] is not True:
               reasons.append("replay_incomplete")
@@ -290,62 +180,37 @@ jobs:
               "network_access": False,
               "live_orders": False,
           }
-          Path(sys.argv[3]).write_text(
+          Path("evidence-cohort/diagnostics/eligibility-probe.json").write_text(
               json.dumps(payload, indent=2, sort_keys=True) + "\n",
               encoding="utf-8",
           )
+          if not payload["economic_eligible"]:
+              raise SystemExit(
+                  "Lifecycle-aware capture is not clean, complete, and flat: "
+                  + ",".join(reasons)
+              )
           PY
-
-            if python - "$DIAG_ROOT/eligibility-probe.json" <<'PY'
-          import json
-          import sys
-
-          probe = json.load(open(sys.argv[1], encoding="utf-8"))
-          raise SystemExit(0 if probe["economic_eligible"] is True else 1)
-          PY
-            then
-              CLEAN_ATTEMPT="$ATTEMPT"
-              mv "$ATTEMPT_ROOT/recording" evidence-cohort/recording
-              cp "$ATTEMPT_ROOT/record.json" evidence-cohort/output/record.json
-              cp "$ATTEMPT_ROOT/record-transport.json" \
-                evidence-cohort/output/record-transport.json
-              cp "$ATTEMPT_ROOT/gap-watch.json" evidence-cohort/output/gap-watch.json || true
-              cp "$ATTEMPT_ROOT/started-at-utc.txt" evidence-cohort/output/started-at-utc.txt
-              cp "$ATTEMPT_ROOT/finished-at-utc.txt" evidence-cohort/output/finished-at-utc.txt
-              cp "$DIAG_ROOT/eligibility-probe.json" evidence-cohort/output/eligibility-probe.json
-              printf '%s\n' "$ATTEMPT" > evidence-cohort/output/acquisition-attempt.txt
-              rm -rf "$ATTEMPT_ROOT"
-              break
-            fi
-
-            rm -rf "$ATTEMPT_ROOT"
-          done
-
-          git -C campaign-tooling rev-parse HEAD \
-            > evidence-cohort/diagnostics/attempt-ledger-revision.txt
-          python campaign-tooling/src/cocomelon/ops/attempt_ledger.py \
-            --diagnostics-root evidence-cohort/diagnostics \
-            --out evidence-cohort/diagnostics/cohort-attempts.json \
-            --admitted-attempt "$CLEAN_ATTEMPT" \
-            > evidence-cohort/diagnostics/cohort-attempts-command.json
-
-          if [ -z "$CLEAN_ATTEMPT" ]; then
-            echo "No transport-clean, complete, flat mainnet capture completed in the bounded retry cohort" >&2
-            exit 1
-          fi
 
       - name: Validate and replay recorded evidence offline
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           set -euo pipefail
           cocomelon validate-recording \
             --root evidence-cohort/recording \
             > evidence-cohort/output/validate.json
-          cocomelon freeze-baseline-replay \
-            --root evidence-cohort/recording \
-            --out evidence-cohort/output/bundle.json \
-            --starting-cash 10000 \
-            > evidence-cohort/output/freeze.json
+          python - <<'PY' > evidence-cohort/output/freeze.json
+          import json
+          from decimal import Decimal
+
+          from cocomelon.evidence.cli_support import freeze_baseline_replay_payload
+
+          payload = freeze_baseline_replay_payload(
+              "evidence-cohort/recording",
+              "evidence-cohort/output/bundle.json",
+              Decimal("10000"),
+              lifecycle_aware=True,
+          )
+          print(json.dumps(payload, sort_keys=True))
+          PY
           cocomelon run-baseline-replay \
             --bundle evidence-cohort/output/bundle.json \
             --journal evidence-cohort/output/journal.sqlite3 \
@@ -360,7 +225,6 @@ jobs:
             > evidence-cohort/output/dataset.json
 
       - name: Assert pinned paper-only economic evidence semantics
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' }}
         run: |
           python - <<'PY'
           import json
@@ -382,8 +246,7 @@ jobs:
           assert workflow_head == expected_revision
           assert bundle["manifest"]["code_revision"] == expected_revision
           assert len(trigger_head) == 40
-          assert trigger_head != expected_revision
-          assert acquisition_attempt in (1, 2)
+          assert acquisition_attempt == 1
 
           assert record["network_access"] is True
           assert record["live_orders"] is False
@@ -402,6 +265,10 @@ jobs:
           assert replay["live_orders"] is False
           assert "edge" not in replay
           assert "profitable" not in replay
+          assert replay["entry_window_ms"] == 2700000
+          assert replay["replay_engine_version"] == "phase8-v2-lifecycle-aware"
+          assert replay["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"
+          assert replay["new_exposure_cutoff_ms"] is not None
 
           economic_ineligibility_reasons = []
           if replay["data_complete"] is not True:
@@ -417,11 +284,16 @@ jobs:
               "economic_claim": "none",
               "economic_eligible": economic_eligible,
               "economic_ineligibility_reasons": economic_ineligibility_reasons,
-              "campaign_version": "v2-redundant-mainnet",
+              "campaign_version": "v3-lifecycle-aware-mainnet",
               "campaign_trigger": os.environ.get("GITHUB_EVENT_NAME", "unknown"),
               "checked_out_code_revision": workflow_head,
               "trigger_head_sha": trigger_head,
               "acquisition_attempt": acquisition_attempt,
+              "entry_window_seconds": 2700,
+              "capture_window_seconds": 5400,
+              "replay_engine_version": replay["replay_engine_version"],
+              "config_version": replay["config_version"],
+              "new_exposure_cutoff_ms": replay["new_exposure_cutoff_ms"],
               "recording_session_id": record["session_id"],
               "selected_markets": record["selected_markets"],
               "recorded_event_count": record["event_count"],
@@ -464,10 +336,10 @@ jobs:
           PY
 
       - name: Upload genuine evidence artifact
-        if: ${{ steps.phase9_final.outputs.final_exists != 'true' && always() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: scheduled-genuine-mainnet-evidence-v2-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          name: scheduled-genuine-mainnet-evidence-v3-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: evidence-cohort/
           if-no-files-found: error
           retention-days: 90
