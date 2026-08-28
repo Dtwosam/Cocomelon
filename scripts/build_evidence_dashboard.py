@@ -23,6 +23,14 @@ class ProtocolSpec:
     corpus_name: str
 
 
+V4 = ProtocolSpec(
+    label="V4 thesis-expiry",
+    curator_name="Verified V4 Mainnet Evidence Corpus Curator",
+    curator_path=".github/workflows/evidence-corpus-curator-v4.yml",
+    campaign_name="Scheduled Genuine Mainnet Evidence Campaign V4",
+    campaign_path=".github/workflows/evidence-campaign-v4-scheduled.yml",
+    corpus_name="v4-mainnet-corpus",
+)
 V3 = ProtocolSpec(
     label="V3 lifecycle-aware",
     curator_name="Verified V3 Mainnet Evidence Corpus Curator",
@@ -39,7 +47,13 @@ V2 = ProtocolSpec(
     campaign_path=".github/workflows/evidence-campaign-scheduled.yml",
     corpus_name="v2-mainnet-corpus",
 )
-TRUSTED_PROTOCOLS = (V3, V2)
+TRUSTED_PROTOCOLS = (V4, V3, V2)
+
+PHASE9_V4_ONE_SHOT_NAME = "Phase 9 V4 One-Shot Evaluation"
+PHASE9_V4_ONE_SHOT_PATH = ".github/workflows/phase9-v4-one-shot.yml"
+PHASE9_V4_STATE_BRANCH = "phase9-v4-protocol-state"
+PHASE9_V4_FREEZE_FILE = "phase9-v4-freeze.json"
+PHASE9_V4_FINAL_FILE = "phase9-v4-final.json"
 
 PHASE9_V3_ONE_SHOT_NAME = "Phase 9 V3 One-Shot Evaluation"
 PHASE9_V3_ONE_SHOT_PATH = ".github/workflows/phase9-v3-one-shot.yml"
@@ -113,14 +127,19 @@ def _protocol_for_curator(run: JsonObject, repo: str) -> ProtocolSpec:
     raise RuntimeError("curator run provenance is invalid")
 
 
-def _is_trusted_v3_one_shot(run: JsonObject, repo: str) -> bool:
-    return (
-        run.get("name") == PHASE9_V3_ONE_SHOT_NAME
-        and run.get("path") == PHASE9_V3_ONE_SHOT_PATH
+def _is_trusted_one_shot(run: JsonObject, repo: str) -> bool:
+    identities = (
+        (PHASE9_V4_ONE_SHOT_NAME, PHASE9_V4_ONE_SHOT_PATH),
+        (PHASE9_V3_ONE_SHOT_NAME, PHASE9_V3_ONE_SHOT_PATH),
+    )
+    return any(
+        run.get("name") == name
+        and run.get("path") == path
         and run.get("event") == "workflow_run"
         and run.get("status") == "completed"
         and _repository_name(run.get("repository")) == repo
         and _repository_name(run.get("head_repository")) == repo
+        for name, path in identities
     )
 
 
@@ -133,7 +152,7 @@ def _event_workflow_run(repo: str) -> JsonObject | None:
         _protocol_for_curator(run, repo)
         return run
     except RuntimeError:
-        if _is_trusted_v3_one_shot(run, repo):
+        if _is_trusted_one_shot(run, repo):
             return run
     raise RuntimeError("event workflow run provenance is invalid")
 
@@ -320,8 +339,16 @@ def _verify_canonical_id(payload: JsonObject, field: str, label: str) -> str:
     return value
 
 
-def _phase9_v3_state(repo: str) -> JsonObject:
-    branch = _gh_optional_json(repo, f"branches/{PHASE9_V3_STATE_BRANCH}")
+def _phase9_state(
+    repo: str,
+    *,
+    label: str,
+    state_branch: str,
+    freeze_file: str,
+    final_file: str,
+    protocol_id: str,
+) -> JsonObject:
+    branch = _gh_optional_json(repo, f"branches/{state_branch}")
     if branch is None:
         return {
             "durable_freeze_exists": False,
@@ -330,32 +357,32 @@ def _phase9_v3_state(repo: str) -> JsonObject:
             "final": None,
         }
 
-    freeze = _content_json(repo, PHASE9_V3_FREEZE_FILE, PHASE9_V3_STATE_BRANCH)
-    final = _content_json(repo, PHASE9_V3_FINAL_FILE, PHASE9_V3_STATE_BRANCH)
+    freeze = _content_json(repo, freeze_file, state_branch)
+    final = _content_json(repo, final_file, state_branch)
 
     if freeze is not None:
-        _verify_canonical_id(freeze, "freeze_id", "V3 freeze")
-        if freeze.get("protocol_id") != "v3-phase9-one-shot":
-            raise RuntimeError("V3 freeze protocol id is invalid")
+        _verify_canonical_id(freeze, "freeze_id", f"{label} freeze")
+        if freeze.get("protocol_id") != protocol_id:
+            raise RuntimeError(f"{label} freeze protocol id is invalid")
         if freeze.get("freeze_state") != "frozen":
-            raise RuntimeError("V3 freeze state is invalid")
+            raise RuntimeError(f"{label} freeze state is invalid")
         if freeze.get("one_shot_oos") is not True:
-            raise RuntimeError("V3 freeze is not one-shot OOS")
+            raise RuntimeError(f"{label} freeze is not one-shot OOS")
         if freeze.get("network_access") is not False or freeze.get("live_orders") is not False:
-            raise RuntimeError("V3 freeze violates offline-only semantics")
+            raise RuntimeError(f"{label} freeze violates offline-only semantics")
 
     if final is not None:
-        _verify_canonical_id(final, "final_id", "V3 final state")
+        _verify_canonical_id(final, "final_id", f"{label} final state")
         if freeze is None:
-            raise RuntimeError("V3 final state exists without durable freeze")
-        if final.get("protocol_id") != "v3-phase9-one-shot":
-            raise RuntimeError("V3 final state protocol id is invalid")
+            raise RuntimeError(f"{label} final state exists without durable freeze")
+        if final.get("protocol_id") != protocol_id:
+            raise RuntimeError(f"{label} final state protocol id is invalid")
         if final.get("one_shot_oos") is not True:
-            raise RuntimeError("V3 final state is not one-shot OOS")
+            raise RuntimeError(f"{label} final state is not one-shot OOS")
         if final.get("network_access") is not False or final.get("live_orders") is not False:
-            raise RuntimeError("V3 final state violates offline-only semantics")
+            raise RuntimeError(f"{label} final state violates offline-only semantics")
         if final.get("freeze_id") != freeze.get("freeze_id"):
-            raise RuntimeError("V3 final state freeze id mismatch")
+            raise RuntimeError(f"{label} final state freeze id mismatch")
 
     return {
         "durable_freeze_exists": freeze is not None,
@@ -363,6 +390,28 @@ def _phase9_v3_state(repo: str) -> JsonObject:
         "freeze": freeze,
         "final": final,
     }
+
+
+def _phase9_v4_state(repo: str) -> JsonObject:
+    return _phase9_state(
+        repo,
+        label="V4",
+        state_branch=PHASE9_V4_STATE_BRANCH,
+        freeze_file=PHASE9_V4_FREEZE_FILE,
+        final_file=PHASE9_V4_FINAL_FILE,
+        protocol_id="v4-phase9-one-shot",
+    )
+
+
+def _phase9_v3_state(repo: str) -> JsonObject:
+    return _phase9_state(
+        repo,
+        label="V3",
+        state_branch=PHASE9_V3_STATE_BRANCH,
+        freeze_file=PHASE9_V3_FREEZE_FILE,
+        final_file=PHASE9_V3_FINAL_FILE,
+        protocol_id="v3-phase9-one-shot",
+    )
 
 
 def _int(payload: JsonObject, field: str, default: int = 0) -> int:
@@ -395,7 +444,7 @@ def _run_link(repo: str, run: JsonObject | None) -> str:
     return f"[{run_id}](https://github.com/{repo}/actions/runs/{run_id})"
 
 
-def _zero_v3_progress() -> JsonObject:
+def _zero_progress() -> JsonObject:
     return {
         "attested_run_count": 0,
         "closed_trade_count": 0,
@@ -408,7 +457,7 @@ def _zero_v3_progress() -> JsonObject:
     }
 
 
-def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
+def _phase9_state_summary(state: JsonObject, *, label: str) -> list[str]:
     freeze_obj = state.get("freeze")
     final_obj = state.get("final")
     freeze = freeze_obj if isinstance(freeze_obj, dict) else None
@@ -425,11 +474,11 @@ def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
         elif protocol_state == "evaluated":
             status = "evaluated"
         else:
-            raise RuntimeError("V3 one-shot final protocol state is invalid")
+            raise RuntimeError(f"{label} one-shot final protocol state is invalid")
     else:
-        raise RuntimeError("V3 one-shot state is invalid")
+        raise RuntimeError(f"{label} one-shot state is invalid")
 
-    lines = [f"**V3 one-shot state:** {status}  "]
+    lines = [f"**{label} one-shot state:** {status}  "]
     if freeze is None:
         return lines
 
@@ -438,13 +487,13 @@ def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
     curator_run = freeze.get("source_curator_run_id")
     artifact_id = freeze.get("corpus_artifact_id")
     if not isinstance(revision, str) or not revision:
-        raise RuntimeError("V3 freeze evaluator revision is invalid")
+        raise RuntimeError(f"{label} freeze evaluator revision is invalid")
     if not isinstance(freeze_id, str) or not freeze_id:
-        raise RuntimeError("V3 freeze ID is invalid")
+        raise RuntimeError(f"{label} freeze ID is invalid")
     if isinstance(curator_run, bool) or not isinstance(curator_run, int):
-        raise RuntimeError("V3 freeze source curator run is invalid")
+        raise RuntimeError(f"{label} freeze source curator run is invalid")
     if isinstance(artifact_id, bool) or not isinstance(artifact_id, int):
-        raise RuntimeError("V3 freeze corpus artifact ID is invalid")
+        raise RuntimeError(f"{label} freeze corpus artifact ID is invalid")
 
     lines.extend(
         [
@@ -457,18 +506,29 @@ def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
     return lines
 
 
+def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
+    return _phase9_state_summary(state, label="V3")
+
+
+def _phase9_v4_state_summary(state: JsonObject) -> list[str]:
+    return _phase9_state_summary(state, label="V4")
+
+
 def _body(
     *,
     repo: str,
     active_progress: JsonObject,
     active_index: JsonObject | None,
     active_snapshot: CorpusSnapshot | None,
+    historical_v3_progress: JsonObject | None,
+    historical_v3_snapshot: CorpusSnapshot | None,
     historical_v2_progress: JsonObject | None,
     historical_v2_snapshot: CorpusSnapshot | None,
-    latest_v3_campaign: JsonObject | None,
-    latest_v3_curator: JsonObject | None,
+    latest_v4_campaign: JsonObject | None,
+    latest_v4_curator: JsonObject | None,
     event_workflow_run: JsonObject | None,
     event_curator: JsonObject | None,
+    phase9_v4_state: JsonObject,
     phase9_v3_state: JsonObject,
 ) -> str:
     active_decisions = _decision_count(active_index) if active_index is not None else 0
@@ -485,12 +545,12 @@ def _body(
         "> Auto-refreshed from trusted GitHub evidence artifacts. "
         f"Last updated **{updated}**.",
         "",
-        "**Active evidence protocol: V3 lifecycle-aware**  ",
-        "V3 uses a fixed 45-minute entry window followed by a bounded "
-        "closeout-only window. Historical V2 evidence is shown separately and "
-        "is not counted as V3 progress.",
+        "**Active evidence protocol: V4 thesis-expiry**  ",
+        "V4 uses a fixed 45-minute entry window, an exact 4-hour maximum "
+        "position age, and a fixed 5h15m capture. Historical V3 and V2 "
+        "evidence is shown separately and is not counted as V4 progress.",
         "",
-        "## Active V3 evidence progress",
+        "## Active V4 evidence progress",
         "",
         "| Metric | Current | Target |",
         "| --- | ---: | ---: |",
@@ -506,7 +566,7 @@ def _body(
         "",
     ]
     if active_snapshot is None:
-        lines.extend(["**V3 accepted corpus not established yet.**", ""])
+        lines.extend(["**V4 accepted corpus not established yet.**", ""])
 
     lines.extend(
         [
@@ -514,16 +574,38 @@ def _body(
             f"**Economic edge:** {edge}  ",
             f"**Live orders:** {orders}",
             "",
-            "## V3 one-shot integrity state",
+            "## V4 one-shot integrity state",
             "",
         ]
     )
-    lines.extend(_phase9_v3_state_summary(phase9_v3_state))
+    lines.extend(_phase9_v4_state_summary(phase9_v4_state))
     lines.extend(
         [
             "",
             "This section exposes only immutable protocol/provenance state. "
             "It does not reveal interim trade performance before a final one-shot result.",
+            "",
+            "## Historical V3 evidence",
+            "",
+        ]
+    )
+    if historical_v3_progress is None:
+        lines.append("Historical V3 accepted cohorts: unavailable.")
+    else:
+        lines.extend(
+            [
+                "Historical V3 accepted cohorts: "
+                f"**{_int(historical_v3_progress, 'attested_run_count')}**  ",
+                "Historical V3 closed paper trades: "
+                f"**{_int(historical_v3_progress, 'closed_trade_count')}**  ",
+                "Historical V3 closed-trade days: "
+                f"**{_int(historical_v3_progress, 'closed_trade_days')}**",
+            ]
+        )
+    lines.extend(["", *_phase9_v3_state_summary(phase9_v3_state), ""])
+    lines.extend(
+        [
+            "V3 is retained for audit/history only and does not advance the V4 gate.",
             "",
             "## Historical V2 evidence",
             "",
@@ -545,15 +627,14 @@ def _body(
     lines.extend(
         [
             "",
-            "These V2 counts are retained for audit/history only and do not "
-            "advance the V3 evidence gate.",
+            "V2 is retained for audit/history only and does not advance the V4 gate.",
             "",
             "## Pipeline health",
             "",
-            f"- Latest Campaign V3: **{_state(latest_v3_campaign)}** — "
-            f"{_run_link(repo, latest_v3_campaign)}",
-            f"- Latest V3 curator: **{_state(latest_v3_curator)}** — "
-            f"{_run_link(repo, latest_v3_curator)}",
+            f"- Latest Campaign V4: **{_state(latest_v4_campaign)}** — "
+            f"{_run_link(repo, latest_v4_campaign)}",
+            f"- Latest V4 curator: **{_state(latest_v4_curator)}** — "
+            f"{_run_link(repo, latest_v4_curator)}",
         ]
     )
     if event_workflow_run is not None:
@@ -573,14 +654,20 @@ def _body(
         attestation = f"{attestation[:16]}…" if attestation else "unavailable"
         lines.extend(
             [
-                f"- V3 corpus producer: [run {active_producer_id}]"
+                f"- V4 corpus producer: [run {active_producer_id}]"
                 f"(https://github.com/{repo}/actions/runs/{active_producer_id})",
-                f"- V3 corpus artifact ID: `{active_artifact_id}`",
-                f"- V3 mainnet attestation: `{attestation}`",
+                f"- V4 corpus artifact ID: `{active_artifact_id}`",
+                f"- V4 mainnet attestation: `{attestation}`",
             ]
         )
+    if historical_v3_snapshot is not None:
+        lines.append(
+            f"- Historical V3 corpus artifact ID: `{historical_v3_snapshot[2]}`"
+        )
     if historical_v2_snapshot is not None:
-        lines.append(f"- Historical V2 corpus artifact ID: `{historical_v2_snapshot[2]}`")
+        lines.append(
+            f"- Historical V2 corpus artifact ID: `{historical_v2_snapshot[2]}`"
+        )
 
     lines.extend(
         [
@@ -591,11 +678,15 @@ def _body(
             "",
             "## Direct tracking links",
             "",
-            "- [Campaign V3 runs]"
-            f"(https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)",
-            "- [V3 evidence corpus curator]"
+            "- [Campaign V4 runs]"
+            f"(https://github.com/{repo}/actions/workflows/evidence-campaign-v4-scheduled.yml)",
+            "- [V4 evidence corpus curator]"
+            f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator-v4.yml)",
+            "- [V4 Phase 9 one-shot]"
+            f"(https://github.com/{repo}/actions/workflows/phase9-v4-one-shot.yml)",
+            "- [Historical V3 curator]"
             f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator-v3.yml)",
-            "- [V3 Phase 9 one-shot]"
+            "- [Historical V3 Phase 9 one-shot]"
             f"(https://github.com/{repo}/actions/workflows/phase9-v3-one-shot.yml)",
             "- [Historical V2 curator]"
             f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)",
@@ -616,21 +707,26 @@ def build_issue_patch(repo: str) -> JsonObject:
     event_spec = _protocol_for_curator(event_curator, repo) if event_curator else None
     event_id = _run_id(event_curator) if event_curator else None
 
-    campaign_runs = _workflow_runs(repo, V3.campaign_path)
-    curator_runs = _workflow_runs(repo, V3.curator_path)
-    latest_v3_campaign = _latest_protocol_run(
+    campaign_runs = _workflow_runs(repo, V4.campaign_path)
+    curator_runs = _workflow_runs(repo, V4.curator_path)
+    latest_v4_campaign = _latest_protocol_run(
         campaign_runs,
-        name=V3.campaign_name,
-        path=V3.campaign_path,
+        name=V4.campaign_name,
+        path=V4.campaign_path,
     )
-    latest_v3_curator = _latest_protocol_run(
+    latest_v4_curator = _latest_protocol_run(
         curator_runs,
-        name=V3.curator_name,
-        path=V3.curator_path,
+        name=V4.curator_name,
+        path=V4.curator_path,
         event="workflow_run",
     )
 
     active_snapshot = _corpus_snapshot(
+        repo,
+        V4,
+        preferred_curator_id=event_id if event_spec == V4 else None,
+    )
+    historical_v3_snapshot = _corpus_snapshot(
         repo,
         V3,
         preferred_curator_id=event_id if event_spec == V3 else None,
@@ -640,10 +736,14 @@ def build_issue_patch(repo: str) -> JsonObject:
         V2,
         preferred_curator_id=event_id if event_spec == V2 else None,
     )
+    phase9_v4_state = _phase9_v4_state(repo)
     phase9_v3_state = _phase9_v3_state(repo)
 
-    active_progress = active_snapshot[0] if active_snapshot else _zero_v3_progress()
+    active_progress = active_snapshot[0] if active_snapshot else _zero_progress()
     active_index = active_snapshot[1] if active_snapshot else None
+    historical_v3_progress = (
+        historical_v3_snapshot[0] if historical_v3_snapshot else None
+    )
     historical_v2_progress = (
         historical_v2_snapshot[0] if historical_v2_snapshot else None
     )
@@ -653,12 +753,15 @@ def build_issue_patch(repo: str) -> JsonObject:
             active_progress=active_progress,
             active_index=active_index,
             active_snapshot=active_snapshot,
+            historical_v3_progress=historical_v3_progress,
+            historical_v3_snapshot=historical_v3_snapshot,
             historical_v2_progress=historical_v2_progress,
             historical_v2_snapshot=historical_v2_snapshot,
-            latest_v3_campaign=latest_v3_campaign,
-            latest_v3_curator=latest_v3_curator,
+            latest_v4_campaign=latest_v4_campaign,
+            latest_v4_curator=latest_v4_curator,
             event_workflow_run=event_workflow_run,
             event_curator=event_curator,
+            phase9_v4_state=phase9_v4_state,
             phase9_v3_state=phase9_v3_state,
         )
     }

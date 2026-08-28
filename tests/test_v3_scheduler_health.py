@@ -47,11 +47,12 @@ def test_scheduler_health_marks_observed_slot_healthy() -> None:
     )
 
 
-def test_scheduler_health_is_performance_blind_and_wired_to_dashboard() -> None:
+def test_historical_v3_scheduler_remains_performance_blind_but_not_active() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     script = APPLIER.read_text(encoding="utf-8").lower()
 
-    assert "apply_v3_scheduler_health.py" in workflow
+    assert "apply_v3_scheduler_health.py" not in workflow
+    assert "apply_v4_scheduler_health.py" in workflow
     assert "scheduler health" in script
     forbidden = (
         "final_equity",
