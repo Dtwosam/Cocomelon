@@ -3,59 +3,120 @@
 **Last updated:** 2026-08-28  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified V3 execution runtime:** `f8f84200dbc8b6fb262c5f6f99993b40714357be`  
-**Frozen V3 Phase 9 evaluator:** `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`  
+**Verified V4 execution runtime:** `28db668048a83da7f7b1ba92ae2cf50aa980cb6e`  
+**V4 acquisition activation merge:** `2c224a304f4c35d50b511338390e8f7ac4b6550b`  
+**Frozen V4 Phase 9 evaluator:** `0b7b126d19306679c029807b2e2e86d614fb8847`  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
 
 ## Current production state
 
-The active evidence-acquisition protocol is **V3 lifecycle-aware mainnet evidence**. It uses genuine public Hyperliquid mainnet data and paper execution only. The opportunity window is fixed at 45 minutes and the total capture is fixed at four hours, leaving 3 hours 15 minutes for closeout-only observation. No PnL, final equity, profitability, or edge value can alter acquisition length, retry, admission, corpus selection, or the one-shot evaluation boundary.
+The active evidence protocol is **V4 thesis-expiry mainnet evidence**. It uses genuine public Hyperliquid mainnet data with paper execution only.
 
-The active V3 acquisition contract is:
+The frozen V4 acquisition contract is:
 
-- **45-minute entry window** (`2700` seconds);
-- **4-hour total capture** (`14400` seconds);
-- **3h15m closeout-only observation** after the entry cutoff;
+- fixed **45-minute entry window** (`2700` seconds);
+- exact **4-hour maximum position age** (`14400` seconds);
+- fixed **5h15m total capture** (`18900` seconds);
 - **4 scheduled cohorts per day** at `37 1,7,13,19 * * *` UTC;
 - one acquisition attempt per cohort;
-- hard failure if evidence is incomplete, gapped, unverifiable, or still exposed at the endpoint;
+- no PnL-, equity-, profitability-, or outcome-conditioned retry or extension;
 - no forced close solely to make a cohort admissible;
-- no performance-based retry or retrospective extension;
-- execution runtime pinned to `f8f84200dbc8b6fb262c5f6f99993b40714357be`.
+- final cohort admission requires clean transport, complete replay/dataset evidence, empty gap refs, and flat replay exposure;
+- live orders remain disabled.
 
-The longer lifecycle was frozen before any V3 cohort had been accepted, so no accepted V3 economic evidence is mixed across lifecycle definitions.
+Exact V4 evidence identity:
 
-## Execution defect repaired before V3 evidence acceptance
+- protocol `v4-thesis-expiry-mainnet`;
+- runtime `28db668048a83da7f7b1ba92ae2cf50aa980cb6e`;
+- replay engine `phase8-v3-thesis-expiry`;
+- replay config `phase9-baseline-replay-v3-thesis-expiry`;
+- execution config `phase7-v2-4h-thesis-expiry`.
 
-Rejected Campaign V3 evidence exposed a paper-execution defect in reduce-only stop handling. A position had crossed its stop, but every new book update recreated the exit plan and reset modeled latency, causing repeated `LATENCY_NOT_ELAPSED` rejection instead of allowing the pending stop intent to mature.
+V3 scheduled acquisition is retired. Its workflow remains manual-only for frozen audit/reproduction and cannot compete with V4 scheduled evidence.
 
-PR #88 fixed this by retaining a latency-blocked reduce-only intent and retrying the same order plan on later L2 updates. Once modeled latency has elapsed, the normal IOC simulation can run. The pending intent is cleared after the first real IOC attempt. The repair did not bypass latency or loosen any signal, stop, risk, sizing, evidence-admission, or live-order rule.
+## Active V4 evidence progress
 
-Verification for the repair:
+At the V4 activation boundary:
 
-- RED CI `33170601237` reproduced the plan-ID reset;
-- GREEN CI `33170853723` passed compile, Ruff, mypy, full pytest, and research tests;
-- exact PR CI `33170921370` passed;
-- PR #88 merged at `f8f84200dbc8b6fb262c5f6f99993b40714357be`.
-
-PR #89 then activated the repaired four-hour V3 acquisition protocol and merged at `1dbd6164ce3f4bd3e6cebd94fe41074dcb2d80c0`. Post-merge main CI `33171533333` passed.
-
-## Active V3 evidence progress
-
-V3 starts from a clean lifecycle-aware protocol boundary and does not inherit V2 counts.
-
-Current accepted V3 evidence remains:
-
-- **0 accepted V3 cohorts**;
+- **0 accepted V4 cohorts**;
 - **0 / 100 closed paper trades**;
 - **0 / 30 closed-trade days**;
-- **0 V3 strategy decisions in accepted corpus**;
-- **no economic edge claim**;
+- **no V4 economic edge claim**;
 - **live orders disabled**.
 
-A trusted `v3-mainnet-corpus` has not yet been established under the repaired four-hour protocol. Rejected recordings remain diagnostic evidence only and do not advance the economic gate.
+No V4 scheduled cohort had completed at the time this status revision was prepared. Rejected or incomplete recordings remain diagnostic only and never advance the economic gate.
+
+## V4 acquisition and isolated curator
+
+`.github/workflows/evidence-campaign-v4-scheduled.yml` is the active acquisition workflow. It is paper-only, mainnet-only, fixed-duration, and pinned to the immutable V4 runtime.
+
+`.github/workflows/evidence-corpus-curator-v4.yml` is the only V4 admission path. It:
+
+1. accepts only completed exact V4 campaign sources;
+2. verifies repository/workflow provenance before trusting artifacts;
+3. requires the exact V4 runtime/replay/config/execution identity;
+4. fails closed on incomplete replay, incomplete dataset, gaps, or open exposure;
+5. writes only `v4-mainnet-corpus`;
+6. never imports V3 or V2 corpus evidence;
+7. never uses interim economic outcomes for admission decisions.
+
+## V4 Phase 9 evaluator handoff
+
+PR #106 merged the V4 evaluator at `0b7b126d19306679c029807b2e2e86d614fb8847` after exact PR CI passed.
+
+The V4 evaluator uses distinct immutable identities:
+
+- snapshot `v4-phase9-frozen-snapshot`;
+- evaluation `v4-phase9-evaluation`;
+- candidate `v4-baseline-fixed`.
+
+It requires the exact V4 `protocol.json`, copies and hashes that protocol into the frozen snapshot, binds the canonical protocol digest, and rejects incompatible source/snapshot identity rather than silently reinterpreting evidence.
+
+The statistical engine and `EvaluationPolicy()` are unchanged. V4 changes lifecycle provenance and artifact identity only; it does not relax Phase 9 promotion thresholds.
+
+## Immutable V4 one-shot boundary
+
+`.github/workflows/phase9-v4-one-shot.yml` is the V4 one-shot handoff. It consumes only a successful exact `Verified V4 Mainnet Evidence Corpus Curator` run and pins evaluator revision `0b7b126d19306679c029807b2e2e86d614fb8847`.
+
+The one-shot workflow:
+
+1. verifies the triggering curator provenance;
+2. downloads exactly one trusted `v4-mainnet-corpus` artifact from that curator;
+3. prepares a local-only frozen V4 snapshot with no exchange/network/live arguments;
+4. preserves the locked fixed-window readiness logic;
+5. persists a permanent append-once freeze lock to `phase9-v4-protocol-state/phase9-v4-freeze.json` before economic evaluation;
+6. refuses to select a replacement OOS corpus after the freeze exists;
+7. emits a readiness-only terminal insufficient result if the fixed protocol reaches its terminal boundary without enough evidence;
+8. otherwise evaluates exactly the frozen snapshot once and persists the final state to `phase9-v4-protocol-state/phase9-v4-final.json`;
+9. keeps preparation/evaluation jobs read-only, with narrow write permission isolated to state persistence;
+10. records `network_access: false` and `live_orders: false` in immutable state.
+
+## Evidence dashboard
+
+Issue #82 remains the canonical human-readable tracker:
+
+`https://github.com/Dtwosam/Cocomelon/issues/82`
+
+The dashboard now treats **V4 as active** and V3/V2 as historical. Historical counts are never added to V4 progress.
+
+Routine dashboard output exposes operational/provenance state only. Before an immutable V4 final result exists, **Economic edge remains `Not measured yet`**. It does not expose interim PnL, final equity, mean net R, win rate, profit factor, bootstrap values, or other tuning-sensitive economic fields.
+
+After a valid append-once V4 final state exists, the dashboard may expose only the high-level terminal/evaluated verdict after verifying canonical IDs, freeze binding, one-shot identity, snapshot identity, offline-only semantics, and exact V4 evaluation identity.
+
+## Historical V3 evidence
+
+V3 is retained for audit/history only and does not advance V4 readiness.
+
+Current trusted V3 state remains:
+
+- **0 accepted V3 cohorts**;
+- **0 closed paper trades**;
+- **0 closed-trade days**;
+- no V3 economic edge claim.
+
+The frozen historical V3 runtime is `f8f84200dbc8b6fb262c5f6f99993b40714357be`; its Phase 9 evaluator is `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`.
 
 ## Historical V2 evidence
 
@@ -66,110 +127,13 @@ The final trusted V2 corpus remains preserved for audit/history only:
 - **0 closed paper trades**;
 - **0 closed-trade days**;
 - last trusted corpus artifact ID `9621177153`;
-- no demonstrated economic edge;
-- live orders disabled.
+- no demonstrated economic edge.
 
-V2 evidence is never counted as V3 readiness because the lifecycle protocol differs.
-
-## V3 campaign and curator boundary
-
-`.github/workflows/evidence-campaign-scheduled.yml` is the active acquisition workflow. It is mainnet-only, paper-only, pinned to the repaired V3 runtime, and ordinary repository pushes do not launch the expensive evidence campaign.
-
-`.github/workflows/evidence-corpus-curator-v3.yml` is the isolated V3 admission path. It:
-
-1. requires the exact V3 source artifact and pinned runtime identity;
-2. independently verifies genuine-mainnet, paper-only semantics;
-3. requires clean transport plus complete replay/dataset evidence;
-4. requires the fixed 45-minute entry / four-hour capture protocol identity;
-5. requires flat replay exposure before corpus mutation;
-6. rebuilds or extends only `v3-mainnet-corpus`;
-7. never counts failed or unverified sources merely because a workflow ran;
-8. never mixes historical V2 evidence into V3.
-
-If a cohort is still open at four hours, it fails closed. The protocol never extends an individual cohort because a trade is winning or losing.
-
-### Performance-blind campaign reporting
-
-Routine V3 cohort logs and `cohort-summary.json` expose only operational/evidence-integrity fields such as transport health, selected markets, decision/approval/fill counts, open/closed position counts, data completeness, and protocol provenance. They do **not** expose final equity, PnL, profit factor, mean net R, win rate, bootstrap results, or other economic outcomes during ongoing OOS collection.
-
-The canonical `replay.json`, journals, facts, and frozen evaluation dataset still retain the economic evidence required by the sealed Phase 9 evaluator. This is an observability boundary only; it does not alter replay economics, evidence admission, corpus aggregation, or the eventual one-shot statistical result.
-
-Verification:
-
-- RED commit `08831bcec9fe67776210186141d645ecddb71375`, CI `33177548187`: compile/Ruff/mypy/research passed and exactly the new campaign-summary leakage test failed on `final_equity`;
-- GREEN commit `019fc31b8e634362b8ded91c5dd7003c8cb88d8c`, CI `33177666738`: compile, Ruff, mypy, full pytest, and research all passed.
-
-## Explicit V3 Phase 9 evaluation handoff
-
-PR #90 added the explicit V3 Phase 9 evaluator and merged at `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`. The historical V2 evaluator source was deliberately left untouched.
-
-The V3 evaluator requires the exact repaired source protocol:
-
-- protocol `v3-lifecycle-aware-mainnet`;
-- pinned execution runtime `f8f84200dbc8b6fb262c5f6f99993b40714357be`;
-- replay engine `phase8-v2-lifecycle-aware`;
-- replay config `phase9-baseline-replay-v2-lifecycle-aware`;
-- entry window `2700` seconds;
-- capture window `14400` seconds;
-- `economic_claim: none` at acquisition time;
-- `live_orders: false`.
-
-It uses distinct identities:
-
-- snapshot: `v3-phase9-frozen-snapshot`;
-- evaluation: `v3-phase9-evaluation`;
-- candidate: `v3-baseline-fixed`.
-
-`protocol.json` is copied into the frozen snapshot, hashed with the other immutable inputs, and bound by a canonical protocol digest. A corpus or snapshot with any incompatible runtime/window/protocol identity is rejected rather than silently reinterpreted.
-
-The evaluator reuses the locked Phase 9 statistical engine and policy unchanged. The V3 handoff changes provenance and artifact identity only; it does not relax the economic promotion standard.
-
-## Immutable V3 one-shot execution boundary
-
-`.github/workflows/phase9-v3-one-shot.yml` is the production one-shot handoff. It runs only after a successful exact `Verified V3 Mainnet Evidence Corpus Curator` completion and uses only that curator's trusted `v3-mainnet-corpus` artifact.
-
-The workflow:
-
-1. pins evaluator revision `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed` and verifies the checkout SHA;
-2. prepares a local-only V3 Phase 9 snapshot candidate with no exchange/network/live arguments;
-3. evaluates readiness under the fixed 47-day one-shot protocol without inspecting economic performance to decide whether to continue collecting;
-4. if the fixed test window is incomplete, produces no final OOS result and later trusted corpus growth may be checked again;
-5. if the fixed test window is complete but the locked evidence minimums are not met, writes one terminal `v3-phase9-terminal-insufficient` readiness-only result;
-6. if readiness passes, uploads `v3-phase9-frozen-snapshot` **before** running untouched evaluation, then writes `v3-phase9-evaluation`;
-7. persists the first final outcome to append-once branch `phase9-v3-protocol-state`, file `phase9-v3-final.json`;
-8. refuses to replace a different durable final state;
-9. also refuses to create a replacement OOS result if a prior frozen/evaluation/terminal artifact exists but durable state persistence is missing, preventing accidental retesting on newer data;
-10. keeps the evaluation job read-only; only the separate persistence job receives narrow `contents: write` permission.
-
-The durable state uses protocol ID `v3-phase9-one-shot`, records the frozen evaluator revision, source curator run, attestation, source-protocol digest, snapshot/readiness, and exactly one final outcome. Network access and live orders are recorded as false.
-
-## Evidence dashboard
-
-Issue #82 is the canonical human-readable evidence tracker:
-
-`https://github.com/Dtwosam/Cocomelon/issues/82`
-
-The dashboard treats V3 as active and V2 as historical. Historical counts are never added to V3 progress. The dashboard is informational only and cannot enable real-money trading or change strategy/risk behavior.
-
-### Final-verdict disclosure boundary
-
-The dashboard keeps **Economic edge: Not measured yet** while there is no append-once V3 final state, including after a snapshot has been permanently frozen but before finalization completes. It never derives a verdict from a mutable corpus, workflow log, temporary artifact, or interim economic metric.
-
-After `phase9-v3-final.json` exists and its canonical `final_id`, `freeze_id` binding, one-shot identity, offline-only semantics, snapshot identity, and final payload identity have been validated, the dashboard may expose exactly one high-level verdict:
-
-- `INSUFFICIENT_EVIDENCE (readiness-only terminal)` for the immutable terminal readiness outcome; or
-- the immutable evaluated `edge_status` enum (`INVALID_EVIDENCE`, `OOS_CONTAMINATED`, `INSUFFICIENT_EVIDENCE`, `NO_EDGE_DEMONSTRATED`, or `CANDIDATE_EDGE`).
-
-Numeric PnL, mean net R, win rate, profit factor, drawdown, bootstrap values, and other tuning-sensitive economic details remain absent from routine dashboard output. The verdict postprocessor reuses the existing hash-verified durable-state reader and fails closed if the final/evaluation identity is inconsistent.
-
-Verification:
-
-- RED commit `8c347b7a162239df2e55c0101beb9e7e0477e9c8`, CI `33178463939`: compile/Ruff/mypy/research passed and exactly four new durable-verdict tests failed because the verdict function did not yet exist;
-- GREEN commit `7aa7da76d402b4ac4445be5f7b291eb5d9aa0f97`, CI `33179030527`: compile, Ruff, mypy, full pytest, and research all passed after the fail-closed verdict postprocessor was added.
+V2 evidence is never counted toward V4 readiness.
 
 ## Locked economic gate
 
-Before any Phase 10 promotion, genuine untouched V3 evidence must satisfy at least:
+Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at least:
 
 - 100 untouched OOS closed trades;
 - 30 OOS covered closed-trade days;
@@ -185,31 +149,27 @@ Before any Phase 10 promotion, genuine untouched V3 evidence must satisfy at lea
 
 `CANDIDATE_EDGE` additionally requires positive untouched-test mean net R, a bootstrap lower confidence bound above zero, stable positive walk-forward behavior, market positive-PnL concentration no greater than 35%, and seven-day concentration no greater than 50%.
 
-The frozen historical V2 one-shot evaluator remains revision `629db6294822c97690c006591802f8a47e08652e`. V3 evidence is never silently fed into that V2 identity.
-
 ## Locked safety/product invariants
 
 - Hyperliquid testnet is forbidden.
 - Market observation is Hyperliquid mainnet only.
-- Default and current execution is paper/shadow.
+- Default/current execution is paper/shadow.
 - No live exchange adapter is enabled or authorized.
 - No wallet/private-key signing, transfer, withdrawal, or private-account execution path is part of the evidence campaign.
-- Whole-market discovery remains dynamic; eligibility is separate from ranking.
-- Explainable deterministic baselines remain first-class before ML; `NO_TRADE` is valid.
 - Strategy cannot size positions or send orders; independent risk has final veto.
+- `NO_TRADE` remains first-class.
 - No averaging down, martingale, or stopless positions.
 - No historical L2/order flow may be fabricated from candles.
-- Real-money activation requires explicit later authorization after all promotion gates pass.
+- Real-money activation requires explicit later authorization after every promotion gate passes.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let the repaired four-hour V3 campaign collect genuine mainnet paper evidence without intervention.
-3. Verify each cohort for transport cleanliness, entry-cutoff enforcement, exit execution, replay/dataset completeness, and final flatness without using PnL for admission decisions.
-4. Let the V3 curator create/extend `v3-mainnet-corpus` only from verified eligible cohorts.
-5. Let the V3 one-shot workflow check readiness after trusted corpus updates while the fixed test window is still incomplete.
-6. Once the fixed test window reaches its terminal boundary, allow exactly one readiness-only insufficient result or one frozen untouched evaluation; never retry on later data after a final result exists.
-7. Advance toward Phase 10 only if the one-shot V3 evaluation reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+2. Let scheduled V4 cohorts collect genuine mainnet paper evidence under the fixed thesis-expiry contract.
+3. Admit only clean, complete, flat V4 cohorts into `v4-mainnet-corpus`.
+4. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
+5. Once the fixed terminal boundary is reached, permit exactly one readiness-only insufficient result or one frozen untouched evaluation; never retest on newer data after a final state exists.
+6. Advance toward Phase 10 only if the immutable V4 one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Profitability and live-trading status
 
