@@ -25,6 +25,16 @@ def test_v4_curator_consumes_only_completed_v4_campaigns() -> None:
     assert "testnet" not in text.lower()
 
 
+def test_v4_curator_rejects_non_scheduled_source_runs_before_mutation() -> None:
+    text = _text()
+    assert "SOURCE_EVENT: ${{ github.event.workflow_run.event }}" in text
+    assert 'if [ "$SOURCE_EVENT" != "schedule" ]; then' in text
+    assert '"reason": "source_workflow_not_scheduled"' in text
+    rejected = text.index('if [ "$SOURCE_EVENT" != "schedule" ]; then')
+    mutation = text.index("mkdir -p corpus/sources/$SOURCE_RUN_ID")
+    assert rejected < mutation
+
+
 def test_v4_curator_is_pinned_and_verifies_before_mutation() -> None:
     text = _text()
     assert f"ref: {PINNED_CODE}" in text
