@@ -155,6 +155,15 @@ def _runs(payload: JsonObject) -> list[JsonObject]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def _workflow_runs(repo: str, path: str) -> list[JsonObject]:
+    workflow_file = PurePosixPath(path).name
+    payload = _gh_json(
+        repo,
+        f"actions/workflows/{workflow_file}/runs?per_page=100",
+    )
+    return _runs(payload)
+
+
 def _latest_protocol_run(
     runs: list[JsonObject],
     *,
@@ -607,15 +616,15 @@ def build_issue_patch(repo: str) -> JsonObject:
     event_spec = _protocol_for_curator(event_curator, repo) if event_curator else None
     event_id = _run_id(event_curator) if event_curator else None
 
-    runs_payload = _gh_json(repo, "actions/runs?per_page=100")
-    runs = _runs(runs_payload)
+    campaign_runs = _workflow_runs(repo, V3.campaign_path)
+    curator_runs = _workflow_runs(repo, V3.curator_path)
     latest_v3_campaign = _latest_protocol_run(
-        runs,
+        campaign_runs,
         name=V3.campaign_name,
         path=V3.campaign_path,
     )
     latest_v3_curator = _latest_protocol_run(
-        runs,
+        curator_runs,
         name=V3.curator_name,
         path=V3.curator_path,
         event="workflow_run",
