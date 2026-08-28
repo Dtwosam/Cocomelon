@@ -82,12 +82,13 @@ def evaluate_position(
             )
 
     current_direction = _position_direction(position)
-    if (
+    fresh_matching_decision = (
         strategy_decision is not None
         and strategy_fresh
         and strategy_decision.market == position.market
         and strategy_decision.timestamp_ms <= timestamp_ms
-    ):
+    )
+    if fresh_matching_decision and strategy_decision is not None:
         if (
             strategy_decision.direction is not Direction.NO_TRADE
             and strategy_decision.direction is not current_direction
@@ -101,6 +102,20 @@ def evaluate_position(
                 timestamp_ms=timestamp_ms,
             )
 
+    if (
+        config.max_position_age_ms is not None
+        and timestamp_ms - position.opened_at_ms >= config.max_position_age_ms
+    ):
+        return PositionAction(
+            action_type=PositionActionType.EXIT_THESIS,
+            market=position.market,
+            quantity=position.quantity,
+            new_stop_price=None,
+            reason_codes=("MAX_HOLD_EXPIRED",),
+            timestamp_ms=timestamp_ms,
+        )
+
+    if fresh_matching_decision and strategy_decision is not None:
         invalidation = strategy_decision.invalidation_price
         if strategy_decision.direction is current_direction and invalidation is not None:
             tighter = (

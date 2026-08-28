@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -24,6 +25,7 @@ from cocomelon.evidence.contracts import (
     EvidenceRecordingSession,
     SelectedEvidenceMarket,
     baseline_manifest_config_digest,
+    canonical_contract_payload,
 )
 from cocomelon.evidence.recording import write_recording_session
 from cocomelon.recorder import DurableRecorder
@@ -32,6 +34,18 @@ from cocomelon.replay.source import validate_recording
 MARKET = MarketId("", "SOL")
 RECEIVE_TIME = datetime(2026, 8, 24, 14, 30, tzinfo=UTC)
 RECEIVE_MS = int(RECEIVE_TIME.timestamp() * 1000)
+LEGACY_EXECUTION_PAYLOAD = {
+    "config_version": "phase7-v1",
+    "fee_schedule_id": "hyperliquid-native-base-2026-08-23",
+    "funding_reconciliation_grace_ms": 300_000,
+    "latency_ms": 250,
+    "max_asset_ctx_age_ms": 5_000,
+    "max_book_age_ms": 1_000,
+    "max_ioc_slippage_bps": "25",
+    "native_perp_min_notional": "10",
+    "paper_max_gross_leverage": "3",
+    "taker_fee_rate": "0.00045",
+}
 
 
 def _source_set_digest(root: Path) -> str:
@@ -97,6 +111,37 @@ def _recording(
         )
     )
     return session
+
+
+def test_default_execution_payload_preserves_legacy_canonical_identity() -> None:
+    assert canonical_contract_payload(PaperExecutionConfig()) == LEGACY_EXECUTION_PAYLOAD
+
+
+def test_active_position_age_is_explicit_in_canonical_identity() -> None:
+    payload = canonical_contract_payload(
+        PaperExecutionConfig(max_position_age_ms=14_400_000)
+    )
+    assert payload == {**LEGACY_EXECUTION_PAYLOAD, "max_position_age_ms": 14_400_000}
+
+
+def test_active_position_age_bundle_round_trip(tmp_path: Path) -> None:
+    root = tmp_path / "recording"
+    _recording(root)
+    replay_config = BaselineReplayConfig(
+        execution=PaperExecutionConfig(max_position_age_ms=14_400_000)
+    )
+    bundle = freeze_baseline_replay_bundle(
+        root,
+        replay_config=replay_config,
+        code_revision="b" * 40,
+    )
+    path = tmp_path / "v4-bundle.json"
+
+    write_baseline_replay_bundle(path, bundle)
+    loaded = load_baseline_replay_bundle(path)
+
+    assert loaded == bundle
+    assert loaded.replay_config.execution.max_position_age_ms == 14_400_000
 
 
 def test_freeze_binds_all_sources_session_config_and_real_gap_refs(tmp_path: Path) -> None:

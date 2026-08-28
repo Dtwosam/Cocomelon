@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     OrderSide,
@@ -15,6 +17,7 @@ from cocomelon.execution.manager import evaluate_position
 from cocomelon.execution.planner import PlanningRejection, plan_reduce_only_order
 
 MARKET = MarketId(dex="", coin="SOL")
+FOUR_HOURS_MS = 14_400_000
 
 
 def position(*, side: PositionSide = PositionSide.LONG) -> PaperPosition:
@@ -72,6 +75,83 @@ def instrument(*, sz_decimals: int = 2) -> InstrumentExecutionSpec:
         metadata_received_at_ms=1_500,
         metadata_source="meta",
     )
+
+
+def test_position_age_limit_defaults_to_disabled() -> None:
+    assert PaperExecutionConfig().max_position_age_ms is None
+
+
+def test_position_age_limit_must_be_positive_when_set() -> None:
+    with pytest.raises(ValueError, match="max_position_age_ms"):
+        PaperExecutionConfig(max_position_age_ms=0)
+
+
+def test_expired_position_exits_thesis_after_four_hours() -> None:
+    timestamp_ms = 1_000 + FOUR_HOURS_MS
+    action = evaluate_position(
+        position(),
+        mark_event=ctx("101", received_ms=timestamp_ms),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        config=PaperExecutionConfig(max_position_age_ms=FOUR_HOURS_MS),
+        timestamp_ms=timestamp_ms,
+    )
+
+    assert action.action_type is PositionActionType.EXIT_THESIS
+    assert action.quantity == Decimal("5")
+    assert action.reason_codes == ("MAX_HOLD_EXPIRED",)
+
+
+def test_position_does_not_expire_before_four_hours() -> None:
+    timestamp_ms = 1_000 + FOUR_HOURS_MS - 1
+    action = evaluate_position(
+        position(),
+        mark_event=ctx("101", received_ms=timestamp_ms),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        config=PaperExecutionConfig(max_position_age_ms=FOUR_HOURS_MS),
+        timestamp_ms=timestamp_ms,
+    )
+
+    assert action.action_type is PositionActionType.HOLD
+
+
+def test_stop_has_precedence_over_position_age_expiry() -> None:
+    timestamp_ms = 1_000 + FOUR_HOURS_MS
+    action = evaluate_position(
+        position(),
+        mark_event=ctx("95", received_ms=timestamp_ms),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        config=PaperExecutionConfig(max_position_age_ms=FOUR_HOURS_MS),
+        timestamp_ms=timestamp_ms,
+    )
+
+    assert action.action_type is PositionActionType.EXIT_STOP
+    assert action.reason_codes == ("MARK_STOP_TRIGGERED",)
+
+
+def test_fresh_opposite_thesis_has_precedence_over_position_age_expiry() -> None:
+    timestamp_ms = 1_000 + FOUR_HOURS_MS
+    action = evaluate_position(
+        position(),
+        mark_event=ctx("101", received_ms=timestamp_ms),
+        strategy_decision=decision(Direction.SHORT, "104", timestamp_ms=timestamp_ms),
+        strategy_fresh=True,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        config=PaperExecutionConfig(max_position_age_ms=FOUR_HOURS_MS),
+        timestamp_ms=timestamp_ms,
+    )
+
+    assert action.action_type is PositionActionType.EXIT_THESIS
+    assert action.reason_codes == ("OPPOSITE_FRESH_THESIS",)
 
 
 def test_emergency_exit_has_precedence_over_stop_and_thesis() -> None:
