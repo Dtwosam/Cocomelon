@@ -50,10 +50,110 @@ jobs:
           printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
 
           if [ "$SOURCE_CONCLUSION" != "success" ]; then
+            printf '{"artifacts":[]}\n' > intake/source-artifacts.json
+            set +e
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+              > intake/source-artifacts-candidate.json
+            ARTIFACT_LOOKUP_STATUS=$?
+            set -e
+            if [ "$ARTIFACT_LOOKUP_STATUS" -eq 0 ]; then
+              mv intake/source-artifacts-candidate.json intake/source-artifacts.json
+            else
+              rm -f intake/source-artifacts-candidate.json
+            fi
+
+            SOURCE_ARTIFACT_ID=$(python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          prefix = f"scheduled-genuine-mainnet-evidence-v3-{os.environ['SOURCE_RUN_ID']}-"
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(prefix)
+          ]
+          if len(matches) == 1:
+              print(matches[0]["id"])
+          PY
+            )
+
+            DIAGNOSTIC_STATUS="artifact_unavailable"
+            if [ "$ARTIFACT_LOOKUP_STATUS" -ne 0 ]; then
+              DIAGNOSTIC_STATUS="artifact_lookup_failed"
+            elif [ -n "$SOURCE_ARTIFACT_ID" ]; then
+              printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+              set +e
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+                > intake/failed-source-artifact.zip
+              ARTIFACT_DOWNLOAD_STATUS=$?
+              set -e
+              if [ "$ARTIFACT_DOWNLOAD_STATUS" -eq 0 ]; then
+                mkdir -p failed-source
+                if unzip -q intake/failed-source-artifact.zip -d failed-source; then
+                  mapfile -t PROBES < <(
+                    find failed-source -type f -name eligibility-probe.json -print
+                  )
+                  if [ "${#PROBES[@]}" -eq 1 ]; then
+                    cp "${PROBES[0]}" intake/failed-source-eligibility-probe.json
+                    DIAGNOSTIC_STATUS="eligibility_probe"
+                  else
+                    DIAGNOSTIC_STATUS="eligibility_probe_unavailable"
+                  fi
+                else
+                  DIAGNOSTIC_STATUS="artifact_unzip_failed"
+                fi
+              else
+                DIAGNOSTIC_STATUS="artifact_download_failed"
+              fi
+            fi
+            export DIAGNOSTIC_STATUS
+
             python - <<'PY'
           import json
           import os
           from pathlib import Path
+
+          diagnostic_status = os.environ["DIAGNOSTIC_STATUS"]
+          diagnostic = {
+              "economic_ineligibility_reasons": [],
+              "replay_data_complete": None,
+              "dataset_data_complete": None,
+              "dataset_gap_refs_empty": None,
+              "flat_replay": None,
+          }
+          probe_path = Path("intake/failed-source-eligibility-probe.json")
+          if probe_path.is_file():
+              probe = json.loads(probe_path.read_text(encoding="utf-8"))
+              reasons = probe.get("economic_ineligibility_reasons")
+              replay_complete = probe.get("replay_data_complete")
+              dataset_complete = probe.get("dataset_data_complete")
+              gap_refs_empty = probe.get("dataset_gap_refs_empty")
+              flat_replay = probe.get("flat_replay")
+              valid = (
+                  isinstance(reasons, list)
+                  and all(isinstance(item, str) and item for item in reasons)
+                  and isinstance(replay_complete, bool)
+                  and isinstance(dataset_complete, bool)
+                  and isinstance(gap_refs_empty, bool)
+                  and isinstance(flat_replay, bool)
+                  and probe.get("network_access") is False
+                  and probe.get("live_orders") is False
+              )
+              if valid:
+                  diagnostic = {
+                      "economic_ineligibility_reasons": reasons,
+                      "replay_data_complete": replay_complete,
+                      "dataset_data_complete": dataset_complete,
+                      "dataset_gap_refs_empty": gap_refs_empty,
+                      "flat_replay": flat_replay,
+                  }
+              else:
+                  diagnostic_status = "eligibility_probe_invalid"
 
           report = {
               "schema_version": 1,
@@ -63,7 +163,10 @@ jobs:
               "source_verified": False,
               "corpus_mutated": False,
               "reason": "source_workflow_not_successful",
+              "diagnostic_status": diagnostic_status,
+              **diagnostic,
               "economic_claim": "none",
+              "network_access": False,
               "live_orders": False,
           }
           Path("intake/intake-report.json").write_text(
