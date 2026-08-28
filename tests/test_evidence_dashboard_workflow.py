@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import runpy
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,11 @@ INTAKE_APPLIER = Path("scripts/apply_v3_intake_diagnostics.py")
 def _read_required(path: Path, label: str) -> str:
     assert path.is_file(), f"{label} must exist"
     return path.read_text(encoding="utf-8")
+
+
+def _builder_function(name: str) -> Any:
+    namespace = runpy.run_path(str(BUILDER))
+    return namespace[name]
 
 
 def _verdict_function(name: str) -> Any:
@@ -120,6 +126,59 @@ def test_dashboard_state_summary_does_not_render_pre_final_performance_fields() 
     assert "bootstrap" not in state_section
     assert "pnl" not in state_section.lower()
     assert "evaluation" not in state_section.lower()
+
+
+def test_dashboard_reports_recent_v3_schedule_change_as_activation_pending() -> None:
+    health = _builder_function("_v3_scheduler_health")
+    now = datetime(2026, 8, 28, 15, 30, tzinfo=UTC)
+    workflow_updated = datetime(2026, 8, 28, 14, 0, tzinfo=UTC)
+    latest_campaign = {"created_at": "2026-08-28T01:05:56Z"}
+
+    assert health(now, latest_campaign, workflow_updated) == (
+        "activation pending — next configured slot 19:37 UTC"
+    )
+
+
+def test_dashboard_reports_missing_v3_schedule_after_grace_as_stale() -> None:
+    health = _builder_function("_v3_scheduler_health")
+    now = datetime(2026, 8, 28, 22, 0, tzinfo=UTC)
+    workflow_updated = datetime(2026, 8, 28, 14, 0, tzinfo=UTC)
+    latest_campaign = {"created_at": "2026-08-28T01:05:56Z"}
+
+    assert health(now, latest_campaign, workflow_updated) == (
+        "stale — configured 19:37 UTC slot not observed"
+    )
+
+
+def test_dashboard_reports_v3_schedule_healthy_when_slot_is_observed() -> None:
+    health = _builder_function("_v3_scheduler_health")
+    now = datetime(2026, 8, 28, 21, 0, tzinfo=UTC)
+    workflow_updated = datetime(2026, 8, 28, 14, 0, tzinfo=UTC)
+    latest_campaign = {"created_at": "2026-08-28T19:52:00Z"}
+
+    assert health(now, latest_campaign, workflow_updated) == (
+        "healthy — latest configured slot observed"
+    )
+
+
+def test_dashboard_renders_v3_scheduler_health_without_economic_metrics() -> None:
+    builder = _read_required(BUILDER, "evidence dashboard builder").lower()
+
+    assert "scheduler health" in builder
+    assert "v3_scheduler_health" in builder
+    forbidden = (
+        "final_equity",
+        "realized_pnl",
+        "unrealized_pnl",
+        "profit_factor",
+        "mean_net_r",
+        "win_rate",
+        "bootstrap",
+    )
+    scheduler_section = builder[
+        builder.index("def _v3_scheduler_health") : builder.index("def _body")
+    ]
+    assert all(field not in scheduler_section for field in forbidden)
 
 
 def test_dashboard_keeps_edge_unmeasured_until_durable_final_exists() -> None:
