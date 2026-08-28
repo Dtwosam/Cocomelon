@@ -279,11 +279,31 @@ def lifecycle_new_exposure_cutoff_ms(
 ) -> int | None:
     if session_started_at_ms < 0:
         raise ValueError("recording session start must be non-negative")
-    if replay_config.replay_engine_version != LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION:
-        return None
-    if replay_config.config_version != LIFECYCLE_AWARE_CONFIG_VERSION:
-        raise ValueError("lifecycle-aware replay config version does not match replay engine")
-    return session_started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
+
+    engine_version = replay_config.replay_engine_version
+    config_version = replay_config.config_version
+    if engine_version == LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION:
+        if config_version != LIFECYCLE_AWARE_CONFIG_VERSION:
+            raise ValueError("lifecycle-aware replay config version does not match replay engine")
+        return session_started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
+
+    if engine_version == THESIS_EXPIRY_REPLAY_ENGINE_VERSION:
+        if config_version != THESIS_EXPIRY_CONFIG_VERSION:
+            raise ValueError("thesis-expiry replay config version does not match replay engine")
+        execution = replay_config.execution
+        if (
+            execution.config_version != THESIS_EXPIRY_EXECUTION_CONFIG_VERSION
+            or execution.max_position_age_ms != THESIS_EXPIRY_MS
+        ):
+            raise ValueError("thesis-expiry execution config does not match replay engine")
+        return session_started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
+
+    if config_version in {
+        LIFECYCLE_AWARE_CONFIG_VERSION,
+        THESIS_EXPIRY_CONFIG_VERSION,
+    }:
+        raise ValueError("lifecycle replay config version does not match replay engine")
+    return None
 
 
 def freeze_baseline_replay_payload(
@@ -292,12 +312,20 @@ def freeze_baseline_replay_payload(
     starting_cash: Decimal,
     *,
     lifecycle_aware: bool = False,
+    thesis_expiry: bool = False,
 ) -> dict[str, object]:
+    if thesis_expiry and not lifecycle_aware:
+        raise ValueError("thesis expiry requires lifecycle-aware replay")
+
     recording_root = Path(root)
     output_path = Path(out)
-    replay_config = replay_config_for_protocol(
-        starting_cash,
-        lifecycle_aware=lifecycle_aware,
+    replay_config = (
+        thesis_expiry_replay_config(starting_cash)
+        if thesis_expiry
+        else replay_config_for_protocol(
+            starting_cash,
+            lifecycle_aware=lifecycle_aware,
+        )
     )
     code_revision = resolve_code_revision(None, cwd=Path.cwd())
     bundle = freeze_baseline_replay_bundle(
@@ -307,7 +335,7 @@ def freeze_baseline_replay_payload(
     )
     write_baseline_replay_bundle(output_path, bundle)
     _attach_source_locator(output_path, recording_root, bundle_id=bundle.bundle_id)
-    return {
+    payload: dict[str, object] = {
         "bundle_id": bundle.bundle_id,
         "manifest_id": bundle.manifest.manifest_id,
         "evidence_class": bundle.manifest.evidence_class.value,
@@ -323,6 +351,9 @@ def freeze_baseline_replay_payload(
         "network_access": False,
         "live_orders": False,
     }
+    if thesis_expiry:
+        payload["max_position_age_ms"] = THESIS_EXPIRY_MS
+    return payload
 
 
 def _bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
