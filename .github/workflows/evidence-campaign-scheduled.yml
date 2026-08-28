@@ -1,8 +1,6 @@
 name: Scheduled Genuine Mainnet Evidence Campaign V3
 
 on:
-  schedule:
-    - cron: "37 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:
