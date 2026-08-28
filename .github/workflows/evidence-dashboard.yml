@@ -5,7 +5,9 @@ on:
     workflows:
       - "Verified V2 Mainnet Evidence Corpus Curator"
       - "Verified V3 Mainnet Evidence Corpus Curator"
+      - "Verified V4 Mainnet Evidence Corpus Curator"
       - "Phase 9 V3 One-Shot Evaluation"
+      - "Phase 9 V4 One-Shot Evaluation"
     types: [completed]
   schedule:
     - cron: "17 * * * *"
@@ -13,10 +15,11 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/evidence-dashboard.yml"
+      - ".github/workflows/phase9-v4-one-shot.yml"
       - "scripts/build_evidence_dashboard.py"
-      - "scripts/apply_phase9_v3_final_verdict.py"
-      - "scripts/apply_v3_intake_diagnostics.py"
-      - "scripts/apply_v3_scheduler_health.py"
+      - "scripts/apply_phase9_v4_final_verdict.py"
+      - "scripts/apply_v4_intake_diagnostics.py"
+      - "scripts/apply_v4_scheduler_health.py"
   workflow_dispatch: {}
 
 permissions:
@@ -48,19 +51,19 @@ jobs:
           python scripts/build_evidence_dashboard.py \
             --output dashboard/issue-patch.json
 
-      - name: Apply durable V3 final verdict
+      - name: Apply durable V4 final verdict
         run: |
-          python scripts/apply_phase9_v3_final_verdict.py \
+          python scripts/apply_phase9_v4_final_verdict.py \
             --patch dashboard/issue-patch.json
 
-      - name: Add safe V3 intake diagnostics
+      - name: Add safe V4 intake diagnostics
         run: |
-          python scripts/apply_v3_intake_diagnostics.py \
+          python scripts/apply_v4_intake_diagnostics.py \
             --patch dashboard/issue-patch.json
 
-      - name: Add V3 scheduler health
+      - name: Add V4 scheduler health
         run: |
-          python scripts/apply_v3_scheduler_health.py \
+          python scripts/apply_v4_scheduler_health.py \
             --patch dashboard/issue-patch.json
 
       - name: Update Cocomelon Evidence Dashboard
