@@ -6,6 +6,7 @@ from cocomelon.domain.execution import (
     ExecutionResult,
     InstrumentExecutionSpec,
     PaperExecutionConfig,
+    PositionActionType,
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision
@@ -14,6 +15,7 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.paper import PaperExecutionAdapter
 
 MARKET = MarketId("", "SOL")
+FOUR_HOURS_MS = 14_400_000
 
 
 def _approved_risk() -> RiskDecision:
@@ -82,10 +84,13 @@ def _mark(mark_px: str, *, receive_ms: int) -> StreamEvent:
     )
 
 
-def _adapter(path: Path) -> PaperExecutionAdapter:
+def _adapter(
+    path: Path,
+    config: PaperExecutionConfig | None = None,
+) -> PaperExecutionAdapter:
     return PaperExecutionAdapter(
         path,
-        PaperExecutionConfig(),
+        config or PaperExecutionConfig(),
         starting_cash=Decimal("10000"),
         startup_timestamp_ms=500,
     )
@@ -143,4 +148,108 @@ def test_stop_exit_reuses_pending_reduce_only_plan_after_latency(tmp_path: Path)
     assert second.simulation is not None
     assert second.simulation.attempt.result is ExecutionResult.FULL
     assert second.account.positions == ()
+    engine.close()
+
+
+def test_thesis_expiry_reuses_normal_reduce_only_latency_and_flattens(
+    tmp_path: Path,
+) -> None:
+    config = PaperExecutionConfig(
+        config_version="phase7-v2-4h-thesis-expiry",
+        max_position_age_ms=FOUR_HOURS_MS,
+    )
+    engine = _adapter(tmp_path / "thesis-expiry.sqlite3", config)
+    risk = _approved_risk()
+    opened = engine.submit_opening(
+        risk,
+        _instrument(),
+        _book(exchange_ms=1_250, receive_ms=1_260, bid="99.9", ask="100"),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    assert opened.simulation is not None
+    assert opened.simulation.attempt.result is ExecutionResult.FULL
+    assert len(opened.account.positions) == 1
+    position = opened.account.positions[0]
+    expiry_ms = position.opened_at_ms + FOUR_HOURS_MS
+
+    before = engine.manage_position(
+        MARKET,
+        _instrument(),
+        _mark("101", receive_ms=expiry_ms - 1),
+        _book(
+            exchange_ms=expiry_ms - 1,
+            receive_ms=expiry_ms - 1,
+            bid="100.9",
+            ask="101",
+        ),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("101"),
+        timestamp_ms=expiry_ms - 1,
+        attempt_timestamp_ms=expiry_ms - 1,
+    )
+    assert before.action.action_type is PositionActionType.HOLD
+    assert before.plan is None
+    assert before.account.positions == (position,)
+
+    expired = engine.manage_position(
+        MARKET,
+        _instrument(),
+        _mark("101", receive_ms=expiry_ms),
+        _book(
+            exchange_ms=expiry_ms,
+            receive_ms=expiry_ms,
+            bid="100.9",
+            ask="101",
+        ),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("101"),
+        timestamp_ms=expiry_ms,
+        attempt_timestamp_ms=expiry_ms,
+    )
+    assert expired.action.action_type is PositionActionType.EXIT_THESIS
+    assert expired.action.reason_codes == ("MAX_HOLD_EXPIRED",)
+    assert expired.plan is not None
+    assert expired.plan.reduce_only is True
+    assert expired.plan.risk_decision_id == risk.risk_decision_id
+    assert expired.plan.strategy_decision_id == risk.strategy_decision_id
+    assert expired.plan.requested_quantity == position.quantity
+    assert expired.simulation is not None
+    assert expired.simulation.attempt.result is ExecutionResult.REJECTED
+    assert expired.simulation.attempt.reason_codes == ("LATENCY_NOT_ELAPSED",)
+    assert expired.account.positions == (position,)
+
+    retry_ms = expiry_ms + config.latency_ms + 1
+    closed = engine.manage_position(
+        MARKET,
+        _instrument(),
+        _mark("101", receive_ms=retry_ms),
+        _book(
+            exchange_ms=retry_ms,
+            receive_ms=retry_ms,
+            bid="100.9",
+            ask="101",
+        ),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("101"),
+        timestamp_ms=retry_ms,
+        attempt_timestamp_ms=retry_ms,
+    )
+    assert closed.plan is not None
+    assert closed.plan.plan_id == expired.plan.plan_id
+    assert closed.simulation is not None
+    assert closed.simulation.attempt.result is ExecutionResult.FULL
+    assert closed.simulation.attempt.fee > Decimal("0")
+    assert closed.simulation.attempt.filled_quantity == position.quantity
+    assert closed.account.positions == ()
     engine.close()
