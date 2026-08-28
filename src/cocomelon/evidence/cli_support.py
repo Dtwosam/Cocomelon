@@ -11,6 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from cocomelon.config import ExecutionMode, Settings
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.bundle import (
     freeze_baseline_replay_bundle,
@@ -44,6 +45,10 @@ WS_CONNECT_SPACING_ENV = "COCOMELON_WS_CONNECT_SPACING_SECONDS"
 LIFECYCLE_ENTRY_WINDOW_MS = 2_700_000
 LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION = "phase8-v2-lifecycle-aware"
 LIFECYCLE_AWARE_CONFIG_VERSION = "phase9-baseline-replay-v2-lifecycle-aware"
+THESIS_EXPIRY_MS = 14_400_000
+THESIS_EXPIRY_REPLAY_ENGINE_VERSION = "phase8-v3-thesis-expiry"
+THESIS_EXPIRY_CONFIG_VERSION = "phase9-baseline-replay-v3-thesis-expiry"
+THESIS_EXPIRY_EXECUTION_CONFIG_VERSION = "phase7-v2-4h-thesis-expiry"
 
 
 def _resolve_git_head(cwd: Path) -> str:
@@ -253,6 +258,18 @@ def replay_config_for_protocol(
         starting_cash=starting_cash,
         replay_engine_version=LIFECYCLE_AWARE_REPLAY_ENGINE_VERSION,
         config_version=LIFECYCLE_AWARE_CONFIG_VERSION,
+    )
+
+
+def thesis_expiry_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:
+    return BaselineReplayConfig(
+        starting_cash=starting_cash,
+        execution=PaperExecutionConfig(
+            config_version=THESIS_EXPIRY_EXECUTION_CONFIG_VERSION,
+            max_position_age_ms=THESIS_EXPIRY_MS,
+        ),
+        replay_engine_version=THESIS_EXPIRY_REPLAY_ENGINE_VERSION,
+        config_version=THESIS_EXPIRY_CONFIG_VERSION,
     )
 
 
