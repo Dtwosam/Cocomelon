@@ -1,0 +1,305 @@
+name: Scheduled Genuine Mainnet Evidence Campaign V4
+
+on:
+  schedule:
+    - cron: "37 1,7,13,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: genuine-mainnet-evidence-v4-28db6680
+  cancel-in-progress: false
+
+jobs:
+  evidence-cohort:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
+      COHORT_CODE_REVISION: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+      COHORT_TRIGGER_SHA: ${{ github.sha }}
+      ENTRY_WINDOW_SECONDS: 2700
+      CAPTURE_WINDOW_SECONDS: 18900
+      MAX_POSITION_AGE_SECONDS: 14400
+    steps:
+      - name: Checkout pinned V4 evidence revision
+        uses: actions/checkout@v4
+        with:
+          ref: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Record thesis-expiry genuine public mainnet evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence-cohort/recording evidence-cohort/output evidence-cohort/diagnostics
+          git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
+          printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
+          printf '1\n' > evidence-cohort/output/acquisition-attempt.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/started-at-utc.txt
+
+          cocomelon record-mainnet-evidence \
+            --root evidence-cohort/recording \
+            --seconds 18900 \
+            --deep-limit 5 \
+            > evidence-cohort/output/record-transport.json &
+          RECORDER_PID=$!
+
+          python -m cocomelon.ops.gap_watch \
+            --root evidence-cohort/recording \
+            --pid "$RECORDER_PID" \
+            --poll-seconds 0.5 \
+            > evidence-cohort/output/gap-watch.json &
+          GAP_WATCH_PID=$!
+
+          if wait "$RECORDER_PID"; then
+            RECORDER_STATUS=0
+          else
+            RECORDER_STATUS=$?
+          fi
+          kill "$GAP_WATCH_PID" 2>/dev/null || true
+          if wait "$GAP_WATCH_PID"; then
+            GAP_WATCH_STATUS=0
+          else
+            GAP_WATCH_STATUS=$?
+          fi
+          date -u +%Y-%m-%dT%H:%M:%SZ > evidence-cohort/output/finished-at-utc.txt
+          printf '%s\n' "$RECORDER_STATUS" > evidence-cohort/diagnostics/recorder-exit-status.txt
+          printf '%s\n' "$GAP_WATCH_STATUS" > evidence-cohort/diagnostics/gap-watch-exit-status.txt
+
+          if [ "$RECORDER_STATUS" -ne 0 ] || [ "$GAP_WATCH_STATUS" -eq 20 ]; then
+            echo "V4 mainnet capture did not complete cleanly" >&2
+            exit 1
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from cocomelon.evidence.transport_health import normalize_redundant_record_payload
+
+          root = Path("evidence-cohort/output")
+          raw = json.loads((root / "record-transport.json").read_text(encoding="utf-8"))
+          normalized = normalize_redundant_record_payload(raw)
+          (root / "record.json").write_text(
+              json.dumps(normalized, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          record = json.loads(Path("evidence-cohort/output/record.json").read_text())
+          clean = (
+              record["gap_count"] == 0
+              and record["duplicate_count"] == 0
+              and record["anomaly_count"] == 0
+              and record["redundant_ws_lane_count"] == 2
+              and record["transport_health_semantics"]
+                  == "redundant-mainnet-merged-feed-v1"
+              and record["live_orders"] is False
+              and record["network_access"] is True
+          )
+          if not clean:
+              raise SystemExit("V4 mainnet transport capture is not evidence-clean")
+          PY
+
+      - name: Validate and replay V4 evidence offline
+        run: |
+          set -euo pipefail
+          cocomelon validate-recording \
+            --root evidence-cohort/recording \
+            > evidence-cohort/output/validate.json
+          python - <<'PY' > evidence-cohort/output/freeze.json
+          import json
+          from decimal import Decimal
+
+          from cocomelon.evidence.cli_support import freeze_baseline_replay_payload
+
+          payload = freeze_baseline_replay_payload(
+              "evidence-cohort/recording",
+              "evidence-cohort/output/bundle.json",
+              Decimal("10000"),
+              lifecycle_aware=True,
+              thesis_expiry=True,
+          )
+          print(json.dumps(payload, sort_keys=True))
+          PY
+          cocomelon run-baseline-replay \
+            --bundle evidence-cohort/output/bundle.json \
+            --journal evidence-cohort/output/journal.sqlite3 \
+            --execution evidence-cohort/output/execution.sqlite3 \
+            --facts evidence-cohort/output/facts.sqlite3 \
+            > evidence-cohort/output/replay.json
+          RUN_ID=$(python -c 'import json; print(json.load(open("evidence-cohort/output/replay.json"))["run_id"])')
+          cocomelon freeze-evaluation-dataset \
+            --journal evidence-cohort/output/journal.sqlite3 \
+            --facts evidence-cohort/output/facts.sqlite3 \
+            --run-id "$RUN_ID" \
+            > evidence-cohort/output/dataset.json
+
+      - name: Assert pinned paper-only V4 evidence semantics
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path("evidence-cohort/output")
+          diagnostic_root = Path("evidence-cohort/diagnostics")
+          record = json.loads((root / "record.json").read_text())
+          transport_record = json.loads((root / "record-transport.json").read_text())
+          validate = json.loads((root / "validate.json").read_text())
+          replay = json.loads((root / "replay.json").read_text())
+          dataset = json.loads((root / "dataset.json").read_text())
+          bundle = json.loads((root / "bundle.json").read_text())
+          freeze = json.loads((root / "freeze.json").read_text())
+          expected_revision = os.environ["COHORT_CODE_REVISION"]
+          workflow_head = (root / "workflow-head.txt").read_text().strip()
+          trigger_head = (root / "trigger-head.txt").read_text().strip()
+          acquisition_attempt = int((root / "acquisition-attempt.txt").read_text().strip())
+
+          assert workflow_head == expected_revision
+          assert bundle["manifest"]["code_revision"] == expected_revision
+          assert len(trigger_head) == 40
+          assert acquisition_attempt == 1
+          assert record["network_access"] is True
+          assert record["live_orders"] is False
+          assert record["gap_count"] == 0
+          assert record["duplicate_count"] == 0
+          assert record["anomaly_count"] == 0
+          assert record["redundant_ws_lane_count"] == 2
+          assert record["transport_health_semantics"] == "redundant-mainnet-merged-feed-v1"
+          assert record["gap_count"] == transport_record["gap_count"]
+          assert record["reconnect_count"] == transport_record["reconnect_count"]
+          assert record["transport_duplicate_count"] == transport_record["duplicate_count"]
+          assert record["transport_anomaly_count"] == transport_record["anomaly_count"]
+          assert record["transport_reconnect_count"] == transport_record["reconnect_count"]
+
+          assert replay["network_access"] is False
+          assert replay["live_orders"] is False
+          assert "edge" not in replay
+          assert "profitable" not in replay
+          assert replay["entry_window_ms"] == 2700000
+          assert replay["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert replay["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert replay["new_exposure_cutoff_ms"] is not None
+          assert freeze["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert freeze["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert freeze["entry_window_ms"] == 2700000
+          assert freeze["max_position_age_ms"] == 14400000
+          assert bundle["replay_config"]["execution"]["config_version"] == (
+              "phase7-v2-4h-thesis-expiry"
+          )
+          assert bundle["replay_config"]["execution"]["max_position_age_ms"] == 14400000
+
+          reasons = []
+          if replay["data_complete"] is not True:
+              reasons.append("replay_incomplete")
+          if dataset["data_complete"] is not True or dataset["gap_refs"] != []:
+              reasons.append("dataset_incomplete")
+          if replay["opened_positions"] != replay["closed_positions"]:
+              reasons.append("open_exposure")
+          flat_replay = replay["opened_positions"] == replay["closed_positions"]
+
+          diagnostic = {
+              "schema_version": 1,
+              "economic_claim": "none",
+              "economic_eligible": not reasons,
+              "economic_ineligibility_reasons": reasons,
+              "replay_data_complete": replay["data_complete"] is True,
+              "dataset_data_complete": dataset["data_complete"] is True,
+              "dataset_gap_refs_empty": dataset["gap_refs"] == [],
+              "opened_positions": replay["opened_positions"],
+              "closed_positions": replay["closed_positions"],
+              "flat_replay": flat_replay,
+              "network_access": False,
+              "live_orders": False,
+          }
+          diagnostic_root.joinpath("eligibility-probe.json").write_text(
+              json.dumps(diagnostic, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          summary = {
+              "evidence_kind": "genuine_public_hyperliquid_mainnet",
+              "economic_claim": "none",
+              "economic_eligible": not reasons,
+              "economic_ineligibility_reasons": reasons,
+              "campaign_version": "v4-thesis-expiry-mainnet",
+              "campaign_trigger": os.environ.get("GITHUB_EVENT_NAME", "unknown"),
+              "checked_out_code_revision": workflow_head,
+              "trigger_head_sha": trigger_head,
+              "acquisition_attempt": acquisition_attempt,
+              "entry_window_seconds": 2700,
+              "capture_window_seconds": 18900,
+              "max_position_age_seconds": 14400,
+              "replay_engine_version": replay["replay_engine_version"],
+              "config_version": replay["config_version"],
+              "execution_config_version": "phase7-v2-4h-thesis-expiry",
+              "new_exposure_cutoff_ms": replay["new_exposure_cutoff_ms"],
+              "recording_session_id": record["session_id"],
+              "selected_markets": record["selected_markets"],
+              "recorded_event_count": record["event_count"],
+              "recorded_gap_count": record["gap_count"],
+              "recorded_duplicate_count": record["duplicate_count"],
+              "recorded_anomaly_count": record["anomaly_count"],
+              "recorded_transport_reconnect_count": record["transport_reconnect_count"],
+              "recorded_transport_duplicate_count": record["transport_duplicate_count"],
+              "recorded_transport_anomaly_count": record["transport_anomaly_count"],
+              "redundant_ws_lane_count": record["redundant_ws_lane_count"],
+              "transport_health_semantics": record["transport_health_semantics"],
+              "validated_segment_count": validate["segment_count"],
+              "replay_run_id": replay["run_id"],
+              "replay_result_digest": replay["result_digest"],
+              "strategy_decisions": replay["strategy_decisions"],
+              "risk_approvals": replay["risk_approvals"],
+              "risk_rejections": replay["risk_rejections"],
+              "execution_attempts": replay["execution_attempts"],
+              "fills": replay["fills"],
+              "opened_positions": replay["opened_positions"],
+              "closed_positions": replay["closed_positions"],
+              "closed_trade_count": len(replay["closed_trade_ids"]),
+              "data_complete": replay["data_complete"],
+              "dataset_manifest_id": dataset["dataset_manifest_id"],
+              "dataset_trade_count": dataset["trade_count"],
+              "excluded_trade_count": dataset["excluded_trade_count"],
+          }
+          (root / "cohort-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+
+          assert replay["data_complete"] is True
+          assert dataset["data_complete"] is True
+          assert dataset["gap_refs"] == []
+          assert replay["opened_positions"] == replay["closed_positions"]
+          assert not reasons
+          PY
+
+      - name: Upload genuine V4 evidence artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-genuine-mainnet-evidence-v4-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: evidence-cohort/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
