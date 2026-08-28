@@ -47,6 +47,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence-cohort/recording evidence-cohort/output evidence-cohort/diagnostics
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then
+            printf '%s\n' "$GITHUB_EVENT_NAME" > evidence-cohort/diagnostics/rejected-trigger.txt
+            echo "V4 evidence cohorts are schedule-only" >&2
+            exit 64
+          fi
           git rev-parse HEAD > evidence-cohort/output/workflow-head.txt
           printf '%s\n' "$COHORT_TRIGGER_SHA" > evidence-cohort/output/trigger-head.txt
           printf '1\n' > evidence-cohort/output/acquisition-attempt.txt
@@ -217,7 +222,6 @@ jobs:
           if replay["opened_positions"] != replay["closed_positions"]:
               reasons.append("open_exposure")
           flat_replay = replay["opened_positions"] == replay["closed_positions"]
-
           diagnostic = {
               "schema_version": 1,
               "economic_claim": "none",
