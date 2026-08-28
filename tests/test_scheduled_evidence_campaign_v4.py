@@ -97,7 +97,11 @@ def test_v4_campaign_records_distinct_protocol_metadata() -> None:
     assert '"replay_engine_version": replay["replay_engine_version"]' in text
     assert '"config_version": replay["config_version"]' in text
     assert '"execution_config_version": "phase7-v2-4h-thesis-expiry"' in text
-    assert "scheduled-genuine-mainnet-evidence-v4-${{ github.run_id }}-attempt-${{ github.run_attempt }}" in text
+    artifact_name = (
+        "scheduled-genuine-mainnet-evidence-v4-${{ github.run_id }}-"
+        "attempt-${{ github.run_attempt }}"
+    )
+    assert artifact_name in text
 
 
 def test_v4_campaign_does_not_run_on_repository_push() -> None:
