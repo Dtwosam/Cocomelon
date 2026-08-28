@@ -101,7 +101,11 @@ def _repository_name(value: object) -> str | None:
 
 
 def _latest_scheduled_run(repo: str) -> JsonObject | None:
-    payload = _gh_value(repo, "actions/runs?event=schedule&per_page=100")
+    payload = _gh_value(
+        repo,
+        "actions/workflows/evidence-campaign-scheduled.yml/"
+        "runs?event=schedule&per_page=100",
+    )
     if not isinstance(payload, dict):
         raise RuntimeError("scheduled workflow run response is invalid")
     raw = payload.get("workflow_runs")
