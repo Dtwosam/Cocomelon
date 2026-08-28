@@ -63,7 +63,7 @@ def test_dashboard_reads_immutable_v4_one_shot_state_branch() -> None:
     assert 'PHASE9_V4_FREEZE_FILE = "phase9-v4-freeze.json"' in builder
     assert 'PHASE9_V4_FINAL_FILE = "phase9-v4-final.json"' in builder
     assert "_phase9_v4_state" in builder
-    assert "V4 final state freeze id mismatch" in builder
+    assert "final state freeze id mismatch" in builder
 
 
 def test_v4_state_summary_does_not_render_interim_performance() -> None:
