@@ -2,34 +2,34 @@ name: Scheduled Genuine Mainnet Evidence Campaign V3
 
 on:
   schedule:
-    - cron: "37 1,4,7,10,13,16,19,22 * * *"
+    - cron: "37 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v3-f21ad7be
+  group: genuine-mainnet-evidence-v3-f8f84200
   cancel-in-progress: false
 
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
-    timeout-minutes: 125
+    timeout-minutes: 285
     env:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+      COHORT_CODE_REVISION: f8f84200dbc8b6fb262c5f6f99993b40714357be
       COHORT_TRIGGER_SHA: ${{ github.sha }}
       ENTRY_WINDOW_SECONDS: 2700
-      CAPTURE_WINDOW_SECONDS: 5400
+      CAPTURE_WINDOW_SECONDS: 14400
     steps:
       - name: Checkout pinned V3 evidence revision
         uses: actions/checkout@v4
         with:
-          ref: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+          ref: f8f84200dbc8b6fb262c5f6f99993b40714357be
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -53,7 +53,7 @@ jobs:
 
           cocomelon record-mainnet-evidence \
             --root evidence-cohort/recording \
-            --seconds 5400 \
+            --seconds 14400 \
             --deep-limit 5 \
             > evidence-cohort/output/record-transport.json &
           RECORDER_PID=$!
@@ -290,7 +290,7 @@ jobs:
               "trigger_head_sha": trigger_head,
               "acquisition_attempt": acquisition_attempt,
               "entry_window_seconds": 2700,
-              "capture_window_seconds": 5400,
+              "capture_window_seconds": 14400,
               "replay_engine_version": replay["replay_engine_version"],
               "config_version": replay["config_version"],
               "new_exposure_cutoff_ms": replay["new_exposure_cutoff_ms"],
