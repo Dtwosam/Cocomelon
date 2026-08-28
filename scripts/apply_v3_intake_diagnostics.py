@@ -181,7 +181,10 @@ def _gh_bytes(repo: str, endpoint: str) -> bytes:
 
 
 def _latest_curator_run(repo: str) -> JsonObject | None:
-    payload = _gh_json(repo, "actions/runs?per_page=100")
+    payload = _gh_json(
+        repo,
+        f"actions/workflows/{_CURATOR_PATH}/runs?per_page=100",
+    )
     raw = payload.get("workflow_runs")
     if not isinstance(raw, list):
         raise RuntimeError("GitHub workflow run list is invalid")
