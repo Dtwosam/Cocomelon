@@ -24,7 +24,7 @@ def test_dashboard_queries_v3_campaign_runs_from_exact_workflow() -> None:
         calls.append(endpoint)
         return {"workflow_runs": [{"id": 123}]}
 
-    namespace["_gh_json"] = fake_gh_json
+    workflow_runs.__globals__["_gh_json"] = fake_gh_json
     assert workflow_runs(
         "Dtwosam/Cocomelon",
         ".github/workflows/evidence-campaign-scheduled.yml",
@@ -44,7 +44,7 @@ def test_scheduler_health_queries_only_v3_campaign_schedule_runs() -> None:
         calls.append(endpoint)
         return {"workflow_runs": []}
 
-    namespace["_gh_value"] = fake_gh_value
+    latest_scheduled.__globals__["_gh_value"] = fake_gh_value
     assert latest_scheduled("Dtwosam/Cocomelon") is None
     assert calls == [
         "actions/workflows/evidence-campaign-scheduled.yml/runs?event=schedule&per_page=100"
