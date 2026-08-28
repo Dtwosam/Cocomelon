@@ -124,6 +124,26 @@ def test_active_position_age_is_explicit_in_canonical_identity() -> None:
     assert payload == {**LEGACY_EXECUTION_PAYLOAD, "max_position_age_ms": 14_400_000}
 
 
+def test_active_position_age_bundle_round_trip(tmp_path: Path) -> None:
+    root = tmp_path / "recording"
+    _recording(root)
+    replay_config = BaselineReplayConfig(
+        execution=PaperExecutionConfig(max_position_age_ms=14_400_000)
+    )
+    bundle = freeze_baseline_replay_bundle(
+        root,
+        replay_config=replay_config,
+        code_revision="b" * 40,
+    )
+    path = tmp_path / "v4-bundle.json"
+
+    write_baseline_replay_bundle(path, bundle)
+    loaded = load_baseline_replay_bundle(path)
+
+    assert loaded == bundle
+    assert loaded.replay_config.execution.max_position_age_ms == 14_400_000
+
+
 def test_freeze_binds_all_sources_session_config_and_real_gap_refs(tmp_path: Path) -> None:
     root = tmp_path / "recording"
     session = _recording(root)
