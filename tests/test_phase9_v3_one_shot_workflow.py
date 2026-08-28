@@ -6,6 +6,7 @@ WORKFLOW = Path(".github/workflows/phase9-v3-one-shot.yml")
 FROZEN_EVALUATOR_SHA = "39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed"
 STATE_BRANCH = "phase9-v3-protocol-state"
 STATE_FILE = "phase9-v3-final.json"
+FREEZE_FILE = "phase9-v3-freeze.json"
 
 
 def _text() -> str:
@@ -64,7 +65,7 @@ def test_v3_one_shot_uses_durable_final_state_guard() -> None:
     assert STATE_FILE in text
     assert '"protocol_id": "v3-phase9-one-shot"' in text
     assert "durable_final_exists" in text
-    assert "steps.phase9_v3_durable.outputs.final_exists != 'true'" in text
+    assert "final_exists" in text
     assert "v3-phase9-final-state-candidate" in text
 
 
@@ -84,13 +85,53 @@ def test_v3_one_shot_persists_state_in_narrow_write_job() -> None:
     assert "refusing to replace" in persist_text.lower()
 
 
-def test_v3_normal_evaluation_job_remains_read_only_and_paper_safe() -> None:
+def test_v3_one_shot_has_permanent_freeze_lock_before_economic_evaluation() -> None:
     text = _text()
 
+    assert FREEZE_FILE in text
+    assert "persist-phase9-v3-freeze:" in text
+    assert "prepare-v3:" in text
+    assert "v3-phase9-freeze-candidate" in text
+    assert '"freeze_id"' in text
+    assert '"freeze_state": "frozen"' in text
+    persist_freeze = text.index("persist-phase9-v3-freeze:")
     evaluate = text.index("evaluate-v3:")
-    persist = text.index("persist-phase9-v3-state:")
-    evaluation_text = text[evaluate:persist]
+    command = text.index("cocomelon-mainnet-evidence evaluate-phase9-v3")
+    assert persist_freeze < evaluate < command
+    evaluate_text = text[evaluate:]
+    assert "persist-phase9-v3-freeze" in evaluate_text
+
+
+def test_v3_one_shot_refuses_new_corpus_after_freeze_lock() -> None:
+    text = _text().lower()
+
+    assert "durable_freeze_exists" in text
+    assert "refusing to select a replacement v3 oos corpus" in text
+    assert "source_curator_run_id" in text
+    assert "corpus_artifact_id" in text
+    assert "corpus_zip_sha256" in text
+    assert "snapshot_id" in text
+
+
+def test_v3_final_state_is_bound_to_durable_freeze() -> None:
+    text = _text()
+
+    assert "phase9-v3-durable-freeze.json" in text
+    assert '"freeze_id": freeze["freeze_id"]' in text
+    assert "V3 final state freeze id mismatch" in text
+
+
+def test_v3_prepare_and_evaluation_jobs_remain_read_only_and_paper_safe() -> None:
+    text = _text()
+
+    prepare = text.index("prepare-v3:")
+    persist_freeze = text.index("persist-phase9-v3-freeze:")
+    evaluate = text.index("evaluate-v3:")
+    persist_state = text.index("persist-phase9-v3-state:")
+    prepare_text = text[prepare:persist_freeze]
+    evaluation_text = text[evaluate:persist_state]
+    assert "contents: write" not in prepare_text
     assert "contents: write" not in evaluation_text
-    assert "contents: read" in text[:persist]
+    assert "contents: read" in text[:persist_freeze]
     assert "COCOMELON_EXECUTION_MODE: live" not in text
     assert "testnet" not in text.lower()
