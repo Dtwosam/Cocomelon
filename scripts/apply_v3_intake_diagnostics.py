@@ -13,7 +13,10 @@ JsonObject = dict[str, object]
 
 _CURATOR_NAME = "Verified V3 Mainnet Evidence Corpus Curator"
 _CURATOR_PATH = ".github/workflows/evidence-corpus-curator-v3.yml"
+_CAMPAIGN_NAME = "Scheduled Genuine Mainnet Evidence Campaign V3"
+_CAMPAIGN_PATH = ".github/workflows/evidence-campaign-scheduled.yml"
 _INTAKE_PREFIX = "v3-mainnet-intake-"
+_SOURCE_PREFIX = "scheduled-genuine-mainnet-evidence-v3-"
 _SAFE_REASONS = {
     "replay_incomplete",
     "dataset_incomplete",
@@ -61,6 +64,55 @@ def _base_intake_valid(report: JsonObject) -> None:
         raise RuntimeError("V3 intake economic claim is invalid")
     if report.get("live_orders") is not False:
         raise RuntimeError("V3 intake live-order state is invalid")
+
+
+def _probe_diagnostic_fields(probe: JsonObject) -> JsonObject | None:
+    reasons = probe.get("economic_ineligibility_reasons")
+    if not isinstance(reasons, list) or not all(
+        isinstance(item, str) and item for item in reasons
+    ):
+        return None
+    if any(item not in _SAFE_REASONS for item in reasons):
+        return None
+    for field in (
+        "replay_data_complete",
+        "dataset_data_complete",
+        "dataset_gap_refs_empty",
+        "flat_replay",
+    ):
+        if not isinstance(probe.get(field), bool):
+            return None
+    if probe.get("network_access") is not False or probe.get("live_orders") is not False:
+        return None
+    return {
+        "diagnostic_status": "eligibility_probe",
+        "economic_ineligibility_reasons": list(reasons),
+        "replay_data_complete": probe["replay_data_complete"],
+        "dataset_data_complete": probe["dataset_data_complete"],
+        "dataset_gap_refs_empty": probe["dataset_gap_refs_empty"],
+        "flat_replay": probe["flat_replay"],
+        "network_access": False,
+    }
+
+
+def _enrich_legacy_failed_report(
+    report: JsonObject,
+    probe: JsonObject | None,
+) -> JsonObject:
+    _base_intake_valid(report)
+    if (
+        report.get("source_conclusion") != "failure"
+        or report.get("source_verified") is not False
+        or report.get("corpus_mutated") is not False
+        or report.get("reason") != "source_workflow_not_successful"
+        or "diagnostic_status" in report
+        or probe is None
+    ):
+        return dict(report)
+    fields = _probe_diagnostic_fields(probe)
+    if fields is None:
+        return dict(report)
+    return {**report, **fields}
 
 
 def _intake_summary(report: JsonObject) -> str:
@@ -164,6 +216,60 @@ def _report_from_zip(blob: bytes) -> JsonObject:
     return payload
 
 
+def _probe_from_zip(blob: bytes) -> JsonObject | None:
+    try:
+        with zipfile.ZipFile(BytesIO(blob)) as archive:
+            matches = [
+                name
+                for name in archive.namelist()
+                if PurePosixPath(name).name == "eligibility-probe.json"
+                and not name.endswith("/")
+            ]
+            if len(matches) != 1:
+                return None
+            payload = json.loads(archive.read(matches[0]).decode("utf-8"))
+    except (zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _legacy_source_probe(repo: str, report: JsonObject) -> JsonObject | None:
+    if report.get("source_conclusion") != "failure" or "diagnostic_status" in report:
+        return None
+    source_run_id = _int_field(report, "source_run_id")
+    source = _gh_json(repo, f"actions/runs/{source_run_id}")
+    trusted = (
+        source.get("id") == source_run_id
+        and source.get("name") == _CAMPAIGN_NAME
+        and source.get("path") == _CAMPAIGN_PATH
+        and source.get("event") in {"schedule", "workflow_dispatch"}
+        and source.get("status") == "completed"
+        and source.get("conclusion") == report.get("source_conclusion")
+        and _repository_name(source.get("repository")) == repo
+        and _repository_name(source.get("head_repository")) == repo
+    )
+    if not trusted:
+        return None
+
+    artifacts = _gh_json(repo, f"actions/runs/{source_run_id}/artifacts?per_page=100")
+    raw = artifacts.get("artifacts")
+    if not isinstance(raw, list):
+        return None
+    prefix = f"{_SOURCE_PREFIX}{source_run_id}-"
+    matches = [
+        item
+        for item in raw
+        if isinstance(item, dict)
+        and str(item.get("name", "")).startswith(prefix)
+        and item.get("expired") is False
+    ]
+    if len(matches) != 1:
+        return None
+    artifact_id = _int_field(matches[0], "id")
+    blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
+    return _probe_from_zip(blob)
+
+
 def _latest_intake_report(repo: str) -> JsonObject | None:
     run = _latest_curator_run(repo)
     if run is None:
@@ -184,7 +290,11 @@ def _latest_intake_report(repo: str) -> JsonObject | None:
         return None
     artifact_id = _int_field(matches[0], "id")
     blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
-    return _report_from_zip(blob)
+    report = _report_from_zip(blob)
+    return _enrich_legacy_failed_report(
+        report,
+        _legacy_source_probe(repo, report),
+    )
 
 
 def _apply_intake_summary(patch: JsonObject, summary: str) -> JsonObject:
