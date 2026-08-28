@@ -29,6 +29,14 @@ def test_v4_campaign_is_exact_pinned_mainnet_paper_schedule() -> None:
     assert "COCOMELON_EXECUTION_MODE: live" not in text
 
 
+def test_v4_campaign_rejects_manual_dispatch_before_capture() -> None:
+    text = _text()
+    guard = 'if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then'
+    assert guard in text
+    assert "V4 evidence cohorts are schedule-only" in text
+    assert text.index(guard) < text.index("cocomelon record-mainnet-evidence")
+
+
 def test_v4_campaign_uses_one_fixed_5h15_capture() -> None:
     text = _text()
     assert "group: genuine-mainnet-evidence-v4-28db6680" in text
