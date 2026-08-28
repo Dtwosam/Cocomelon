@@ -7,6 +7,8 @@ on:
       - "Verified V3 Mainnet Evidence Corpus Curator"
       - "Phase 9 V3 One-Shot Evaluation"
     types: [completed]
+  schedule:
+    - cron: "17 * * * *"
   push:
     branches: [main]
     paths:
