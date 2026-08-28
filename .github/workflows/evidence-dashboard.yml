@@ -14,6 +14,7 @@ on:
       - "scripts/build_evidence_dashboard.py"
       - "scripts/apply_phase9_v3_final_verdict.py"
       - "scripts/apply_v3_intake_diagnostics.py"
+      - "scripts/apply_v3_scheduler_health.py"
   workflow_dispatch: {}
 
 permissions:
@@ -53,6 +54,11 @@ jobs:
       - name: Add safe V3 intake diagnostics
         run: |
           python scripts/apply_v3_intake_diagnostics.py \
+            --patch dashboard/issue-patch.json
+
+      - name: Add V3 scheduler health
+        run: |
+          python scripts/apply_v3_scheduler_health.py \
             --patch dashboard/issue-patch.json
 
       - name: Update Cocomelon Evidence Dashboard
