@@ -88,6 +88,17 @@ V2 evidence is never counted as V3 readiness because the lifecycle protocol diff
 
 If a cohort is still open at four hours, it fails closed. The protocol never extends an individual cohort because a trade is winning or losing.
 
+### Performance-blind campaign reporting
+
+Routine V3 cohort logs and `cohort-summary.json` expose only operational/evidence-integrity fields such as transport health, selected markets, decision/approval/fill counts, open/closed position counts, data completeness, and protocol provenance. They do **not** expose final equity, PnL, profit factor, mean net R, win rate, bootstrap results, or other economic outcomes during ongoing OOS collection.
+
+The canonical `replay.json`, journals, facts, and frozen evaluation dataset still retain the economic evidence required by the sealed Phase 9 evaluator. This is an observability boundary only; it does not alter replay economics, evidence admission, corpus aggregation, or the eventual one-shot statistical result.
+
+Verification:
+
+- RED commit `08831bcec9fe67776210186141d645ecddb71375`, CI `33177548187`: compile/Ruff/mypy/research passed and exactly the new campaign-summary leakage test failed on `final_equity`;
+- GREEN commit `019fc31b8e634362b8ded91c5dd7003c8cb88d8c`, CI `33177666738`: compile, Ruff, mypy, full pytest, and research all passed.
+
 ## Explicit V3 Phase 9 evaluation handoff
 
 PR #90 added the explicit V3 Phase 9 evaluator and merged at `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`. The historical V2 evaluator source was deliberately left untouched.

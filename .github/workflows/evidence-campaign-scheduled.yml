@@ -316,7 +316,6 @@ jobs:
               "opened_positions": replay["opened_positions"],
               "closed_positions": replay["closed_positions"],
               "closed_trade_count": len(replay["closed_trade_ids"]),
-              "final_equity": replay["final_equity"],
               "data_complete": replay["data_complete"],
               "dataset_manifest_id": dataset["dataset_manifest_id"],
               "dataset_trade_count": dataset["trade_count"],

@@ -94,6 +94,21 @@ def test_scheduled_campaign_v3_is_performance_blind() -> None:
     assert 'reasons.append("open_exposure")' in acquisition
 
 
+def test_scheduled_campaign_v3_routine_summary_omits_economic_outcomes() -> None:
+    text = _workflow_text()
+    summary = text[
+        text.index("          summary = {") :
+        text.index('          (root / "cohort-summary.json").write_text')
+    ]
+
+    assert '"final_equity"' not in summary
+    assert '"pnl"' not in summary.lower()
+    assert '"profit_factor"' not in summary
+    assert '"mean_net_r"' not in summary
+    assert '"win_rate"' not in summary
+    assert '"bootstrap"' not in summary
+
+
 def test_scheduled_campaign_v3_records_protocol_metadata() -> None:
     text = _workflow_text()
 
