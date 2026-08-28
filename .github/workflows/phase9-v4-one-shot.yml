@@ -1,0 +1,723 @@
+name: Phase 9 V4 One-Shot Evaluation
+
+on:
+  workflow_run:
+    workflows: ["Verified V4 Mainnet Evidence Corpus Curator"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: phase9-v4-one-shot
+  cancel-in-progress: false
+
+env:
+  PHASE9_EVALUATOR_REVISION: 0b7b126d19306679c029807b2e2e86d614fb8847
+  PHASE9_STATE_BRANCH: phase9-v4-protocol-state
+  PHASE9_STATE_FILE: phase9-v4-final.json
+  PHASE9_FREEZE_FILE: phase9-v4-freeze.json
+
+jobs:
+  prepare-v4:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      freeze_candidate_ready: ${{ steps.phase9_v4_freeze_candidate.outputs.ready }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - name: Inspect durable one-shot Phase 9 V4 state
+        id: phase9_v4_durable
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          BRANCH_ENDPOINT="repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH"
+          if ! gh api "$BRANCH_ENDPOINT" > audit/phase9-v4-state-branch.json 2> audit/phase9-v4-state-branch.stderr; then
+            if grep -q "HTTP 404" audit/phase9-v4-state-branch.stderr; then
+              printf '%s\n' '{"durable_final_exists": false, "durable_freeze_exists": false, "economic_claim": "none"}' > audit/phase9-v4-durable-audit.json
+              echo "final_exists=false" >> "$GITHUB_OUTPUT"
+              echo "freeze_exists=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat audit/phase9-v4-state-branch.stderr >&2
+            exit 61
+          fi
+
+          FINAL_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          FREEZE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_FREEZE_FILE?ref=$PHASE9_STATE_BRANCH"
+          FINAL_EXISTS=false
+          FREEZE_EXISTS=false
+
+          set +e
+          gh api "$FINAL_ENDPOINT" > audit/phase9-v4-durable-state-meta.json 2> audit/phase9-v4-durable-state.stderr
+          FINAL_STATUS=$?
+          gh api "$FREEZE_ENDPOINT" > audit/phase9-v4-durable-freeze-meta.json 2> audit/phase9-v4-durable-freeze.stderr
+          FREEZE_STATUS=$?
+          set -e
+
+          if [ "$FINAL_STATUS" -eq 0 ]; then
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("audit/phase9-v4-durable-state-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          if final_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("durable Phase 9 V4 final_id is invalid")
+          if payload.get("protocol_id") != "v4-phase9-one-shot":
+              raise SystemExit("durable Phase 9 V4 protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("durable Phase 9 V4 state is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("durable Phase 9 V4 state violates offline-only semantics")
+          Path("audit/phase9-v4-durable-state.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+            FINAL_EXISTS=true
+          elif ! grep -q "HTTP 404" audit/phase9-v4-durable-state.stderr; then
+            cat audit/phase9-v4-durable-state.stderr >&2
+            exit 62
+          fi
+
+          if [ "$FREEZE_STATUS" -eq 0 ]; then
+            PHASE9_EVALUATOR_REVISION="$PHASE9_EVALUATOR_REVISION" python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          meta = json.loads(Path("audit/phase9-v4-durable-freeze-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          freeze_id = payload.get("freeze_id")
+          base = {key: value for key, value in payload.items() if key != "freeze_id"}
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          if freeze_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("durable Phase 9 V4 freeze_id is invalid")
+          if payload.get("protocol_id") != "v4-phase9-one-shot":
+              raise SystemExit("durable Phase 9 V4 freeze protocol id is invalid")
+          if payload.get("freeze_state") != "frozen":
+              raise SystemExit("durable Phase 9 V4 freeze state is invalid")
+          if payload.get("evaluator_revision") != os.environ["PHASE9_EVALUATOR_REVISION"]:
+              raise SystemExit("durable Phase 9 V4 freeze evaluator revision mismatch")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("durable Phase 9 V4 freeze violates offline-only semantics")
+          Path("audit/phase9-v4-durable-freeze.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+            FREEZE_EXISTS=true
+          elif ! grep -q "HTTP 404" audit/phase9-v4-durable-freeze.stderr; then
+            cat audit/phase9-v4-durable-freeze.stderr >&2
+            exit 63
+          fi
+
+          if [ "$FINAL_EXISTS" = true ]; then
+            if [ "$FREEZE_EXISTS" != true ]; then
+              echo "Durable Phase 9 V4 final state exists without its freeze lock" >&2
+              exit 64
+            fi
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          final = json.loads(Path("audit/phase9-v4-durable-state.json").read_text())
+          freeze = json.loads(Path("audit/phase9-v4-durable-freeze.json").read_text())
+          if final.get("freeze_id") != freeze.get("freeze_id"):
+              raise SystemExit("V4 final state freeze id mismatch")
+          PY
+            printf '%s\n' '{"durable_final_exists": true, "durable_freeze_exists": true}' > audit/phase9-v4-durable-audit.json
+            echo "final_exists=true" >> "$GITHUB_OUTPUT"
+            echo "freeze_exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$FREEZE_EXISTS" = true ]; then
+            printf '%s\n' '{"durable_final_exists": false, "durable_freeze_exists": true}' > audit/phase9-v4-durable-audit.json
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+            echo "freeze_exists=true" >> "$GITHUB_OUTPUT"
+            echo "Refusing to select a replacement V4 OOS corpus: durable freeze lock already exists without final state" >&2
+            exit 65
+          fi
+
+          printf '%s\n' '{"durable_final_exists": false, "durable_freeze_exists": false, "economic_claim": "none"}' > audit/phase9-v4-durable-audit.json
+          echo "final_exists=false" >> "$GITHUB_OUTPUT"
+          echo "freeze_exists=false" >> "$GITHUB_OUTPUT"
+
+      - name: Verify triggering V4 curator provenance
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_CURATOR_RUN_ID" > audit/source-curator-run.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          payload = json.loads(Path("audit/source-curator-run.json").read_text())
+          expected = int(os.environ["SOURCE_CURATOR_RUN_ID"])
+          trusted = (
+              payload.get("id") == expected
+              and payload.get("name") == "Verified V4 Mainnet Evidence Corpus Curator"
+              and payload.get("path") == ".github/workflows/evidence-corpus-curator-v4.yml"
+              and payload.get("event") == "workflow_run"
+              and payload.get("status") == "completed"
+              and payload.get("conclusion") == "success"
+              and payload.get("repository", {}).get("full_name") == os.environ["GITHUB_REPOSITORY"]
+              and payload.get("head_repository", {}).get("full_name") == os.environ["GITHUB_REPOSITORY"]
+          )
+          if not trusted:
+              raise SystemExit("triggering V4 curator provenance is invalid")
+          PY
+
+      - name: Inspect existing V4 one-shot artifacts
+        id: phase9_v4_artifacts
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          for NAME in v4-phase9-frozen-snapshot v4-phase9-evaluation v4-phase9-terminal-insufficient; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$NAME&per_page=100" > "audit/$NAME-artifacts.json"
+          done
+          STATE=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          names = ("v4-phase9-frozen-snapshot", "v4-phase9-evaluation", "v4-phase9-terminal-insufficient")
+          existing = []
+          for name in names:
+              payload = json.loads(Path(f"audit/{name}-artifacts.json").read_text())
+              if any(item.get("name") == name and item.get("expired") is False for item in payload.get("artifacts", [])):
+                  existing.append(name)
+          print(",".join(existing))
+          PY
+          )
+          if [ -n "$STATE" ]; then
+            echo "Existing V4 one-shot artifact without durable freeze/final state: $STATE" >&2
+            echo "Refusing to create a replacement OOS snapshot or evaluation" >&2
+            exit 66
+          fi
+          echo "existing_final=false" >> "$GITHUB_OUTPUT"
+
+      - name: Download trusted V4 corpus
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_CURATOR_RUN_ID/artifacts?per_page=100" > audit/source-curator-artifacts.json
+          CORPUS_ARTIFACT_ID=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("audit/source-curator-artifacts.json").read_text())
+          matches = [item for item in payload.get("artifacts", []) if item.get("name") == "v4-mainnet-corpus" and item.get("expired") is False]
+          if len(matches) != 1:
+              raise SystemExit(f"expected exactly one unexpired v4-mainnet-corpus artifact, found {len(matches)}")
+          print(matches[0]["id"])
+          PY
+          )
+          echo "CORPUS_ARTIFACT_ID=$CORPUS_ARTIFACT_ID" >> "$GITHUB_ENV"
+          printf '%s\n' "$CORPUS_ARTIFACT_ID" > audit/v4-corpus-artifact-id.txt
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$CORPUS_ARTIFACT_ID/zip" > audit/v4-corpus.zip
+          CORPUS_ZIP_SHA256=$(sha256sum audit/v4-corpus.zip | awk '{print $1}')
+          echo "CORPUS_ZIP_SHA256=$CORPUS_ZIP_SHA256" >> "$GITHUB_ENV"
+          printf '%s\n' "$CORPUS_ZIP_SHA256" > audit/v4-corpus-zip-sha256.txt
+          mkdir -p v4-corpus-download
+          unzip -q audit/v4-corpus.zip -d v4-corpus-download
+          mapfile -t PROTOCOLS < <(find v4-corpus-download -type f -name protocol.json -print)
+          if [ "${#PROTOCOLS[@]}" -ne 1 ]; then
+            echo "V4 corpus must contain exactly one protocol.json" >&2
+            exit 67
+          fi
+          CORPUS_ROOT=$(dirname "${PROTOCOLS[0]}")
+          for FILE in journal.sqlite3 facts.sqlite3 mainnet-attestation.json protocol.json; do test -f "$CORPUS_ROOT/$FILE"; done
+          echo "CORPUS_ROOT=$CORPUS_ROOT" >> "$GITHUB_ENV"
+
+      - name: Checkout frozen Phase 9 V4 evaluator
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: 0b7b126d19306679c029807b2e2e86d614fb8847
+          path: phase9-v4-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: phase9-v4-tooling/pyproject.toml
+
+      - name: Install frozen Phase 9 V4 evaluator
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
+        run: |
+          set -euo pipefail
+          ACTUAL_REVISION=$(git -C phase9-v4-tooling rev-parse HEAD)
+          printf '%s\n' "$ACTUAL_REVISION" > audit/phase9-v4-tooling-revision.txt
+          if [ "$ACTUAL_REVISION" != "$PHASE9_EVALUATOR_REVISION" ]; then
+            echo "Frozen Phase 9 V4 evaluator revision mismatch" >&2
+            exit 68
+          fi
+          python -m pip install --upgrade pip
+          python -m pip install -e ./phase9-v4-tooling
+
+      - name: Prepare one-shot Phase 9 V4 snapshot candidate
+        id: phase9_v4_prepare
+        if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-v4-candidate
+          cocomelon-mainnet-evidence prepare-phase9-v4 --corpus-root "$CORPUS_ROOT" --out-root phase9-v4-candidate > audit/phase9-v4-prepare.json
+          cp phase9-v4-candidate/phase9-readiness.json audit/phase9-v4-readiness.json
+          PHASE9_STATE=$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("phase9-v4-candidate/phase9-readiness.json").read_text())
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 V4 readiness is not one_shot_oos")
+          ready = payload.get("ready_for_untouched_evaluation") is True
+          complete = payload.get("test_window_complete") is True
+          terminal = complete and not ready
+          print(f"{str(ready).lower()}\t{str(complete).lower()}\t{str(terminal).lower()}")
+          PY
+          )
+          READY=${PHASE9_STATE%%$'\t'*}
+          REST=${PHASE9_STATE#*$'\t'}
+          TEST_WINDOW_COMPLETE=${REST%%$'\t'*}
+          TERMINAL_INSUFFICIENT=${REST#*$'\t'}
+          echo "ready=$READY" >> "$GITHUB_OUTPUT"
+          echo "test_window_complete=$TEST_WINDOW_COMPLETE" >> "$GITHUB_OUTPUT"
+          echo "terminal_insufficient=$TERMINAL_INSUFFICIENT" >> "$GITHUB_OUTPUT"
+
+      - name: Build permanent Phase 9 V4 freeze candidate
+        id: phase9_v4_freeze_candidate
+        if: ${{ steps.phase9_v4_prepare.outputs.ready == 'true' || steps.phase9_v4_prepare.outputs.terminal_insufficient == 'true' }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-v4-freeze-candidate
+          mkdir -p phase9-v4-freeze-candidate
+          PHASE9_EVALUATOR_REVISION="$PHASE9_EVALUATOR_REVISION" SOURCE_CURATOR_RUN_ID="$SOURCE_CURATOR_RUN_ID" CORPUS_ARTIFACT_ID="$CORPUS_ARTIFACT_ID" CORPUS_ZIP_SHA256="$CORPUS_ZIP_SHA256" python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          snapshot = json.loads(Path("phase9-v4-candidate/snapshot.json").read_text())
+          readiness = json.loads(Path("phase9-v4-candidate/phase9-readiness.json").read_text())
+          if snapshot.get("snapshot_name") != "v4-phase9-frozen-snapshot" or snapshot.get("one_shot_oos") is not True:
+              raise SystemExit("V4 freeze snapshot identity is invalid")
+          ready = readiness.get("ready_for_untouched_evaluation") is True
+          terminal = readiness.get("test_window_complete") is True and not ready
+          if not (ready or terminal):
+              raise SystemExit("V4 freeze candidate is not finalizable")
+          base = {
+              "schema_version": 1,
+              "protocol_id": "v4-phase9-one-shot",
+              "freeze_state": "frozen",
+              "finalization_kind": "evaluation" if ready else "terminal_insufficient",
+              "one_shot_oos": True,
+              "economic_claim": "none",
+              "evaluator_revision": os.environ["PHASE9_EVALUATOR_REVISION"],
+              "source_curator_run_id": int(os.environ["SOURCE_CURATOR_RUN_ID"]),
+              "corpus_artifact_id": int(os.environ["CORPUS_ARTIFACT_ID"]),
+              "corpus_zip_sha256": os.environ["CORPUS_ZIP_SHA256"],
+              "snapshot_id": snapshot["snapshot_id"],
+              "dataset_manifest_id": readiness["dataset_manifest_id"],
+              "mainnet_attestation_id": snapshot.get("mainnet_attestation_id"),
+              "source_protocol": snapshot.get("source_protocol"),
+              "source_protocol_digest": snapshot.get("source_protocol_digest"),
+              "network_access": False,
+              "live_orders": False,
+          }
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          payload = {**base, "freeze_id": hashlib.sha256(encoded).hexdigest()}
+          Path("phase9-v4-freeze-candidate/phase9-v4-freeze.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload permanent Phase 9 V4 freeze candidate
+        if: ${{ steps.phase9_v4_freeze_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-phase9-freeze-candidate
+          path: phase9-v4-freeze-candidate/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload frozen one-shot Phase 9 V4 snapshot
+        if: ${{ steps.phase9_v4_freeze_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-phase9-frozen-snapshot
+          path: phase9-v4-candidate/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Phase 9 V4 prepare audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase9-v4-prepare-audit-${{ github.run_id }}
+          path: audit/
+          if-no-files-found: error
+          retention-days: 90
+
+  persist-phase9-v4-freeze:
+    needs: prepare-v4
+    if: ${{ always() && needs.prepare-v4.outputs.freeze_candidate_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download durable V4 freeze candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-phase9-freeze-candidate
+          path: phase9-v4-freeze-candidate
+
+      - name: Persist append-once Phase 9 V4 freeze lock
+        run: |
+          set -euo pipefail
+          CANDIDATE=phase9-v4-freeze-candidate/phase9-v4-freeze.json
+          test -f "$CANDIDATE"
+          CANDIDATE_ID=$(PHASE9_EVALUATOR_REVISION="$PHASE9_EVALUATOR_REVISION" python3 - "$CANDIDATE" <<'PY'
+          import hashlib, json, os, sys
+          from pathlib import Path
+          payload = json.loads(Path(sys.argv[1]).read_text())
+          freeze_id = payload.get("freeze_id")
+          base = {k: v for k, v in payload.items() if k != "freeze_id"}
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          if freeze_id != hashlib.sha256(encoded).hexdigest() or payload.get("protocol_id") != "v4-phase9-one-shot":
+              raise SystemExit("Phase 9 V4 candidate freeze identity is invalid")
+          if payload.get("evaluator_revision") != os.environ["PHASE9_EVALUATOR_REVISION"]:
+              raise SystemExit("Phase 9 V4 freeze candidate evaluator revision mismatch")
+          print(freeze_id)
+          PY
+          )
+
+          if ! gh api "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" >/tmp/v4-branch.json 2>/tmp/v4-branch.stderr; then
+            if ! grep -q "HTTP 404" /tmp/v4-branch.stderr; then cat /tmp/v4-branch.stderr >&2; exit 71; fi
+            DEFAULT_BRANCH=$(gh api "repos/$GITHUB_REPOSITORY" --jq .default_branch)
+            BASE_SHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$DEFAULT_BRANCH" --jq .object.sha)
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/heads/$PHASE9_STATE_BRANCH" -f sha="$BASE_SHA" >/tmp/v4-create-branch.json
+          fi
+
+          FINAL_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          if gh api "$FINAL_ENDPOINT" >/tmp/v4-final-existing.json 2>/tmp/v4-final-existing.stderr; then
+            echo "Refusing to replace or add a V4 freeze after durable final state exists" >&2
+            exit 72
+          elif ! grep -q "HTTP 404" /tmp/v4-final-existing.stderr; then cat /tmp/v4-final-existing.stderr >&2; exit 72; fi
+
+          FREEZE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_FREEZE_FILE?ref=$PHASE9_STATE_BRANCH"
+          if gh api "$FREEZE_ENDPOINT" >/tmp/v4-freeze-existing.json 2>/tmp/v4-freeze-existing.stderr; then
+            EXISTING_ID=$(python3 - <<'PY'
+          import base64, json
+          from pathlib import Path
+          meta = json.loads(Path("/tmp/v4-freeze-existing.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode())
+          print(payload.get("freeze_id", ""))
+          PY
+            )
+            if [ "$EXISTING_ID" = "$CANDIDATE_ID" ]; then exit 0; fi
+            echo "Refusing to replace existing durable Phase 9 V4 freeze lock" >&2
+            exit 73
+          elif ! grep -q "HTTP 404" /tmp/v4-freeze-existing.stderr; then cat /tmp/v4-freeze-existing.stderr >&2; exit 73; fi
+
+          gh api "repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_FREEZE_FILE&per_page=1" >/tmp/v4-freeze-history.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          if json.loads(Path("/tmp/v4-freeze-history.json").read_text()):
+              raise SystemExit("Refusing to recreate a previously deleted Phase 9 V4 freeze lock")
+          PY
+          ENCODED=$(base64 -w0 "$CANDIDATE")
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$PHASE9_FREEZE_FILE" -f message="Persist immutable Phase 9 V4 freeze lock" -f content="$ENCODED" -f branch="$PHASE9_STATE_BRANCH" >/tmp/v4-persist-freeze.json
+
+  evaluate-v4:
+    needs: [prepare-v4, persist-phase9-v4-freeze]
+    if: ${{ always() && needs.prepare-v4.outputs.freeze_candidate_ready == 'true' && needs.persist-phase9-v4-freeze.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      state_candidate_ready: ${{ steps.phase9_v4_state_candidate.outputs.ready }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}
+    steps:
+      - name: Download frozen Phase 9 V4 snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-phase9-frozen-snapshot
+          path: phase9-v4-candidate
+
+      - name: Download Phase 9 V4 freeze candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-phase9-freeze-candidate
+          path: phase9-v4-freeze-candidate
+
+      - name: Verify permanent Phase 9 V4 freeze lock
+        id: phase9_v4_freeze
+        run: |
+          set -euo pipefail
+          mkdir -p audit
+          gh api "repos/$GITHUB_REPOSITORY/contents/$PHASE9_FREEZE_FILE?ref=$PHASE9_STATE_BRANCH" > audit/phase9-v4-durable-freeze-meta.json
+          PHASE9_EVALUATOR_REVISION="$PHASE9_EVALUATOR_REVISION" SOURCE_CURATOR_RUN_ID="$SOURCE_CURATOR_RUN_ID" python3 - <<'PY'
+          import base64, hashlib, json, os
+          from pathlib import Path
+          meta = json.loads(Path("audit/phase9-v4-durable-freeze-meta.json").read_text())
+          freeze = json.loads(base64.b64decode(meta["content"]).decode())
+          freeze_id = freeze.get("freeze_id")
+          base = {k: v for k, v in freeze.items() if k != "freeze_id"}
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          if freeze_id != hashlib.sha256(encoded).hexdigest(): raise SystemExit("durable V4 freeze_id is invalid")
+          if freeze.get("protocol_id") != "v4-phase9-one-shot" or freeze.get("freeze_state") != "frozen": raise SystemExit("durable V4 freeze identity is invalid")
+          if freeze.get("evaluator_revision") != os.environ["PHASE9_EVALUATOR_REVISION"]: raise SystemExit("durable V4 freeze evaluator revision mismatch")
+          if freeze.get("source_curator_run_id") != int(os.environ["SOURCE_CURATOR_RUN_ID"]): raise SystemExit("durable V4 freeze curator run mismatch")
+          candidate = json.loads(Path("phase9-v4-freeze-candidate/phase9-v4-freeze.json").read_text())
+          if candidate.get("freeze_id") != freeze_id: raise SystemExit("durable V4 freeze differs from persisted candidate")
+          snapshot = json.loads(Path("phase9-v4-candidate/snapshot.json").read_text())
+          readiness = json.loads(Path("phase9-v4-candidate/phase9-readiness.json").read_text())
+          if snapshot.get("snapshot_id") != freeze.get("snapshot_id"): raise SystemExit("durable V4 freeze snapshot id mismatch")
+          if readiness.get("dataset_manifest_id") != freeze.get("dataset_manifest_id"): raise SystemExit("durable V4 freeze dataset manifest mismatch")
+          Path("audit/phase9-v4-durable-freeze.json").write_text(json.dumps(freeze, indent=2, sort_keys=True) + "\n")
+          Path("audit/phase9-v4-finalization-kind.txt").write_text(freeze["finalization_kind"] + "\n")
+          PY
+          echo "kind=$(cat audit/phase9-v4-finalization-kind.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout frozen Phase 9 V4 evaluator
+        uses: actions/checkout@v4
+        with:
+          ref: 0b7b126d19306679c029807b2e2e86d614fb8847
+          path: phase9-v4-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: phase9-v4-tooling/pyproject.toml
+
+      - name: Install frozen Phase 9 V4 evaluator
+        run: |
+          ACTUAL_REVISION=$(git -C phase9-v4-tooling rev-parse HEAD)
+          test "$ACTUAL_REVISION" = "$PHASE9_EVALUATOR_REVISION"
+          python -m pip install --upgrade pip
+          python -m pip install -e ./phase9-v4-tooling
+
+      - name: Prepare V4 terminal insufficient-evidence result
+        id: phase9_v4_terminal
+        if: ${{ steps.phase9_v4_freeze.outputs.kind == 'terminal_insufficient' }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-v4-terminal
+          mkdir -p phase9-v4-terminal
+          cp phase9-v4-candidate/phase9-readiness.json phase9-v4-terminal/phase9-readiness.json
+          cp phase9-v4-candidate/snapshot.json phase9-v4-terminal/snapshot.json
+          cp phase9-v4-candidate/protocol.json phase9-v4-terminal/protocol.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          readiness = json.loads(Path("phase9-v4-candidate/phase9-readiness.json").read_text())
+          snapshot = json.loads(Path("phase9-v4-candidate/snapshot.json").read_text())
+          if readiness.get("test_window_complete") is not True or readiness.get("ready_for_untouched_evaluation") is True:
+              raise SystemExit("terminal V4 state is invalid")
+          terminal = {
+              "schema_version": 1,
+              "edge_status": "insufficient_evidence",
+              "economic_claim": "phase9_readiness_only",
+              "one_shot_oos": True,
+              "ready_for_untouched_evaluation": False,
+              "test_window_complete": True,
+              "snapshot_id": snapshot["snapshot_id"],
+              "source_protocol": snapshot["source_protocol"],
+              "source_protocol_digest": snapshot["source_protocol_digest"],
+              "dataset_manifest_id": readiness["dataset_manifest_id"],
+              "test_trade_count": readiness["test_trade_count"],
+              "test_covered_days": readiness["test_covered_days"],
+              "eligible_walkforward_windows": readiness["eligible_walkforward_windows"],
+              "reason_codes": readiness["reason_codes"],
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("phase9-v4-terminal/terminal-status.json").write_text(json.dumps(terminal, indent=2, sort_keys=True) + "\n")
+          PY
+
+      - name: Upload V4 terminal insufficient-evidence result
+        if: ${{ steps.phase9_v4_terminal.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-phase9-terminal-insufficient
+          path: phase9-v4-terminal/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Evaluate frozen one-shot Phase 9 V4 snapshot
+        id: phase9_v4_evaluate
+        if: ${{ steps.phase9_v4_freeze.outputs.kind == 'evaluation' }}
+        run: |
+          set -euo pipefail
+          cocomelon-mainnet-evidence evaluate-phase9-v4 --snapshot-root phase9-v4-candidate > audit/phase9-v4-evaluate.json
+          rm -rf phase9-v4-evaluation
+          mkdir -p phase9-v4-evaluation
+          cp phase9-v4-candidate/evaluation.json phase9-v4-evaluation/evaluation.json
+          cp phase9-v4-candidate/snapshot.json phase9-v4-evaluation/snapshot.json
+          cp phase9-v4-candidate/phase9-readiness.json phase9-v4-evaluation/phase9-readiness.json
+          cp phase9-v4-candidate/protocol.json phase9-v4-evaluation/protocol.json
+
+      - name: Upload one-shot Phase 9 V4 evaluation
+        if: ${{ steps.phase9_v4_evaluate.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-phase9-evaluation
+          path: phase9-v4-evaluation/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Build durable Phase 9 V4 final state candidate
+        id: phase9_v4_state_candidate
+        if: ${{ always() && (steps.phase9_v4_terminal.outcome == 'success' || steps.phase9_v4_evaluate.outcome == 'success') }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-v4-final-state-candidate
+          mkdir -p phase9-v4-final-state-candidate
+          PHASE9_EVALUATOR_REVISION="$PHASE9_EVALUATOR_REVISION" python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          freeze = json.loads(Path("audit/phase9-v4-durable-freeze.json").read_text())
+          if Path("phase9-v4-evaluation/evaluation.json").is_file():
+              root = Path("phase9-v4-evaluation"); final_type = "evaluation"
+          elif Path("phase9-v4-terminal/terminal-status.json").is_file():
+              root = Path("phase9-v4-terminal"); final_type = "terminal_insufficient"
+          else:
+              raise SystemExit("no V4 final outcome is available for persistence")
+          snapshot = json.loads((root / "snapshot.json").read_text())
+          readiness = json.loads((root / "phase9-readiness.json").read_text())
+          evaluation_path = root / "evaluation.json"; terminal_path = root / "terminal-status.json"
+          evaluation = json.loads(evaluation_path.read_text()) if evaluation_path.is_file() else None
+          terminal = json.loads(terminal_path.read_text()) if terminal_path.is_file() else None
+          if snapshot.get("snapshot_id") != freeze.get("snapshot_id"): raise SystemExit("V4 final state freeze snapshot mismatch")
+          if readiness.get("dataset_manifest_id") != freeze.get("dataset_manifest_id"): raise SystemExit("V4 final state freeze dataset mismatch")
+          if freeze.get("evaluator_revision") != os.environ["PHASE9_EVALUATOR_REVISION"]: raise SystemExit("V4 final state freeze evaluator mismatch")
+          if evaluation is not None:
+              if freeze.get("finalization_kind") != "evaluation" or evaluation.get("evaluation_name") != "v4-phase9-evaluation": raise SystemExit("V4 durable evaluation identity is invalid")
+              protocol_state = "evaluated"; economic_claim = evaluation.get("economic_claim")
+          else:
+              if freeze.get("finalization_kind") != "terminal_insufficient": raise SystemExit("V4 freeze does not authorize terminal finalization")
+              protocol_state = "insufficient_evidence"; economic_claim = terminal.get("economic_claim")
+          base = {
+              "schema_version": 1,
+              "protocol_id": "v4-phase9-one-shot",
+              "protocol_state": protocol_state,
+              "final_type": final_type,
+              "freeze_id": freeze["freeze_id"],
+              "one_shot_oos": True,
+              "economic_claim": economic_claim,
+              "evaluator_revision": freeze["evaluator_revision"],
+              "source_curator_run_id": freeze["source_curator_run_id"],
+              "corpus_artifact_id": freeze["corpus_artifact_id"],
+              "corpus_zip_sha256": freeze["corpus_zip_sha256"],
+              "mainnet_attestation_id": snapshot.get("mainnet_attestation_id"),
+              "source_protocol": snapshot.get("source_protocol"),
+              "source_protocol_digest": snapshot.get("source_protocol_digest"),
+              "snapshot": snapshot,
+              "readiness": readiness,
+              "evaluation": evaluation,
+              "terminal": terminal,
+              "network_access": False,
+              "live_orders": False,
+          }
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          payload = {**base, "final_id": hashlib.sha256(encoded).hexdigest()}
+          if payload["freeze_id"] != freeze["freeze_id"]: raise SystemExit("V4 final state freeze id mismatch")
+          Path("phase9-v4-final-state-candidate/phase9-v4-final.json").write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+          PY
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload durable Phase 9 V4 state candidate
+        if: ${{ steps.phase9_v4_state_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-phase9-final-state-candidate
+          path: phase9-v4-final-state-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+  persist-phase9-v4-state:
+    needs: evaluate-v4
+    if: ${{ always() && needs.evaluate-v4.outputs.state_candidate_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download durable V4 state candidate
+        uses: actions/download-artifact@v4
+        with:
+          name: v4-phase9-final-state-candidate
+          path: phase9-v4-final-state-candidate
+
+      - name: Persist append-once Phase 9 V4 final state
+        run: |
+          set -euo pipefail
+          CANDIDATE=phase9-v4-final-state-candidate/phase9-v4-final.json
+          test -f "$CANDIDATE"
+          CANDIDATE_ID=$(python3 - "$CANDIDATE" <<'PY'
+          import hashlib, json, sys
+          from pathlib import Path
+          payload = json.loads(Path(sys.argv[1]).read_text())
+          final_id = payload.get("final_id")
+          base = {k: v for k, v in payload.items() if k != "final_id"}
+          encoded = json.dumps(base, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode()
+          if final_id != hashlib.sha256(encoded).hexdigest() or payload.get("protocol_id") != "v4-phase9-one-shot":
+              raise SystemExit("Phase 9 V4 candidate final identity is invalid")
+          print(final_id)
+          PY
+          )
+
+          gh api "repos/$GITHUB_REPOSITORY/contents/$PHASE9_FREEZE_FILE?ref=$PHASE9_STATE_BRANCH" > /tmp/phase9-v4-durable-freeze.json
+          python3 - "$CANDIDATE" <<'PY'
+          import base64, json, sys
+          from pathlib import Path
+          final = json.loads(Path(sys.argv[1]).read_text())
+          meta = json.loads(Path("/tmp/phase9-v4-durable-freeze.json").read_text())
+          freeze = json.loads(base64.b64decode(meta["content"]).decode())
+          if final.get("freeze_id") != freeze.get("freeze_id"):
+              raise SystemExit("V4 final state freeze id mismatch")
+          PY
+
+          FINAL_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          if gh api "$FINAL_ENDPOINT" >/tmp/v4-existing-final.json 2>/tmp/v4-existing-final.stderr; then
+            EXISTING_ID=$(python3 - <<'PY'
+          import base64, json
+          from pathlib import Path
+          meta = json.loads(Path("/tmp/v4-existing-final.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode())
+          print(payload.get("final_id", ""))
+          PY
+            )
+            if [ "$EXISTING_ID" = "$CANDIDATE_ID" ]; then exit 0; fi
+            echo "Refusing to replace existing durable Phase 9 V4 final state" >&2
+            exit 91
+          elif ! grep -q "HTTP 404" /tmp/v4-existing-final.stderr; then cat /tmp/v4-existing-final.stderr >&2; exit 91; fi
+
+          gh api "repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1" >/tmp/v4-final-history.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          if json.loads(Path("/tmp/v4-final-history.json").read_text()):
+              raise SystemExit("Refusing to recreate a previously deleted Phase 9 V4 final state")
+          PY
+          ENCODED=$(base64 -w0 "$CANDIDATE")
+          gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE" -f message="Persist immutable Phase 9 V4 final state" -f content="$ENCODED" -f branch="$PHASE9_STATE_BRANCH" >/tmp/v4-persist-final.json
