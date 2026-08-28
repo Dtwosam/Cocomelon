@@ -151,6 +151,22 @@ Issue #82 is the canonical human-readable evidence tracker:
 
 The dashboard treats V3 as active and V2 as historical. Historical counts are never added to V3 progress. The dashboard is informational only and cannot enable real-money trading or change strategy/risk behavior.
 
+### Final-verdict disclosure boundary
+
+The dashboard keeps **Economic edge: Not measured yet** while there is no append-once V3 final state, including after a snapshot has been permanently frozen but before finalization completes. It never derives a verdict from a mutable corpus, workflow log, temporary artifact, or interim economic metric.
+
+After `phase9-v3-final.json` exists and its canonical `final_id`, `freeze_id` binding, one-shot identity, offline-only semantics, snapshot identity, and final payload identity have been validated, the dashboard may expose exactly one high-level verdict:
+
+- `INSUFFICIENT_EVIDENCE (readiness-only terminal)` for the immutable terminal readiness outcome; or
+- the immutable evaluated `edge_status` enum (`INVALID_EVIDENCE`, `OOS_CONTAMINATED`, `INSUFFICIENT_EVIDENCE`, `NO_EDGE_DEMONSTRATED`, or `CANDIDATE_EDGE`).
+
+Numeric PnL, mean net R, win rate, profit factor, drawdown, bootstrap values, and other tuning-sensitive economic details remain absent from routine dashboard output. The verdict postprocessor reuses the existing hash-verified durable-state reader and fails closed if the final/evaluation identity is inconsistent.
+
+Verification:
+
+- RED commit `8c347b7a162239df2e55c0101beb9e7e0477e9c8`, CI `33178463939`: compile/Ruff/mypy/research passed and exactly four new durable-verdict tests failed because the verdict function did not yet exist;
+- GREEN commit `7aa7da76d402b4ac4445be5f7b291eb5d9aa0f97`, CI `33179030527`: compile, Ruff, mypy, full pytest, and research all passed after the fail-closed verdict postprocessor was added.
+
 ## Locked economic gate
 
 Before any Phase 10 promotion, genuine untouched V3 evidence must satisfy at least:
