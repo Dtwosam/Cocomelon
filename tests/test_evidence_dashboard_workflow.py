@@ -99,7 +99,7 @@ def test_dashboard_reads_immutable_v4_one_shot_state_branch() -> None:
     assert "durable_final_exists" in builder
     assert "freeze_id" in builder
     assert "final_id" in builder
-    assert "V4 final state freeze id mismatch" in builder
+    assert "final state freeze id mismatch" in builder
 
 
 def test_dashboard_preserves_historical_v3_one_shot_state_reader() -> None:
@@ -114,7 +114,7 @@ def test_dashboard_preserves_historical_v3_one_shot_state_reader() -> None:
 def test_dashboard_shows_non_performance_leaking_v4_one_shot_status() -> None:
     builder = _read_required(BUILDER, "evidence dashboard builder")
 
-    assert "V4 one-shot state" in builder
+    assert "V4 one-shot integrity state" in builder
     assert "waiting for finalizable snapshot" in builder
     assert "frozen; finalization pending" in builder
     assert "terminal insufficient evidence" in builder
