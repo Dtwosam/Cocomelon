@@ -1,33 +1,36 @@
-name: Scheduled Genuine Mainnet Evidence Campaign V3
+name: Scheduled Genuine Mainnet Evidence Campaign V4
 
 on:
+  schedule:
+    - cron: "37 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v3-f8f84200
+  group: genuine-mainnet-evidence-v4-28db6680
   cancel-in-progress: false
 
 jobs:
   evidence-cohort:
     runs-on: ubuntu-24.04
-    timeout-minutes: 285
+    timeout-minutes: 350
     env:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: f8f84200dbc8b6fb262c5f6f99993b40714357be
+      COHORT_CODE_REVISION: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
       COHORT_TRIGGER_SHA: ${{ github.sha }}
       ENTRY_WINDOW_SECONDS: 2700
-      CAPTURE_WINDOW_SECONDS: 14400
+      CAPTURE_WINDOW_SECONDS: 18900
+      MAX_POSITION_AGE_SECONDS: 14400
     steps:
-      - name: Checkout pinned V3 evidence revision
+      - name: Checkout pinned V4 evidence revision
         uses: actions/checkout@v4
         with:
-          ref: f8f84200dbc8b6fb262c5f6f99993b40714357be
+          ref: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
@@ -40,7 +43,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Record lifecycle-aware genuine public mainnet evidence
+      - name: Record thesis-expiry genuine public mainnet evidence
         run: |
           set -euo pipefail
           mkdir -p evidence-cohort/recording evidence-cohort/output evidence-cohort/diagnostics
@@ -51,7 +54,7 @@ jobs:
 
           cocomelon record-mainnet-evidence \
             --root evidence-cohort/recording \
-            --seconds 14400 \
+            --seconds 18900 \
             --deep-limit 5 \
             > evidence-cohort/output/record-transport.json &
           RECORDER_PID=$!
@@ -79,7 +82,7 @@ jobs:
           printf '%s\n' "$GAP_WATCH_STATUS" > evidence-cohort/diagnostics/gap-watch-exit-status.txt
 
           if [ "$RECORDER_STATUS" -ne 0 ] || [ "$GAP_WATCH_STATUS" -eq 20 ]; then
-            echo "Lifecycle-aware mainnet capture did not complete cleanly" >&2
+            echo "V4 mainnet capture did not complete cleanly" >&2
             exit 1
           fi
 
@@ -114,82 +117,10 @@ jobs:
               and record["network_access"] is True
           )
           if not clean:
-              raise SystemExit("mainnet transport capture is not evidence-clean")
+              raise SystemExit("V4 mainnet transport capture is not evidence-clean")
           PY
 
-          mkdir -p evidence-cohort/probe
-          cocomelon validate-recording \
-            --root evidence-cohort/recording \
-            > evidence-cohort/probe/validate.json
-          python - <<'PY' > evidence-cohort/probe/freeze.json
-          import json
-          from decimal import Decimal
-
-          from cocomelon.evidence.cli_support import freeze_baseline_replay_payload
-
-          payload = freeze_baseline_replay_payload(
-              "evidence-cohort/recording",
-              "evidence-cohort/probe/bundle.json",
-              Decimal("10000"),
-              lifecycle_aware=True,
-          )
-          print(json.dumps(payload, sort_keys=True))
-          PY
-          cocomelon run-baseline-replay \
-            --bundle evidence-cohort/probe/bundle.json \
-            --journal evidence-cohort/probe/journal.sqlite3 \
-            --execution evidence-cohort/probe/execution.sqlite3 \
-            --facts evidence-cohort/probe/facts.sqlite3 \
-            > evidence-cohort/probe/replay.json
-          PROBE_RUN_ID=$(python -c 'import json; print(json.load(open("evidence-cohort/probe/replay.json"))["run_id"])')
-          cocomelon freeze-evaluation-dataset \
-            --journal evidence-cohort/probe/journal.sqlite3 \
-            --facts evidence-cohort/probe/facts.sqlite3 \
-            --run-id "$PROBE_RUN_ID" \
-            > evidence-cohort/probe/dataset.json
-
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          replay = json.loads(Path("evidence-cohort/probe/replay.json").read_text())
-          dataset = json.loads(Path("evidence-cohort/probe/dataset.json").read_text())
-          reasons = []
-          if replay["data_complete"] is not True:
-              reasons.append("replay_incomplete")
-          if dataset["data_complete"] is not True or dataset["gap_refs"] != []:
-              reasons.append("dataset_incomplete")
-          opened_positions = replay["opened_positions"]
-          closed_positions = replay["closed_positions"]
-          flat_replay = opened_positions == closed_positions
-          if not flat_replay:
-              reasons.append("open_exposure")
-          payload = {
-              "schema_version": 1,
-              "economic_claim": "none",
-              "economic_eligible": not reasons,
-              "economic_ineligibility_reasons": reasons,
-              "replay_data_complete": replay["data_complete"] is True,
-              "dataset_data_complete": dataset["data_complete"] is True,
-              "dataset_gap_refs_empty": dataset["gap_refs"] == [],
-              "opened_positions": opened_positions,
-              "closed_positions": closed_positions,
-              "flat_replay": flat_replay,
-              "network_access": False,
-              "live_orders": False,
-          }
-          Path("evidence-cohort/diagnostics/eligibility-probe.json").write_text(
-              json.dumps(payload, indent=2, sort_keys=True) + "\n",
-              encoding="utf-8",
-          )
-          if not payload["economic_eligible"]:
-              raise SystemExit(
-                  "Lifecycle-aware capture is not clean, complete, and flat: "
-                  + ",".join(reasons)
-              )
-          PY
-
-      - name: Validate and replay recorded evidence offline
+      - name: Validate and replay V4 evidence offline
         run: |
           set -euo pipefail
           cocomelon validate-recording \
@@ -206,6 +137,7 @@ jobs:
               "evidence-cohort/output/bundle.json",
               Decimal("10000"),
               lifecycle_aware=True,
+              thesis_expiry=True,
           )
           print(json.dumps(payload, sort_keys=True))
           PY
@@ -222,7 +154,7 @@ jobs:
             --run-id "$RUN_ID" \
             > evidence-cohort/output/dataset.json
 
-      - name: Assert pinned paper-only economic evidence semantics
+      - name: Assert pinned paper-only V4 evidence semantics
         run: |
           python - <<'PY'
           import json
@@ -230,12 +162,14 @@ jobs:
           from pathlib import Path
 
           root = Path("evidence-cohort/output")
+          diagnostic_root = Path("evidence-cohort/diagnostics")
           record = json.loads((root / "record.json").read_text())
           transport_record = json.loads((root / "record-transport.json").read_text())
           validate = json.loads((root / "validate.json").read_text())
           replay = json.loads((root / "replay.json").read_text())
           dataset = json.loads((root / "dataset.json").read_text())
           bundle = json.loads((root / "bundle.json").read_text())
+          freeze = json.loads((root / "freeze.json").read_text())
           expected_revision = os.environ["COHORT_CODE_REVISION"]
           workflow_head = (root / "workflow-head.txt").read_text().strip()
           trigger_head = (root / "trigger-head.txt").read_text().strip()
@@ -245,7 +179,6 @@ jobs:
           assert bundle["manifest"]["code_revision"] == expected_revision
           assert len(trigger_head) == 40
           assert acquisition_attempt == 1
-
           assert record["network_access"] is True
           assert record["live_orders"] is False
           assert record["gap_count"] == 0
@@ -264,33 +197,62 @@ jobs:
           assert "edge" not in replay
           assert "profitable" not in replay
           assert replay["entry_window_ms"] == 2700000
-          assert replay["replay_engine_version"] == "phase8-v2-lifecycle-aware"
-          assert replay["config_version"] == "phase9-baseline-replay-v2-lifecycle-aware"
+          assert replay["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert replay["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
           assert replay["new_exposure_cutoff_ms"] is not None
+          assert freeze["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert freeze["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert freeze["entry_window_ms"] == 2700000
+          assert freeze["max_position_age_ms"] == 14400000
+          assert bundle["replay_config"]["execution"]["config_version"] == (
+              "phase7-v2-4h-thesis-expiry"
+          )
+          assert bundle["replay_config"]["execution"]["max_position_age_ms"] == 14400000
 
-          economic_ineligibility_reasons = []
+          reasons = []
           if replay["data_complete"] is not True:
-              economic_ineligibility_reasons.append("replay_incomplete")
+              reasons.append("replay_incomplete")
           if dataset["data_complete"] is not True or dataset["gap_refs"] != []:
-              economic_ineligibility_reasons.append("dataset_incomplete")
+              reasons.append("dataset_incomplete")
+          if replay["opened_positions"] != replay["closed_positions"]:
+              reasons.append("open_exposure")
           flat_replay = replay["opened_positions"] == replay["closed_positions"]
-          if not flat_replay:
-              economic_ineligibility_reasons.append("open_exposure")
-          economic_eligible = not economic_ineligibility_reasons
+
+          diagnostic = {
+              "schema_version": 1,
+              "economic_claim": "none",
+              "economic_eligible": not reasons,
+              "economic_ineligibility_reasons": reasons,
+              "replay_data_complete": replay["data_complete"] is True,
+              "dataset_data_complete": dataset["data_complete"] is True,
+              "dataset_gap_refs_empty": dataset["gap_refs"] == [],
+              "opened_positions": replay["opened_positions"],
+              "closed_positions": replay["closed_positions"],
+              "flat_replay": flat_replay,
+              "network_access": False,
+              "live_orders": False,
+          }
+          diagnostic_root.joinpath("eligibility-probe.json").write_text(
+              json.dumps(diagnostic, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
           summary = {
               "evidence_kind": "genuine_public_hyperliquid_mainnet",
               "economic_claim": "none",
-              "economic_eligible": economic_eligible,
-              "economic_ineligibility_reasons": economic_ineligibility_reasons,
-              "campaign_version": "v3-lifecycle-aware-mainnet",
+              "economic_eligible": not reasons,
+              "economic_ineligibility_reasons": reasons,
+              "campaign_version": "v4-thesis-expiry-mainnet",
               "campaign_trigger": os.environ.get("GITHUB_EVENT_NAME", "unknown"),
               "checked_out_code_revision": workflow_head,
               "trigger_head_sha": trigger_head,
               "acquisition_attempt": acquisition_attempt,
               "entry_window_seconds": 2700,
-              "capture_window_seconds": 14400,
+              "capture_window_seconds": 18900,
+              "max_position_age_seconds": 14400,
               "replay_engine_version": replay["replay_engine_version"],
               "config_version": replay["config_version"],
+              "execution_config_version": "phase7-v2-4h-thesis-expiry",
               "new_exposure_cutoff_ms": replay["new_exposure_cutoff_ms"],
               "recording_session_id": record["session_id"],
               "selected_markets": record["selected_markets"],
@@ -329,14 +291,14 @@ jobs:
           assert dataset["data_complete"] is True
           assert dataset["gap_refs"] == []
           assert replay["opened_positions"] == replay["closed_positions"]
-          assert economic_eligible is True
+          assert not reasons
           PY
 
-      - name: Upload genuine evidence artifact
+      - name: Upload genuine V4 evidence artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: scheduled-genuine-mainnet-evidence-v3-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          name: scheduled-genuine-mainnet-evidence-v4-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: evidence-cohort/
           if-no-files-found: error
           retention-days: 90

@@ -12,12 +12,12 @@ def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_scheduled_campaign_v3_is_fixed_revision_mainnet_paper_only() -> None:
+def test_v3_campaign_is_manual_only_fixed_revision_mainnet_paper_audit() -> None:
     text = _workflow_text()
 
     assert "name: Scheduled Genuine Mainnet Evidence Campaign V3" in text
-    assert "schedule:" in text
-    assert "37 1,7,13,19 * * *" in text
+    assert "schedule:" not in text
+    assert "37 1,7,13,19 * * *" not in text
     assert "workflow_dispatch:" in text
     assert "COCOMELON_EXECUTION_MODE: paper" in text
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text

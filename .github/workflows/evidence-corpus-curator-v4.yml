@@ -1,0 +1,469 @@
+name: Verified V4 Mainnet Evidence Corpus Curator
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Genuine Mainnet Evidence Campaign V4"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: genuine-mainnet-evidence-v4-corpus
+  cancel-in-progress: false
+
+jobs:
+  curate-v4:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      V4_CODE_REVISION: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+    steps:
+      - name: Checkout pinned V4 verification tooling
+        uses: actions/checkout@v4
+        with:
+          ref: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Curate verified V4 source
+        id: curate
+        run: |
+          set -euo pipefail
+          mkdir -p intake source prior corpus
+          git rev-parse HEAD > intake/curator-head.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > intake/source-run-id.txt
+          printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
+
+          if [ "$SOURCE_CONCLUSION" != "success" ]; then
+            printf '{"artifacts":[]}\n' > intake/source-artifacts.json
+            set +e
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+              > intake/source-artifacts-candidate.json
+            ARTIFACT_LOOKUP_STATUS=$?
+            set -e
+            if [ "$ARTIFACT_LOOKUP_STATUS" -eq 0 ]; then
+              mv intake/source-artifacts-candidate.json intake/source-artifacts.json
+            else
+              rm -f intake/source-artifacts-candidate.json
+            fi
+
+            SOURCE_ARTIFACT_ID=$(python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          prefix = f"scheduled-genuine-mainnet-evidence-v4-{os.environ['SOURCE_RUN_ID']}-"
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(prefix)
+          ]
+          if len(matches) == 1:
+              print(matches[0]["id"])
+          PY
+            )
+
+            DIAGNOSTIC_STATUS="artifact_unavailable"
+            if [ "$ARTIFACT_LOOKUP_STATUS" -ne 0 ]; then
+              DIAGNOSTIC_STATUS="artifact_lookup_failed"
+            elif [ -n "$SOURCE_ARTIFACT_ID" ]; then
+              printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+              set +e
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+                > intake/failed-source-artifact.zip
+              ARTIFACT_DOWNLOAD_STATUS=$?
+              set -e
+              if [ "$ARTIFACT_DOWNLOAD_STATUS" -eq 0 ]; then
+                mkdir -p failed-source
+                if unzip -q intake/failed-source-artifact.zip -d failed-source; then
+                  mapfile -t PROBES < <(
+                    find failed-source -type f -name eligibility-probe.json -print
+                  )
+                  if [ "${#PROBES[@]}" -eq 1 ]; then
+                    cp "${PROBES[0]}" intake/failed-source-eligibility-probe.json
+                    DIAGNOSTIC_STATUS="eligibility_probe"
+                  else
+                    DIAGNOSTIC_STATUS="eligibility_probe_unavailable"
+                  fi
+                else
+                  DIAGNOSTIC_STATUS="artifact_unzip_failed"
+                fi
+              else
+                DIAGNOSTIC_STATUS="artifact_download_failed"
+              fi
+            fi
+            export DIAGNOSTIC_STATUS
+
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          diagnostic_status = os.environ["DIAGNOSTIC_STATUS"]
+          diagnostic = {
+              "economic_ineligibility_reasons": [],
+              "replay_data_complete": None,
+              "dataset_data_complete": None,
+              "dataset_gap_refs_empty": None,
+              "flat_replay": None,
+          }
+          probe_path = Path("intake/failed-source-eligibility-probe.json")
+          if probe_path.is_file():
+              probe = json.loads(probe_path.read_text(encoding="utf-8"))
+              reasons = probe.get("economic_ineligibility_reasons")
+              replay_complete = probe.get("replay_data_complete")
+              dataset_complete = probe.get("dataset_data_complete")
+              gap_refs_empty = probe.get("dataset_gap_refs_empty")
+              flat_replay = probe.get("flat_replay")
+              valid = (
+                  isinstance(reasons, list)
+                  and all(isinstance(item, str) and item for item in reasons)
+                  and isinstance(replay_complete, bool)
+                  and isinstance(dataset_complete, bool)
+                  and isinstance(gap_refs_empty, bool)
+                  and isinstance(flat_replay, bool)
+                  and probe.get("network_access") is False
+                  and probe.get("live_orders") is False
+              )
+              if valid:
+                  diagnostic = {
+                      "economic_ineligibility_reasons": reasons,
+                      "replay_data_complete": replay_complete,
+                      "dataset_data_complete": dataset_complete,
+                      "dataset_gap_refs_empty": gap_refs_empty,
+                      "flat_replay": flat_replay,
+                  }
+              else:
+                  diagnostic_status = "eligibility_probe_invalid"
+
+          report = {
+              "schema_version": 1,
+              "protocol": "v4-thesis-expiry-mainnet",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_verified": False,
+              "corpus_mutated": False,
+              "reason": "source_workflow_not_successful",
+              "diagnostic_status": diagnostic_status,
+              **diagnostic,
+              "economic_claim": "none",
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "corpus_ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            > intake/source-artifacts.json
+          SOURCE_ARTIFACT_ID=$(python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          prefix = f"scheduled-genuine-mainnet-evidence-v4-{os.environ['SOURCE_RUN_ID']}-"
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(prefix)
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one unexpired V4 source artifact, found {len(matches)}"
+              )
+          print(matches[0]["id"])
+          PY
+          )
+          printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            > intake/source-artifact.zip
+          unzip -q intake/source-artifact.zip -d source
+
+          mapfile -t SUMMARIES < <(
+            find source -type f -name cohort-summary.json -path '*/output/*' -print
+          )
+          if [ "${#SUMMARIES[@]}" -ne 1 ]; then
+            echo "V4 source artifact must contain exactly one cohort summary" >&2
+            exit 40
+          fi
+          SOURCE_ROOT=$(dirname "${SUMMARIES[0]}")
+          printf '%s\n' "$SOURCE_ROOT" > intake/source-root.txt
+
+          cocomelon-mainnet-evidence verify \
+            --source-root "$SOURCE_ROOT" \
+            > intake/source-verify.json
+
+          python - "$SOURCE_ROOT" <<'PY'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          root = Path(sys.argv[1])
+          summary = json.loads((root / "cohort-summary.json").read_text())
+          replay = json.loads((root / "replay.json").read_text())
+          freeze = json.loads((root / "freeze.json").read_text())
+          bundle = json.loads((root / "bundle.json").read_text())
+
+          assert summary["campaign_version"] == "v4-thesis-expiry-mainnet"
+          assert summary["checked_out_code_revision"] == os.environ["V4_CODE_REVISION"]
+          assert summary["entry_window_seconds"] == 2700
+          assert summary["capture_window_seconds"] == 18900
+          assert summary["max_position_age_seconds"] == 14400
+          assert summary["economic_claim"] == "none"
+          assert summary["economic_eligible"] is True
+          assert summary["economic_ineligibility_reasons"] == []
+          assert summary["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert summary["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert summary["execution_config_version"] == "phase7-v2-4h-thesis-expiry"
+          assert replay["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert replay["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert replay["entry_window_ms"] == 2700000
+          assert replay["new_exposure_cutoff_ms"] is not None
+          assert replay["opened_positions"] == replay["closed_positions"]
+          assert replay["network_access"] is False
+          assert replay["live_orders"] is False
+          assert freeze["replay_engine_version"] == "phase8-v3-thesis-expiry"
+          assert freeze["config_version"] == "phase9-baseline-replay-v3-thesis-expiry"
+          assert freeze["entry_window_ms"] == 2700000
+          assert freeze["max_position_age_ms"] == 14400000
+          assert bundle["replay_config"]["execution"]["config_version"] == (
+              "phase7-v2-4h-thesis-expiry"
+          )
+          assert bundle["replay_config"]["execution"]["max_position_age_ms"] == 14400000
+          PY
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v4-mainnet-corpus&per_page=100" \
+            > intake/prior-artifacts.json
+          mapfile -t CANDIDATES < <(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/prior-artifacts.json").read_text())
+          candidates = []
+          for item in payload.get("artifacts", []):
+              run = item.get("workflow_run")
+              if (
+                  item.get("name") == "v4-mainnet-corpus"
+                  and item.get("expired") is False
+                  and isinstance(run, dict)
+                  and isinstance(run.get("id"), int)
+              ):
+                  candidates.append(
+                      (str(item.get("created_at", "")), int(item["id"]), int(run["id"]))
+                  )
+          for _, artifact_id, run_id in sorted(candidates, reverse=True):
+              print(f"{artifact_id}\t{run_id}")
+          PY
+          )
+
+          TRUSTED_PRIOR_ARTIFACT_ID=""
+          TRUSTED_PRIOR_RUN_ID=""
+          for CANDIDATE in "${CANDIDATES[@]}"; do
+            CANDIDATE_ARTIFACT_ID=${CANDIDATE%%$'\t'*}
+            CANDIDATE_RUN_ID=${CANDIDATE#*$'\t'}
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+              > "intake/prior-run-$CANDIDATE_RUN_ID.json"
+            if python - "$CANDIDATE_RUN_ID" "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          run_id = int(sys.argv[1])
+          repository = sys.argv[2]
+          payload = json.loads(Path(f"intake/prior-run-{run_id}.json").read_text())
+          trusted = (
+              payload.get("id") == run_id
+              and payload.get("name") == "Verified V4 Mainnet Evidence Corpus Curator"
+              and payload.get("path") == ".github/workflows/evidence-corpus-curator-v4.yml"
+              and payload.get("event") == "workflow_run"
+              and payload.get("conclusion") == "success"
+              and payload.get("repository", {}).get("full_name") == repository
+              and payload.get("head_repository", {}).get("full_name") == repository
+          )
+          raise SystemExit(0 if trusted else 1)
+          PY
+            then
+              TRUSTED_PRIOR_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+              TRUSTED_PRIOR_RUN_ID="$CANDIDATE_RUN_ID"
+              break
+            fi
+          done
+          printf '%s\n' "$TRUSTED_PRIOR_ARTIFACT_ID" > intake/prior-corpus-artifact-id.txt
+          printf '%s\n' "$TRUSTED_PRIOR_RUN_ID" > intake/prior-corpus-producer-run-id.txt
+
+          if [ -n "$TRUSTED_PRIOR_ARTIFACT_ID" ]; then
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$TRUSTED_PRIOR_ARTIFACT_ID/zip" \
+              > intake/prior-corpus.zip
+            unzip -q intake/prior-corpus.zip -d prior
+            mapfile -t ATTESTATIONS < <(find prior -type f -name mainnet-attestation.json -print)
+            if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
+              echo "Prior V4 corpus must contain exactly one mainnet attestation" >&2
+              exit 41
+            fi
+            PRIOR_ROOT=$(dirname "${ATTESTATIONS[0]}")
+            cp -a "$PRIOR_ROOT/." corpus/
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          protocol = json.loads(Path("corpus/protocol.json").read_text())
+          expected = {
+              "capture_window_seconds": 18900,
+              "config_version": "phase9-baseline-replay-v3-thesis-expiry",
+              "economic_claim": "none",
+              "entry_window_seconds": 2700,
+              "execution_config_version": "phase7-v2-4h-thesis-expiry",
+              "live_orders": False,
+              "max_position_age_seconds": 14400,
+              "pinned_code_revision": "28db668048a83da7f7b1ba92ae2cf50aa980cb6e",
+              "protocol": "v4-thesis-expiry-mainnet",
+              "replay_engine_version": "phase8-v3-thesis-expiry",
+              "schema_version": 1,
+          }
+          if protocol != expected:
+              raise SystemExit("Prior V4 corpus protocol identity is inconsistent")
+          PY
+          fi
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          protocol = {
+              "schema_version": 1,
+              "protocol": "v4-thesis-expiry-mainnet",
+              "pinned_code_revision": "28db668048a83da7f7b1ba92ae2cf50aa980cb6e",
+              "replay_engine_version": "phase8-v3-thesis-expiry",
+              "config_version": "phase9-baseline-replay-v3-thesis-expiry",
+              "execution_config_version": "phase7-v2-4h-thesis-expiry",
+              "entry_window_seconds": 2700,
+              "capture_window_seconds": 18900,
+              "max_position_age_seconds": 14400,
+              "economic_claim": "none",
+              "live_orders": False,
+          }
+          Path("corpus/protocol.json").write_text(
+              json.dumps(protocol, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          mkdir -p corpus/sources/$SOURCE_RUN_ID
+          cp intake/source-verify.json corpus/sources/$SOURCE_RUN_ID/source-verify.json
+          cp "$SOURCE_ROOT/cohort-summary.json" corpus/sources/$SOURCE_RUN_ID/cohort-summary.json
+
+          cocomelon-mainnet-evidence aggregate \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            --source-root "$SOURCE_ROOT" \
+            > corpus/aggregate-latest.json
+          cocomelon-mainnet-evidence progress \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            > corpus/progress.json
+
+          TRUSTED_PRIOR_ARTIFACT_ID="$TRUSTED_PRIOR_ARTIFACT_ID" \
+          TRUSTED_PRIOR_RUN_ID="$TRUSTED_PRIOR_RUN_ID" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          aggregate = json.loads(Path("corpus/aggregate-latest.json").read_text())
+          progress = json.loads(Path("corpus/progress.json").read_text())
+          index = {
+              "schema_version": 1,
+              "protocol": "v4-thesis-expiry-mainnet",
+              "economic_claim": "none",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "prior_corpus_artifact_id": (
+                  int(os.environ["TRUSTED_PRIOR_ARTIFACT_ID"])
+                  if os.environ.get("TRUSTED_PRIOR_ARTIFACT_ID")
+                  else None
+              ),
+              "prior_corpus_producer_run_id": (
+                  int(os.environ["TRUSTED_PRIOR_RUN_ID"])
+                  if os.environ.get("TRUSTED_PRIOR_RUN_ID")
+                  else None
+              ),
+              "latest_aggregate": aggregate,
+              "progress": progress,
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("corpus/corpus-index.json").write_text(
+              json.dumps(index, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+
+          report = {
+              "schema_version": 1,
+              "protocol": "v4-thesis-expiry-mainnet",
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_verified": True,
+              "corpus_mutated": True,
+              "economic_claim": "none",
+              "live_orders": False,
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          test -f corpus/mainnet-attestation.json
+          echo "corpus_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload V4 mainnet corpus
+        if: ${{ steps.curate.outputs.corpus_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-mainnet-corpus
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload V4 intake report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-mainnet-intake-${{ github.event.workflow_run.id }}
+          path: intake/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
