@@ -76,7 +76,9 @@ def _phase9_v3_final_verdict(state: JsonObject) -> str:
             raise RuntimeError("V3 evaluated verdict claim is invalid")
         if evaluation.get("one_shot_oos") is not True:
             raise RuntimeError("V3 evaluated verdict is not one-shot OOS")
-        if evaluation.get("network_access") is not False or evaluation.get("live_orders") is not False:
+        offline = evaluation.get("network_access") is False
+        paper_only = evaluation.get("live_orders") is False
+        if not offline or not paper_only:
             raise RuntimeError("V3 evaluated verdict violates offline-only semantics")
         if evaluation.get("snapshot_id") != freeze_snapshot_id:
             raise RuntimeError("V3 evaluated verdict snapshot mismatch")
