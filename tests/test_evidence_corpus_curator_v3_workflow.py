@@ -80,6 +80,50 @@ def test_v3_curator_rejected_runs_cannot_mutate_corpus() -> None:
     assert rejected < mutation
 
 
+def test_v3_curator_failed_sources_extract_only_non_economic_diagnostics() -> None:
+    text = _text()
+    rejected = text.index('if [ "$SOURCE_CONCLUSION" != "success" ]; then')
+    exit_rejected = text.index("exit 0", rejected)
+    block = text[rejected:exit_rejected]
+
+    assert 'actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100' in block
+    assert "failed-source-artifact.zip" in block
+    assert "eligibility-probe.json" in block
+    assert '"diagnostic_status"' in block
+    assert '"economic_ineligibility_reasons"' in block
+    assert '"replay_data_complete"' in block
+    assert '"dataset_data_complete"' in block
+    assert '"dataset_gap_refs_empty"' in block
+    assert '"flat_replay"' in block
+    assert '"network_access": False' in block
+    assert '"live_orders": False' in block
+
+    forbidden = (
+        "final_equity",
+        "realized_pnl",
+        "unrealized_pnl",
+        "profit_factor",
+        "mean_net_r",
+        "win_rate",
+        "bootstrap",
+    )
+    lowered = block.lower()
+    assert all(field not in lowered for field in forbidden)
+
+
+def test_v3_curator_failed_source_diagnostics_never_enable_corpus_output() -> None:
+    text = _text()
+    rejected = text.index('if [ "$SOURCE_CONCLUSION" != "success" ]; then')
+    exit_rejected = text.index("exit 0", rejected)
+    block = text[rejected:exit_rejected]
+
+    assert 'echo "corpus_ready=false" >> "$GITHUB_OUTPUT"' in block
+    assert "cocomelon-mainnet-evidence aggregate" not in block
+    assert "mkdir -p corpus/sources/$SOURCE_RUN_ID" not in block
+    assert '"source_verified": False' in block
+    assert '"corpus_mutated": False' in block
+
+
 def test_v3_curator_binds_prior_corpus_to_trusted_curator_producer() -> None:
     text = _text()
 
