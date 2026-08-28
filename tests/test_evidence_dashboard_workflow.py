@@ -6,6 +6,7 @@ from typing import Any
 
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
 BUILDER = Path("scripts/build_evidence_dashboard.py")
+VERDICT_APPLIER = Path("scripts/apply_phase9_v3_final_verdict.py")
 
 
 def _read_required(path: Path, label: str) -> str:
@@ -13,8 +14,8 @@ def _read_required(path: Path, label: str) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _builder_function(name: str) -> Any:
-    namespace = runpy.run_path(str(BUILDER))
+def _verdict_function(name: str) -> Any:
+    namespace = runpy.run_path(str(VERDICT_APPLIER))
     return namespace[name]
 
 
@@ -30,6 +31,7 @@ def test_dashboard_refresh_tracks_v2_v3_curators_and_v3_one_shot() -> None:
     assert 'DASHBOARD_ISSUE: "82"' in workflow
     assert "github.event.workflow_run.id" in workflow
     assert "EVENT_WORKFLOW_RUN_ID" in workflow
+    assert "apply_phase9_v3_final_verdict.py" in workflow
 
 
 def test_dashboard_builder_prefers_v3_but_preserves_v2_history() -> None:
@@ -114,14 +116,14 @@ def test_dashboard_state_summary_does_not_render_pre_final_performance_fields() 
 
 
 def test_dashboard_keeps_edge_unmeasured_until_durable_final_exists() -> None:
-    verdict = _builder_function("_phase9_v3_final_verdict")
+    verdict = _verdict_function("_phase9_v3_final_verdict")
 
     assert verdict({"freeze": None, "final": None}) == "Not measured yet"
     assert verdict({"freeze": {"freeze_id": "abc"}, "final": None}) == "Not measured yet"
 
 
 def test_dashboard_reports_terminal_insufficient_only_from_durable_final() -> None:
-    verdict = _builder_function("_phase9_v3_final_verdict")
+    verdict = _verdict_function("_phase9_v3_final_verdict")
     state = {
         "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
         "final": {
@@ -145,7 +147,7 @@ def test_dashboard_reports_terminal_insufficient_only_from_durable_final() -> No
 
 
 def test_dashboard_reports_evaluated_edge_status_only_from_durable_final() -> None:
-    verdict = _builder_function("_phase9_v3_final_verdict")
+    verdict = _verdict_function("_phase9_v3_final_verdict")
     state = {
         "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
         "final": {
@@ -170,7 +172,7 @@ def test_dashboard_reports_evaluated_edge_status_only_from_durable_final() -> No
 
 
 def test_dashboard_rejects_invalid_final_verdict_identity() -> None:
-    verdict = _builder_function("_phase9_v3_final_verdict")
+    verdict = _verdict_function("_phase9_v3_final_verdict")
     state = {
         "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
         "final": {
