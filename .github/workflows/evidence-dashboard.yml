@@ -7,6 +7,13 @@ on:
       - "Verified V3 Mainnet Evidence Corpus Curator"
       - "Phase 9 V3 One-Shot Evaluation"
     types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/evidence-dashboard.yml"
+      - "scripts/build_evidence_dashboard.py"
+      - "scripts/apply_phase9_v3_final_verdict.py"
+      - "scripts/apply_v3_intake_diagnostics.py"
   workflow_dispatch: {}
 
 permissions:
