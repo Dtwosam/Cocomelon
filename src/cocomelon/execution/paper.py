@@ -7,6 +7,8 @@ from pathlib import Path
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     PaperExecutionConfig,
+    PaperOrderPlan,
+    PositionAction,
     PositionActionType,
 )
 from cocomelon.domain.market import MarketId
@@ -60,6 +62,7 @@ class PaperExecutionAdapter:
             if recovered.account is not None
             else empty_account(starting_cash, startup_timestamp_ms)
         )
+        self._pending_reduce_only: dict[str, tuple[PositionAction, PaperOrderPlan]] = {}
 
     @property
     def account(self) -> PaperAccountState:
@@ -211,6 +214,52 @@ class PaperExecutionAdapter:
             account=self._account,
         )
 
+    def _execute_reduce_only_plan(
+        self,
+        market: MarketId,
+        action: PositionAction,
+        planned: PaperOrderPlan,
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        attempt_timestamp_ms: int,
+    ) -> PositionManagement:
+        simulation = simulate_ioc(
+            planned,
+            book,
+            instrument,
+            self._config,
+            attempt_timestamp_ms=attempt_timestamp_ms,
+        )
+        candidate = self._account
+        if simulation.fills:
+            candidate = apply_reduce_only_fills(
+                self._account,
+                market,
+                simulation.fills,
+                attempt_timestamp_ms,
+            )
+        try:
+            self.store.persist_execution(simulation.attempt, simulation.fills, candidate)
+        except Exception:
+            self._mark_store_failure("DURABLE_EXECUTION_WRITE_FAILED")
+            raise
+        self._account = candidate
+
+        market_key = market.canonical
+        if simulation.attempt.reason_codes == ("LATENCY_NOT_ELAPSED",):
+            self._pending_reduce_only[market_key] = (action, planned)
+        else:
+            self._pending_reduce_only.pop(market_key, None)
+
+        return PositionManagement(
+            action=action,
+            plan=planned,
+            rejection=None,
+            simulation=simulation,
+            account=self._account,
+        )
+
     def manage_position(
         self,
         market: MarketId,
@@ -232,6 +281,19 @@ class PaperExecutionAdapter:
         if len(matches) != 1:
             raise ValueError("position manager requires exactly one open position")
         position = matches[0]
+
+        pending = self._pending_reduce_only.get(market.canonical)
+        if pending is not None:
+            pending_action, pending_plan = pending
+            return self._execute_reduce_only_plan(
+                market,
+                pending_action,
+                pending_plan,
+                instrument,
+                book,
+                attempt_timestamp_ms=attempt_timestamp_ms,
+            )
+
         action = evaluate_position(
             position,
             mark_event=mark_event,
@@ -294,31 +356,11 @@ class PaperExecutionAdapter:
             )
 
         self.store.persist_plan(planned)
-        simulation = simulate_ioc(
+        return self._execute_reduce_only_plan(
+            market,
+            action,
             planned,
-            book,
             instrument,
-            self._config,
+            book,
             attempt_timestamp_ms=attempt_timestamp_ms,
-        )
-        candidate = self._account
-        if simulation.fills:
-            candidate = apply_reduce_only_fills(
-                self._account,
-                market,
-                simulation.fills,
-                attempt_timestamp_ms,
-            )
-        try:
-            self.store.persist_execution(simulation.attempt, simulation.fills, candidate)
-        except Exception:
-            self._mark_store_failure("DURABLE_EXECUTION_WRITE_FAILED")
-            raise
-        self._account = candidate
-        return PositionManagement(
-            action=action,
-            plan=planned,
-            rejection=None,
-            simulation=simulation,
-            account=self._account,
         )
