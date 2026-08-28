@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-scheduled.yml")
-PINNED_CODE = "f21ad7be581bc662127e75f832cd8fcbf4f5f93b"
+PINNED_CODE = "f8f84200dbc8b6fb262c5f6f99993b40714357be"
 ENTRY_WINDOW_SECONDS = 2700
-CAPTURE_WINDOW_SECONDS = 5400
+CAPTURE_WINDOW_SECONDS = 14400
 
 
 def _workflow_text() -> str:
@@ -17,7 +17,7 @@ def test_scheduled_campaign_v3_is_fixed_revision_mainnet_paper_only() -> None:
 
     assert "name: Scheduled Genuine Mainnet Evidence Campaign V3" in text
     assert "schedule:" in text
-    assert "37 1,4,7,10,13,16,19,22 * * *" in text
+    assert "37 1,7,13,19 * * *" in text
     assert "workflow_dispatch:" in text
     assert "COCOMELON_EXECUTION_MODE: paper" in text
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text
@@ -32,8 +32,9 @@ def test_scheduled_campaign_v3_is_fixed_revision_mainnet_paper_only() -> None:
 def test_scheduled_campaign_v3_records_one_fixed_lifecycle_window() -> None:
     text = _workflow_text()
 
-    assert "group: genuine-mainnet-evidence-v3-f21ad7be" in text
+    assert "group: genuine-mainnet-evidence-v3-f8f84200" in text
     assert "cancel-in-progress: false" in text
+    assert "timeout-minutes: 285" in text
     assert f"--seconds {CAPTURE_WINDOW_SECONDS}" in text
     assert "--deep-limit 5" in text
     assert "for ATTEMPT in 1 2" not in text

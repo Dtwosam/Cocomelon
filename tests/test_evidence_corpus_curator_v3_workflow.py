@@ -4,7 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-corpus-curator-v3.yml")
 CAMPAIGN = "Scheduled Genuine Mainnet Evidence Campaign V3"
-PINNED_CODE = "f21ad7be581bc662127e75f832cd8fcbf4f5f93b"
+PINNED_CODE = "f8f84200dbc8b6fb262c5f6f99993b40714357be"
 
 
 def _text() -> str:
@@ -30,6 +30,7 @@ def test_v3_curator_is_pinned_and_verifies_before_corpus_mutation() -> None:
     text = _text()
 
     assert f"ref: {PINNED_CODE}" in text
+    assert f"V3_CODE_REVISION: {PINNED_CODE}" in text
     assert "github.event.workflow_run.id" in text
     assert "github.event.workflow_run.conclusion" in text
     assert "scheduled-genuine-mainnet-evidence-v3-" in text
@@ -48,7 +49,8 @@ def test_v3_curator_keeps_v3_corpus_isolated_from_v2() -> None:
     assert '"protocol": "v3-lifecycle-aware-mainnet"' in text
     assert '"replay_engine_version": "phase8-v2-lifecycle-aware"' in text
     assert '"entry_window_seconds": 2700' in text
-    assert '"capture_window_seconds": 5400' in text
+    assert '"capture_window_seconds": 14400' in text
+    assert f'"pinned_code_revision": "{PINNED_CODE}"' in text
     assert "v2-mainnet-corpus" not in text
     assert "prepare-phase9-v2" not in text
     assert "evaluate-phase9-v2" not in text

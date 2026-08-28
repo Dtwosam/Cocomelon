@@ -21,12 +21,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
       SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      V3_CODE_REVISION: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+      V3_CODE_REVISION: f8f84200dbc8b6fb262c5f6f99993b40714357be
     steps:
       - name: Checkout pinned V3 verification tooling
         uses: actions/checkout@v4
         with:
-          ref: f21ad7be581bc662127e75f832cd8fcbf4f5f93b
+          ref: f8f84200dbc8b6fb262c5f6f99993b40714357be
           fetch-depth: 1
           persist-credentials: false
 
@@ -130,7 +130,7 @@ jobs:
           assert summary["campaign_version"] == "v3-lifecycle-aware-mainnet"
           assert summary["checked_out_code_revision"] == os.environ["V3_CODE_REVISION"]
           assert summary["entry_window_seconds"] == 2700
-          assert summary["capture_window_seconds"] == 5400
+          assert summary["capture_window_seconds"] == 14400
           assert summary["economic_claim"] == "none"
           assert summary["economic_eligible"] is True
           assert summary["economic_ineligibility_reasons"] == []
@@ -227,12 +227,12 @@ jobs:
 
           protocol = json.loads(Path("corpus/protocol.json").read_text())
           expected = {
-              "capture_window_seconds": 5400,
+              "capture_window_seconds": 14400,
               "config_version": "phase9-baseline-replay-v2-lifecycle-aware",
               "economic_claim": "none",
               "entry_window_seconds": 2700,
               "live_orders": False,
-              "pinned_code_revision": "f21ad7be581bc662127e75f832cd8fcbf4f5f93b",
+              "pinned_code_revision": "f8f84200dbc8b6fb262c5f6f99993b40714357be",
               "protocol": "v3-lifecycle-aware-mainnet",
               "replay_engine_version": "phase8-v2-lifecycle-aware",
               "schema_version": 1,
@@ -249,11 +249,11 @@ jobs:
           protocol = {
               "schema_version": 1,
               "protocol": "v3-lifecycle-aware-mainnet",
-              "pinned_code_revision": "f21ad7be581bc662127e75f832cd8fcbf4f5f93b",
+              "pinned_code_revision": "f8f84200dbc8b6fb262c5f6f99993b40714357be",
               "replay_engine_version": "phase8-v2-lifecycle-aware",
               "config_version": "phase9-baseline-replay-v2-lifecycle-aware",
               "entry_window_seconds": 2700,
-              "capture_window_seconds": 5400,
+              "capture_window_seconds": 14400,
               "economic_claim": "none",
               "live_orders": False,
           }
