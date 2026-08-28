@@ -19,6 +19,10 @@ from cocomelon.evaluation.mainnet_phase9 import (
     evaluate_phase9_v2_snapshot,
     prepare_phase9_v2_snapshot,
 )
+from cocomelon.evaluation.mainnet_phase9_v3 import (
+    evaluate_phase9_v3_snapshot,
+    prepare_phase9_v3_snapshot,
+)
 
 
 def _attestation_metadata(journal_path: str | Path) -> tuple[str, int]:
@@ -147,12 +151,19 @@ def build_parser() -> argparse.ArgumentParser:
     freeze_dataset.add_argument("--facts", required=True, type=Path)
     freeze_dataset.add_argument("--run-id", required=True, action="append")
 
-    prepare_phase9 = subparsers.add_parser("prepare-phase9-v2")
-    prepare_phase9.add_argument("--corpus-root", required=True, type=Path)
-    prepare_phase9.add_argument("--out-root", required=True, type=Path)
+    prepare_phase9_v2 = subparsers.add_parser("prepare-phase9-v2")
+    prepare_phase9_v2.add_argument("--corpus-root", required=True, type=Path)
+    prepare_phase9_v2.add_argument("--out-root", required=True, type=Path)
 
-    evaluate_phase9 = subparsers.add_parser("evaluate-phase9-v2")
-    evaluate_phase9.add_argument("--snapshot-root", required=True, type=Path)
+    evaluate_phase9_v2 = subparsers.add_parser("evaluate-phase9-v2")
+    evaluate_phase9_v2.add_argument("--snapshot-root", required=True, type=Path)
+
+    prepare_phase9_v3 = subparsers.add_parser("prepare-phase9-v3")
+    prepare_phase9_v3.add_argument("--corpus-root", required=True, type=Path)
+    prepare_phase9_v3.add_argument("--out-root", required=True, type=Path)
+
+    evaluate_phase9_v3 = subparsers.add_parser("evaluate-phase9-v3")
+    evaluate_phase9_v3.add_argument("--snapshot-root", required=True, type=Path)
     return parser
 
 
@@ -177,8 +188,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     elif args.command == "prepare-phase9-v2":
         payload = prepare_phase9_v2_snapshot(args.corpus_root, args.out_root)
-    else:
+    elif args.command == "evaluate-phase9-v2":
         payload = evaluate_phase9_v2_snapshot(args.snapshot_root)
+    elif args.command == "prepare-phase9-v3":
+        payload = prepare_phase9_v3_snapshot(args.corpus_root, args.out_root)
+    elif args.command == "evaluate-phase9-v3":
+        payload = evaluate_phase9_v3_snapshot(args.snapshot_root)
+    else:
+        raise RuntimeError(f"unsupported mainnet evidence command: {args.command}")
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
