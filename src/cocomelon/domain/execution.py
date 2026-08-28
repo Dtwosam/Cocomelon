@@ -87,6 +87,7 @@ class PaperExecutionConfig:
     latency_ms: int = 250
     max_book_age_ms: int = 1_000
     max_asset_ctx_age_ms: int = 5_000
+    max_position_age_ms: int | None = None
     funding_reconciliation_grace_ms: int = 300_000
     max_ioc_slippage_bps: Decimal = Decimal("25")
     taker_fee_rate: Decimal = Decimal("0.00045")
@@ -103,6 +104,8 @@ class PaperExecutionConfig:
             raise ValueError("max_book_age_ms must be positive")
         if self.max_asset_ctx_age_ms <= 0:
             raise ValueError("max_asset_ctx_age_ms must be positive")
+        if self.max_position_age_ms is not None and self.max_position_age_ms <= 0:
+            raise ValueError("max_position_age_ms must be positive when set")
         if self.funding_reconciliation_grace_ms < 0:
             raise ValueError("funding_reconciliation_grace_ms must be non-negative")
         _require_positive(self.max_ioc_slippage_bps, "max_ioc_slippage_bps")
