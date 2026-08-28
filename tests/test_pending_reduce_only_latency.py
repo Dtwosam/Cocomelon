@@ -135,7 +135,7 @@ def test_stop_exit_reuses_pending_reduce_only_plan_after_latency(tmp_path: Path)
         explicit_reduction_quantity=None,
         reference_price=Decimal("94"),
         timestamp_ms=2_400,
-        attempt_timestamp_ms=2_400,
+        attempt_timestamp_ms=2_410,
     )
 
     assert second.plan is not None
