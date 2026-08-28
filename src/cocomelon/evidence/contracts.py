@@ -43,6 +43,14 @@ def _canonical(value: object) -> object:
         return _canonical(value.value)
     if isinstance(value, MarketId):
         return value.canonical
+    if isinstance(value, PaperExecutionConfig):
+        payload: dict[str, object] = {}
+        for item in fields(value):
+            item_value = getattr(value, item.name)
+            if item.name == "max_position_age_ms" and item_value is None:
+                continue
+            payload[item.name] = _canonical(item_value)
+        return payload
     if is_dataclass(value) and not isinstance(value, type):
         return {
             item.name: _canonical(getattr(value, item.name))
