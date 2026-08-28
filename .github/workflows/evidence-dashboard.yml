@@ -38,6 +38,11 @@ jobs:
           python scripts/build_evidence_dashboard.py \
             --output dashboard/issue-patch.json
 
+      - name: Apply durable V3 final verdict
+        run: |
+          python scripts/apply_phase9_v3_final_verdict.py \
+            --patch dashboard/issue-patch.json
+
       - name: Update Cocomelon Evidence Dashboard
         run: |
           gh api --method PATCH \
