@@ -43,6 +43,11 @@ jobs:
           python scripts/apply_phase9_v3_final_verdict.py \
             --patch dashboard/issue-patch.json
 
+      - name: Add safe V3 intake diagnostics
+        run: |
+          python scripts/apply_v3_intake_diagnostics.py \
+            --patch dashboard/issue-patch.json
+
       - name: Update Cocomelon Evidence Dashboard
         run: |
           gh api --method PATCH \

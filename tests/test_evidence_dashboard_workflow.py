@@ -7,6 +7,7 @@ from typing import Any
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
 BUILDER = Path("scripts/build_evidence_dashboard.py")
 VERDICT_APPLIER = Path("scripts/apply_phase9_v3_final_verdict.py")
+INTAKE_APPLIER = Path("scripts/apply_v3_intake_diagnostics.py")
 
 
 def _read_required(path: Path, label: str) -> str:
@@ -16,6 +17,11 @@ def _read_required(path: Path, label: str) -> str:
 
 def _verdict_function(name: str) -> Any:
     namespace = runpy.run_path(str(VERDICT_APPLIER))
+    return namespace[name]
+
+
+def _intake_function(name: str) -> Any:
+    namespace = runpy.run_path(str(INTAKE_APPLIER))
     return namespace[name]
 
 
@@ -32,6 +38,7 @@ def test_dashboard_refresh_tracks_v2_v3_curators_and_v3_one_shot() -> None:
     assert "github.event.workflow_run.id" in workflow
     assert "EVENT_WORKFLOW_RUN_ID" in workflow
     assert "apply_phase9_v3_final_verdict.py" in workflow
+    assert "apply_v3_intake_diagnostics.py" in workflow
 
 
 def test_dashboard_builder_prefers_v3_but_preserves_v2_history() -> None:
@@ -199,3 +206,74 @@ def test_dashboard_rejects_invalid_final_verdict_identity() -> None:
         assert "evaluation identity" in str(exc)
     else:
         raise AssertionError("invalid evaluated verdict must fail closed")
+
+
+def test_dashboard_formats_failed_v3_intake_without_performance_metrics() -> None:
+    summary = _intake_function("_intake_summary")
+    report = {
+        "schema_version": 1,
+        "protocol": "v3-lifecycle-aware-mainnet",
+        "source_run_id": 123,
+        "source_conclusion": "failure",
+        "source_verified": False,
+        "corpus_mutated": False,
+        "reason": "source_workflow_not_successful",
+        "diagnostic_status": "eligibility_probe",
+        "economic_ineligibility_reasons": ["open_exposure"],
+        "replay_data_complete": True,
+        "dataset_data_complete": True,
+        "dataset_gap_refs_empty": True,
+        "flat_replay": False,
+        "economic_claim": "none",
+        "network_access": False,
+        "live_orders": False,
+    }
+
+    assert summary(report) == "rejected — open_exposure"
+
+
+def test_dashboard_formats_successful_v3_intake_as_accepted() -> None:
+    summary = _intake_function("_intake_summary")
+    report = {
+        "schema_version": 1,
+        "protocol": "v3-lifecycle-aware-mainnet",
+        "source_run_id": 456,
+        "source_conclusion": "success",
+        "source_verified": True,
+        "corpus_mutated": True,
+        "economic_claim": "none",
+        "live_orders": False,
+    }
+
+    assert summary(report) == "accepted into V3 corpus"
+
+
+def test_dashboard_handles_pre_diagnostic_failed_v3_intake() -> None:
+    summary = _intake_function("_intake_summary")
+    report = {
+        "schema_version": 1,
+        "protocol": "v3-lifecycle-aware-mainnet",
+        "source_run_id": 789,
+        "source_conclusion": "failure",
+        "source_verified": False,
+        "corpus_mutated": False,
+        "reason": "source_workflow_not_successful",
+        "economic_claim": "none",
+        "live_orders": False,
+    }
+
+    assert summary(report) == "rejected — diagnostic detail unavailable"
+
+
+def test_dashboard_intake_applier_does_not_render_economic_metrics() -> None:
+    script = _read_required(INTAKE_APPLIER, "V3 intake dashboard applier").lower()
+    forbidden = (
+        "final_equity",
+        "realized_pnl",
+        "unrealized_pnl",
+        "profit_factor",
+        "mean_net_r",
+        "win_rate",
+        "bootstrap",
+    )
+    assert all(field not in script for field in forbidden)
