@@ -1,5 +1,6 @@
-from pathlib import Path
+from __future__ import annotations
 
+from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
 
@@ -9,4 +10,5 @@ def test_dashboard_refreshes_hourly_for_time_based_health_state() -> None:
 
     assert "schedule:" in workflow
     assert 'cron: "17 * * * *"' in workflow
-    assert "Scheduled Genuine Mainnet Evidence Campaign V3" not in workflow.split("schedule:", 1)[1]
+    scheduled_section = workflow.split("schedule:", 1)[1]
+    assert "Scheduled Genuine Mainnet Evidence Campaign V3" not in scheduled_section
