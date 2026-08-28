@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 
 from cocomelon.evaluation.mainnet_phase9 import (
-    MainnetPhase9Error,
     V3_CANDIDATE_NAME,
     V3_EVALUATION_NAME,
     V3_SNAPSHOT_NAME,
     V3_SOURCE_PROTOCOL,
+    MainnetPhase9Error,
     _canonical_digest,
     _read_v3_corpus_protocol,
 )
