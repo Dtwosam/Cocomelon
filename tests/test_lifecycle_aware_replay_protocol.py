@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -76,6 +77,23 @@ def test_lifecycle_aware_cutoff_is_fixed_from_recording_session_start() -> None:
     assert lifecycle_new_exposure_cutoff_ms(config, started_at_ms) == (
         started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
     )
+
+
+def test_thesis_expiry_cutoff_uses_same_fixed_entry_window() -> None:
+    config = evidence_cli_support.thesis_expiry_replay_config(Decimal("10000"))
+    started_at_ms = 1_800_000_000_000
+
+    assert lifecycle_new_exposure_cutoff_ms(config, started_at_ms) == (
+        started_at_ms + LIFECYCLE_ENTRY_WINDOW_MS
+    )
+
+
+def test_thesis_expiry_version_pair_must_be_consistent() -> None:
+    config = evidence_cli_support.thesis_expiry_replay_config(Decimal("10000"))
+    mismatched = replace(config, config_version=LIFECYCLE_AWARE_CONFIG_VERSION)
+
+    with pytest.raises(ValueError, match="thesis-expiry replay config version"):
+        lifecycle_new_exposure_cutoff_ms(mismatched, 123_456)
 
 
 def test_legacy_replay_has_no_new_exposure_cutoff() -> None:
