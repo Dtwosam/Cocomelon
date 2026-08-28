@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import runpy
 from pathlib import Path
+from typing import Any
 
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
 BUILDER = Path("scripts/build_evidence_dashboard.py")
@@ -9,6 +11,11 @@ BUILDER = Path("scripts/build_evidence_dashboard.py")
 def _read_required(path: Path, label: str) -> str:
     assert path.is_file(), f"{label} must exist"
     return path.read_text(encoding="utf-8")
+
+
+def _builder_function(name: str) -> Any:
+    namespace = runpy.run_path(str(BUILDER))
+    return namespace[name]
 
 
 def test_dashboard_refresh_tracks_v2_v3_curators_and_v3_one_shot() -> None:
@@ -104,3 +111,89 @@ def test_dashboard_state_summary_does_not_render_pre_final_performance_fields() 
     assert "bootstrap" not in state_section
     assert "pnl" not in state_section.lower()
     assert "evaluation" not in state_section.lower()
+
+
+def test_dashboard_keeps_edge_unmeasured_until_durable_final_exists() -> None:
+    verdict = _builder_function("_phase9_v3_final_verdict")
+
+    assert verdict({"freeze": None, "final": None}) == "Not measured yet"
+    assert verdict({"freeze": {"freeze_id": "abc"}, "final": None}) == "Not measured yet"
+
+
+def test_dashboard_reports_terminal_insufficient_only_from_durable_final() -> None:
+    verdict = _builder_function("_phase9_v3_final_verdict")
+    state = {
+        "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
+        "final": {
+            "protocol_state": "insufficient_evidence",
+            "final_type": "terminal_insufficient",
+            "economic_claim": "phase9_readiness_only",
+            "freeze_id": "abc",
+            "terminal": {
+                "edge_status": "insufficient_evidence",
+                "economic_claim": "phase9_readiness_only",
+                "one_shot_oos": True,
+                "snapshot_id": "snap",
+                "network_access": False,
+                "live_orders": False,
+            },
+            "evaluation": None,
+        },
+    }
+
+    assert verdict(state) == "INSUFFICIENT_EVIDENCE (readiness-only terminal)"
+
+
+def test_dashboard_reports_evaluated_edge_status_only_from_durable_final() -> None:
+    verdict = _builder_function("_phase9_v3_final_verdict")
+    state = {
+        "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
+        "final": {
+            "protocol_state": "evaluated",
+            "final_type": "evaluation",
+            "economic_claim": "phase9_baseline_edge_assessment",
+            "freeze_id": "abc",
+            "terminal": None,
+            "evaluation": {
+                "evaluation_name": "v3-phase9-evaluation",
+                "edge_status": "candidate_edge",
+                "economic_claim": "phase9_baseline_edge_assessment",
+                "one_shot_oos": True,
+                "snapshot_id": "snap",
+                "network_access": False,
+                "live_orders": False,
+            },
+        },
+    }
+
+    assert verdict(state) == "CANDIDATE_EDGE"
+
+
+def test_dashboard_rejects_invalid_final_verdict_identity() -> None:
+    verdict = _builder_function("_phase9_v3_final_verdict")
+    state = {
+        "freeze": {"freeze_id": "abc", "snapshot_id": "snap"},
+        "final": {
+            "protocol_state": "evaluated",
+            "final_type": "evaluation",
+            "economic_claim": "phase9_baseline_edge_assessment",
+            "freeze_id": "abc",
+            "terminal": None,
+            "evaluation": {
+                "evaluation_name": "unexpected-evaluation",
+                "edge_status": "candidate_edge",
+                "economic_claim": "phase9_baseline_edge_assessment",
+                "one_shot_oos": True,
+                "snapshot_id": "snap",
+                "network_access": False,
+                "live_orders": False,
+            },
+        },
+    }
+
+    try:
+        verdict(state)
+    except RuntimeError as exc:
+        assert "evaluation identity" in str(exc)
+    else:
+        raise AssertionError("invalid evaluated verdict must fail closed")
