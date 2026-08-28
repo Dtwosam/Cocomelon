@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -39,6 +41,12 @@ V2 = ProtocolSpec(
 )
 TRUSTED_PROTOCOLS = (V3, V2)
 
+PHASE9_V3_ONE_SHOT_NAME = "Phase 9 V3 One-Shot Evaluation"
+PHASE9_V3_ONE_SHOT_PATH = ".github/workflows/phase9-v3-one-shot.yml"
+PHASE9_V3_STATE_BRANCH = "phase9-v3-protocol-state"
+PHASE9_V3_FREEZE_FILE = "phase9-v3-freeze.json"
+PHASE9_V3_FINAL_FILE = "phase9-v3-final.json"
+
 JsonObject = dict[str, object]
 CorpusSnapshot = tuple[JsonObject, JsonObject, int, int]
 
@@ -50,6 +58,25 @@ def _gh_json(repo: str, endpoint: str) -> JsonObject:
         capture_output=True,
         text=True,
     )
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"GitHub API response is not an object: {endpoint}")
+    return payload
+
+
+def _gh_optional_json(repo: str, endpoint: str) -> JsonObject | None:
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/{endpoint}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        if "HTTP 404" in result.stderr:
+            return None
+        raise RuntimeError(
+            f"GitHub API request failed for {endpoint}: {result.stderr.strip()}"
+        )
     payload = json.loads(result.stdout)
     if not isinstance(payload, dict):
         raise RuntimeError(f"GitHub API response is not an object: {endpoint}")
@@ -86,12 +113,38 @@ def _protocol_for_curator(run: JsonObject, repo: str) -> ProtocolSpec:
     raise RuntimeError("curator run provenance is invalid")
 
 
-def _event_curator(repo: str) -> JsonObject | None:
-    event_id = os.environ.get("EVENT_CURATOR_RUN_ID", "").strip()
+def _is_trusted_v3_one_shot(run: JsonObject, repo: str) -> bool:
+    return (
+        run.get("name") == PHASE9_V3_ONE_SHOT_NAME
+        and run.get("path") == PHASE9_V3_ONE_SHOT_PATH
+        and run.get("event") == "workflow_run"
+        and run.get("status") == "completed"
+        and _repository_name(run.get("repository")) == repo
+        and _repository_name(run.get("head_repository")) == repo
+    )
+
+
+def _event_workflow_run(repo: str) -> JsonObject | None:
+    event_id = os.environ.get("EVENT_WORKFLOW_RUN_ID", "").strip()
     if not event_id or event_id == "null":
         return None
     run = _gh_json(repo, f"actions/runs/{int(event_id)}")
-    _protocol_for_curator(run, repo)
+    try:
+        _protocol_for_curator(run, repo)
+        return run
+    except RuntimeError:
+        if _is_trusted_v3_one_shot(run, repo):
+            return run
+    raise RuntimeError("event workflow run provenance is invalid")
+
+
+def _event_curator(run: JsonObject | None, repo: str) -> JsonObject | None:
+    if run is None:
+        return None
+    try:
+        _protocol_for_curator(run, repo)
+    except RuntimeError:
+        return None
     return run
 
 
@@ -223,6 +276,86 @@ def _corpus_snapshot(
     return progress, index, artifact_id, producer_id
 
 
+def _content_json(repo: str, path: str, ref: str) -> JsonObject | None:
+    meta = _gh_optional_json(repo, f"contents/{path}?ref={ref}")
+    if meta is None:
+        return None
+    encoding = meta.get("encoding")
+    content = meta.get("content")
+    if encoding != "base64" or not isinstance(content, str):
+        raise RuntimeError(f"GitHub content metadata is invalid: {path}")
+    try:
+        raw = base64.b64decode(content, validate=False).decode("utf-8")
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"GitHub content is invalid JSON: {path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"GitHub content is not a JSON object: {path}")
+    return payload
+
+
+def _verify_canonical_id(payload: JsonObject, field: str, label: str) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value:
+        raise RuntimeError(f"{label} {field} is invalid")
+    base = {key: item for key, item in payload.items() if key != field}
+    encoded = json.dumps(
+        base,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    if value != hashlib.sha256(encoded).hexdigest():
+        raise RuntimeError(f"{label} {field} is invalid")
+    return value
+
+
+def _phase9_v3_state(repo: str) -> JsonObject:
+    branch = _gh_optional_json(repo, f"branches/{PHASE9_V3_STATE_BRANCH}")
+    if branch is None:
+        return {
+            "durable_freeze_exists": False,
+            "durable_final_exists": False,
+            "freeze": None,
+            "final": None,
+        }
+
+    freeze = _content_json(repo, PHASE9_V3_FREEZE_FILE, PHASE9_V3_STATE_BRANCH)
+    final = _content_json(repo, PHASE9_V3_FINAL_FILE, PHASE9_V3_STATE_BRANCH)
+
+    if freeze is not None:
+        _verify_canonical_id(freeze, "freeze_id", "V3 freeze")
+        if freeze.get("protocol_id") != "v3-phase9-one-shot":
+            raise RuntimeError("V3 freeze protocol id is invalid")
+        if freeze.get("freeze_state") != "frozen":
+            raise RuntimeError("V3 freeze state is invalid")
+        if freeze.get("one_shot_oos") is not True:
+            raise RuntimeError("V3 freeze is not one-shot OOS")
+        if freeze.get("network_access") is not False or freeze.get("live_orders") is not False:
+            raise RuntimeError("V3 freeze violates offline-only semantics")
+
+    if final is not None:
+        _verify_canonical_id(final, "final_id", "V3 final state")
+        if freeze is None:
+            raise RuntimeError("V3 final state exists without durable freeze")
+        if final.get("protocol_id") != "v3-phase9-one-shot":
+            raise RuntimeError("V3 final state protocol id is invalid")
+        if final.get("one_shot_oos") is not True:
+            raise RuntimeError("V3 final state is not one-shot OOS")
+        if final.get("network_access") is not False or final.get("live_orders") is not False:
+            raise RuntimeError("V3 final state violates offline-only semantics")
+        if final.get("freeze_id") != freeze.get("freeze_id"):
+            raise RuntimeError("V3 final state freeze id mismatch")
+
+    return {
+        "durable_freeze_exists": freeze is not None,
+        "durable_final_exists": final is not None,
+        "freeze": freeze,
+        "final": final,
+    }
+
+
 def _int(payload: JsonObject, field: str, default: int = 0) -> int:
     value = payload.get(field, default)
     if isinstance(value, bool) or not isinstance(value, int):
@@ -266,6 +399,55 @@ def _zero_v3_progress() -> JsonObject:
     }
 
 
+def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
+    freeze_obj = state.get("freeze")
+    final_obj = state.get("final")
+    freeze = freeze_obj if isinstance(freeze_obj, dict) else None
+    final = final_obj if isinstance(final_obj, dict) else None
+
+    if freeze is None and final is None:
+        status = "waiting for finalizable snapshot"
+    elif freeze is not None and final is None:
+        status = "frozen; finalization pending"
+    elif freeze is not None and final is not None:
+        protocol_state = final.get("protocol_state")
+        if protocol_state == "insufficient_evidence":
+            status = "terminal insufficient evidence"
+        elif protocol_state == "evaluated":
+            status = "evaluated"
+        else:
+            raise RuntimeError("V3 one-shot final protocol state is invalid")
+    else:
+        raise RuntimeError("V3 one-shot state is invalid")
+
+    lines = [f"**V3 one-shot state:** {status}  "]
+    if freeze is None:
+        return lines
+
+    revision = freeze.get("evaluator_revision")
+    freeze_id = freeze.get("freeze_id")
+    curator_run = freeze.get("source_curator_run_id")
+    artifact_id = freeze.get("corpus_artifact_id")
+    if not isinstance(revision, str) or not revision:
+        raise RuntimeError("V3 freeze evaluator revision is invalid")
+    if not isinstance(freeze_id, str) or not freeze_id:
+        raise RuntimeError("V3 freeze ID is invalid")
+    if isinstance(curator_run, bool) or not isinstance(curator_run, int):
+        raise RuntimeError("V3 freeze source curator run is invalid")
+    if isinstance(artifact_id, bool) or not isinstance(artifact_id, int):
+        raise RuntimeError("V3 freeze corpus artifact ID is invalid")
+
+    lines.extend(
+        [
+            f"**Frozen evaluator revision:** `{revision}`  ",
+            f"**Freeze ID:** `{freeze_id[:16]}…`  ",
+            f"**Source curator run:** `{curator_run}`  ",
+            f"**Source corpus artifact ID:** `{artifact_id}`  ",
+        ]
+    )
+    return lines
+
+
 def _body(
     *,
     repo: str,
@@ -276,7 +458,9 @@ def _body(
     historical_v2_snapshot: CorpusSnapshot | None,
     latest_v3_campaign: JsonObject | None,
     latest_v3_curator: JsonObject | None,
+    event_workflow_run: JsonObject | None,
     event_curator: JsonObject | None,
+    phase9_v3_state: JsonObject,
 ) -> str:
     active_decisions = _decision_count(active_index) if active_index is not None else 0
     raw_ready = active_progress.get("raw_corpus_can_satisfy_oos_minimums") is True
@@ -321,6 +505,17 @@ def _body(
             f"**Economic edge:** {edge}  ",
             f"**Live orders:** {orders}",
             "",
+            "## V3 one-shot integrity state",
+            "",
+        ]
+    )
+    lines.extend(_phase9_v3_state_summary(phase9_v3_state))
+    lines.extend(
+        [
+            "",
+            "This section exposes only immutable protocol/provenance state. "
+            "It does not reveal interim trade performance before a final one-shot result.",
+            "",
             "## Historical V2 evidence",
             "",
         ]
@@ -352,6 +547,11 @@ def _body(
             f"{_run_link(repo, latest_v3_curator)}",
         ]
     )
+    if event_workflow_run is not None:
+        lines.append(
+            f"- Dashboard trigger workflow: **{_state(event_workflow_run)}** — "
+            f"{_run_link(repo, event_workflow_run)}"
+        )
     if event_curator is not None:
         lines.append(
             f"- Dashboard trigger curator: **{_state(event_curator)}** — "
@@ -386,6 +586,8 @@ def _body(
             f"(https://github.com/{repo}/actions/workflows/evidence-campaign-scheduled.yml)",
             "- [V3 evidence corpus curator]"
             f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator-v3.yml)",
+            "- [V3 Phase 9 one-shot]"
+            f"(https://github.com/{repo}/actions/workflows/phase9-v3-one-shot.yml)",
             "- [Historical V2 curator]"
             f"(https://github.com/{repo}/actions/workflows/evidence-corpus-curator.yml)",
             "- [Repository status]"
@@ -400,7 +602,8 @@ def _body(
 
 
 def build_issue_patch(repo: str) -> JsonObject:
-    event_curator = _event_curator(repo)
+    event_workflow_run = _event_workflow_run(repo)
+    event_curator = _event_curator(event_workflow_run, repo)
     event_spec = _protocol_for_curator(event_curator, repo) if event_curator else None
     event_id = _run_id(event_curator) if event_curator else None
 
@@ -428,6 +631,7 @@ def build_issue_patch(repo: str) -> JsonObject:
         V2,
         preferred_curator_id=event_id if event_spec == V2 else None,
     )
+    phase9_v3_state = _phase9_v3_state(repo)
 
     active_progress = active_snapshot[0] if active_snapshot else _zero_v3_progress()
     active_index = active_snapshot[1] if active_snapshot else None
@@ -444,7 +648,9 @@ def build_issue_patch(repo: str) -> JsonObject:
             historical_v2_snapshot=historical_v2_snapshot,
             latest_v3_campaign=latest_v3_campaign,
             latest_v3_curator=latest_v3_curator,
+            event_workflow_run=event_workflow_run,
             event_curator=event_curator,
+            phase9_v3_state=phase9_v3_state,
         )
     }
 
