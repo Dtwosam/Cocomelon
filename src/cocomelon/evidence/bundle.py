@@ -228,6 +228,12 @@ def _integer(value: object, field: str) -> int:
     return value
 
 
+def _optional_integer(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, field)
+
+
 def _decimal(value: object, field: str) -> Decimal:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be a canonical decimal string")
@@ -376,6 +382,10 @@ def _execution(value: object) -> PaperExecutionConfig:
         max_asset_ctx_age_ms=_integer(
             raw.get("max_asset_ctx_age_ms"),
             "max_asset_ctx_age_ms",
+        ),
+        max_position_age_ms=_optional_integer(
+            raw.get("max_position_age_ms"),
+            "max_position_age_ms",
         ),
         funding_reconciliation_grace_ms=_integer(
             raw.get("funding_reconciliation_grace_ms"),
