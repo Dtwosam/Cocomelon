@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-campaign-v4-scheduled.yml")
-PINNED_CODE = "28db668048a83da7f7b1ba92ae2cf50aa980cb6e"
+PINNED_CODE = "0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7"
 ENTRY_WINDOW_SECONDS = 2700
 CAPTURE_WINDOW_SECONDS = 18900
 MAX_POSITION_AGE_SECONDS = 14400
@@ -39,7 +39,7 @@ def test_v4_campaign_rejects_manual_dispatch_before_capture() -> None:
 
 def test_v4_campaign_uses_one_fixed_5h15_capture() -> None:
     text = _text()
-    assert "group: genuine-mainnet-evidence-v4-28db6680" in text
+    assert "group: genuine-mainnet-evidence-v4-0ad7c5c3" in text
     assert "cancel-in-progress: false" in text
     assert "timeout-minutes: 350" in text
     assert f"--seconds {CAPTURE_WINDOW_SECONDS}" in text

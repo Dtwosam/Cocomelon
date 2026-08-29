@@ -21,12 +21,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
       SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      V4_CODE_REVISION: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+      V4_CODE_REVISION: 0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7
     steps:
       - name: Checkout pinned V4 verification tooling
         uses: actions/checkout@v4
         with:
-          ref: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+          ref: 0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7
           fetch-depth: 1
           persist-credentials: false
 
@@ -347,7 +347,7 @@ jobs:
               "execution_config_version": "phase7-v2-4h-thesis-expiry",
               "live_orders": False,
               "max_position_age_seconds": 14400,
-              "pinned_code_revision": "28db668048a83da7f7b1ba92ae2cf50aa980cb6e",
+              "pinned_code_revision": "0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7",
               "protocol": "v4-thesis-expiry-mainnet",
               "replay_engine_version": "phase8-v3-thesis-expiry",
               "schema_version": 1,
@@ -364,7 +364,7 @@ jobs:
           protocol = {
               "schema_version": 1,
               "protocol": "v4-thesis-expiry-mainnet",
-              "pinned_code_revision": "28db668048a83da7f7b1ba92ae2cf50aa980cb6e",
+              "pinned_code_revision": "0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7",
               "replay_engine_version": "phase8-v3-thesis-expiry",
               "config_version": "phase9-baseline-replay-v3-thesis-expiry",
               "execution_config_version": "phase7-v2-4h-thesis-expiry",

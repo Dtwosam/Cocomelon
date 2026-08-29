@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: genuine-mainnet-evidence-v4-28db6680
+  group: genuine-mainnet-evidence-v4-0ad7c5c3
   cancel-in-progress: false
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       COCOMELON_WS_CONNECT_SPACING_SECONDS: 15
-      COHORT_CODE_REVISION: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+      COHORT_CODE_REVISION: 0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7
       COHORT_TRIGGER_SHA: ${{ github.sha }}
       ENTRY_WINDOW_SECONDS: 2700
       CAPTURE_WINDOW_SECONDS: 18900
@@ -30,7 +30,7 @@ jobs:
       - name: Checkout pinned V4 evidence revision
         uses: actions/checkout@v4
         with:
-          ref: 28db668048a83da7f7b1ba92ae2cf50aa980cb6e
+          ref: 0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7
           fetch-depth: 1
 
       - uses: actions/setup-python@v5
