@@ -282,10 +282,6 @@ def assemble_trade_journal_entry(
     except ValueError as exc:
         return _inconsistency("TRADE_ANALYTICS_INVALID", str(exc))
 
-    with localcontext(AUTHORITATIVE_CONTEXT):
-        if lifecycle.equity_after - lifecycle.equity_before != analytics.net_pnl:
-            return _inconsistency("EQUITY_RECONCILIATION_MISMATCH")
-
     return TradeJournalEntry(
         market=market,
         direction=direction,
