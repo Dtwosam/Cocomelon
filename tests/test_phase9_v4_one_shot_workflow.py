@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/phase9-v4-one-shot.yml")
-FROZEN_EVALUATOR_SHA = "0b7b126d19306679c029807b2e2e86d614fb8847"
+FROZEN_EVALUATOR_SHA = "6c731ae169091ee4a671e3222f9712368139798e"
 STATE_BRANCH = "phase9-v4-protocol-state"
 STATE_FILE = "phase9-v4-final.json"
 FREEZE_FILE = "phase9-v4-freeze.json"
