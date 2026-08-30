@@ -4,7 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/evidence-corpus-curator-v4.yml")
 CAMPAIGN = "Scheduled Genuine Mainnet Evidence Campaign V4"
-PINNED_CODE = "0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7"
+PINNED_CODE = "0c14c9cfa37c80babc65d050fed6d4465dcb9032"
 
 
 def _text() -> str:
