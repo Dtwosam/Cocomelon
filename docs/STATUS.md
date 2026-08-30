@@ -1,11 +1,11 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-08-29  
+**Last updated:** 2026-08-30  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified V4 execution runtime:** `0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7`  
-**Accounting-corrected V4 activation merge:** `e9939644ee562431c844ade0e014f3abd56ce46b`  
-**Frozen V4 Phase 9 evaluator:** `6c731ae169091ee4a671e3222f9712368139798e`  
+**Verified V4 execution runtime:** `0c14c9cfa37c80babc65d050fed6d4465dcb9032`  
+**Funding-corrected V4 activation merge:** `fa89892a1ec27412d11d8457dc5d41334afdaf11`  
+**Frozen V4 Phase 9 evaluator:** `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -14,7 +14,7 @@
 
 The active evidence protocol is **V4 thesis-expiry mainnet evidence**. It uses genuine public Hyperliquid mainnet data with paper execution only.
 
-The frozen V4 acquisition contract is:
+The frozen V4 acquisition contract is unchanged:
 
 - fixed **45-minute entry window** (`2700` seconds);
 - exact **4-hour maximum position age** (`14400` seconds);
@@ -27,21 +27,22 @@ The frozen V4 acquisition contract is:
 - final cohort admission requires clean transport, complete replay/dataset evidence, empty gap refs, and flat replay exposure;
 - live orders remain disabled.
 
-Exact V4 evidence identity:
+Exact active V4 evidence identity:
 
 - protocol `v4-thesis-expiry-mainnet`;
-- runtime `0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7`;
+- runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`;
 - replay engine `phase8-v3-thesis-expiry`;
 - replay config `phase9-baseline-replay-v3-thesis-expiry`;
-- execution config `phase7-v2-4h-thesis-expiry`.
+- execution config `phase7-v2-4h-thesis-expiry`;
+- frozen evaluator `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`.
 
-The runtime repin is a correctness/provenance correction made **before the first V4 cohort was accepted**. Strategy logic, risk rules, execution economics, entry/capture/expiry windows, readiness thresholds, and the one-shot economic protocol were not changed.
+The current runtime/evaluator repin is a correctness/provenance correction made **before the first V4 cohort was accepted**. Strategy logic, risk rules, execution economics, entry/capture/expiry windows, readiness thresholds, and the one-shot economic protocol were not changed.
 
 V3 scheduled acquisition is retired. Its workflow remains manual-only for frozen audit/reproduction and cannot compete with V4 scheduled evidence.
 
 ## Active V4 evidence progress
 
-Current trusted V4 state:
+Current trusted V4 state remains:
 
 - **0 accepted V4 cohorts**;
 - **0 / 100 closed paper trades**;
@@ -49,21 +50,56 @@ Current trusted V4 state:
 - **no V4 economic edge claim**;
 - **live orders disabled**.
 
-The first scheduled V4 campaign, run `33228947939`, captured the full genuine-mainnet window successfully and uploaded its source artifact, but offline replay failed with `EQUITY_RECONCILIATION_MISMATCH`. The curator rejected that source; it remains diagnostic evidence only and contributes **zero** economic progress.
+No failed or pre-fix V4 source has been retried, reclassified, or retroactively admitted. All remain diagnostic evidence only and contribute **zero** economic progress.
 
-Investigation showed the rejected replay had overlapping paper positions. The journal incorrectly required one closed trade's net PnL to equal the change in whole-account equity while another open position's unrealized PnL was also moving. That equality is invalid for overlapping positions. PR #109 removed only that false cross-position equality while preserving authoritative trade-local fill/fee/funding reconciliation and the actual account-equity snapshots. The corrected runtime is `0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7`.
+### Accounting correction boundary
 
-The failed cohort is **not retried, reclassified, or retroactively admitted**. Because no V4 cohort had ever been accepted and no V4 one-shot freeze existed, PRs #110 and #111 prospectively repinned the V4 evaluator, acquisition, curator, and one-shot workflow before any admissible V4 corpus was established.
+The first scheduled V4 campaign, run `33228947939`, captured the full genuine-mainnet window successfully but offline replay failed with `EQUITY_RECONCILIATION_MISMATCH` while positions overlapped. The journal had incorrectly required one closed trade's net PnL to equal the change in whole-account equity while another open position's unrealized PnL was moving.
+
+PR #109 removed only that invalid cross-position equality while preserving authoritative trade-local fill/fee/funding reconciliation and account-equity snapshots. Its corrected runtime was `0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7`. Because zero V4 cohorts had been accepted, PRs #110 and #111 prospectively repinned the V4 source/evaluator boundary without changing trading logic.
+
+### GitHub Actions timeout correction
+
+Subsequent scheduled cohorts showed that the single `350`-minute campaign job left only about 35 minutes for offline replay after the fixed 5h15 acquisition. Runs #3 and #4 therefore completed acquisition but were cancelled during replay at the job timeout.
+
+PR #113 separated the fixed evidence campaign into two jobs:
+
+- `acquire-evidence`: `330`-minute budget for the single 5h15 mainnet capture;
+- `verify-evidence`: independent `90`-minute budget for offline validation/replay;
+- an intermediate acquisition artifact transfers the exact captured evidence between jobs;
+- acquisition-only concurrency remains `cancel-in-progress: false`.
+
+Run `33313715800` (V4 run #6) proved that correction operationally: acquisition completed, its staging artifact uploaded, the independent verification job downloaded it, and offline validation/replay completed. The prior 350-minute cancellation mode did not recur.
+
+### Funding-boundary timestamp correction
+
+Run `33254784124` and later run `33313715800` both had clean transport and flat closed positions, yet replay/dataset completeness remained false under runtime `0ad7c5c...`.
+
+Investigation found the remaining correctness defect in hourly funding evidence. Hyperliquid historical funding records can carry source timestamps a few milliseconds after the exact hourly boundary. The replay state book indexed those records only by their raw timestamp while funding reconciliation looked them up by the exact hourly boundary, producing false `FUNDING_RECORD_MISSING` gaps even when the source funding evidence was present.
+
+PR #114 fixed this narrowly:
+
+- preserves the original funding source timestamp and provenance;
+- maps only bounded post-hour timestamp jitter (`<= 1000 ms`) to the canonical hourly reconciliation boundary;
+- still rejects records outside that strict tolerance;
+- adds RED/GREEN regressions for mainnet-style `+49 ms` timestamps and out-of-window rejection;
+- does not change funding rates, cash-flow formulas, strategy, risk, execution economics, or evidence thresholds.
+
+The funding-corrected runtime is `0c14c9cfa37c80babc65d050fed6d4465dcb9032`.
+
+Because zero V4 cohorts had been accepted and no V4 corpus/final one-shot freeze existed, PR #115 prospectively repinned the V4 source protocol to that runtime. PR #116 then activated the corrected runtime for acquisition/replay and curator verification, and pinned the frozen one-shot evaluator to `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`.
+
+Run `33313715800` remains diagnostic only: it used the pre-funding-fix runtime, completed replay successfully under the split workflow, produced one closed/flat paper trade, but was correctly rejected with `replay_incomplete` and `dataset_incomplete`. Its final source artifact is `9737092116` with SHA256 `2079f2e4738546dd8003b3bde97ca83d5225f3c9ec66fe2f1c0b9f5684c8cc54`.
 
 ## V4 acquisition and isolated curator
 
-`.github/workflows/evidence-campaign-v4-scheduled.yml` is the active acquisition workflow. It is paper-only, mainnet-only, fixed-duration, schedule-only for economic acquisition, and pinned to the immutable corrected V4 runtime.
+`.github/workflows/evidence-campaign-v4-scheduled.yml` is the active acquisition workflow. It is paper-only, mainnet-only, fixed-duration, schedule-only for economic acquisition, uses independent acquisition/replay time budgets, and is pinned to runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`.
 
 `.github/workflows/evidence-corpus-curator-v4.yml` is the only V4 admission path. It:
 
 1. accepts only completed exact V4 campaign sources;
 2. verifies repository/workflow provenance before trusting artifacts;
-3. requires the exact corrected V4 runtime/replay/config/execution identity;
+3. requires the exact active V4 runtime/replay/config/execution identity;
 4. fails closed on incomplete replay, incomplete dataset, gaps, or open exposure;
 5. writes only `v4-mainnet-corpus`;
 6. never imports V3 or V2 corpus evidence;
@@ -71,7 +107,7 @@ The failed cohort is **not retried, reclassified, or retroactively admitted**. B
 
 ## V4 Phase 9 evaluator handoff
 
-PR #110 repinned the V4 evaluator to the corrected source runtime. The frozen evaluator revision is `6c731ae169091ee4a671e3222f9712368139798e`.
+The frozen evaluator revision is `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff` and is bound to source runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`.
 
 The V4 evaluator uses distinct immutable identities:
 
@@ -81,62 +117,25 @@ The V4 evaluator uses distinct immutable identities:
 
 It requires the exact V4 `protocol.json`, copies and hashes that protocol into the frozen snapshot, binds the canonical protocol digest, and rejects incompatible source/snapshot identity rather than silently reinterpreting evidence.
 
-The statistical engine and `EvaluationPolicy()` are unchanged. The accounting correction does not relax Phase 9 promotion thresholds.
+The statistical engine and `EvaluationPolicy()` are unchanged. The accounting, timeout, and funding-timestamp corrections do not relax Phase 9 promotion thresholds.
 
 ## Immutable V4 one-shot boundary
 
-`.github/workflows/phase9-v4-one-shot.yml` is the V4 one-shot handoff. It consumes only a successful exact `Verified V4 Mainnet Evidence Corpus Curator` run and pins evaluator revision `6c731ae169091ee4a671e3222f9712368139798e`.
+`.github/workflows/phase9-v4-one-shot.yml` consumes only a successful exact `Verified V4 Mainnet Evidence Corpus Curator` run and pins evaluator revision `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`.
 
-The one-shot workflow:
-
-1. verifies the triggering curator provenance;
-2. downloads exactly one trusted `v4-mainnet-corpus` artifact from that curator;
-3. prepares a local-only frozen V4 snapshot with no exchange/network/live arguments;
-4. preserves the locked fixed-window readiness logic;
-5. persists a permanent append-once freeze lock to `phase9-v4-protocol-state/phase9-v4-freeze.json` before economic evaluation;
-6. refuses to select a replacement OOS corpus after the freeze exists;
-7. emits a readiness-only terminal insufficient result if the fixed protocol reaches its terminal boundary without enough evidence;
-8. otherwise evaluates exactly the frozen snapshot once and persists the final state to `phase9-v4-protocol-state/phase9-v4-final.json`;
-9. keeps preparation/evaluation jobs read-only, with narrow write permission isolated to state persistence;
-10. records `network_access: false` and `live_orders: false` in immutable state.
+The one-shot workflow verifies curator provenance, downloads one trusted V4 corpus, prepares a local-only frozen snapshot, persists an append-once freeze before any economic evaluation, refuses replacement OOS data after freeze, and then produces exactly one terminal insufficient-evidence result or one untouched economic evaluation. Preparation/evaluation remain offline and read-only; narrow repository write permission is isolated to immutable state persistence.
 
 ## Evidence dashboard
 
-Issue #82 remains the canonical human-readable tracker:
+Issue #82 remains the canonical human-readable tracker. It treats V4 as active and V3/V2 as historical. Historical counts are never added to V4 progress.
 
-`https://github.com/Dtwosam/Cocomelon/issues/82`
+Routine dashboard output exposes operational/provenance state only. Before an immutable V4 final result exists, **Economic edge remains `Not measured yet`**. Interim PnL, final equity, mean net R, win rate, profit factor, bootstrap values, and other tuning-sensitive fields remain hidden.
 
-The dashboard treats **V4 as active** and V3/V2 as historical. Historical counts are never added to V4 progress.
+## Historical evidence
 
-Routine dashboard output exposes operational/provenance state only. Before an immutable V4 final result exists, **Economic edge remains `Not measured yet`**. It does not expose interim PnL, final equity, mean net R, win rate, profit factor, bootstrap values, or other tuning-sensitive economic fields.
+V3 is retained for audit/history only and does not advance V4 readiness. Its trusted state remains zero accepted cohorts/trades/days. The frozen historical V3 runtime is `f8f84200dbc8b6fb262c5f6f99993b40714357be`; its Phase 9 evaluator is `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`.
 
-After a valid append-once V4 final state exists, the dashboard may expose only the high-level terminal/evaluated verdict after verifying canonical IDs, freeze binding, one-shot identity, snapshot identity, offline-only semantics, and exact V4 evaluation identity.
-
-## Historical V3 evidence
-
-V3 is retained for audit/history only and does not advance V4 readiness.
-
-Current trusted V3 state remains:
-
-- **0 accepted V3 cohorts**;
-- **0 closed paper trades**;
-- **0 closed-trade days**;
-- no V3 economic edge claim.
-
-The frozen historical V3 runtime is `f8f84200dbc8b6fb262c5f6f99993b40714357be`; its Phase 9 evaluator is `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`.
-
-## Historical V2 evidence
-
-The final trusted V2 corpus remains preserved for audit/history only:
-
-- **3 accepted genuine-mainnet V2 cohorts**;
-- **45 strategy decisions**;
-- **0 closed paper trades**;
-- **0 closed-trade days**;
-- last trusted corpus artifact ID `9621177153`;
-- no demonstrated economic edge.
-
-V2 evidence is never counted toward V4 readiness.
+V2 is also audit/history only. Its final trusted corpus remains 3 accepted genuine-mainnet cohorts, 45 strategy decisions, 0 closed paper trades, 0 closed-trade days, and no demonstrated economic edge. V2 evidence is never counted toward V4 readiness.
 
 ## Locked economic gate
 
@@ -172,12 +171,12 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let the next scheduled V4 cohort start naturally; do not manually dispatch or retry a failed cohort.
-3. Verify that the scheduled campaign checks out corrected runtime `0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7` and completes capture/replay under the unchanged thesis-expiry contract.
-4. Admit only clean, complete, flat V4 cohorts into `v4-mainnet-corpus`.
-5. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
-6. Once the fixed terminal boundary is reached, permit exactly one readiness-only insufficient result or one frozen untouched evaluation; never retest on newer data after a final state exists.
-7. Advance toward Phase 10 only if the immutable V4 one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+2. Let the next **naturally scheduled** V4 cohort after activation merge `fa89892a1ec27412d11d8457dc5d41334afdaf11` start; do not manually dispatch or retry any prior cohort.
+3. Verify that it checks out runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`, completes the single 5h15 acquisition, transfers the staging artifact, and completes independent offline replay.
+4. Admit only a clean, complete, flat corrected-runtime source into `v4-mainnet-corpus`.
+5. Continue frozen acquisition without strategy tuning until the economic minimums are reached.
+6. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
+7. Advance toward Phase 10 only if the immutable one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Profitability and live-trading status
 
