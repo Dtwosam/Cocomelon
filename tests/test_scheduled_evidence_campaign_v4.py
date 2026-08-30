@@ -39,9 +39,10 @@ def test_v4_campaign_rejects_manual_dispatch_before_capture() -> None:
 
 def test_v4_campaign_uses_one_fixed_5h15_capture() -> None:
     text = _text()
-    assert "group: genuine-mainnet-evidence-v4-0ad7c5c3" in text
+    assert "acquire-evidence:" in text
+    assert "group: genuine-mainnet-evidence-v4-acquisition-0ad7c5c3" in text
     assert "cancel-in-progress: false" in text
-    assert "timeout-minutes: 350" in text
+    assert "timeout-minutes: 330" in text
     assert f"--seconds {CAPTURE_WINDOW_SECONDS}" in text
     assert "--deep-limit 5" in text
     assert "for ATTEMPT in 1 2" not in text
@@ -50,6 +51,24 @@ def test_v4_campaign_uses_one_fixed_5h15_capture() -> None:
     assert "python -m cocomelon.ops.gap_watch" in text
     assert "record-transport.json" in text
     assert "normalize_redundant_record_payload" in text
+
+
+def test_v4_campaign_replay_has_independent_time_budget() -> None:
+    text = _text()
+    assert "verify-evidence:" in text
+    assert "needs: acquire-evidence" in text
+    assert "timeout-minutes: 90" in text
+    assert "actions/upload-artifact@v4" in text
+    assert "actions/download-artifact@v4" in text
+    stage_name = (
+        "v4-acquisition-stage-${{ github.run_id }}-"
+        "attempt-${{ github.run_attempt }}"
+    )
+    assert stage_name in text
+    assert text.index("Record thesis-expiry genuine public mainnet evidence") < text.index(
+        stage_name
+    )
+    assert text.index(stage_name) < text.index("Validate and replay V4 evidence offline")
 
 
 def test_v4_campaign_freezes_exact_thesis_expiry_replay() -> None:
