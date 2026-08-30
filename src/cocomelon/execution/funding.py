@@ -12,6 +12,18 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 
 ZERO = Decimal("0")
 AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
+FUNDING_INTERVAL_MS = 3_600_000
+FUNDING_BOUNDARY_POST_TIMESTAMP_TOLERANCE_MS = 1_000
+
+
+def funding_boundary_for_record_time(time_ms: int) -> int | None:
+    """Map bounded post-hour exchange timestamp jitter to its canonical boundary."""
+    if time_ms < 0:
+        raise ValueError("funding record time must be non-negative")
+    boundary_ms = time_ms - (time_ms % FUNDING_INTERVAL_MS)
+    if time_ms - boundary_ms <= FUNDING_BOUNDARY_POST_TIMESTAMP_TOLERANCE_MS:
+        return boundary_ms
+    return None
 
 
 def _digest(payload: dict[str, object]) -> str:
@@ -175,7 +187,7 @@ def reconcile_funding_boundary(
         return _gap(position, boundary_ms, now_ms, config, "FUNDING_RECORD_MISSING")
     if funding_record.market != position.market:
         return _gap(position, boundary_ms, now_ms, config, "FUNDING_MARKET_MISMATCH")
-    if funding_record.time_ms != boundary_ms:
+    if funding_boundary_for_record_time(funding_record.time_ms) != boundary_ms:
         return _gap(position, boundary_ms, now_ms, config, "FUNDING_TIME_MISMATCH")
     if funding_record.received_at_ms > now_ms:
         return _gap(position, boundary_ms, now_ms, config, "FUNDING_RECORD_FROM_FUTURE")
