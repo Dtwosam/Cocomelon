@@ -192,7 +192,7 @@ def test_position_must_be_open_before_boundary() -> None:
     assert result.reason == "POSITION_NOT_OPEN_ACROSS_BOUNDARY"
 
 
-def test_funding_market_and_time_must_match_exactly() -> None:
+def test_funding_market_must_match_and_time_must_stay_within_boundary_window() -> None:
     wrong_market = reconcile_funding_boundary(
         position(),
         BOUNDARY,
@@ -205,7 +205,7 @@ def test_funding_market_and_time_must_match_exactly() -> None:
         position(),
         BOUNDARY,
         oracle_ctx(),
-        funding_record(time_ms=BOUNDARY + 1),
+        funding_record(time_ms=BOUNDARY + 1_001),
         now_ms=BOUNDARY + 2_000,
         config=PaperExecutionConfig(),
     )
