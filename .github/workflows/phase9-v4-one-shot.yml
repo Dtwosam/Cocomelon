@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  PHASE9_EVALUATOR_REVISION: 6c731ae169091ee4a671e3222f9712368139798e
+  PHASE9_EVALUATOR_REVISION: efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff
   PHASE9_STATE_BRANCH: phase9-v4-protocol-state
   PHASE9_STATE_FILE: phase9-v4-final.json
   PHASE9_FREEZE_FILE: phase9-v4-freeze.json
@@ -237,7 +237,7 @@ jobs:
         if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
         uses: actions/checkout@v4
         with:
-          ref: 6c731ae169091ee4a671e3222f9712368139798e
+          ref: efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff
           path: phase9-v4-tooling
           fetch-depth: 1
           persist-credentials: false
@@ -495,7 +495,7 @@ jobs:
       - name: Checkout frozen Phase 9 V4 evaluator
         uses: actions/checkout@v4
         with:
-          ref: 6c731ae169091ee4a671e3222f9712368139798e
+          ref: efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff
           path: phase9-v4-tooling
           fetch-depth: 1
           persist-credentials: false
