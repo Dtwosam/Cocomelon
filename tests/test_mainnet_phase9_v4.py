@@ -26,7 +26,7 @@ def _expected_protocol() -> dict[str, object]:
     return {
         "schema_version": 1,
         "protocol": "v4-thesis-expiry-mainnet",
-        "pinned_code_revision": "0ad7c5c3626d0a4a1f2ec87c8806983d529a9be7",
+        "pinned_code_revision": "0c14c9cfa37c80babc65d050fed6d4465dcb9032",
         "replay_engine_version": "phase8-v3-thesis-expiry",
         "config_version": "phase9-baseline-replay-v3-thesis-expiry",
         "execution_config_version": "phase7-v2-4h-thesis-expiry",
