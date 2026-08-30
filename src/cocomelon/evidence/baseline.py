@@ -16,6 +16,7 @@ from cocomelon.domain.market import (
 )
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import StreamEvent, StreamKind
+from cocomelon.execution.funding import funding_boundary_for_record_time
 
 
 @dataclass(slots=True)
@@ -329,10 +330,12 @@ class RecordedStateBook:
                 state._snapshot_available_at_ms = record.available_at_ms
         elif record.event_kind == "funding_rate":
             rate = replay_record_funding_rate(record)
-            previous_available = state._funding_available_at.get(rate.time_ms)
+            boundary_ms = funding_boundary_for_record_time(rate.time_ms)
+            index_ms = rate.time_ms if boundary_ms is None else boundary_ms
+            previous_available = state._funding_available_at.get(index_ms)
             if previous_available is None or record.available_at_ms >= previous_available:
-                state.funding_by_boundary[rate.time_ms] = rate
-                state._funding_available_at[rate.time_ms] = record.available_at_ms
+                state.funding_by_boundary[index_ms] = rate
+                state._funding_available_at[index_ms] = record.available_at_ms
         elif record.event_kind == StreamKind.CANDLE.value:
             self._apply_candle(state, record)
         else:
