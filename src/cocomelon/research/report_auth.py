@@ -6,6 +6,7 @@ import sqlite3
 from decimal import Decimal, InvalidOperation
 
 from cocomelon.research.contracts import ResearchCandidateState
+from cocomelon.research.metrics import compute_checkpoint_risk_metrics
 from cocomelon.research.sequential import (
     DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
     evaluate_checkpoint,
@@ -100,6 +101,7 @@ def assert_checkpoint_report_backed_by_observations(
         _int_value(observation.get("closed_at_ms"), "closed_at_ms") // DAY_MS
         for observation in observations
     }
+    risk_metrics = compute_checkpoint_risk_metrics(observations)
 
     reason_codes_value = payload.get("reason_codes", [])
     if not isinstance(reason_codes_value, list) or not all(
@@ -129,6 +131,16 @@ def assert_checkpoint_report_backed_by_observations(
         ),
         "policy_digest": checkpoint.policy_digest,
         "reason_codes": list(checkpoint.reason_codes),
+        "realized_closed_trade_max_drawdown_fraction": (
+            None
+            if risk_metrics.realized_closed_trade_max_drawdown_fraction is None
+            else str(risk_metrics.realized_closed_trade_max_drawdown_fraction)
+        ),
+        "max_realized_planned_risk_utilization": (
+            None
+            if risk_metrics.max_realized_planned_risk_utilization is None
+            else str(risk_metrics.max_realized_planned_risk_utilization)
+        ),
     }
     for field, expected_value in expected.items():
         if payload.get(field) != expected_value:
