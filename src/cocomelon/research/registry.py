@@ -86,6 +86,11 @@ class ResearchRegistry:
                 end_ms INTEGER NOT NULL,
                 disposition TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS research_v4_registry_state (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                complete_through_ms INTEGER NOT NULL,
+                source_id TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS research_batches (
                 batch_id TEXT PRIMARY KEY,
                 candidate_id TEXT NOT NULL,
@@ -190,6 +195,11 @@ class ResearchRegistry:
     def close(self) -> None:
         self.connection.close()
 
+    def _begin_immediate(self) -> None:
+        if self.connection.in_transaction:
+            raise ResearchRegistryError("registry write transaction is already active")
+        self.connection.execute("BEGIN IMMEDIATE")
+
     def _local_touched_intervals(self, candidate_id: str) -> tuple[TimeInterval, ...]:
         rows = self.connection.execute(
             """
@@ -277,23 +287,14 @@ class ResearchRegistry:
             if inherited_contamination
             else ResearchCandidateState.DRAFT
         )
-        initial_reason = (
-            "inherited_contamination" if inherited_contamination else "candidate_created"
-        )
+        reason = "inherited_contamination" if inherited_contamination else "candidate_created"
         with self.connection:
             self.connection.execute(
                 """
                 INSERT INTO research_candidates (
-                    candidate_id,
-                    family_id,
-                    parent_candidate_id,
-                    ancestor_candidate_ids_json,
-                    config_digest,
-                    code_revision,
-                    execution_config_json,
-                    risk_config_json,
-                    state,
-                    freeze_ms
+                    candidate_id, family_id, parent_candidate_id,
+                    ancestor_candidate_ids_json, config_digest, code_revision,
+                    execution_config_json, risk_config_json, state, freeze_ms
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
                 """,
                 (
@@ -313,7 +314,7 @@ class ResearchRegistry:
                 INSERT INTO research_candidate_state_events (candidate_id, state, reason)
                 VALUES (?, ?, ?)
                 """,
-                (manifest.candidate_id, stored_state.value, initial_reason),
+                (manifest.candidate_id, stored_state.value, reason),
             )
 
     def load_candidate(self, candidate_id: str) -> ResearchCandidateManifest:
@@ -336,9 +337,7 @@ class ResearchRegistry:
 
         ancestors = self._decode_ancestors(str(row["ancestor_candidate_ids_json"]))
         local_touched = self._local_touched_intervals(candidate_id)
-        effective_touched = self._effective_touched_for_lineage(
-            ancestors + (candidate_id,)
-        )
+        effective_touched = self._effective_touched_for_lineage(ancestors + (candidate_id,))
         return ResearchCandidateManifest(
             candidate_id=str(row["candidate_id"]),
             family_id=str(row["family_id"]),
@@ -351,8 +350,8 @@ class ResearchRegistry:
             execution_config_json=str(row["execution_config_json"]),
             risk_config_json=str(row["risk_config_json"]),
             state=state,
-            first_observation_ms=(None if not local_touched else local_touched[0].start_ms),
-            last_observation_ms=(None if not local_touched else local_touched[-1].end_ms),
+            first_observation_ms=None if not local_touched else local_touched[0].start_ms,
+            last_observation_ms=None if not local_touched else local_touched[-1].end_ms,
             source_provenance_ids=self._source_provenance_ids(candidate_id),
             local_touched_intervals=local_touched,
             effective_touched_intervals=effective_touched,
@@ -387,6 +386,90 @@ class ResearchRegistry:
         )
         self.connection.commit()
 
+    def mark_v4_registry_complete_through(self, *, through_ms: int, source_id: str) -> None:
+        if through_ms < 0:
+            raise ResearchRegistryError("V4 registry completeness timestamp must be non-negative")
+        if not source_id.strip():
+            raise ResearchRegistryError("V4 registry completeness source must not be empty")
+        self._begin_immediate()
+        try:
+            row = self.connection.execute(
+                """
+                SELECT complete_through_ms, source_id
+                FROM research_v4_registry_state
+                WHERE singleton = 1
+                """
+            ).fetchone()
+            if row is None:
+                self.connection.execute(
+                    """
+                    INSERT INTO research_v4_registry_state (
+                        singleton, complete_through_ms, source_id
+                    ) VALUES (1, ?, ?)
+                    """,
+                    (through_ms, source_id),
+                )
+            else:
+                stored_through = int(row["complete_through_ms"])
+                stored_source = str(row["source_id"])
+                if stored_source != source_id:
+                    raise ResearchRegistryError(
+                        "V4 registry completeness source cannot change"
+                    )
+                if through_ms < stored_through:
+                    raise ResearchRegistryError(
+                        "V4 registry completeness cannot move backwards"
+                    )
+                if through_ms > stored_through:
+                    self.connection.execute(
+                        """
+                        UPDATE research_v4_registry_state
+                        SET complete_through_ms = ?
+                        WHERE singleton = 1
+                        """,
+                        (through_ms,),
+                    )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+
+    def _known_v4_overlap(self, interval: TimeInterval) -> sqlite3.Row | None:
+        return self.connection.execute(
+            """
+            SELECT run_id, start_ms, end_ms
+            FROM research_v4_intervals
+            WHERE start_ms < ? AND ? < end_ms
+            ORDER BY start_ms, end_ms, run_id
+            LIMIT 1
+            """,
+            (interval.end_ms, interval.start_ms),
+        ).fetchone()
+
+    def _assert_v4_registry_complete_for(self, interval: TimeInterval) -> None:
+        row = self.connection.execute(
+            """
+            SELECT complete_through_ms
+            FROM research_v4_registry_state
+            WHERE singleton = 1
+            """
+        ).fetchone()
+        if row is None or int(row["complete_through_ms"]) < interval.end_ms:
+            raise ResearchRegistryError(
+                "V4 registry completeness is not authoritative through research interval"
+            )
+
+    def _assert_batch_disjoint_from_v4_locked(self, interval: TimeInterval) -> None:
+        overlap = self._known_v4_overlap(interval)
+        if overlap is not None:
+            raise ResearchContaminationError(
+                f"research source overlaps V4 acquisition interval for run {overlap['run_id']}"
+            )
+        self._assert_v4_registry_complete_for(interval)
+
+    def assert_batch_disjoint_from_v4(self, interval: TimeInterval) -> None:
+        self._assert_batch_disjoint_from_v4_locked(interval)
+
     def record_batch(
         self,
         *,
@@ -396,7 +479,6 @@ class ResearchRegistry:
         replay_run_id: str,
         interval: TimeInterval,
     ) -> None:
-        self._assert_research_touchable(candidate_id)
         for value, field in (
             (batch_id, "batch_id"),
             (source_id, "source_id"),
@@ -404,58 +486,56 @@ class ResearchRegistry:
         ):
             if not value.strip():
                 raise ResearchRegistryError(f"{field} must not be empty")
-        self.assert_batch_disjoint_from_v4(interval)
 
-        existing = self.connection.execute(
-            """
-            SELECT candidate_id, source_id, replay_run_id, start_ms, end_ms
-            FROM research_batches
-            WHERE batch_id = ?
-            """,
-            (batch_id,),
-        ).fetchone()
-        incoming = (
-            candidate_id,
-            source_id,
-            replay_run_id,
-            interval.start_ms,
-            interval.end_ms,
-        )
-        if existing is not None:
-            stored = (
-                str(existing["candidate_id"]),
-                str(existing["source_id"]),
-                str(existing["replay_run_id"]),
-                int(existing["start_ms"]),
-                int(existing["end_ms"]),
+        self._begin_immediate()
+        try:
+            self._assert_research_touchable(candidate_id)
+            self._assert_batch_disjoint_from_v4_locked(interval)
+            existing = self.connection.execute(
+                """
+                SELECT candidate_id, source_id, replay_run_id, start_ms, end_ms
+                FROM research_batches
+                WHERE batch_id = ?
+                """,
+                (batch_id,),
+            ).fetchone()
+            incoming = (
+                candidate_id,
+                source_id,
+                replay_run_id,
+                interval.start_ms,
+                interval.end_ms,
             )
-            if stored != incoming:
-                raise ResearchRegistryError(
-                    f"research batch already exists with different data: {batch_id}"
+            if existing is not None:
+                stored = (
+                    str(existing["candidate_id"]),
+                    str(existing["source_id"]),
+                    str(existing["replay_run_id"]),
+                    int(existing["start_ms"]),
+                    int(existing["end_ms"]),
                 )
-            return
+                if stored != incoming:
+                    raise ResearchRegistryError(
+                        f"research batch already exists with different data: {batch_id}"
+                    )
+                self.connection.commit()
+                return
 
-        replay_existing = self.connection.execute(
-            "SELECT batch_id FROM research_batches WHERE replay_run_id = ?",
-            (replay_run_id,),
-        ).fetchone()
-        if replay_existing is not None:
-            raise ResearchRegistryError(
-                f"research replay run already belongs to batch {replay_existing['batch_id']}"
-            )
+            replay_existing = self.connection.execute(
+                "SELECT batch_id FROM research_batches WHERE replay_run_id = ?",
+                (replay_run_id,),
+            ).fetchone()
+            if replay_existing is not None:
+                raise ResearchRegistryError(
+                    "research replay run already belongs to batch "
+                    f"{replay_existing['batch_id']}"
+                )
 
-        with self.connection:
             self.connection.execute(
                 """
                 INSERT INTO research_batches (
-                    batch_id,
-                    candidate_id,
-                    source_id,
-                    replay_run_id,
-                    start_ms,
-                    end_ms,
-                    status,
-                    contamination_v4_run_id
+                    batch_id, candidate_id, source_id, replay_run_id,
+                    start_ms, end_ms, status, contamination_v4_run_id
                 ) VALUES (?, ?, ?, ?, ?, ?, 'admitted', NULL)
                 """,
                 (
@@ -475,6 +555,10 @@ class ResearchRegistry:
                 """,
                 (candidate_id, source_id, interval.start_ms, interval.end_ms),
             )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def record_performance_report(
         self,
@@ -497,8 +581,7 @@ class ResearchRegistry:
         ).fetchone()
         if existing is not None:
             stored = (str(existing["candidate_id"]), str(existing["payload_json"]))
-            incoming = (candidate_id, payload_json)
-            if stored != incoming:
+            if stored != (candidate_id, payload_json):
                 raise ResearchRegistryError(
                     f"performance report already exists with different data: {report_id}"
                 )
@@ -541,16 +624,16 @@ class ResearchRegistry:
     ) -> None:
         if payload.get("candidate_state") != state.value:
             raise ResearchRegistryError("checkpoint report state does not match transition")
-        closed_trade_count = self._report_int(payload, "closed_trade_count")
-        closed_trade_days = self._report_int(payload, "closed_trade_days")
+        count = self._report_int(payload, "closed_trade_count")
+        days = self._report_int(payload, "closed_trade_days")
         posterior = self._report_decimal(payload, "posterior_probability_positive")
         checkpoint_state = payload.get("checkpoint_state")
 
         if state is ResearchCandidateState.RESEARCH_PROMISING:
             if (
                 checkpoint_state != "research_promising"
-                or closed_trade_count < 40
-                or closed_trade_days < 7
+                or count < 40
+                or days < 7
                 or posterior is None
                 or posterior < Decimal("0.80")
             ):
@@ -561,7 +644,7 @@ class ResearchRegistry:
         if state is ResearchCandidateState.REJECTED_FUTILITY:
             if (
                 checkpoint_state != "reject_futility"
-                or closed_trade_count < 20
+                or count < 20
                 or posterior is None
                 or posterior >= Decimal("0.05")
             ):
@@ -606,11 +689,13 @@ class ResearchRegistry:
             ResearchCandidateState.REJECTED_OPERATIONAL,
         }:
             raise ResearchRegistryError(f"checkpoint cannot enter {state.value}")
-        if current.state is ResearchCandidateState.RESEARCH_PROMISING and state is (
-            ResearchCandidateState.RESEARCHING
+        if (
+            current.state is ResearchCandidateState.RESEARCH_PROMISING
+            and state is ResearchCandidateState.RESEARCHING
         ):
-            raise ResearchRegistryError("research-promising candidate cannot return to researching")
-
+            raise ResearchRegistryError(
+                "research-promising candidate cannot return to researching"
+            )
         payload = self._checkpoint_report_payload(candidate_id, report_id)
         self._validate_checkpoint_report_for_state(payload, state)
         if current.state is state:
@@ -684,37 +769,43 @@ class ResearchRegistry:
     ) -> None:
         if not run_id.strip() or not disposition.strip():
             raise ResearchRegistryError("V4 run_id and disposition must not be empty")
-        existing = self.connection.execute(
-            "SELECT start_ms, end_ms, disposition FROM research_v4_intervals WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-        if existing is not None:
-            stored = (
-                int(existing["start_ms"]),
-                int(existing["end_ms"]),
-                str(existing["disposition"]),
-            )
-            incoming = (interval.start_ms, interval.end_ms, disposition)
-            if stored != incoming:
-                raise ResearchRegistryError(
-                    f"V4 interval already exists with different data: {run_id}"
+        self._begin_immediate()
+        try:
+            existing = self.connection.execute(
+                """
+                SELECT start_ms, end_ms, disposition
+                FROM research_v4_intervals
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if existing is not None:
+                stored = (
+                    int(existing["start_ms"]),
+                    int(existing["end_ms"]),
+                    str(existing["disposition"]),
                 )
-            return
+                if stored != (interval.start_ms, interval.end_ms, disposition):
+                    raise ResearchRegistryError(
+                        f"V4 interval already exists with different data: {run_id}"
+                    )
+                self.connection.commit()
+                return
 
-        overlapping_batches = self.connection.execute(
-            """
-            SELECT batch_id, candidate_id
-            FROM research_batches
-            WHERE start_ms < ? AND ? < end_ms
-            """,
-            (interval.end_ms, interval.start_ms),
-        ).fetchall()
-        directly_contaminated = {str(row["candidate_id"]) for row in overlapping_batches}
-        contaminated_candidates = self._candidate_ids_contaminated_by_roots(
-            directly_contaminated
-        )
-
-        with self.connection:
+            overlapping_batches = self.connection.execute(
+                """
+                SELECT batch_id, candidate_id
+                FROM research_batches
+                WHERE start_ms < ? AND ? < end_ms
+                """,
+                (interval.end_ms, interval.start_ms),
+            ).fetchall()
+            directly_contaminated = {
+                str(row["candidate_id"]) for row in overlapping_batches
+            }
+            contaminated_candidates = self._candidate_ids_contaminated_by_roots(
+                directly_contaminated
+            )
             self.connection.execute(
                 """
                 INSERT INTO research_v4_intervals (run_id, start_ms, end_ms, disposition)
@@ -736,17 +827,10 @@ class ResearchRegistry:
                     candidate_id,
                     reason=f"late_v4_source_interval_overlap:{run_id}",
                 )
-
-    def assert_batch_disjoint_from_v4(self, interval: TimeInterval) -> None:
-        rows = self.connection.execute(
-            "SELECT run_id, start_ms, end_ms FROM research_v4_intervals ORDER BY start_ms, end_ms"
-        ).fetchall()
-        for row in rows:
-            v4_interval = TimeInterval(int(row["start_ms"]), int(row["end_ms"]))
-            if intervals_overlap(interval, v4_interval):
-                raise ResearchContaminationError(
-                    f"research source overlaps V4 acquisition interval for run {row['run_id']}"
-                )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def transition_candidate(
         self,
@@ -795,7 +879,6 @@ class ResearchRegistry:
             raise ResearchRegistryError(
                 f"invalid research state transition: {current.state.value} -> {state.value}"
             )
-
         with self.connection:
             self.connection.execute(
                 "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
