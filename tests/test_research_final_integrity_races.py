@@ -147,5 +147,8 @@ def test_validation_activation_cannot_authorize_stale_frozen_state_after_contami
             validation_start_ms=50_000,
         )
 
-    assert registry.load_candidate("candidate-a").state is ResearchCandidateState.REJECTED_CONTAMINATION
+    assert (
+        registry.load_candidate("candidate-a").state
+        is ResearchCandidateState.REJECTED_CONTAMINATION
+    )
     registry.close()
