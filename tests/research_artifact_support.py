@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
@@ -11,10 +12,19 @@ from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJ
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult, SourceSegment
 from cocomelon.domain.strategy import Direction
+from cocomelon.evaluation.mainnet_evidence import (
+    MAINNET_API_URL,
+    MAINNET_EVIDENCE_KIND,
+    MAINNET_WS_URL,
+)
 from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.evaluator import ResearchArtifactBatch
+
+CODE_REVISION = "1" * 40
+CONFIG_DIGEST = "c" * 64
+TRIGGER_HEAD = "f" * 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +110,10 @@ def _fact(trade: TradeJournalEntry, spec: ArtifactTradeSpec) -> DecisionEvaluati
     )
 
 
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+
 def write_research_artifact(
     root: Path,
     *,
@@ -113,16 +127,41 @@ def write_research_artifact(
     network_access: bool = False,
     order_execution: bool = False,
     hard_risk_reason: str | None = None,
+    code_revision: str = CODE_REVISION,
+    config_digest: str = CONFIG_DIGEST,
 ) -> ResearchArtifactBatch:
-    root.mkdir(parents=True, exist_ok=True)
-    journal = JournalStore(root / "journal.sqlite3")
-    facts = EvaluationFactStore(root / "facts.sqlite3")
+    output = root / "output"
+    recording = root / "recording"
+    output.mkdir(parents=True, exist_ok=True)
+    recording.mkdir(parents=True, exist_ok=True)
+
+    segment_key = hashlib.sha256(replay_run_id.encode("utf-8")).hexdigest()[:16]
+    relative_segment_path = f"events/{segment_key}.jsonl"
+    physical_segment = recording / relative_segment_path
+    physical_segment.parent.mkdir(parents=True, exist_ok=True)
+    segment_bytes = (
+        json.dumps(
+            {
+                "available_at_ms": start_ms,
+                "event_kind": "test-mainnet-recording",
+                "replay_run_id": replay_run_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    physical_segment.write_bytes(segment_bytes)
+    segment_sha = hashlib.sha256(segment_bytes).hexdigest()
+
+    journal = JournalStore(output / "journal.sqlite3")
+    facts = EvaluationFactStore(output / "facts.sqlite3")
     segment = SourceSegment(
-        relative_path="events/test.jsonl",
-        partition="events/2026-08-31/test",
-        sha256="a" * 64,
-        byte_count=1,
-        row_count=max(1, len(trades)),
+        relative_path=relative_segment_path,
+        partition=f"events/{segment_key}",
+        sha256=segment_sha,
+        byte_count=len(segment_bytes),
+        row_count=1,
         schema_version=1,
         first_available_at_ms=start_ms,
         last_available_at_ms=end_ms,
@@ -133,8 +172,8 @@ def write_research_artifact(
         end_ms=end_ms,
         segments=(segment,),
         gap_refs=(),
-        code_revision="1" * 40,
-        config_digest="c" * 64,
+        code_revision=code_revision,
+        config_digest=config_digest,
         feature_version="phase4-v1",
         strategy_version="phase5-v1",
         risk_version="phase6-v1",
@@ -159,7 +198,7 @@ def write_research_artifact(
         evidence_class=manifest.evidence_class,
         start_ms=start_ms,
         end_ms=end_ms,
-        processed_events=max(1, len(trades)),
+        processed_events=1,
         processed_gaps=0,
         strategy_decisions=len(trades),
         risk_approvals=len(trades),
@@ -194,21 +233,131 @@ def write_research_artifact(
         )
     journal.close()
     facts.close()
+
+    session_id = hashlib.sha256(f"research-mainnet:{replay_run_id}".encode("utf-8")).hexdigest()
+    selected_markets = sorted({spec.market for spec in trades})
+    _write_json(
+        recording / "recording-session.json",
+        {
+            "api_url": MAINNET_API_URL,
+            "ws_url": MAINNET_WS_URL,
+            "recorder_code_revision": code_revision,
+            "recording_config_digest": "e" * 64,
+            "schema_version": 1,
+            "selected": selected_markets,
+            "selection_policy_id": "research-test-mainnet-v1",
+            "session_id": session_id,
+            "started_at_ms": start_ms,
+        },
+    )
+    _write_json(
+        output / "cohort-summary.json",
+        {
+            "checked_out_code_revision": code_revision,
+            "closed_positions": result.closed_positions,
+            "closed_trade_count": len(result.closed_trade_ids),
+            "data_complete": data_complete,
+            "dataset_manifest_id": "dataset-research-test",
+            "dataset_trade_count": len(result.closed_trade_ids),
+            "economic_claim": "none",
+            "evidence_kind": MAINNET_EVIDENCE_KIND,
+            "excluded_trade_count": 0,
+            "execution_attempts": result.execution_attempts,
+            "fills": result.fills,
+            "final_equity": "10000",
+            "opened_positions": result.opened_positions,
+            "recorded_duplicate_count": 0,
+            "recorded_event_count": 1,
+            "recorded_gap_count": 0,
+            "recording_session_id": session_id,
+            "replay_result_digest": result.result_digest,
+            "replay_run_id": result.run_id,
+            "risk_approvals": result.risk_approvals,
+            "risk_rejections": result.risk_rejections,
+            "selected_markets": selected_markets,
+            "strategy_decisions": result.strategy_decisions,
+            "trigger_head_sha": TRIGGER_HEAD,
+            "validated_segment_count": 1,
+        },
+    )
+    _write_json(
+        output / "record.json",
+        {
+            "anomaly_count": 0,
+            "duplicate_count": 0,
+            "duration_seconds": max(1, (end_ms - start_ms) // 1_000),
+            "event_count": 1,
+            "gap_count": 0,
+            "live_orders": False,
+            "network_access": True,
+            "reconnect_count": 0,
+            "root": "recording",
+            "selected_markets": selected_markets,
+            "session_id": session_id,
+        },
+    )
     order_flag_key = "live_" + "order" + "s"
     replay_payload: dict[str, object] = {
+        "bundle_id": f"bundle-{replay_run_id}",
+        "closed_positions": result.closed_positions,
+        "closed_trade_ids": list(result.closed_trade_ids),
         "data_complete": data_complete,
+        "evidence_class": manifest.evidence_class.value,
+        "execution": "output/execution.sqlite3",
+        "execution_attempts": result.execution_attempts,
+        "facts": "output/facts.sqlite3",
+        "fills": result.fills,
+        "final_account_state_id": result.final_account_state_id,
+        "final_equity": "10000",
+        "journal": "output/journal.sqlite3",
+        order_flag_key: order_execution,
         "manifest_id": manifest.manifest_id,
         "network_access": network_access,
+        "opened_positions": result.opened_positions,
         "result_digest": result.result_digest,
+        "risk_approvals": result.risk_approvals,
+        "risk_rejections": result.risk_rejections,
         "run_id": replay_run_id,
-        order_flag_key: order_execution,
+        "strategy_decisions": result.strategy_decisions,
     }
-    (root / "replay.json").write_text(
-        json.dumps(replay_payload, sort_keys=True),
-        encoding="utf-8",
+    _write_json(output / "replay.json", replay_payload)
+    _write_json(
+        output / "freeze.json",
+        {
+            "bundle_id": f"bundle-{replay_run_id}",
+            "code_revision": code_revision,
+            "evidence_class": manifest.evidence_class.value,
+            "live_orders": False,
+            "manifest_id": manifest.manifest_id,
+            "network_access": False,
+            "out": "output/bundle.json",
+            "recording_session_digest": session_id,
+            "root": "recording",
+            "source_set_digest": segment_sha,
+            "starting_cash": "10000",
+        },
     )
+    _write_json(
+        output / "bundle.json",
+        {
+            "bundle_id": f"bundle-{replay_run_id}",
+            "manifest": {
+                "code_revision": code_revision,
+                "gap_refs": [],
+                "manifest_id": manifest.manifest_id,
+            },
+            "recording_session_digest": session_id,
+            "replay_config": {},
+            "schema_version": 1,
+            "source_locator_bundle_id": f"bundle-{replay_run_id}",
+            "source_root_relative": "../recording",
+            "source_set_digest": segment_sha,
+        },
+    )
+    (output / "workflow-head.txt").write_text(code_revision + "\n", encoding="utf-8")
+    (output / "trigger-head.txt").write_text(TRIGGER_HEAD + "\n", encoding="utf-8")
     return ResearchArtifactBatch(
-        artifact_root=root,
+        artifact_root=output,
         batch_id=batch_id,
         source_id=source_id,
     )
