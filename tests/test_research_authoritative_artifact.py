@@ -4,8 +4,6 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from cocomelon.research.artifact import verify_research_batch_artifact
-
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import JournalObservation, ObservationKind, TradeJournalEntry
@@ -14,6 +12,7 @@ from cocomelon.domain.replay import EvidenceClass, ReplayManifest, ReplayResult,
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.artifact import verify_research_batch_artifact
 
 SOL = MarketId("", "SOL")
 
