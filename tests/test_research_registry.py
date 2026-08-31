@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from pytest import raises
@@ -112,10 +113,11 @@ def test_any_registered_v4_interval_blocks_overlapping_research_source(tmp_path:
     registry.close()
 
 
-def test_late_v4_interval_retroactively_contaminates_admitted_research_batch(
+def test_late_v4_interval_retroactively_contaminates_batch_and_descendants(
     tmp_path: Path,
 ) -> None:
-    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    path = tmp_path / "research.sqlite3"
+    registry = ResearchRegistry(path)
     registry.create_candidate(_candidate("r1"))
     registry.record_batch(
         candidate_id="r1",
@@ -124,6 +126,13 @@ def test_late_v4_interval_retroactively_contaminates_admitted_research_batch(
         replay_run_id="research-replay-1",
         interval=TimeInterval(1_000, 2_000),
     )
+    child = _candidate(
+        "r2",
+        parent_candidate_id="r1",
+        ancestor_candidate_ids=("r1",),
+        digest_char="b",
+    )
+    registry.create_candidate(child)
 
     registry.record_v4_interval(
         run_id="late-v4-run",
@@ -132,7 +141,39 @@ def test_late_v4_interval_retroactively_contaminates_admitted_research_batch(
     )
 
     assert registry.load_candidate("r1").state is ResearchCandidateState.REJECTED_CONTAMINATION
-    assert registry.effective_touched_intervals("r1") == (TimeInterval(1_000, 2_000),)
+    assert registry.load_candidate("r2").state is ResearchCandidateState.REJECTED_CONTAMINATION
+    assert registry.effective_touched_intervals("r2") == (TimeInterval(1_000, 2_000),)
+    registry.close()
+
+    connection = sqlite3.connect(path)
+    try:
+        batch_status = connection.execute(
+            "SELECT status, contamination_v4_run_id FROM research_batches WHERE batch_id = ?",
+            ("research-batch-1",),
+        ).fetchone()
+    finally:
+        connection.close()
+    assert batch_status == ("rejected_contamination", "late-v4-run")
+
+
+def test_child_of_contaminated_parent_is_contaminated_at_creation(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.create_candidate(_candidate("r1"))
+    registry.transition_candidate(
+        "r1",
+        ResearchCandidateState.REJECTED_CONTAMINATION,
+        reason="source_overlap",
+    )
+    child = _candidate(
+        "r2",
+        parent_candidate_id="r1",
+        ancestor_candidate_ids=("r1",),
+        digest_char="b",
+    )
+
+    registry.create_candidate(child)
+
+    assert registry.load_candidate("r2").state is ResearchCandidateState.REJECTED_CONTAMINATION
     registry.close()
 
 
