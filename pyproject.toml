@@ -24,6 +24,7 @@ research = [
 [project.scripts]
 cocomelon = "cocomelon.cli:main"
 cocomelon-mainnet-evidence = "cocomelon.mainnet_cli:main"
+cocomelon-research = "cocomelon.research_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
