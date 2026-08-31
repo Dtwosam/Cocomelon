@@ -192,6 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
     candidate_parser.add_argument("--parent-candidate-id")
     candidate_parser.add_argument("--config-digest", required=True)
     candidate_parser.add_argument("--code-revision", required=True)
+    candidate_parser.add_argument("--execution-config-json", required=True)
+    candidate_parser.add_argument("--risk-config-json", required=True)
 
     batch_parser = subparsers.add_parser("record-batch")
     _add_registry_argument(batch_parser)
@@ -233,7 +235,15 @@ def _create_candidate(registry: ResearchRegistry, args: argparse.Namespace) -> d
         ancestor_candidate_ids=ancestors,
         config_digest=args.config_digest,
         code_revision=args.code_revision,
+        execution_config_json=args.execution_config_json,
+        risk_config_json=args.risk_config_json,
         state=ResearchCandidateState.DRAFT,
+        first_observation_ms=None,
+        last_observation_ms=None,
+        source_provenance_ids=(),
+        local_touched_intervals=(),
+        effective_touched_intervals=(),
+        performance_report_ids=(),
     )
     registry.create_candidate(manifest)
     return {
