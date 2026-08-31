@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from cocomelon.research.registry import (
+    ResearchContaminationError,
+    ResearchRegistry,
+    ResearchRegistryError,
+)
 from pytest import raises
 
 from cocomelon.research.contracts import (
@@ -9,11 +14,6 @@ from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
     TimeInterval,
-)
-from cocomelon.research.registry import (
-    ResearchContaminationError,
-    ResearchRegistry,
-    ResearchRegistryError,
 )
 
 
@@ -135,7 +135,11 @@ def test_frozen_candidate_cutover_uses_inherited_touched_history(tmp_path: Path)
     )
     registry.create_candidate(child)
     registry.transition_candidate("r2", ResearchCandidateState.RESEARCHING, reason="started")
-    registry.transition_candidate("r2", ResearchCandidateState.RESEARCH_PROMISING, reason="promising")
+    registry.transition_candidate(
+        "r2",
+        ResearchCandidateState.RESEARCH_PROMISING,
+        reason="promising",
+    )
     registry.freeze_candidate("r2", freeze_ms=25_000)
 
     with raises(ResearchRegistryError, match="embargo"):
