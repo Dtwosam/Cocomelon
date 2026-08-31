@@ -94,7 +94,7 @@ def _fact(trade: TradeJournalEntry, spec: ArtifactTradeSpec) -> DecisionEvaluati
         score=spec.score,
         lead_strategy=spec.lead_strategy,
         signal_ids=(f"{trade.strategy_decision_id}-signal",),
-        reason_codes=("TEST_SIGNAL",),
+        reason_codes=spec.reason_codes,
         trend_regime=spec.trend_regime,
         volatility_regime=spec.volatility_regime,
     )
