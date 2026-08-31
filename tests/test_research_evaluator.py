@@ -28,6 +28,7 @@ evaluator = import_module("cocomelon.research.evaluator")
 DAY_MS = 86_400_000
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+V4_TEST_SOURCE = "authoritative-v4-test-inventory"
 
 
 def _candidate() -> ResearchCandidateManifest:
@@ -47,6 +48,13 @@ def _candidate() -> ResearchCandidateManifest:
         local_touched_intervals=(),
         effective_touched_intervals=(),
         performance_report_ids=(),
+    )
+
+
+def _mark_v4_complete(registry: ResearchRegistry, through_ms: int = 20 * DAY_MS) -> None:
+    registry.mark_v4_registry_complete_through(
+        through_ms=through_ms,
+        source_id=V4_TEST_SOURCE,
     )
 
 
@@ -95,6 +103,7 @@ def _sample(
 
 def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     batch = evaluator.ResearchBatch(
@@ -150,6 +159,7 @@ def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path:
 
 def test_v4_overlap_rejects_candidate_before_research_report_is_released(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     registry.record_v4_interval(
@@ -190,6 +200,7 @@ def test_v4_overlap_rejects_candidate_before_research_report_is_released(tmp_pat
 
 def test_report_rejects_samples_outside_registered_research_batches(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     batch = evaluator.ResearchBatch(
@@ -220,6 +231,7 @@ def test_report_rejects_samples_outside_registered_research_batches(tmp_path: Pa
 
 def test_report_rejects_sample_closed_at_half_open_batch_endpoint(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     sample = _sample(
@@ -249,6 +261,7 @@ def test_report_rejects_sample_closed_at_half_open_batch_endpoint(tmp_path: Path
 
 def test_later_checkpoint_includes_all_prior_candidate_observations(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     first_batch = evaluator.ResearchBatch(
@@ -312,6 +325,7 @@ def test_later_checkpoint_includes_all_prior_candidate_observations(tmp_path: Pa
 
 def test_exact_observation_replay_is_idempotent(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     batch = evaluator.ResearchBatch(
@@ -351,6 +365,7 @@ def test_exact_observation_replay_is_idempotent(tmp_path: Path) -> None:
 
 def test_existing_trade_id_cannot_be_rewritten_with_new_economics(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    _mark_v4_complete(registry)
     candidate = _candidate()
     registry.create_candidate(candidate)
     batch = evaluator.ResearchBatch(
