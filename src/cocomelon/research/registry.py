@@ -69,6 +69,8 @@ class ResearchRegistry:
                 ancestor_candidate_ids_json TEXT NOT NULL,
                 config_digest TEXT NOT NULL,
                 code_revision TEXT NOT NULL,
+                execution_config_json TEXT NOT NULL,
+                risk_config_json TEXT NOT NULL,
                 state TEXT NOT NULL,
                 freeze_ms INTEGER,
                 FOREIGN KEY(parent_candidate_id) REFERENCES research_candidates(candidate_id)
@@ -98,6 +100,12 @@ class ResearchRegistry:
                 contamination_v4_run_id TEXT,
                 FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
             );
+            CREATE TABLE IF NOT EXISTS research_performance_reports (
+                report_id TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
+            );
             CREATE TABLE IF NOT EXISTS research_candidate_state_events (
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 candidate_id TEXT NOT NULL,
@@ -107,8 +115,25 @@ class ResearchRegistry:
             );
             """
         )
+        self._ensure_research_candidate_columns()
         self._ensure_research_batch_columns()
         self.connection.commit()
+
+    def _ensure_research_candidate_columns(self) -> None:
+        rows = self.connection.execute("PRAGMA table_info(research_candidates)").fetchall()
+        columns = {str(row["name"]) for row in rows}
+        if "execution_config_json" not in columns:
+            self.connection.execute(
+                "ALTER TABLE research_candidates "
+                "ADD COLUMN execution_config_json TEXT NOT NULL "
+                "DEFAULT '{\"legacy\":true}'"
+            )
+        if "risk_config_json" not in columns:
+            self.connection.execute(
+                "ALTER TABLE research_candidates "
+                "ADD COLUMN risk_config_json TEXT NOT NULL "
+                "DEFAULT '{\"legacy\":true}'"
+            )
 
     def _ensure_research_batch_columns(self) -> None:
         rows = self.connection.execute("PRAGMA table_info(research_batches)").fetchall()
@@ -121,6 +146,16 @@ class ResearchRegistry:
             self.connection.execute(
                 "ALTER TABLE research_batches ADD COLUMN contamination_v4_run_id TEXT"
             )
+
+    @staticmethod
+    def _canonical_json(value: object) -> str:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
 
     @staticmethod
     def _ancestor_json(ancestors: tuple[str, ...]) -> str:
@@ -136,6 +171,53 @@ class ResearchRegistry:
     def close(self) -> None:
         self.connection.close()
 
+    def _local_touched_intervals(self, candidate_id: str) -> tuple[TimeInterval, ...]:
+        rows = self.connection.execute(
+            """
+            SELECT start_ms, end_ms
+            FROM research_touched_intervals
+            WHERE candidate_id = ?
+            ORDER BY start_ms, end_ms
+            """,
+            (candidate_id,),
+        ).fetchall()
+        return normalize_intervals(
+            TimeInterval(int(row["start_ms"]), int(row["end_ms"])) for row in rows
+        )
+
+    def _source_provenance_ids(self, candidate_id: str) -> tuple[str, ...]:
+        rows = self.connection.execute(
+            """
+            SELECT DISTINCT source_id
+            FROM research_touched_intervals
+            WHERE candidate_id = ?
+            ORDER BY source_id
+            """,
+            (candidate_id,),
+        ).fetchall()
+        return tuple(str(row["source_id"]) for row in rows)
+
+    def _performance_report_ids(self, candidate_id: str) -> tuple[str, ...]:
+        rows = self.connection.execute(
+            """
+            SELECT report_id
+            FROM research_performance_reports
+            WHERE candidate_id = ?
+            ORDER BY report_id
+            """,
+            (candidate_id,),
+        ).fetchall()
+        return tuple(str(row["report_id"]) for row in rows)
+
+    def _effective_touched_for_lineage(
+        self,
+        lineage_candidate_ids: tuple[str, ...],
+    ) -> tuple[TimeInterval, ...]:
+        intervals: list[TimeInterval] = []
+        for lineage_candidate_id in lineage_candidate_ids:
+            intervals.extend(self._local_touched_intervals(lineage_candidate_id))
+        return normalize_intervals(intervals)
+
     def create_candidate(self, manifest: ResearchCandidateManifest) -> None:
         existing = self.connection.execute(
             "SELECT candidate_id FROM research_candidates WHERE candidate_id = ?",
@@ -143,6 +225,17 @@ class ResearchRegistry:
         ).fetchone()
         if existing is not None:
             raise ResearchRegistryError(f"candidate already exists: {manifest.candidate_id}")
+        if (
+            manifest.first_observation_ms is not None
+            or manifest.last_observation_ms is not None
+            or manifest.source_provenance_ids
+            or manifest.local_touched_intervals
+            or manifest.effective_touched_intervals
+            or manifest.performance_report_ids
+        ):
+            raise ResearchRegistryError(
+                "candidate dynamic provenance must be empty at registry creation"
+            )
 
         inherited_contamination = False
         if manifest.parent_candidate_id is not None:
@@ -166,43 +259,48 @@ class ResearchRegistry:
         initial_reason = (
             "inherited_contamination" if inherited_contamination else "candidate_created"
         )
-        self.connection.execute(
-            """
-            INSERT INTO research_candidates (
-                candidate_id,
-                family_id,
-                parent_candidate_id,
-                ancestor_candidate_ids_json,
-                config_digest,
-                code_revision,
-                state,
-                freeze_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-            """,
-            (
-                manifest.candidate_id,
-                manifest.family_id,
-                manifest.parent_candidate_id,
-                self._ancestor_json(manifest.ancestor_candidate_ids),
-                manifest.config_digest,
-                manifest.code_revision,
-                stored_state.value,
-            ),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO research_candidate_state_events (candidate_id, state, reason)
-            VALUES (?, ?, ?)
-            """,
-            (manifest.candidate_id, stored_state.value, initial_reason),
-        )
-        self.connection.commit()
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO research_candidates (
+                    candidate_id,
+                    family_id,
+                    parent_candidate_id,
+                    ancestor_candidate_ids_json,
+                    config_digest,
+                    code_revision,
+                    execution_config_json,
+                    risk_config_json,
+                    state,
+                    freeze_ms
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+                """,
+                (
+                    manifest.candidate_id,
+                    manifest.family_id,
+                    manifest.parent_candidate_id,
+                    self._ancestor_json(manifest.ancestor_candidate_ids),
+                    manifest.config_digest,
+                    manifest.code_revision,
+                    manifest.execution_config_json,
+                    manifest.risk_config_json,
+                    stored_state.value,
+                ),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO research_candidate_state_events (candidate_id, state, reason)
+                VALUES (?, ?, ?)
+                """,
+                (manifest.candidate_id, stored_state.value, initial_reason),
+            )
 
     def load_candidate(self, candidate_id: str) -> ResearchCandidateManifest:
         row = self.connection.execute(
             """
             SELECT candidate_id, family_id, parent_candidate_id,
-                   ancestor_candidate_ids_json, config_digest, code_revision, state
+                   ancestor_candidate_ids_json, config_digest, code_revision,
+                   execution_config_json, risk_config_json, state
             FROM research_candidates
             WHERE candidate_id = ?
             """,
@@ -214,16 +312,34 @@ class ResearchRegistry:
             state = ResearchCandidateState(str(row["state"]))
         except ValueError as exc:
             raise ResearchRegistryError("stored candidate state is invalid") from exc
+
+        ancestors = self._decode_ancestors(str(row["ancestor_candidate_ids_json"]))
+        local_touched = self._local_touched_intervals(candidate_id)
+        effective_touched = self._effective_touched_for_lineage(
+            ancestors + (candidate_id,)
+        )
         return ResearchCandidateManifest(
             candidate_id=str(row["candidate_id"]),
             family_id=str(row["family_id"]),
             parent_candidate_id=(
                 None if row["parent_candidate_id"] is None else str(row["parent_candidate_id"])
             ),
-            ancestor_candidate_ids=self._decode_ancestors(str(row["ancestor_candidate_ids_json"])),
+            ancestor_candidate_ids=ancestors,
             config_digest=str(row["config_digest"]),
             code_revision=str(row["code_revision"]),
+            execution_config_json=str(row["execution_config_json"]),
+            risk_config_json=str(row["risk_config_json"]),
             state=state,
+            first_observation_ms=(
+                None if not local_touched else local_touched[0].start_ms
+            ),
+            last_observation_ms=(
+                None if not local_touched else local_touched[-1].end_ms
+            ),
+            source_provenance_ids=self._source_provenance_ids(candidate_id),
+            local_touched_intervals=local_touched,
+            effective_touched_intervals=effective_touched,
+            performance_report_ids=self._performance_report_ids(candidate_id),
         )
 
     def _assert_research_touchable(self, candidate_id: str) -> ResearchCandidateManifest:
@@ -343,24 +459,51 @@ class ResearchRegistry:
                 (candidate_id, source_id, interval.start_ms, interval.end_ms),
             )
 
+    def record_performance_report(
+        self,
+        *,
+        candidate_id: str,
+        report_id: str,
+        payload: dict[str, object],
+    ) -> None:
+        self.load_candidate(candidate_id)
+        if not report_id.strip():
+            raise ResearchRegistryError("report_id must not be empty")
+        payload_json = self._canonical_json(payload)
+        existing = self.connection.execute(
+            """
+            SELECT candidate_id, payload_json
+            FROM research_performance_reports
+            WHERE report_id = ?
+            """,
+            (report_id,),
+        ).fetchone()
+        if existing is not None:
+            stored = (str(existing["candidate_id"]), str(existing["payload_json"]))
+            incoming = (candidate_id, payload_json)
+            if stored != incoming:
+                raise ResearchRegistryError(
+                    f"performance report already exists with different data: {report_id}"
+                )
+            return
+        self.connection.execute(
+            """
+            INSERT INTO research_performance_reports (report_id, candidate_id, payload_json)
+            VALUES (?, ?, ?)
+            """,
+            (report_id, candidate_id, payload_json),
+        )
+        self.connection.commit()
+
     def effective_touched_intervals(self, candidate_id: str) -> tuple[TimeInterval, ...]:
-        candidate = self.load_candidate(candidate_id)
-        lineage = candidate.ancestor_candidate_ids + (candidate.candidate_id,)
-        intervals: list[TimeInterval] = []
-        for lineage_candidate_id in lineage:
-            rows = self.connection.execute(
-                """
-                SELECT start_ms, end_ms
-                FROM research_touched_intervals
-                WHERE candidate_id = ?
-                ORDER BY start_ms, end_ms
-                """,
-                (lineage_candidate_id,),
-            ).fetchall()
-            intervals.extend(
-                TimeInterval(int(row["start_ms"]), int(row["end_ms"])) for row in rows
-            )
-        return normalize_intervals(intervals)
+        row = self.connection.execute(
+            "SELECT ancestor_candidate_ids_json FROM research_candidates WHERE candidate_id = ?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None:
+            raise ResearchRegistryError(f"candidate not found: {candidate_id}")
+        ancestors = self._decode_ancestors(str(row["ancestor_candidate_ids_json"]))
+        return self._effective_touched_for_lineage(ancestors + (candidate_id,))
 
     def _candidate_ids_contaminated_by_roots(
         self,
