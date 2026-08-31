@@ -248,12 +248,6 @@ class ResearchRegistry:
         return normalize_intervals(intervals)
 
     def create_candidate(self, manifest: ResearchCandidateManifest) -> None:
-        existing = self.connection.execute(
-            "SELECT candidate_id FROM research_candidates WHERE candidate_id = ?",
-            (manifest.candidate_id,),
-        ).fetchone()
-        if existing is not None:
-            raise ResearchRegistryError(f"candidate already exists: {manifest.candidate_id}")
         if manifest.state is not ResearchCandidateState.DRAFT:
             raise ResearchRegistryError("candidate must enter the registry in draft state")
         if (
@@ -268,27 +262,43 @@ class ResearchRegistry:
                 "candidate dynamic provenance must be empty at registry creation"
             )
 
-        inherited_contamination = False
-        if manifest.parent_candidate_id is not None:
-            parent = self.load_candidate(manifest.parent_candidate_id)
-            if parent.family_id != manifest.family_id:
-                raise ResearchRegistryError("candidate parent must belong to the same family")
-            expected_ancestors = parent.ancestor_candidate_ids + (parent.candidate_id,)
-            if manifest.ancestor_candidate_ids != expected_ancestors:
+        self._begin_immediate()
+        try:
+            existing = self.connection.execute(
+                "SELECT candidate_id FROM research_candidates WHERE candidate_id = ?",
+                (manifest.candidate_id,),
+            ).fetchone()
+            if existing is not None:
                 raise ResearchRegistryError(
-                    "candidate ancestor lineage does not match parent chain"
+                    f"candidate already exists: {manifest.candidate_id}"
                 )
-            inherited_contamination = (
-                parent.state is ResearchCandidateState.REJECTED_CONTAMINATION
-            )
 
-        stored_state = (
-            ResearchCandidateState.REJECTED_CONTAMINATION
-            if inherited_contamination
-            else ResearchCandidateState.DRAFT
-        )
-        reason = "inherited_contamination" if inherited_contamination else "candidate_created"
-        with self.connection:
+            inherited_contamination = False
+            if manifest.parent_candidate_id is not None:
+                parent = self.load_candidate(manifest.parent_candidate_id)
+                if parent.family_id != manifest.family_id:
+                    raise ResearchRegistryError(
+                        "candidate parent must belong to the same family"
+                    )
+                expected_ancestors = parent.ancestor_candidate_ids + (parent.candidate_id,)
+                if manifest.ancestor_candidate_ids != expected_ancestors:
+                    raise ResearchRegistryError(
+                        "candidate ancestor lineage does not match parent chain"
+                    )
+                inherited_contamination = (
+                    parent.state is ResearchCandidateState.REJECTED_CONTAMINATION
+                )
+
+            stored_state = (
+                ResearchCandidateState.REJECTED_CONTAMINATION
+                if inherited_contamination
+                else ResearchCandidateState.DRAFT
+            )
+            reason = (
+                "inherited_contamination"
+                if inherited_contamination
+                else "candidate_created"
+            )
             self.connection.execute(
                 """
                 INSERT INTO research_candidates (
@@ -316,6 +326,10 @@ class ResearchRegistry:
                 """,
                 (manifest.candidate_id, stored_state.value, reason),
             )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
 
     def load_candidate(self, candidate_id: str) -> ResearchCandidateManifest:
         row = self.connection.execute(
@@ -897,10 +911,16 @@ class ResearchRegistry:
                 f"invalid research state transition: {current.state.value} -> {state.value}"
             )
         with self.connection:
-            self.connection.execute(
-                "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
-                (state.value, candidate_id),
+            cursor = self.connection.execute(
+                """
+                UPDATE research_candidates
+                SET state = ?
+                WHERE candidate_id = ? AND state = ?
+                """,
+                (state.value, candidate_id, current.state.value),
             )
+            if cursor.rowcount != 1:
+                raise ResearchRegistryError("candidate state changed concurrently")
             self.connection.execute(
                 """
                 INSERT INTO research_candidate_state_events (candidate_id, state, reason)
@@ -916,14 +936,21 @@ class ResearchRegistry:
         if current.state is not ResearchCandidateState.RESEARCH_PROMISING:
             raise ResearchRegistryError("only a research-promising candidate can be frozen")
         with self.connection:
-            self.connection.execute(
+            cursor = self.connection.execute(
                 """
                 UPDATE research_candidates
                 SET state = ?, freeze_ms = ?
-                WHERE candidate_id = ?
+                WHERE candidate_id = ? AND state = ?
                 """,
-                (ResearchCandidateState.FROZEN_CHALLENGER.value, freeze_ms, candidate_id),
+                (
+                    ResearchCandidateState.FROZEN_CHALLENGER.value,
+                    freeze_ms,
+                    candidate_id,
+                    ResearchCandidateState.RESEARCH_PROMISING.value,
+                ),
             )
+            if cursor.rowcount != 1:
+                raise ResearchRegistryError("candidate state changed concurrently")
             self.connection.execute(
                 """
                 INSERT INTO research_candidate_state_events (candidate_id, state, reason)
