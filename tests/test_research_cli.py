@@ -10,11 +10,25 @@ from cocomelon.research.registry import ResearchRegistry
 
 research_cli = import_module("cocomelon.research_cli")
 
+EXECUTION_CONFIG_INPUT = '{"slippage_model":"recorded","mode":"paper"}'
+RISK_CONFIG_INPUT = '{"stops_required":true,"max_position_r":"1"}'
+EXECUTION_CONFIG_CANONICAL = '{"mode":"paper","slippage_model":"recorded"}'
+RISK_CONFIG_CANONICAL = '{"max_position_r":"1","stops_required":true}'
+
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
     exit_code = research_cli.main(argv)
     captured = capsys.readouterr()
     return exit_code, captured.out, captured.err
+
+
+def _candidate_config_args() -> list[str]:
+    return [
+        "--execution-config-json",
+        EXECUTION_CONFIG_INPUT,
+        "--risk-config-json",
+        RISK_CONFIG_INPUT,
+    ]
 
 
 def _create_root(capsys: object, registry_path: Path) -> None:
@@ -32,6 +46,7 @@ def _create_root(capsys: object, registry_path: Path) -> None:
             "a" * 64,
             "--code-revision",
             "1" * 40,
+            *_candidate_config_args(),
         ],
     )
     assert exit_code == 0
@@ -58,6 +73,29 @@ def test_cli_emits_deterministic_json_and_exposes_no_live_surface(
     help_text = research_cli.build_parser().format_help().lower()
     assert "live" not in help_text
     assert "order" not in help_text
+
+
+def test_create_candidate_persists_canonical_execution_and_risk_identity(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    _create_root(capsys, registry_path)
+
+    registry = ResearchRegistry(registry_path)
+    try:
+        candidate = registry.load_candidate("candidate-r1")
+    finally:
+        registry.close()
+
+    assert candidate.execution_config_json == EXECUTION_CONFIG_CANONICAL
+    assert candidate.risk_config_json == RISK_CONFIG_CANONICAL
+    assert candidate.first_observation_ms is None
+    assert candidate.last_observation_ms is None
+    assert candidate.source_provenance_ids == ()
+    assert candidate.local_touched_intervals == ()
+    assert candidate.effective_touched_intervals == ()
+    assert candidate.performance_report_ids == ()
 
 
 def test_record_batch_persists_and_rejects_v4_overlap(
@@ -171,6 +209,7 @@ def test_invalid_lineage_and_invalid_cutover_exit_nonzero(
             "b" * 64,
             "--code-revision",
             "2" * 40,
+            *_candidate_config_args(),
         ],
     )
     assert lineage_code != 0
