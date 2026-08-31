@@ -49,7 +49,7 @@ def _candidate() -> ResearchCandidateManifest:
         family_id="family-a",
         parent_candidate_id=None,
         ancestor_candidate_ids=(),
-        config_digest="c" * 64,
+        config_digest="a" * 64,
         code_revision="1" * 40,
         execution_config_json='{"mode":"paper"}',
         risk_config_json='{"risk_per_trade":"0.0025","stops_required":true}',
