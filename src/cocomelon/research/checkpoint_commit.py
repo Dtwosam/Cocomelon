@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from cocomelon.research.contracts import ResearchCandidateState
@@ -82,6 +83,16 @@ def _persist_report_uncommitted(
     )
 
 
+def _canonical_payload(
+    registry: ResearchRegistry,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    decoded = json.loads(registry._canonical_json(payload))
+    if not isinstance(decoded, dict) or not all(isinstance(key, str) for key in decoded):
+        raise ResearchRegistryError("checkpoint report payload must be an object")
+    return decoded
+
+
 def commit_checkpoint_report_and_state(
     registry: ResearchRegistry,
     *,
@@ -94,22 +105,23 @@ def commit_checkpoint_report_and_state(
     try:
         current = registry.load_candidate(candidate_id)
         _validate_transition(current.state, state)
+        canonical_payload = _canonical_payload(registry, payload)
         try:
             assert_checkpoint_report_backed_by_observations(
                 registry.connection,
                 candidate_id=candidate_id,
                 report_id=report_id,
-                payload=payload,
+                payload=canonical_payload,
                 state=state,
             )
         except ValueError as exc:
             raise ResearchRegistryError(str(exc)) from exc
-        registry._validate_checkpoint_report_for_state(payload, state)
+        registry._validate_checkpoint_report_for_state(canonical_payload, state)
         _persist_report_uncommitted(
             registry,
             candidate_id=candidate_id,
             report_id=report_id,
-            payload=payload,
+            payload=canonical_payload,
         )
         if current.state is not state:
             cursor = registry.connection.execute(
