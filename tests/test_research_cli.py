@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 
 from cocomelon.research.contracts import ResearchCandidateState
+from cocomelon.research.observations import record_trade_observations
 from cocomelon.research.registry import ResearchRegistry
+from cocomelon.research.sequential import evaluate_checkpoint
 
 research_cli = import_module("cocomelon.research_cli")
 
+DAY_MS = 86_400_000
 EXECUTION_CONFIG_INPUT = '{"slippage_model":"recorded","mode":"paper"}'
 RISK_CONFIG_INPUT = '{"stops_required":true,"max_position_r":"1"}'
 EXECUTION_CONFIG_CANONICAL = '{"mode":"paper","slippage_model":"recorded"}'
@@ -69,6 +74,55 @@ def _mark_v4_complete(capsys: object, registry_path: Path, *, through_ms: int) -
     )
     assert exit_code == 0
     assert error == ""
+
+
+def _record_promising_report(registry: ResearchRegistry, candidate_id: str) -> str:
+    observations = tuple(
+        {
+            "trade_id": f"{candidate_id}-cli-trade-{index}",
+            "closed_at_ms": (index % 7) * DAY_MS + 1_000 + index,
+            "net_r": "0.5",
+        }
+        for index in range(40)
+    )
+    record_trade_observations(
+        registry.connection,
+        candidate_id=candidate_id,
+        observations=observations,
+    )
+    checkpoint = evaluate_checkpoint(
+        net_r_values=tuple(Decimal("0.5") for _ in observations),
+        closed_trade_days=7,
+    )
+    assert checkpoint.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
+    payload: dict[str, object] = {
+        "candidate_id": candidate_id,
+        "candidate_state": checkpoint.candidate_state.value,
+        "checkpoint_state": checkpoint.checkpoint_state.value,
+        "closed_trade_count": checkpoint.trade_count,
+        "closed_trade_days": checkpoint.closed_trade_days,
+        "posterior_probability_positive": (
+            None
+            if checkpoint.posterior_probability_positive is None
+            else str(checkpoint.posterior_probability_positive)
+        ),
+        "policy_digest": checkpoint.policy_digest,
+        "reason_codes": list(checkpoint.reason_codes),
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    report_id = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    registry.record_performance_report(
+        candidate_id=candidate_id,
+        report_id=report_id,
+        payload=payload,
+    )
+    return report_id
 
 
 def test_cli_emits_deterministic_json_and_exposes_no_live_surface(
@@ -325,23 +379,11 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
         ResearchCandidateState.RESEARCHING,
         reason="test-start",
     )
-    registry.record_performance_report(
-        candidate_id="candidate-r1",
-        report_id="promising-report",
-        payload={
-            "report_id": "promising-report",
-            "candidate_id": "candidate-r1",
-            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
-            "checkpoint_state": "research_promising",
-            "closed_trade_count": 40,
-            "closed_trade_days": 7,
-            "posterior_probability_positive": "0.80",
-        },
-    )
+    report_id = _record_promising_report(registry, "candidate-r1")
     registry.apply_checkpoint_state(
         "candidate-r1",
         ResearchCandidateState.RESEARCH_PROMISING,
-        report_id="promising-report",
+        report_id=report_id,
     )
     registry.close()
 
