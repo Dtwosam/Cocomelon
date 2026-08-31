@@ -149,6 +149,34 @@ While V4 remains performance-blind:
 
 The full design is `docs/superpowers/specs/2026-08-31-dual-lane-sequential-research-design.md`. This research architecture is intended to reduce wasted calendar time if a candidate is clearly weak while preserving a trustworthy final promotion test.
 
+### Dual-lane research core implementation boundary
+
+PR #119 implements the **core control and evaluation layer** for D-023 while leaving the frozen V4 lane unchanged.
+
+Implemented core capabilities are:
+
+- immutable research candidate identity, lineage, source provenance, and inherited touched intervals;
+- a source-bound V4 interval registry with actual-time overlap checks, monotonic completeness watermarking, retroactive contamination, and descendant contamination inheritance;
+- canonical research artifact verification from replay journal, evaluation facts, and replay metadata before economics are admitted;
+- immutable verified-batch attestations binding source/replay identity, source interval, closed-trade/sample set, planned risk, replay integrity, and operational/hard-risk health;
+- checkpoint observations that require authoritative batch attestations and reject rewritten economics;
+- checkpoint provenance that requires admitted, sealed, **and attested** batches, including zero-trade batches;
+- operational/hard-risk state and planned-risk utilization derived from canonical evidence rather than caller-supplied checkpoint fields;
+- precommitted deterministic sequential futility / `RESEARCH_PROMISING` decisions with the existing 20-trade and 40-trade/7-day asymmetry;
+- touched/non-promotional cumulative research reports;
+- atomic final checkpoint report + candidate-state persistence, so a failed state transition cannot leave a released performance report behind;
+- frozen-challenger activation and the inherited touched-data six-hour validation embargo;
+- an isolated `cocomelon-research` CLI whose checkpoint command accepts artifact descriptors only;
+- regression coverage proving the research source tree has no live-order or V4 curator/corpus mutation surface.
+
+The trust chain is now:
+
+`canonical replay artifact -> verified batch -> immutable attestation -> immutable observations/provenance/health -> authenticated report -> atomic research state commit`.
+
+This does **not** convert research results into promotion evidence. `RESEARCH_PROMISING` remains touched/non-promotional and cannot produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, advance Phase 10, or enable live orders.
+
+Later D-023 rollout work remains separate: a scheduled/replay research runner and a dedicated research dashboard/status surface have not been added by the core PR.
+
 ## Evidence dashboard
 
 Issue #82 remains the canonical human-readable V4 validation tracker. It treats V4 as active and V3/V2 as historical. Historical counts and future research-lane metrics are never added to V4 progress.
@@ -198,11 +226,11 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 
 1. Keep Phase 10 and live trading blocked.
 2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, or performance-condition V4 cohorts.
-3. Implement the dual-lane research architecture from the approved design, starting with candidate lineage/touched-data contracts and V4 source-interval isolation.
-4. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
-5. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
-6. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
-7. Use research-lane economics only for touched challenger keep/change/kill decisions, never for a V4 promotion claim.
+3. Keep PR #119's research-core economics strictly **TOUCHED / NON-PROMOTIONAL**; do not use research outputs for a V4 promotion claim.
+4. Continue D-023 rollout separately with an isolated scheduled/replay research runner and a dedicated research dashboard/status surface, both preserving artifact-authoritative input and V4 source-time separation.
+5. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
+6. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
+7. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
 8. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Profitability and live-trading status
