@@ -181,34 +181,41 @@ def evaluate_checkpoint(
     _validated_observations(net_r_values)
 
     trade_count = len(net_r_values)
+    if operational_failure or hard_risk_failure:
+        reason_codes: list[str] = []
+        if operational_failure:
+            reason_codes.append("operational_failure")
+        if hard_risk_failure:
+            reason_codes.append("hard_risk_failure")
+        return ResearchCheckpoint(
+            trade_count=trade_count,
+            closed_trade_days=closed_trade_days,
+            posterior_probability_positive=None,
+            checkpoint_state=ResearchCheckpointState.REJECT_OPERATIONAL,
+            candidate_state=ResearchCandidateState.REJECTED_OPERATIONAL,
+            policy_digest=policy.digest,
+            reason_codes=tuple(reason_codes),
+        )
+
     posterior: Decimal | None = None
     if trade_count < policy.minimum_futility_trades:
         checkpoint_state = ResearchCheckpointState.INSUFFICIENT_TRADES
-        economic_candidate_state = ResearchCandidateState.RESEARCHING
+        candidate_state = ResearchCandidateState.RESEARCHING
     else:
         posterior = posterior_probability_positive(net_r_values, policy=policy)
         if posterior < policy.futility_probability:
             checkpoint_state = ResearchCheckpointState.REJECT_FUTILITY
-            economic_candidate_state = ResearchCandidateState.REJECTED_FUTILITY
+            candidate_state = ResearchCandidateState.REJECTED_FUTILITY
         elif (
             trade_count >= policy.promising_trade_count
             and closed_trade_days >= policy.promising_day_count
             and posterior >= policy.promising_probability
         ):
             checkpoint_state = ResearchCheckpointState.RESEARCH_PROMISING
-            economic_candidate_state = ResearchCandidateState.RESEARCH_PROMISING
+            candidate_state = ResearchCandidateState.RESEARCH_PROMISING
         else:
             checkpoint_state = ResearchCheckpointState.CONTINUE
-            economic_candidate_state = ResearchCandidateState.RESEARCHING
-
-    reason_codes: list[str] = []
-    candidate_state = economic_candidate_state
-    if operational_failure:
-        reason_codes.append("operational_failure")
-        candidate_state = ResearchCandidateState.REJECTED_OPERATIONAL
-    if hard_risk_failure:
-        reason_codes.append("hard_risk_failure")
-        candidate_state = ResearchCandidateState.REJECTED_OPERATIONAL
+            candidate_state = ResearchCandidateState.RESEARCHING
 
     return ResearchCheckpoint(
         trade_count=trade_count,
@@ -217,5 +224,5 @@ def evaluate_checkpoint(
         checkpoint_state=checkpoint_state,
         candidate_state=candidate_state,
         policy_digest=policy.digest,
-        reason_codes=tuple(reason_codes),
+        reason_codes=(),
     )
