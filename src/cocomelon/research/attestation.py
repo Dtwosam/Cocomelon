@@ -49,8 +49,15 @@ def attest_verified_research_batch(
     ensure_batch_attestation_schema(connection)
     if connection.in_transaction:
         raise ResearchRegistryError("research batch attestation transaction is already active")
-    identities = tuple(sorted((sample.trade_id, sample.sample_id) for sample in verified.samples))
-    planned = tuple(sorted((trade_id, str(value)) for trade_id, value in verified.planned_risk_fractions))
+    identities = tuple(
+        sorted((sample.trade_id, sample.sample_id) for sample in verified.samples)
+    )
+    planned = tuple(
+        sorted(
+            (trade_id, str(value))
+            for trade_id, value in verified.planned_risk_fractions
+        )
+    )
     incoming = (
         candidate_id,
         verified.source_digest,
