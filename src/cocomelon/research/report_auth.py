@@ -14,6 +14,7 @@ from cocomelon.research.sequential import (
 )
 
 DAY_MS = 86_400_000
+ZERO = Decimal("0")
 
 
 def _canonical_json(value: object) -> str:
@@ -44,29 +45,49 @@ def _int_value(value: object, field: str) -> int:
     return value
 
 
+def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
 def _load_observations(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
 ) -> tuple[dict[str, object], ...]:
-    table = connection.execute(
-        """
-        SELECT 1
-        FROM sqlite_master
-        WHERE type = 'table' AND name = 'research_trade_observations'
-        """
+    if not _table_exists(connection, "research_trade_observations"):
+        return ()
+    total_row = connection.execute(
+        "SELECT COUNT(*) FROM research_trade_observations WHERE candidate_id = ?",
+        (candidate_id,),
     ).fetchone()
-    if table is None:
+    total = 0 if total_row is None else int(total_row[0])
+    if not _table_exists(connection, "research_batch_attestations"):
+        if total:
+            raise ValueError(
+                "checkpoint report is not reproducible from immutable observations/provenance"
+            )
         return ()
     rows = connection.execute(
         """
-        SELECT payload_json
-        FROM research_trade_observations
-        WHERE candidate_id = ?
-        ORDER BY closed_at_ms, trade_id
+        SELECT o.payload_json
+        FROM research_trade_observations AS o
+        JOIN research_batches AS b
+          ON b.batch_id = o.batch_id AND b.candidate_id = o.candidate_id
+        JOIN research_batch_attestations AS a
+          ON a.batch_id = o.batch_id AND a.candidate_id = o.candidate_id
+        WHERE o.candidate_id = ? AND b.status = 'admitted'
+        ORDER BY o.closed_at_ms, o.trade_id
         """,
         (candidate_id,),
     ).fetchall()
+    if total != len(rows):
+        raise ValueError(
+            "checkpoint report is not reproducible from immutable observations/provenance"
+        )
     observations: list[dict[str, object]] = []
     for row in rows:
         payload = json.loads(str(row["payload_json"]))
@@ -74,6 +95,58 @@ def _load_observations(
             raise ValueError("stored research observation is invalid")
         observations.append(payload)
     return tuple(observations)
+
+
+def _configured_risk_per_trade(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    required: bool,
+) -> Decimal | None:
+    row = connection.execute(
+        "SELECT risk_config_json FROM research_candidates WHERE candidate_id = ?",
+        (candidate_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("checkpoint candidate is missing")
+    try:
+        raw = json.loads(str(row["risk_config_json"]))
+    except json.JSONDecodeError as exc:
+        raise ValueError("checkpoint candidate risk config is invalid") from exc
+    value = raw.get("risk_per_trade") if isinstance(raw, dict) else None
+    if value is None and not required:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("checkpoint candidate risk_per_trade is invalid")
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError("checkpoint candidate risk_per_trade is invalid") from exc
+    if not result.is_finite() or result <= ZERO:
+        raise ValueError("checkpoint candidate risk_per_trade is invalid")
+    return result
+
+
+def _attested_health(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+) -> tuple[bool, bool]:
+    if not _table_exists(connection, "research_batch_attestations"):
+        return False, False
+    rows = connection.execute(
+        """
+        SELECT a.operational_failure, a.hard_risk_failure
+        FROM research_batch_attestations AS a
+        JOIN research_batches AS b ON b.batch_id = a.batch_id
+        WHERE a.candidate_id = ? AND b.status = 'admitted'
+        """,
+        (candidate_id,),
+    ).fetchall()
+    return (
+        any(bool(int(row["operational_failure"])) for row in rows),
+        any(bool(int(row["hard_risk_failure"])) for row in rows),
+    )
 
 
 def assert_checkpoint_report_backed_by_observations(
@@ -102,20 +175,24 @@ def assert_checkpoint_report_backed_by_observations(
         _int_value(observation.get("closed_at_ms"), "closed_at_ms") // DAY_MS
         for observation in observations
     }
-    risk_metrics = compute_checkpoint_risk_metrics(observations)
+    configured_risk = _configured_risk_per_trade(
+        connection,
+        candidate_id=candidate_id,
+        required=bool(observations),
+    )
+    risk_metrics = compute_checkpoint_risk_metrics(
+        observations,
+        configured_risk_per_trade=configured_risk,
+    )
     batch_ids, source_ids = load_sealed_admitted_batch_provenance(
         connection,
         candidate_id=candidate_id,
     )
+    operational_failure, hard_risk_failure = _attested_health(
+        connection,
+        candidate_id=candidate_id,
+    )
 
-    reason_codes_value = payload.get("reason_codes", [])
-    if not isinstance(reason_codes_value, list) or not all(
-        isinstance(reason, str) for reason in reason_codes_value
-    ):
-        raise ValueError("checkpoint report reason_codes is invalid")
-    reason_codes = tuple(reason_codes_value)
-    operational_failure = "operational_failure" in reason_codes
-    hard_risk_failure = "hard_risk_failure" in reason_codes
     checkpoint = evaluate_checkpoint(
         net_r_values=net_r_values,
         closed_trade_days=len(closed_days),
