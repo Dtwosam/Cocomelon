@@ -31,6 +31,13 @@ _TERMINAL_STATES = frozenset(
         ResearchCandidateState.NO_EDGE,
     }
 )
+_RESEARCH_TOUCHABLE_STATES = frozenset(
+    {
+        ResearchCandidateState.DRAFT,
+        ResearchCandidateState.RESEARCHING,
+        ResearchCandidateState.RESEARCH_PROMISING,
+    }
+)
 
 
 class ResearchRegistry:
@@ -69,6 +76,15 @@ class ResearchRegistry:
                 start_ms INTEGER NOT NULL,
                 end_ms INTEGER NOT NULL,
                 disposition TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS research_batches (
+                batch_id TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                replay_run_id TEXT NOT NULL UNIQUE,
+                start_ms INTEGER NOT NULL,
+                end_ms INTEGER NOT NULL,
+                FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
             );
             CREATE TABLE IF NOT EXISTS research_candidate_state_events (
                 event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,6 +189,14 @@ class ResearchRegistry:
             state=state,
         )
 
+    def _assert_research_touchable(self, candidate_id: str) -> ResearchCandidateManifest:
+        candidate = self.load_candidate(candidate_id)
+        if candidate.state not in _RESEARCH_TOUCHABLE_STATES:
+            raise ResearchRegistryError(
+                f"candidate is terminal to research checkpoints: {candidate.state.value}"
+            )
+        return candidate
+
     def record_touched_interval(
         self,
         candidate_id: str,
@@ -180,7 +204,7 @@ class ResearchRegistry:
         *,
         source_id: str,
     ) -> None:
-        self.load_candidate(candidate_id)
+        self._assert_research_touchable(candidate_id)
         if not source_id.strip():
             raise ResearchRegistryError("source_id must not be empty")
         self.connection.execute(
@@ -192,6 +216,88 @@ class ResearchRegistry:
             (candidate_id, source_id, interval.start_ms, interval.end_ms),
         )
         self.connection.commit()
+
+    def record_batch(
+        self,
+        *,
+        candidate_id: str,
+        batch_id: str,
+        source_id: str,
+        replay_run_id: str,
+        interval: TimeInterval,
+    ) -> None:
+        self._assert_research_touchable(candidate_id)
+        for value, field in (
+            (batch_id, "batch_id"),
+            (source_id, "source_id"),
+            (replay_run_id, "replay_run_id"),
+        ):
+            if not value.strip():
+                raise ResearchRegistryError(f"{field} must not be empty")
+        self.assert_batch_disjoint_from_v4(interval)
+
+        existing = self.connection.execute(
+            """
+            SELECT candidate_id, source_id, replay_run_id, start_ms, end_ms
+            FROM research_batches
+            WHERE batch_id = ?
+            """,
+            (batch_id,),
+        ).fetchone()
+        incoming = (
+            candidate_id,
+            source_id,
+            replay_run_id,
+            interval.start_ms,
+            interval.end_ms,
+        )
+        if existing is not None:
+            stored = (
+                str(existing["candidate_id"]),
+                str(existing["source_id"]),
+                str(existing["replay_run_id"]),
+                int(existing["start_ms"]),
+                int(existing["end_ms"]),
+            )
+            if stored != incoming:
+                raise ResearchRegistryError(
+                    f"research batch already exists with different data: {batch_id}"
+                )
+            return
+
+        replay_existing = self.connection.execute(
+            "SELECT batch_id FROM research_batches WHERE replay_run_id = ?",
+            (replay_run_id,),
+        ).fetchone()
+        if replay_existing is not None:
+            raise ResearchRegistryError(
+                f"research replay run already belongs to batch {replay_existing['batch_id']}"
+            )
+
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO research_batches (
+                    batch_id, candidate_id, source_id, replay_run_id, start_ms, end_ms
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    batch_id,
+                    candidate_id,
+                    source_id,
+                    replay_run_id,
+                    interval.start_ms,
+                    interval.end_ms,
+                ),
+            )
+            self.connection.execute(
+                """
+                INSERT OR IGNORE INTO research_touched_intervals (
+                    candidate_id, source_id, start_ms, end_ms
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (candidate_id, source_id, interval.start_ms, interval.end_ms),
+            )
 
     def effective_touched_intervals(self, candidate_id: str) -> tuple[TimeInterval, ...]:
         candidate = self.load_candidate(candidate_id)
@@ -269,6 +375,21 @@ class ResearchRegistry:
         current = self.load_candidate(candidate_id)
         if current.state in _TERMINAL_STATES and state != current.state:
             raise ResearchRegistryError(f"candidate is terminal: {current.state.value}")
+        if current.state is ResearchCandidateState.FROZEN_CHALLENGER and state not in {
+            ResearchCandidateState.FROZEN_CHALLENGER,
+            ResearchCandidateState.VALIDATING,
+        }:
+            raise ResearchRegistryError(
+                "candidate is terminal to research checkpoints: frozen_challenger"
+            )
+        if current.state is ResearchCandidateState.VALIDATING and state not in {
+            ResearchCandidateState.VALIDATING,
+            ResearchCandidateState.VALIDATED_EDGE,
+            ResearchCandidateState.NO_EDGE,
+            ResearchCandidateState.REJECTED_OPERATIONAL,
+            ResearchCandidateState.REJECTED_CONTAMINATION,
+        }:
+            raise ResearchRegistryError("validating candidate cannot return to research")
         self.connection.execute(
             "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
             (state.value, candidate_id),
