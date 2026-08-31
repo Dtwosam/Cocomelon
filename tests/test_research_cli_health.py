@@ -4,12 +4,13 @@ import json
 from importlib import import_module
 from pathlib import Path
 
+from tests.research_artifact_support import write_research_artifact
+
 research_cli = import_module("cocomelon.research_cli")
 
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
-RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+RISK_CONFIG = '{"risk_per_trade":"0.0025","stops_required":true}'
 V4_SOURCE = "authoritative-v4-inventory"
-EMPTY_SAMPLE_DIGEST = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
@@ -57,36 +58,31 @@ def _prepare_registry(capsys: object, registry_path: Path) -> None:
     assert completeness_err == ""
 
 
-def _write_dataset(path: Path, *, health: dict[str, bool] | None) -> None:
-    payload: dict[str, object] = {
-        "batches": [
+def _write_dataset(path: Path, artifact_root: Path) -> None:
+    path.write_text(
+        json.dumps(
             {
-                "batch_id": "batch-health",
-                "source_id": "source-health",
-                "replay_run_id": "replay-health",
-                "start_ms": 1000,
-                "end_ms": 2000,
-                "trade_ids": [],
-                "sample_digest": EMPTY_SAMPLE_DIGEST,
-            }
-        ],
-        "samples": [],
-    }
-    if health is not None:
-        payload["health"] = health
-    path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+                "artifact_batches": [
+                    {
+                        "artifact_root": str(artifact_root),
+                        "batch_id": "batch-health",
+                        "source_id": "source-health",
+                    }
+                ]
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
 
 
-def test_checkpoint_dataset_requires_explicit_health_state(
-    tmp_path: Path,
+def _run_checkpoint(
     capsys: object,
-) -> None:
-    registry_path = tmp_path / "research.sqlite3"
-    dataset_path = tmp_path / "checkpoint.json"
-    _prepare_registry(capsys, registry_path)
-    _write_dataset(dataset_path, health=None)
-
-    code, out, err = _run_cli(
+    *,
+    registry_path: Path,
+    dataset_path: Path,
+) -> tuple[int, str, str]:
+    return _run_cli(
         capsys,
         [
             "checkpoint",
@@ -97,38 +93,62 @@ def test_checkpoint_dataset_requires_explicit_health_state(
             "--dataset",
             str(dataset_path),
         ],
+    )
+
+
+def test_checkpoint_dataset_rejects_caller_authored_health_state(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    dataset_path = tmp_path / "checkpoint.json"
+    _prepare_registry(capsys, registry_path)
+    dataset_path.write_text(
+        json.dumps(
+            {
+                "artifact_batches": [],
+                "health": {"operational_failure": False, "hard_risk_failure": False},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    code, out, err = _run_checkpoint(
+        capsys,
+        registry_path=registry_path,
+        dataset_path=dataset_path,
     )
 
     assert code != 0
     assert out == ""
     error = json.loads(err)
     assert error["error_type"] == "ValueError"
-    assert "health" in error["error"]
+    assert "authoritative artifact_batches" in error["error"]
 
 
-def test_checkpoint_carries_operational_health_failure_into_rejection(
+def test_checkpoint_derives_operational_health_failure_from_replay_artifact(
     tmp_path: Path,
     capsys: object,
 ) -> None:
     registry_path = tmp_path / "research.sqlite3"
     dataset_path = tmp_path / "checkpoint.json"
     _prepare_registry(capsys, registry_path)
-    _write_dataset(
-        dataset_path,
-        health={"operational_failure": True, "hard_risk_failure": False},
+    artifact = write_research_artifact(
+        tmp_path / "artifact-operational",
+        batch_id="batch-health",
+        source_id="source-health",
+        replay_run_id="replay-health-operational",
+        start_ms=1_000,
+        end_ms=2_000,
+        data_complete=False,
     )
+    _write_dataset(dataset_path, artifact.artifact_root)
 
-    code, out, err = _run_cli(
+    code, out, err = _run_checkpoint(
         capsys,
-        [
-            "checkpoint",
-            "--registry",
-            str(registry_path),
-            "--candidate-id",
-            "candidate-health",
-            "--dataset",
-            str(dataset_path),
-        ],
+        registry_path=registry_path,
+        dataset_path=dataset_path,
     )
 
     assert code == 0
@@ -138,29 +158,28 @@ def test_checkpoint_carries_operational_health_failure_into_rejection(
     assert report["reason_codes"] == ["operational_failure"]
 
 
-def test_checkpoint_carries_hard_risk_health_failure_into_rejection(
+def test_checkpoint_derives_hard_risk_failure_from_journal_artifact(
     tmp_path: Path,
     capsys: object,
 ) -> None:
     registry_path = tmp_path / "research.sqlite3"
     dataset_path = tmp_path / "checkpoint.json"
     _prepare_registry(capsys, registry_path)
-    _write_dataset(
-        dataset_path,
-        health={"operational_failure": False, "hard_risk_failure": True},
+    artifact = write_research_artifact(
+        tmp_path / "artifact-hard-risk",
+        batch_id="batch-health",
+        source_id="source-health",
+        replay_run_id="replay-health-risk",
+        start_ms=1_000,
+        end_ms=2_000,
+        hard_risk_reason="daily_loss_lockout",
     )
+    _write_dataset(dataset_path, artifact.artifact_root)
 
-    code, out, err = _run_cli(
+    code, out, err = _run_checkpoint(
         capsys,
-        [
-            "checkpoint",
-            "--registry",
-            str(registry_path),
-            "--candidate-id",
-            "candidate-health",
-            "--dataset",
-            str(dataset_path),
-        ],
+        registry_path=registry_path,
+        dataset_path=dataset_path,
     )
 
     assert code == 0
