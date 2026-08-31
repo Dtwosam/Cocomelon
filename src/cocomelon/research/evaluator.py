@@ -14,6 +14,7 @@ from cocomelon.research.contracts import (
     ResearchCheckpointState,
     TimeInterval,
 )
+from cocomelon.research.metrics import compute_checkpoint_risk_metrics
 from cocomelon.research.observations import (
     load_trade_observations,
     record_trade_observations,
@@ -89,6 +90,8 @@ class ResearchCheckpointReport:
     total_fees: Decimal
     funding_cash_pnl: Decimal
     total_slippage_amount: Decimal
+    realized_closed_trade_max_drawdown_fraction: Decimal | None
+    max_realized_planned_risk_utilization: Decimal | None
     long_count: int
     short_count: int
     market_trade_counts: tuple[tuple[str, int], ...]
@@ -117,6 +120,16 @@ class ResearchCheckpointReport:
             "total_fees": str(self.total_fees),
             "funding_cash_pnl": str(self.funding_cash_pnl),
             "total_slippage_amount": str(self.total_slippage_amount),
+            "realized_closed_trade_max_drawdown_fraction": (
+                None
+                if self.realized_closed_trade_max_drawdown_fraction is None
+                else str(self.realized_closed_trade_max_drawdown_fraction)
+            ),
+            "max_realized_planned_risk_utilization": (
+                None
+                if self.max_realized_planned_risk_utilization is None
+                else str(self.max_realized_planned_risk_utilization)
+            ),
             "long_count": self.long_count,
             "short_count": self.short_count,
             "market_trade_counts": self.market_trade_counts,
@@ -258,6 +271,8 @@ def _observation_from_sample(
         "direction": sample.direction.value,
         "net_pnl": str(sample.net_pnl),
         "net_r": str(sample.net_r),
+        "equity_before": str(sample.equity_before),
+        "equity_after": str(sample.equity_after),
         "fees": str(fees),
         "funding_cash_pnl": str(sample.funding_cash_pnl),
         "slippage_amount": str(slippage_amount),
@@ -393,6 +408,10 @@ def evaluate_research_checkpoint(
         _observation_integer(observation, "closed_at_ms") // DAY_MS
         for observation in observations
     }
+    try:
+        risk_metrics = compute_checkpoint_risk_metrics(observations)
+    except ValueError as exc:
+        raise ResearchRegistryError(str(exc)) from exc
 
     market_counts = Counter(
         _observation_string(observation, "market") for observation in observations
@@ -439,6 +458,12 @@ def evaluate_research_checkpoint(
         total_fees=total_fees,
         funding_cash_pnl=funding_cash_pnl,
         total_slippage_amount=total_slippage,
+        realized_closed_trade_max_drawdown_fraction=(
+            risk_metrics.realized_closed_trade_max_drawdown_fraction
+        ),
+        max_realized_planned_risk_utilization=(
+            risk_metrics.max_realized_planned_risk_utilization
+        ),
         long_count=sum(
             _observation_string(observation, "direction") == Direction.LONG.value
             for observation in observations
