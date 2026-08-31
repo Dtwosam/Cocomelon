@@ -13,7 +13,11 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.evaluator import ResearchBatch, evaluate_research_checkpoint
+from cocomelon.research.evaluator import (
+    ResearchBatch,
+    build_research_batch_seal,
+    evaluate_research_checkpoint,
+)
 from cocomelon.research.registry import ResearchRegistry
 
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
@@ -95,12 +99,14 @@ def _evaluate(path: Path, context: Context) -> dict[str, object]:
             replay_run_id="decimal-replay",
             interval=TimeInterval(1_000, 2_000),
         )
+        samples = _samples()
         with localcontext(context):
             report = evaluate_research_checkpoint(
                 registry=registry,
                 candidate_id="decimal-context-candidate",
                 batches=(batch,),
-                samples=_samples(),
+                batch_seals=(build_research_batch_seal(batch=batch, samples=samples),),
+                samples=samples,
             )
         return report.to_dict()
     finally:
