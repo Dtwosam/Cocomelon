@@ -434,7 +434,7 @@ class ResearchRegistry:
             raise
 
     def _known_v4_overlap(self, interval: TimeInterval) -> sqlite3.Row | None:
-        return self.connection.execute(
+        row: sqlite3.Row | None = self.connection.execute(
             """
             SELECT run_id, start_ms, end_ms
             FROM research_v4_intervals
@@ -444,6 +444,7 @@ class ResearchRegistry:
             """,
             (interval.end_ms, interval.start_ms),
         ).fetchone()
+        return row
 
     def _assert_v4_registry_complete_for(self, interval: TimeInterval) -> None:
         row = self.connection.execute(
