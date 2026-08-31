@@ -12,6 +12,7 @@ from cocomelon.research.contracts import (
     normalize_intervals,
     validation_cutover_allowed,
 )
+from cocomelon.research.report_auth import assert_checkpoint_report_backed_by_observations
 
 
 class ResearchRegistryError(RuntimeError):
@@ -697,6 +698,16 @@ class ResearchRegistry:
                 "research-promising candidate cannot return to researching"
             )
         payload = self._checkpoint_report_payload(candidate_id, report_id)
+        try:
+            assert_checkpoint_report_backed_by_observations(
+                self.connection,
+                candidate_id=candidate_id,
+                report_id=report_id,
+                payload=payload,
+                state=state,
+            )
+        except ValueError as exc:
+            raise ResearchRegistryError(str(exc)) from exc
         self._validate_checkpoint_report_for_state(payload, state)
         if current.state is state:
             return
