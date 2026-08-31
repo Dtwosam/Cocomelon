@@ -326,7 +326,7 @@ def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: P
         report_id=fabricated_id,
         payload=fabricated,
     )
-    with raises(ResearchRegistryError, match="canonical report payload"):
+    with raises(ResearchRegistryError, match="attested batch provenance"):
         registry.apply_checkpoint_state(
             "r1",
             ResearchCandidateState.RESEARCH_PROMISING,
