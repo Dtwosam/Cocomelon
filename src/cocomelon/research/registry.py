@@ -109,7 +109,9 @@ class ResearchRegistry:
                 raise ResearchRegistryError("candidate parent must belong to the same family")
             expected_ancestors = parent.ancestor_candidate_ids + (parent.candidate_id,)
             if manifest.ancestor_candidate_ids != expected_ancestors:
-                raise ResearchRegistryError("candidate ancestor lineage does not match parent chain")
+                raise ResearchRegistryError(
+                    "candidate ancestor lineage does not match parent chain"
+                )
 
         self.connection.execute(
             """
@@ -205,7 +207,9 @@ class ResearchRegistry:
                 """,
                 (lineage_candidate_id,),
             ).fetchall()
-            intervals.extend(TimeInterval(int(row["start_ms"]), int(row["end_ms"])) for row in rows)
+            intervals.extend(
+                TimeInterval(int(row["start_ms"]), int(row["end_ms"])) for row in rows
+            )
         return normalize_intervals(intervals)
 
     def record_v4_interval(
@@ -222,10 +226,16 @@ class ResearchRegistry:
             (run_id,),
         ).fetchone()
         if existing is not None:
-            stored = (int(existing["start_ms"]), int(existing["end_ms"]), str(existing["disposition"]))
+            stored = (
+                int(existing["start_ms"]),
+                int(existing["end_ms"]),
+                str(existing["disposition"]),
+            )
             incoming = (interval.start_ms, interval.end_ms, disposition)
             if stored != incoming:
-                raise ResearchRegistryError(f"V4 interval already exists with different data: {run_id}")
+                raise ResearchRegistryError(
+                    f"V4 interval already exists with different data: {run_id}"
+                )
             return
         self.connection.execute(
             """
@@ -310,4 +320,6 @@ class ResearchRegistry:
             freeze_ms=int(row["freeze_ms"]),
             effective_touched_intervals=self.effective_touched_intervals(candidate_id),
         ):
-            raise ResearchRegistryError("validation cutover violates freeze or touched-data embargo")
+            raise ResearchRegistryError(
+                "validation cutover violates freeze or touched-data embargo"
+            )
