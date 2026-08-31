@@ -6,12 +6,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+
+from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
 from cocomelon.research.dashboard import (
     RESEARCH_STATUS_LABEL,
     build_research_status,
 )
-
-from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
 from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
@@ -157,7 +157,7 @@ def test_research_status_fails_closed_on_unauthenticated_report(tmp_path: Path) 
             payload=fabricated,
         )
 
-        with pytest.raises(ResearchRegistryError, match="attested batch provenance"):
+        with pytest.raises(ResearchRegistryError, match="unauthenticated performance report"):
             build_research_status(registry)
     finally:
         registry.close()
