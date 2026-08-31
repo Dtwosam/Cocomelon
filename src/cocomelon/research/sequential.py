@@ -5,9 +5,10 @@ import json
 import math
 import random
 from dataclasses import dataclass
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from functools import lru_cache
 
+from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
 from cocomelon.research.contracts import (
     ResearchCandidateState,
     ResearchCheckpointState,
@@ -160,10 +161,11 @@ def posterior_probability_positive(
     if total_weight <= 0.0 or not math.isfinite(total_weight):
         raise RuntimeError("posterior normalization failed")
     probability = positive_weight / total_weight
-    return Decimal(str(probability)).quantize(
-        policy.probability_quantum,
-        rounding=ROUND_HALF_EVEN,
-    )
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        return Decimal(str(probability)).quantize(
+            policy.probability_quantum,
+            rounding=ROUND_HALF_EVEN,
+        )
 
 
 def evaluate_checkpoint(
