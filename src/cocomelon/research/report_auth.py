@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 from cocomelon.research.contracts import ResearchCandidateState
 from cocomelon.research.metrics import compute_checkpoint_risk_metrics
+from cocomelon.research.provenance import load_sealed_admitted_batch_provenance
 from cocomelon.research.sequential import (
     DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
     evaluate_checkpoint,
@@ -102,6 +103,10 @@ def assert_checkpoint_report_backed_by_observations(
         for observation in observations
     }
     risk_metrics = compute_checkpoint_risk_metrics(observations)
+    batch_ids, source_ids = load_sealed_admitted_batch_provenance(
+        connection,
+        candidate_id=candidate_id,
+    )
 
     reason_codes_value = payload.get("reason_codes", [])
     if not isinstance(reason_codes_value, list) or not all(
@@ -141,11 +146,15 @@ def assert_checkpoint_report_backed_by_observations(
             if risk_metrics.max_realized_planned_risk_utilization is None
             else str(risk_metrics.max_realized_planned_risk_utilization)
         ),
+        "batch_ids": list(batch_ids),
+        "source_ids": list(source_ids),
     }
     for field, expected_value in expected.items():
         if payload.get(field) != expected_value:
             raise ValueError(
-                f"checkpoint report is not reproducible from immutable observations: {field}"
+                f"checkpoint report is not reproducible from immutable observations/provenance: {field}"
             )
     if checkpoint.candidate_state is not state:
-        raise ValueError("checkpoint report is not reproducible from immutable observations: state")
+        raise ValueError(
+            "checkpoint report is not reproducible from immutable observations/provenance: state"
+        )
