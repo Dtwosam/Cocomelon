@@ -23,7 +23,7 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.research.evaluator import ResearchArtifactBatch
 
 CODE_REVISION = "1" * 40
-CONFIG_DIGEST = "c" * 64
+CONFIG_DIGEST = "a" * 64
 TRIGGER_HEAD = "f" * 40
 
 
