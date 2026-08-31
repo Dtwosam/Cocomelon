@@ -153,6 +153,10 @@ def test_descendant_inherits_all_touched_history_across_generations(tmp_path: Pa
 
 def test_research_promising_state_cannot_be_candidate_edge(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.mark_v4_registry_complete_through(
+        through_ms=10 * DAY_MS,
+        source_id="authoritative-v4-test-inventory",
+    )
     candidate = _candidate("research-r1")
     registry.create_candidate(candidate)
     batch = ResearchBatch(
