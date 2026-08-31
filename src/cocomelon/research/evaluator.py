@@ -23,6 +23,7 @@ from cocomelon.research.registry import (
     ResearchRegistry,
     ResearchRegistryError,
 )
+from cocomelon.research.seals import seal_research_batch
 from cocomelon.research.sequential import (
     DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
     SequentialResearchPolicy,
@@ -45,6 +46,29 @@ class ResearchBatch:
         for field in ("batch_id", "source_id", "replay_run_id"):
             if not getattr(self, field).strip():
                 raise ValueError(f"{field} must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchBatchSeal:
+    batch_id: str
+    trade_ids: tuple[str, ...]
+    sample_digest: str
+
+    def __post_init__(self) -> None:
+        if not self.batch_id.strip():
+            raise ValueError("batch_id must not be empty")
+        normalized_ids = tuple(sorted(self.trade_ids))
+        if any(not trade_id.strip() for trade_id in normalized_ids):
+            raise ValueError("sealed trade ids must not be empty")
+        if len(set(normalized_ids)) != len(normalized_ids):
+            raise ValueError("sealed trade ids must be unique")
+        object.__setattr__(self, "trade_ids", normalized_ids)
+        if (
+            len(self.sample_digest) != 64
+            or self.sample_digest != self.sample_digest.lower()
+            or any(char not in "0123456789abcdef" for char in self.sample_digest)
+        ):
+            raise ValueError("sample_digest must be a lowercase sha256 digest")
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +147,32 @@ class ResearchCheckpointReport:
         return {"report_id": self.report_id, **self._payload_without_id()}
 
 
+def _sample_identity_digest(samples: tuple[TradeEvaluationSample, ...]) -> str:
+    payload = tuple(sorted((sample.trade_id, sample.sample_id) for sample in samples))
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def build_research_batch_seal(
+    *,
+    batch: ResearchBatch,
+    samples: tuple[TradeEvaluationSample, ...],
+) -> ResearchBatchSeal:
+    if any(sample.replay_run_id != batch.replay_run_id for sample in samples):
+        raise ValueError("research batch seal samples must belong to the batch replay run")
+    return ResearchBatchSeal(
+        batch_id=batch.batch_id,
+        trade_ids=tuple(sample.trade_id for sample in samples),
+        sample_digest=_sample_identity_digest(samples),
+    )
+
+
 def _validate_batch_set(batches: tuple[ResearchBatch, ...]) -> dict[str, ResearchBatch]:
     if not batches:
         raise ValueError("at least one research batch is required")
@@ -155,6 +205,38 @@ def _validate_samples_against_batches(
             or sample.closed_at_ms >= batch.interval.end_ms
         ):
             raise ValueError(f"sample is outside research batch interval: {sample.trade_id}")
+
+
+def _validate_batch_seals(
+    *,
+    batches: tuple[ResearchBatch, ...],
+    samples: tuple[TradeEvaluationSample, ...],
+    batch_seals: tuple[ResearchBatchSeal, ...],
+) -> dict[str, ResearchBatchSeal]:
+    seal_map: dict[str, ResearchBatchSeal] = {}
+    for seal in batch_seals:
+        if seal.batch_id in seal_map:
+            raise ResearchRegistryError(f"duplicate research batch seal: {seal.batch_id}")
+        seal_map[seal.batch_id] = seal
+    expected_batch_ids = {batch.batch_id for batch in batches}
+    if set(seal_map) != expected_batch_ids:
+        raise ResearchRegistryError("every research batch requires exactly one complete seal")
+
+    for batch in batches:
+        batch_samples = tuple(
+            sample for sample in samples if sample.replay_run_id == batch.replay_run_id
+        )
+        actual = build_research_batch_seal(batch=batch, samples=batch_samples)
+        declared = seal_map[batch.batch_id]
+        if declared.trade_ids != actual.trade_ids:
+            raise ResearchRegistryError(
+                f"research batch sealed trade set does not match samples: {batch.batch_id}"
+            )
+        if declared.sample_digest != actual.sample_digest:
+            raise ResearchRegistryError(
+                f"research batch sealed sample digest does not match samples: {batch.batch_id}"
+            )
+    return seal_map
 
 
 def _observation_from_sample(
@@ -226,6 +308,7 @@ def evaluate_research_checkpoint(
     registry: ResearchRegistry,
     candidate_id: str,
     batches: tuple[ResearchBatch, ...],
+    batch_seals: tuple[ResearchBatchSeal, ...],
     samples: tuple[TradeEvaluationSample, ...],
     operational_failure: bool = False,
     hard_risk_failure: bool = False,
@@ -235,6 +318,11 @@ def evaluate_research_checkpoint(
     replay_map = _validate_batch_set(batches)
 
     _validate_samples_against_batches(samples, replay_map)
+    seal_map = _validate_batch_seals(
+        batches=batches,
+        samples=samples,
+        batch_seals=batch_seals,
+    )
     try:
         for batch in batches:
             registry.record_batch(
@@ -243,6 +331,14 @@ def evaluate_research_checkpoint(
                 source_id=batch.source_id,
                 replay_run_id=batch.replay_run_id,
                 interval=batch.interval,
+            )
+            seal = seal_map[batch.batch_id]
+            seal_research_batch(
+                registry.connection,
+                candidate_id=candidate_id,
+                batch_id=batch.batch_id,
+                trade_ids=seal.trade_ids,
+                sample_digest=seal.sample_digest,
             )
     except ResearchContaminationError:
         registry.transition_candidate(
