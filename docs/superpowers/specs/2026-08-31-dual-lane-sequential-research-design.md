@@ -1,7 +1,7 @@
 # Dual-Lane Sequential Research and Frozen Validation Design
 
 **Date:** 2026-08-31  
-**Status:** design approved in principle; pending written-spec review before implementation  
+**Status:** approved; review feedback incorporated before implementation  
 **Repository:** `Dtwosam/Cocomelon`
 
 ## Problem
@@ -20,7 +20,7 @@ Using one lane for both objectives creates a conflict. Repeatedly inspecting int
 Adopt a **dual-lane architecture**:
 
 - **Validation lane:** the existing frozen V4 Phase 9 protocol remains unchanged and performance-blind. It is the authoritative path for any promotion claim.
-- **Research lane:** a separate adaptive paper/shadow environment exposes full daily economics for distinct research candidates, supports precommitted sequential futility checks, and allows rapid challenger iteration.
+- **Research lane:** a separate adaptive paper/shadow environment exposes full economics for distinct research candidates, supports precommitted sequential futility checks, and allows rapid challenger iteration.
 
 The governing asymmetry is:
 
@@ -44,7 +44,20 @@ The research lane must never:
 
 V4 remains the control/validation experiment.
 
-Until V4 has a terminal immutable one-shot result, the research lane must not run an economically identical V4 clone for performance inspection. Research candidates must have a distinct candidate/configuration digest and at least one predeclared economics-affecting difference from frozen V4. This prevents an alternate workflow from reconstructing the hidden V4 result indirectly.
+### Hard source-time separation while V4 is blind
+
+Until V4 has a terminal immutable one-shot result, research economics may be computed only from source observations that are provably disjoint from **every actual V4 acquisition session interval**, including accepted, rejected, failed, and diagnostic runs. A different candidate digest or a nominal economics-affecting change is not sufficient isolation because a near-clone could still reconstruct the same V4 entry/exit path.
+
+Allowed research sources before the V4 one-shot is terminal are:
+
+1. historical observations whose source timestamps end before the first accepted V4 evidence interval and are already designated research/touched material; or
+2. newly recorded research-only observations whose complete source timestamp interval is proven not to intersect the union of actual V4 acquisition intervals.
+
+Every research batch records `source_start_ms` and `source_end_ms`. Before economics are released, the research evaluator must compare that interval against the authoritative registry of V4 acquisition intervals. If any intersection exists, or if the V4 interval registry is incomplete/ambiguous, the batch becomes `REJECTED_CONTAMINATION`; its economics are not eligible for keep/change/kill decisions.
+
+Scheduler drift is handled by actual recorded source intervals, not nominal cron windows. If a later-discovered V4 interval overlaps a previously admitted research batch, that batch is retroactively marked contaminated for research-decision purposes and descendants inherit the contamination/touched interval. It is never eligible for clean validation evidence.
+
+This is intentionally conservative. Research speed comes from fast evaluation of safe research data and parallel challenger work, not by using V4-hidden observations through an alternate workflow.
 
 ## Architecture
 
@@ -68,7 +81,7 @@ The research lane is a separate paper/shadow evaluation path with explicit candi
 
 Responsibilities:
 
-- run distinct research candidates on genuine mainnet-derived observations;
+- run distinct research candidates on allowed mainnet-derived observations;
 - expose full economics after each completed research batch/day;
 - record fills, fees, funding, slippage, latency, net PnL, net R, drawdown, win/loss distribution, market concentration, exit reasons, signal attribution, and operational failures;
 - perform precommitted sequential futility checks;
@@ -77,34 +90,48 @@ Responsibilities:
 
 The lane is for **research decisions only**. Its positive results are touched evidence and cannot be used as final promotion evidence.
 
-## Data and contamination rules
+## Candidate identity, lineage, and touched-data inheritance
 
-### Research observations are permanently tagged as touched
+Every research candidate must persist an immutable manifest containing:
 
-Every research candidate must persist:
-
-- candidate ID and immutable configuration digest;
-- first observation timestamp;
-- last observation timestamp;
+- `candidate_id`;
+- `family_id`;
+- `parent_candidate_id` (`null` only for a family root);
+- ordered `ancestor_candidate_ids`;
+- immutable configuration digest;
 - exact code revision;
 - exact execution/risk configuration;
+- first and last observation timestamps;
 - all source artifact/provenance identifiers;
-- the set of markets and periods used for research;
+- all local touched intervals;
+- inherited union of ancestor touched intervals;
 - all performance reports used to make a keep/change/kill decision.
 
-Once a candidate or its designer has used an observation for research, that observation is **touched** for that candidate family.
+A child candidate must reference an existing parent in the same `family_id`. Its effective touched set is the normalized union of its own touched intervals plus every ancestor's effective touched set. A candidate manifest whose parent/ancestor chain is missing, cyclic, cross-family, or digest-inconsistent is invalid and fails closed.
 
-### Clean validation starts after candidate freeze
+Any economics-affecting change creates a new `candidate_id` with the prior candidate as parent when that prior candidate informed the change. Renaming, copying, or changing a digest never resets touched history.
 
-A challenger that is selected from research must be frozen with a new immutable candidate identity before any future economic validation claim. Its authoritative OOS validation dataset begins only after the candidate freeze/cutover timestamp and excludes the observations that informed its design.
+Once a candidate or its designer has used an observation for research, that observation is permanently **touched** for that candidate family lineage.
 
-This prevents a strategy from being tuned on an interval and then claiming that same interval as untouched evidence.
+## Clean validation cutover
 
-### Frozen V4 outputs remain opaque
+A challenger selected from research must be frozen with a new immutable candidate identity and freeze timestamp before any future economic validation claim.
+
+The authoritative validation start must satisfy all of the following:
+
+- it is later than the challenger freeze timestamp;
+- it is later than the end of every effective inherited touched interval;
+- it begins after a **6-hour embargo** following the latest effective touched interval, matching the project's existing split-embargo discipline;
+- its source observations do not overlap any touched interval inherited by the candidate family;
+- the frozen challenger code/config digest is unchanged for the entire validation claim.
+
+This prevents a strategy from being tuned on an interval and then claiming that same or immediately adjacent interval as untouched evidence.
+
+## Frozen V4 outputs remain opaque
 
 Research tooling may read operational/provenance health exposed by V4, but it must not compute or reconstruct hidden V4 economics. Research jobs must not consume V4 economic artifacts or hidden journal/dataset fields for tuning-sensitive reporting.
 
-Research candidates must be explicitly distinct from the frozen V4 identity as defined above.
+Before the V4 one-shot is terminal, the hard source-time separation above is the enforceable non-reconstructability boundary; candidate distinctness alone is not accepted as sufficient isolation.
 
 ## Fast-failure model
 
@@ -122,13 +149,14 @@ A candidate/run may be rejected immediately, including on day one, for any of th
 - unbounded or malformed position sizing;
 - unexpected live-order path;
 - materially unrealistic execution assumptions;
-- corrupted candidate/config provenance.
+- corrupted candidate/config provenance;
+- source-time overlap with V4 while the V4 performance-blind boundary is active.
 
 Operational rejection does not require a minimum trade count.
 
 ### Economic futility rejection
 
-Economic rejection must not be based on an arbitrary sequence of daily PnL peeks. The research lane will use a **precommitted Bayesian sequential futility rule** for triage only.
+Economic rejection must not be based on an arbitrary sequence of daily PnL peeks. The research lane uses a **precommitted Bayesian sequential futility rule** for triage only.
 
 For each research candidate:
 
@@ -153,7 +181,7 @@ A candidate becomes `RESEARCH_PROMISING` only when all of the following are true
 - at least **40 closed research trades**;
 - at least **7 distinct UTC research days** containing a closed trade;
 - `P(mu > 0 | observations) >= 0.80` under the same precommitted research model;
-- no unresolved operational integrity failure;
+- no unresolved operational integrity or contamination failure;
 - no hard independent-risk lockout violation;
 - complete execution-cost accounting for the candidate's research observations.
 
@@ -172,7 +200,7 @@ The research lane produces one compact report after each completed UTC research 
 - long/short and market concentration;
 - stop, opposite-thesis, expiry, reduction, and health-exit counts;
 - candidate posterior state: `INSUFFICIENT_TRADES`, `CONTINUE`, `RESEARCH_PROMISING`, or `REJECT_FUTILITY`;
-- operational health state;
+- operational/contamination health state;
 - exact candidate/code/data provenance.
 
 Human-readable milestones are day 1, day 3, day 7, day 14, and day 30, but the system evaluates after every completed research day. Economic rejection is trade-count-aware rather than assuming that one calendar day always contains enough information.
@@ -184,11 +212,12 @@ A research candidate moves through these states:
 1. `DRAFT` — configuration exists but no observations consumed.
 2. `RESEARCHING` — touched evidence is accumulating and daily economics are visible.
 3. `REJECTED_OPERATIONAL` — terminal due to integrity/safety/execution failure.
-4. `REJECTED_FUTILITY` — terminal due to the precommitted sequential economic rule.
-5. `RESEARCH_PROMISING` — the exact threshold above is satisfied; this is not an economic promotion claim.
-6. `FROZEN_CHALLENGER` — immutable code/config/cutover timestamp established.
-7. `VALIDATING` — future untouched evidence is accumulated under a distinct validation protocol.
-8. `VALIDATED_EDGE` or `NO_EDGE` — only an untouched promotion evaluator may assign these terminal economic outcomes.
+4. `REJECTED_CONTAMINATION` — batch/candidate evidence is unusable because source-time isolation cannot be proven.
+5. `REJECTED_FUTILITY` — terminal due to the precommitted sequential economic rule.
+6. `RESEARCH_PROMISING` — the exact threshold above is satisfied; this is not an economic promotion claim.
+7. `FROZEN_CHALLENGER` — immutable code/config/cutover timestamp established.
+8. `VALIDATING` — future untouched evidence is accumulated under a distinct validation protocol.
+9. `VALIDATED_EDGE` or `NO_EDGE` — only an untouched promotion evaluator may assign these terminal economic outcomes.
 
 No state transition from `RESEARCHING` or `RESEARCH_PROMISING` may enable live orders.
 
@@ -225,12 +254,12 @@ If V4 ultimately fails its one-shot evaluation, the research lane should already
 - Stops remain mandatory.
 - No averaging down or martingale behavior.
 - No result-conditioned retries that discard bad observations.
-- No touched research observation can become untouched validation evidence for the candidate it helped design.
+- No touched research observation can become untouched validation evidence for the candidate lineage it helped design.
 - A positive research result is never sufficient for capital deployment.
 
 ## Failure handling
 
-The research lane must fail closed when source integrity, accounting, configuration identity, or execution provenance cannot be verified. Failed batches remain diagnostic and are never silently removed from a candidate's research history.
+The research lane must fail closed when source integrity, accounting, configuration identity, lineage, source-time isolation, or execution provenance cannot be verified. Failed batches remain diagnostic and are never silently removed from a candidate's research history.
 
 A transport or infrastructure failure can be rerun only as a new explicitly identified research batch; the failed batch remains recorded. Economic losses are not a valid retry reason.
 
@@ -240,34 +269,38 @@ Implementation must include automated tests proving at minimum:
 
 1. research artifacts cannot mutate or be admitted to `v4-mainnet-corpus`;
 2. V4 hidden economic fields are not read or reconstructed by research jobs;
-3. an economically identical V4 clone is blocked from the research lane until the V4 one-shot is terminal;
-4. candidate/config changes produce new immutable candidate identities;
-5. touched periods are persisted and rejected from later clean validation for that candidate family;
-6. economic futility cannot fire before 20 closed trades;
-7. the declared posterior futility rule is deterministic for the same ordered observations;
-8. `RESEARCH_PROMISING` cannot occur before 40 trades and 7 closed-trade days;
-9. rejected candidates cannot be resumed by deleting observations;
-10. positive early results never trigger promotion or live activation;
-11. operational failures can reject immediately and remain auditable;
-12. all research workflows keep `live_orders=false`.
+3. research economics are blocked for any source interval overlapping an actual V4 acquisition interval while V4 is blind;
+4. scheduler drift is handled by recorded intervals rather than nominal cron times;
+5. candidate/config changes produce new immutable candidate identities;
+6. parent/family lineage is persisted, acyclic, same-family, and machine-verifiable;
+7. descendant candidates inherit the union of ancestor touched intervals;
+8. touched periods are rejected from later clean validation and the 6-hour cutover embargo is enforced;
+9. economic futility cannot fire before 20 closed trades;
+10. the declared posterior futility rule is deterministic for the same ordered observations;
+11. `RESEARCH_PROMISING` cannot occur before 40 trades and 7 closed-trade days;
+12. rejected candidates cannot be resumed by deleting observations;
+13. positive early results never trigger promotion or live activation;
+14. operational/contamination failures can reject immediately and remain auditable;
+15. all research workflows keep `live_orders=false`.
 
 ## Observability
 
 The existing evidence dashboard remains the authoritative V4 validation tracker.
 
-A separate research status surface should show research candidates and daily results clearly labeled **TOUCHED / NON-PROMOTIONAL**. The research dashboard must never merge its metrics with V4 validation counts or present research profitability as verified economic edge.
+A separate research status surface shows research candidates and daily results clearly labeled **TOUCHED / NON-PROMOTIONAL**. The research dashboard must never merge its metrics with V4 validation counts or present research profitability as verified economic edge.
 
 ## Rollout order
 
-Implementation should proceed in this order:
+Implementation proceeds in this order:
 
-1. research candidate/provenance contract and touched-data registry;
-2. offline/daily research evaluator with full economics;
-3. sequential futility engine and terminal candidate states;
-4. research dashboard/reporting;
-5. scheduled research runner isolated from V4 workflows;
-6. challenger freeze/cutover contract for future untouched validation;
-7. integration tests proving V4 isolation and no live-order path.
+1. research candidate/provenance contract, lineage validation, and touched-data registry;
+2. V4 acquisition-interval registry and hard overlap guard;
+3. offline/daily research evaluator with full economics on allowed source periods;
+4. sequential futility engine and terminal candidate states;
+5. research dashboard/reporting;
+6. scheduled/replay research runner isolated from V4 workflows;
+7. challenger freeze/cutover contract with inherited touched-period and 6-hour embargo enforcement;
+8. integration tests proving V4 isolation and no live-order path.
 
 V4 acquisition continues unchanged throughout implementation.
 
@@ -278,8 +311,9 @@ The architecture is successful when the project can:
 - discover an operationally broken candidate on the first research day and reject it immediately;
 - reject a statistically implausible candidate as soon as the precommitted futility boundary is met rather than waiting for a fixed 30-day window;
 - continue promising candidates without calling them proven;
-- iterate on challengers using fully visible touched research evidence;
-- freeze a selected challenger and begin a genuinely untouched future validation period;
+- iterate on challengers using fully visible touched research evidence that cannot reconstruct V4-hidden outcomes;
+- carry touched history through every descendant candidate;
+- freeze a selected challenger and begin a genuinely untouched future validation period only after the inherited touched-data embargo;
 - preserve the integrity and performance blindness of the already-running V4 experiment;
 - keep live trading disabled until the existing promotion gates are legitimately satisfied.
 
