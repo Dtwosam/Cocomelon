@@ -373,6 +373,10 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
                         "end_ms": 60000,
                     }
                 ],
+                "health": {
+                    "hard_risk_failure": False,
+                    "operational_failure": False,
+                },
                 "samples": [],
             },
             sort_keys=True,
