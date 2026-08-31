@@ -26,6 +26,7 @@ class ResearchCheckpointState(StrEnum):
     CONTINUE = "continue"
     RESEARCH_PROMISING = "research_promising"
     REJECT_FUTILITY = "reject_futility"
+    REJECT_OPERATIONAL = "reject_operational"
 
 
 @dataclass(frozen=True, slots=True, order=True)
