@@ -75,7 +75,7 @@ def test_promising_checkpoint_must_be_reproducible_from_immutable_observations(
             payload=fabricated,
         )
 
-        with pytest.raises(ResearchRegistryError, match="canonical report payload"):
+        with pytest.raises(ResearchRegistryError, match="attested batch provenance"):
             registry.apply_checkpoint_state(
                 "report-auth-candidate",
                 ResearchCandidateState.RESEARCH_PROMISING,
