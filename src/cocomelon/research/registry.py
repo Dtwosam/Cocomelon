@@ -701,10 +701,16 @@ class ResearchRegistry:
         if current.state is state:
             return
         with self.connection:
-            self.connection.execute(
-                "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
-                (state.value, candidate_id),
+            cursor = self.connection.execute(
+                """
+                UPDATE research_candidates
+                SET state = ?
+                WHERE candidate_id = ? AND state = ?
+                """,
+                (state.value, candidate_id, current.state.value),
             )
+            if cursor.rowcount != 1:
+                raise ResearchRegistryError("candidate state changed concurrently")
             self.connection.execute(
                 """
                 INSERT INTO research_candidate_state_events (candidate_id, state, reason)
