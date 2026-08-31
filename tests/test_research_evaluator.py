@@ -212,3 +212,32 @@ def test_report_rejects_samples_outside_registered_research_batches(tmp_path: Pa
             ),
         )
     registry.close()
+
+
+def test_report_rejects_sample_closed_at_half_open_batch_endpoint(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    candidate = _candidate()
+    registry.create_candidate(candidate)
+    sample = _sample(
+        1,
+        day=1,
+        market="BTC",
+        direction=Direction.LONG,
+        net_pnl="1",
+        net_r="0.1",
+    )
+    batch = evaluator.ResearchBatch(
+        batch_id="batch-endpoint",
+        source_id="research-source-endpoint",
+        replay_run_id=sample.replay_run_id,
+        interval=TimeInterval(DAY_MS, sample.closed_at_ms),
+    )
+
+    with raises(ValueError, match="outside research batch interval"):
+        evaluator.evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id=candidate.candidate_id,
+            batches=(batch,),
+            samples=(sample,),
+        )
+    registry.close()
