@@ -232,9 +232,16 @@ def evaluate_research_checkpoint(
     candidate = registry.load_candidate(candidate_id)
     replay_map = _validate_batch_set(batches)
 
+    _validate_samples_against_batches(samples, replay_map)
     try:
         for batch in batches:
-            registry.assert_batch_disjoint_from_v4(batch.interval)
+            registry.record_batch(
+                candidate_id=candidate_id,
+                batch_id=batch.batch_id,
+                source_id=batch.source_id,
+                replay_run_id=batch.replay_run_id,
+                interval=batch.interval,
+            )
     except ResearchContaminationError:
         registry.transition_candidate(
             candidate_id,
@@ -242,15 +249,6 @@ def evaluate_research_checkpoint(
             reason="v4_source_interval_overlap",
         )
         raise
-
-    _validate_samples_against_batches(samples, replay_map)
-
-    for batch in batches:
-        registry.record_touched_interval(
-            candidate_id,
-            batch.interval,
-            source_id=batch.source_id,
-        )
 
     incoming_observations = tuple(
         _observation_from_sample(sample, replay_map[sample.replay_run_id])
