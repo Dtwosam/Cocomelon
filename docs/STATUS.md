@@ -1,6 +1,6 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-08-30  
+**Last updated:** 2026-08-31  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
 **Verified V4 execution runtime:** `0c14c9cfa37c80babc65d050fed6d4465dcb9032`  
@@ -12,7 +12,7 @@
 
 ## Current production state
 
-The active evidence protocol is **V4 thesis-expiry mainnet evidence**. It uses genuine public Hyperliquid mainnet data with paper execution only.
+The active authoritative evidence protocol remains **V4 thesis-expiry mainnet evidence**. It uses genuine public Hyperliquid mainnet data with paper execution only.
 
 The frozen V4 acquisition contract is unchanged:
 
@@ -36,21 +36,26 @@ Exact active V4 evidence identity:
 - execution config `phase7-v2-4h-thesis-expiry`;
 - frozen evaluator `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`.
 
-The current runtime/evaluator repin is a correctness/provenance correction made **before the first V4 cohort was accepted**. Strategy logic, risk rules, execution economics, entry/capture/expiry windows, readiness thresholds, and the one-shot economic protocol were not changed.
+The runtime/evaluator repin was a correctness/provenance correction made before the first accepted V4 cohort. Strategy logic, risk rules, execution economics, entry/capture/expiry windows, readiness thresholds, and the one-shot economic protocol were not changed.
 
 V3 scheduled acquisition is retired. Its workflow remains manual-only for frozen audit/reproduction and cannot compete with V4 scheduled evidence.
 
 ## Active V4 evidence progress
 
-Current trusted V4 state remains:
+The trusted dashboard state as of 2026-08-31 08:37 UTC is:
 
-- **0 accepted V4 cohorts**;
-- **0 / 100 closed paper trades**;
-- **0 / 30 closed-trade days**;
+- **1 accepted V4 cohort**;
+- **2 / 100 closed paper trades**;
+- **1 / 30 closed-trade days**;
+- **105 strategy decisions** in the accepted V4 corpus;
 - **no V4 economic edge claim**;
 - **live orders disabled**.
 
-No failed or pre-fix V4 source has been retried, reclassified, or retroactively admitted. All remain diagnostic evidence only and contribute **zero** economic progress.
+The first accepted corrected-runtime source was scheduled campaign run `33338032370`, admitted by curator run `33356082082` into `v4-mainnet-corpus` artifact `9745203020`.
+
+The subsequent scheduled campaign run `33369130434` failed during acquisition after a simultaneous redundant WebSocket disconnect created `redundant_disconnect` gaps across subscribed streams. The gap watcher failed closed and verification was skipped. That run contributes zero economic progress and the accepted corpus remains unchanged.
+
+No failed or pre-fix V4 source has been retried, reclassified, or retroactively admitted. All remain diagnostic evidence only and contribute zero economic progress.
 
 ### Accounting correction boundary
 
@@ -69,7 +74,7 @@ PR #113 separated the fixed evidence campaign into two jobs:
 - an intermediate acquisition artifact transfers the exact captured evidence between jobs;
 - acquisition-only concurrency remains `cancel-in-progress: false`.
 
-Run `33313715800` (V4 run #6) proved that correction operationally: acquisition completed, its staging artifact uploaded, the independent verification job downloaded it, and offline validation/replay completed. The prior 350-minute cancellation mode did not recur.
+Run `33313715800` proved that correction operationally: acquisition completed, its staging artifact uploaded, the independent verification job downloaded it, and offline validation/replay completed. The prior 350-minute cancellation mode did not recur.
 
 ### Funding-boundary timestamp correction
 
@@ -117,7 +122,7 @@ The V4 evaluator uses distinct immutable identities:
 
 It requires the exact V4 `protocol.json`, copies and hashes that protocol into the frozen snapshot, binds the canonical protocol digest, and rejects incompatible source/snapshot identity rather than silently reinterpreting evidence.
 
-The statistical engine and `EvaluationPolicy()` are unchanged. The accounting, timeout, and funding-timestamp corrections do not relax Phase 9 promotion thresholds.
+The statistical engine and `EvaluationPolicy()` are unchanged. The accounting, timeout, funding-timestamp, and dual-lane research changes do not relax Phase 9 promotion thresholds.
 
 ## Immutable V4 one-shot boundary
 
@@ -125,15 +130,36 @@ The statistical engine and `EvaluationPolicy()` are unchanged. The accounting, t
 
 The one-shot workflow verifies curator provenance, downloads one trusted V4 corpus, prepares a local-only frozen snapshot, persists an append-once freeze before any economic evaluation, refuses replacement OOS data after freeze, and then produces exactly one terminal insufficient-evidence result or one untouched economic evaluation. Preparation/evaluation remain offline and read-only; narrow repository write permission is isolated to immutable state persistence.
 
+## Dual-lane research decision
+
+Decision **D-023** adds a parallel research lane without changing the authoritative V4 validation experiment.
+
+The research lane exists to learn quickly from **touched, non-promotional** evidence and reject weak challengers early. The governing rule is: **candidates may fail fast; candidates may not succeed fast**.
+
+While V4 remains performance-blind:
+
+- research may not inspect or reconstruct hidden V4 economics;
+- research economics may only use source-time intervals provably disjoint from all actual V4 acquisition intervals, including failed/diagnostic sessions;
+- ambiguous or overlapping research batches fail closed as `REJECTED_CONTAMINATION`;
+- every candidate persists immutable family/parent/ancestor lineage;
+- descendants inherit the union of all ancestor touched intervals;
+- economic futility may reject after at least 20 closed research trades under the precommitted Bayesian rule;
+- `RESEARCH_PROMISING` requires at least 40 closed research trades, 7 distinct closed-trade days, and the locked positive posterior threshold, but remains non-promotional;
+- any selected challenger must be frozen and begin a separate untouched validation period only after a 6-hour embargo beyond the latest inherited touched interval.
+
+The full design is `docs/superpowers/specs/2026-08-31-dual-lane-sequential-research-design.md`. This research architecture is intended to reduce wasted calendar time if a candidate is clearly weak while preserving a trustworthy final promotion test.
+
 ## Evidence dashboard
 
-Issue #82 remains the canonical human-readable tracker. It treats V4 as active and V3/V2 as historical. Historical counts are never added to V4 progress.
+Issue #82 remains the canonical human-readable V4 validation tracker. It treats V4 as active and V3/V2 as historical. Historical counts and future research-lane metrics are never added to V4 progress.
 
-Routine dashboard output exposes operational/provenance state only. Before an immutable V4 final result exists, **Economic edge remains `Not measured yet`**. Interim PnL, final equity, mean net R, win rate, profit factor, bootstrap values, and other tuning-sensitive fields remain hidden.
+Routine V4 dashboard output exposes operational/provenance state only. Before an immutable V4 final result exists, **Economic edge remains `Not measured yet`**. Interim PnL, final equity, mean net R, win rate, profit factor, bootstrap values, and other tuning-sensitive V4 fields remain hidden.
+
+Any research dashboard is separate and must label its economics **TOUCHED / NON-PROMOTIONAL**.
 
 ## Historical evidence
 
-V3 is retained for audit/history only and does not advance V4 readiness. Its trusted state remains zero accepted cohorts/trades/days. The frozen historical V3 runtime is `f8f84200dbc8b6fb262c5f6f99993b40714357be`; its Phase 9 evaluator is `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`.
+V3 is retained for audit/history only and does not advance V4 readiness. Its frozen historical V3 runtime is `f8f84200dbc8b6fb262c5f6f99993b40714357be`; its Phase 9 evaluator is `39c2f6a57c0b2db9929fa4050e4c1f47e55f55ed`.
 
 V2 is also audit/history only. Its final trusted corpus remains 3 accepted genuine-mainnet cohorts, 45 strategy decisions, 0 closed paper trades, 0 closed-trade days, and no demonstrated economic edge. V2 evidence is never counted toward V4 readiness.
 
@@ -161,7 +187,7 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 - Market observation is Hyperliquid mainnet only.
 - Default/current execution is paper/shadow.
 - No live exchange adapter is enabled or authorized.
-- No wallet/private-key signing, transfer, withdrawal, or private-account execution path is part of the evidence campaign.
+- No wallet/private-key signing, transfer, withdrawal, or private-account execution path is part of the evidence or research campaigns.
 - Strategy cannot size positions or send orders; independent risk has final veto.
 - `NO_TRADE` remains first-class.
 - No averaging down, martingale, or stopless positions.
@@ -171,12 +197,13 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let the next **naturally scheduled** V4 cohort after activation merge `fa89892a1ec27412d11d8457dc5d41334afdaf11` start; do not manually dispatch or retry any prior cohort.
-3. Verify that it checks out runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`, completes the single 5h15 acquisition, transfers the staging artifact, and completes independent offline replay.
-4. Admit only a clean, complete, flat corrected-runtime source into `v4-mainnet-corpus`.
-5. Continue frozen acquisition without strategy tuning until the economic minimums are reached.
+2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, or performance-condition V4 cohorts.
+3. Implement the dual-lane research architecture from the approved design, starting with candidate lineage/touched-data contracts and V4 source-interval isolation.
+4. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
+5. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
 6. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
-7. Advance toward Phase 10 only if the immutable one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+7. Use research-lane economics only for touched challenger keep/change/kill decisions, never for a V4 promotion claim.
+8. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Profitability and live-trading status
 
