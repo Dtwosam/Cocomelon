@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
 
-from tests.research_artifact_support import write_research_artifact
+from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 research_cli = import_module("cocomelon.research_cli")
 
@@ -31,7 +32,7 @@ def _prepare_registry(capsys: object, registry_path: Path) -> None:
             "--family-id",
             "family-health",
             "--config-digest",
-            "a" * 64,
+            "c" * 64,
             "--code-revision",
             "1" * 40,
             "--execution-config-json",
@@ -127,7 +128,7 @@ def test_checkpoint_dataset_rejects_caller_authored_health_state(
     assert "authoritative artifact_batches" in error["error"]
 
 
-def test_checkpoint_derives_operational_health_failure_from_replay_artifact(
+def test_checkpoint_derives_operational_health_failure_from_canonical_artifact(
     tmp_path: Path,
     capsys: object,
 ) -> None:
@@ -140,8 +141,14 @@ def test_checkpoint_derives_operational_health_failure_from_replay_artifact(
         source_id="source-health",
         replay_run_id="replay-health-operational",
         start_ms=1_000,
-        end_ms=2_000,
-        data_complete=False,
+        end_ms=3_000,
+        trades=(
+            ArtifactTradeSpec(
+                closed_at_ms=2_500,
+                net_r=Decimal("0.1"),
+            ),
+        ),
+        omit_fact_indices=(0,),
     )
     _write_dataset(dataset_path, artifact.artifact_root)
 
