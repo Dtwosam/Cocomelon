@@ -240,7 +240,7 @@ def write_research_artifact(
     journal.close()
     facts.close()
 
-    session_id = hashlib.sha256(f"research-mainnet:{replay_run_id}".encode("utf-8")).hexdigest()
+    session_id = hashlib.sha256(f"research-mainnet:{replay_run_id}".encode()).hexdigest()
     selected_markets = sorted({spec.market for spec in trades})
     _write_json(
         recording / "recording-session.json",
