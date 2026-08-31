@@ -72,10 +72,12 @@ def _decimal(value: object, field: str) -> Decimal:
 
 
 def _string_tuple(value: object, field: str) -> tuple[str, ...]:
-    values = _array(value, field)
-    if not all(isinstance(item, str) and item.strip() for item in values):
-        raise ValueError(f"{field} must contain non-empty strings")
-    return tuple(values)
+    result: list[str] = []
+    for item in _array(value, field):
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"{field} must contain non-empty strings")
+        result.append(item)
+    return tuple(result)
 
 
 def _market(value: object) -> MarketId:
