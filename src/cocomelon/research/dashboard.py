@@ -208,3 +208,109 @@ def build_research_status(registry: ResearchRegistry) -> dict[str, object]:
         "state_counts": dict(sorted(state_counts.items())),
         "candidates": candidates,
     }
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise ValueError(f"research status {field} must be an object")
+    return value
+
+
+def _mapping_list(value: object, field: str) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        raise ValueError(f"research status {field} must be an array")
+    return [_mapping(item, field) for item in value]
+
+
+def _cell(value: object) -> str:
+    if value is None:
+        return "—"
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _candidate_latest(candidate: dict[str, object]) -> dict[str, object] | None:
+    if candidate.get("economics_visible") is not True:
+        return None
+    checkpoints = _mapping_list(candidate.get("checkpoints"), "candidate checkpoints")
+    return checkpoints[-1] if checkpoints else None
+
+
+def render_research_status_markdown(snapshot: dict[str, object]) -> str:
+    if snapshot.get("label") != RESEARCH_STATUS_LABEL:
+        raise ValueError("research status label is not the locked non-promotional label")
+    candidates = _mapping_list(snapshot.get("candidates"), "candidates")
+    lines = [
+        "# Research Status",
+        "",
+        f"**{RESEARCH_STATUS_LABEL}**",
+        "",
+        "Research results are not promotion or verified-edge evidence.",
+        "",
+    ]
+    if not candidates:
+        lines.append("No research candidates.")
+        return "\n".join(lines) + "\n"
+
+    lines.extend(
+        [
+            "| Candidate | State | Checkpoints | Trades | Days | Net PnL | Mean net R | Posterior |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for candidate in candidates:
+        latest = _candidate_latest(candidate)
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _cell(candidate.get("candidate_id")),
+                    _cell(candidate.get("state")),
+                    _cell(candidate.get("checkpoint_count")),
+                    _cell(None if latest is None else latest.get("closed_trade_count")),
+                    _cell(None if latest is None else latest.get("closed_trade_days")),
+                    _cell(None if latest is None else latest.get("net_pnl")),
+                    _cell(None if latest is None else latest.get("mean_net_r")),
+                    _cell(
+                        None
+                        if latest is None
+                        else latest.get("posterior_probability_positive")
+                    ),
+                )
+            )
+            + " |"
+        )
+
+    for candidate in candidates:
+        candidate_id = _cell(candidate.get("candidate_id"))
+        lines.extend(["", f"## {candidate_id} checkpoint history", ""])
+        if candidate.get("economics_visible") is not True:
+            lines.append("Economics hidden because the candidate is contaminated.")
+            continue
+        checkpoints = _mapping_list(candidate.get("checkpoints"), "candidate checkpoints")
+        if not checkpoints:
+            lines.append("No authenticated checkpoints.")
+            continue
+        lines.extend(
+            [
+                "| # | Source end ms | Checkpoint | Trades | Days | Net PnL | Mean net R | Posterior |",
+                "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for checkpoint in checkpoints:
+            lines.append(
+                "| "
+                + " | ".join(
+                    (
+                        _cell(checkpoint.get("commit_index")),
+                        _cell(checkpoint.get("source_end_ms")),
+                        _cell(checkpoint.get("checkpoint_state")),
+                        _cell(checkpoint.get("closed_trade_count")),
+                        _cell(checkpoint.get("closed_trade_days")),
+                        _cell(checkpoint.get("net_pnl")),
+                        _cell(checkpoint.get("mean_net_r")),
+                        _cell(checkpoint.get("posterior_probability_positive")),
+                    )
+                )
+                + " |"
+            )
+    return "\n".join(lines) + "\n"
