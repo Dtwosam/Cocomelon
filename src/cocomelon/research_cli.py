@@ -185,6 +185,11 @@ def build_parser() -> argparse.ArgumentParser:
     v4_parser.add_argument("--end-ms", required=True, type=int)
     v4_parser.add_argument("--disposition", required=True)
 
+    v4_complete_parser = subparsers.add_parser("mark-v4-registry-complete")
+    _add_registry_argument(v4_complete_parser)
+    v4_complete_parser.add_argument("--through-ms", required=True, type=int)
+    v4_complete_parser.add_argument("--source-id", required=True)
+
     candidate_parser = subparsers.add_parser("create-candidate")
     _add_registry_argument(candidate_parser)
     candidate_parser.add_argument("--candidate-id", required=True)
@@ -281,6 +286,16 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 "end_ms": interval.end_ms,
                 "run_id": args.run_id,
                 "start_ms": interval.start_ms,
+            }
+        if args.command == "mark-v4-registry-complete":
+            registry.mark_v4_registry_complete_through(
+                through_ms=args.through_ms,
+                source_id=args.source_id,
+            )
+            return {
+                "command": "mark-v4-registry-complete",
+                "source_id": args.source_id,
+                "through_ms": args.through_ms,
             }
         if args.command == "create-candidate":
             return _create_candidate(registry, args)
