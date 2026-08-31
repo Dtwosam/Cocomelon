@@ -4,25 +4,16 @@ import argparse
 import json
 import sys
 from collections.abc import Sequence
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import TextIO
 
-from cocomelon.domain.evaluation import TradeEvaluationSample
-from cocomelon.domain.features import TrendRegime, VolatilityRegime
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass
-from cocomelon.domain.strategy import Direction
 from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.evaluator import (
-    ResearchBatch,
-    ResearchBatchSeal,
-    evaluate_research_checkpoint,
-)
+from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
+from cocomelon.research.lifecycle import activate_validation_cutover
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
@@ -58,126 +49,35 @@ def _string(value: object, field: str) -> str:
     return value
 
 
-def _integer(value: object, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"{field} must be an integer")
-    return value
-
-
-def _boolean(value: object, field: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{field} must be a boolean")
-    return value
-
-
-def _decimal(value: object, field: str) -> Decimal:
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a decimal string")
-    try:
-        result = Decimal(value)
-    except InvalidOperation as exc:
-        raise ValueError(f"{field} must be a decimal string") from exc
-    if not result.is_finite():
-        raise ValueError(f"{field} must be finite")
-    return result
-
-
-def _string_tuple(value: object, field: str) -> tuple[str, ...]:
-    result: list[str] = []
-    for item in _array(value, field):
-        if not isinstance(item, str) or not item.strip():
-            raise ValueError(f"{field} must contain non-empty strings")
-        result.append(item)
-    return tuple(result)
-
-
-def _market(value: object) -> MarketId:
-    canonical = _string(value, "market")
-    if ":" not in canonical:
-        return MarketId.from_wire_name("", canonical)
-    dex = canonical.split(":", 1)[0]
-    return MarketId.from_wire_name(dex, canonical)
-
-
-def _research_batch(value: object) -> tuple[ResearchBatch, ResearchBatchSeal]:
-    payload = _mapping(value, "batch")
-    batch = ResearchBatch(
+def _artifact_batch(value: object, *, descriptor_path: Path) -> ResearchArtifactBatch:
+    payload = _mapping(value, "artifact_batch")
+    allowed = {"artifact_root", "batch_id", "source_id"}
+    unexpected = sorted(set(payload) - allowed)
+    if unexpected:
+        raise ValueError(
+            "artifact_batch contains non-authoritative caller fields: "
+            + ",".join(unexpected)
+        )
+    artifact_root = Path(_string(payload.get("artifact_root"), "artifact_root"))
+    if not artifact_root.is_absolute():
+        artifact_root = (descriptor_path.parent / artifact_root).resolve()
+    return ResearchArtifactBatch(
+        artifact_root=artifact_root,
         batch_id=_string(payload.get("batch_id"), "batch_id"),
         source_id=_string(payload.get("source_id"), "source_id"),
-        replay_run_id=_string(payload.get("replay_run_id"), "replay_run_id"),
-        interval=TimeInterval(
-            _integer(payload.get("start_ms"), "start_ms"),
-            _integer(payload.get("end_ms"), "end_ms"),
-        ),
     )
-    seal = ResearchBatchSeal(
-        batch_id=batch.batch_id,
-        trade_ids=_string_tuple(payload.get("trade_ids"), "trade_ids"),
-        sample_digest=_string(payload.get("sample_digest"), "sample_digest"),
-    )
-    return batch, seal
 
 
-def _trade_sample(value: object) -> TradeEvaluationSample:
-    payload = _mapping(value, "sample")
-    try:
-        return TradeEvaluationSample(
-            trade_id=_string(payload.get("trade_id"), "trade_id"),
-            replay_run_id=_string(payload.get("replay_run_id"), "replay_run_id"),
-            strategy_decision_id=_string(
-                payload.get("strategy_decision_id"),
-                "strategy_decision_id",
-            ),
-            market=_market(payload.get("market")),
-            direction=Direction(_string(payload.get("direction"), "direction")),
-            decision_timestamp_ms=_integer(
-                payload.get("decision_timestamp_ms"),
-                "decision_timestamp_ms",
-            ),
-            opened_at_ms=_integer(payload.get("opened_at_ms"), "opened_at_ms"),
-            closed_at_ms=_integer(payload.get("closed_at_ms"), "closed_at_ms"),
-            score=_decimal(payload.get("score"), "score"),
-            lead_strategy=_string(payload.get("lead_strategy"), "lead_strategy"),
-            trend_regime=TrendRegime(
-                _string(payload.get("trend_regime"), "trend_regime")
-            ),
-            volatility_regime=VolatilityRegime(
-                _string(payload.get("volatility_regime"), "volatility_regime")
-            ),
-            evidence_class=EvidenceClass(
-                _string(payload.get("evidence_class"), "evidence_class")
-            ),
-            gross_realized_pnl=_decimal(
-                payload.get("gross_realized_pnl"),
-                "gross_realized_pnl",
-            ),
-            entry_fees=_decimal(payload.get("entry_fees"), "entry_fees"),
-            exit_fees=_decimal(payload.get("exit_fees"), "exit_fees"),
-            funding_cash_pnl=_decimal(
-                payload.get("funding_cash_pnl"),
-                "funding_cash_pnl",
-            ),
-            net_pnl=_decimal(payload.get("net_pnl"), "net_pnl"),
-            entry_slippage_amount=_decimal(
-                payload.get("entry_slippage_amount"),
-                "entry_slippage_amount",
-            ),
-            exit_slippage_amount=_decimal(
-                payload.get("exit_slippage_amount"),
-                "exit_slippage_amount",
-            ),
-            net_r=_decimal(payload.get("net_r"), "net_r"),
-            equity_before=_decimal(payload.get("equity_before"), "equity_before"),
-            equity_after=_decimal(payload.get("equity_after"), "equity_after"),
-            holding_duration_ms=_integer(
-                payload.get("holding_duration_ms"),
-                "holding_duration_ms",
-            ),
-            reason_codes=_string_tuple(payload.get("reason_codes"), "reason_codes"),
-            schema_version=_integer(payload.get("schema_version", 1), "schema_version"),
+def _load_checkpoint_dataset(path: Path) -> tuple[ResearchArtifactBatch, ...]:
+    payload = _mapping(json.loads(path.read_text(encoding="utf-8")), "dataset")
+    if set(payload) != {"artifact_batches"}:
+        raise ValueError(
+            "checkpoint dataset must contain only authoritative artifact_batches descriptors"
         )
-    except ValueError as exc:
-        raise ValueError(f"invalid research trade sample: {exc}") from exc
+    return tuple(
+        _artifact_batch(item, descriptor_path=path)
+        for item in _array(payload.get("artifact_batches"), "artifact_batches")
+    )
 
 
 def _add_registry_argument(parser: argparse.ArgumentParser) -> None:
@@ -275,34 +175,6 @@ def _create_candidate(registry: ResearchRegistry, args: argparse.Namespace) -> d
     }
 
 
-def _load_checkpoint_dataset(
-    path: Path,
-) -> tuple[
-    tuple[ResearchBatch, ...],
-    tuple[ResearchBatchSeal, ...],
-    tuple[TradeEvaluationSample, ...],
-    bool,
-    bool,
-]:
-    payload = _mapping(json.loads(path.read_text(encoding="utf-8")), "dataset")
-    health = _mapping(payload.get("health"), "health")
-    operational_failure = _boolean(
-        health.get("operational_failure"),
-        "health.operational_failure",
-    )
-    hard_risk_failure = _boolean(
-        health.get("hard_risk_failure"),
-        "health.hard_risk_failure",
-    )
-    parsed_batches = tuple(
-        _research_batch(item) for item in _array(payload.get("batches"), "batches")
-    )
-    batches = tuple(item[0] for item in parsed_batches)
-    batch_seals = tuple(item[1] for item in parsed_batches)
-    samples = tuple(_trade_sample(item) for item in _array(payload.get("samples"), "samples"))
-    return batches, batch_seals, samples, operational_failure, hard_risk_failure
-
-
 def _execute(args: argparse.Namespace) -> dict[str, object]:
     registry = ResearchRegistry(args.registry)
     try:
@@ -353,29 +225,11 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 "start_ms": interval.start_ms,
             }
         if args.command == "checkpoint":
-            (
-                batches,
-                batch_seals,
-                samples,
-                operational_failure,
-                hard_risk_failure,
-            ) = _load_checkpoint_dataset(args.dataset)
-            for batch in batches:
-                registry.record_batch(
-                    candidate_id=args.candidate_id,
-                    batch_id=batch.batch_id,
-                    source_id=batch.source_id,
-                    replay_run_id=batch.replay_run_id,
-                    interval=batch.interval,
-                )
+            artifact_batches = _load_checkpoint_dataset(args.dataset)
             return evaluate_research_checkpoint(
                 registry=registry,
                 candidate_id=args.candidate_id,
-                batches=batches,
-                batch_seals=batch_seals,
-                samples=samples,
-                operational_failure=operational_failure,
-                hard_risk_failure=hard_risk_failure,
+                artifact_batches=artifact_batches,
             ).to_dict()
         if args.command == "freeze-candidate":
             registry.freeze_candidate(args.candidate_id, freeze_ms=args.freeze_ms)
@@ -387,14 +241,17 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 "state": candidate.state.value,
             }
         if args.command == "validate-cutover":
-            registry.assert_validation_cutover(
+            activate_validation_cutover(
+                registry,
                 args.candidate_id,
                 validation_start_ms=args.validation_start_ms,
             )
+            candidate = registry.load_candidate(args.candidate_id)
             return {
                 "allowed": True,
                 "candidate_id": args.candidate_id,
                 "command": "validate-cutover",
+                "state": candidate.state.value,
                 "validation_start_ms": args.validation_start_ms,
             }
         raise ResearchRegistryError(f"unknown research command: {args.command}")
