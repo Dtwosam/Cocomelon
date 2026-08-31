@@ -46,7 +46,9 @@ def _record_promising_report(registry: ResearchRegistry) -> str:
         {
             "trade_id": f"race-trade-{index}",
             "closed_at_ms": (index % 7) * DAY_MS + 2_000 + index,
+            "net_pnl": "5",
             "net_r": "0.5",
+            "equity_before": "10000",
         }
         for index in range(40)
     )
@@ -73,6 +75,8 @@ def _record_promising_report(registry: ResearchRegistry) -> str:
         ),
         "policy_digest": checkpoint.policy_digest,
         "reason_codes": list(checkpoint.reason_codes),
+        "realized_closed_trade_max_drawdown_fraction": "0",
+        "max_realized_planned_risk_utilization": "0",
     }
     canonical = json.dumps(
         payload,
