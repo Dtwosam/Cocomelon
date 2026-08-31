@@ -9,7 +9,6 @@ from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
     TimeInterval,
-    intervals_overlap,
     normalize_intervals,
     validation_cutover_allowed,
 )
