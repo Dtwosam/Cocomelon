@@ -17,6 +17,9 @@ from cocomelon.research.registry import (
     ResearchRegistryError,
 )
 
+EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
+RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+
 
 def _candidate(
     candidate_id: str,
@@ -33,7 +36,15 @@ def _candidate(
         ancestor_candidate_ids=ancestor_candidate_ids,
         config_digest=digest_char * 64,
         code_revision="1" * 40,
+        execution_config_json=EXECUTION_CONFIG,
+        risk_config_json=RISK_CONFIG,
         state=ResearchCandidateState.DRAFT,
+        first_observation_ms=None,
+        last_observation_ms=None,
+        source_provenance_ids=(),
+        local_touched_intervals=(),
+        effective_touched_intervals=(),
+        performance_report_ids=(),
     )
 
 
@@ -65,8 +76,22 @@ def test_registry_persists_lineage_and_inherits_ancestor_touched_intervals(
     registry.close()
 
     reopened = ResearchRegistry(path)
+    loaded = reopened.load_candidate("r3")
     assert reopened.effective_touched_intervals("r3") == (TimeInterval(10, 40),)
-    assert reopened.load_candidate("r3") == grandchild
+    assert loaded.candidate_id == grandchild.candidate_id
+    assert loaded.family_id == grandchild.family_id
+    assert loaded.parent_candidate_id == grandchild.parent_candidate_id
+    assert loaded.ancestor_candidate_ids == grandchild.ancestor_candidate_ids
+    assert loaded.config_digest == grandchild.config_digest
+    assert loaded.code_revision == grandchild.code_revision
+    assert loaded.execution_config_json == grandchild.execution_config_json
+    assert loaded.risk_config_json == grandchild.risk_config_json
+    assert loaded.first_observation_ms == 19
+    assert loaded.last_observation_ms == 31
+    assert loaded.source_provenance_ids == ("grandchild-source",)
+    assert loaded.local_touched_intervals == (TimeInterval(19, 31),)
+    assert loaded.effective_touched_intervals == (TimeInterval(10, 40),)
+    assert loaded.performance_report_ids == ()
     reopened.close()
 
 
@@ -228,6 +253,6 @@ def test_frozen_candidate_cutover_uses_inherited_touched_history(tmp_path: Path)
 
     registry.assert_validation_cutover(
         "r2",
-        validation_start_ms=max(25_000, 20_000 + SIX_HOURS_MS),
+        validation_start_ms=max(25_001, 20_000 + SIX_HOURS_MS),
     )
     registry.close()
