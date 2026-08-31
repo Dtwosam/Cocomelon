@@ -246,10 +246,23 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
         ResearchCandidateState.RESEARCHING,
         reason="test-start",
     )
-    registry.transition_candidate(
+    registry.record_performance_report(
+        candidate_id="candidate-r1",
+        report_id="promising-report",
+        payload={
+            "report_id": "promising-report",
+            "candidate_id": "candidate-r1",
+            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
+            "checkpoint_state": "research_promising",
+            "closed_trade_count": 40,
+            "closed_trade_days": 7,
+            "posterior_probability_positive": "0.80",
+        },
+    )
+    registry.apply_checkpoint_state(
         "candidate-r1",
         ResearchCandidateState.RESEARCH_PROMISING,
-        reason="test-promising",
+        report_id="promising-report",
     )
     registry.close()
 
