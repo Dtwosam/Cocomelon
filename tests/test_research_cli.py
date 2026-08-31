@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 from decimal import Decimal
@@ -8,19 +7,22 @@ from importlib import import_module
 from pathlib import Path
 
 from cocomelon.research.contracts import ResearchCandidateState
-from cocomelon.research.observations import record_trade_observations
+from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry
-from cocomelon.research.sequential import evaluate_checkpoint
+from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 research_cli = import_module("cocomelon.research_cli")
 
 DAY_MS = 86_400_000
 EXECUTION_CONFIG_INPUT = '{"slippage_model":"recorded","mode":"paper"}'
-RISK_CONFIG_INPUT = '{"stops_required":true,"max_position_r":"1"}'
+RISK_CONFIG_INPUT = (
+    '{"stops_required":true,"risk_per_trade":"0.0025","max_position_r":"1"}'
+)
 EXECUTION_CONFIG_CANONICAL = '{"mode":"paper","slippage_model":"recorded"}'
-RISK_CONFIG_CANONICAL = '{"max_position_r":"1","stops_required":true}'
+RISK_CONFIG_CANONICAL = (
+    '{"max_position_r":"1","risk_per_trade":"0.0025","stops_required":true}'
+)
 V4_INVENTORY_SOURCE = "authoritative-v4-inventory"
-EMPTY_SAMPLE_DIGEST = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
@@ -77,58 +79,32 @@ def _mark_v4_complete(capsys: object, registry_path: Path, *, through_ms: int) -
 
 
 def _record_promising_report(registry: ResearchRegistry, candidate_id: str) -> str:
-    observations = tuple(
-        {
-            "trade_id": f"{candidate_id}-cli-trade-{index}",
-            "closed_at_ms": (index % 7) * DAY_MS + 1_000 + index,
-            "net_pnl": "5",
-            "net_r": "0.5",
-            "equity_before": "1000",
-        }
-        for index in range(40)
+    registry.mark_v4_registry_complete_through(
+        through_ms=8 * DAY_MS,
+        source_id=V4_INVENTORY_SOURCE,
     )
-    record_trade_observations(
-        registry.connection,
-        candidate_id=candidate_id,
-        observations=observations,
-    )
-    checkpoint = evaluate_checkpoint(
-        net_r_values=tuple(Decimal("0.5") for _ in observations),
-        closed_trade_days=7,
-    )
-    assert checkpoint.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
-    payload: dict[str, object] = {
-        "candidate_id": candidate_id,
-        "candidate_state": checkpoint.candidate_state.value,
-        "checkpoint_state": checkpoint.checkpoint_state.value,
-        "closed_trade_count": checkpoint.trade_count,
-        "closed_trade_days": checkpoint.closed_trade_days,
-        "posterior_probability_positive": (
-            None
-            if checkpoint.posterior_probability_positive is None
-            else str(checkpoint.posterior_probability_positive)
+    artifact = write_research_artifact(
+        registry.path.parent / f"{candidate_id}-promising-artifact",
+        batch_id=f"{candidate_id}-promising-batch",
+        source_id=f"{candidate_id}-promising-source",
+        replay_run_id=f"{candidate_id}-promising-replay",
+        start_ms=1_000,
+        end_ms=8 * DAY_MS,
+        trades=tuple(
+            ArtifactTradeSpec(
+                closed_at_ms=(index % 7) * DAY_MS + 10_000 + index,
+                net_r=Decimal("0.5"),
+            )
+            for index in range(40)
         ),
-        "policy_digest": checkpoint.policy_digest,
-        "reason_codes": list(checkpoint.reason_codes),
-        "realized_closed_trade_max_drawdown_fraction": "0",
-        "max_realized_planned_risk_utilization": "0",
-        "batch_ids": [],
-        "source_ids": [],
-    }
-    canonical = json.dumps(
-        payload,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-        allow_nan=False,
     )
-    report_id = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    registry.record_performance_report(
+    report = evaluate_research_checkpoint(
+        registry=registry,
         candidate_id=candidate_id,
-        report_id=report_id,
-        payload=payload,
+        artifact_batches=(artifact,),
     )
-    return report_id
+    assert report.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
+    return report.report_id
 
 
 def test_cli_emits_deterministic_json_and_exposes_no_live_surface(
@@ -385,14 +361,10 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
         ResearchCandidateState.RESEARCHING,
         reason="test-start",
     )
-    report_id = _record_promising_report(registry, "candidate-r1")
-    registry.apply_checkpoint_state(
-        "candidate-r1",
-        ResearchCandidateState.RESEARCH_PROMISING,
-        report_id=report_id,
-    )
+    _record_promising_report(registry, "candidate-r1")
     registry.close()
 
+    freeze_ms = 8 * DAY_MS + 1
     freeze_code, freeze_out, freeze_err = _run_cli(
         capsys,
         [
@@ -402,33 +374,32 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
             "--candidate-id",
             "candidate-r1",
             "--freeze-ms",
-            "25000",
+            str(freeze_ms),
         ],
     )
     assert freeze_code == 0
     assert freeze_err == ""
     assert json.loads(freeze_out)["state"] == "frozen_challenger"
 
+    artifact = write_research_artifact(
+        tmp_path / "post-freeze-artifact",
+        batch_id="batch-checkpoint",
+        source_id="source-checkpoint",
+        replay_run_id="replay-checkpoint",
+        start_ms=9 * DAY_MS,
+        end_ms=9 * DAY_MS + 2_000,
+    )
     dataset_path = tmp_path / "checkpoint.json"
     dataset_path.write_text(
         json.dumps(
             {
-                "batches": [
+                "artifact_batches": [
                     {
-                        "batch_id": "batch-checkpoint",
-                        "source_id": "source-checkpoint",
-                        "replay_run_id": "replay-checkpoint",
-                        "start_ms": 50000,
-                        "end_ms": 60000,
-                        "trade_ids": [],
-                        "sample_digest": EMPTY_SAMPLE_DIGEST,
+                        "artifact_root": str(artifact.artifact_root),
+                        "batch_id": artifact.batch_id,
+                        "source_id": artifact.source_id,
                     }
-                ],
-                "health": {
-                    "hard_risk_failure": False,
-                    "operational_failure": False,
-                },
-                "samples": [],
+                ]
             },
             sort_keys=True,
         ),
