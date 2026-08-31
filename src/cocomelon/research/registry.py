@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from cocomelon.research.contracts import (
@@ -38,14 +39,10 @@ _RESEARCH_TOUCHABLE_STATES = frozenset(
         ResearchCandidateState.RESEARCH_PROMISING,
     }
 )
-_RESEARCH_TRANSITION_TARGETS = frozenset(
+_EVIDENCE_DERIVED_STATES = frozenset(
     {
-        ResearchCandidateState.DRAFT,
-        ResearchCandidateState.RESEARCHING,
-        ResearchCandidateState.REJECTED_OPERATIONAL,
-        ResearchCandidateState.REJECTED_CONTAMINATION,
-        ResearchCandidateState.REJECTED_FUTILITY,
         ResearchCandidateState.RESEARCH_PROMISING,
+        ResearchCandidateState.REJECTED_FUTILITY,
     }
 )
 
@@ -168,6 +165,28 @@ class ResearchRegistry:
             raise ResearchRegistryError("stored ancestor lineage is invalid")
         return tuple(decoded)
 
+    @staticmethod
+    def _report_decimal(payload: dict[str, object], field: str) -> Decimal | None:
+        value = payload.get(field)
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ResearchRegistryError(f"checkpoint report {field} is invalid")
+        try:
+            result = Decimal(value)
+        except InvalidOperation as exc:
+            raise ResearchRegistryError(f"checkpoint report {field} is invalid") from exc
+        if not result.is_finite():
+            raise ResearchRegistryError(f"checkpoint report {field} is invalid")
+        return result
+
+    @staticmethod
+    def _report_int(payload: dict[str, object], field: str) -> int:
+        value = payload.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ResearchRegistryError(f"checkpoint report {field} is invalid")
+        return value
+
     def close(self) -> None:
         self.connection.close()
 
@@ -225,6 +244,8 @@ class ResearchRegistry:
         ).fetchone()
         if existing is not None:
             raise ResearchRegistryError(f"candidate already exists: {manifest.candidate_id}")
+        if manifest.state is not ResearchCandidateState.DRAFT:
+            raise ResearchRegistryError("candidate must enter the registry in draft state")
         if (
             manifest.first_observation_ms is not None
             or manifest.last_observation_ms is not None
@@ -254,7 +275,7 @@ class ResearchRegistry:
         stored_state = (
             ResearchCandidateState.REJECTED_CONTAMINATION
             if inherited_contamination
-            else manifest.state
+            else ResearchCandidateState.DRAFT
         )
         initial_reason = (
             "inherited_contamination" if inherited_contamination else "candidate_created"
@@ -330,12 +351,8 @@ class ResearchRegistry:
             execution_config_json=str(row["execution_config_json"]),
             risk_config_json=str(row["risk_config_json"]),
             state=state,
-            first_observation_ms=(
-                None if not local_touched else local_touched[0].start_ms
-            ),
-            last_observation_ms=(
-                None if not local_touched else local_touched[-1].end_ms
-            ),
+            first_observation_ms=(None if not local_touched else local_touched[0].start_ms),
+            last_observation_ms=(None if not local_touched else local_touched[-1].end_ms),
             source_provenance_ids=self._source_provenance_ids(candidate_id),
             local_touched_intervals=local_touched,
             effective_touched_intervals=effective_touched,
@@ -495,6 +512,120 @@ class ResearchRegistry:
         )
         self.connection.commit()
 
+    def _checkpoint_report_payload(
+        self,
+        candidate_id: str,
+        report_id: str,
+    ) -> dict[str, object]:
+        row = self.connection.execute(
+            """
+            SELECT candidate_id, payload_json
+            FROM research_performance_reports
+            WHERE report_id = ?
+            """,
+            (report_id,),
+        ).fetchone()
+        if row is None:
+            raise ResearchRegistryError(f"checkpoint report not found: {report_id}")
+        if str(row["candidate_id"]) != candidate_id:
+            raise ResearchRegistryError("checkpoint report belongs to a different candidate")
+        payload = json.loads(str(row["payload_json"]))
+        if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
+            raise ResearchRegistryError("checkpoint report payload is invalid")
+        return payload
+
+    def _validate_checkpoint_report_for_state(
+        self,
+        payload: dict[str, object],
+        state: ResearchCandidateState,
+    ) -> None:
+        if payload.get("candidate_state") != state.value:
+            raise ResearchRegistryError("checkpoint report state does not match transition")
+        closed_trade_count = self._report_int(payload, "closed_trade_count")
+        closed_trade_days = self._report_int(payload, "closed_trade_days")
+        posterior = self._report_decimal(payload, "posterior_probability_positive")
+        checkpoint_state = payload.get("checkpoint_state")
+
+        if state is ResearchCandidateState.RESEARCH_PROMISING:
+            if (
+                checkpoint_state != "research_promising"
+                or closed_trade_count < 40
+                or closed_trade_days < 7
+                or posterior is None
+                or posterior < Decimal("0.80")
+            ):
+                raise ResearchRegistryError(
+                    "checkpoint report does not satisfy research-promising threshold"
+                )
+            return
+        if state is ResearchCandidateState.REJECTED_FUTILITY:
+            if (
+                checkpoint_state != "reject_futility"
+                or closed_trade_count < 20
+                or posterior is None
+                or posterior >= Decimal("0.05")
+            ):
+                raise ResearchRegistryError(
+                    "checkpoint report does not satisfy futility threshold"
+                )
+            return
+        if state is ResearchCandidateState.RESEARCHING:
+            if checkpoint_state not in {"insufficient_trades", "continue"}:
+                raise ResearchRegistryError("checkpoint report is not a researching state")
+            return
+        if state is ResearchCandidateState.REJECTED_OPERATIONAL:
+            reason_codes = payload.get("reason_codes")
+            if not isinstance(reason_codes, list) or not any(
+                reason in {"operational_failure", "hard_risk_failure"}
+                for reason in reason_codes
+            ):
+                raise ResearchRegistryError("checkpoint report lacks operational rejection evidence")
+            return
+        raise ResearchRegistryError(f"checkpoint report cannot transition to {state.value}")
+
+    def apply_checkpoint_state(
+        self,
+        candidate_id: str,
+        state: ResearchCandidateState,
+        *,
+        report_id: str,
+    ) -> None:
+        current = self.load_candidate(candidate_id)
+        if current.state in _TERMINAL_STATES and state != current.state:
+            raise ResearchRegistryError(f"candidate is terminal: {current.state.value}")
+        if current.state is ResearchCandidateState.FROZEN_CHALLENGER:
+            raise ResearchRegistryError(
+                "candidate is terminal to research checkpoints: frozen_challenger"
+            )
+        if state not in {
+            ResearchCandidateState.RESEARCHING,
+            ResearchCandidateState.RESEARCH_PROMISING,
+            ResearchCandidateState.REJECTED_FUTILITY,
+            ResearchCandidateState.REJECTED_OPERATIONAL,
+        }:
+            raise ResearchRegistryError(f"checkpoint cannot enter {state.value}")
+        if current.state is ResearchCandidateState.RESEARCH_PROMISING and state is (
+            ResearchCandidateState.RESEARCHING
+        ):
+            raise ResearchRegistryError("research-promising candidate cannot return to researching")
+
+        payload = self._checkpoint_report_payload(candidate_id, report_id)
+        self._validate_checkpoint_report_for_state(payload, state)
+        if current.state is state:
+            return
+        with self.connection:
+            self.connection.execute(
+                "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
+                (state.value, candidate_id),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO research_candidate_state_events (candidate_id, state, reason)
+                VALUES (?, ?, ?)
+                """,
+                (candidate_id, state.value, f"checkpoint_report:{report_id}"),
+            )
+
     def effective_touched_intervals(self, candidate_id: str) -> tuple[TimeInterval, ...]:
         row = self.connection.execute(
             "SELECT ancestor_candidate_ids_json FROM research_candidates WHERE candidate_id = ?",
@@ -625,7 +756,12 @@ class ResearchRegistry:
         if not reason.strip():
             raise ResearchRegistryError("state transition reason must not be empty")
         current = self.load_candidate(candidate_id)
-        if state not in _RESEARCH_TRANSITION_TARGETS:
+        if state in _EVIDENCE_DERIVED_STATES or state in {
+            ResearchCandidateState.FROZEN_CHALLENGER,
+            ResearchCandidateState.VALIDATING,
+            ResearchCandidateState.VALIDATED_EDGE,
+            ResearchCandidateState.NO_EDGE,
+        }:
             raise ResearchRegistryError(
                 f"research state transition cannot enter {state.value}"
             )
@@ -635,20 +771,41 @@ class ResearchRegistry:
             raise ResearchRegistryError(
                 "candidate is terminal to research checkpoints: frozen_challenger"
             )
-        if current.state is ResearchCandidateState.VALIDATING:
-            raise ResearchRegistryError("validating candidate cannot return to research")
-        self.connection.execute(
-            "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
-            (state.value, candidate_id),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO research_candidate_state_events (candidate_id, state, reason)
-            VALUES (?, ?, ?)
-            """,
-            (candidate_id, state.value, reason),
-        )
-        self.connection.commit()
+        if state is current.state:
+            return
+
+        allowed = False
+        if current.state is ResearchCandidateState.DRAFT:
+            allowed = state in {
+                ResearchCandidateState.RESEARCHING,
+                ResearchCandidateState.REJECTED_OPERATIONAL,
+                ResearchCandidateState.REJECTED_CONTAMINATION,
+            }
+        elif current.state in {
+            ResearchCandidateState.RESEARCHING,
+            ResearchCandidateState.RESEARCH_PROMISING,
+        }:
+            allowed = state in {
+                ResearchCandidateState.REJECTED_OPERATIONAL,
+                ResearchCandidateState.REJECTED_CONTAMINATION,
+            }
+        if not allowed:
+            raise ResearchRegistryError(
+                f"invalid research state transition: {current.state.value} -> {state.value}"
+            )
+
+        with self.connection:
+            self.connection.execute(
+                "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
+                (state.value, candidate_id),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO research_candidate_state_events (candidate_id, state, reason)
+                VALUES (?, ?, ?)
+                """,
+                (candidate_id, state.value, reason),
+            )
 
     def freeze_candidate(self, candidate_id: str, *, freeze_ms: int) -> None:
         if freeze_ms < 0:
@@ -656,22 +813,26 @@ class ResearchRegistry:
         current = self.load_candidate(candidate_id)
         if current.state is not ResearchCandidateState.RESEARCH_PROMISING:
             raise ResearchRegistryError("only a research-promising candidate can be frozen")
-        self.connection.execute(
-            """
-            UPDATE research_candidates
-            SET state = ?, freeze_ms = ?
-            WHERE candidate_id = ?
-            """,
-            (ResearchCandidateState.FROZEN_CHALLENGER.value, freeze_ms, candidate_id),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO research_candidate_state_events (candidate_id, state, reason)
-            VALUES (?, ?, ?)
-            """,
-            (candidate_id, ResearchCandidateState.FROZEN_CHALLENGER.value, "candidate_frozen"),
-        )
-        self.connection.commit()
+        with self.connection:
+            self.connection.execute(
+                """
+                UPDATE research_candidates
+                SET state = ?, freeze_ms = ?
+                WHERE candidate_id = ?
+                """,
+                (ResearchCandidateState.FROZEN_CHALLENGER.value, freeze_ms, candidate_id),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO research_candidate_state_events (candidate_id, state, reason)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    candidate_id,
+                    ResearchCandidateState.FROZEN_CHALLENGER.value,
+                    "candidate_frozen",
+                ),
+            )
 
     def assert_validation_cutover(self, candidate_id: str, *, validation_start_ms: int) -> None:
         current = self.load_candidate(candidate_id)
