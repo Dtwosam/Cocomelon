@@ -253,7 +253,7 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
 
     lines.extend(
         [
-            "| Candidate | State | Checkpoints | Trades | Days | Net PnL | Mean net R | Posterior |",
+            "| Candidate | State | Checkpoints | Trades | Days | Net PnL | Mean R | Posterior |",
             "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
     )
@@ -292,7 +292,7 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
             continue
         lines.extend(
             [
-                "| # | Source end ms | Checkpoint | Trades | Days | Net PnL | Mean net R | Posterior |",
+                "| # | Source end ms | Checkpoint | Trades | Days | Net PnL | Mean R | Posterior |",
                 "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
