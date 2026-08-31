@@ -102,7 +102,7 @@ def seal_research_batch(
                 batch_id, candidate_id, trade_ids_json, sample_digest
             ) VALUES (?, ?, ?, ?)
             """,
-            incoming,
+            (batch_id, *incoming),
         )
         connection.commit()
     except Exception:
