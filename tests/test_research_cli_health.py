@@ -9,6 +9,7 @@ research_cli = import_module("cocomelon.research_cli")
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
 V4_SOURCE = "authoritative-v4-inventory"
+EMPTY_SAMPLE_DIGEST = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
@@ -65,6 +66,8 @@ def _write_dataset(path: Path, *, health: dict[str, bool] | None) -> None:
                 "replay_run_id": "replay-health",
                 "start_ms": 1000,
                 "end_ms": 2000,
+                "trade_ids": [],
+                "sample_digest": EMPTY_SAMPLE_DIGEST,
             }
         ],
         "samples": [],
