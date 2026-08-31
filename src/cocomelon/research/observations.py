@@ -106,6 +106,11 @@ def record_trade_observations(
         for observation in observations:
             trade_id = _string(observation, "trade_id")
             batch_id = _string(observation, "batch_id")
+            attestation = _attestation_for_observation(
+                connection,
+                candidate_id=candidate_id,
+                batch_id=batch_id,
+            )
             sample_id = _string(observation, "sample_id")
             source_id = _string(observation, "source_id")
             replay_run_id = _string(observation, "replay_run_id")
@@ -116,11 +121,6 @@ def record_trade_observations(
             if isinstance(closed_at_ms, bool) or not isinstance(closed_at_ms, int):
                 raise ResearchRegistryError("research observation closed_at_ms is invalid")
 
-            attestation = _attestation_for_observation(
-                connection,
-                candidate_id=candidate_id,
-                batch_id=batch_id,
-            )
             if str(attestation["source_id"]) != source_id:
                 raise ResearchRegistryError("research observation source does not match batch")
             if str(attestation["replay_run_id"]) != replay_run_id:
