@@ -2,11 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from cocomelon.research.registry import (
-    ResearchContaminationError,
-    ResearchRegistry,
-    ResearchRegistryError,
-)
 from pytest import raises
 
 from cocomelon.research.contracts import (
@@ -14,6 +9,11 @@ from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
     TimeInterval,
+)
+from cocomelon.research.registry import (
+    ResearchContaminationError,
+    ResearchRegistry,
+    ResearchRegistryError,
 )
 
 
