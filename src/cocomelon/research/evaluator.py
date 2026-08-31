@@ -15,6 +15,7 @@ from cocomelon.research.attestation import (
     attest_verified_research_batch,
     load_candidate_attested_health,
 )
+from cocomelon.research.checkpoint_commit import commit_checkpoint_report_and_state
 from cocomelon.research.contracts import (
     ResearchCandidateState,
     ResearchCheckpointState,
@@ -506,14 +507,11 @@ def evaluate_research_checkpoint(
         policy_digest=checkpoint.policy_digest,
         reason_codes=checkpoint.reason_codes,
     )
-    registry.record_performance_report(
+    commit_checkpoint_report_and_state(
+        registry,
         candidate_id=candidate_id,
+        state=checkpoint.candidate_state,
         report_id=report.report_id,
         payload=report.to_dict(),
-    )
-    registry.apply_checkpoint_state(
-        candidate_id,
-        checkpoint.candidate_state,
-        report_id=report.report_id,
     )
     return report
