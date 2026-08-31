@@ -43,7 +43,12 @@ def _string(observation: dict[str, object], field: str) -> str:
 
 def compute_checkpoint_risk_metrics(
     observations: tuple[dict[str, object], ...],
+    *,
+    configured_risk_per_trade: Decimal | None = None,
 ) -> ResearchRiskMetrics:
+    if configured_risk_per_trade is not None:
+        if not configured_risk_per_trade.is_finite() or configured_risk_per_trade <= ZERO:
+            raise ValueError("configured research risk per trade must be positive")
     if not observations:
         return ResearchRiskMetrics(
             realized_closed_trade_max_drawdown_fraction=None,
@@ -78,10 +83,16 @@ def compute_checkpoint_risk_metrics(
                 if drawdown > maximum_drawdown:
                     maximum_drawdown = drawdown
 
-            net_r = _decimal(observation, "net_r")
-            realized_loss_to_planned_risk = max(ZERO, -net_r)
-            if realized_loss_to_planned_risk > maximum_planned_risk_utilization:
-                maximum_planned_risk_utilization = realized_loss_to_planned_risk
+            if configured_risk_per_trade is None:
+                net_r = _decimal(observation, "net_r")
+                utilization = max(ZERO, -net_r)
+            else:
+                planned_risk_fraction = _decimal(observation, "planned_risk_fraction")
+                if planned_risk_fraction <= ZERO:
+                    raise ValueError("research planned risk fraction must be positive")
+                utilization = planned_risk_fraction / configured_risk_per_trade
+            if utilization > maximum_planned_risk_utilization:
+                maximum_planned_risk_utilization = utilization
 
     return ResearchRiskMetrics(
         realized_closed_trade_max_drawdown_fraction=maximum_drawdown,
