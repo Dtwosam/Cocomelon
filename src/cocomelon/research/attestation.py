@@ -49,6 +49,26 @@ def attest_verified_research_batch(
     ensure_batch_attestation_schema(connection)
     if connection.in_transaction:
         raise ResearchRegistryError("research batch attestation transaction is already active")
+
+    candidate = connection.execute(
+        """
+        SELECT code_revision, config_digest
+        FROM research_candidates
+        WHERE candidate_id = ?
+        """,
+        (candidate_id,),
+    ).fetchone()
+    if candidate is None:
+        raise ResearchRegistryError(f"candidate not found: {candidate_id}")
+    if str(candidate["code_revision"]) != verified.code_revision:
+        raise ResearchRegistryError(
+            "authoritative research artifact code revision does not match candidate"
+        )
+    if str(candidate["config_digest"]) != verified.config_digest:
+        raise ResearchRegistryError(
+            "authoritative research artifact config digest does not match candidate"
+        )
+
     identities = tuple(
         sorted((sample.trade_id, sample.sample_id) for sample in verified.samples)
     )
