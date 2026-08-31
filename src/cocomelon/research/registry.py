@@ -579,7 +579,9 @@ class ResearchRegistry:
                 reason in {"operational_failure", "hard_risk_failure"}
                 for reason in reason_codes
             ):
-                raise ResearchRegistryError("checkpoint report lacks operational rejection evidence")
+                raise ResearchRegistryError(
+                    "checkpoint report lacks operational rejection evidence"
+                )
             return
         raise ResearchRegistryError(f"checkpoint report cannot transition to {state.value}")
 
