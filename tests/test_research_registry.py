@@ -19,6 +19,7 @@ from cocomelon.research.registry import (
 
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+V4_TEST_SOURCE = "authoritative-v4-test-inventory"
 
 
 def _candidate(
@@ -156,6 +157,10 @@ def test_any_registered_v4_interval_blocks_overlapping_research_source(tmp_path:
     with raises(ResearchContaminationError, match="v4-failed-run"):
         registry.assert_batch_disjoint_from_v4(TimeInterval(1_999, 2_500))
 
+    registry.mark_v4_registry_complete_through(
+        through_ms=2_500,
+        source_id=V4_TEST_SOURCE,
+    )
     registry.assert_batch_disjoint_from_v4(TimeInterval(2_000, 2_500))
     registry.close()
 
@@ -166,6 +171,10 @@ def test_late_v4_interval_retroactively_contaminates_batch_and_descendants(
     path = tmp_path / "research.sqlite3"
     registry = ResearchRegistry(path)
     registry.create_candidate(_candidate("r1"))
+    registry.mark_v4_registry_complete_through(
+        through_ms=2_000,
+        source_id=V4_TEST_SOURCE,
+    )
     registry.record_batch(
         candidate_id="r1",
         batch_id="research-batch-1",
