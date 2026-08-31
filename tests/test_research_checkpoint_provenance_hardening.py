@@ -11,7 +11,6 @@ from cocomelon.research.artifact import verify_research_batch_artifact
 from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
 from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
-from cocomelon.research.sequential import evaluate_checkpoint
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 DAY_MS = 86_400_000
@@ -169,37 +168,26 @@ def test_checkpoint_report_authenticates_attested_batch_provenance(tmp_path: Pat
         start_ms=DAY_MS,
         end_ms=2 * DAY_MS,
     )
-    evaluate_research_checkpoint(
+    report = evaluate_research_checkpoint(
         registry=registry,
         candidate_id="provenance-r1",
         artifact_batches=(artifact,),
     )
-    checkpoint = evaluate_checkpoint(net_r_values=(), closed_trade_days=0)
-    payload: dict[str, object] = {
-        "candidate_id": "provenance-r1",
-        "candidate_state": checkpoint.candidate_state.value,
-        "checkpoint_state": checkpoint.checkpoint_state.value,
-        "closed_trade_count": checkpoint.trade_count,
-        "closed_trade_days": checkpoint.closed_trade_days,
-        "posterior_probability_positive": None,
-        "policy_digest": checkpoint.policy_digest,
-        "reason_codes": list(checkpoint.reason_codes),
-        "realized_closed_trade_max_drawdown_fraction": None,
-        "max_realized_planned_risk_utilization": None,
-        "batch_ids": [],
-        "source_ids": [],
-    }
-    report_id = _content_id(payload)
+    forged = report.to_dict()
+    forged.pop("report_id")
+    forged["batch_ids"] = []
+    forged["source_ids"] = []
+    forged_id = _content_id(forged)
     registry.record_performance_report(
         candidate_id="provenance-r1",
-        report_id=report_id,
-        payload=payload,
+        report_id=forged_id,
+        payload=forged,
     )
 
     with raises(ResearchRegistryError, match="batch_ids|provenance"):
         registry.apply_checkpoint_state(
             "provenance-r1",
             ResearchCandidateState.RESEARCHING,
-            report_id=report_id,
+            report_id=forged_id,
         )
     registry.close()
