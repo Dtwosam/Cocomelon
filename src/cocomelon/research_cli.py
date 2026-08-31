@@ -6,7 +6,7 @@ import sys
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import TextIO
 
 from cocomelon.domain.evaluation import TradeEvaluationSample
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
@@ -22,7 +22,8 @@ from cocomelon.research.evaluator import ResearchBatch, evaluate_research_checkp
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
-def _emit(payload: dict[str, object], *, stream: Any = sys.stdout) -> None:
+def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
+    target = sys.stdout if stream is None else stream
     print(
         json.dumps(
             payload,
@@ -31,7 +32,7 @@ def _emit(payload: dict[str, object], *, stream: Any = sys.stdout) -> None:
             ensure_ascii=False,
             allow_nan=False,
         ),
-        file=stream,
+        file=target,
     )
 
 
