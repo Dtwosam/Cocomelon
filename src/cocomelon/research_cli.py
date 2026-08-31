@@ -60,6 +60,12 @@ def _integer(value: object, field: str) -> int:
     return value
 
 
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+    return value
+
+
 def _decimal(value: object, field: str) -> Decimal:
     if not isinstance(value, str):
         raise ValueError(f"{field} must be a decimal string")
@@ -261,11 +267,25 @@ def _create_candidate(registry: ResearchRegistry, args: argparse.Namespace) -> d
 
 def _load_checkpoint_dataset(
     path: Path,
-) -> tuple[tuple[ResearchBatch, ...], tuple[TradeEvaluationSample, ...]]:
+) -> tuple[
+    tuple[ResearchBatch, ...],
+    tuple[TradeEvaluationSample, ...],
+    bool,
+    bool,
+]:
     payload = _mapping(json.loads(path.read_text(encoding="utf-8")), "dataset")
+    health = _mapping(payload.get("health"), "health")
+    operational_failure = _boolean(
+        health.get("operational_failure"),
+        "health.operational_failure",
+    )
+    hard_risk_failure = _boolean(
+        health.get("hard_risk_failure"),
+        "health.hard_risk_failure",
+    )
     batches = tuple(_research_batch(item) for item in _array(payload.get("batches"), "batches"))
     samples = tuple(_trade_sample(item) for item in _array(payload.get("samples"), "samples"))
-    return batches, samples
+    return batches, samples, operational_failure, hard_risk_failure
 
 
 def _execute(args: argparse.Namespace) -> dict[str, object]:
@@ -318,7 +338,12 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 "start_ms": interval.start_ms,
             }
         if args.command == "checkpoint":
-            batches, samples = _load_checkpoint_dataset(args.dataset)
+            (
+                batches,
+                samples,
+                operational_failure,
+                hard_risk_failure,
+            ) = _load_checkpoint_dataset(args.dataset)
             for batch in batches:
                 registry.record_batch(
                     candidate_id=args.candidate_id,
@@ -332,6 +357,8 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 candidate_id=args.candidate_id,
                 batches=batches,
                 samples=samples,
+                operational_failure=operational_failure,
+                hard_risk_failure=hard_risk_failure,
             ).to_dict()
         if args.command == "freeze-candidate":
             registry.freeze_candidate(args.candidate_id, freeze_ms=args.freeze_ms)
