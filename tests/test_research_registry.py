@@ -74,6 +74,7 @@ def _record_promising_report(
         through_ms=8 * DAY_MS,
         source_id=V4_TEST_SOURCE,
     )
+    candidate = registry.load_candidate(candidate_id)
     artifact = write_research_artifact(
         registry.path.parent / f"{candidate_id}-registry-promising-artifact",
         batch_id=f"{candidate_id}-registry-promising-batch",
@@ -88,6 +89,8 @@ def _record_promising_report(
             )
             for index in range(40)
         ),
+        code_revision=candidate.code_revision,
+        config_digest=candidate.config_digest,
     )
     report = evaluate_research_checkpoint(
         registry=registry,
@@ -323,7 +326,7 @@ def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: P
         report_id=fabricated_id,
         payload=fabricated,
     )
-    with raises(ResearchRegistryError, match="immutable observations"):
+    with raises(ResearchRegistryError, match="canonical report payload"):
         registry.apply_checkpoint_state(
             "r1",
             ResearchCandidateState.RESEARCH_PROMISING,
