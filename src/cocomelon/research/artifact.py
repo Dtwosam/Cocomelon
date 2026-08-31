@@ -10,7 +10,12 @@ from pathlib import Path
 
 from cocomelon.domain.evaluation import TradeEvaluationSample
 from cocomelon.domain.journal import ObservationKind
+from cocomelon.domain.replay import ReplayManifest
 from cocomelon.evaluation.dataset import EvaluationDatasetError, build_evaluation_dataset
+from cocomelon.evaluation.mainnet_evidence import (
+    MainnetEvidenceError,
+    verify_mainnet_evidence_cohort_payload,
+)
 from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
@@ -39,6 +44,8 @@ class VerifiedResearchBatch:
     manifest_id: str
     result_digest: str
     source_digest: str
+    code_revision: str
+    config_digest: str
     trade_ids: tuple[str, ...]
     sample_digest: str
     samples: tuple[TradeEvaluationSample, ...]
@@ -92,6 +99,41 @@ def _sample_digest(samples: tuple[TradeEvaluationSample, ...]) -> str:
     return _canonical_digest(identities)
 
 
+def _verified_recording_segment_digest(
+    source_root: Path,
+    manifest: ReplayManifest,
+) -> str:
+    recording_root = (source_root.parent / "recording").resolve()
+    entries: list[tuple[str, str, int, int]] = []
+    for segment in manifest.segments:
+        segment_path = (recording_root / segment.relative_path).resolve()
+        if recording_root not in segment_path.parents:
+            raise ResearchArtifactError("research recording segment escapes recording root")
+        if not segment_path.is_file():
+            raise ResearchArtifactError(
+                f"research recording source segment is missing: {segment.relative_path}"
+            )
+        try:
+            byte_count = segment_path.stat().st_size
+            with segment_path.open("rb") as handle:
+                row_count = sum(1 for _ in handle)
+        except OSError as exc:
+            raise ResearchArtifactError("unable to read research recording segment") from exc
+        digest = _sha256(segment_path)
+        if digest != segment.sha256:
+            raise ResearchArtifactError("research recording segment digest mismatch")
+        if byte_count != segment.byte_count:
+            raise ResearchArtifactError("research recording segment byte count mismatch")
+        if row_count != segment.row_count:
+            raise ResearchArtifactError("research recording segment row count mismatch")
+        entries.append(
+            (segment.relative_path, digest, segment.byte_count, segment.row_count)
+        )
+    if not entries:
+        raise ResearchArtifactError("research replay manifest has no recording source segments")
+    return _canonical_digest(tuple(sorted(entries)))
+
+
 def verify_research_batch_artifact(
     root: str | Path,
     *,
@@ -110,8 +152,17 @@ def verify_research_batch_artifact(
     if missing:
         raise ResearchArtifactError(f"research artifact file is missing: {missing[0]}")
 
+    try:
+        mainnet = verify_mainnet_evidence_cohort_payload(source_root)
+    except MainnetEvidenceError as exc:
+        raise ResearchArtifactError(
+            "research artifact must be a verified genuine mainnet evidence cohort"
+        ) from exc
+    mainnet_source_digest = mainnet.get("source_digest")
+    if not isinstance(mainnet_source_digest, str) or len(mainnet_source_digest) != 64:
+        raise ResearchArtifactError("research mainnet source digest is invalid")
+
     before = {name: _sha256(path) for name, path in paths.items()}
-    source_digest = _canonical_digest(before)
     replay = _read_replay(paths["replay.json"])
     order_flag_key = "live_" + "order" + "s"
 
@@ -144,6 +195,25 @@ def verify_research_batch_artifact(
                 or manifest.evidence_class is not result.evidence_class
             ):
                 raise ResearchArtifactError("research replay manifest/result identity mismatch")
+
+            required_mainnet = {
+                "code_revision": manifest.code_revision,
+                "run_id": result.run_id,
+                "manifest_id": manifest.manifest_id,
+                "result_digest": result.result_digest,
+                "start_ms": manifest.start_ms,
+                "end_ms": manifest.end_ms,
+                "data_complete": result.data_complete,
+            }
+            for field, expected in required_mainnet.items():
+                if mainnet.get(field) != expected:
+                    raise ResearchArtifactError(
+                        f"research mainnet attestation does not match canonical {field}"
+                    )
+            recording_segment_digest = _verified_recording_segment_digest(
+                source_root,
+                manifest,
+            )
 
             required_replay = {
                 "run_id": result.run_id,
@@ -231,6 +301,12 @@ def verify_research_batch_artifact(
     if before != after:
         raise ResearchArtifactError("research artifact changed during verification")
 
+    source_digest = _canonical_digest(
+        {
+            "mainnet_source_digest": mainnet_source_digest,
+            "recording_segment_digest": recording_segment_digest,
+        }
+    )
     operational_reasons = set(health_reasons) - hard_risk_reasons
     return VerifiedResearchBatch(
         batch_id=batch_id,
@@ -240,6 +316,8 @@ def verify_research_batch_artifact(
         manifest_id=result.manifest_id,
         result_digest=result.result_digest,
         source_digest=source_digest,
+        code_revision=manifest.code_revision,
+        config_digest=manifest.config_digest,
         trade_ids=canonical_trade_ids,
         sample_digest=_sample_digest(samples),
         samples=samples,
