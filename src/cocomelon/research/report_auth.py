@@ -300,6 +300,8 @@ def assert_checkpoint_report_backed_by_observations(
         connection,
         candidate_id=candidate_id,
     )
+    if not batch_ids:
+        raise ValueError("checkpoint report requires attested batch provenance")
     operational_failure, hard_risk_failure = _attested_health(
         connection,
         candidate_id=candidate_id,
