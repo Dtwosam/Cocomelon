@@ -19,6 +19,7 @@ from cocomelon.research.observations import (
     load_trade_observations,
     record_trade_observations,
 )
+from cocomelon.research.provenance import load_sealed_admitted_batch_provenance
 from cocomelon.research.registry import (
     ResearchContaminationError,
     ResearchRegistry,
@@ -260,23 +261,37 @@ def _observation_from_sample(
         fees = sample.entry_fees + sample.exit_fees
         slippage_amount = sample.entry_slippage_amount + sample.exit_slippage_amount
     return {
+        "sample_id": sample.sample_id,
         "trade_id": sample.trade_id,
         "batch_id": batch.batch_id,
         "source_id": batch.source_id,
         "replay_run_id": sample.replay_run_id,
+        "strategy_decision_id": sample.strategy_decision_id,
+        "market": sample.market.canonical,
+        "direction": sample.direction.value,
         "decision_timestamp_ms": sample.decision_timestamp_ms,
         "opened_at_ms": sample.opened_at_ms,
         "closed_at_ms": sample.closed_at_ms,
-        "market": sample.market.canonical,
-        "direction": sample.direction.value,
+        "score": str(sample.score),
+        "lead_strategy": sample.lead_strategy,
+        "trend_regime": sample.trend_regime.value,
+        "volatility_regime": sample.volatility_regime.value,
+        "evidence_class": sample.evidence_class.value,
+        "gross_realized_pnl": str(sample.gross_realized_pnl),
+        "entry_fees": str(sample.entry_fees),
+        "exit_fees": str(sample.exit_fees),
+        "funding_cash_pnl": str(sample.funding_cash_pnl),
         "net_pnl": str(sample.net_pnl),
+        "entry_slippage_amount": str(sample.entry_slippage_amount),
+        "exit_slippage_amount": str(sample.exit_slippage_amount),
         "net_r": str(sample.net_r),
         "equity_before": str(sample.equity_before),
         "equity_after": str(sample.equity_after),
-        "fees": str(fees),
-        "funding_cash_pnl": str(sample.funding_cash_pnl),
-        "slippage_amount": str(slippage_amount),
+        "holding_duration_ms": sample.holding_duration_ms,
         "reason_codes": sample.reason_codes,
+        "schema_version": sample.schema_version,
+        "fees": str(fees),
+        "slippage_amount": str(slippage_amount),
     }
 
 
@@ -376,6 +391,10 @@ def evaluate_research_checkpoint(
         registry.connection,
         candidate_id=candidate_id,
     )
+    batch_ids, source_ids = load_sealed_admitted_batch_provenance(
+        registry.connection,
+        candidate_id=candidate_id,
+    )
 
     net_pnl_values = tuple(
         _observation_decimal(observation, "net_pnl") for observation in observations
@@ -435,22 +454,8 @@ def evaluate_research_checkpoint(
         code_revision=candidate.code_revision,
         execution_config_json=candidate.execution_config_json,
         risk_config_json=candidate.risk_config_json,
-        batch_ids=tuple(
-            sorted(
-                {
-                    _observation_string(observation, "batch_id")
-                    for observation in observations
-                }
-            )
-        ),
-        source_ids=tuple(
-            sorted(
-                {
-                    _observation_string(observation, "source_id")
-                    for observation in observations
-                }
-            )
-        ),
+        batch_ids=batch_ids,
+        source_ids=source_ids,
         closed_trade_count=len(observations),
         closed_trade_days=len(closed_days),
         net_pnl=net_pnl,
