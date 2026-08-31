@@ -32,7 +32,6 @@ from cocomelon.research.registry import (
 from cocomelon.research.seals import seal_research_batch
 from cocomelon.research.sequential import (
     DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
-    SequentialResearchPolicy,
     evaluate_checkpoint,
 )
 
@@ -346,7 +345,6 @@ def evaluate_research_checkpoint(
     registry: ResearchRegistry,
     candidate_id: str,
     artifact_batches: tuple[ResearchArtifactBatch, ...],
-    policy: SequentialResearchPolicy = DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
 ) -> ResearchCheckpointReport:
     candidate = registry.load_candidate(candidate_id)
     configured_risk = _configured_risk_per_trade(candidate.risk_config_json)
@@ -466,7 +464,7 @@ def evaluate_research_checkpoint(
         closed_trade_days=len(closed_days),
         operational_failure=operational_failure,
         hard_risk_failure=hard_risk_failure,
-        policy=policy,
+        policy=DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
     )
     report = ResearchCheckpointReport(
         label=TOUCHED_NON_PROMOTIONAL_LABEL,
