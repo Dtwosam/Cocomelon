@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
+from decimal import Decimal
 from pathlib import Path
 
 from pytest import raises
@@ -11,12 +14,15 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
+from cocomelon.research.observations import record_trade_observations
 from cocomelon.research.registry import (
     ResearchContaminationError,
     ResearchRegistry,
     ResearchRegistryError,
 )
+from cocomelon.research.sequential import evaluate_checkpoint
 
+DAY_MS = 86_400_000
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
 V4_TEST_SOURCE = "authoritative-v4-test-inventory"
@@ -49,24 +55,58 @@ def _candidate(
     )
 
 
+def _payload_report_id(payload: dict[str, object]) -> str:
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _record_promising_report(
     registry: ResearchRegistry,
     candidate_id: str,
-    *,
-    report_id: str = "promising-report",
 ) -> str:
+    observations = tuple(
+        {
+            "trade_id": f"{candidate_id}-promising-trade-{index}",
+            "closed_at_ms": (index % 7) * DAY_MS + 1_000 + index,
+            "net_r": "0.5",
+        }
+        for index in range(40)
+    )
+    record_trade_observations(
+        registry.connection,
+        candidate_id=candidate_id,
+        observations=observations,
+    )
+    checkpoint = evaluate_checkpoint(
+        net_r_values=tuple(Decimal("0.5") for _ in observations),
+        closed_trade_days=7,
+    )
+    assert checkpoint.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
+    payload: dict[str, object] = {
+        "candidate_id": candidate_id,
+        "candidate_state": checkpoint.candidate_state.value,
+        "checkpoint_state": checkpoint.checkpoint_state.value,
+        "closed_trade_count": checkpoint.trade_count,
+        "closed_trade_days": checkpoint.closed_trade_days,
+        "posterior_probability_positive": (
+            None
+            if checkpoint.posterior_probability_positive is None
+            else str(checkpoint.posterior_probability_positive)
+        ),
+        "policy_digest": checkpoint.policy_digest,
+        "reason_codes": list(checkpoint.reason_codes),
+    }
+    report_id = _payload_report_id(payload)
     registry.record_performance_report(
         candidate_id=candidate_id,
         report_id=report_id,
-        payload={
-            "report_id": report_id,
-            "candidate_id": candidate_id,
-            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
-            "checkpoint_state": "research_promising",
-            "closed_trade_count": 40,
-            "closed_trade_days": 7,
-            "posterior_probability_positive": "0.80",
-        },
+        payload=payload,
     )
     return report_id
 
@@ -266,7 +306,7 @@ def test_generic_state_api_cannot_enter_evidence_derived_or_validation_states(
     registry.close()
 
 
-def test_checkpoint_state_requires_matching_persisted_report_and_thresholds(tmp_path: Path) -> None:
+def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.create_candidate(_candidate("r1"))
     registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="started")
@@ -278,24 +318,27 @@ def test_checkpoint_state_requires_matching_persisted_report_and_thresholds(tmp_
             report_id="missing-report",
         )
 
+    fabricated: dict[str, object] = {
+        "candidate_id": "r1",
+        "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
+        "checkpoint_state": "research_promising",
+        "closed_trade_count": 40,
+        "closed_trade_days": 7,
+        "posterior_probability_positive": "0.990000",
+        "policy_digest": "f" * 64,
+        "reason_codes": [],
+    }
+    fabricated_id = _payload_report_id(fabricated)
     registry.record_performance_report(
         candidate_id="r1",
-        report_id="too-early",
-        payload={
-            "report_id": "too-early",
-            "candidate_id": "r1",
-            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
-            "checkpoint_state": "research_promising",
-            "closed_trade_count": 0,
-            "closed_trade_days": 0,
-            "posterior_probability_positive": "0.99",
-        },
+        report_id=fabricated_id,
+        payload=fabricated,
     )
-    with raises(ResearchRegistryError, match="threshold"):
+    with raises(ResearchRegistryError, match="immutable observations"):
         registry.apply_checkpoint_state(
             "r1",
             ResearchCandidateState.RESEARCH_PROMISING,
-            report_id="too-early",
+            report_id=fabricated_id,
         )
 
     report_id = _record_promising_report(registry, "r1")
