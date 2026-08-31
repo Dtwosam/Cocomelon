@@ -143,7 +143,7 @@ def _validate_samples_against_batches(
             raise ValueError(f"sample is outside research batch set: {sample.trade_id}")
         if (
             sample.decision_timestamp_ms < batch.interval.start_ms
-            or sample.closed_at_ms > batch.interval.end_ms
+            or sample.closed_at_ms >= batch.interval.end_ms
         ):
             raise ValueError(f"sample is outside research batch interval: {sample.trade_id}")
 
