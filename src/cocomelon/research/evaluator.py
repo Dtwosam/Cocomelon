@@ -4,10 +4,11 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, localcontext
 
 from cocomelon.domain.evaluation import TradeEvaluationSample
 from cocomelon.domain.strategy import Direction
+from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
 from cocomelon.research.contracts import (
     ResearchCandidateState,
     ResearchCheckpointState,
@@ -160,6 +161,9 @@ def _observation_from_sample(
     sample: TradeEvaluationSample,
     batch: ResearchBatch,
 ) -> dict[str, object]:
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        fees = sample.entry_fees + sample.exit_fees
+        slippage_amount = sample.entry_slippage_amount + sample.exit_slippage_amount
     return {
         "trade_id": sample.trade_id,
         "batch_id": batch.batch_id,
@@ -172,11 +176,9 @@ def _observation_from_sample(
         "direction": sample.direction.value,
         "net_pnl": str(sample.net_pnl),
         "net_r": str(sample.net_r),
-        "fees": str(sample.entry_fees + sample.exit_fees),
+        "fees": str(fees),
         "funding_cash_pnl": str(sample.funding_cash_pnl),
-        "slippage_amount": str(
-            sample.entry_slippage_amount + sample.exit_slippage_amount
-        ),
+        "slippage_amount": str(slippage_amount),
         "reason_codes": sample.reason_codes,
     }
 
@@ -282,14 +284,15 @@ def evaluate_research_checkpoint(
         for observation in observations
     )
 
-    net_pnl = sum(net_pnl_values, start=ZERO)
-    total_net_r = sum(net_r_values, start=ZERO)
-    total_fees = sum(fee_values, start=ZERO)
-    funding_cash_pnl = sum(funding_values, start=ZERO)
-    total_slippage = sum(slippage_values, start=ZERO)
-    mean_net_r = (
-        None if not observations else total_net_r / Decimal(len(observations))
-    )
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        net_pnl = sum(net_pnl_values, start=ZERO)
+        total_net_r = sum(net_r_values, start=ZERO)
+        total_fees = sum(fee_values, start=ZERO)
+        funding_cash_pnl = sum(funding_values, start=ZERO)
+        total_slippage = sum(slippage_values, start=ZERO)
+        mean_net_r = (
+            None if not observations else total_net_r / Decimal(len(observations))
+        )
     closed_days = {
         _observation_integer(observation, "closed_at_ms") // DAY_MS
         for observation in observations
