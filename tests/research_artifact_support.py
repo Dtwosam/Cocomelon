@@ -127,9 +127,14 @@ def write_research_artifact(
     network_access: bool = False,
     order_execution: bool = False,
     hard_risk_reason: str | None = None,
+    omit_fact_indices: tuple[int, ...] = (),
     code_revision: str = CODE_REVISION,
     config_digest: str = CONFIG_DIGEST,
 ) -> ResearchArtifactBatch:
+    omitted = set(omit_fact_indices)
+    if any(index < 0 or index >= len(trades) for index in omitted):
+        raise ValueError("omit_fact_indices must reference an artifact trade")
+
     output = root / "output"
     recording = root / "recording"
     output.mkdir(parents=True, exist_ok=True)
@@ -189,7 +194,8 @@ def write_research_artifact(
         if not (start_ms <= trade.opened_at_ms and trade.closed_at_ms < end_ms):
             raise ValueError("test artifact trade must be inside the replay interval")
         journal.record_trade(trade)
-        facts.record_decision_fact(_fact(trade, spec))
+        if index not in omitted:
+            facts.record_decision_fact(_fact(trade, spec))
         closed_trade_ids.append(trade.trade_id)
     journal.begin_run(manifest.manifest_id, replay_run_id)
     result = ReplayResult(
@@ -258,10 +264,10 @@ def write_research_artifact(
             "closed_trade_count": len(result.closed_trade_ids),
             "data_complete": data_complete,
             "dataset_manifest_id": "dataset-research-test",
-            "dataset_trade_count": len(result.closed_trade_ids),
+            "dataset_trade_count": len(result.closed_trade_ids) - len(omitted),
             "economic_claim": "none",
             "evidence_kind": MAINNET_EVIDENCE_KIND,
-            "excluded_trade_count": 0,
+            "excluded_trade_count": len(omitted),
             "execution_attempts": result.execution_attempts,
             "fills": result.fills,
             "final_equity": "10000",
