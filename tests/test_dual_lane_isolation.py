@@ -16,7 +16,11 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.evaluator import ResearchBatch, evaluate_research_checkpoint
+from cocomelon.research.evaluator import (
+    ResearchBatch,
+    build_research_batch_seal,
+    evaluate_research_checkpoint,
+)
 from cocomelon.research.registry import ResearchContaminationError, ResearchRegistry
 
 DAY_MS = 86_400_000
@@ -99,13 +103,15 @@ def test_failed_v4_interval_blocks_research_economics_before_release(tmp_path: P
         replay_run_id="research-isolation-replay",
         interval=TimeInterval(DAY_MS + 1, 3 * DAY_MS),
     )
+    samples = (_sample(1, day=1, net_r="99"),)
 
     with raises(ResearchContaminationError, match="v4-failed-diagnostic"):
         evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
             batches=(batch,),
-            samples=(_sample(1, day=1, net_r="99"),),
+            batch_seals=(build_research_batch_seal(batch=batch, samples=samples),),
+            samples=samples,
         )
 
     assert registry.load_candidate(candidate.candidate_id).state is (
@@ -171,6 +177,7 @@ def test_research_promising_state_cannot_be_candidate_edge(tmp_path: Path) -> No
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(batch,),
+        batch_seals=(build_research_batch_seal(batch=batch, samples=samples),),
         samples=samples,
     )
 
