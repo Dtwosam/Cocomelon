@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
+from cocomelon.research.checkpoint_history import record_authenticated_checkpoint_commit
 from cocomelon.research.contracts import ResearchCandidateState
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from cocomelon.research.report_auth import assert_checkpoint_report_backed_by_observations
@@ -134,6 +135,15 @@ def commit_checkpoint_report_and_state(
             report_id=report_id,
             payload=canonical_payload,
         )
+        try:
+            record_authenticated_checkpoint_commit(
+                registry.connection,
+                candidate_id=candidate_id,
+                report_id=report_id,
+                state=state,
+            )
+        except ValueError as exc:
+            raise ResearchRegistryError(str(exc)) from exc
         if current.state is not state:
             cursor = registry.connection.execute(
                 """
