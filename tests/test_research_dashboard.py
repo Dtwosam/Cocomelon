@@ -138,7 +138,7 @@ def test_research_status_authenticates_and_orders_checkpoint_history(tmp_path: P
     assert checkpoints[1]["closed_trade_count"] == 2
     assert checkpoints[1]["batch_ids"] == ["batch-first", "batch-second"]
     assert checkpoints[1]["source_ids"] == ["source-first", "source-second"]
-    assert checkpoints[1]["net_pnl"] == "3.75"
+    assert checkpoints[1]["net_pnl"] == "3.750000"
     assert checkpoints[1]["mean_net_r"] == "0.075"
 
 
