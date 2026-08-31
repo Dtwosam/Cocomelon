@@ -48,6 +48,28 @@ def _candidate(
     )
 
 
+def _record_promising_report(
+    registry: ResearchRegistry,
+    candidate_id: str,
+    *,
+    report_id: str = "promising-report",
+) -> str:
+    registry.record_performance_report(
+        candidate_id=candidate_id,
+        report_id=report_id,
+        payload={
+            "report_id": report_id,
+            "candidate_id": candidate_id,
+            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
+            "checkpoint_state": "research_promising",
+            "closed_trade_count": 40,
+            "closed_trade_days": 7,
+            "posterior_probability_positive": "0.80",
+        },
+    )
+    return report_id
+
+
 def test_registry_persists_lineage_and_inherits_ancestor_touched_intervals(
     tmp_path: Path,
 ) -> None:
@@ -206,23 +228,74 @@ def test_terminal_candidate_state_cannot_return_to_researching(tmp_path: Path) -
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.create_candidate(_candidate("r1"))
     registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="started")
-    registry.transition_candidate("r1", ResearchCandidateState.REJECTED_FUTILITY, reason="futile")
+    registry.transition_candidate(
+        "r1",
+        ResearchCandidateState.REJECTED_CONTAMINATION,
+        reason="contaminated",
+    )
 
     with raises(ResearchRegistryError, match="terminal"):
         registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="resume")
     registry.close()
 
 
-def test_research_state_api_rejects_direct_validation_or_edge_jumps(tmp_path: Path) -> None:
+def test_generic_state_api_cannot_enter_evidence_derived_or_validation_states(
+    tmp_path: Path,
+) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.create_candidate(_candidate("r1"))
 
-    with raises(ResearchRegistryError, match="transition"):
-        registry.transition_candidate("r1", ResearchCandidateState.VALIDATED_EDGE, reason="skip")
+    for state in (
+        ResearchCandidateState.RESEARCH_PROMISING,
+        ResearchCandidateState.REJECTED_FUTILITY,
+        ResearchCandidateState.VALIDATING,
+        ResearchCandidateState.VALIDATED_EDGE,
+        ResearchCandidateState.NO_EDGE,
+    ):
+        with raises(ResearchRegistryError, match="transition"):
+            registry.transition_candidate("r1", state, reason="skip-evidence")
+    registry.close()
 
+
+def test_checkpoint_state_requires_matching_persisted_report_and_thresholds(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.create_candidate(_candidate("r1"))
     registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="started")
-    with raises(ResearchRegistryError, match="transition"):
-        registry.transition_candidate("r1", ResearchCandidateState.VALIDATING, reason="skip")
+
+    with raises(ResearchRegistryError, match="report"):
+        registry.apply_checkpoint_state(
+            "r1",
+            ResearchCandidateState.RESEARCH_PROMISING,
+            report_id="missing-report",
+        )
+
+    registry.record_performance_report(
+        candidate_id="r1",
+        report_id="too-early",
+        payload={
+            "report_id": "too-early",
+            "candidate_id": "r1",
+            "candidate_state": ResearchCandidateState.RESEARCH_PROMISING.value,
+            "checkpoint_state": "research_promising",
+            "closed_trade_count": 0,
+            "closed_trade_days": 0,
+            "posterior_probability_positive": "0.99",
+        },
+    )
+    with raises(ResearchRegistryError, match="threshold"):
+        registry.apply_checkpoint_state(
+            "r1",
+            ResearchCandidateState.RESEARCH_PROMISING,
+            report_id="too-early",
+        )
+
+    report_id = _record_promising_report(registry, "r1")
+    registry.apply_checkpoint_state(
+        "r1",
+        ResearchCandidateState.RESEARCH_PROMISING,
+        report_id=report_id,
+    )
+    assert registry.load_candidate("r1").state is ResearchCandidateState.RESEARCH_PROMISING
     registry.close()
 
 
@@ -238,10 +311,11 @@ def test_frozen_candidate_cutover_uses_inherited_touched_history(tmp_path: Path)
     )
     registry.create_candidate(child)
     registry.transition_candidate("r2", ResearchCandidateState.RESEARCHING, reason="started")
-    registry.transition_candidate(
+    report_id = _record_promising_report(registry, "r2")
+    registry.apply_checkpoint_state(
         "r2",
         ResearchCandidateState.RESEARCH_PROMISING,
-        reason="promising",
+        report_id=report_id,
     )
     registry.freeze_candidate("r2", freeze_ms=25_000)
 
