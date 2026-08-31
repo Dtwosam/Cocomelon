@@ -241,7 +241,9 @@ def _create_candidate(registry: ResearchRegistry, args: argparse.Namespace) -> d
     }
 
 
-def _load_checkpoint_dataset(path: Path) -> tuple[tuple[ResearchBatch, ...], tuple[TradeEvaluationSample, ...]]:
+def _load_checkpoint_dataset(
+    path: Path,
+) -> tuple[tuple[ResearchBatch, ...], tuple[TradeEvaluationSample, ...]]:
     payload = _mapping(json.loads(path.read_text(encoding="utf-8")), "dataset")
     batches = tuple(_research_batch(item) for item in _array(payload.get("batches"), "batches"))
     samples = tuple(_trade_sample(item) for item in _array(payload.get("samples"), "samples"))
