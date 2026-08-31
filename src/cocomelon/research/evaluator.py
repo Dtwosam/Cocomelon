@@ -4,7 +4,7 @@ import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from cocomelon.domain.evaluation import TradeEvaluationSample
 from cocomelon.domain.strategy import Direction
@@ -13,7 +13,15 @@ from cocomelon.research.contracts import (
     ResearchCheckpointState,
     TimeInterval,
 )
-from cocomelon.research.registry import ResearchContaminationError, ResearchRegistry
+from cocomelon.research.observations import (
+    load_trade_observations,
+    record_trade_observations,
+)
+from cocomelon.research.registry import (
+    ResearchContaminationError,
+    ResearchRegistry,
+    ResearchRegistryError,
+)
 from cocomelon.research.sequential import (
     DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
     SequentialResearchPolicy,
@@ -148,6 +156,69 @@ def _validate_samples_against_batches(
             raise ValueError(f"sample is outside research batch interval: {sample.trade_id}")
 
 
+def _observation_from_sample(
+    sample: TradeEvaluationSample,
+    batch: ResearchBatch,
+) -> dict[str, object]:
+    return {
+        "trade_id": sample.trade_id,
+        "batch_id": batch.batch_id,
+        "source_id": batch.source_id,
+        "replay_run_id": sample.replay_run_id,
+        "decision_timestamp_ms": sample.decision_timestamp_ms,
+        "opened_at_ms": sample.opened_at_ms,
+        "closed_at_ms": sample.closed_at_ms,
+        "market": sample.market.canonical,
+        "direction": sample.direction.value,
+        "net_pnl": str(sample.net_pnl),
+        "net_r": str(sample.net_r),
+        "fees": str(sample.entry_fees + sample.exit_fees),
+        "funding_cash_pnl": str(sample.funding_cash_pnl),
+        "slippage_amount": str(
+            sample.entry_slippage_amount + sample.exit_slippage_amount
+        ),
+        "reason_codes": sample.reason_codes,
+    }
+
+
+def _observation_string(observation: dict[str, object], field: str) -> str:
+    value = observation.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ResearchRegistryError(f"stored research observation {field} is invalid")
+    return value
+
+
+def _observation_integer(observation: dict[str, object], field: str) -> int:
+    value = observation.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ResearchRegistryError(f"stored research observation {field} is invalid")
+    return value
+
+
+def _observation_decimal(observation: dict[str, object], field: str) -> Decimal:
+    value = observation.get(field)
+    if not isinstance(value, str):
+        raise ResearchRegistryError(f"stored research observation {field} is invalid")
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise ResearchRegistryError(
+            f"stored research observation {field} is invalid"
+        ) from exc
+    if not result.is_finite():
+        raise ResearchRegistryError(f"stored research observation {field} is invalid")
+    return result
+
+
+def _observation_reason_codes(observation: dict[str, object]) -> tuple[str, ...]:
+    value = observation.get("reason_codes")
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ResearchRegistryError("stored research observation reason_codes is invalid")
+    return tuple(value)
+
+
 def evaluate_research_checkpoint(
     *,
     registry: ResearchRegistry,
@@ -181,27 +252,60 @@ def evaluate_research_checkpoint(
             source_id=batch.source_id,
         )
 
-    net_pnl = sum((sample.net_pnl for sample in samples), start=ZERO)
-    total_net_r = sum((sample.net_r for sample in samples), start=ZERO)
-    total_fees = sum(
-        (sample.entry_fees + sample.exit_fees for sample in samples),
-        start=ZERO,
+    incoming_observations = tuple(
+        _observation_from_sample(sample, replay_map[sample.replay_run_id])
+        for sample in samples
     )
-    funding_cash_pnl = sum((sample.funding_cash_pnl for sample in samples), start=ZERO)
-    total_slippage = sum(
-        (sample.entry_slippage_amount + sample.exit_slippage_amount for sample in samples),
-        start=ZERO,
+    record_trade_observations(
+        registry.connection,
+        candidate_id=candidate_id,
+        observations=incoming_observations,
     )
-    mean_net_r = None if not samples else total_net_r / Decimal(len(samples))
-    closed_days = {sample.closed_at_ms // DAY_MS for sample in samples}
+    observations = load_trade_observations(
+        registry.connection,
+        candidate_id=candidate_id,
+    )
 
-    market_counts = Counter(sample.market.canonical for sample in samples)
+    net_pnl_values = tuple(
+        _observation_decimal(observation, "net_pnl") for observation in observations
+    )
+    net_r_values = tuple(
+        _observation_decimal(observation, "net_r") for observation in observations
+    )
+    fee_values = tuple(
+        _observation_decimal(observation, "fees") for observation in observations
+    )
+    funding_values = tuple(
+        _observation_decimal(observation, "funding_cash_pnl")
+        for observation in observations
+    )
+    slippage_values = tuple(
+        _observation_decimal(observation, "slippage_amount")
+        for observation in observations
+    )
+
+    net_pnl = sum(net_pnl_values, start=ZERO)
+    total_net_r = sum(net_r_values, start=ZERO)
+    total_fees = sum(fee_values, start=ZERO)
+    funding_cash_pnl = sum(funding_values, start=ZERO)
+    total_slippage = sum(slippage_values, start=ZERO)
+    mean_net_r = (
+        None if not observations else total_net_r / Decimal(len(observations))
+    )
+    closed_days = {
+        _observation_integer(observation, "closed_at_ms") // DAY_MS
+        for observation in observations
+    }
+
+    market_counts = Counter(
+        _observation_string(observation, "market") for observation in observations
+    )
     exit_reason_counts: Counter[str] = Counter()
-    for sample in samples:
-        exit_reason_counts.update(sample.reason_codes)
+    for observation in observations:
+        exit_reason_counts.update(_observation_reason_codes(observation))
 
     checkpoint = evaluate_checkpoint(
-        net_r_values=tuple(sample.net_r for sample in samples),
+        net_r_values=net_r_values,
         closed_trade_days=len(closed_days),
         operational_failure=operational_failure,
         hard_risk_failure=hard_risk_failure,
@@ -215,17 +319,37 @@ def evaluate_research_checkpoint(
         code_revision=candidate.code_revision,
         execution_config_json=candidate.execution_config_json,
         risk_config_json=candidate.risk_config_json,
-        batch_ids=tuple(sorted(batch.batch_id for batch in batches)),
-        source_ids=tuple(sorted(batch.source_id for batch in batches)),
-        closed_trade_count=len(samples),
+        batch_ids=tuple(
+            sorted(
+                {
+                    _observation_string(observation, "batch_id")
+                    for observation in observations
+                }
+            )
+        ),
+        source_ids=tuple(
+            sorted(
+                {
+                    _observation_string(observation, "source_id")
+                    for observation in observations
+                }
+            )
+        ),
+        closed_trade_count=len(observations),
         closed_trade_days=len(closed_days),
         net_pnl=net_pnl,
         mean_net_r=mean_net_r,
         total_fees=total_fees,
         funding_cash_pnl=funding_cash_pnl,
         total_slippage_amount=total_slippage,
-        long_count=sum(sample.direction is Direction.LONG for sample in samples),
-        short_count=sum(sample.direction is Direction.SHORT for sample in samples),
+        long_count=sum(
+            _observation_string(observation, "direction") == Direction.LONG.value
+            for observation in observations
+        ),
+        short_count=sum(
+            _observation_string(observation, "direction") == Direction.SHORT.value
+            for observation in observations
+        ),
         market_trade_counts=tuple(sorted(market_counts.items())),
         exit_reason_counts=tuple(sorted(exit_reason_counts.items())),
         checkpoint_state=checkpoint.checkpoint_state,
