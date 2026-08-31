@@ -17,7 +17,11 @@ from cocomelon.research.contracts import (
     ResearchCheckpointState,
     TimeInterval,
 )
-from cocomelon.research.registry import ResearchContaminationError, ResearchRegistry
+from cocomelon.research.registry import (
+    ResearchContaminationError,
+    ResearchRegistry,
+    ResearchRegistryError,
+)
 
 evaluator = import_module("cocomelon.research.evaluator")
 
@@ -239,5 +243,152 @@ def test_report_rejects_sample_closed_at_half_open_batch_endpoint(tmp_path: Path
             candidate_id=candidate.candidate_id,
             batches=(batch,),
             samples=(sample,),
+        )
+    registry.close()
+
+
+def test_later_checkpoint_includes_all_prior_candidate_observations(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    candidate = _candidate()
+    registry.create_candidate(candidate)
+    first_batch = evaluator.ResearchBatch(
+        batch_id="batch-losses",
+        source_id="source-losses",
+        replay_run_id="replay-losses",
+        interval=TimeInterval(DAY_MS, 2 * DAY_MS),
+    )
+    first_samples = tuple(
+        _sample(
+            index,
+            day=1,
+            market="BTC",
+            direction=Direction.LONG,
+            net_pnl="-1",
+            net_r="-0.1",
+            replay_run_id="replay-losses",
+        )
+        for index in range(1, 6)
+    )
+    first_report = evaluator.evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate.candidate_id,
+        batches=(first_batch,),
+        samples=first_samples,
+    )
+    assert first_report.closed_trade_count == 5
+    assert first_report.net_pnl == Decimal("-5")
+
+    second_batch = evaluator.ResearchBatch(
+        batch_id="batch-winners",
+        source_id="source-winners",
+        replay_run_id="replay-winners",
+        interval=TimeInterval(2 * DAY_MS, 10 * DAY_MS),
+    )
+    second_samples = tuple(
+        _sample(
+            index,
+            day=2 + (index % 7),
+            market="ETH",
+            direction=Direction.LONG,
+            net_pnl="1",
+            net_r="0.1",
+            replay_run_id="replay-winners",
+        )
+        for index in range(6, 46)
+    )
+    second_report = evaluator.evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate.candidate_id,
+        batches=(second_batch,),
+        samples=second_samples,
+    )
+
+    assert second_report.closed_trade_count == 45
+    assert second_report.net_pnl == Decimal("35")
+    assert second_report.batch_ids == ("batch-losses", "batch-winners")
+    assert second_report.source_ids == ("source-losses", "source-winners")
+    registry.close()
+
+
+def test_exact_observation_replay_is_idempotent(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    candidate = _candidate()
+    registry.create_candidate(candidate)
+    batch = evaluator.ResearchBatch(
+        batch_id="batch-idempotent",
+        source_id="source-idempotent",
+        replay_run_id="replay-idempotent",
+        interval=TimeInterval(DAY_MS, 2 * DAY_MS),
+    )
+    sample = _sample(
+        1,
+        day=1,
+        market="BTC",
+        direction=Direction.LONG,
+        net_pnl="1",
+        net_r="0.1",
+        replay_run_id="replay-idempotent",
+    )
+
+    first_report = evaluator.evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate.candidate_id,
+        batches=(batch,),
+        samples=(sample,),
+    )
+    second_report = evaluator.evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate.candidate_id,
+        batches=(batch,),
+        samples=(sample,),
+    )
+
+    assert first_report.report_id == second_report.report_id
+    assert second_report.closed_trade_count == 1
+    assert second_report.net_pnl == Decimal("1")
+    registry.close()
+
+
+def test_existing_trade_id_cannot_be_rewritten_with_new_economics(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    candidate = _candidate()
+    registry.create_candidate(candidate)
+    batch = evaluator.ResearchBatch(
+        batch_id="batch-conflict",
+        source_id="source-conflict",
+        replay_run_id="replay-conflict",
+        interval=TimeInterval(DAY_MS, 2 * DAY_MS),
+    )
+    original = _sample(
+        1,
+        day=1,
+        market="BTC",
+        direction=Direction.LONG,
+        net_pnl="1",
+        net_r="0.1",
+        replay_run_id="replay-conflict",
+    )
+    rewritten = _sample(
+        1,
+        day=1,
+        market="BTC",
+        direction=Direction.LONG,
+        net_pnl="9",
+        net_r="0.9",
+        replay_run_id="replay-conflict",
+    )
+
+    evaluator.evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate.candidate_id,
+        batches=(batch,),
+        samples=(original,),
+    )
+    with raises(ResearchRegistryError, match="observation"):
+        evaluator.evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id=candidate.candidate_id,
+            batches=(batch,),
+            samples=(rewritten,),
         )
     registry.close()
