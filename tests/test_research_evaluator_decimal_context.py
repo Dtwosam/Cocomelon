@@ -46,20 +46,20 @@ def _evaluate(root: Path, context: Context) -> dict[str, object]:
             source_id="decimal-source",
             replay_run_id="decimal-replay",
             start_ms=1_000,
-            end_ms=2_000,
+            end_ms=4_000,
             trades=(
                 ArtifactTradeSpec(
-                    closed_at_ms=1_300,
+                    closed_at_ms=2_300,
                     net_r=Decimal("0.123456789123456789"),
                     score=Decimal("70.123456789123456789"),
                 ),
                 ArtifactTradeSpec(
-                    closed_at_ms=1_500,
+                    closed_at_ms=2_500,
                     net_r=Decimal("0.234567891234567891"),
                     score=Decimal("70.123456789123456789"),
                 ),
                 ArtifactTradeSpec(
-                    closed_at_ms=1_700,
+                    closed_at_ms=2_700,
                     net_r=Decimal("0.345678912345678912"),
                     score=Decimal("70.123456789123456789"),
                 ),
