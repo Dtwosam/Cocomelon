@@ -13,6 +13,9 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.artifact import verify_research_batch_artifact
+from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
+from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
+from cocomelon.research.registry import ResearchRegistry
 
 SOL = MarketId("", "SOL")
 
@@ -180,6 +183,26 @@ def _write_artifact(
     return trade
 
 
+def _candidate() -> ResearchCandidateManifest:
+    return ResearchCandidateManifest(
+        candidate_id="candidate-a",
+        family_id="family-a",
+        parent_candidate_id=None,
+        ancestor_candidate_ids=(),
+        config_digest="c" * 64,
+        code_revision="1" * 40,
+        execution_config_json='{"mode":"paper"}',
+        risk_config_json='{"risk_per_trade":"0.0025","stops_required":true}',
+        state=ResearchCandidateState.DRAFT,
+        first_observation_ms=None,
+        last_observation_ms=None,
+        source_provenance_ids=(),
+        local_touched_intervals=(),
+        effective_touched_intervals=(),
+        performance_report_ids=(),
+    )
+
+
 def test_verified_batch_derives_complete_seal_and_planned_risk_from_artifact(
     tmp_path: Path,
 ) -> None:
@@ -230,3 +253,43 @@ def test_verified_batch_treats_live_order_replay_as_operational_failure(tmp_path
 
     assert verified.operational_failure is True
     assert "unexpected_live_orders" in verified.health_reason_codes
+
+
+def test_checkpoint_evaluator_verifies_artifact_and_derives_planned_risk(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    trade = _write_artifact(root)
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate())
+        registry.mark_v4_registry_complete_through(
+            through_ms=5_000,
+            source_id="authoritative-v4-inventory",
+        )
+
+        report = evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-a",
+            artifact_batches=(
+                ResearchArtifactBatch(
+                    artifact_root=root,
+                    batch_id="batch-a",
+                    source_id="source-a",
+                ),
+            ),
+        )
+
+        assert report.closed_trade_count == 1
+        assert report.batch_ids == ("batch-a",)
+        assert report.source_ids == ("source-a",)
+        assert report.max_realized_planned_risk_utilization == Decimal("1")
+        observations = registry.connection.execute(
+            "SELECT payload_json FROM research_trade_observations"
+        ).fetchall()
+        assert len(observations) == 1
+        persisted = json.loads(str(observations[0]["payload_json"]))
+        assert persisted["trade_id"] == trade.trade_id
+        assert persisted["planned_risk_fraction"] == "0.0025"
+    finally:
+        registry.close()
