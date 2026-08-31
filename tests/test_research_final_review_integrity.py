@@ -23,7 +23,7 @@ def _candidate(
     candidate_id: str,
     *,
     code_revision: str = "1" * 40,
-    config_digest: str = "c" * 64,
+    config_digest: str = "a" * 64,
 ) -> ResearchCandidateManifest:
     return ResearchCandidateManifest(
         candidate_id=candidate_id,
@@ -107,6 +107,7 @@ def test_artifact_verifier_rejects_replay_without_genuine_mainnet_recording_prov
         end_ms=2 * DAY_MS,
         trades=(),
     )
+    (artifact.artifact_root.parent / "recording" / "recording-session.json").unlink()
 
     with pytest.raises(ResearchArtifactError, match="mainnet|recording|source"):
         verify_research_batch_artifact(
