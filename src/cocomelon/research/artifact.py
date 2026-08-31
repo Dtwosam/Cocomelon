@@ -88,11 +88,8 @@ def _read_replay(path: Path) -> dict[str, object]:
 
 
 def _sample_digest(samples: tuple[TradeEvaluationSample, ...]) -> str:
-    return _canonical_digest(tuple(sorted((sample.trade_id, sample.sample_id) for sample in samples)))
-
-
-def _source_digest(paths: dict[str, Path]) -> str:
-    return _canonical_digest({name: _sha256(path) for name, path in sorted(paths.items())})
+    identities = tuple(sorted((sample.trade_id, sample.sample_id) for sample in samples))
+    return _canonical_digest(identities)
 
 
 def verify_research_batch_artifact(
