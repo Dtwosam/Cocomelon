@@ -105,6 +105,8 @@ def _record_promising_report(
         "reason_codes": list(checkpoint.reason_codes),
         "realized_closed_trade_max_drawdown_fraction": "0",
         "max_realized_planned_risk_utilization": "0",
+        "batch_ids": [],
+        "source_ids": [],
     }
     report_id = _payload_report_id(payload)
     registry.record_performance_report(
@@ -331,6 +333,8 @@ def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: P
         "posterior_probability_positive": "0.990000",
         "policy_digest": "f" * 64,
         "reason_codes": [],
+        "batch_ids": [],
+        "source_ids": [],
     }
     fabricated_id = _payload_report_id(fabricated)
     registry.record_performance_report(
