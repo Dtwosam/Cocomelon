@@ -1,7 +1,7 @@
 # Dual-Lane Sequential Research and Frozen Validation Design
 
 **Date:** 2026-08-31  
-**Status:** design approved in principle; documented before implementation  
+**Status:** design approved in principle; pending written-spec review before implementation  
 **Repository:** `Dtwosam/Cocomelon`
 
 ## Problem
@@ -43,6 +43,8 @@ The research lane must never:
 - advance Phase 10 or enable live orders.
 
 V4 remains the control/validation experiment.
+
+Until V4 has a terminal immutable one-shot result, the research lane must not run an economically identical V4 clone for performance inspection. Research candidates must have a distinct candidate/configuration digest and at least one predeclared economics-affecting difference from frozen V4. This prevents an alternate workflow from reconstructing the hidden V4 result indirectly.
 
 ## Architecture
 
@@ -100,9 +102,9 @@ This prevents a strategy from being tuned on an interval and then claiming that 
 
 ### Frozen V4 outputs remain opaque
 
-Research tooling may read operational/provenance health exposed by V4, but it must not compute or reconstruct hidden V4 economics. An exact V4 clone must not be run in the research lane on overlapping V4 observations for the purpose of revealing the frozen candidate's interim economics.
+Research tooling may read operational/provenance health exposed by V4, but it must not compute or reconstruct hidden V4 economics. Research jobs must not consume V4 economic artifacts or hidden journal/dataset fields for tuning-sensitive reporting.
 
-Research candidates must be explicitly distinct from the frozen V4 identity.
+Research candidates must be explicitly distinct from the frozen V4 identity as defined above.
 
 ## Fast-failure model
 
@@ -132,18 +134,32 @@ For each research candidate:
 
 - primary quantity: mean **net R per closed trade**, after fees, funding, slippage, and simulated execution costs;
 - minimum sample before an economic futility decision: **20 closed trades**;
-- model: Student-t likelihood for trade-level net R with a weakly informative centered prior documented in the implementation contract;
-- rejection condition: after at least 20 closed trades, stop the candidate when the posterior probability that mean net R is greater than zero is **below 5%**;
-- severe-drawdown override: research may stop sooner if a locked independent risk limit is violated, because that is a risk failure rather than an inference about mean expectancy;
+- likelihood: trade-level net R values are modeled as `StudentT(nu=5, loc=mu, scale=sigma)`;
+- prior for mean expectancy: `mu ~ Normal(0, 0.5)` in R units;
+- prior for dispersion: `sigma ~ HalfNormal(1.0)` in R units;
+- posterior computation must be deterministic for the same ordered input observations, including a fixed sampler seed and fixed convergence settings if sampling is used;
+- rejection condition: after at least 20 closed trades, stop the candidate when `P(mu > 0 | observations) < 0.05`;
+- severe-risk override: the candidate may stop sooner when an existing configured hard independent-risk lockout is violated; no new discretionary drawdown threshold is introduced by this design;
 - once economically rejected, the candidate ID is terminal and cannot be resumed by selectively discarding losing observations.
 
 The Bayesian sequential rule is chosen for the research lane because repeated posterior updates are part of the declared procedure. It is **not** the statistical method used for final promotion; the existing untouched Phase 9 bootstrap/walk-forward policy remains authoritative for promotion.
 
-### Positive early results
+### Positive early results and research-promising threshold
 
-No positive posterior threshold promotes a research candidate.
+Positive early results never promote a candidate.
 
-A candidate that looks strong after 20, 40, or 80 trades simply remains eligible for more research or for a later frozen challenger handoff. Promotion still requires a separate untouched validation protocol.
+A candidate becomes `RESEARCH_PROMISING` only when all of the following are true:
+
+- at least **40 closed research trades**;
+- at least **7 distinct UTC research days** containing a closed trade;
+- `P(mu > 0 | observations) >= 0.80` under the same precommitted research model;
+- no unresolved operational integrity failure;
+- no hard independent-risk lockout violation;
+- complete execution-cost accounting for the candidate's research observations.
+
+`RESEARCH_PROMISING` only authorizes creation of a frozen challenger specification and future clean-validation cutover. It does not authorize Phase 10, live orders, capital deployment, or an edge claim.
+
+A candidate that remains between the futility and research-promising boundaries stays `RESEARCHING` and continues collecting research evidence.
 
 ## Daily research checkpoints
 
@@ -155,11 +171,11 @@ The research lane produces one compact report after each completed UTC research 
 - drawdown and planned-risk utilization;
 - long/short and market concentration;
 - stop, opposite-thesis, expiry, reduction, and health-exit counts;
-- candidate posterior futility state: `INSUFFICIENT_TRADES`, `CONTINUE`, or `REJECT_FUTILITY`;
+- candidate posterior state: `INSUFFICIENT_TRADES`, `CONTINUE`, `RESEARCH_PROMISING`, or `REJECT_FUTILITY`;
 - operational health state;
 - exact candidate/code/data provenance.
 
-Suggested human-readable milestones are day 1, day 3, day 7, day 14, and day 30, but the system evaluates every completed research day. Economic rejection is trade-count-aware rather than assuming that one calendar day always contains enough information.
+Human-readable milestones are day 1, day 3, day 7, day 14, and day 30, but the system evaluates after every completed research day. Economic rejection is trade-count-aware rather than assuming that one calendar day always contains enough information.
 
 ## Challenger lifecycle
 
@@ -169,7 +185,7 @@ A research candidate moves through these states:
 2. `RESEARCHING` — touched evidence is accumulating and daily economics are visible.
 3. `REJECTED_OPERATIONAL` — terminal due to integrity/safety/execution failure.
 4. `REJECTED_FUTILITY` — terminal due to the precommitted sequential economic rule.
-5. `RESEARCH_PROMISING` — enough evidence exists to justify freezing a challenger; this state is not an economic promotion claim.
+5. `RESEARCH_PROMISING` — the exact threshold above is satisfied; this is not an economic promotion claim.
 6. `FROZEN_CHALLENGER` — immutable code/config/cutover timestamp established.
 7. `VALIDATING` — future untouched evidence is accumulated under a distinct validation protocol.
 8. `VALIDATED_EDGE` or `NO_EDGE` — only an untouched promotion evaluator may assign these terminal economic outcomes.
@@ -224,14 +240,16 @@ Implementation must include automated tests proving at minimum:
 
 1. research artifacts cannot mutate or be admitted to `v4-mainnet-corpus`;
 2. V4 hidden economic fields are not read or reconstructed by research jobs;
-3. candidate/config changes produce new immutable candidate identities;
-4. touched periods are persisted and rejected from later clean validation for that candidate family;
-5. economic futility cannot fire before 20 closed trades;
-6. the declared posterior futility rule is deterministic for the same ordered observations;
-7. rejected candidates cannot be resumed by deleting observations;
-8. positive early results never trigger promotion or live activation;
-9. operational failures can reject immediately and remain auditable;
-10. all research workflows keep `live_orders=false`.
+3. an economically identical V4 clone is blocked from the research lane until the V4 one-shot is terminal;
+4. candidate/config changes produce new immutable candidate identities;
+5. touched periods are persisted and rejected from later clean validation for that candidate family;
+6. economic futility cannot fire before 20 closed trades;
+7. the declared posterior futility rule is deterministic for the same ordered observations;
+8. `RESEARCH_PROMISING` cannot occur before 40 trades and 7 closed-trade days;
+9. rejected candidates cannot be resumed by deleting observations;
+10. positive early results never trigger promotion or live activation;
+11. operational failures can reject immediately and remain auditable;
+12. all research workflows keep `live_orders=false`.
 
 ## Observability
 
