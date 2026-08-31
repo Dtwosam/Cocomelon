@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pytest import raises
+
 from cocomelon.research.contracts import (
     SIX_HOURS_MS,
     ResearchCandidateManifest,
@@ -9,7 +11,6 @@ from cocomelon.research.contracts import (
     normalize_intervals,
     validation_cutover_allowed,
 )
-from pytest import raises
 
 
 def test_normalize_intervals_merges_overlapping_and_touching_ranges() -> None:
