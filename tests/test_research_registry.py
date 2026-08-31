@@ -112,6 +112,30 @@ def test_any_registered_v4_interval_blocks_overlapping_research_source(tmp_path:
     registry.close()
 
 
+def test_late_v4_interval_retroactively_contaminates_admitted_research_batch(
+    tmp_path: Path,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.create_candidate(_candidate("r1"))
+    registry.record_batch(
+        candidate_id="r1",
+        batch_id="research-batch-1",
+        source_id="research-source-1",
+        replay_run_id="research-replay-1",
+        interval=TimeInterval(1_000, 2_000),
+    )
+
+    registry.record_v4_interval(
+        run_id="late-v4-run",
+        interval=TimeInterval(1_500, 2_500),
+        disposition="accepted",
+    )
+
+    assert registry.load_candidate("r1").state is ResearchCandidateState.REJECTED_CONTAMINATION
+    assert registry.effective_touched_intervals("r1") == (TimeInterval(1_000, 2_000),)
+    registry.close()
+
+
 def test_terminal_candidate_state_cannot_return_to_researching(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.create_candidate(_candidate("r1"))
@@ -120,6 +144,19 @@ def test_terminal_candidate_state_cannot_return_to_researching(tmp_path: Path) -
 
     with raises(ResearchRegistryError, match="terminal"):
         registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="resume")
+    registry.close()
+
+
+def test_research_state_api_rejects_direct_validation_or_edge_jumps(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.create_candidate(_candidate("r1"))
+
+    with raises(ResearchRegistryError, match="transition"):
+        registry.transition_candidate("r1", ResearchCandidateState.VALIDATED_EDGE, reason="skip")
+
+    registry.transition_candidate("r1", ResearchCandidateState.RESEARCHING, reason="started")
+    with raises(ResearchRegistryError, match="transition"):
+        registry.transition_candidate("r1", ResearchCandidateState.VALIDATING, reason="skip")
     registry.close()
 
 
