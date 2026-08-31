@@ -14,6 +14,7 @@ EXECUTION_CONFIG_INPUT = '{"slippage_model":"recorded","mode":"paper"}'
 RISK_CONFIG_INPUT = '{"stops_required":true,"max_position_r":"1"}'
 EXECUTION_CONFIG_CANONICAL = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG_CANONICAL = '{"max_position_r":"1","stops_required":true}'
+V4_INVENTORY_SOURCE = "authoritative-v4-inventory"
 
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
@@ -50,6 +51,23 @@ def _create_root(capsys: object, registry_path: Path) -> None:
         ],
     )
     assert exit_code == 0
+
+
+def _mark_v4_complete(capsys: object, registry_path: Path, *, through_ms: int) -> None:
+    exit_code, _, error = _run_cli(
+        capsys,
+        [
+            "mark-v4-registry-complete",
+            "--registry",
+            str(registry_path),
+            "--through-ms",
+            str(through_ms),
+            "--source-id",
+            V4_INVENTORY_SOURCE,
+        ],
+    )
+    assert exit_code == 0
+    assert error == ""
 
 
 def test_cli_emits_deterministic_json_and_exposes_no_live_surface(
@@ -98,12 +116,72 @@ def test_create_candidate_persists_canonical_execution_and_risk_identity(
     assert candidate.performance_report_ids == ()
 
 
+def test_mark_v4_registry_complete_is_monotonic_and_source_bound(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+
+    first_code, first_out, first_err = _run_cli(
+        capsys,
+        [
+            "mark-v4-registry-complete",
+            "--registry",
+            str(registry_path),
+            "--through-ms",
+            "5000",
+            "--source-id",
+            V4_INVENTORY_SOURCE,
+        ],
+    )
+    assert first_code == 0
+    assert first_err == ""
+    assert json.loads(first_out) == {
+        "command": "mark-v4-registry-complete",
+        "source_id": V4_INVENTORY_SOURCE,
+        "through_ms": 5000,
+    }
+
+    backwards_code, backwards_out, backwards_err = _run_cli(
+        capsys,
+        [
+            "mark-v4-registry-complete",
+            "--registry",
+            str(registry_path),
+            "--through-ms",
+            "4999",
+            "--source-id",
+            V4_INVENTORY_SOURCE,
+        ],
+    )
+    assert backwards_code != 0
+    assert backwards_out == ""
+    assert "cannot move backwards" in json.loads(backwards_err)["error"]
+
+    changed_source_code, changed_source_out, changed_source_err = _run_cli(
+        capsys,
+        [
+            "mark-v4-registry-complete",
+            "--registry",
+            str(registry_path),
+            "--through-ms",
+            "6000",
+            "--source-id",
+            "different-inventory",
+        ],
+    )
+    assert changed_source_code != 0
+    assert changed_source_out == ""
+    assert "source cannot change" in json.loads(changed_source_err)["error"]
+
+
 def test_record_batch_persists_and_rejects_v4_overlap(
     tmp_path: Path,
     capsys: object,
 ) -> None:
     registry_path = tmp_path / "research.sqlite3"
     _create_root(capsys, registry_path)
+    _mark_v4_complete(capsys, registry_path, through_ms=10_000)
 
     ok_code, ok_out, ok_err = _run_cli(
         capsys,
