@@ -101,6 +101,10 @@ def _sample(
     )
 
 
+def _seal(batch: object, samples: tuple[TradeEvaluationSample, ...]) -> tuple[object, ...]:
+    return (evaluator.build_research_batch_seal(batch=batch, samples=samples),)
+
+
 def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     _mark_v4_complete(registry)
@@ -122,6 +126,7 @@ def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path:
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(batch,),
+        batch_seals=_seal(batch, samples),
         samples=samples,
     )
 
@@ -173,22 +178,24 @@ def test_v4_overlap_rejects_candidate_before_research_report_is_released(tmp_pat
         replay_run_id="research-replay-1",
         interval=TimeInterval(DAY_MS + 1, 3 * DAY_MS),
     )
+    samples = (
+        _sample(
+            1,
+            day=1,
+            market="BTC",
+            direction=Direction.LONG,
+            net_pnl="999",
+            net_r="99",
+        ),
+    )
 
     with raises(ResearchContaminationError, match="v4-diagnostic-run"):
         evaluator.evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
             batches=(batch,),
-            samples=(
-                _sample(
-                    1,
-                    day=1,
-                    market="BTC",
-                    direction=Direction.LONG,
-                    net_pnl="999",
-                    net_r="99",
-                ),
-            ),
+            batch_seals=_seal(batch, samples),
+            samples=samples,
         )
 
     assert registry.load_candidate(candidate.candidate_id).state is (
@@ -209,22 +216,24 @@ def test_report_rejects_samples_outside_registered_research_batches(tmp_path: Pa
         replay_run_id="research-replay-1",
         interval=TimeInterval(DAY_MS, 2 * DAY_MS),
     )
+    samples = (
+        _sample(
+            1,
+            day=3,
+            market="BTC",
+            direction=Direction.LONG,
+            net_pnl="1",
+            net_r="0.1",
+        ),
+    )
 
     with raises(ValueError, match="outside research batch"):
         evaluator.evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
             batches=(batch,),
-            samples=(
-                _sample(
-                    1,
-                    day=3,
-                    market="BTC",
-                    direction=Direction.LONG,
-                    net_pnl="1",
-                    net_r="0.1",
-                ),
-            ),
+            batch_seals=_seal(batch, samples),
+            samples=samples,
         )
     registry.close()
 
@@ -248,13 +257,15 @@ def test_report_rejects_sample_closed_at_half_open_batch_endpoint(tmp_path: Path
         replay_run_id=sample.replay_run_id,
         interval=TimeInterval(DAY_MS, sample.closed_at_ms),
     )
+    samples = (sample,)
 
     with raises(ValueError, match="outside research batch interval"):
         evaluator.evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
             batches=(batch,),
-            samples=(sample,),
+            batch_seals=_seal(batch, samples),
+            samples=samples,
         )
     registry.close()
 
@@ -286,6 +297,7 @@ def test_later_checkpoint_includes_all_prior_candidate_observations(tmp_path: Pa
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(first_batch,),
+        batch_seals=_seal(first_batch, first_samples),
         samples=first_samples,
     )
     assert first_report.closed_trade_count == 5
@@ -313,6 +325,7 @@ def test_later_checkpoint_includes_all_prior_candidate_observations(tmp_path: Pa
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(second_batch,),
+        batch_seals=_seal(second_batch, second_samples),
         samples=second_samples,
     )
 
@@ -343,18 +356,22 @@ def test_exact_observation_replay_is_idempotent(tmp_path: Path) -> None:
         net_r="0.1",
         replay_run_id="replay-idempotent",
     )
+    samples = (sample,)
+    seals = _seal(batch, samples)
 
     first_report = evaluator.evaluate_research_checkpoint(
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(batch,),
-        samples=(sample,),
+        batch_seals=seals,
+        samples=samples,
     )
     second_report = evaluator.evaluate_research_checkpoint(
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(batch,),
-        samples=(sample,),
+        batch_seals=seals,
+        samples=samples,
     )
 
     assert first_report.report_id == second_report.report_id
@@ -393,17 +410,21 @@ def test_existing_trade_id_cannot_be_rewritten_with_new_economics(tmp_path: Path
         replay_run_id="replay-conflict",
     )
 
+    original_samples = (original,)
     evaluator.evaluate_research_checkpoint(
         registry=registry,
         candidate_id=candidate.candidate_id,
         batches=(batch,),
-        samples=(original,),
+        batch_seals=_seal(batch, original_samples),
+        samples=original_samples,
     )
-    with raises(ResearchRegistryError, match="observation"):
+    rewritten_samples = (rewritten,)
+    with raises(ResearchRegistryError, match="seal"):
         evaluator.evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
             batches=(batch,),
-            samples=(rewritten,),
+            batch_seals=_seal(batch, rewritten_samples),
+            samples=rewritten_samples,
         )
     registry.close()
