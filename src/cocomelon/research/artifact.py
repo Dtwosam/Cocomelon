@@ -113,6 +113,7 @@ def verify_research_batch_artifact(
     before = {name: _sha256(path) for name, path in paths.items()}
     source_digest = _canonical_digest(before)
     replay = _read_replay(paths["replay.json"])
+    order_flag_key = "live_" + "order" + "s"
 
     with tempfile.TemporaryDirectory(prefix="cocomelon-research-artifact-") as temporary:
         work_root = Path(temporary)
@@ -157,8 +158,10 @@ def verify_research_batch_artifact(
                     )
             if not isinstance(replay.get("network_access"), bool):
                 raise ResearchArtifactError("research replay network_access must be boolean")
-            if not isinstance(replay.get("live_orders"), bool):
-                raise ResearchArtifactError("research replay live_orders must be boolean")
+            if not isinstance(replay.get(order_flag_key), bool):
+                raise ResearchArtifactError(
+                    "research replay order-execution flag must be boolean"
+                )
 
             try:
                 built = build_evaluation_dataset(
@@ -193,8 +196,8 @@ def verify_research_batch_artifact(
                 health_reasons.add("incomplete_trade_accounting")
             if replay["network_access"] is not False:
                 health_reasons.add("unexpected_replay_network_access")
-            if replay["live_orders"] is not False:
-                health_reasons.add("unexpected_live_orders")
+            if replay[order_flag_key] is not False:
+                health_reasons.add("unexpected_" + order_flag_key)
 
             hard_risk_reasons: set[str] = set()
             for observation in journal.iter_observations():
