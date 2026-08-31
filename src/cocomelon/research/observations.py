@@ -94,6 +94,46 @@ def _planned_fraction(value: object) -> str:
     return str(decimal)
 
 
+def _expected_attested_sample_identities(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+) -> set[tuple[str, str, str]]:
+    rows = connection.execute(
+        """
+        SELECT a.batch_id, a.sample_identities_json
+        FROM research_batch_attestations AS a
+        JOIN research_batches AS b
+          ON b.batch_id = a.batch_id AND b.candidate_id = a.candidate_id
+        WHERE a.candidate_id = ? AND b.status = 'admitted'
+        ORDER BY a.batch_id
+        """,
+        (candidate_id,),
+    ).fetchall()
+    expected: set[tuple[str, str, str]] = set()
+    for row in rows:
+        batch_id = str(row["batch_id"])
+        decoded = json.loads(str(row["sample_identities_json"]))
+        if not isinstance(decoded, list):
+            raise ResearchRegistryError("stored research batch sample identities are invalid")
+        for identity in decoded:
+            if (
+                not isinstance(identity, list)
+                or len(identity) != 2
+                or not all(isinstance(item, str) and item for item in identity)
+            ):
+                raise ResearchRegistryError(
+                    "stored research batch sample identities are invalid"
+                )
+            item = (batch_id, identity[0], identity[1])
+            if item in expected:
+                raise ResearchRegistryError(
+                    "stored research batch sample identities are not unique"
+                )
+            expected.add(item)
+    return expected
+
+
 def record_trade_observations(
     connection: sqlite3.Connection,
     *,
@@ -185,7 +225,7 @@ def load_trade_observations(
     ).fetchone()
     rows = connection.execute(
         """
-        SELECT o.payload_json
+        SELECT o.batch_id, o.trade_id, o.sample_id, o.payload_json
         FROM research_trade_observations AS o
         JOIN research_batches AS b
           ON b.batch_id = o.batch_id AND b.candidate_id = o.candidate_id
@@ -200,6 +240,24 @@ def load_trade_observations(
         raise ResearchRegistryError(
             "research observations are not fully backed by admitted authoritative batches"
         )
+
+    actual: set[tuple[str, str, str]] = set()
+    for row in rows:
+        batch_id = row["batch_id"]
+        trade_id = row["trade_id"]
+        sample_id = row["sample_id"]
+        if not all(isinstance(item, str) and item for item in (batch_id, trade_id, sample_id)):
+            raise ResearchRegistryError("stored research observation identity is invalid")
+        actual.add((str(batch_id), str(trade_id), str(sample_id)))
+    expected = _expected_attested_sample_identities(
+        connection,
+        candidate_id=candidate_id,
+    )
+    if actual != expected:
+        raise ResearchRegistryError(
+            "research observations do not match the complete attested sample set"
+        )
+
     result: list[dict[str, object]] = []
     for row in rows:
         payload = json.loads(str(row["payload_json"]))
