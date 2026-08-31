@@ -5,20 +5,23 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
+from pathlib import Path
 
 from cocomelon.domain.evaluation import TradeEvaluationSample
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
+from cocomelon.research.artifact import VerifiedResearchBatch, verify_research_batch_artifact
+from cocomelon.research.attestation import (
+    attest_verified_research_batch,
+    load_candidate_attested_health,
+)
 from cocomelon.research.contracts import (
     ResearchCandidateState,
     ResearchCheckpointState,
     TimeInterval,
 )
 from cocomelon.research.metrics import compute_checkpoint_risk_metrics
-from cocomelon.research.observations import (
-    load_trade_observations,
-    record_trade_observations,
-)
+from cocomelon.research.observations import load_trade_observations, record_trade_observations
 from cocomelon.research.provenance import load_sealed_admitted_batch_provenance
 from cocomelon.research.registry import (
     ResearchContaminationError,
@@ -38,7 +41,27 @@ ZERO = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
+class ResearchArtifactBatch:
+    artifact_root: Path
+    batch_id: str
+    source_id: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "artifact_root", Path(self.artifact_root))
+        for field in ("batch_id", "source_id"):
+            value = getattr(self, field)
+            if not value.strip():
+                raise ValueError(f"{field} must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class ResearchBatch:
+    """Legacy descriptor retained only for data-model compatibility.
+
+    Checkpoint admission does not accept this type; production checkpoints must
+    start from ResearchArtifactBatch so replay evidence is verified internally.
+    """
+
     batch_id: str
     source_id: str
     replay_run_id: str
@@ -52,6 +75,8 @@ class ResearchBatch:
 
 @dataclass(frozen=True, slots=True)
 class ResearchBatchSeal:
+    """Legacy value object; never authorizes checkpoint admission."""
+
     batch_id: str
     trade_ids: tuple[str, ...]
     sample_digest: str
@@ -178,6 +203,8 @@ def build_research_batch_seal(
     batch: ResearchBatch,
     samples: tuple[TradeEvaluationSample, ...],
 ) -> ResearchBatchSeal:
+    """Build a deterministic legacy seal value without granting admission authority."""
+
     if any(sample.replay_run_id != batch.replay_run_id for sample in samples):
         raise ValueError("research batch seal samples must belong to the batch replay run")
     return ResearchBatchSeal(
@@ -187,75 +214,11 @@ def build_research_batch_seal(
     )
 
 
-def _validate_batch_set(batches: tuple[ResearchBatch, ...]) -> dict[str, ResearchBatch]:
-    if not batches:
-        raise ValueError("at least one research batch is required")
-    replay_map: dict[str, ResearchBatch] = {}
-    batch_ids: set[str] = set()
-    for batch in batches:
-        if batch.batch_id in batch_ids:
-            raise ValueError(f"duplicate research batch id: {batch.batch_id}")
-        batch_ids.add(batch.batch_id)
-        if batch.replay_run_id in replay_map:
-            raise ValueError(f"duplicate research replay run id: {batch.replay_run_id}")
-        replay_map[batch.replay_run_id] = batch
-    return replay_map
-
-
-def _validate_samples_against_batches(
-    samples: tuple[TradeEvaluationSample, ...],
-    replay_map: dict[str, ResearchBatch],
-) -> None:
-    trade_ids: set[str] = set()
-    for sample in samples:
-        if sample.trade_id in trade_ids:
-            raise ValueError(f"duplicate research trade id: {sample.trade_id}")
-        trade_ids.add(sample.trade_id)
-        batch = replay_map.get(sample.replay_run_id)
-        if batch is None:
-            raise ValueError(f"sample is outside research batch set: {sample.trade_id}")
-        if (
-            sample.decision_timestamp_ms < batch.interval.start_ms
-            or sample.closed_at_ms >= batch.interval.end_ms
-        ):
-            raise ValueError(f"sample is outside research batch interval: {sample.trade_id}")
-
-
-def _validate_batch_seals(
-    *,
-    batches: tuple[ResearchBatch, ...],
-    samples: tuple[TradeEvaluationSample, ...],
-    batch_seals: tuple[ResearchBatchSeal, ...],
-) -> dict[str, ResearchBatchSeal]:
-    seal_map: dict[str, ResearchBatchSeal] = {}
-    for seal in batch_seals:
-        if seal.batch_id in seal_map:
-            raise ResearchRegistryError(f"duplicate research batch seal: {seal.batch_id}")
-        seal_map[seal.batch_id] = seal
-    expected_batch_ids = {batch.batch_id for batch in batches}
-    if set(seal_map) != expected_batch_ids:
-        raise ResearchRegistryError("every research batch requires exactly one complete seal")
-
-    for batch in batches:
-        batch_samples = tuple(
-            sample for sample in samples if sample.replay_run_id == batch.replay_run_id
-        )
-        actual = build_research_batch_seal(batch=batch, samples=batch_samples)
-        declared = seal_map[batch.batch_id]
-        if declared.trade_ids != actual.trade_ids:
-            raise ResearchRegistryError(
-                f"research batch sealed trade set does not match samples: {batch.batch_id}"
-            )
-        if declared.sample_digest != actual.sample_digest:
-            raise ResearchRegistryError(
-                f"research batch sealed sample digest does not match samples: {batch.batch_id}"
-            )
-    return seal_map
-
-
-def _observation_from_sample(
+def _observation_from_verified_sample(
     sample: TradeEvaluationSample,
-    batch: ResearchBatch,
+    verified: VerifiedResearchBatch,
+    *,
+    planned_risk_fraction: Decimal,
 ) -> dict[str, object]:
     with localcontext(AUTHORITATIVE_CONTEXT):
         fees = sample.entry_fees + sample.exit_fees
@@ -263,9 +226,9 @@ def _observation_from_sample(
     return {
         "sample_id": sample.sample_id,
         "trade_id": sample.trade_id,
-        "batch_id": batch.batch_id,
-        "source_id": batch.source_id,
-        "replay_run_id": sample.replay_run_id,
+        "batch_id": verified.batch_id,
+        "source_id": verified.source_id,
+        "replay_run_id": verified.replay_run_id,
         "strategy_decision_id": sample.strategy_decision_id,
         "market": sample.market.canonical,
         "direction": sample.direction.value,
@@ -287,6 +250,7 @@ def _observation_from_sample(
         "net_r": str(sample.net_r),
         "equity_before": str(sample.equity_before),
         "equity_after": str(sample.equity_after),
+        "planned_risk_fraction": str(planned_risk_fraction),
         "holding_duration_ms": sample.holding_duration_ms,
         "reason_codes": sample.reason_codes,
         "schema_version": sample.schema_version,
@@ -333,42 +297,80 @@ def _observation_reason_codes(observation: dict[str, object]) -> tuple[str, ...]
     return tuple(value)
 
 
+def _configured_risk_per_trade(risk_config_json: str) -> Decimal:
+    try:
+        raw = json.loads(risk_config_json)
+    except json.JSONDecodeError as exc:
+        raise ResearchRegistryError("candidate risk config is invalid JSON") from exc
+    if not isinstance(raw, dict):
+        raise ResearchRegistryError("candidate risk config must be an object")
+    value = raw.get("risk_per_trade")
+    if not isinstance(value, str):
+        raise ResearchRegistryError("candidate risk_per_trade must be a decimal string")
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise ResearchRegistryError("candidate risk_per_trade is invalid") from exc
+    if not result.is_finite() or result <= ZERO:
+        raise ResearchRegistryError("candidate risk_per_trade must be positive")
+    return result
+
+
+def _verify_artifact_batches(
+    artifact_batches: tuple[ResearchArtifactBatch, ...],
+) -> tuple[VerifiedResearchBatch, ...]:
+    if not artifact_batches:
+        raise ValueError("at least one authoritative research artifact batch is required")
+    batch_ids: set[str] = set()
+    replay_ids: set[str] = set()
+    verified_batches: list[VerifiedResearchBatch] = []
+    for descriptor in artifact_batches:
+        if descriptor.batch_id in batch_ids:
+            raise ValueError(f"duplicate research batch id: {descriptor.batch_id}")
+        batch_ids.add(descriptor.batch_id)
+        verified = verify_research_batch_artifact(
+            descriptor.artifact_root,
+            batch_id=descriptor.batch_id,
+            source_id=descriptor.source_id,
+        )
+        if verified.replay_run_id in replay_ids:
+            raise ValueError(f"duplicate research replay run id: {verified.replay_run_id}")
+        replay_ids.add(verified.replay_run_id)
+        verified_batches.append(verified)
+    return tuple(verified_batches)
+
+
 def evaluate_research_checkpoint(
     *,
     registry: ResearchRegistry,
     candidate_id: str,
-    batches: tuple[ResearchBatch, ...],
-    batch_seals: tuple[ResearchBatchSeal, ...],
-    samples: tuple[TradeEvaluationSample, ...],
-    operational_failure: bool = False,
-    hard_risk_failure: bool = False,
+    artifact_batches: tuple[ResearchArtifactBatch, ...],
     policy: SequentialResearchPolicy = DEFAULT_SEQUENTIAL_RESEARCH_POLICY,
 ) -> ResearchCheckpointReport:
     candidate = registry.load_candidate(candidate_id)
-    replay_map = _validate_batch_set(batches)
+    configured_risk = _configured_risk_per_trade(candidate.risk_config_json)
+    verified_batches = _verify_artifact_batches(artifact_batches)
 
-    _validate_samples_against_batches(samples, replay_map)
-    seal_map = _validate_batch_seals(
-        batches=batches,
-        samples=samples,
-        batch_seals=batch_seals,
-    )
     try:
-        for batch in batches:
+        for verified in verified_batches:
             registry.record_batch(
                 candidate_id=candidate_id,
-                batch_id=batch.batch_id,
-                source_id=batch.source_id,
-                replay_run_id=batch.replay_run_id,
-                interval=batch.interval,
+                batch_id=verified.batch_id,
+                source_id=verified.source_id,
+                replay_run_id=verified.replay_run_id,
+                interval=verified.interval,
             )
-            seal = seal_map[batch.batch_id]
             seal_research_batch(
                 registry.connection,
                 candidate_id=candidate_id,
-                batch_id=batch.batch_id,
-                trade_ids=seal.trade_ids,
-                sample_digest=seal.sample_digest,
+                batch_id=verified.batch_id,
+                trade_ids=verified.trade_ids,
+                sample_digest=verified.sample_digest,
+            )
+            attest_verified_research_batch(
+                registry.connection,
+                candidate_id=candidate_id,
+                verified=verified,
             )
     except ResearchContaminationError:
         registry.transition_candidate(
@@ -378,20 +380,36 @@ def evaluate_research_checkpoint(
         )
         raise
 
-    incoming_observations = tuple(
-        _observation_from_sample(sample, replay_map[sample.replay_run_id])
-        for sample in samples
-    )
+    incoming_observations: list[dict[str, object]] = []
+    for verified in verified_batches:
+        planned_by_trade = dict(verified.planned_risk_fractions)
+        for sample in verified.samples:
+            planned = planned_by_trade.get(sample.trade_id)
+            if planned is None:
+                raise ResearchRegistryError(
+                    "authoritative research artifact lacks planned risk for closed trade"
+                )
+            incoming_observations.append(
+                _observation_from_verified_sample(
+                    sample,
+                    verified,
+                    planned_risk_fraction=planned,
+                )
+            )
     record_trade_observations(
         registry.connection,
         candidate_id=candidate_id,
-        observations=incoming_observations,
+        observations=tuple(incoming_observations),
     )
     observations = load_trade_observations(
         registry.connection,
         candidate_id=candidate_id,
     )
     batch_ids, source_ids = load_sealed_admitted_batch_provenance(
+        registry.connection,
+        candidate_id=candidate_id,
+    )
+    operational_failure, hard_risk_failure, _ = load_candidate_attested_health(
         registry.connection,
         candidate_id=candidate_id,
     )
@@ -428,7 +446,10 @@ def evaluate_research_checkpoint(
         for observation in observations
     }
     try:
-        risk_metrics = compute_checkpoint_risk_metrics(observations)
+        risk_metrics = compute_checkpoint_risk_metrics(
+            observations,
+            configured_risk_per_trade=configured_risk,
+        )
     except ValueError as exc:
         raise ResearchRegistryError(str(exc)) from exc
 
