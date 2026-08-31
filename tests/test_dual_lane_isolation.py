@@ -20,6 +20,8 @@ from cocomelon.research.evaluator import ResearchBatch, evaluate_research_checkp
 from cocomelon.research.registry import ResearchContaminationError, ResearchRegistry
 
 DAY_MS = 86_400_000
+EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
+RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
 
 
 def _candidate(
@@ -36,7 +38,15 @@ def _candidate(
         ancestor_candidate_ids=ancestor_candidate_ids,
         config_digest=digest_char * 64,
         code_revision="1" * 40,
+        execution_config_json=EXECUTION_CONFIG,
+        risk_config_json=RISK_CONFIG,
         state=ResearchCandidateState.DRAFT,
+        first_observation_ms=None,
+        last_observation_ms=None,
+        source_provenance_ids=(),
+        local_touched_intervals=(),
+        effective_touched_intervals=(),
+        performance_report_ids=(),
     )
 
 
@@ -135,6 +145,9 @@ def test_descendant_inherits_all_touched_history_across_generations(tmp_path: Pa
     assert registry.effective_touched_intervals(grandchild.candidate_id) == (
         TimeInterval(10, 40),
     )
+    loaded = registry.load_candidate(grandchild.candidate_id)
+    assert loaded.local_touched_intervals == (TimeInterval(19, 31),)
+    assert loaded.effective_touched_intervals == (TimeInterval(10, 40),)
     registry.close()
 
 
