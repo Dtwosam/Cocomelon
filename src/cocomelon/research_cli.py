@@ -18,7 +18,11 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.evaluator import ResearchBatch, evaluate_research_checkpoint
+from cocomelon.research.evaluator import (
+    ResearchBatch,
+    ResearchBatchSeal,
+    evaluate_research_checkpoint,
+)
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
@@ -95,9 +99,9 @@ def _market(value: object) -> MarketId:
     return MarketId.from_wire_name(dex, canonical)
 
 
-def _research_batch(value: object) -> ResearchBatch:
+def _research_batch(value: object) -> tuple[ResearchBatch, ResearchBatchSeal]:
     payload = _mapping(value, "batch")
-    return ResearchBatch(
+    batch = ResearchBatch(
         batch_id=_string(payload.get("batch_id"), "batch_id"),
         source_id=_string(payload.get("source_id"), "source_id"),
         replay_run_id=_string(payload.get("replay_run_id"), "replay_run_id"),
@@ -106,6 +110,12 @@ def _research_batch(value: object) -> ResearchBatch:
             _integer(payload.get("end_ms"), "end_ms"),
         ),
     )
+    seal = ResearchBatchSeal(
+        batch_id=batch.batch_id,
+        trade_ids=_string_tuple(payload.get("trade_ids"), "trade_ids"),
+        sample_digest=_string(payload.get("sample_digest"), "sample_digest"),
+    )
+    return batch, seal
 
 
 def _trade_sample(value: object) -> TradeEvaluationSample:
@@ -269,6 +279,7 @@ def _load_checkpoint_dataset(
     path: Path,
 ) -> tuple[
     tuple[ResearchBatch, ...],
+    tuple[ResearchBatchSeal, ...],
     tuple[TradeEvaluationSample, ...],
     bool,
     bool,
@@ -283,9 +294,13 @@ def _load_checkpoint_dataset(
         health.get("hard_risk_failure"),
         "health.hard_risk_failure",
     )
-    batches = tuple(_research_batch(item) for item in _array(payload.get("batches"), "batches"))
+    parsed_batches = tuple(
+        _research_batch(item) for item in _array(payload.get("batches"), "batches")
+    )
+    batches = tuple(item[0] for item in parsed_batches)
+    batch_seals = tuple(item[1] for item in parsed_batches)
     samples = tuple(_trade_sample(item) for item in _array(payload.get("samples"), "samples"))
-    return batches, samples, operational_failure, hard_risk_failure
+    return batches, batch_seals, samples, operational_failure, hard_risk_failure
 
 
 def _execute(args: argparse.Namespace) -> dict[str, object]:
@@ -340,6 +355,7 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
         if args.command == "checkpoint":
             (
                 batches,
+                batch_seals,
                 samples,
                 operational_failure,
                 hard_risk_failure,
@@ -356,6 +372,7 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
                 registry=registry,
                 candidate_id=args.candidate_id,
                 batches=batches,
+                batch_seals=batch_seals,
                 samples=samples,
                 operational_failure=operational_failure,
                 hard_risk_failure=hard_risk_failure,
