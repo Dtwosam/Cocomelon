@@ -5,7 +5,7 @@ import json
 import math
 import random
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_EVEN
+from decimal import ROUND_HALF_EVEN, Decimal
 from functools import lru_cache
 
 from cocomelon.research.contracts import (
