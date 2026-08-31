@@ -93,6 +93,16 @@ def _canonical_payload(
     return decoded
 
 
+def _require_attested_batch_provenance(payload: dict[str, object]) -> None:
+    batch_ids = payload.get("batch_ids")
+    if (
+        not isinstance(batch_ids, list)
+        or not batch_ids
+        or not all(isinstance(batch_id, str) and batch_id.strip() for batch_id in batch_ids)
+    ):
+        raise ResearchRegistryError("checkpoint report requires attested batch provenance")
+
+
 def commit_checkpoint_report_and_state(
     registry: ResearchRegistry,
     *,
@@ -106,6 +116,7 @@ def commit_checkpoint_report_and_state(
         current = registry.load_candidate(candidate_id)
         _validate_transition(current.state, state)
         canonical_payload = _canonical_payload(registry, payload)
+        _require_attested_batch_provenance(canonical_payload)
         try:
             assert_checkpoint_report_backed_by_observations(
                 registry.connection,
