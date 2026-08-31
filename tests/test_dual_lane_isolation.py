@@ -6,26 +6,20 @@ from pathlib import Path
 
 from pytest import raises
 
-from cocomelon.domain.evaluation import EdgeEvidenceStatus, TradeEvaluationSample
-from cocomelon.domain.features import TrendRegime, VolatilityRegime
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass
+from cocomelon.domain.evaluation import EdgeEvidenceStatus
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.evaluator import (
-    ResearchBatch,
-    build_research_batch_seal,
-    evaluate_research_checkpoint,
-)
+from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchContaminationError, ResearchRegistry
+from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 DAY_MS = 86_400_000
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
-RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+RISK_CONFIG = '{"risk_per_trade":"0.0025","stops_required":true}'
 
 
 def _candidate(
@@ -54,40 +48,6 @@ def _candidate(
     )
 
 
-def _sample(index: int, *, day: int, net_r: str = "0.5") -> TradeEvaluationSample:
-    decision_ms = day * DAY_MS + 10_000 + index * 1_000
-    opened_ms = decision_ms + 100
-    closed_ms = opened_ms + 1_000
-    pnl = Decimal(net_r) * Decimal("10")
-    return TradeEvaluationSample(
-        trade_id=f"isolation-trade-{index}",
-        replay_run_id="research-isolation-replay",
-        strategy_decision_id=f"isolation-decision-{index}",
-        market=MarketId(dex="", coin="BTC" if index % 2 == 0 else "ETH"),
-        direction=Direction.LONG if index % 2 == 0 else Direction.SHORT,
-        decision_timestamp_ms=decision_ms,
-        opened_at_ms=opened_ms,
-        closed_at_ms=closed_ms,
-        score=Decimal("75"),
-        lead_strategy="research-isolation",
-        trend_regime=TrendRegime.UP,
-        volatility_regime=VolatilityRegime.NORMAL,
-        evidence_class=EvidenceClass.MICROSTRUCTURE,
-        gross_realized_pnl=pnl + Decimal("0.02"),
-        entry_fees=Decimal("0.01"),
-        exit_fees=Decimal("0.01"),
-        funding_cash_pnl=Decimal("0"),
-        net_pnl=pnl,
-        entry_slippage_amount=Decimal("0.001"),
-        exit_slippage_amount=Decimal("0.001"),
-        net_r=Decimal(net_r),
-        equity_before=Decimal("10000"),
-        equity_after=Decimal("10000") + pnl,
-        holding_duration_ms=1_000,
-        reason_codes=("THESIS_EXPIRED",),
-    )
-
-
 def test_failed_v4_interval_blocks_research_economics_before_release(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     candidate = _candidate("research-r1")
@@ -97,25 +57,32 @@ def test_failed_v4_interval_blocks_research_economics_before_release(tmp_path: P
         interval=TimeInterval(DAY_MS, 2 * DAY_MS),
         disposition="diagnostic_failure",
     )
-    batch = ResearchBatch(
+    artifact = write_research_artifact(
+        tmp_path / "overlap",
         batch_id="overlap-batch",
         source_id="overlap-source",
         replay_run_id="research-isolation-replay",
-        interval=TimeInterval(DAY_MS + 1, 3 * DAY_MS),
+        start_ms=DAY_MS + 1,
+        end_ms=3 * DAY_MS,
+        trades=(
+            ArtifactTradeSpec(
+                closed_at_ms=DAY_MS + 20_000,
+                net_r=Decimal("99"),
+                direction=Direction.SHORT,
+            ),
+        ),
     )
-    samples = (_sample(1, day=1, net_r="99"),)
 
     with raises(ResearchContaminationError, match="v4-failed-diagnostic"):
         evaluate_research_checkpoint(
             registry=registry,
             candidate_id=candidate.candidate_id,
-            batches=(batch,),
-            batch_seals=(build_research_batch_seal(batch=batch, samples=samples),),
-            samples=samples,
+            artifact_batches=(artifact,),
         )
 
-    assert registry.load_candidate(candidate.candidate_id).state is (
-        ResearchCandidateState.REJECTED_CONTAMINATION
+    assert (
+        registry.load_candidate(candidate.candidate_id).state
+        is ResearchCandidateState.REJECTED_CONTAMINATION
     )
     assert registry.effective_touched_intervals(candidate.candidate_id) == ()
     registry.close()
@@ -165,20 +132,28 @@ def test_research_promising_state_cannot_be_candidate_edge(tmp_path: Path) -> No
     )
     candidate = _candidate("research-r1")
     registry.create_candidate(candidate)
-    batch = ResearchBatch(
+    artifact = write_research_artifact(
+        tmp_path / "positive",
         batch_id="positive-research-batch",
         source_id="positive-research-source",
         replay_run_id="research-isolation-replay",
-        interval=TimeInterval(DAY_MS, 9 * DAY_MS),
+        start_ms=DAY_MS,
+        end_ms=9 * DAY_MS,
+        trades=tuple(
+            ArtifactTradeSpec(
+                closed_at_ms=(1 + (index % 7)) * DAY_MS + 20_000 + index * 1_000,
+                net_r=Decimal("0.5"),
+                market="BTC" if index % 2 == 0 else "ETH",
+                direction=Direction.LONG if index % 2 == 0 else Direction.SHORT,
+            )
+            for index in range(40)
+        ),
     )
-    samples = tuple(_sample(index, day=1 + (index % 7)) for index in range(40))
 
     report = evaluate_research_checkpoint(
         registry=registry,
         candidate_id=candidate.candidate_id,
-        batches=(batch,),
-        batch_seals=(build_research_batch_seal(batch=batch, samples=samples),),
-        samples=samples,
+        artifact_batches=(artifact,),
     )
 
     assert report.label == "TOUCHED / NON-PROMOTIONAL"
