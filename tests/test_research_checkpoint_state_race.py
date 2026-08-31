@@ -77,6 +77,8 @@ def _record_promising_report(registry: ResearchRegistry) -> str:
         "reason_codes": list(checkpoint.reason_codes),
         "realized_closed_trade_max_drawdown_fraction": "0",
         "max_realized_planned_risk_utilization": "0",
+        "batch_ids": [],
+        "source_ids": [],
     }
     canonical = json.dumps(
         payload,
