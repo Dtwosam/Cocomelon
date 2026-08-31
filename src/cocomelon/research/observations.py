@@ -4,6 +4,7 @@ import json
 import sqlite3
 from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
+from typing import cast
 
 from cocomelon.research.attestation import ensure_batch_attestation_schema
 from cocomelon.research.registry import ResearchRegistryError
@@ -73,9 +74,10 @@ def _attestation_for_observation(
         raise ResearchRegistryError(
             f"research observation batch is not authoritatively attested: {batch_id}"
         )
-    if str(row["status"]) != "admitted":
+    typed_row = cast(sqlite3.Row, row)
+    if str(typed_row["status"]) != "admitted":
         raise ResearchRegistryError("research observation batch is contaminated")
-    return row
+    return typed_row
 
 
 def _planned_fraction(value: object) -> str:
