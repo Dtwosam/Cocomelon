@@ -10,6 +10,7 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
+from cocomelon.research.lifecycle import activate_validation_cutover
 from cocomelon.research.metrics import compute_checkpoint_risk_metrics
 from cocomelon.research.observations import record_trade_observations
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
@@ -112,12 +113,11 @@ def test_validation_activation_cannot_authorize_stale_frozen_state_after_contami
     )
     registry.connection.commit()
 
-    original_load = registry.load_candidate
+    original_begin = registry._begin_immediate
     contaminated = False
 
-    def load_then_contaminate(candidate_id: str) -> ResearchCandidateManifest:
+    def contaminate_then_begin() -> None:
         nonlocal contaminated
-        candidate = original_load(candidate_id)
         if not contaminated:
             contaminated = True
             late = ResearchRegistry(path)
@@ -136,15 +136,16 @@ def test_validation_activation_cannot_authorize_stale_frozen_state_after_contami
                 )
             finally:
                 late.close()
-        return candidate
+        original_begin()
 
-    monkeypatch.setattr(registry, "load_candidate", load_then_contaminate)
+    monkeypatch.setattr(registry, "_begin_immediate", contaminate_then_begin)
 
     with pytest.raises(ResearchRegistryError, match="changed concurrently|contaminated|frozen"):
-        registry.activate_validation_cutover(
+        activate_validation_cutover(
+            registry,
             "candidate-a",
             validation_start_ms=50_000,
         )
 
-    assert original_load("candidate-a").state is ResearchCandidateState.REJECTED_CONTAMINATION
+    assert registry.load_candidate("candidate-a").state is ResearchCandidateState.REJECTED_CONTAMINATION
     registry.close()
