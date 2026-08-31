@@ -32,7 +32,7 @@ def _prepare_registry(capsys: object, registry_path: Path) -> None:
             "--family-id",
             "family-health",
             "--config-digest",
-            "c" * 64,
+            "a" * 64,
             "--code-revision",
             "1" * 40,
             "--execution-config-json",
