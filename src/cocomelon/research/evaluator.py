@@ -148,21 +148,6 @@ def _validate_samples_against_batches(
             raise ValueError(f"sample is outside research batch interval: {sample.trade_id}")
 
 
-def _transition_to_checkpoint_state(
-    registry: ResearchRegistry,
-    candidate_id: str,
-    state: ResearchCandidateState,
-) -> None:
-    current = registry.load_candidate(candidate_id)
-    if current.state is state:
-        return
-    registry.transition_candidate(
-        candidate_id,
-        state,
-        reason="research_checkpoint",
-    )
-
-
 def evaluate_research_checkpoint(
     *,
     registry: ResearchRegistry,
@@ -254,5 +239,9 @@ def evaluate_research_checkpoint(
         report_id=report.report_id,
         payload=report.to_dict(),
     )
-    _transition_to_checkpoint_state(registry, candidate_id, checkpoint.candidate_state)
+    registry.apply_checkpoint_state(
+        candidate_id,
+        checkpoint.candidate_state,
+        report_id=report.report_id,
+    )
     return report
