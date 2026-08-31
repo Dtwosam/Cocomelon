@@ -38,6 +38,16 @@ _RESEARCH_TOUCHABLE_STATES = frozenset(
         ResearchCandidateState.RESEARCH_PROMISING,
     }
 )
+_RESEARCH_TRANSITION_TARGETS = frozenset(
+    {
+        ResearchCandidateState.DRAFT,
+        ResearchCandidateState.RESEARCHING,
+        ResearchCandidateState.REJECTED_OPERATIONAL,
+        ResearchCandidateState.REJECTED_CONTAMINATION,
+        ResearchCandidateState.REJECTED_FUTILITY,
+        ResearchCandidateState.RESEARCH_PROMISING,
+    }
+)
 
 
 class ResearchRegistry:
@@ -84,6 +94,8 @@ class ResearchRegistry:
                 replay_run_id TEXT NOT NULL UNIQUE,
                 start_ms INTEGER NOT NULL,
                 end_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'admitted',
+                contamination_v4_run_id TEXT,
                 FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
             );
             CREATE TABLE IF NOT EXISTS research_candidate_state_events (
@@ -95,7 +107,20 @@ class ResearchRegistry:
             );
             """
         )
+        self._ensure_research_batch_columns()
         self.connection.commit()
+
+    def _ensure_research_batch_columns(self) -> None:
+        rows = self.connection.execute("PRAGMA table_info(research_batches)").fetchall()
+        columns = {str(row["name"]) for row in rows}
+        if "status" not in columns:
+            self.connection.execute(
+                "ALTER TABLE research_batches ADD COLUMN status TEXT NOT NULL DEFAULT 'admitted'"
+            )
+        if "contamination_v4_run_id" not in columns:
+            self.connection.execute(
+                "ALTER TABLE research_batches ADD COLUMN contamination_v4_run_id TEXT"
+            )
 
     @staticmethod
     def _ancestor_json(ancestors: tuple[str, ...]) -> str:
@@ -119,6 +144,7 @@ class ResearchRegistry:
         if existing is not None:
             raise ResearchRegistryError(f"candidate already exists: {manifest.candidate_id}")
 
+        inherited_contamination = False
         if manifest.parent_candidate_id is not None:
             parent = self.load_candidate(manifest.parent_candidate_id)
             if parent.family_id != manifest.family_id:
@@ -128,7 +154,18 @@ class ResearchRegistry:
                 raise ResearchRegistryError(
                     "candidate ancestor lineage does not match parent chain"
                 )
+            inherited_contamination = (
+                parent.state is ResearchCandidateState.REJECTED_CONTAMINATION
+            )
 
+        stored_state = (
+            ResearchCandidateState.REJECTED_CONTAMINATION
+            if inherited_contamination
+            else manifest.state
+        )
+        initial_reason = (
+            "inherited_contamination" if inherited_contamination else "candidate_created"
+        )
         self.connection.execute(
             """
             INSERT INTO research_candidates (
@@ -149,7 +186,7 @@ class ResearchRegistry:
                 self._ancestor_json(manifest.ancestor_candidate_ids),
                 manifest.config_digest,
                 manifest.code_revision,
-                manifest.state.value,
+                stored_state.value,
             ),
         )
         self.connection.execute(
@@ -157,7 +194,7 @@ class ResearchRegistry:
             INSERT INTO research_candidate_state_events (candidate_id, state, reason)
             VALUES (?, ?, ?)
             """,
-            (manifest.candidate_id, manifest.state.value, "candidate_created"),
+            (manifest.candidate_id, stored_state.value, initial_reason),
         )
         self.connection.commit()
 
@@ -278,8 +315,15 @@ class ResearchRegistry:
             self.connection.execute(
                 """
                 INSERT INTO research_batches (
-                    batch_id, candidate_id, source_id, replay_run_id, start_ms, end_ms
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    batch_id,
+                    candidate_id,
+                    source_id,
+                    replay_run_id,
+                    start_ms,
+                    end_ms,
+                    status,
+                    contamination_v4_run_id
+                ) VALUES (?, ?, ?, ?, ?, ?, 'admitted', NULL)
                 """,
                 (
                     batch_id,
@@ -318,6 +362,43 @@ class ResearchRegistry:
             )
         return normalize_intervals(intervals)
 
+    def _candidate_ids_contaminated_by_roots(
+        self,
+        root_candidate_ids: set[str],
+    ) -> tuple[str, ...]:
+        if not root_candidate_ids:
+            return ()
+        contaminated = set(root_candidate_ids)
+        rows = self.connection.execute(
+            "SELECT candidate_id, ancestor_candidate_ids_json FROM research_candidates"
+        ).fetchall()
+        for row in rows:
+            ancestors = self._decode_ancestors(str(row["ancestor_candidate_ids_json"]))
+            if any(ancestor in root_candidate_ids for ancestor in ancestors):
+                contaminated.add(str(row["candidate_id"]))
+        return tuple(sorted(contaminated))
+
+    def _force_candidate_contamination(self, candidate_id: str, *, reason: str) -> None:
+        row = self.connection.execute(
+            "SELECT state FROM research_candidates WHERE candidate_id = ?",
+            (candidate_id,),
+        ).fetchone()
+        if row is None:
+            raise ResearchRegistryError(f"candidate not found: {candidate_id}")
+        if str(row["state"]) == ResearchCandidateState.REJECTED_CONTAMINATION.value:
+            return
+        self.connection.execute(
+            "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
+            (ResearchCandidateState.REJECTED_CONTAMINATION.value, candidate_id),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO research_candidate_state_events (candidate_id, state, reason)
+            VALUES (?, ?, ?)
+            """,
+            (candidate_id, ResearchCandidateState.REJECTED_CONTAMINATION.value, reason),
+        )
+
     def record_v4_interval(
         self,
         *,
@@ -343,14 +424,42 @@ class ResearchRegistry:
                     f"V4 interval already exists with different data: {run_id}"
                 )
             return
-        self.connection.execute(
+
+        overlapping_batches = self.connection.execute(
             """
-            INSERT INTO research_v4_intervals (run_id, start_ms, end_ms, disposition)
-            VALUES (?, ?, ?, ?)
+            SELECT batch_id, candidate_id
+            FROM research_batches
+            WHERE start_ms < ? AND ? < end_ms
             """,
-            (run_id, interval.start_ms, interval.end_ms, disposition),
+            (interval.end_ms, interval.start_ms),
+        ).fetchall()
+        directly_contaminated = {str(row["candidate_id"]) for row in overlapping_batches}
+        contaminated_candidates = self._candidate_ids_contaminated_by_roots(
+            directly_contaminated
         )
-        self.connection.commit()
+
+        with self.connection:
+            self.connection.execute(
+                """
+                INSERT INTO research_v4_intervals (run_id, start_ms, end_ms, disposition)
+                VALUES (?, ?, ?, ?)
+                """,
+                (run_id, interval.start_ms, interval.end_ms, disposition),
+            )
+            for row in overlapping_batches:
+                self.connection.execute(
+                    """
+                    UPDATE research_batches
+                    SET status = 'rejected_contamination', contamination_v4_run_id = ?
+                    WHERE batch_id = ?
+                    """,
+                    (run_id, str(row["batch_id"])),
+                )
+            for candidate_id in contaminated_candidates:
+                self._force_candidate_contamination(
+                    candidate_id,
+                    reason=f"late_v4_source_interval_overlap:{run_id}",
+                )
 
     def assert_batch_disjoint_from_v4(self, interval: TimeInterval) -> None:
         rows = self.connection.execute(
@@ -373,22 +482,17 @@ class ResearchRegistry:
         if not reason.strip():
             raise ResearchRegistryError("state transition reason must not be empty")
         current = self.load_candidate(candidate_id)
+        if state not in _RESEARCH_TRANSITION_TARGETS:
+            raise ResearchRegistryError(
+                f"research state transition cannot enter {state.value}"
+            )
         if current.state in _TERMINAL_STATES and state != current.state:
             raise ResearchRegistryError(f"candidate is terminal: {current.state.value}")
-        if current.state is ResearchCandidateState.FROZEN_CHALLENGER and state not in {
-            ResearchCandidateState.FROZEN_CHALLENGER,
-            ResearchCandidateState.VALIDATING,
-        }:
+        if current.state is ResearchCandidateState.FROZEN_CHALLENGER:
             raise ResearchRegistryError(
                 "candidate is terminal to research checkpoints: frozen_challenger"
             )
-        if current.state is ResearchCandidateState.VALIDATING and state not in {
-            ResearchCandidateState.VALIDATING,
-            ResearchCandidateState.VALIDATED_EDGE,
-            ResearchCandidateState.NO_EDGE,
-            ResearchCandidateState.REJECTED_OPERATIONAL,
-            ResearchCandidateState.REJECTED_CONTAMINATION,
-        }:
+        if current.state is ResearchCandidateState.VALIDATING:
             raise ResearchRegistryError("validating candidate cannot return to research")
         self.connection.execute(
             "UPDATE research_candidates SET state = ? WHERE candidate_id = ?",
