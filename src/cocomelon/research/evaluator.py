@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
@@ -43,6 +45,8 @@ class ResearchCheckpointReport:
     family_id: str
     config_digest: str
     code_revision: str
+    execution_config_json: str
+    risk_config_json: str
     batch_ids: tuple[str, ...]
     source_ids: tuple[str, ...]
     closed_trade_count: int
@@ -62,13 +66,15 @@ class ResearchCheckpointReport:
     policy_digest: str
     reason_codes: tuple[str, ...]
 
-    def to_dict(self) -> dict[str, object]:
+    def _payload_without_id(self) -> dict[str, object]:
         return {
             "label": self.label,
             "candidate_id": self.candidate_id,
             "family_id": self.family_id,
             "config_digest": self.config_digest,
             "code_revision": self.code_revision,
+            "execution_config_json": self.execution_config_json,
+            "risk_config_json": self.risk_config_json,
             "batch_ids": self.batch_ids,
             "source_ids": self.source_ids,
             "closed_trade_count": self.closed_trade_count,
@@ -92,6 +98,20 @@ class ResearchCheckpointReport:
             "policy_digest": self.policy_digest,
             "reason_codes": self.reason_codes,
         }
+
+    @property
+    def report_id(self) -> str:
+        canonical = json.dumps(
+            self._payload_without_id(),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {"report_id": self.report_id, **self._payload_without_id()}
 
 
 def _validate_batch_set(batches: tuple[ResearchBatch, ...]) -> dict[str, ResearchBatch]:
@@ -202,14 +222,14 @@ def evaluate_research_checkpoint(
         hard_risk_failure=hard_risk_failure,
         policy=policy,
     )
-    _transition_to_checkpoint_state(registry, candidate_id, checkpoint.candidate_state)
-
-    return ResearchCheckpointReport(
+    report = ResearchCheckpointReport(
         label=TOUCHED_NON_PROMOTIONAL_LABEL,
         candidate_id=candidate.candidate_id,
         family_id=candidate.family_id,
         config_digest=candidate.config_digest,
         code_revision=candidate.code_revision,
+        execution_config_json=candidate.execution_config_json,
+        risk_config_json=candidate.risk_config_json,
         batch_ids=tuple(sorted(batch.batch_id for batch in batches)),
         source_ids=tuple(sorted(batch.source_id for batch in batches)),
         closed_trade_count=len(samples),
@@ -229,3 +249,10 @@ def evaluate_research_checkpoint(
         policy_digest=checkpoint.policy_digest,
         reason_codes=checkpoint.reason_codes,
     )
+    registry.record_performance_report(
+        candidate_id=candidate_id,
+        report_id=report.report_id,
+        payload=report.to_dict(),
+    )
+    _transition_to_checkpoint_state(registry, candidate_id, checkpoint.candidate_state)
+    return report
