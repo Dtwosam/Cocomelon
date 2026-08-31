@@ -14,17 +14,17 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
-from cocomelon.research.observations import record_trade_observations
+from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import (
     ResearchContaminationError,
     ResearchRegistry,
     ResearchRegistryError,
 )
-from cocomelon.research.sequential import evaluate_checkpoint
+from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 DAY_MS = 86_400_000
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
-RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
+RISK_CONFIG = '{"max_position_r":"1","risk_per_trade":"0.0025","stops_required":true}'
 V4_TEST_SOURCE = "authoritative-v4-test-inventory"
 
 
@@ -70,51 +70,32 @@ def _record_promising_report(
     registry: ResearchRegistry,
     candidate_id: str,
 ) -> str:
-    observations = tuple(
-        {
-            "trade_id": f"{candidate_id}-promising-trade-{index}",
-            "closed_at_ms": (index % 7) * DAY_MS + 1_000 + index,
-            "net_pnl": "5",
-            "net_r": "0.5",
-            "equity_before": "10000",
-        }
-        for index in range(40)
+    registry.mark_v4_registry_complete_through(
+        through_ms=8 * DAY_MS,
+        source_id=V4_TEST_SOURCE,
     )
-    record_trade_observations(
-        registry.connection,
-        candidate_id=candidate_id,
-        observations=observations,
-    )
-    checkpoint = evaluate_checkpoint(
-        net_r_values=tuple(Decimal("0.5") for _ in observations),
-        closed_trade_days=7,
-    )
-    assert checkpoint.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
-    payload: dict[str, object] = {
-        "candidate_id": candidate_id,
-        "candidate_state": checkpoint.candidate_state.value,
-        "checkpoint_state": checkpoint.checkpoint_state.value,
-        "closed_trade_count": checkpoint.trade_count,
-        "closed_trade_days": checkpoint.closed_trade_days,
-        "posterior_probability_positive": (
-            None
-            if checkpoint.posterior_probability_positive is None
-            else str(checkpoint.posterior_probability_positive)
+    artifact = write_research_artifact(
+        registry.path.parent / f"{candidate_id}-registry-promising-artifact",
+        batch_id=f"{candidate_id}-registry-promising-batch",
+        source_id=f"{candidate_id}-registry-promising-source",
+        replay_run_id=f"{candidate_id}-registry-promising-replay",
+        start_ms=1_000,
+        end_ms=8 * DAY_MS,
+        trades=tuple(
+            ArtifactTradeSpec(
+                closed_at_ms=(index % 7) * DAY_MS + 10_000 + index,
+                net_r=Decimal("0.5"),
+            )
+            for index in range(40)
         ),
-        "policy_digest": checkpoint.policy_digest,
-        "reason_codes": list(checkpoint.reason_codes),
-        "realized_closed_trade_max_drawdown_fraction": "0",
-        "max_realized_planned_risk_utilization": "0",
-        "batch_ids": [],
-        "source_ids": [],
-    }
-    report_id = _payload_report_id(payload)
-    registry.record_performance_report(
-        candidate_id=candidate_id,
-        report_id=report_id,
-        payload=payload,
     )
-    return report_id
+    report = evaluate_research_checkpoint(
+        registry=registry,
+        candidate_id=candidate_id,
+        artifact_batches=(artifact,),
+    )
+    assert report.candidate_state is ResearchCandidateState.RESEARCH_PROMISING
+    return report.report_id
 
 
 def test_registry_persists_lineage_and_inherits_ancestor_touched_intervals(
@@ -350,11 +331,7 @@ def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: P
         )
 
     report_id = _record_promising_report(registry, "r1")
-    registry.apply_checkpoint_state(
-        "r1",
-        ResearchCandidateState.RESEARCH_PROMISING,
-        report_id=report_id,
-    )
+    assert report_id in registry.load_candidate("r1").performance_report_ids
     assert registry.load_candidate("r1").state is ResearchCandidateState.RESEARCH_PROMISING
     registry.close()
 
@@ -362,7 +339,12 @@ def test_checkpoint_state_requires_authenticated_observation_backing(tmp_path: P
 def test_frozen_candidate_cutover_uses_inherited_touched_history(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.create_candidate(_candidate("r1"))
-    registry.record_touched_interval("r1", TimeInterval(10_000, 20_000), source_id="source")
+    inherited_end_ms = 10 * DAY_MS + 20_000
+    registry.record_touched_interval(
+        "r1",
+        TimeInterval(10 * DAY_MS + 10_000, inherited_end_ms),
+        source_id="source",
+    )
     child = _candidate(
         "r2",
         parent_candidate_id="r1",
@@ -371,22 +353,18 @@ def test_frozen_candidate_cutover_uses_inherited_touched_history(tmp_path: Path)
     )
     registry.create_candidate(child)
     registry.transition_candidate("r2", ResearchCandidateState.RESEARCHING, reason="started")
-    report_id = _record_promising_report(registry, "r2")
-    registry.apply_checkpoint_state(
-        "r2",
-        ResearchCandidateState.RESEARCH_PROMISING,
-        report_id=report_id,
-    )
-    registry.freeze_candidate("r2", freeze_ms=25_000)
+    _record_promising_report(registry, "r2")
+    freeze_ms = inherited_end_ms + 1
+    registry.freeze_candidate("r2", freeze_ms=freeze_ms)
 
     with raises(ResearchRegistryError, match="embargo"):
         registry.assert_validation_cutover(
             "r2",
-            validation_start_ms=20_000 + SIX_HOURS_MS - 1,
+            validation_start_ms=inherited_end_ms + SIX_HOURS_MS - 1,
         )
 
     registry.assert_validation_cutover(
         "r2",
-        validation_start_ms=max(25_001, 20_000 + SIX_HOURS_MS),
+        validation_start_ms=max(freeze_ms + 1, inherited_end_ms + SIX_HOURS_MS),
     )
     registry.close()
