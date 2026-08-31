@@ -15,6 +15,7 @@ RISK_CONFIG_INPUT = '{"stops_required":true,"max_position_r":"1"}'
 EXECUTION_CONFIG_CANONICAL = '{"mode":"paper","slippage_model":"recorded"}'
 RISK_CONFIG_CANONICAL = '{"max_position_r":"1","stops_required":true}'
 V4_INVENTORY_SOURCE = "authoritative-v4-inventory"
+EMPTY_SAMPLE_DIGEST = "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
@@ -371,6 +372,8 @@ def test_freeze_candidate_persists_and_checkpoint_is_touched_non_promotional(
                         "replay_run_id": "replay-checkpoint",
                         "start_ms": 50000,
                         "end_ms": 60000,
+                        "trade_ids": [],
+                        "sample_digest": EMPTY_SAMPLE_DIGEST,
                     }
                 ],
                 "health": {
