@@ -22,6 +22,8 @@ from cocomelon.research.registry import ResearchContaminationError, ResearchRegi
 evaluator = import_module("cocomelon.research.evaluator")
 
 DAY_MS = 86_400_000
+EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
+RISK_CONFIG = '{"max_position_r":"1","stops_required":true}'
 
 
 def _candidate() -> ResearchCandidateManifest:
@@ -32,7 +34,15 @@ def _candidate() -> ResearchCandidateManifest:
         ancestor_candidate_ids=(),
         config_digest="a" * 64,
         code_revision="1" * 40,
+        execution_config_json=EXECUTION_CONFIG,
+        risk_config_json=RISK_CONFIG,
         state=ResearchCandidateState.DRAFT,
+        first_observation_ms=None,
+        last_observation_ms=None,
+        source_provenance_ids=(),
+        local_touched_intervals=(),
+        effective_touched_intervals=(),
+        performance_report_ids=(),
     )
 
 
@@ -107,6 +117,8 @@ def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path:
     assert report.family_id == candidate.family_id
     assert report.config_digest == candidate.config_digest
     assert report.code_revision == candidate.code_revision
+    assert report.execution_config_json == EXECUTION_CONFIG
+    assert report.risk_config_json == RISK_CONFIG
     assert report.closed_trade_count == 3
     assert report.closed_trade_days == 3
     assert report.net_pnl == Decimal("7")
@@ -121,6 +133,14 @@ def test_research_report_exposes_full_touched_economics_and_provenance(tmp_path:
     assert report.checkpoint_state is ResearchCheckpointState.INSUFFICIENT_TRADES
     assert report.posterior_probability_positive is None
     assert registry.effective_touched_intervals(candidate.candidate_id) == (batch.interval,)
+
+    loaded = registry.load_candidate(candidate.candidate_id)
+    assert loaded.first_observation_ms == batch.interval.start_ms
+    assert loaded.last_observation_ms == batch.interval.end_ms
+    assert loaded.source_provenance_ids == (batch.source_id,)
+    assert loaded.local_touched_intervals == (batch.interval,)
+    assert loaded.effective_touched_intervals == (batch.interval,)
+    assert loaded.performance_report_ids == (report.report_id,)
     registry.close()
 
 
