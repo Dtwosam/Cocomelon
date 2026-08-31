@@ -151,9 +151,11 @@ def assert_checkpoint_report_backed_by_observations(
     }
     for field, expected_value in expected.items():
         if payload.get(field) != expected_value:
-            raise ValueError(
-                f"checkpoint report is not reproducible from immutable observations/provenance: {field}"
+            message = (
+                "checkpoint report is not reproducible from immutable "
+                f"observations/provenance: {field}"
             )
+            raise ValueError(message)
     if checkpoint.candidate_state is not state:
         raise ValueError(
             "checkpoint report is not reproducible from immutable observations/provenance: state"
