@@ -102,14 +102,16 @@ def test_validation_activation_cannot_authorize_stale_frozen_state_after_contami
         through_ms=100_000,
         source_id="authoritative-v4",
     )
-    registry.connection.execute(
-        "UPDATE research_candidates SET state = ?, freeze_ms = ? WHERE candidate_id = ?",
-        (ResearchCandidateState.FROZEN_CHALLENGER.value, 20_000, "candidate-a"),
+    registry.record_batch(
+        candidate_id="candidate-a",
+        batch_id="pre-freeze-batch",
+        source_id="research-source",
+        replay_run_id="research-replay",
+        interval=TimeInterval(30_000, 40_000),
     )
     registry.connection.execute(
-        "INSERT INTO research_touched_intervals (candidate_id, source_id, start_ms, end_ms) "
-        "VALUES (?, ?, ?, ?)",
-        ("candidate-a", "research-source", 1_000, 2_000),
+        "UPDATE research_candidates SET state = ?, freeze_ms = ? WHERE candidate_id = ?",
+        (ResearchCandidateState.FROZEN_CHALLENGER.value, 40_001, "candidate-a"),
     )
     registry.connection.commit()
 
@@ -122,13 +124,6 @@ def test_validation_activation_cannot_authorize_stale_frozen_state_after_contami
             contaminated = True
             late = ResearchRegistry(path)
             try:
-                late.record_batch(
-                    candidate_id="candidate-a",
-                    batch_id="late-batch",
-                    source_id="late-source",
-                    replay_run_id="late-replay",
-                    interval=TimeInterval(30_000, 40_000),
-                )
                 late.record_v4_interval(
                     run_id="late-v4",
                     interval=TimeInterval(35_000, 36_000),
