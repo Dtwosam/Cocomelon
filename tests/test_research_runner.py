@@ -28,6 +28,7 @@ from tests.research_artifact_support import (
 )
 
 runner_module = import_module("cocomelon.research.runner")
+checkpoint_commit_module = import_module("cocomelon.research.checkpoint_commit")
 ResearchRunnerRequest = runner_module.ResearchRunnerRequest
 run_research_artifact_attempt = runner_module.run_research_artifact_attempt
 
@@ -100,6 +101,42 @@ def test_successful_runner_attempt_uses_artifact_interval_and_persists_report(
     assert attempts[0].start_ms == 1_000
     assert attempts[0].end_ms == 3_000
     assert attempts[0].report_id == result.report_id
+
+
+def test_runner_checkpoint_and_success_outcome_share_one_transaction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate())
+        registry.mark_v4_registry_complete_through(
+            through_ms=3_000,
+            source_id="authoritative-v4-inventory",
+        )
+        artifact = _artifact(tmp_path, batch_id="atomic-runner-batch")
+        request = _request(artifact, attempt_id="attempt-atomic")
+
+        def fail_atomic_success(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("synthetic atomic attempt commit failure")
+
+        monkeypatch.setattr(
+            checkpoint_commit_module,
+            "complete_runner_attempt_success_uncommitted",
+            fail_atomic_success,
+            raising=False,
+        )
+        with pytest.raises(RuntimeError, match="synthetic atomic attempt commit failure"):
+            run_research_artifact_attempt(registry, request)
+        attempts = load_runner_attempts(registry.connection)
+        candidate = registry.load_candidate("runner-candidate")
+    finally:
+        registry.close()
+
+    assert len(attempts) == 1
+    assert attempts[0].status is ResearchRunnerAttemptStatus.FAILED
+    assert attempts[0].report_id is None
+    assert candidate.performance_report_ids == ()
 
 
 def test_runner_fails_closed_when_v4_registry_is_incomplete_through_actual_interval(
