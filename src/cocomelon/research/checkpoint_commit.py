@@ -243,6 +243,86 @@ def _seal_legacy_checkpoint_prefix(
             raise ResearchRegistryError(str(exc)) from exc
 
 
+def complete_runner_attempt_success_uncommitted(
+    connection: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    candidate_id: str,
+    start_ms: int,
+    end_ms: int,
+    report_id: str,
+) -> None:
+    if not connection.in_transaction:
+        raise ResearchRegistryError(
+            "runner success must share the authenticated checkpoint transaction"
+        )
+    resolved_attempt_id = attempt_id.strip()
+    resolved_candidate_id = candidate_id.strip()
+    resolved_report_id = report_id.strip()
+    if not resolved_attempt_id:
+        raise ResearchRegistryError("research runner attempt_id must not be empty")
+    if not resolved_candidate_id:
+        raise ResearchRegistryError("research runner candidate_id must not be empty")
+    if not resolved_report_id:
+        raise ResearchRegistryError("successful research runner attempt requires report_id")
+    if start_ms < 0 or end_ms <= start_ms:
+        raise ResearchRegistryError("research runner attempt interval is invalid")
+
+    row = connection.execute(
+        """
+        SELECT candidate_id, status
+        FROM research_runner_attempts
+        WHERE attempt_id = ?
+        """,
+        (resolved_attempt_id,),
+    ).fetchone()
+    if row is None:
+        raise ResearchRegistryError(
+            f"research runner attempt not found: {resolved_attempt_id}"
+        )
+    if str(row["candidate_id"]) != resolved_candidate_id:
+        raise ResearchRegistryError(
+            "research runner attempt candidate does not match checkpoint candidate"
+        )
+    if str(row["status"]) != "evaluating":
+        raise ResearchRegistryError(
+            "successful research runner attempt requires an evaluation claim"
+        )
+
+    cursor = connection.execute(
+        """
+        UPDATE research_runner_attempts
+        SET status = 'succeeded', start_ms = ?, end_ms = ?, report_id = ?,
+            error_type = NULL, error_message = NULL
+        WHERE attempt_id = ? AND candidate_id = ? AND status = 'evaluating'
+        """,
+        (
+            start_ms,
+            end_ms,
+            resolved_report_id,
+            resolved_attempt_id,
+            resolved_candidate_id,
+        ),
+    )
+    if cursor.rowcount != 1:
+        raise ResearchRegistryError("research runner attempt changed concurrently")
+
+
+def _validate_runner_commit_context(
+    *,
+    runner_attempt_id: str | None,
+    runner_start_ms: int | None,
+    runner_end_ms: int | None,
+) -> None:
+    values = (runner_attempt_id, runner_start_ms, runner_end_ms)
+    if all(value is None for value in values):
+        return
+    if runner_attempt_id is None or runner_start_ms is None or runner_end_ms is None:
+        raise ResearchRegistryError(
+            "runner checkpoint commit context must include attempt id and complete interval"
+        )
+
+
 def commit_checkpoint_report_and_state(
     registry: ResearchRegistry,
     *,
@@ -250,7 +330,15 @@ def commit_checkpoint_report_and_state(
     state: ResearchCandidateState,
     report_id: str,
     payload: dict[str, object],
+    runner_attempt_id: str | None = None,
+    runner_start_ms: int | None = None,
+    runner_end_ms: int | None = None,
 ) -> None:
+    _validate_runner_commit_context(
+        runner_attempt_id=runner_attempt_id,
+        runner_start_ms=runner_start_ms,
+        runner_end_ms=runner_end_ms,
+    )
     registry._begin_immediate()
     try:
         current = registry.load_candidate(candidate_id)
@@ -301,6 +389,17 @@ def commit_checkpoint_report_and_state(
                 VALUES (?, ?, ?)
                 """,
                 (candidate_id, state.value, f"checkpoint_report:{report_id}"),
+            )
+        if runner_attempt_id is not None:
+            assert runner_start_ms is not None
+            assert runner_end_ms is not None
+            complete_runner_attempt_success_uncommitted(
+                registry.connection,
+                attempt_id=runner_attempt_id,
+                candidate_id=candidate_id,
+                start_ms=runner_start_ms,
+                end_ms=runner_end_ms,
+                report_id=report_id,
             )
         registry.connection.commit()
     except (ResearchRegistryError, sqlite3.Error):
