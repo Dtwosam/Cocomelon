@@ -6,20 +6,39 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.evaluation.cli_support import freeze_evaluation_dataset_payload
 from cocomelon.evaluation.mainnet_evidence import (
     MAINNET_EVIDENCE_KIND,
     verify_mainnet_evidence_cohort_payload,
 )
-from cocomelon.evidence.cli_support import (
-    freeze_baseline_replay_payload,
-    run_baseline_replay_payload,
+from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.evidence.bundle import (
+    freeze_baseline_replay_bundle,
+    load_baseline_replay_bundle,
+    resolve_code_revision,
+    write_baseline_replay_bundle,
 )
+from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 from cocomelon.evidence.recording import load_recording_session
 from cocomelon.evidence.transport_health import normalize_redundant_record_payload
-from cocomelon.replay.source import validate_recording
+from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.journal.store import JournalStore
+from cocomelon.replay.adapters import ReplayRequirements
+from cocomelon.replay.engine import ReplayEngine, replay_run_id
+from cocomelon.replay.source import JsonlReplaySource, validate_recording
 
+RESEARCH_ENTRY_WINDOW_MS = 300_000
+RESEARCH_MAX_POSITION_AGE_MS = 1_200_000
+RESEARCH_CAPTURE_SECONDS = 1_800
+RESEARCH_EXECUTION_CONFIG_VERSION = "research-paper-20m-expiry-v1"
+RESEARCH_REPLAY_ENGINE_VERSION = "phase9-research-bounded-replay-v1"
+RESEARCH_REPLAY_CONFIG_VERSION = "phase9-research-bounded-v1"
 _ORDER_FLAG_KEY = "live_" + "order" + "s"
+
+if RESEARCH_ENTRY_WINDOW_MS + RESEARCH_MAX_POSITION_AGE_MS >= RESEARCH_CAPTURE_SECONDS * 1_000:
+    raise RuntimeError("research capture must extend past the complete bounded exit horizon")
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +150,185 @@ def _assert_sibling_layout(recording_root: Path, output_root: Path) -> None:
         )
 
 
+def _research_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:
+    return BaselineReplayConfig(
+        starting_cash=starting_cash,
+        execution=PaperExecutionConfig(
+            config_version=RESEARCH_EXECUTION_CONFIG_VERSION,
+            max_position_age_ms=RESEARCH_MAX_POSITION_AGE_MS,
+        ),
+        replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,
+        config_version=RESEARCH_REPLAY_CONFIG_VERSION,
+    )
+
+
+def _attach_recording_locator(
+    bundle_path: Path,
+    *,
+    recording_root: Path,
+    bundle_id: str,
+) -> None:
+    payload = _read_mapping(bundle_path, "replay bundle")
+    relative = os.path.relpath(recording_root.resolve(), bundle_path.parent.resolve())
+    payload["source_root_relative"] = Path(relative).as_posix()
+    payload["source_locator_bundle_id"] = bundle_id
+    _write_json(bundle_path, payload)
+
+
+def _freeze_research_replay_payload(
+    recording_root: Path,
+    bundle_path: Path,
+    starting_cash: Decimal,
+) -> dict[str, object]:
+    replay_config = _research_replay_config(starting_cash)
+    code_revision = resolve_code_revision(None, cwd=Path.cwd())
+    bundle = freeze_baseline_replay_bundle(
+        recording_root,
+        replay_config=replay_config,
+        code_revision=code_revision,
+    )
+    write_baseline_replay_bundle(bundle_path, bundle)
+    _attach_recording_locator(
+        bundle_path,
+        recording_root=recording_root,
+        bundle_id=bundle.bundle_id,
+    )
+    return {
+        "bundle_id": bundle.bundle_id,
+        "code_revision": bundle.manifest.code_revision,
+        "config_version": bundle.replay_config.config_version,
+        "entry_window_ms": RESEARCH_ENTRY_WINDOW_MS,
+        "evidence_class": bundle.manifest.evidence_class.value,
+        "live_orders": False,
+        "manifest_id": bundle.manifest.manifest_id,
+        "max_position_age_ms": RESEARCH_MAX_POSITION_AGE_MS,
+        "network_access": False,
+        "out": str(bundle_path),
+        "recording_session_digest": bundle.recording_session_digest,
+        "replay_engine_version": bundle.replay_config.replay_engine_version,
+        "root": str(recording_root),
+        "source_set_digest": bundle.source_set_digest,
+        "starting_cash": str(bundle.replay_config.starting_cash),
+    }
+
+
+def _validated_bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
+    payload = _read_mapping(bundle_path, "replay bundle")
+    locator = _require_string(
+        payload.get("source_root_relative"),
+        "research replay source locator",
+    )
+    if payload.get("source_locator_bundle_id") != bundle_id:
+        raise ValueError("research replay source locator bundle id does not match bundle")
+    source_path = Path(locator)
+    if source_path.is_absolute():
+        raise ValueError("research replay source locator must be relative")
+    return (bundle_path.parent / source_path).resolve()
+
+
+def _assert_research_bundle_protocol(bundle: object) -> None:
+    replay_config = bundle.replay_config
+    if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:
+        raise ValueError("research replay engine version does not match bounded protocol")
+    if replay_config.config_version != RESEARCH_REPLAY_CONFIG_VERSION:
+        raise ValueError("research replay config version does not match bounded protocol")
+    execution = replay_config.execution
+    if (
+        execution.config_version != RESEARCH_EXECUTION_CONFIG_VERSION
+        or execution.max_position_age_ms != RESEARCH_MAX_POSITION_AGE_MS
+    ):
+        raise ValueError("research replay execution config does not match bounded protocol")
+
+
+def run_baseline_replay_payload(
+    bundle_path: str | Path,
+    journal_path: str | Path,
+    execution_path: str | Path,
+    facts_path: str | Path,
+) -> dict[str, object]:
+    resolved_bundle_path = Path(bundle_path)
+    bundle = load_baseline_replay_bundle(resolved_bundle_path)
+    _assert_research_bundle_protocol(bundle)
+    source_root = _validated_bundle_source_root(resolved_bundle_path, bundle.bundle_id)
+    if validate_recording(source_root) != bundle.manifest.segments:
+        raise ValueError("research replay source root does not match frozen manifest")
+    session = load_recording_session(source_root)
+    if session is None or session.session_id != bundle.recording_session_digest:
+        raise ValueError("research replay recording session does not match frozen bundle")
+    new_exposure_cutoff_ms = session.started_at_ms + RESEARCH_ENTRY_WINDOW_MS
+
+    requirements = ReplayRequirements(requires_l2=True)
+    run_id = replay_run_id(bundle.manifest, requirements)
+    journal = JournalStore(journal_path)
+    execution = PaperExecutionAdapter(
+        execution_path,
+        bundle.replay_config.execution,
+        starting_cash=bundle.replay_config.starting_cash,
+        startup_timestamp_ms=bundle.manifest.start_ms,
+    )
+    facts = EvaluationFactStore(facts_path)
+    try:
+        existing = journal.load_replay_result(run_id)
+        if existing is None:
+            pipeline = BaselineReplayPipeline(
+                bundle.replay_config,
+                execution,
+                facts,
+                selected_markets=tuple(item.market for item in session.selected),
+                replay_run_id=run_id,
+                evidence_class=bundle.manifest.evidence_class,
+                new_exposure_cutoff_ms=new_exposure_cutoff_ms,
+            )
+            result = ReplayEngine(
+                JsonlReplaySource(source_root),
+                journal,
+                pipeline.replay_pipeline(),
+            ).run(bundle.manifest)
+        else:
+            if existing.manifest_id != bundle.manifest.manifest_id:
+                raise ValueError("completed research replay manifest does not match frozen bundle")
+            result = existing
+        if execution.account.state_id != result.final_account_state_id:
+            raise ValueError("research replay final account state did not reconcile")
+        decision_count = sum(
+            fact.replay_run_id == result.run_id for fact in facts.iter_decision_facts()
+        )
+        if decision_count != result.strategy_decisions:
+            raise ValueError("research replay decision facts do not match journal result")
+        return {
+            "bundle_id": bundle.bundle_id,
+            "closed_positions": result.closed_positions,
+            "closed_trade_ids": list(result.closed_trade_ids),
+            "config_version": bundle.replay_config.config_version,
+            "data_complete": result.data_complete,
+            "entry_window_ms": RESEARCH_ENTRY_WINDOW_MS,
+            "execution": str(Path(execution_path)),
+            "execution_attempts": result.execution_attempts,
+            "evidence_class": result.evidence_class.value,
+            "facts": str(Path(facts_path)),
+            "fills": result.fills,
+            "final_account_state_id": result.final_account_state_id,
+            "final_equity": str(execution.account.equity),
+            "journal": str(Path(journal_path)),
+            "live_orders": False,
+            "manifest_id": result.manifest_id,
+            "max_position_age_ms": RESEARCH_MAX_POSITION_AGE_MS,
+            "network_access": False,
+            "new_exposure_cutoff_ms": new_exposure_cutoff_ms,
+            "opened_positions": result.opened_positions,
+            "replay_engine_version": bundle.replay_config.replay_engine_version,
+            "result_digest": result.result_digest,
+            "risk_approvals": result.risk_approvals,
+            "risk_rejections": result.risk_rejections,
+            "run_id": result.run_id,
+            "strategy_decisions": result.strategy_decisions,
+        }
+    finally:
+        facts.close()
+        execution.close()
+        journal.close()
+
+
 def _assert_replay_eligible(replay: dict[str, object]) -> None:
     if replay.get("network_access") is not False:
         raise ValueError("research cohort replay must be offline")
@@ -138,6 +336,10 @@ def _assert_replay_eligible(replay: dict[str, object]) -> None:
         raise ValueError("research cohort replay must disable order execution")
     if replay.get("data_complete") is not True:
         raise ValueError("research cohort replay must be complete")
+    if replay.get("entry_window_ms") != RESEARCH_ENTRY_WINDOW_MS:
+        raise ValueError("research cohort replay entry window is not precommitted")
+    if replay.get("max_position_age_ms") != RESEARCH_MAX_POSITION_AGE_MS:
+        raise ValueError("research cohort replay exit horizon is not precommitted")
     opened = _require_int(replay.get("opened_positions"), "research replay opened_positions")
     closed = _require_int(replay.get("closed_positions"), "research replay closed_positions")
     if opened != closed:
@@ -171,7 +373,7 @@ def build_research_cohort(
     record = _normalized_record(output, recording_root=recording)
     _write_json(output / "record.json", record)
 
-    freeze = freeze_baseline_replay_payload(
+    freeze = _freeze_research_replay_payload(
         recording,
         output / "bundle.json",
         starting_cash,
