@@ -1,0 +1,370 @@
+name: Research V4 Acquisition Authority Sync
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-v4-acquisition-authority-sync
+  cancel-in-progress: false
+
+jobs:
+  synchronize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout trusted research authority revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Establish inventory observation boundary
+        run: |
+          set -euo pipefail
+          mkdir -p research-sync/state research-sync/inventory research-sync/v4-artifacts
+          date -u +%s%3N > research-sync/inventory/observed-at-ms.txt
+
+      - name: Restore latest authoritative research registry when available
+        id: restore
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            mkdir -p research-sync/state/restored
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+              > research-sync/state/restored.zip
+            unzip -q research-sync/state/restored.zip -d research-sync/state/restored
+            REGISTRY_PATH="$(
+              find research-sync/state/restored -type f -name research.sqlite3 -print -quit
+            )"
+            if [ -z "$REGISTRY_PATH" ]; then
+              echo "trusted research registry artifact did not contain research.sqlite3" >&2
+              exit 66
+            fi
+            cp "$REGISTRY_PATH" research-sync/state/research.sqlite3
+          else
+            PYTHONPATH="$GITHUB_WORKSPACE/src" python - <<'PY'
+          from pathlib import Path
+          from cocomelon.research.registry import ResearchRegistry
+
+          registry = ResearchRegistry(Path("research-sync/state/research.sqlite3"))
+          registry.close()
+          PY
+          fi
+          printf '%s\n' "$ARTIFACT_ID" > research-sync/state/restored-artifact-id.txt
+
+      - name: Snapshot already-recorded V4 acquisition identities
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-sync/state/research.sqlite3"))
+          try:
+              rows = connection.execute(
+                  "SELECT run_id FROM research_v4_intervals ORDER BY run_id"
+              ).fetchall()
+          finally:
+              connection.close()
+          Path("research-sync/inventory/known-run-ids.txt").write_text(
+              "".join(f"{row[0]}\n" for row in rows),
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Inventory actual V4 acquisition runs and capture evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          : > research-sync/inventory/runs.tsv
+          RUN_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?event=schedule&per_page=100" \
+              --jq '.workflow_runs[]
+                | [.id, .run_attempt, .status, (.conclusion // ""), .run_started_at]
+                | @tsv'
+          )"
+
+          while IFS=$'\t' read -r RUN_ID RUN_ATTEMPT RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT; do
+            if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ] || [ -z "$RUN_STATUS" ]; then
+              continue
+            fi
+            CANONICAL_ID="github-v4-${RUN_ID}-attempt-${RUN_ATTEMPT}"
+            if grep -Fxq "$CANONICAL_ID" research-sync/inventory/known-run-ids.txt; then
+              continue
+            fi
+
+            CAPTURE_CONCLUSION="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=all&per_page=100" \
+                --jq '[.jobs[]
+                  | select(.name == "acquire-evidence")
+                  | .steps[]?
+                  | select(.name == "Record thesis-expiry genuine public mainnet evidence")
+                  | (.conclusion // "")][0] // ""'
+            )"
+            ARTIFACT_ROOT=""
+
+            if [ "$RUN_STATUS" = "completed" ] && [ "$CAPTURE_CONCLUSION" != "skipped" ]; then
+              EXPECTED_NAME="v4-acquisition-stage-${RUN_ID}-attempt-${RUN_ATTEMPT}"
+              ARTIFACT_ID="$(
+                /usr/bin/gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+                  --jq --arg name "$EXPECTED_NAME" \
+                    '.artifacts | map(select(.expired == false and .name == $name)) | .[0].id // empty'
+              )"
+              if [ -z "$ARTIFACT_ID" ]; then
+                echo "completed V4 run lacks authoritative acquisition artifact: $RUN_ID" >&2
+                exit 67
+              fi
+              ARTIFACT_ROOT="research-sync/v4-artifacts/${RUN_ID}-attempt-${RUN_ATTEMPT}"
+              mkdir -p "$ARTIFACT_ROOT"
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+                > "${ARTIFACT_ROOT}.zip"
+              unzip -q "${ARTIFACT_ROOT}.zip" -d "$ARTIFACT_ROOT"
+              test -f "$ARTIFACT_ROOT/recording/recording-session.json"
+              test -f "$ARTIFACT_ROOT/output/finished-at-utc.txt"
+              test -f "$ARTIFACT_ROOT/diagnostics/recorder-exit-status.txt"
+            fi
+
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$RUN_ID" \
+              "$RUN_ATTEMPT" \
+              "$RUN_STATUS" \
+              "$RUN_CONCLUSION" \
+              "$RUN_STARTED_AT" \
+              "$CAPTURE_CONCLUSION" \
+              "$ARTIFACT_ROOT" \
+              >> research-sync/inventory/runs.tsv
+          done <<< "$RUN_ROWS"
+
+      - name: Apply non-economic V4 acquisition authority inventory
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_sync import (
+              V4AuthorityRun,
+              apply_v4_authority_inventory,
+          )
+
+          def timestamp_ms(raw: str) -> int:
+              parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+              if parsed.tzinfo is None or parsed.utcoffset() is None:
+                  raise RuntimeError("V4 workflow run_started_at must be timezone-aware")
+              return int(parsed.astimezone(UTC).timestamp() * 1_000)
+
+          rows: list[V4AuthorityRun] = []
+          inventory = Path("research-sync/inventory/runs.tsv")
+          for raw_line in inventory.read_text(encoding="utf-8").splitlines():
+              if not raw_line:
+                  continue
+              parts = raw_line.split("\t")
+              if len(parts) != 7:
+                  raise RuntimeError("V4 authority inventory row is malformed")
+              (
+                  run_id,
+                  run_attempt,
+                  status,
+                  conclusion,
+                  run_started_at,
+                  capture_conclusion,
+                  artifact_root,
+              ) = parts
+              rows.append(
+                  V4AuthorityRun(
+                      run_id=run_id,
+                      run_attempt=int(run_attempt),
+                      status=status,
+                      conclusion=conclusion or None,
+                      run_started_at_ms=timestamp_ms(run_started_at),
+                      capture_step_conclusion=capture_conclusion or None,
+                      artifact_root=Path(artifact_root) if artifact_root else None,
+                  )
+              )
+
+          observed_at_ms = int(
+              Path("research-sync/inventory/observed-at-ms.txt")
+              .read_text(encoding="utf-8")
+              .strip()
+          )
+          registry = ResearchRegistry(Path("research-sync/state/research.sqlite3"))
+          try:
+              through_ms = apply_v4_authority_inventory(
+                  registry,
+                  runs=tuple(rows),
+                  observed_at_ms=observed_at_ms,
+              )
+          finally:
+              registry.close()
+          Path("research-sync/inventory/complete-through-ms.txt").write_text(
+              f"{through_ms}\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Rebase authority onto any newer trusted research registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          ORIGINAL_ID="$(cat research-sync/state/restored-artifact-id.txt)"
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          LATEST_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ] || [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" = "true" ] && [ "$RUN_HEAD_SHA" = "$ARTIFACT_HEAD_SHA" ]; then
+              LATEST_ID="$CANDIDATE_ARTIFACT_ID"
+              break
+            fi
+          done <<< "$ARTIFACT_ROWS"
+
+          if [ -n "$LATEST_ID" ] && [ "$LATEST_ID" != "$ORIGINAL_ID" ]; then
+            rm -rf research-sync/state/latest
+            mkdir -p research-sync/state/latest
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$LATEST_ID/zip" \
+              > research-sync/state/latest.zip
+            unzip -q research-sync/state/latest.zip -d research-sync/state/latest
+            LATEST_REGISTRY="$(
+              find research-sync/state/latest -type f -name research.sqlite3 -print -quit
+            )"
+            if [ -z "$LATEST_REGISTRY" ]; then
+              echo "newer trusted registry artifact did not contain research.sqlite3" >&2
+              exit 68
+            fi
+            cp "$LATEST_REGISTRY" research-sync/state/latest.sqlite3
+            python - <<'PY'
+          from pathlib import Path
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          latest = ResearchRegistry(Path("research-sync/state/latest.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  latest,
+                  Path("research-sync/state/research.sqlite3"),
+              )
+          finally:
+              latest.close()
+          Path("research-sync/state/research.sqlite3").write_bytes(
+              Path("research-sync/state/latest.sqlite3").read_bytes()
+          )
+          PY
+          fi
+
+      - name: Publish synchronized authoritative research registry
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-sync/state/research.sqlite3
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload V4 authority synchronization audit
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-v4-authority-sync-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-sync/inventory/
+          if-no-files-found: error
+          retention-days: 30
