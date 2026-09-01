@@ -238,3 +238,113 @@ def test_authoritative_registry_publishers_share_one_concurrency_group() -> None
     assert group in _job(sync, "synchronize", None)
     assert group in _job(campaign, "evaluate-research", "finalize-publish")
     assert group in _job(campaign, "finalize-publish", None)
+
+
+def test_persisted_runner_artifact_root_matches_absolute_cli_request() -> None:
+    source = _source()
+    prepare = _job(source, "prepare-control", "candidate-build")
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+
+    assert (
+        'artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / "output")'
+        in prepare
+    )
+    assert '--artifact-root "$GITHUB_WORKSPACE/research-campaign/output"' in evaluation
+
+
+def test_evaluation_rebases_latest_authority_after_acquiring_publisher_lock() -> None:
+    source = _source()
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+
+    assert "group: research-authoritative-registry-publisher" in evaluation
+    assert "actions: read" in evaluation
+    assert "Rebase staged registry onto latest trusted authority under publisher lock" in evaluation
+    rebase_index = evaluation.index(
+        "Rebase staged registry onto latest trusted authority under publisher lock"
+    )
+    runner_index = evaluation.index("Evaluate authenticated research attempt")
+    assert rebase_index < runner_index
+    rebase = evaluation[rebase_index:runner_index]
+    assert "GH_TOKEN: ${{ github.token }}" in rebase
+    assert "/actions/artifacts?name=research-authoritative-registry" in rebase
+    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in rebase
+    assert "merge_v4_authority_snapshot" in rebase
+    assert "candidate-src" not in evaluation
+
+
+def test_successful_final_audit_retains_evaluated_products_independently() -> None:
+    source = _source()
+    finalization = _job(source, "finalize-publish", None)
+
+    evaluated = finalization.split(
+        "- name: Download evaluated products for final audit",
+        1,
+    )[1].split("\n      - name:", 1)[0]
+    assert "if: ${{ always() }}" in evaluated
+    assert "continue-on-error: true" in evaluated
+    assert "research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}" in evaluated
+    assert "research-campaign/audit/evaluated" in evaluated
+    assert finalization.index("Download evaluated products for final audit") < finalization.index(
+        "Upload complete research campaign audit trail"
+    )
+
+
+def test_success_completion_rejects_mismatched_prebound_interval(tmp_path: Path) -> None:
+    bootstrap = import_module("cocomelon.research.bootstrap")
+    history = import_module("cocomelon.research.runner_history")
+    checkpoint = import_module("cocomelon.research.checkpoint_commit")
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        bootstrap.ensure_bootstrap_candidate(
+            registry,
+            candidate_id="candidate-1",
+            code_revision="a" * 40,
+        )
+        record_runner_attempt_started(
+            registry.connection,
+            attempt_id="attempt-1",
+            candidate_id="candidate-1",
+            batch_id="batch-1",
+            source_id="source-1",
+            artifact_root="/trusted/research-campaign/output",
+        )
+        history.bind_runner_attempt_source_interval(
+            registry.connection,
+            attempt_id="attempt-1",
+            start_ms=1_000,
+            end_ms=2_000,
+        )
+        history.claim_runner_attempt_evaluation(
+            registry.connection,
+            attempt_id="attempt-1",
+        )
+        registry.connection.execute(
+            """
+            INSERT INTO research_batches (
+                batch_id, candidate_id, source_id, replay_run_id,
+                start_ms, end_ms, status, contamination_v4_run_id
+            ) VALUES (?, ?, ?, ?, ?, ?, 'admitted', NULL)
+            """,
+            ("batch-1", "candidate-1", "source-1", "replay-1", 1_001, 2_000),
+        )
+        registry.connection.commit()
+
+        registry.connection.execute("BEGIN IMMEDIATE")
+        try:
+            with pytest.raises(ResearchRegistryError, match="different source interval"):
+                checkpoint.complete_runner_attempt_success_uncommitted(
+                    registry.connection,
+                    attempt_id="attempt-1",
+                    candidate_id="candidate-1",
+                    batch_id="batch-1",
+                    report_id="report-1",
+                )
+        finally:
+            registry.connection.rollback()
+        attempts = load_runner_attempts(registry.connection)
+    finally:
+        registry.close()
+
+    assert len(attempts) == 1
+    assert attempts[0].start_ms == 1_000
+    assert attempts[0].end_ms == 2_000
