@@ -348,3 +348,37 @@ def test_success_completion_rejects_mismatched_prebound_interval(tmp_path: Path)
     assert len(attempts) == 1
     assert attempts[0].start_ms == 1_000
     assert attempts[0].end_ms == 2_000
+
+
+def test_finalizer_rebases_fallback_registry_after_acquiring_publisher_lock() -> None:
+    source = _source()
+    finalization = _job(source, "finalize-publish", None)
+
+    assert "group: research-authoritative-registry-publisher" in finalization
+    assert "actions: read" in finalization
+    assert "Rebase recovered fallback registry onto latest trusted authority" in finalization
+    rebase_index = finalization.index(
+        "Rebase recovered fallback registry onto latest trusted authority"
+    )
+    publish_index = finalization.index("Publish authoritative research registry")
+    assert rebase_index < publish_index
+    rebase = finalization[rebase_index:publish_index]
+    assert "GH_TOKEN: ${{ github.token }}" in rebase
+    assert "/actions/artifacts?name=research-authoritative-registry" in rebase
+    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in rebase
+    assert "merge_v4_authority_snapshot" in rebase
+    assert "needs.evaluate-research.outputs.registry_published != 'success'" in rebase
+    publish = finalization[publish_index:]
+    assert "steps.rebase-fallback-authority.outcome == 'success'" in publish
+
+
+def test_status_records_authority_sync_as_implemented_and_advances_next_action() -> None:
+    status = Path("docs/STATUS.md").read_text(encoding="utf-8")
+    lowered = status.lower()
+    next_action = status.split("## Exact next action", 1)[1]
+
+    assert ".github/workflows/research-v4-registry-sync.yml" in status
+    assert "implemented" in lowered
+    assert "remaining operational dependency is a separate authoritative v4" not in lowered
+    assert "Add a separate authoritative V4 interval/completeness synchronization path" not in next_action
+    assert "Observe the implemented authoritative V4 interval/completeness synchronization path" in next_action
