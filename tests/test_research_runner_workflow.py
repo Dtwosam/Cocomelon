@@ -136,16 +136,32 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
         "- name: Complete trusted research cohort from candidate decisions",
         1,
     )[1]
+    finalizer_rebase = finalization.split(
+        "- name: Rebase recovered fallback registry onto latest trusted authority",
+        1,
+    )[1].split("- name: Download capture evidence for final audit", 1)[0]
+    finalizer_before_rebase = finalization.split(
+        "- name: Rebase recovered fallback registry onto latest trusted authority",
+        1,
+    )[0]
+    finalizer_after_rebase = finalization.split(
+        "- name: Download capture evidence for final audit",
+        1,
+    )[1]
 
     assert "actions: read" in prepare
     assert "actions: write" in refresh
     assert "actions: read" in evaluation
-    for isolated in (candidate, capture, decisions, finalization):
+    assert "actions: read" in finalization
+    for isolated in (candidate, capture, decisions):
         assert "GH_TOKEN:" not in isolated
     assert "GH_TOKEN:" not in evaluation_before_rebase
     assert "GH_TOKEN: ${{ github.token }}" in evaluation_rebase
     assert "GH_TOKEN:" not in evaluation_after_rebase
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 4
+    assert "GH_TOKEN:" not in finalizer_before_rebase
+    assert "GH_TOKEN: ${{ github.token }}" in finalizer_rebase
+    assert "GH_TOKEN:" not in finalizer_after_rebase
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 5
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download
@@ -154,10 +170,12 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "/usr/bin/gh api" in refresh_dispatch
     assert "/usr/bin/gh api" in refresh_download
     assert "/usr/bin/gh api" in evaluation_rebase
+    assert "/usr/bin/gh api" in finalizer_rebase
     assert "import sqlite3" in refresh_download
     assert "from cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
     assert "merge_v4_authority_snapshot" in evaluation_rebase
+    assert "merge_v4_authority_snapshot" in finalizer_rebase
 
 
 def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
