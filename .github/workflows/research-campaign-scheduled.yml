@@ -73,9 +73,13 @@ jobs:
               gh api \
                 "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
                 --jq '(.head_branch == "main")
-                  and (.path == ".github/workflows/research-campaign-scheduled.yml")
                   and (.status == "completed")
-                  and (.conclusion == "success" or .conclusion == "failure")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
                   and (.event == "schedule" or .event == "workflow_dispatch")'
             )"
             RUN_HEAD_SHA="$(
