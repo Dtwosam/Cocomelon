@@ -60,6 +60,7 @@ def test_candidate_checkout_preserves_restored_authoritative_registry() -> None:
 
     assert "clean: false" in checkout
     assert "clean: true" not in checkout
+    assert "persist-credentials: false" in checkout
     assert source.index("Restore authoritative research registry") < source.index(
         "Checkout candidate code revision"
     )
@@ -72,6 +73,7 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
         1,
     )[0]
 
+    assert "GH_TOKEN: ${{ github.token }}" in restore
     assert "/actions/artifacts?name=research-authoritative-registry" in restore
     assert "/actions/runs/$RUN_ID" in restore
     assert '.head_branch == "main"' in restore
@@ -81,6 +83,37 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
     assert '.conclusion == "success" or .conclusion == "failure"' in restore
     assert "workflow_run.id" in restore
     assert "sort_by(.created_at) | reverse | .[0].id // empty" not in restore
+
+
+def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> None:
+    source = _source()
+    job_header = source.split("    steps:", 1)[0]
+    restore = source.split("- name: Restore authoritative research registry", 1)[1].split(
+        "- name: Resolve candidate code revision from authoritative registry",
+        1,
+    )[0]
+    refresh_download = source.split("- name: Download refreshed V4 authority after acquisition", 1)[
+        1
+    ].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
+    refresh_merge = source.split("- name: Merge refreshed V4 authority after acquisition", 1)[1].split(
+        "- name: Evaluate authenticated research attempt",
+        1,
+    )[0]
+
+    assert "GH_TOKEN:" not in job_header
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 2
+    assert "GH_TOKEN: ${{ github.token }}" in restore
+    assert "GH_TOKEN: ${{ github.token }}" in refresh_download
+    assert "GH_TOKEN:" not in refresh_merge
+    assert "/usr/bin/gh api" in restore
+    assert "/usr/bin/gh api" in refresh_download
+    assert "python" not in refresh_download
+    assert "cocomelon" not in refresh_download.lower()
+    assert "merge_v4_authority_snapshot" in refresh_merge
+    assert "persist-credentials: false" in source.split(
+        "Checkout research campaign control revision",
+        1,
+    )[1].split("- uses: actions/setup-python", 1)[0]
 
 
 def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
@@ -103,26 +136,32 @@ def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
 
 def test_research_campaign_refreshes_v4_authority_after_capture_before_evaluation() -> None:
     source = _source()
-    refresh = source.split("- name: Refresh V4 authority after acquisition", 1)[1].split(
+    refresh_download = source.split("- name: Download refreshed V4 authority after acquisition", 1)[
+        1
+    ].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
+    refresh_merge = source.split("- name: Merge refreshed V4 authority after acquisition", 1)[1].split(
         "- name: Evaluate authenticated research attempt",
         1,
     )[0]
 
     assert source.index("Acquire one public mainnet research cohort") < source.index(
-        "Refresh V4 authority after acquisition"
+        "Download refreshed V4 authority after acquisition"
     )
-    assert source.index("Refresh V4 authority after acquisition") < source.index(
+    assert source.index("Download refreshed V4 authority after acquisition") < source.index(
+        "Merge refreshed V4 authority after acquisition"
+    )
+    assert source.index("Merge refreshed V4 authority after acquisition") < source.index(
         "Evaluate authenticated research attempt"
     )
-    assert "/actions/artifacts?name=research-authoritative-registry" in refresh
-    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in refresh
-    assert '.head_branch == "main"' in refresh
-    assert '.status == "completed"' in refresh
-    assert '.conclusion == "success"' in refresh
-    assert "merge_v4_authority_snapshot" in refresh
-    assert "research-campaign/state/research.sqlite3" in refresh
-    assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh
-    assert "cp \"$REGISTRY_PATH\" research-campaign/state/research.sqlite3" not in refresh
+    assert "/actions/artifacts?name=research-authoritative-registry" in refresh_download
+    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
+    assert '.head_branch == "main"' in refresh_download
+    assert '.status == "completed"' in refresh_download
+    assert '.conclusion == "success"' in refresh_download
+    assert "merge_v4_authority_snapshot" in refresh_merge
+    assert "research-campaign/state/research.sqlite3" in refresh_merge
+    assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh_merge
+    assert "cp \"$REGISTRY_PATH\" research-campaign/state/research.sqlite3" not in source
 
 
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
