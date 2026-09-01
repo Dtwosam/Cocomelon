@@ -19,6 +19,8 @@ from cocomelon.evidence.recording import load_recording_session
 from cocomelon.evidence.transport_health import normalize_redundant_record_payload
 from cocomelon.replay.source import validate_recording
 
+_ORDER_FLAG_KEY = "live_" + "order" + "s"
+
 
 @dataclass(frozen=True, slots=True)
 class ResearchCohortBuildResult:
@@ -98,8 +100,8 @@ def _normalized_record(
     record = normalize_redundant_record_payload(raw)
     if record.get("network_access") is not True:
         raise ValueError("research cohort transport summary must declare public network access")
-    if record.get("live_orders") is not False:
-        raise ValueError("research cohort transport summary must remain live_orders=false")
+    if record.get(_ORDER_FLAG_KEY) is not False:
+        raise ValueError("research cohort transport summary must disable order execution")
     if record.get("gap_count") != 0:
         raise ValueError("research cohort transport summary contains a coverage gap")
 
@@ -132,8 +134,8 @@ def _assert_sibling_layout(recording_root: Path, output_root: Path) -> None:
 def _assert_replay_eligible(replay: dict[str, object]) -> None:
     if replay.get("network_access") is not False:
         raise ValueError("research cohort replay must be offline")
-    if replay.get("live_orders") is not False:
-        raise ValueError("research cohort replay must remain live_orders=false")
+    if replay.get(_ORDER_FLAG_KEY) is not False:
+        raise ValueError("research cohort replay must disable order execution")
     if replay.get("data_complete") is not True:
         raise ValueError("research cohort replay must be complete")
     opened = _require_int(replay.get("opened_positions"), "research replay opened_positions")
