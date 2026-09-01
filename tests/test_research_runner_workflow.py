@@ -82,6 +82,24 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
     assert "sort_by(.created_at) | reverse | .[0].id // empty" not in restore
 
 
+def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
+    source = _source()
+
+    assert "Persist acquisition attempt before candidate setup" in source
+    assert source.index("Persist acquisition attempt before candidate setup") < source.index(
+        "Checkout candidate code revision"
+    )
+    assert source.index("Persist acquisition attempt before candidate setup") < source.index(
+        "Install Cocomelon"
+    )
+    failure = source.split("- name: Persist workflow failure in attempt ledger", 1)[1].split(
+        "- name: Upload complete research campaign audit trail",
+        1,
+    )[0]
+    assert "import sqlite3" in failure
+    assert "UPDATE research_runner_attempts" in failure
+
+
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
     source = _source()
     lowered = source.lower()
@@ -91,7 +109,7 @@ def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None
     assert "GITHUB_RUN_ID" in source
     assert "GITHUB_RUN_ATTEMPT" in source
     assert "record_runner_attempt_started" in source
-    assert "finish_runner_attempt" in source
+    assert "UPDATE research_runner_attempts" in source
 
     for economic_branch in (
         "net_pnl",
