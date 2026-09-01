@@ -226,6 +226,41 @@ def test_runner_persists_evaluator_failure_and_reraises(
     assert attempts[0].error_message == "synthetic evaluator failure"
 
 
+def test_interrupted_evaluation_cannot_be_reclaimed_by_same_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    calls = 0
+    try:
+        registry.create_candidate(_candidate())
+        registry.mark_v4_registry_complete_through(
+            through_ms=3_000,
+            source_id="authoritative-v4-inventory",
+        )
+        artifact = _artifact(tmp_path)
+        request = _request(artifact, attempt_id="attempt-interrupted")
+
+        def interrupt_evaluator(**_kwargs: object) -> None:
+            nonlocal calls
+            calls += 1
+            raise KeyboardInterrupt("synthetic interruption after evaluation claim")
+
+        monkeypatch.setattr(runner_module, "evaluate_research_checkpoint", interrupt_evaluator)
+        with pytest.raises(KeyboardInterrupt, match="synthetic interruption"):
+            run_research_artifact_attempt(registry, request)
+
+        with pytest.raises(ResearchRegistryError, match="evaluation"):
+            run_research_artifact_attempt(registry, request)
+        attempts = load_runner_attempts(registry.connection)
+    finally:
+        registry.close()
+
+    assert calls == 1
+    assert len(attempts) == 1
+    assert attempts[0].status is ResearchRunnerAttemptStatus.EVALUATING
+
+
 def test_terminal_attempt_cannot_be_rerun_after_outcome_is_known(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     try:
