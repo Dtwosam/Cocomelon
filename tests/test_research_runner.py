@@ -11,6 +11,7 @@ from cocomelon.research.contracts import (
     ResearchCandidateState,
     TimeInterval,
 )
+from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
 from cocomelon.research.registry import (
     ResearchContaminationError,
     ResearchRegistry,
@@ -18,7 +19,9 @@ from cocomelon.research.registry import (
 )
 from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
+    claim_runner_attempt_evaluation,
     load_runner_attempts,
+    record_runner_attempt_started,
 )
 from tests.research_artifact_support import (
     CODE_REVISION,
@@ -135,6 +138,51 @@ def test_runner_checkpoint_and_success_outcome_share_one_transaction(
 
     assert len(attempts) == 1
     assert attempts[0].status is ResearchRunnerAttemptStatus.FAILED
+    assert attempts[0].report_id is None
+    assert candidate.performance_report_ids == ()
+
+
+def test_direct_checkpoint_cannot_absorb_claimed_runner_attempt(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate())
+        registry.mark_v4_registry_complete_through(
+            through_ms=3_000,
+            source_id="authoritative-v4-inventory",
+        )
+        artifact = _artifact(tmp_path, batch_id="claimed-direct-batch")
+        record_runner_attempt_started(
+            registry.connection,
+            attempt_id="attempt-claimed-direct",
+            candidate_id="runner-candidate",
+            batch_id=artifact.batch_id,
+            source_id=artifact.source_id,
+            artifact_root=str(artifact.artifact_root),
+        )
+        claim_runner_attempt_evaluation(
+            registry.connection,
+            attempt_id="attempt-claimed-direct",
+        )
+
+        with pytest.raises(ResearchRegistryError, match="runner|attempt|claim"):
+            evaluate_research_checkpoint(
+                registry=registry,
+                candidate_id="runner-candidate",
+                artifact_batches=(
+                    ResearchArtifactBatch(
+                        artifact_root=artifact.artifact_root,
+                        batch_id=artifact.batch_id,
+                        source_id=artifact.source_id,
+                    ),
+                ),
+            )
+        attempts = load_runner_attempts(registry.connection)
+        candidate = registry.load_candidate("runner-candidate")
+    finally:
+        registry.close()
+
+    assert len(attempts) == 1
+    assert attempts[0].status is ResearchRunnerAttemptStatus.EVALUATING
     assert attempts[0].report_id is None
     assert candidate.performance_report_ids == ()
 
