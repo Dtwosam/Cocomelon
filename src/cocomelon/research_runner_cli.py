@@ -11,7 +11,7 @@ from typing import TextIO
 from cocomelon.research.artifact import ResearchArtifactError
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from cocomelon.research.runner import ResearchRunnerRequest, run_research_artifact_attempt
-from cocomelon.research.runner_history import load_runner_attempts
+from cocomelon.research.runner_history import ResearchRunnerAttempt, load_runner_attempts
 
 RESEARCH_RUNNER_LABEL = "TOUCHED / NON-PROMOTIONAL"
 
@@ -34,7 +34,7 @@ def _require_registry(path: Path) -> None:
         raise FileNotFoundError(f"research registry does not exist: {path}")
 
 
-def _attempt_payload(attempt: object) -> dict[str, object]:
+def _attempt_payload(attempt: ResearchRunnerAttempt) -> dict[str, object]:
     return {
         "artifact_root": attempt.artifact_root,
         "attempt_id": attempt.attempt_id,
