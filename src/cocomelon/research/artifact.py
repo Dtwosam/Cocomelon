@@ -18,6 +18,7 @@ from cocomelon.evaluation.mainnet_evidence import (
 )
 from cocomelon.evaluation.metrics import AUTHORITATIVE_CONTEXT
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.evidence.bundle import load_baseline_replay_bundle
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 from cocomelon.research.contracts import TimeInterval
 
@@ -46,6 +47,7 @@ class VerifiedResearchBatch:
     source_digest: str
     code_revision: str
     config_digest: str
+    candidate_config_digest: str | None
     trade_ids: tuple[str, ...]
     sample_digest: str
     samples: tuple[TradeEvaluationSample, ...]
@@ -99,6 +101,29 @@ def _sample_digest(samples: tuple[TradeEvaluationSample, ...]) -> str:
     return _canonical_digest(identities)
 
 
+def _candidate_config_digest(
+    source_root: Path,
+    manifest: ReplayManifest,
+) -> str | None:
+    try:
+        bundle = load_baseline_replay_bundle(source_root / "bundle.json")
+    except ValueError:
+        return None
+    if bundle.manifest.manifest_id != manifest.manifest_id:
+        raise ResearchArtifactError(
+            "research replay bundle does not match canonical manifest identity"
+        )
+    if bundle.manifest.code_revision != manifest.code_revision:
+        raise ResearchArtifactError(
+            "research replay bundle does not match canonical code revision"
+        )
+    if bundle.manifest.config_digest != manifest.config_digest:
+        raise ResearchArtifactError(
+            "research replay bundle does not match canonical manifest config digest"
+        )
+    return bundle.replay_config.config_digest
+
+
 def _verified_recording_segment_digest(
     source_root: Path,
     manifest: ReplayManifest,
@@ -144,6 +169,7 @@ def verify_research_batch_artifact(
     _require_nonempty(source_id, "source_id")
     source_root = Path(root).resolve()
     paths = {
+        "bundle.json": source_root / "bundle.json",
         "facts.sqlite3": source_root / "facts.sqlite3",
         "journal.sqlite3": source_root / "journal.sqlite3",
         "replay.json": source_root / "replay.json",
@@ -210,6 +236,7 @@ def verify_research_batch_artifact(
                     raise ResearchArtifactError(
                         f"research mainnet attestation does not match canonical {field}"
                     )
+            candidate_config_digest = _candidate_config_digest(source_root, manifest)
             recording_segment_digest = _verified_recording_segment_digest(
                 source_root,
                 manifest,
@@ -318,6 +345,7 @@ def verify_research_batch_artifact(
         source_digest=source_digest,
         code_revision=manifest.code_revision,
         config_digest=manifest.config_digest,
+        candidate_config_digest=candidate_config_digest,
         trade_ids=canonical_trade_ids,
         sample_digest=_sample_digest(samples),
         samples=samples,
