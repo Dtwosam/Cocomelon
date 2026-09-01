@@ -378,7 +378,7 @@ def complete_runner_attempt_success_uncommitted(
 
     attempt = connection.execute(
         """
-        SELECT candidate_id, batch_id, status
+        SELECT candidate_id, batch_id, status, start_ms, end_ms
         FROM research_runner_attempts
         WHERE attempt_id = ?
         """,
@@ -417,6 +417,16 @@ def complete_runner_attempt_success_uncommitted(
     end_ms = int(batch["end_ms"])
     if start_ms < 0 or end_ms <= start_ms:
         raise ResearchRegistryError("research runner attempt interval is invalid")
+
+    stored_start = attempt["start_ms"]
+    stored_end = attempt["end_ms"]
+    if (stored_start is None) != (stored_end is None):
+        raise ResearchRegistryError("stored research runner source interval is incomplete")
+    if stored_start is not None and stored_end is not None:
+        if (int(stored_start), int(stored_end)) != (start_ms, end_ms):
+            raise ResearchRegistryError(
+                "research runner attempt already has a different source interval"
+            )
 
     cursor = connection.execute(
         """
