@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from decimal import Decimal
@@ -8,10 +9,10 @@ from pathlib import Path
 import pytest
 
 import cocomelon.research_dashboard_cli as research_dashboard_cli
-from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
+from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState, TimeInterval
 from cocomelon.research.dashboard import build_research_status
 from cocomelon.research.evaluator import evaluate_research_checkpoint
-from cocomelon.research.registry import ResearchRegistry
+from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
@@ -177,3 +178,97 @@ def test_status_build_uses_one_sqlite_read_snapshot(
     assert candidate["state"] == ResearchCandidateState.DRAFT.value
     assert candidate["checkpoint_count"] == 0
     assert candidate["checkpoints"] == []
+
+
+def test_contamination_does_not_hide_unsealed_performance_report(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("contaminated-candidate"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=200_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        artifact = write_research_artifact(
+            tmp_path / "contaminated-artifact",
+            batch_id="contaminated-batch",
+            source_id="contaminated-source",
+            replay_run_id="contaminated-replay",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),),
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="contaminated-candidate",
+            artifact_batches=(artifact,),
+        )
+        registry.record_v4_interval(
+            run_id="late-v4-overlap",
+            interval=TimeInterval(start_ms=50_000, end_ms=150_000),
+            disposition="accepted",
+        )
+        unsigned: dict[str, object] = {
+            "candidate_id": "contaminated-candidate",
+            "candidate_state": ResearchCandidateState.RESEARCHING.value,
+            "checkpoint_state": "continue",
+        }
+        canonical = json.dumps(
+            unsigned,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        report_id = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        payload = dict(unsigned)
+        payload["report_id"] = report_id
+        registry.connection.execute(
+            """
+            INSERT INTO research_performance_reports (report_id, candidate_id, payload_json)
+            VALUES (?, ?, ?)
+            """,
+            (
+                report_id,
+                "contaminated-candidate",
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        registry.connection.commit()
+
+        with pytest.raises(ResearchRegistryError, match="unauthenticated performance report"):
+            build_research_status(registry)
+    finally:
+        registry.close()
+
+
+def test_status_cli_structures_sqlite_errors_from_malformed_schema(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "malformed.sqlite3"
+    connection = sqlite3.connect(registry_path)
+    for table in (
+        "research_candidates",
+        "research_touched_intervals",
+        "research_v4_intervals",
+        "research_v4_registry_state",
+        "research_batches",
+        "research_performance_reports",
+        "research_candidate_state_events",
+    ):
+        connection.execute(f"CREATE TABLE {table} (bogus TEXT)")
+    connection.commit()
+    connection.close()
+    before = registry_path.read_bytes()
+
+    exit_code = research_dashboard_cli.main(
+        ["--registry", str(registry_path), "--format", "json"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    error = json.loads(captured.err)
+    assert error["error_type"] == "OperationalError"
+    assert "no such column" in error["error"].lower()
+    assert registry_path.read_bytes() == before
