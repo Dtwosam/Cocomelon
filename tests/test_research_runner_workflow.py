@@ -76,6 +76,7 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
     assert "/actions/runs/$RUN_ID" in restore
     assert '.head_branch == "main"' in restore
     assert '.path == ".github/workflows/research-campaign-scheduled.yml"' in restore
+    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in restore
     assert '.status == "completed"' in restore
     assert '.conclusion == "success" or .conclusion == "failure"' in restore
     assert "workflow_run.id" in restore
