@@ -54,10 +54,10 @@ def test_research_campaign_pins_runtime_to_candidate_code_revision() -> None:
     assert "candidate_revision: ${{ steps.candidate.outputs.revision }}" in source
     assert "Checkout candidate code revision" in source
     assert "ref: ${{ needs.prepare-control.outputs.candidate_revision }}" in source
-    assert source.index("Resolve candidate code revision from authoritative registry") < source.index(
-        "Checkout candidate code revision"
-    )
-    assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
+    resolve_index = source.index("Resolve candidate code revision from authoritative registry")
+    checkout_index = source.index("Checkout candidate code revision")
+    assert resolve_index < checkout_index
+    assert checkout_index < source.index("Install Cocomelon")
     assert source.index("Install Cocomelon") < source.index("record-mainnet-evidence")
 
 
