@@ -208,8 +208,8 @@ def _checkpoint_history(
         ] = []
         for report_id, payload in reports.items():
             state = _report_state(payload)
-            commit = commits_by_report.get(report_id)
-            if commit is not None and commit.state is not state:
+            existing_commit = commits_by_report.get(report_id)
+            if existing_commit is not None and existing_commit.state is not state:
                 raise ResearchRegistryError("research dashboard checkpoint state is invalid")
             batch_ids, source_end_ms = _authenticate_history_report(
                 registry,
