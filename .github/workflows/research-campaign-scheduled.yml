@@ -43,6 +43,7 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Prepare research campaign directories
         run: |
@@ -213,17 +214,6 @@ jobs:
       contents: read
       actions: none
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Download prepared research control state
-        uses: actions/download-artifact@v4
-        with:
-          name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: research-campaign
-
       - name: Checkout candidate code revision
         uses: actions/checkout@v4
         with:
@@ -233,35 +223,24 @@ jobs:
           clean: false
           persist-credentials: false
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: candidate-src/pyproject.toml
+
+      - name: Prepare registry-blind candidate artifact directories
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            research-campaign/recording \
+            research-campaign/output \
+            research-campaign/diagnostics
+
       - name: Install Cocomelon
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ./candidate-src
-
-      - name: Validate candidate after setup
-        working-directory: candidate-src
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          from cocomelon.research.registry import ResearchRegistry
-
-          workspace = Path(os.environ["GITHUB_WORKSPACE"])
-          revision = workspace.joinpath(
-              "research-campaign/state/research-code-revision.txt"
-          ).read_text(encoding="utf-8").strip()
-          registry = ResearchRegistry(
-              workspace / "research-campaign/state/research.sqlite3"
-          )
-          try:
-              candidate = registry.load_candidate(os.environ["RESEARCH_CANDIDATE_ID"])
-              if candidate.code_revision != revision:
-                  raise RuntimeError("restored research candidate code revision changed during setup")
-          finally:
-              registry.close()
-          PY
 
       - name: Acquire one public mainnet research cohort
         working-directory: candidate-src
@@ -270,7 +249,7 @@ jobs:
           printf '1\n' > "$GITHUB_WORKSPACE/research-campaign/output/acquisition-attempt.txt"
           cocomelon record-mainnet-evidence \
             --root "$GITHUB_WORKSPACE/research-campaign/recording" \
-            --seconds 1200 \
+            --seconds 1800 \
             --deep-limit 5 \
             > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json"
 
@@ -280,11 +259,9 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os
-          import sqlite3
           from decimal import Decimal
           from pathlib import Path
 
-          from cocomelon.evidence.bundle import load_baseline_replay_bundle
           from cocomelon.research.cohort import build_research_cohort
 
           workspace = Path(os.environ["GITHUB_WORKSPACE"])
@@ -295,21 +272,6 @@ jobs:
               Decimal("10000"),
               trigger_head_sha=os.environ["GITHUB_SHA"],
           )
-          bundle = load_baseline_replay_bundle(campaign / "output/bundle.json")
-          connection = sqlite3.connect(campaign / "state/research.sqlite3")
-          try:
-              row = connection.execute(
-                  "SELECT config_digest FROM research_candidates WHERE candidate_id = ?",
-                  (os.environ["RESEARCH_CANDIDATE_ID"],),
-              ).fetchone()
-          finally:
-              connection.close()
-          if row is None or not isinstance(row[0], str):
-              raise RuntimeError("research candidate config identity is unavailable")
-          if row[0] != bundle.replay_config.config_digest:
-              raise RuntimeError(
-                  "research candidate semantic config does not match replay configuration"
-              )
           PY
 
       - name: Upload candidate research stage
@@ -317,7 +279,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: research-campaign/
+          path: |
+            research-campaign/recording/
+            research-campaign/output/
+            research-campaign/diagnostics/
           if-no-files-found: error
           retention-days: 2
 
@@ -341,6 +306,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Download prepared research control state for authority merge
+        uses: actions/download-artifact@v4
+        with:
+          name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
 
       - name: Download candidate research stage
         uses: actions/download-artifact@v4
@@ -449,19 +421,26 @@ jobs:
           retention-days: 2
 
   evaluate-research:
-    needs:
-      - prepare-control
-      - refresh-authority
+    needs: refresh-authority
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
       actions: none
     steps:
+      - name: Checkout trusted research runner control revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          persist-credentials: false
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
+          cache-dependency-path: control-src/pyproject.toml
 
       - name: Download refreshed research stage
         uses: actions/download-artifact@v4
@@ -469,21 +448,13 @@ jobs:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Checkout candidate evaluation revision
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.prepare-control.outputs.candidate_revision }}
-          path: candidate-src
-          fetch-depth: 1
-          persist-credentials: false
-
-      - name: Install candidate evaluation runtime
+      - name: Install trusted research runner runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ./candidate-src
+          python -m pip install -e ./control-src
 
       - name: Evaluate authenticated research attempt
-        working-directory: candidate-src
+        working-directory: control-src
         run: |
           set -euo pipefail
           cocomelon-research-runner run-artifact \
