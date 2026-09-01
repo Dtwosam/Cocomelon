@@ -124,12 +124,28 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
         "- name: Merge refreshed V4 authority after acquisition",
         1,
     )[1].split("- name: Upload refreshed research stage", 1)[0]
+    evaluation_rebase = evaluation.split(
+        "- name: Rebase staged registry onto latest trusted authority under publisher lock",
+        1,
+    )[1].split("- name: Complete trusted research cohort from candidate decisions", 1)[0]
+    evaluation_before_rebase = evaluation.split(
+        "- name: Rebase staged registry onto latest trusted authority under publisher lock",
+        1,
+    )[0]
+    evaluation_after_rebase = evaluation.split(
+        "- name: Complete trusted research cohort from candidate decisions",
+        1,
+    )[1]
 
     assert "actions: read" in prepare
     assert "actions: write" in refresh
-    for isolated in (candidate, capture, decisions, evaluation, finalization):
+    assert "actions: read" in evaluation
+    for isolated in (candidate, capture, decisions, finalization):
         assert "GH_TOKEN:" not in isolated
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 3
+    assert "GH_TOKEN:" not in evaluation_before_rebase
+    assert "GH_TOKEN: ${{ github.token }}" in evaluation_rebase
+    assert "GH_TOKEN:" not in evaluation_after_rebase
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 4
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download
@@ -137,9 +153,11 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "/usr/bin/gh api" in prepare
     assert "/usr/bin/gh api" in refresh_dispatch
     assert "/usr/bin/gh api" in refresh_download
+    assert "/usr/bin/gh api" in evaluation_rebase
     assert "import sqlite3" in refresh_download
     assert "from cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
+    assert "merge_v4_authority_snapshot" in evaluation_rebase
 
 
 def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
