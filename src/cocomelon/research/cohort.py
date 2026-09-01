@@ -19,7 +19,7 @@ from cocomelon.evidence.bundle import (
     resolve_code_revision,
     write_baseline_replay_bundle,
 )
-from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.contracts import BaselineReplayConfig, FrozenBaselineReplayBundle
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 from cocomelon.evidence.recording import load_recording_session
 from cocomelon.evidence.transport_health import normalize_redundant_record_payload
@@ -226,7 +226,7 @@ def _validated_bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
     return (bundle_path.parent / source_path).resolve()
 
 
-def _assert_research_bundle_protocol(bundle: object) -> None:
+def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None:
     replay_config = bundle.replay_config
     if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:
         raise ValueError("research replay engine version does not match bounded protocol")
