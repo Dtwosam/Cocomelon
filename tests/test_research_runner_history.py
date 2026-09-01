@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
     finish_runner_attempt,
