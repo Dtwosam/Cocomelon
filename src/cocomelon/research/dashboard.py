@@ -236,7 +236,7 @@ def _checkpoint_history(
 
     previous_batch_ids: set[str] = set()
     history: list[dict[str, object]] = []
-    for commit_index, report_id, _state, batch_ids, source_end_ms, payload in ordered:
+    for commit_index, _report_id, _state, batch_ids, source_end_ms, payload in ordered:
         current_batch_ids = set(batch_ids)
         if not previous_batch_ids.issubset(current_batch_ids):
             raise ResearchRegistryError(
