@@ -140,19 +140,9 @@ jobs:
               handle.write(f"RESEARCH_CODE_REVISION={revision}\n")
           PY
 
-      - name: Checkout candidate code revision
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.RESEARCH_CODE_REVISION }}
-          fetch-depth: 1
-          clean: false
-
-      - name: Install Cocomelon
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-
-      - name: Validate candidate and persist acquisition attempt
+      - name: Persist acquisition attempt before candidate setup
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -169,7 +159,7 @@ jobs:
           try:
               candidate = registry.load_candidate(candidate_id)
               if candidate.code_revision != os.environ["RESEARCH_CODE_REVISION"]:
-                  raise RuntimeError("restored research candidate code revision changed during checkout")
+                  raise RuntimeError("restored research candidate code revision changed")
               record_runner_attempt_started(
                   registry.connection,
                   attempt_id=os.environ["ATTEMPT_ID"],
@@ -178,6 +168,36 @@ jobs:
                   source_id=os.environ["SOURCE_ID"],
                   artifact_root="research-campaign/output",
               )
+          finally:
+              registry.close()
+          PY
+
+      - name: Checkout candidate code revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RESEARCH_CODE_REVISION }}
+          fetch-depth: 1
+          clean: false
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Validate candidate after setup
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              candidate = registry.load_candidate(os.environ["RESEARCH_CANDIDATE_ID"])
+              if candidate.code_revision != os.environ["RESEARCH_CODE_REVISION"]:
+                  raise RuntimeError("restored research candidate code revision changed during setup")
           finally:
               registry.close()
           PY
@@ -197,8 +217,11 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os
+          import sqlite3
           from decimal import Decimal
+          from pathlib import Path
 
+          from cocomelon.evidence.bundle import load_baseline_replay_bundle
           from cocomelon.research.cohort import build_research_cohort
 
           build_research_cohort(
@@ -207,6 +230,21 @@ jobs:
               Decimal("10000"),
               trigger_head_sha=os.environ["GITHUB_SHA"],
           )
+          bundle = load_baseline_replay_bundle("research-campaign/output/bundle.json")
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT config_digest FROM research_candidates WHERE candidate_id = ?",
+                  (os.environ["RESEARCH_CANDIDATE_ID"],),
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None or not isinstance(row[0], str):
+              raise RuntimeError("research candidate config identity is unavailable")
+          if row[0] != bundle.replay_config.config_digest:
+              raise RuntimeError(
+                  "research candidate semantic config does not match replay configuration"
+              )
           PY
 
       - name: Evaluate authenticated research attempt
@@ -234,36 +272,26 @@ jobs:
           fi
           python - <<'PY'
           import os
+          import sqlite3
           from pathlib import Path
 
-          from cocomelon.research.registry import ResearchRegistry
-          from cocomelon.research.runner_history import (
-              ResearchRunnerAttemptStatus,
-              finish_runner_attempt,
-              load_runner_attempts,
-          )
-
-          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
           try:
-              attempt_id = os.environ["ATTEMPT_ID"]
-              attempts = load_runner_attempts(registry.connection)
-              attempt = next((item for item in attempts if item.attempt_id == attempt_id), None)
-              if attempt is not None and attempt.status in (
-                  ResearchRunnerAttemptStatus.RUNNING,
-                  ResearchRunnerAttemptStatus.EVALUATING,
-              ):
-                  finish_runner_attempt(
-                      registry.connection,
-                      attempt_id=attempt_id,
-                      status=ResearchRunnerAttemptStatus.FAILED,
-                      start_ms=None,
-                      end_ms=None,
-                      report_id=None,
-                      error_type="WorkflowFailure",
-                      error_message="research campaign failed before authenticated checkpoint",
-                  )
+              cursor = connection.execute(
+                  """
+                  UPDATE research_runner_attempts
+                  SET status = 'failed', start_ms = NULL, end_ms = NULL,
+                      report_id = NULL, error_type = 'WorkflowFailure',
+                      error_message = 'research campaign failed before authenticated checkpoint'
+                  WHERE attempt_id = ? AND status IN ('running', 'evaluating')
+                  """,
+                  (os.environ["ATTEMPT_ID"],),
+              )
+              if cursor.rowcount not in (0, 1):
+                  raise RuntimeError("research runner failure finalization was ambiguous")
+              connection.commit()
           finally:
-              registry.close()
+              connection.close()
           PY
 
       - name: Upload complete research campaign audit trail
