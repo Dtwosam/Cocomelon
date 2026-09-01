@@ -19,6 +19,7 @@ from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
     claim_runner_attempt_evaluation,
     finish_runner_attempt,
+    finish_runner_attempt_uncommitted,
     record_runner_attempt_started,
 )
 
@@ -85,6 +86,29 @@ def _assert_candidate_matches_artifact(
         )
 
 
+def _assert_contamination_transition_allowed(state: ResearchCandidateState) -> None:
+    if state in {
+        ResearchCandidateState.REJECTED_OPERATIONAL,
+        ResearchCandidateState.REJECTED_FUTILITY,
+        ResearchCandidateState.VALIDATED_EDGE,
+        ResearchCandidateState.NO_EDGE,
+    }:
+        raise ResearchRegistryError(f"candidate is terminal: {state.value}")
+    if state is ResearchCandidateState.FROZEN_CHALLENGER:
+        raise ResearchRegistryError(
+            "candidate is terminal to research checkpoints: frozen_challenger"
+        )
+    if state not in {
+        ResearchCandidateState.DRAFT,
+        ResearchCandidateState.RESEARCHING,
+        ResearchCandidateState.RESEARCH_PROMISING,
+        ResearchCandidateState.REJECTED_CONTAMINATION,
+    }:
+        raise ResearchRegistryError(
+            f"invalid research state transition: {state.value} -> rejected_contamination"
+        )
+
+
 def _reject_contamination(
     registry: ResearchRegistry,
     *,
@@ -93,21 +117,32 @@ def _reject_contamination(
     end_ms: int | None,
     exc: ResearchContaminationError,
 ) -> None:
-    candidate = registry.load_candidate(request.candidate_id)
-    if candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION:
-        registry.transition_candidate(
-            request.candidate_id,
-            ResearchCandidateState.REJECTED_CONTAMINATION,
-            reason="v4_source_interval_overlap",
+    connection = registry.connection
+    if connection.in_transaction:
+        raise ResearchRegistryError("contamination outcome transaction is already active")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        candidate = registry.load_candidate(request.candidate_id)
+        _assert_contamination_transition_allowed(candidate.state)
+        if candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION:
+            registry._force_candidate_contamination(
+                request.candidate_id,
+                reason="v4_source_interval_overlap",
+            )
+        finish_runner_attempt_uncommitted(
+            connection,
+            attempt_id=request.attempt_id,
+            status=ResearchRunnerAttemptStatus.CONTAMINATED,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            report_id=None,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
         )
-    _finish_failure(
-        registry,
-        request=request,
-        status=ResearchRunnerAttemptStatus.CONTAMINATED,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        exc=exc,
-    )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
 
 
 def run_research_artifact_attempt(
