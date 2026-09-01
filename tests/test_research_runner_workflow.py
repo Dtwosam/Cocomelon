@@ -222,6 +222,41 @@ def test_research_campaign_publishes_audit_state_on_failure() -> None:
     assert "authoritative-registry-unavailable.txt" in source
 
 
+def test_finalizer_falls_back_to_last_available_stage_and_always_terminalizes() -> None:
+    source = _source()
+    finalization = _job_block(source, "finalize-publish", None)
+
+    for step_name in (
+        "Download evaluated stage for publication",
+        "Download refreshed stage fallback",
+        "Download candidate stage fallback",
+        "Download control stage fallback",
+    ):
+        step = finalization.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
+        assert "continue-on-error: true" in step
+
+    refreshed = finalization.split("- name: Download refreshed stage fallback", 1)[1].split(
+        "- name: Download candidate stage fallback",
+        1,
+    )[0]
+    candidate = finalization.split("- name: Download candidate stage fallback", 1)[1].split(
+        "- name: Download control stage fallback",
+        1,
+    )[0]
+    control = finalization.split("- name: Download control stage fallback", 1)[1].split(
+        "- name: Persist workflow failure in attempt ledger",
+        1,
+    )[0]
+    terminalize = finalization.split(
+        "- name: Persist workflow failure in attempt ledger",
+        1,
+    )[1].split("- name: Upload complete research campaign audit trail", 1)[0]
+
+    for fallback in (refreshed, candidate, control):
+        assert "hashFiles('research-campaign/state/research.sqlite3') == ''" in fallback
+    assert "if: ${{ always() }}" in terminalize
+
+
 def test_failed_attempt_is_retained_in_next_authoritative_registry_snapshot() -> None:
     source = _source()
     publish = source.split("- name: Publish authoritative research registry", 1)[1]
