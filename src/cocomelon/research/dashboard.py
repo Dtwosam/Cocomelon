@@ -253,6 +253,10 @@ def _checkpoint_history(
                         payload,
                     )
                 )
+        elif commits:
+            raise ResearchRegistryError(
+                "research dashboard found unauthenticated performance report"
+            )
         else:
             legacy: list[
                 tuple[int, int, str, ResearchCandidateState, list[str], dict[str, object]]
@@ -260,11 +264,6 @@ def _checkpoint_history(
             for report_id, payload in reports.items():
                 try:
                     state = _report_state(payload)
-                    existing_commit = commits_by_report.get(report_id)
-                    if existing_commit is not None and existing_commit.state is not state:
-                        raise ResearchRegistryError(
-                            "research dashboard checkpoint state is invalid"
-                        )
                     batch_ids, source_end_ms = _authenticate_history_report(
                         registry,
                         candidate_id=candidate_id,
