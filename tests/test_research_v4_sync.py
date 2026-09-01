@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from importlib import import_module
+from importlib import import_module, util
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,11 @@ from cocomelon.replay.source import validate_recording
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from tests.test_evidence_bridge_pipeline import _recording
 
-sync = import_module("cocomelon.research.v4_sync")
+
+def _sync_module() -> object:
+    spec = util.find_spec("cocomelon.research.v4_sync")
+    assert spec is not None, "cocomelon.research.v4_sync must exist"
+    return import_module("cocomelon.research.v4_sync")
 
 
 def _finished_at(value_ms: int) -> str:
@@ -38,7 +42,10 @@ def _acquisition_artifact(tmp_path: Path) -> tuple[Path, int, int]:
     return root, session.started_at_ms, finish_ms
 
 
-def test_failed_v4_capture_records_actual_session_interval_without_economics(tmp_path: Path) -> None:
+def test_failed_v4_capture_records_actual_session_interval_without_economics(
+    tmp_path: Path,
+) -> None:
+    sync = _sync_module()
     artifact_root, expected_start, expected_end = _acquisition_artifact(tmp_path)
     run = sync.V4AuthorityRun(
         run_id="33369130434",
@@ -80,6 +87,7 @@ def test_failed_v4_capture_records_actual_session_interval_without_economics(tmp
 def test_in_progress_v4_run_is_a_completeness_barrier_not_a_nominal_interval(
     tmp_path: Path,
 ) -> None:
+    sync = _sync_module()
     artifact_root, start_ms, end_ms = _acquisition_artifact(tmp_path)
     completed = sync.V4AuthorityRun(
         run_id="completed",
@@ -120,6 +128,7 @@ def test_in_progress_v4_run_is_a_completeness_barrier_not_a_nominal_interval(
 def test_completed_run_without_artifact_only_advances_when_capture_was_proven_skipped(
     tmp_path: Path,
 ) -> None:
+    sync = _sync_module()
     ambiguous = sync.V4AuthorityRun(
         run_id="ambiguous",
         run_attempt=1,
@@ -169,6 +178,7 @@ def test_completed_run_without_artifact_only_advances_when_capture_was_proven_sk
 def test_v4_authority_rejects_source_events_outside_declared_session_finish(
     tmp_path: Path,
 ) -> None:
+    sync = _sync_module()
     artifact_root, _, _ = _acquisition_artifact(tmp_path)
     segments = validate_recording(artifact_root / "recording")
     too_early_finish = max(item.last_available_at_ms for item in segments) - 1
