@@ -2,7 +2,8 @@ name: Research V4 Acquisition Authority Sync
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "57 0,6,12,18 * * *"
+    - cron: "35 7 * * *"
   workflow_dispatch:
 
 permissions:
@@ -143,7 +144,7 @@ jobs:
             /usr/bin/gh api --paginate \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?event=schedule&per_page=100" \
               --jq '.workflow_runs[]
-                | [.id, .run_attempt, .status, (.conclusion // ""), .run_started_at]
+                | [.id, .run_attempt, .status, (.conclusion // ""), (.run_started_at // .created_at)]
                 | @tsv'
           )"
 
@@ -172,8 +173,9 @@ jobs:
               ARTIFACT_ID="$(
                 /usr/bin/gh api \
                   "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
-                  --jq --arg name "$EXPECTED_NAME" \
-                    '.artifacts | map(select(.expired == false and .name == $name)) | .[0].id // empty'
+                  --jq ".artifacts
+                    | map(select(.expired == false and .name == \"$EXPECTED_NAME\"))
+                    | .[0].id // empty"
               )"
               if [ -z "$ARTIFACT_ID" ]; then
                 echo "completed V4 run lacks authoritative acquisition artifact: $RUN_ID" >&2
