@@ -18,6 +18,7 @@ from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 _BOOTSTRAP_FAMILY_ID = "scheduled-research-bootstrap-v1"
 _BOOTSTRAP_STARTING_CASH = Decimal("10000")
+_BOOTSTRAP_RISK_PER_TRADE = Decimal("0.0025")
 
 
 def _canonical_json(payload: dict[str, object]) -> str:
@@ -88,6 +89,7 @@ def ensure_bootstrap_candidate(
                 "economic_claim": "none",
                 "entry_window_ms": RESEARCH_ENTRY_WINDOW_MS,
                 "paper_only": True,
+                "risk_per_trade": str(_BOOTSTRAP_RISK_PER_TRADE),
             }
         ),
         state=ResearchCandidateState.DRAFT,
