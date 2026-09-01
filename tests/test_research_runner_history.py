@@ -7,6 +7,7 @@ import pytest
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
+    bind_runner_attempt_source_interval,
     finish_runner_attempt,
     load_runner_attempts,
     record_runner_attempt_started,
@@ -52,6 +53,44 @@ def test_runner_attempt_lifecycle_is_append_only_and_auditable(tmp_path: Path) -
     assert attempt.report_id is None
     assert attempt.error_type == "RuntimeError"
     assert attempt.error_message == "transport failed"
+
+
+def test_bound_source_interval_survives_later_failure_without_derived_interval(
+    tmp_path: Path,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        record_runner_attempt_started(
+            registry.connection,
+            attempt_id="attempt-bound",
+            candidate_id="candidate-1",
+            batch_id="batch-bound",
+            source_id="source-bound",
+            artifact_root="/artifacts/attempt-bound/output",
+        )
+        bind_runner_attempt_source_interval(
+            registry.connection,
+            attempt_id="attempt-bound",
+            start_ms=10_000,
+            end_ms=20_000,
+        )
+        finish_runner_attempt(
+            registry.connection,
+            attempt_id="attempt-bound",
+            status=ResearchRunnerAttemptStatus.FAILED,
+            start_ms=None,
+            end_ms=None,
+            report_id=None,
+            error_type="ValueError",
+            error_message="artifact verification failed",
+        )
+        attempt = load_runner_attempts(registry.connection)[0]
+    finally:
+        registry.close()
+
+    assert attempt.status is ResearchRunnerAttemptStatus.FAILED
+    assert attempt.start_ms == 10_000
+    assert attempt.end_ms == 20_000
 
 
 def test_runner_attempt_identity_is_idempotent_but_cannot_be_rewritten(tmp_path: Path) -> None:
