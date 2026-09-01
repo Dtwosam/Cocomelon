@@ -522,34 +522,39 @@ jobs:
       actions: none
     steps:
       - name: Download evaluated stage for publication
-        if: ${{ needs.evaluate-research.result != 'skipped' }}
+        if: ${{ always() && needs.evaluate-research.result != 'skipped' }}
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Download refreshed stage when evaluation was skipped
-        if: ${{ needs.evaluate-research.result == 'skipped' && needs.refresh-authority.result != 'skipped' }}
+      - name: Download refreshed stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.refresh-authority.result != 'skipped' }}
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Download candidate stage when refresh was skipped
-        if: ${{ needs.refresh-authority.result == 'skipped' && needs.candidate-build.result != 'skipped' }}
+      - name: Download candidate stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.candidate-build.result != 'skipped' }}
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Download control stage when candidate setup was skipped
-        if: ${{ needs.candidate-build.result == 'skipped' }}
+      - name: Download control stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' }}
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
       - name: Persist workflow failure in attempt ledger
+        if: ${{ always() }}
         run: |
           set -euo pipefail
           if [ ! -f research-campaign/state/research.sqlite3 ]; then
