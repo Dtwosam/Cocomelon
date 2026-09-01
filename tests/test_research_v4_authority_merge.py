@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from cocomelon.research.v4_authority import merge_v4_authority_snapshot
 
 from cocomelon.research.contracts import (
     ResearchCandidateManifest,
@@ -16,6 +15,7 @@ from cocomelon.research.runner_history import (
     load_runner_attempts,
     record_runner_attempt_started,
 )
+from cocomelon.research.v4_authority import merge_v4_authority_snapshot
 
 
 def _candidate(candidate_id: str = "candidate-a") -> ResearchCandidateManifest:
