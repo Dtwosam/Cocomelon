@@ -214,7 +214,10 @@ jobs:
               attempt_id = os.environ["ATTEMPT_ID"]
               attempts = load_runner_attempts(registry.connection)
               attempt = next((item for item in attempts if item.attempt_id == attempt_id), None)
-              if attempt is not None and attempt.status is ResearchRunnerAttemptStatus.RUNNING:
+              if attempt is not None and attempt.status in (
+                  ResearchRunnerAttemptStatus.RUNNING,
+                  ResearchRunnerAttemptStatus.EVALUATING,
+              ):
                   finish_runner_attempt(
                       registry.connection,
                       attempt_id=attempt_id,
@@ -239,7 +242,7 @@ jobs:
           retention-days: 30
 
       - name: Publish authoritative research registry
-        if: ${{ success() }}
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: research-authoritative-registry
