@@ -142,6 +142,92 @@ def test_research_status_authenticates_and_orders_checkpoint_history(tmp_path: P
     assert checkpoints[1]["mean_net_r"] == "0.075"
 
 
+def test_research_status_reauthenticates_every_historical_checkpoint(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("candidate-history"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        first_artifact = write_research_artifact(
+            tmp_path / "history-first",
+            batch_id="history-batch-first",
+            source_id="history-source-first",
+            replay_run_id="history-replay-first",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),),
+        )
+        first_report = evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-history",
+            artifact_batches=(first_artifact,),
+        )
+        second_artifact = write_research_artifact(
+            tmp_path / "history-second",
+            batch_id="history-batch-second",
+            source_id="history-source-second",
+            replay_run_id="history-replay-second",
+            start_ms=200_000,
+            end_ms=400_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=300_000, net_r=Decimal("-0.10")),),
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-history",
+            artifact_batches=(second_artifact,),
+        )
+
+        row = registry.connection.execute(
+            "SELECT payload_json FROM research_performance_reports WHERE report_id = ?",
+            (first_report.report_id,),
+        ).fetchone()
+        assert row is not None
+        forged = json.loads(str(row["payload_json"]))
+        assert isinstance(forged, dict)
+        forged["net_pnl"] = "999.000000"
+        unsigned = dict(forged)
+        unsigned.pop("report_id", None)
+        forged_id = _report_id(unsigned)
+        forged["report_id"] = forged_id
+        forged_json = json.dumps(
+            forged,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        with registry.connection:
+            registry.connection.execute(
+                """
+                INSERT INTO research_performance_reports (report_id, candidate_id, payload_json)
+                VALUES (?, ?, ?)
+                """,
+                (forged_id, "candidate-history", forged_json),
+            )
+            registry.connection.execute(
+                """
+                UPDATE research_checkpoint_commits
+                SET report_id = ?
+                WHERE report_id = ?
+                """,
+                (forged_id, first_report.report_id),
+            )
+            registry.connection.execute(
+                "DELETE FROM research_performance_reports WHERE report_id = ?",
+                (first_report.report_id,),
+            )
+
+        with pytest.raises(
+            ResearchRegistryError,
+            match="immutable observations|canonical report payload",
+        ):
+            build_research_status(registry)
+    finally:
+        registry.close()
+
+
 def test_research_status_fails_closed_on_unauthenticated_report(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     try:
