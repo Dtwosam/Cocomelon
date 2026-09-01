@@ -111,7 +111,7 @@ jobs:
         with:
           ref: ${{ env.RESEARCH_CODE_REVISION }}
           fetch-depth: 1
-          clean: true
+          clean: false
 
       - name: Install Cocomelon
         run: |
