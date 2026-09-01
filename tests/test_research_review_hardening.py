@@ -28,7 +28,7 @@ def _job(source: str, name: str, next_name: str | None) -> str:
 
 def test_running_attempt_source_interval_is_bound_once_before_evaluation(tmp_path: Path) -> None:
     history = import_module("cocomelon.research.runner_history")
-    binder = getattr(history, "bind_runner_attempt_source_interval")
+    binder = history.bind_runner_attempt_source_interval
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     try:
         record_runner_attempt_started(
@@ -75,13 +75,22 @@ def test_capture_binds_candidate_touch_before_any_candidate_runtime() -> None:
     assert "Bind trusted capture interval before candidate execution" in capture
     assert "bind_runner_attempt_source_interval" in capture
     assert "record_touched_interval" in capture
-    assert "research-capture-control-stage-${{ github.run_id }}-${{ github.run_attempt }}" in capture
-    assert "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}" in capture
+    assert (
+        "research-capture-control-stage-${{ github.run_id }}-${{ github.run_attempt }}"
+        in capture
+    )
+    assert (
+        "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}"
+        in capture
+    )
     assert source.index("Bind trusted capture interval before candidate execution") < source.index(
         "Run candidate strategy against trusted contexts"
     )
     assert "research.sqlite3" not in decisions
-    assert "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}" in decisions
+    assert (
+        "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}"
+        in decisions
+    )
     assert "research-capture-control-stage" not in decisions
 
 
@@ -121,7 +130,10 @@ def test_final_audit_retains_capture_and_candidate_failure_evidence_independentl
         1,
     )[1].split("\n      - name:", 1)[0]
     assert "continue-on-error: true" in capture
-    assert "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}" in capture
+    assert (
+        "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}"
+        in capture
+    )
     assert "research-campaign/audit/capture" in capture
     assert "continue-on-error: true" in decisions
     assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in decisions
