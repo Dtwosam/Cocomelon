@@ -501,10 +501,10 @@ jobs:
       - capture-control
       - candidate-decisions
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 45
     permissions:
       contents: read
-      actions: read
+      actions: write
     steps:
       - name: Checkout research authority control revision
         uses: actions/checkout@v4
@@ -537,74 +537,135 @@ jobs:
           name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
+      - name: Resolve bound research interval end
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT end_ms FROM research_runner_attempts WHERE attempt_id = ?",
+                  (os.environ["ATTEMPT_ID"],),
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None or row[0] is None or int(row[0]) <= 0:
+              raise RuntimeError("trusted research attempt is missing its bound source interval")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"BOUND_END_MS={int(row[0])}\n")
+          PY
+
+      - name: Dispatch post-capture V4 authority synchronization
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          date -u +%Y-%m-%dT%H:%M:%SZ > research-campaign/state/v4-sync-requested-at.txt
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+            -f ref=main
+
       - name: Download refreshed V4 authority after acquisition
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ARTIFACT_ROWS="$(
-            /usr/bin/gh api \
-              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
-              --jq '.artifacts
-                | map(select(.expired == false and .workflow_run != null))
-                | sort_by(.created_at)
-                | reverse
-                | .[]
-                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
-                | @tsv'
-          )"
-          ARTIFACT_ID=""
-          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
-            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
-              continue
-            fi
-            if [ "$ARTIFACT_BRANCH" != "main" ]; then
-              continue
-            fi
-            RUN_IS_TRUSTED="$(
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
-                --jq '(.head_branch == "main")
-                  and (.status == "completed")
-                  and (.path == ".github/workflows/research-v4-registry-sync.yml")
-                  and (.conclusion == "success")
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
-            )"
-            RUN_HEAD_SHA="$(
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
-                --jq '.head_sha // empty'
-            )"
-            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
-              continue
-            fi
-            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
-            break
-          done <<< "$ARTIFACT_ROWS"
-          if [ -z "$ARTIFACT_ID" ]; then
-            printf '%s\n' \
-              'Fresh trusted V4 authority unavailable after research acquisition; checkpoint blocked.' \
-              > research-campaign/diagnostics/refreshed-v4-authority-unavailable.txt
-            exit 67
-          fi
+          REQUESTED_AT="$(cat research-campaign/state/v4-sync-requested-at.txt)"
           rm -rf research-campaign/state/refreshed-v4-authority
-          /usr/bin/gh api \
-            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
-            > research-campaign/state/refreshed-v4-authority.zip
-          unzip -q \
-            research-campaign/state/refreshed-v4-authority.zip \
-            -d research-campaign/state/refreshed-v4-authority
-          REGISTRY_PATH="$(
-            find research-campaign/state/refreshed-v4-authority \
-              -type f -name research.sqlite3 -print -quit
-          )"
-          if [ -z "$REGISTRY_PATH" ]; then
-            printf '%s\n' \
-              'Trusted V4 sync artifact did not contain research.sqlite3; checkpoint blocked.' \
-              > research-campaign/diagnostics/refreshed-v4-authority-unavailable.txt
-            exit 68
+          for _ in $(seq 1 240); do
+            RUN_ID="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+                --jq ".workflow_runs
+                  | map(select(.created_at >= \"$REQUESTED_AT\"
+                    and .head_branch == \"main\"
+                    and .path == \".github/workflows/research-v4-registry-sync.yml\"))
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0].id // empty"
+            )"
+            if [ -z "$RUN_ID" ]; then
+              sleep 10
+              continue
+            fi
+            RUN_STATE="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '[.status, (.conclusion // ""), .head_branch, .event, .path] | @tsv'
+            )"
+            IFS=$'\t' read -r RUN_STATUS RUN_CONCLUSION RUN_BRANCH RUN_EVENT RUN_PATH <<< "$RUN_STATE"
+            if [ "$RUN_STATUS" != "completed" ]; then
+              sleep 10
+              continue
+            fi
+            if [ "$RUN_CONCLUSION" != "success" ] \
+              || [ "$RUN_BRANCH" != "main" ] \
+              || [ "$RUN_EVENT" != "workflow_dispatch" ] \
+              || [ "$RUN_PATH" != ".github/workflows/research-v4-registry-sync.yml" ]; then
+              echo "post-capture V4 authority synchronization failed provenance validation" >&2
+              exit 67
+            fi
+            ARTIFACT_ID="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+                --jq '.artifacts
+                  | map(select(.expired == false and .name == "research-authoritative-registry"))
+                  | .[0].id // empty'
+            )"
+            if [ -z "$ARTIFACT_ID" ]; then
+              echo "post-capture V4 authority synchronization produced no registry" >&2
+              exit 68
+            fi
+            mkdir -p research-campaign/state/refreshed-v4-authority
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+              > research-campaign/state/refreshed-v4-authority.zip
+            unzip -q \
+              research-campaign/state/refreshed-v4-authority.zip \
+              -d research-campaign/state/refreshed-v4-authority
+            REGISTRY_PATH="$(
+              find research-campaign/state/refreshed-v4-authority \
+                -type f -name research.sqlite3 -print -quit
+            )"
+            if [ -z "$REGISTRY_PATH" ]; then
+              echo "trusted V4 sync artifact did not contain research.sqlite3" >&2
+              exit 69
+            fi
+            cp "$REGISTRY_PATH" research-campaign/state/refreshed-v4-authority.sqlite3
+            THROUGH_MS="$(
+              REGISTRY_PATH=research-campaign/state/refreshed-v4-authority.sqlite3 python - <<'PY'
+          import os
+          import sqlite3
+
+          connection = sqlite3.connect(os.environ["REGISTRY_PATH"])
+          try:
+              row = connection.execute(
+                  "SELECT complete_through_ms FROM research_v4_registry_state WHERE singleton = 1"
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None:
+              raise SystemExit(2)
+          print(int(row[0]))
+          PY
+            )"
+            if [ "$THROUGH_MS" -lt "$BOUND_END_MS" ]; then
+              echo "fresh V4 authority does not cover bound research interval" >&2
+              exit 70
+            fi
+            printf '%s\n' "$RUN_ID" > research-campaign/state/refreshed-v4-sync-run-id.txt
+            printf '%s\n' "$THROUGH_MS" > research-campaign/state/refreshed-v4-complete-through-ms.txt
+            break
+          done
+          if [ ! -f research-campaign/state/refreshed-v4-authority.sqlite3 ]; then
+            echo "timed out waiting for post-capture V4 authority synchronization" >&2
+            exit 71
           fi
-          cp "$REGISTRY_PATH" research-campaign/state/refreshed-v4-authority.sqlite3
 
       - name: Merge refreshed V4 authority after acquisition
         env:
@@ -640,6 +701,9 @@ jobs:
     needs: refresh-authority
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: none
@@ -742,6 +806,9 @@ jobs:
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: none
