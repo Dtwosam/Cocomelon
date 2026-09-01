@@ -182,10 +182,10 @@ def _seal_legacy_checkpoint_prefix(
         report_id = str(row["report_id"])
         try:
             payload = json.loads(str(row["payload_json"]))
-        except json.JSONDecodeError as exc:
-            raise ResearchRegistryError("stored legacy checkpoint report is invalid") from exc
+        except json.JSONDecodeError:
+            return
         if not isinstance(payload, dict) or not all(isinstance(key, str) for key in payload):
-            raise ResearchRegistryError("stored legacy checkpoint report is invalid")
+            return
         reports[report_id] = payload
 
     commits = load_authenticated_checkpoint_commits(
@@ -204,8 +204,8 @@ def _seal_legacy_checkpoint_prefix(
         tuple[int, int, str, ResearchCandidateState, tuple[str, ...]]
     ] = []
     for report_id, payload in reports.items():
-        state = _legacy_report_state(payload)
         try:
+            state = _legacy_report_state(payload)
             assert_historical_checkpoint_report_backed_by_observations(
                 registry.connection,
                 candidate_id=candidate_id,
@@ -213,16 +213,14 @@ def _seal_legacy_checkpoint_prefix(
                 payload=payload,
                 state=state,
             )
-        except ValueError as exc:
-            raise ResearchRegistryError(
-                "legacy checkpoint report is not canonically authenticated"
-            ) from exc
-        batch_ids = _legacy_batch_ids(payload)
-        source_end_ms = _legacy_source_end_ms(
-            registry,
-            candidate_id=candidate_id,
-            batch_ids=batch_ids,
-        )
+            batch_ids = _legacy_batch_ids(payload)
+            source_end_ms = _legacy_source_end_ms(
+                registry,
+                candidate_id=candidate_id,
+                batch_ids=batch_ids,
+            )
+        except (ResearchRegistryError, ValueError):
+            return
         legacy.append((source_end_ms, len(batch_ids), report_id, state, batch_ids))
 
     legacy.sort(key=lambda item: (item[0], item[1], item[2]))
@@ -230,8 +228,10 @@ def _seal_legacy_checkpoint_prefix(
     for _source_end_ms, _batch_count, report_id, state, batch_ids in legacy:
         current_batch_ids = set(batch_ids)
         if not previous_batch_ids.issubset(current_batch_ids):
-            raise ResearchRegistryError("legacy checkpoint history is not cumulative")
+            return
         previous_batch_ids = current_batch_ids
+
+    for _source_end_ms, _batch_count, report_id, state, _batch_ids in legacy:
         try:
             record_authenticated_checkpoint_commit(
                 registry.connection,
