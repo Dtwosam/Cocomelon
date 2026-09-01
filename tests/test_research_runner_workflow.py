@@ -9,6 +9,13 @@ def _source() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
+def _job_block(source: str, name: str, next_name: str | None) -> str:
+    block = source.split(f"\n  {name}:\n", 1)[1]
+    if next_name is not None:
+        block = block.split(f"\n  {next_name}:\n", 1)[0]
+    return block
+
+
 def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
     source = _source()
     lowered = source.lower()
@@ -44,9 +51,12 @@ def test_research_campaign_pins_runtime_to_candidate_code_revision() -> None:
 
     assert "Resolve candidate code revision from authoritative registry" in source
     assert "SELECT code_revision FROM research_candidates WHERE candidate_id = ?" in source
-    assert 'RESEARCH_CODE_REVISION=' in source
+    assert "candidate_revision: ${{ steps.candidate.outputs.revision }}" in source
     assert "Checkout candidate code revision" in source
-    assert "ref: ${{ env.RESEARCH_CODE_REVISION }}" in source
+    assert "ref: ${{ needs.prepare-control.outputs.candidate_revision }}" in source
+    assert source.index("Resolve candidate code revision from authoritative registry") < source.index(
+        "Checkout candidate code revision"
+    )
     assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
     assert source.index("Install Cocomelon") < source.index("record-mainnet-evidence")
 
@@ -87,11 +97,11 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
 
 def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> None:
     source = _source()
-    job_header = source.split("    steps:", 1)[0]
-    restore = source.split("- name: Restore authoritative research registry", 1)[1].split(
-        "- name: Resolve candidate code revision from authoritative registry",
-        1,
-    )[0]
+    prepare = _job_block(source, "prepare-control", "candidate-build")
+    candidate = _job_block(source, "candidate-build", "refresh-authority")
+    refresh = _job_block(source, "refresh-authority", "evaluate-research")
+    evaluation = _job_block(source, "evaluate-research", "finalize-publish")
+    finalization = _job_block(source, "finalize-publish", None)
     refresh_download = source.split(
         "- name: Download refreshed V4 authority after acquisition",
         1,
@@ -100,21 +110,25 @@ def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> Non
         "- name: Merge refreshed V4 authority after acquisition",
         1,
     )[1].split(
-        "- name: Evaluate authenticated research attempt",
+        "- name: Upload refreshed research stage",
         1,
     )[0]
 
-    assert "GH_TOKEN:" not in job_header
+    assert "actions: read" in prepare
+    assert "actions: read" in refresh
+    for candidate_controlled in (candidate, evaluation, finalization):
+        assert "actions: none" in candidate_controlled
+        assert "GH_TOKEN:" not in candidate_controlled
     assert source.count("GH_TOKEN: ${{ github.token }}") == 2
-    assert "GH_TOKEN: ${{ github.token }}" in restore
+    assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download
     assert "GH_TOKEN:" not in refresh_merge
-    assert "/usr/bin/gh api" in restore
+    assert "/usr/bin/gh api" in prepare
     assert "/usr/bin/gh api" in refresh_download
     assert "python" not in refresh_download
     assert "cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
-    assert "persist-credentials: false" in source.split(
+    assert "persist-credentials: false" in prepare.split(
         "Checkout research campaign control revision",
         1,
     )[1].split("- uses: actions/setup-python", 1)[0]
@@ -148,7 +162,7 @@ def test_research_campaign_refreshes_v4_authority_after_capture_before_evaluatio
         "- name: Merge refreshed V4 authority after acquisition",
         1,
     )[1].split(
-        "- name: Evaluate authenticated research attempt",
+        "- name: Upload refreshed research stage",
         1,
     )[0]
 
@@ -169,7 +183,8 @@ def test_research_campaign_refreshes_v4_authority_after_capture_before_evaluatio
     assert "merge_v4_authority_snapshot" in refresh_merge
     assert "research-campaign/state/research.sqlite3" in refresh_merge
     assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh_merge
-    assert "cp \"$REGISTRY_PATH\" research-campaign/state/research.sqlite3" not in source
+    assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_download
+    assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_merge
 
 
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
