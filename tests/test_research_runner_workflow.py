@@ -92,10 +92,14 @@ def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> Non
         "- name: Resolve candidate code revision from authoritative registry",
         1,
     )[0]
-    refresh_download = source.split("- name: Download refreshed V4 authority after acquisition", 1)[
-        1
-    ].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
-    refresh_merge = source.split("- name: Merge refreshed V4 authority after acquisition", 1)[1].split(
+    refresh_download = source.split(
+        "- name: Download refreshed V4 authority after acquisition",
+        1,
+    )[1].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
+    refresh_merge = source.split(
+        "- name: Merge refreshed V4 authority after acquisition",
+        1,
+    )[1].split(
         "- name: Evaluate authenticated research attempt",
         1,
     )[0]
@@ -136,10 +140,14 @@ def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
 
 def test_research_campaign_refreshes_v4_authority_after_capture_before_evaluation() -> None:
     source = _source()
-    refresh_download = source.split("- name: Download refreshed V4 authority after acquisition", 1)[
-        1
-    ].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
-    refresh_merge = source.split("- name: Merge refreshed V4 authority after acquisition", 1)[1].split(
+    refresh_download = source.split(
+        "- name: Download refreshed V4 authority after acquisition",
+        1,
+    )[1].split("- name: Merge refreshed V4 authority after acquisition", 1)[0]
+    refresh_merge = source.split(
+        "- name: Merge refreshed V4 authority after acquisition",
+        1,
+    )[1].split(
         "- name: Evaluate authenticated research attempt",
         1,
     )[0]
