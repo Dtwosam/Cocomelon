@@ -166,3 +166,75 @@ def test_trusted_v4_registry_sync_producer_exists_before_research_schedule_can_r
         "phase9_v4_one_shot",
     ):
         assert forbidden not in lowered
+
+
+def test_v4_sync_bootstrap_creates_configured_candidate_idempotently(tmp_path: Path) -> None:
+    bootstrap = import_module("cocomelon.research.bootstrap")
+    ensure = bootstrap.ensure_bootstrap_candidate
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        first = ensure(
+            registry,
+            candidate_id="scheduled-research-root",
+            code_revision="a" * 40,
+        )
+        second = ensure(
+            registry,
+            candidate_id="scheduled-research-root",
+            code_revision="b" * 40,
+        )
+        stored = registry.load_candidate("scheduled-research-root")
+    finally:
+        registry.close()
+
+    assert first.candidate_id == "scheduled-research-root"
+    assert first.code_revision == "a" * 40
+    assert second == first
+    assert stored == first
+    assert len(first.config_digest) == 64
+
+
+def test_v4_sync_seeds_candidate_before_first_authoritative_publication() -> None:
+    source = SYNC_WORKFLOW.read_text(encoding="utf-8")
+
+    seed_index = source.index("Ensure configured research bootstrap candidate exists")
+    inventory_index = source.index("Snapshot already-recorded V4 acquisition identities")
+    publish_index = source.index("Publish synchronized authoritative research registry")
+    assert seed_index < inventory_index < publish_index
+    assert "RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}" in source
+    assert "ensure_bootstrap_candidate" in source
+
+
+def test_research_requests_post_capture_authority_and_requires_covering_watermark() -> None:
+    source = _source()
+    refresh = _job(source, "refresh-authority", "evaluate-research")
+
+    assert "actions: write" in refresh
+    assert "Dispatch post-capture V4 authority synchronization" in refresh
+    assert "research-v4-registry-sync.yml/dispatches" in refresh
+    assert "BOUND_END_MS" in refresh
+    assert "complete_through_ms" in refresh
+    assert "does not cover bound research interval" in refresh
+    assert source.index("Bind trusted capture interval before candidate execution") < source.index(
+        "Dispatch post-capture V4 authority synchronization"
+    )
+
+
+def test_v4_sync_enumerates_every_workflow_run_attempt_independently() -> None:
+    source = SYNC_WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'for ATTEMPT in $(seq 1 "$LATEST_ATTEMPT")' in source
+    assert "/actions/runs/$RUN_ID/attempts/$ATTEMPT" in source
+    assert "/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=100" in source
+    assert "v4-acquisition-stage-${RUN_ID}-attempt-${ATTEMPT}" in source
+    assert "github-v4-${RUN_ID}-attempt-${ATTEMPT}" in source
+
+
+def test_authoritative_registry_publishers_share_one_concurrency_group() -> None:
+    campaign = _source()
+    sync = SYNC_WORKFLOW.read_text(encoding="utf-8")
+    group = "group: research-authoritative-registry-publisher"
+
+    assert group in _job(sync, "synchronize", None)
+    assert group in _job(campaign, "evaluate-research", "finalize-publish")
+    assert group in _job(campaign, "finalize-publish", None)
