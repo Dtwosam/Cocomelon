@@ -196,16 +196,6 @@ def run_research_artifact_attempt(
         )
         raise
 
-    finish_runner_attempt(
-        registry.connection,
-        attempt_id=request.attempt_id,
-        status=ResearchRunnerAttemptStatus.SUCCEEDED,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        report_id=report.report_id,
-        error_type=None,
-        error_message=None,
-    )
     return ResearchRunnerResult(
         attempt_id=request.attempt_id,
         start_ms=start_ms,
