@@ -220,6 +220,75 @@ def _validate_finish(
         raise ResearchRegistryError("unsuccessful research runner attempt cannot contain report_id")
 
 
+def finish_runner_attempt_uncommitted(
+    connection: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    status: ResearchRunnerAttemptStatus,
+    start_ms: int | None,
+    end_ms: int | None,
+    report_id: str | None,
+    error_type: str | None,
+    error_message: str | None,
+) -> None:
+    if not connection.in_transaction:
+        raise ResearchRegistryError(
+            "uncommitted research runner finish requires an active transaction"
+        )
+    resolved_attempt_id = _require_text(attempt_id, "attempt_id")
+    _validate_finish(
+        status=status,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        report_id=report_id,
+        error_type=error_type,
+        error_message=error_message,
+    )
+    existing = connection.execute(
+        "SELECT status FROM research_runner_attempts WHERE attempt_id = ?",
+        (resolved_attempt_id,),
+    ).fetchone()
+    if existing is None:
+        raise ResearchRegistryError(
+            f"research runner attempt not found: {resolved_attempt_id}"
+        )
+    existing_status = _stored_status(existing["status"])
+    if existing_status not in (
+        ResearchRunnerAttemptStatus.RUNNING,
+        ResearchRunnerAttemptStatus.EVALUATING,
+    ):
+        raise ResearchRegistryError(
+            f"research runner attempt is terminal: {resolved_attempt_id}"
+        )
+    if (
+        status is ResearchRunnerAttemptStatus.SUCCEEDED
+        and existing_status is not ResearchRunnerAttemptStatus.EVALUATING
+    ):
+        raise ResearchRegistryError(
+            "successful research runner attempt requires an evaluation claim"
+        )
+    cursor = connection.execute(
+        """
+        UPDATE research_runner_attempts
+        SET status = ?, start_ms = ?, end_ms = ?, report_id = ?,
+            error_type = ?, error_message = ?
+        WHERE attempt_id = ? AND status = ?
+        """,
+        (
+            status.value,
+            start_ms,
+            end_ms,
+            report_id,
+            error_type,
+            error_message,
+            resolved_attempt_id,
+            existing_status.value,
+        ),
+    )
+    if cursor.rowcount != 1:
+        raise ResearchRegistryError("research runner attempt changed concurrently")
+
+
 def finish_runner_attempt(
     connection: sqlite3.Connection,
     *,
@@ -232,60 +301,18 @@ def finish_runner_attempt(
     error_message: str | None,
 ) -> None:
     _ensure_schema(connection)
-    resolved_attempt_id = _require_text(attempt_id, "attempt_id")
-    _validate_finish(
-        status=status,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        report_id=report_id,
-        error_type=error_type,
-        error_message=error_message,
-    )
     connection.execute("BEGIN IMMEDIATE")
     try:
-        existing = connection.execute(
-            "SELECT status FROM research_runner_attempts WHERE attempt_id = ?",
-            (resolved_attempt_id,),
-        ).fetchone()
-        if existing is None:
-            raise ResearchRegistryError(
-                f"research runner attempt not found: {resolved_attempt_id}"
-            )
-        existing_status = _stored_status(existing["status"])
-        if existing_status not in (
-            ResearchRunnerAttemptStatus.RUNNING,
-            ResearchRunnerAttemptStatus.EVALUATING,
-        ):
-            raise ResearchRegistryError(
-                f"research runner attempt is terminal: {resolved_attempt_id}"
-            )
-        if (
-            status is ResearchRunnerAttemptStatus.SUCCEEDED
-            and existing_status is not ResearchRunnerAttemptStatus.EVALUATING
-        ):
-            raise ResearchRegistryError(
-                "successful research runner attempt requires an evaluation claim"
-            )
-        cursor = connection.execute(
-            """
-            UPDATE research_runner_attempts
-            SET status = ?, start_ms = ?, end_ms = ?, report_id = ?,
-                error_type = ?, error_message = ?
-            WHERE attempt_id = ? AND status = ?
-            """,
-            (
-                status.value,
-                start_ms,
-                end_ms,
-                report_id,
-                error_type,
-                error_message,
-                resolved_attempt_id,
-                existing_status.value,
-            ),
+        finish_runner_attempt_uncommitted(
+            connection,
+            attempt_id=attempt_id,
+            status=status,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            report_id=report_id,
+            error_type=error_type,
+            error_message=error_message,
         )
-        if cursor.rowcount != 1:
-            raise ResearchRegistryError("research runner attempt changed concurrently")
         connection.commit()
     except Exception:
         connection.rollback()
