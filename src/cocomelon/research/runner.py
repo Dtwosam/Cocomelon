@@ -16,6 +16,7 @@ from cocomelon.research.registry import (
 )
 from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
+    claim_runner_attempt_evaluation,
     finish_runner_attempt,
     record_runner_attempt_started,
 )
@@ -77,6 +78,31 @@ def _assert_candidate_matches_artifact(
         )
 
 
+def _reject_contamination(
+    registry: ResearchRegistry,
+    *,
+    request: ResearchRunnerRequest,
+    start_ms: int | None,
+    end_ms: int | None,
+    exc: ResearchContaminationError,
+) -> None:
+    candidate = registry.load_candidate(request.candidate_id)
+    if candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION:
+        registry.transition_candidate(
+            request.candidate_id,
+            ResearchCandidateState.REJECTED_CONTAMINATION,
+            reason="v4_source_interval_overlap",
+        )
+    _finish_failure(
+        registry,
+        request=request,
+        status=ResearchRunnerAttemptStatus.CONTAMINATED,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        exc=exc,
+    )
+
+
 def run_research_artifact_attempt(
     registry: ResearchRegistry,
     request: ResearchRunnerRequest,
@@ -107,7 +133,31 @@ def run_research_artifact_attempt(
             config_digest=verified.config_digest,
         )
         registry.assert_batch_disjoint_from_v4(verified.interval)
+    except ResearchContaminationError as exc:
+        _reject_contamination(
+            registry,
+            request=request,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
+    except Exception as exc:
+        _finish_failure(
+            registry,
+            request=request,
+            status=ResearchRunnerAttemptStatus.FAILED,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
 
+    claim_runner_attempt_evaluation(
+        registry.connection,
+        attempt_id=request.attempt_id,
+    )
+    try:
         report = evaluate_research_checkpoint(
             registry=registry,
             candidate_id=request.candidate_id,
@@ -120,17 +170,9 @@ def run_research_artifact_attempt(
             ),
         )
     except ResearchContaminationError as exc:
-        candidate = registry.load_candidate(request.candidate_id)
-        if candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION:
-            registry.transition_candidate(
-                request.candidate_id,
-                ResearchCandidateState.REJECTED_CONTAMINATION,
-                reason="v4_source_interval_overlap",
-            )
-        _finish_failure(
+        _reject_contamination(
             registry,
             request=request,
-            status=ResearchRunnerAttemptStatus.CONTAMINATED,
             start_ms=start_ms,
             end_ms=end_ms,
             exc=exc,
