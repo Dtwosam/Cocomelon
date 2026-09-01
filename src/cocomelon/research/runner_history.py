@@ -309,7 +309,11 @@ def finish_runner_attempt_uncommitted(
         error_message=error_message,
     )
     existing = connection.execute(
-        "SELECT status FROM research_runner_attempts WHERE attempt_id = ?",
+        """
+        SELECT status, start_ms, end_ms
+        FROM research_runner_attempts
+        WHERE attempt_id = ?
+        """,
         (resolved_attempt_id,),
     ).fetchone()
     if existing is None:
@@ -331,6 +335,24 @@ def finish_runner_attempt_uncommitted(
         raise ResearchRegistryError(
             "successful research runner attempt requires an evaluation claim"
         )
+
+    stored_start = existing["start_ms"]
+    stored_end = existing["end_ms"]
+    if (stored_start is None) != (stored_end is None):
+        raise ResearchRegistryError("stored research runner source interval is incomplete")
+    resolved_start = start_ms
+    resolved_end = end_ms
+    if stored_start is not None and stored_end is not None:
+        stored_interval = (int(stored_start), int(stored_end))
+        if start_ms is None and end_ms is None:
+            resolved_start, resolved_end = stored_interval
+        elif (start_ms, end_ms) != stored_interval:
+            raise ResearchRegistryError(
+                "research runner attempt already has a different source interval"
+            )
+        else:
+            resolved_start, resolved_end = stored_interval
+
     cursor = connection.execute(
         """
         UPDATE research_runner_attempts
@@ -340,8 +362,8 @@ def finish_runner_attempt_uncommitted(
         """,
         (
             status.value,
-            start_ms,
-            end_ms,
+            resolved_start,
+            resolved_end,
             report_id,
             error_type,
             error_message,
