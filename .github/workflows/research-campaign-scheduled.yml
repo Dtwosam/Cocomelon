@@ -50,14 +50,48 @@ jobs:
       - name: Restore authoritative research registry
         run: |
           set -euo pipefail
-          ARTIFACT_ID="$(
+          ARTIFACT_ROWS="$(
             gh api \
               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
-              --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty'
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
           )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.path == ".github/workflows/research-campaign-scheduled.yml")
+                  and (.status == "completed")
+                  and (.conclusion == "success" or .conclusion == "failure")
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
           if [ -z "$ARTIFACT_ID" ]; then
             printf '%s\n' \
-              'Authoritative research registry unavailable; V4 registry completeness cannot be proven.' \
+              'Trusted authoritative research registry unavailable; V4 registry completeness cannot be proven.' \
               > research-campaign/diagnostics/authoritative-registry-unavailable.txt
             exit 65
           fi
