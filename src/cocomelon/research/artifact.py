@@ -21,6 +21,10 @@ from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.bundle import load_baseline_replay_bundle
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 from cocomelon.research.contracts import TimeInterval
+from cocomelon.research.strategy_seam import (
+    load_candidate_strategy_decisions,
+    strategy_decision_from_payload,
+)
 
 _HARD_RISK_REASONS = frozenset(
     {
@@ -124,6 +128,64 @@ def _candidate_config_digest(
     return bundle.replay_config.config_digest
 
 
+def _candidate_strategy_identity(
+    source_root: Path,
+    *,
+    manifest: ReplayManifest,
+    journal: JournalStore,
+    replay_run_id: str,
+) -> tuple[str, str | None, str | None]:
+    strategy_path = source_root / "strategy-decisions.json"
+    fallback_config = _candidate_config_digest(source_root, manifest)
+    if not strategy_path.is_file():
+        return manifest.code_revision, fallback_config, None
+
+    try:
+        artifact = load_candidate_strategy_decisions(
+            strategy_path,
+            bundle_path=source_root / "bundle.json",
+        )
+    except ValueError as exc:
+        raise ResearchArtifactError("research candidate strategy artifact is invalid") from exc
+
+    if fallback_config is None or artifact.candidate_config_digest != fallback_config:
+        raise ResearchArtifactError(
+            "research candidate strategy config does not match trusted replay config"
+        )
+
+    artifact_decision_ids: list[str] = []
+    for item in artifact.decisions:
+        try:
+            decision = strategy_decision_from_payload(item.get("decision"))
+        except ValueError as exc:
+            raise ResearchArtifactError(
+                "research candidate strategy decision is invalid"
+            ) from exc
+        artifact_decision_ids.append(decision.decision_id)
+
+    journal_decision_ids = sorted(
+        str(observation.strategy_decision_id)
+        for observation in journal.iter_observations()
+        if observation.replay_run_id == replay_run_id
+        and observation.kind is ObservationKind.STRATEGY_DECISION
+        and observation.strategy_decision_id is not None
+    )
+    if sorted(artifact_decision_ids) != journal_decision_ids:
+        raise ResearchArtifactError(
+            "research candidate strategy decisions do not match trusted replay journal"
+        )
+    if len(artifact_decision_ids) != len(journal_decision_ids):
+        raise ResearchArtifactError(
+            "research candidate strategy decision accounting is incomplete"
+        )
+
+    return (
+        artifact.candidate_code_revision,
+        artifact.candidate_config_digest,
+        _sha256(strategy_path),
+    )
+
+
 def _verified_recording_segment_digest(
     source_root: Path,
     manifest: ReplayManifest,
@@ -192,6 +254,16 @@ def verify_research_batch_artifact(
     replay = _read_replay(paths["replay.json"])
     order_flag_key = "live_" + "order" + "s"
 
+    candidate_code_revision = ""
+    candidate_config_digest: str | None = None
+    candidate_strategy_digest: str | None = None
+    recording_segment_digest = ""
+    canonical_trade_ids: tuple[str, ...] = ()
+    samples: tuple[TradeEvaluationSample, ...] = ()
+    planned_risk_fractions: list[tuple[str, Decimal]] = []
+    health_reasons: set[str] = set()
+    hard_risk_reasons: set[str] = set()
+
     with tempfile.TemporaryDirectory(prefix="cocomelon-research-artifact-") as temporary:
         work_root = Path(temporary)
         work_journal_path = work_root / "journal.sqlite3"
@@ -236,7 +308,17 @@ def verify_research_batch_artifact(
                     raise ResearchArtifactError(
                         f"research mainnet attestation does not match canonical {field}"
                     )
-            candidate_config_digest = _candidate_config_digest(source_root, manifest)
+
+            (
+                candidate_code_revision,
+                candidate_config_digest,
+                candidate_strategy_digest,
+            ) = _candidate_strategy_identity(
+                source_root,
+                manifest=manifest,
+                journal=journal,
+                replay_run_id=result.run_id,
+            )
             recording_segment_digest = _verified_recording_segment_digest(
                 source_root,
                 manifest,
@@ -282,7 +364,6 @@ def verify_research_batch_artifact(
                     "research journal trades do not match canonical replay closed trades"
                 )
 
-            health_reasons: set[str] = set()
             if result.data_complete is not True or built.manifest.data_complete is not True:
                 health_reasons.add("incomplete_replay")
             if result.processed_gaps != 0 or manifest.gap_refs or built.manifest.gap_refs:
@@ -296,7 +377,6 @@ def verify_research_batch_artifact(
             if replay[order_flag_key] is not False:
                 health_reasons.add("unexpected_" + order_flag_key)
 
-            hard_risk_reasons: set[str] = set()
             for observation in journal.iter_observations():
                 if (
                     observation.replay_run_id == result.run_id
@@ -309,7 +389,6 @@ def verify_research_batch_artifact(
                     )
             health_reasons.update(hard_risk_reasons)
 
-            planned_risk_fractions: list[tuple[str, Decimal]] = []
             with localcontext(AUTHORITATIVE_CONTEXT):
                 for trade_id in canonical_trade_ids:
                     trade = trades[trade_id]
@@ -318,6 +397,11 @@ def verify_research_batch_artifact(
                     )
 
             samples = tuple(built.samples)
+            config_digest = manifest.config_digest
+            replay_run_id = result.run_id
+            manifest_id = result.manifest_id
+            result_digest = result.result_digest
+            interval = TimeInterval(result.start_ms, result.end_ms)
         except JournalConsistencyError as exc:
             raise ResearchArtifactError("research journal is inconsistent") from exc
         finally:
@@ -330,6 +414,7 @@ def verify_research_batch_artifact(
 
     source_digest = _canonical_digest(
         {
+            "candidate_strategy_digest": candidate_strategy_digest,
             "mainnet_source_digest": mainnet_source_digest,
             "recording_segment_digest": recording_segment_digest,
         }
@@ -338,13 +423,13 @@ def verify_research_batch_artifact(
     return VerifiedResearchBatch(
         batch_id=batch_id,
         source_id=source_id,
-        replay_run_id=result.run_id,
-        interval=TimeInterval(result.start_ms, result.end_ms),
-        manifest_id=result.manifest_id,
-        result_digest=result.result_digest,
+        replay_run_id=replay_run_id,
+        interval=interval,
+        manifest_id=manifest_id,
+        result_digest=result_digest,
         source_digest=source_digest,
-        code_revision=manifest.code_revision,
-        config_digest=manifest.config_digest,
+        code_revision=candidate_code_revision,
+        config_digest=config_digest,
         candidate_config_digest=candidate_config_digest,
         trade_ids=canonical_trade_ids,
         sample_digest=_sample_digest(samples),

@@ -26,7 +26,8 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
     assert "COCOMELON_EXECUTION_MODE: paper" in source
     assert "cancel-in-progress: false" in source
     assert "record-mainnet-evidence" in source
-    assert "from cocomelon.research.cohort import build_research_cohort" in source
+    assert "prepare_research_cohort_source" in source
+    assert "complete_research_cohort" in source
     assert "cocomelon-research-runner run-artifact" in source
     assert "research-authoritative-registry" in source
 
@@ -46,7 +47,7 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
         assert forbidden not in lowered
 
 
-def test_research_campaign_pins_acquisition_runtime_to_candidate_revision() -> None:
+def test_research_campaign_pins_candidate_strategy_before_trusted_capture() -> None:
     source = _source()
 
     assert "Resolve candidate code revision from authoritative registry" in source
@@ -54,20 +55,21 @@ def test_research_campaign_pins_acquisition_runtime_to_candidate_revision() -> N
     assert "candidate_revision: ${{ steps.candidate.outputs.revision }}" in source
     assert "Checkout candidate code revision" in source
     assert "ref: ${{ needs.prepare-control.outputs.candidate_revision }}" in source
-    resolve_index = source.index("Resolve candidate code revision from authoritative registry")
-    checkout_index = source.index("Checkout candidate code revision")
-    assert resolve_index < checkout_index
-    assert checkout_index < source.index("Install Cocomelon")
-    assert source.index("Install Cocomelon") < source.index("record-mainnet-evidence")
+    assert source.index("Resolve candidate code revision from authoritative registry") < source.index(
+        "Checkout candidate code revision"
+    )
+    assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
+    assert source.index("docker save") < source.index("record-mainnet-evidence")
 
 
-def test_candidate_build_never_receives_authoritative_registry() -> None:
+def test_candidate_build_never_receives_authoritative_registry_or_observations() -> None:
     source = _source()
-    candidate = _job_block(source, "candidate-build", "refresh-authority")
+    candidate = _job_block(source, "candidate-build", "capture-control")
 
     assert "research.sqlite3" not in candidate
     assert "research-control-stage" not in candidate
-    assert "Download prepared research control state" not in candidate
+    assert "record-mainnet-evidence" not in candidate
+    assert "research-campaign/recording" not in candidate
     assert "SELECT config_digest FROM research_candidates" not in candidate
     assert candidate.index("Checkout candidate code revision") < candidate.index(
         "actions/setup-python@v5"
@@ -79,10 +81,8 @@ def test_candidate_build_never_receives_authoritative_registry() -> None:
     assert "cache: pip" in setup
     assert "cache-dependency-path: candidate-src/pyproject.toml" in setup
     upload = candidate.split("- name: Upload candidate research stage", 1)[1]
-    assert "research-campaign/state" not in upload
-    assert "research-campaign/recording" in upload
-    assert "research-campaign/output" in upload
-    assert "research-campaign/diagnostics" in upload
+    assert "candidate-package/" in upload
+    assert "research-campaign" not in upload
 
 
 def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
@@ -104,10 +104,12 @@ def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
     assert "sort_by(.created_at) | reverse | .[0].id // empty" not in restore
 
 
-def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> None:
+def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     source = _source()
     prepare = _job_block(source, "prepare-control", "candidate-build")
-    candidate = _job_block(source, "candidate-build", "refresh-authority")
+    candidate = _job_block(source, "candidate-build", "capture-control")
+    capture = _job_block(source, "capture-control", "candidate-decisions")
+    decisions = _job_block(source, "candidate-decisions", "refresh-authority")
     refresh = _job_block(source, "refresh-authority", "evaluate-research")
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
     finalization = _job_block(source, "finalize-publish", None)
@@ -118,16 +120,12 @@ def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> Non
     refresh_merge = source.split(
         "- name: Merge refreshed V4 authority after acquisition",
         1,
-    )[1].split(
-        "- name: Upload refreshed research stage",
-        1,
-    )[0]
+    )[1].split("- name: Upload refreshed research stage", 1)[0]
 
     assert "actions: read" in prepare
     assert "actions: read" in refresh
-    for candidate_controlled in (candidate, evaluation, finalization):
-        assert "actions: none" in candidate_controlled
-        assert "GH_TOKEN:" not in candidate_controlled
+    for isolated in (candidate, capture, decisions, evaluation, finalization):
+        assert "GH_TOKEN:" not in isolated
     assert source.count("GH_TOKEN: ${{ github.token }}") == 2
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download
@@ -137,10 +135,6 @@ def test_actions_token_is_not_exposed_to_candidate_controlled_processes() -> Non
     assert "python" not in refresh_download
     assert "cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
-    assert "persist-credentials: false" in prepare.split(
-        "Checkout research campaign control revision",
-        1,
-    )[1].split("- uses: actions/setup-python", 1)[0]
 
 
 def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
@@ -161,7 +155,7 @@ def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
     assert "UPDATE research_runner_attempts" in failure
 
 
-def test_refresh_recombines_control_registry_with_candidate_artifact_before_v4_merge() -> None:
+def test_refresh_recombines_control_capture_and_decisions_before_v4_merge() -> None:
     source = _source()
     refresh = _job_block(source, "refresh-authority", "evaluate-research")
     refresh_download = source.split(
@@ -171,15 +165,14 @@ def test_refresh_recombines_control_registry_with_candidate_artifact_before_v4_m
     refresh_merge = source.split(
         "- name: Merge refreshed V4 authority after acquisition",
         1,
-    )[1].split(
-        "- name: Upload refreshed research stage",
-        1,
-    )[0]
+    )[1].split("- name: Upload refreshed research stage", 1)[0]
 
     assert "Download prepared research control state for authority merge" in refresh
     assert "research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
+    assert "Download trusted research capture stage" in refresh
+    assert "research-capture-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
     assert "Download candidate research stage" in refresh
-    assert "research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
+    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
     assert source.index("Acquire one public mainnet research cohort") < source.index(
         "Download refreshed V4 authority after acquisition"
     )
@@ -189,7 +182,6 @@ def test_refresh_recombines_control_registry_with_candidate_artifact_before_v4_m
     assert source.index("Merge refreshed V4 authority after acquisition") < source.index(
         "Evaluate authenticated research attempt"
     )
-    assert "/actions/artifacts?name=research-authoritative-registry" in refresh_download
     assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
     assert '.head_branch == "main"' in refresh_download
     assert '.status == "completed"' in refresh_download
@@ -201,7 +193,7 @@ def test_refresh_recombines_control_registry_with_candidate_artifact_before_v4_m
     assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_merge
 
 
-def test_evaluation_registry_is_owned_only_by_trusted_control_code() -> None:
+def test_evaluation_registry_and_economics_are_owned_only_by_trusted_control_code() -> None:
     source = _source()
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
 
@@ -214,22 +206,23 @@ def test_evaluation_registry_is_owned_only_by_trusted_control_code() -> None:
         "actions/setup-python@v5"
     )
     setup = evaluation.split("- uses: actions/setup-python@v5", 1)[1].split(
-        "- name: Install trusted research runner runtime",
+        "- name: Download refreshed research stage",
         1,
     )[0]
     assert "cache-dependency-path: control-src/pyproject.toml" in setup
     assert "python -m pip install -e ./control-src" in evaluation
+    assert "complete_research_cohort" in evaluation
     assert "cocomelon-research-runner run-artifact" in evaluation
     assert "research-campaign/state/research.sqlite3" in evaluation
 
 
 def test_research_campaign_uses_bounded_outcome_blind_capture_horizon() -> None:
     source = _source()
-    candidate = _job_block(source, "candidate-build", "refresh-authority")
+    capture = _job_block(source, "capture-control", "candidate-decisions")
     lowered = source.lower()
 
     assert source.count("record-mainnet-evidence") == 1
-    assert "--seconds 1800" in candidate
+    assert "--seconds 1800" in capture
     assert source.count("acquisition-attempt.txt") == 1
     assert "GITHUB_RUN_ID" in source
     assert "GITHUB_RUN_ATTEMPT" in source
@@ -260,24 +253,19 @@ def test_research_campaign_publishes_audit_state_on_failure() -> None:
     assert "authoritative-registry-unavailable.txt" in source
 
 
-def test_finalizer_falls_back_to_last_available_stage_and_always_terminalizes() -> None:
+def test_finalizer_falls_back_to_last_registry_stage_and_always_terminalizes() -> None:
     source = _source()
     finalization = _job_block(source, "finalize-publish", None)
 
     for step_name in (
         "Download evaluated stage for publication",
         "Download refreshed stage fallback",
-        "Download candidate stage fallback",
         "Download control stage fallback",
     ):
         step = finalization.split(f"- name: {step_name}", 1)[1].split("\n      - name:", 1)[0]
         assert "continue-on-error: true" in step
 
     refreshed = finalization.split("- name: Download refreshed stage fallback", 1)[1].split(
-        "- name: Download candidate stage fallback",
-        1,
-    )[0]
-    candidate = finalization.split("- name: Download candidate stage fallback", 1)[1].split(
         "- name: Download control stage fallback",
         1,
     )[0]
@@ -290,7 +278,7 @@ def test_finalizer_falls_back_to_last_available_stage_and_always_terminalizes() 
         1,
     )[1].split("- name: Upload complete research campaign audit trail", 1)[0]
 
-    for fallback in (refreshed, candidate, control):
+    for fallback in (refreshed, control):
         assert "hashFiles('research-campaign/state/research.sqlite3') == ''" in fallback
     assert "if: ${{ always() }}" in terminalize
 

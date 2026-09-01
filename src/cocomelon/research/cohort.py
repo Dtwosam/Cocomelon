@@ -28,6 +28,14 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.replay.adapters import ReplayRequirements
 from cocomelon.replay.engine import ReplayEngine, replay_run_id
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
+from cocomelon.research.strategy_seam import (
+    CandidateDecisionEpochEngine,
+    build_candidate_strategy_decisions,
+    load_candidate_strategy_decisions,
+    strategy_context_from_payload,
+    strategy_decision_to_payload,
+)
+from cocomelon.strategies.engine import evaluate_strategies
 
 RESEARCH_ENTRY_WINDOW_MS = 300_000
 RESEARCH_MAX_POSITION_AGE_MS = 1_200_000
@@ -48,6 +56,15 @@ class ResearchCohortBuildResult:
     start_ms: int
     end_ms: int
     dataset_manifest_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchCohortSourceResult:
+    output_root: Path
+    bundle_id: str
+    recording_session_digest: str
+    source_set_digest: str
+    code_revision: str
 
 
 def _read_mapping(path: Path, field: str) -> dict[str, object]:
@@ -240,11 +257,54 @@ def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None
         raise ValueError("research replay execution config does not match bounded protocol")
 
 
+def prepare_research_cohort_source(
+    recording_root: str | Path,
+    output_root: str | Path,
+    starting_cash: Decimal,
+    *,
+    trigger_head_sha: str,
+) -> ResearchCohortSourceResult:
+    recording = Path(recording_root)
+    output = Path(output_root)
+    _assert_sibling_layout(recording, output)
+    if not output.is_dir():
+        raise ValueError("research cohort output root must already exist")
+    trigger_head = _require_sha(trigger_head_sha, "trigger_head_sha")
+    segments = validate_recording(recording)
+    if not segments:
+        raise ValueError("research cohort recording must contain validated segments")
+    record = _normalized_record(output, recording_root=recording)
+    _write_json(output / "record.json", record)
+
+    freeze = _freeze_research_replay_payload(
+        recording,
+        output / "bundle.json",
+        starting_cash,
+    )
+    _write_json(output / "freeze.json", freeze)
+    workflow_head = _require_sha(
+        _require_string(freeze.get("code_revision"), "research freeze code_revision"),
+        "research freeze code_revision",
+    )
+    (output / "workflow-head.txt").write_text(workflow_head + "\n", encoding="utf-8")
+    (output / "trigger-head.txt").write_text(trigger_head + "\n", encoding="utf-8")
+    bundle = load_baseline_replay_bundle(output / "bundle.json")
+    return ResearchCohortSourceResult(
+        output_root=output,
+        bundle_id=bundle.bundle_id,
+        recording_session_digest=bundle.recording_session_digest,
+        source_set_digest=bundle.source_set_digest,
+        code_revision=workflow_head,
+    )
+
+
 def run_baseline_replay_payload(
     bundle_path: str | Path,
     journal_path: str | Path,
     execution_path: str | Path,
     facts_path: str | Path,
+    *,
+    strategy_decisions_path: str | Path | None = None,
 ) -> dict[str, object]:
     resolved_bundle_path = Path(bundle_path)
     bundle = load_baseline_replay_bundle(resolved_bundle_path)
@@ -270,6 +330,17 @@ def run_baseline_replay_payload(
     try:
         existing = journal.load_replay_result(run_id)
         if existing is None:
+            decision_engine = None
+            if strategy_decisions_path is not None:
+                artifact = load_candidate_strategy_decisions(
+                    strategy_decisions_path,
+                    bundle_path=resolved_bundle_path,
+                )
+                decision_engine = CandidateDecisionEpochEngine(
+                    tuple(item.market for item in session.selected),
+                    replay_config=bundle.replay_config,
+                    artifact=artifact,
+                )
             pipeline = BaselineReplayPipeline(
                 bundle.replay_config,
                 execution,
@@ -277,6 +348,7 @@ def run_baseline_replay_payload(
                 selected_markets=tuple(item.market for item in session.selected),
                 replay_run_id=run_id,
                 evidence_class=bundle.manifest.evidence_class,
+                decision_engine=decision_engine,
                 new_exposure_cutoff_ms=new_exposure_cutoff_ms,
             )
             result = ReplayEngine(
@@ -353,44 +425,43 @@ def _assert_dataset_eligible(dataset: dict[str, object]) -> None:
         raise ValueError("research cohort dataset must be complete and gap-free")
 
 
-def build_research_cohort(
+def _assert_fresh_completion_output(output: Path) -> None:
+    for name in (
+        "journal.sqlite3",
+        "execution.sqlite3",
+        "facts.sqlite3",
+        "replay.json",
+        "dataset.json",
+        "cohort-summary.json",
+    ):
+        if (output / name).exists():
+            raise ValueError(f"trusted research completion refuses pre-existing product: {name}")
+
+
+def complete_research_cohort(
     recording_root: str | Path,
     output_root: str | Path,
-    starting_cash: Decimal,
     *,
-    trigger_head_sha: str,
+    strategy_decisions_path: str | Path,
 ) -> ResearchCohortBuildResult:
     recording = Path(recording_root)
     output = Path(output_root)
     _assert_sibling_layout(recording, output)
-    if not output.is_dir():
-        raise ValueError("research cohort output root must already exist")
-    trigger_head = _require_sha(trigger_head_sha, "trigger_head_sha")
-
-    segments = validate_recording(recording)
-    if not segments:
-        raise ValueError("research cohort recording must contain validated segments")
-    record = _normalized_record(output, recording_root=recording)
-    _write_json(output / "record.json", record)
-
-    freeze = _freeze_research_replay_payload(
-        recording,
-        output / "bundle.json",
-        starting_cash,
+    _assert_fresh_completion_output(output)
+    bundle = load_baseline_replay_bundle(output / "bundle.json")
+    if validate_recording(recording) != bundle.manifest.segments:
+        raise ValueError("trusted research source changed after preparation")
+    load_candidate_strategy_decisions(
+        strategy_decisions_path,
+        bundle_path=output / "bundle.json",
     )
-    _write_json(output / "freeze.json", freeze)
-    workflow_head = _require_sha(
-        _require_string(freeze.get("code_revision"), "research freeze code_revision"),
-        "research freeze code_revision",
-    )
-    (output / "workflow-head.txt").write_text(workflow_head + "\n", encoding="utf-8")
-    (output / "trigger-head.txt").write_text(trigger_head + "\n", encoding="utf-8")
 
     replay = run_baseline_replay_payload(
         output / "bundle.json",
         output / "journal.sqlite3",
         output / "execution.sqlite3",
         output / "facts.sqlite3",
+        strategy_decisions_path=strategy_decisions_path,
     )
     _assert_replay_eligible(replay)
     _write_json(output / "replay.json", replay)
@@ -404,13 +475,14 @@ def build_research_cohort(
     _assert_dataset_eligible(dataset)
     _write_json(output / "dataset.json", dataset)
 
+    record = _read_mapping(output / "record.json", "record result")
     closed_trade_ids = replay.get("closed_trade_ids")
     if not isinstance(closed_trade_ids, list) or not all(
         isinstance(item, str) and item.strip() for item in closed_trade_ids
     ):
         raise ValueError("research replay closed_trade_ids is invalid")
     summary: dict[str, object] = {
-        "checked_out_code_revision": workflow_head,
+        "checked_out_code_revision": bundle.manifest.code_revision,
         "closed_positions": _require_int(
             replay.get("closed_positions"),
             "research replay closed_positions",
@@ -477,10 +549,15 @@ def build_research_cohort(
             replay.get("strategy_decisions"),
             "research replay strategy_decisions",
         ),
-        "trigger_head_sha": trigger_head,
-        "validated_segment_count": len(segments),
+        "trigger_head_sha": (output / "trigger-head.txt").read_text(encoding="utf-8").strip(),
+        "validated_segment_count": len(bundle.manifest.segments),
     }
     _write_json(output / "cohort-summary.json", summary)
+
+    decisions_target = output / "strategy-decisions.json"
+    source_decisions = Path(strategy_decisions_path)
+    if source_decisions.resolve() != decisions_target.resolve():
+        decisions_target.write_bytes(source_decisions.read_bytes())
 
     verified = verify_mainnet_evidence_cohort_payload(output)
     start_ms = _require_int(verified.get("start_ms"), "verified research cohort start_ms")
@@ -496,4 +573,39 @@ def build_research_cohort(
             dataset.get("dataset_manifest_id"),
             "research dataset manifest id",
         ),
+    )
+
+
+def _local_strategy(payload: dict[str, object]) -> dict[str, object]:
+    context = strategy_context_from_payload(payload["context"])
+    return strategy_decision_to_payload(evaluate_strategies(context).decision)
+
+
+def build_research_cohort(
+    recording_root: str | Path,
+    output_root: str | Path,
+    starting_cash: Decimal,
+    *,
+    trigger_head_sha: str,
+) -> ResearchCohortBuildResult:
+    recording = Path(recording_root)
+    output = Path(output_root)
+    source = prepare_research_cohort_source(
+        recording,
+        output,
+        starting_cash,
+        trigger_head_sha=trigger_head_sha,
+    )
+    decisions_path = output / "strategy-decisions.json"
+    build_candidate_strategy_decisions(
+        recording_root=recording,
+        bundle_path=output / "bundle.json",
+        output_path=decisions_path,
+        candidate_code_revision=source.code_revision,
+        evaluator=_local_strategy,
+    )
+    return complete_research_cohort(
+        recording,
+        output,
+        strategy_decisions_path=decisions_path,
     )

@@ -95,3 +95,15 @@ def test_candidate_decisions_are_bound_to_exact_trusted_source(tmp_path: Path) -
             output_root,
             strategy_decisions_path=decisions_path,
         )
+
+
+def test_trusted_completion_rejects_preexisting_economic_products(tmp_path: Path) -> None:
+    recording_root, output_root, decisions_path = _prepared(tmp_path)
+    (output_root / "replay.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="pre-existing product"):
+        cohort_module.complete_research_cohort(
+            recording_root,
+            output_root,
+            strategy_decisions_path=decisions_path,
+        )
