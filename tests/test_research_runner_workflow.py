@@ -65,6 +65,23 @@ def test_candidate_checkout_preserves_restored_authoritative_registry() -> None:
     )
 
 
+def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
+    source = _source()
+    restore = source.split("- name: Restore authoritative research registry", 1)[1].split(
+        "- name: Resolve candidate code revision from authoritative registry",
+        1,
+    )[0]
+
+    assert "/actions/artifacts?name=research-authoritative-registry" in restore
+    assert "/actions/runs/$RUN_ID" in restore
+    assert '.head_branch == "main"' in restore
+    assert '.path == ".github/workflows/research-campaign-scheduled.yml"' in restore
+    assert '.status == "completed"' in restore
+    assert '.conclusion == "success" or .conclusion == "failure"' in restore
+    assert "workflow_run.id" in restore
+    assert "sort_by(.created_at) | reverse | .[0].id // empty" not in restore
+
+
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
     source = _source()
     lowered = source.lower()
