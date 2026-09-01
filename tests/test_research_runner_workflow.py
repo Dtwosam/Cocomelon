@@ -112,6 +112,10 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     refresh = _job_block(source, "refresh-authority", "evaluate-research")
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
     finalization = _job_block(source, "finalize-publish", None)
+    refresh_dispatch = source.split(
+        "- name: Dispatch post-capture V4 authority synchronization",
+        1,
+    )[1].split("- name: Download refreshed V4 authority after acquisition", 1)[0]
     refresh_download = source.split(
         "- name: Download refreshed V4 authority after acquisition",
         1,
@@ -122,14 +126,16 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     )[1].split("- name: Upload refreshed research stage", 1)[0]
 
     assert "actions: read" in prepare
-    assert "actions: read" in refresh
+    assert "actions: write" in refresh
     for isolated in (candidate, capture, decisions, evaluation, finalization):
         assert "GH_TOKEN:" not in isolated
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 2
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 3
     assert "GH_TOKEN: ${{ github.token }}" in prepare
+    assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download
     assert "GH_TOKEN:" not in refresh_merge
     assert "/usr/bin/gh api" in prepare
+    assert "/usr/bin/gh api" in refresh_dispatch
     assert "/usr/bin/gh api" in refresh_download
     assert "python" not in refresh_download
     assert "cocomelon" not in refresh_download.lower()
