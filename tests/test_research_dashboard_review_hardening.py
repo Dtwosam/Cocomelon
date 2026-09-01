@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 import cocomelon.research_dashboard_cli as research_dashboard_cli
-from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState, TimeInterval
+from cocomelon.research.contracts import (
+    ResearchCandidateManifest,
+    ResearchCandidateState,
+    TimeInterval,
+)
 from cocomelon.research.dashboard import build_research_status
 from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
