@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from collections.abc import Iterator
 
 from cocomelon.research.checkpoint_history import (
     load_authenticated_checkpoint_commits,
@@ -31,6 +35,38 @@ _ALLOWED_CHECKPOINT_STATES = frozenset(
         ResearchCandidateState.REJECTED_OPERATIONAL,
     }
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RunnerCheckpointBinding:
+    attempt_id: str
+    batch_id: str
+
+    def __post_init__(self) -> None:
+        if not self.attempt_id.strip():
+            raise ResearchRegistryError("research runner attempt_id must not be empty")
+        if not self.batch_id.strip():
+            raise ResearchRegistryError("research runner batch_id must not be empty")
+
+
+_RUNNER_CHECKPOINT_BINDING: ContextVar[RunnerCheckpointBinding | None] = ContextVar(
+    "research_runner_checkpoint_binding",
+    default=None,
+)
+
+
+@contextmanager
+def bind_runner_checkpoint_commit(
+    *,
+    attempt_id: str,
+    batch_id: str,
+) -> Iterator[None]:
+    binding = RunnerCheckpointBinding(attempt_id=attempt_id, batch_id=batch_id)
+    token = _RUNNER_CHECKPOINT_BINDING.set(binding)
+    try:
+        yield
+    finally:
+        _RUNNER_CHECKPOINT_BINDING.reset(token)
 
 
 def _validate_transition(
@@ -243,86 +279,6 @@ def _seal_legacy_checkpoint_prefix(
             raise ResearchRegistryError(str(exc)) from exc
 
 
-def complete_runner_attempt_success_uncommitted(
-    connection: sqlite3.Connection,
-    *,
-    attempt_id: str,
-    candidate_id: str,
-    start_ms: int,
-    end_ms: int,
-    report_id: str,
-) -> None:
-    if not connection.in_transaction:
-        raise ResearchRegistryError(
-            "runner success must share the authenticated checkpoint transaction"
-        )
-    resolved_attempt_id = attempt_id.strip()
-    resolved_candidate_id = candidate_id.strip()
-    resolved_report_id = report_id.strip()
-    if not resolved_attempt_id:
-        raise ResearchRegistryError("research runner attempt_id must not be empty")
-    if not resolved_candidate_id:
-        raise ResearchRegistryError("research runner candidate_id must not be empty")
-    if not resolved_report_id:
-        raise ResearchRegistryError("successful research runner attempt requires report_id")
-    if start_ms < 0 or end_ms <= start_ms:
-        raise ResearchRegistryError("research runner attempt interval is invalid")
-
-    row = connection.execute(
-        """
-        SELECT candidate_id, status
-        FROM research_runner_attempts
-        WHERE attempt_id = ?
-        """,
-        (resolved_attempt_id,),
-    ).fetchone()
-    if row is None:
-        raise ResearchRegistryError(
-            f"research runner attempt not found: {resolved_attempt_id}"
-        )
-    if str(row["candidate_id"]) != resolved_candidate_id:
-        raise ResearchRegistryError(
-            "research runner attempt candidate does not match checkpoint candidate"
-        )
-    if str(row["status"]) != "evaluating":
-        raise ResearchRegistryError(
-            "successful research runner attempt requires an evaluation claim"
-        )
-
-    cursor = connection.execute(
-        """
-        UPDATE research_runner_attempts
-        SET status = 'succeeded', start_ms = ?, end_ms = ?, report_id = ?,
-            error_type = NULL, error_message = NULL
-        WHERE attempt_id = ? AND candidate_id = ? AND status = 'evaluating'
-        """,
-        (
-            start_ms,
-            end_ms,
-            resolved_report_id,
-            resolved_attempt_id,
-            resolved_candidate_id,
-        ),
-    )
-    if cursor.rowcount != 1:
-        raise ResearchRegistryError("research runner attempt changed concurrently")
-
-
-def _validate_runner_commit_context(
-    *,
-    runner_attempt_id: str | None,
-    runner_start_ms: int | None,
-    runner_end_ms: int | None,
-) -> None:
-    values = (runner_attempt_id, runner_start_ms, runner_end_ms)
-    if all(value is None for value in values):
-        return
-    if runner_attempt_id is None or runner_start_ms is None or runner_end_ms is None:
-        raise ResearchRegistryError(
-            "runner checkpoint commit context must include attempt id and complete interval"
-        )
-
-
 def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     row = connection.execute(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -331,54 +287,155 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
-def _claimed_runner_commit_context(
+def _checkpoint_batch_ids(payload: dict[str, object]) -> tuple[str, ...]:
+    value = payload.get("batch_ids")
+    if (
+        not isinstance(value, list)
+        or not value
+        or not all(isinstance(item, str) and item.strip() for item in value)
+    ):
+        raise ResearchRegistryError("checkpoint report batch provenance is invalid")
+    batch_ids = tuple(value)
+    if len(set(batch_ids)) != len(batch_ids):
+        raise ResearchRegistryError("checkpoint report batch provenance is invalid")
+    return batch_ids
+
+
+def _claimed_runner_attempts(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
     payload: dict[str, object],
-) -> tuple[str, int, int] | None:
+) -> tuple[tuple[str, str], ...]:
     if not _table_exists(connection, "research_runner_attempts"):
-        return None
-    batch_ids = payload.get("batch_ids")
-    if not isinstance(batch_ids, list) or not batch_ids:
-        return None
-    resolved_batch_ids = tuple(
-        str(batch_id) for batch_id in batch_ids if isinstance(batch_id, str) and batch_id.strip()
-    )
-    if len(resolved_batch_ids) != len(batch_ids):
-        raise ResearchRegistryError("checkpoint report batch provenance is invalid")
-    placeholders = ",".join("?" for _ in resolved_batch_ids)
+        return ()
+    batch_ids = _checkpoint_batch_ids(payload)
+    placeholders = ",".join("?" for _ in batch_ids)
     rows = connection.execute(
         f"""
         SELECT attempt_id, batch_id
         FROM research_runner_attempts
         WHERE candidate_id = ? AND status = 'evaluating'
           AND batch_id IN ({placeholders})
-        ORDER BY attempt_id
+        ORDER BY attempt_id, batch_id
         """,
-        (candidate_id, *resolved_batch_ids),
+        (candidate_id, *batch_ids),
     ).fetchall()
-    if not rows:
+    return tuple((str(row["attempt_id"]), str(row["batch_id"])) for row in rows)
+
+
+def _validate_runner_binding(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    payload: dict[str, object],
+) -> RunnerCheckpointBinding | None:
+    binding = _RUNNER_CHECKPOINT_BINDING.get()
+    claimed = _claimed_runner_attempts(
+        connection,
+        candidate_id=candidate_id,
+        payload=payload,
+    )
+    if binding is None:
+        if claimed:
+            raise ResearchRegistryError(
+                "checkpoint intersects a claimed runner attempt without explicit runner binding"
+            )
         return None
-    if len(rows) != 1:
+
+    expected = (binding.attempt_id, binding.batch_id)
+    if claimed != (expected,):
         raise ResearchRegistryError(
-            "authenticated checkpoint matches multiple evaluating runner attempts"
+            "runner checkpoint binding does not match the sole claimed attempt"
         )
-    attempt_id = str(rows[0]["attempt_id"])
-    batch_id = str(rows[0]["batch_id"])
+    return binding
+
+
+def complete_runner_attempt_success_uncommitted(
+    connection: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    candidate_id: str,
+    batch_id: str,
+    report_id: str,
+) -> None:
+    if not connection.in_transaction:
+        raise ResearchRegistryError(
+            "runner success must share the authenticated checkpoint transaction"
+        )
+    resolved_attempt_id = attempt_id.strip()
+    resolved_candidate_id = candidate_id.strip()
+    resolved_batch_id = batch_id.strip()
+    resolved_report_id = report_id.strip()
+    if not resolved_attempt_id:
+        raise ResearchRegistryError("research runner attempt_id must not be empty")
+    if not resolved_candidate_id:
+        raise ResearchRegistryError("research runner candidate_id must not be empty")
+    if not resolved_batch_id:
+        raise ResearchRegistryError("research runner batch_id must not be empty")
+    if not resolved_report_id:
+        raise ResearchRegistryError("successful research runner attempt requires report_id")
+
+    attempt = connection.execute(
+        """
+        SELECT candidate_id, batch_id, status
+        FROM research_runner_attempts
+        WHERE attempt_id = ?
+        """,
+        (resolved_attempt_id,),
+    ).fetchone()
+    if attempt is None:
+        raise ResearchRegistryError(
+            f"research runner attempt not found: {resolved_attempt_id}"
+        )
+    if str(attempt["candidate_id"]) != resolved_candidate_id:
+        raise ResearchRegistryError(
+            "research runner attempt candidate does not match checkpoint candidate"
+        )
+    if str(attempt["batch_id"]) != resolved_batch_id:
+        raise ResearchRegistryError(
+            "research runner attempt batch does not match checkpoint batch"
+        )
+    if str(attempt["status"]) != "evaluating":
+        raise ResearchRegistryError(
+            "successful research runner attempt requires an evaluation claim"
+        )
+
     batch = connection.execute(
         """
         SELECT start_ms, end_ms, status
         FROM research_batches
         WHERE batch_id = ? AND candidate_id = ?
         """,
-        (batch_id, candidate_id),
+        (resolved_batch_id, resolved_candidate_id),
     ).fetchone()
     if batch is None or str(batch["status"]) != "admitted":
         raise ResearchRegistryError(
-            "evaluating runner attempt is not backed by an admitted research batch"
+            "successful research runner attempt requires an admitted research batch"
         )
-    return attempt_id, int(batch["start_ms"]), int(batch["end_ms"])
+    start_ms = int(batch["start_ms"])
+    end_ms = int(batch["end_ms"])
+    if start_ms < 0 or end_ms <= start_ms:
+        raise ResearchRegistryError("research runner attempt interval is invalid")
+
+    cursor = connection.execute(
+        """
+        UPDATE research_runner_attempts
+        SET status = 'succeeded', start_ms = ?, end_ms = ?, report_id = ?,
+            error_type = NULL, error_message = NULL
+        WHERE attempt_id = ? AND candidate_id = ? AND batch_id = ? AND status = 'evaluating'
+        """,
+        (
+            start_ms,
+            end_ms,
+            resolved_report_id,
+            resolved_attempt_id,
+            resolved_candidate_id,
+            resolved_batch_id,
+        ),
+    )
+    if cursor.rowcount != 1:
+        raise ResearchRegistryError("research runner attempt changed concurrently")
 
 
 def commit_checkpoint_report_and_state(
@@ -388,29 +445,18 @@ def commit_checkpoint_report_and_state(
     state: ResearchCandidateState,
     report_id: str,
     payload: dict[str, object],
-    runner_attempt_id: str | None = None,
-    runner_start_ms: int | None = None,
-    runner_end_ms: int | None = None,
 ) -> None:
-    _validate_runner_commit_context(
-        runner_attempt_id=runner_attempt_id,
-        runner_start_ms=runner_start_ms,
-        runner_end_ms=runner_end_ms,
-    )
     registry._begin_immediate()
     try:
         current = registry.load_candidate(candidate_id)
         _validate_transition(current.state, state)
         canonical_payload = _canonical_payload(registry, payload)
         _require_attested_batch_provenance(canonical_payload)
-        if runner_attempt_id is None:
-            inferred_runner = _claimed_runner_commit_context(
-                registry.connection,
-                candidate_id=candidate_id,
-                payload=canonical_payload,
-            )
-            if inferred_runner is not None:
-                runner_attempt_id, runner_start_ms, runner_end_ms = inferred_runner
+        runner_binding = _validate_runner_binding(
+            registry.connection,
+            candidate_id=candidate_id,
+            payload=canonical_payload,
+        )
         try:
             assert_checkpoint_report_backed_by_observations(
                 registry.connection,
@@ -456,15 +502,12 @@ def commit_checkpoint_report_and_state(
                 """,
                 (candidate_id, state.value, f"checkpoint_report:{report_id}"),
             )
-        if runner_attempt_id is not None:
-            assert runner_start_ms is not None
-            assert runner_end_ms is not None
+        if runner_binding is not None:
             complete_runner_attempt_success_uncommitted(
                 registry.connection,
-                attempt_id=runner_attempt_id,
+                attempt_id=runner_binding.attempt_id,
                 candidate_id=candidate_id,
-                start_ms=runner_start_ms,
-                end_ms=runner_end_ms,
+                batch_id=runner_binding.batch_id,
                 report_id=report_id,
             )
         registry.connection.commit()
