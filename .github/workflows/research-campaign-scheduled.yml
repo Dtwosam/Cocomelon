@@ -176,6 +176,13 @@ jobs:
               registry.close()
           PY
 
+      - name: Preserve V4 authority merge helper
+        run: |
+          set -euo pipefail
+          cp \
+            src/cocomelon/research/v4_authority.py \
+            research-campaign/state/v4_authority.py
+
       - name: Checkout candidate code revision
         uses: actions/checkout@v4
         with:
@@ -249,6 +256,89 @@ jobs:
               raise RuntimeError(
                   "research candidate semantic config does not match replay configuration"
               )
+          PY
+
+      - name: Refresh V4 authority after acquisition
+        run: |
+          set -euo pipefail
+          ARTIFACT_ROWS="$(
+            gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (.path == ".github/workflows/research-v4-registry-sync.yml")
+                  and (.conclusion == "success")
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            printf '%s\n' \
+              'Fresh trusted V4 authority unavailable after research acquisition; checkpoint blocked.' \
+              > research-campaign/diagnostics/refreshed-v4-authority-unavailable.txt
+            exit 67
+          fi
+          rm -rf research-campaign/state/refreshed-v4-authority
+          gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/refreshed-v4-authority.zip
+          unzip -q \
+            research-campaign/state/refreshed-v4-authority.zip \
+            -d research-campaign/state/refreshed-v4-authority
+          REGISTRY_PATH="$(
+            find \
+              research-campaign/state/refreshed-v4-authority \
+              -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            printf '%s\n' \
+              'Trusted V4 sync artifact did not contain research.sqlite3; checkpoint blocked.' \
+              > research-campaign/diagnostics/refreshed-v4-authority-unavailable.txt
+            exit 68
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/refreshed-v4-authority.sqlite3
+          PYTHONPATH="$GITHUB_WORKSPACE/research-campaign/state:${PYTHONPATH:-}" python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-campaign/state/refreshed-v4-authority.sqlite3"),
+              )
+          finally:
+              registry.close()
           PY
 
       - name: Evaluate authenticated research attempt
