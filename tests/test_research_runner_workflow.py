@@ -100,6 +100,18 @@ def test_research_campaign_publishes_audit_state_on_failure() -> None:
     assert "authoritative-registry-unavailable.txt" in source
 
 
+def test_failed_attempt_is_retained_in_next_authoritative_registry_snapshot() -> None:
+    source = _source()
+    publish = source.split("- name: Publish authoritative research registry", 1)[1]
+
+    assert "hashFiles('research-campaign/state/research.sqlite3')" in publish
+    assert "always()" in publish
+    assert "success()" not in publish
+    assert source.index("Persist workflow failure in attempt ledger") < source.index(
+        "Publish authoritative research registry"
+    )
+
+
 def test_research_campaign_never_synthesizes_v4_completeness_from_schedule() -> None:
     source = _source()
     lowered = source.lower()
