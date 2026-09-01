@@ -4,13 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from cocomelon.research.runner_history import (
     ResearchRunnerAttemptStatus,
     finish_runner_attempt,
     load_runner_attempts,
     record_runner_attempt_started,
 )
+from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
 def test_runner_attempt_lifecycle_is_append_only_and_auditable(tmp_path: Path) -> None:
