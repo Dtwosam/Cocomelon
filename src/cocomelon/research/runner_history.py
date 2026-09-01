@@ -9,6 +9,7 @@ from cocomelon.research.registry import ResearchRegistryError
 
 class ResearchRunnerAttemptStatus(StrEnum):
     RUNNING = "running"
+    EVALUATING = "evaluating"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CONTAMINATED = "contaminated"
@@ -108,12 +109,16 @@ def record_runner_attempt_started(
                     f"research runner attempt already exists with different identity: {identity[0]}"
                 )
             status = _stored_status(existing["status"])
-            if status is not ResearchRunnerAttemptStatus.RUNNING:
+            if status is ResearchRunnerAttemptStatus.RUNNING:
+                connection.commit()
+                return
+            if status is ResearchRunnerAttemptStatus.EVALUATING:
                 raise ResearchRegistryError(
-                    f"research runner attempt is terminal: {identity[0]}"
+                    f"research runner attempt evaluation already claimed: {identity[0]}"
                 )
-            connection.commit()
-            return
+            raise ResearchRegistryError(
+                f"research runner attempt is terminal: {identity[0]}"
+            )
 
         batch_existing = connection.execute(
             "SELECT attempt_id FROM research_runner_attempts WHERE batch_id = ?",
@@ -139,6 +144,52 @@ def record_runner_attempt_started(
         raise
 
 
+def claim_runner_attempt_evaluation(
+    connection: sqlite3.Connection,
+    *,
+    attempt_id: str,
+) -> None:
+    _ensure_schema(connection)
+    resolved_attempt_id = _require_text(attempt_id, "attempt_id")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        existing = connection.execute(
+            "SELECT status FROM research_runner_attempts WHERE attempt_id = ?",
+            (resolved_attempt_id,),
+        ).fetchone()
+        if existing is None:
+            raise ResearchRegistryError(
+                f"research runner attempt not found: {resolved_attempt_id}"
+            )
+        existing_status = _stored_status(existing["status"])
+        if existing_status is ResearchRunnerAttemptStatus.EVALUATING:
+            raise ResearchRegistryError(
+                f"research runner attempt evaluation already claimed: {resolved_attempt_id}"
+            )
+        if existing_status is not ResearchRunnerAttemptStatus.RUNNING:
+            raise ResearchRegistryError(
+                f"research runner attempt is terminal: {resolved_attempt_id}"
+            )
+        cursor = connection.execute(
+            """
+            UPDATE research_runner_attempts
+            SET status = ?
+            WHERE attempt_id = ? AND status = ?
+            """,
+            (
+                ResearchRunnerAttemptStatus.EVALUATING.value,
+                resolved_attempt_id,
+                ResearchRunnerAttemptStatus.RUNNING.value,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ResearchRegistryError("research runner evaluation claim changed concurrently")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
 def _validate_finish(
     *,
     status: ResearchRunnerAttemptStatus,
@@ -148,7 +199,10 @@ def _validate_finish(
     error_type: str | None,
     error_message: str | None,
 ) -> None:
-    if status is ResearchRunnerAttemptStatus.RUNNING:
+    if status in (
+        ResearchRunnerAttemptStatus.RUNNING,
+        ResearchRunnerAttemptStatus.EVALUATING,
+    ):
         raise ResearchRegistryError("research runner finish status must be terminal")
     if (start_ms is None) != (end_ms is None):
         raise ResearchRegistryError("research runner attempt interval must be complete or absent")
@@ -198,9 +252,19 @@ def finish_runner_attempt(
                 f"research runner attempt not found: {resolved_attempt_id}"
             )
         existing_status = _stored_status(existing["status"])
-        if existing_status is not ResearchRunnerAttemptStatus.RUNNING:
+        if existing_status not in (
+            ResearchRunnerAttemptStatus.RUNNING,
+            ResearchRunnerAttemptStatus.EVALUATING,
+        ):
             raise ResearchRegistryError(
                 f"research runner attempt is terminal: {resolved_attempt_id}"
+            )
+        if (
+            status is ResearchRunnerAttemptStatus.SUCCEEDED
+            and existing_status is not ResearchRunnerAttemptStatus.EVALUATING
+        ):
+            raise ResearchRegistryError(
+                "successful research runner attempt requires an evaluation claim"
             )
         cursor = connection.execute(
             """
@@ -217,7 +281,7 @@ def finish_runner_attempt(
                 error_type,
                 error_message,
                 resolved_attempt_id,
-                ResearchRunnerAttemptStatus.RUNNING.value,
+                existing_status.value,
             ),
         )
         if cursor.rowcount != 1:
