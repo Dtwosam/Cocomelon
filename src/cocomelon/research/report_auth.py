@@ -350,6 +350,7 @@ def _assert_checkpoint_report_backed_by_observations(
         raise ValueError("checkpoint report id does not authenticate payload")
 
     if batch_scope is None:
+        observations = _load_observations(connection, candidate_id=candidate_id)
         batch_ids, source_ids = load_sealed_admitted_batch_provenance(
             connection,
             candidate_id=candidate_id,
@@ -360,14 +361,14 @@ def _assert_checkpoint_report_backed_by_observations(
             candidate_id=candidate_id,
             batch_ids=batch_scope,
         )
+        observations = _load_observations(
+            connection,
+            candidate_id=candidate_id,
+            batch_ids=batch_ids,
+        )
     if not batch_ids:
         raise ValueError("checkpoint report requires attested batch provenance")
 
-    observations = _load_observations(
-        connection,
-        candidate_id=candidate_id,
-        batch_ids=None if batch_scope is None else batch_ids,
-    )
     identity = _candidate_identity(connection, candidate_id=candidate_id)
     net_r_values = tuple(
         _decimal_string(observation.get("net_r"), "net_r") for observation in observations
