@@ -55,9 +55,8 @@ def test_research_campaign_pins_candidate_strategy_before_trusted_capture() -> N
     assert "candidate_revision: ${{ steps.candidate.outputs.revision }}" in source
     assert "Checkout candidate code revision" in source
     assert "ref: ${{ needs.prepare-control.outputs.candidate_revision }}" in source
-    assert source.index("Resolve candidate code revision from authoritative registry") < source.index(
-        "Checkout candidate code revision"
-    )
+    resolve_index = source.index("Resolve candidate code revision from authoritative registry")
+    assert resolve_index < source.index("Checkout candidate code revision")
     assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
     assert source.index("docker save") < source.index("record-mainnet-evidence")
 

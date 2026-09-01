@@ -980,13 +980,17 @@ class CandidateDecisionEpochEngine:
                 _integer(item.get("evaluated_at_ms"), "candidate decision evaluated_at_ms")
                 != record.evaluated_at_ms
             ):
-                raise ValueError("candidate decision evaluated_at_ms does not match trusted context")
+                raise ValueError(
+                    "candidate decision evaluated_at_ms does not match trusted context"
+                )
             feature_id = _string(
                 item.get("feature_snapshot_id"),
                 "candidate decision feature_snapshot_id",
             )
             if feature_id != record.context.feature_snapshot.snapshot_id:
-                raise ValueError("candidate decision feature snapshot does not match trusted context")
+                raise ValueError(
+                    "candidate decision feature snapshot does not match trusted context"
+                )
             decision = strategy_decision_from_payload(item.get("decision"))
             _decision_record(record, decision)
             evaluations.append(
