@@ -186,7 +186,7 @@ jobs:
                   candidate_id=candidate_id,
                   batch_id=os.environ["BATCH_ID"],
                   source_id=os.environ["SOURCE_ID"],
-                  artifact_root="research-campaign/output",
+                  artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / "output"),
               )
           finally:
               registry.close()
@@ -706,7 +706,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
-      actions: none
+      actions: read
     outputs:
       registry_published: ${{ steps.publish-committed-registry.outcome }}
     steps:
@@ -734,6 +734,91 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ./control-src
+
+      - name: Rebase staged registry onto latest trusted authority under publisher lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          rm -rf research-campaign/state/latest-authority research-campaign/state/latest-authority.zip
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "latest trusted authority unavailable under publisher lock" >&2
+            exit 72
+          fi
+          mkdir -p research-campaign/state/latest-authority
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/latest-authority.zip
+          unzip -q \
+            research-campaign/state/latest-authority.zip \
+            -d research-campaign/state/latest-authority
+          REGISTRY_PATH="$(
+            find research-campaign/state/latest-authority -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            echo "latest trusted authority artifact did not contain research.sqlite3" >&2
+            exit 73
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/latest-authority.sqlite3
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-campaign/state/latest-authority.sqlite3"),
+              )
+          finally:
+              registry.close()
+          PY
 
       - name: Complete trusted research cohort from candidate decisions
         working-directory: control-src
@@ -868,6 +953,14 @@ jobs:
         with:
           name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/decisions
+
+      - name: Download evaluated products for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/audit/evaluated
 
       - name: Persist workflow failure in attempt ledger
         if: ${{ always() }}
