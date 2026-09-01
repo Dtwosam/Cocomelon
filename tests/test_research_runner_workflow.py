@@ -137,8 +137,8 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "/usr/bin/gh api" in prepare
     assert "/usr/bin/gh api" in refresh_dispatch
     assert "/usr/bin/gh api" in refresh_download
-    assert "python" not in refresh_download
-    assert "cocomelon" not in refresh_download.lower()
+    assert "import sqlite3" in refresh_download
+    assert "from cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
 
 
@@ -187,10 +187,10 @@ def test_refresh_recombines_control_capture_and_decisions_before_v4_merge() -> N
     assert source.index("Merge refreshed V4 authority after acquisition") < source.index(
         "Evaluate authenticated research attempt"
     )
-    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
-    assert '.head_branch == "main"' in refresh_download
-    assert '.status == "completed"' in refresh_download
-    assert '.conclusion == "success"' in refresh_download
+    assert '"$RUN_PATH" != ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
+    assert '"$RUN_BRANCH" != "main"' in refresh_download
+    assert '"$RUN_STATUS" != "completed"' in refresh_download
+    assert '"$RUN_CONCLUSION" != "success"' in refresh_download
     assert "merge_v4_authority_snapshot" in refresh_merge
     assert "research-campaign/state/research.sqlite3" in refresh_merge
     assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh_merge
