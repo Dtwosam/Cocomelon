@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cocomelon.research.artifact import verify_research_batch_artifact
+from cocomelon.research.checkpoint_commit import bind_runner_checkpoint_commit
 from cocomelon.research.contracts import ResearchCandidateState
 from cocomelon.research.evaluator import (
     ResearchArtifactBatch,
@@ -165,17 +166,21 @@ def run_research_artifact_attempt(
         attempt_id=request.attempt_id,
     )
     try:
-        report = evaluate_research_checkpoint(
-            registry=registry,
-            candidate_id=request.candidate_id,
-            artifact_batches=(
-                ResearchArtifactBatch(
-                    artifact_root=request.artifact_root,
-                    batch_id=request.batch_id,
-                    source_id=request.source_id,
+        with bind_runner_checkpoint_commit(
+            attempt_id=request.attempt_id,
+            batch_id=request.batch_id,
+        ):
+            report = evaluate_research_checkpoint(
+                registry=registry,
+                candidate_id=request.candidate_id,
+                artifact_batches=(
+                    ResearchArtifactBatch(
+                        artifact_root=request.artifact_root,
+                        batch_id=request.batch_id,
+                        source_id=request.source_id,
+                    ),
                 ),
-            ),
-        )
+            )
     except ResearchContaminationError as exc:
         _reject_contamination(
             registry,
