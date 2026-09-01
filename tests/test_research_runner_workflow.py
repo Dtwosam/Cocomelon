@@ -51,6 +51,20 @@ def test_research_campaign_pins_runtime_to_candidate_code_revision() -> None:
     assert source.index("Install Cocomelon") < source.index("record-mainnet-evidence")
 
 
+def test_candidate_checkout_preserves_restored_authoritative_registry() -> None:
+    source = _source()
+    checkout = source.split("- name: Checkout candidate code revision", 1)[1].split(
+        "- name: Install Cocomelon",
+        1,
+    )[0]
+
+    assert "clean: false" in checkout
+    assert "clean: true" not in checkout
+    assert source.index("Restore authoritative research registry") < source.index(
+        "Checkout candidate code revision"
+    )
+
+
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
     source = _source()
     lowered = source.lower()
