@@ -42,6 +42,7 @@ from cocomelon.features.broad import calculate_broad_features
 from cocomelon.features.candles import calculate_candle_features
 from cocomelon.features.microstructure import calculate_microstructure_features
 from cocomelon.features.regime import assign_volatility_regimes
+from cocomelon.replay.clock import canonical_record_order
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
 from cocomelon.scanner.eligibility import (
     derive_eligibility_thresholds,
@@ -841,7 +842,10 @@ def _context_records(
         replay_config=bundle.replay_config,
     )
     records: list[ResearchStrategyContextRecord] = []
-    for replay_record in JsonlReplaySource(recording_root).iter_records(bundle.manifest):
+    replay_records = canonical_record_order(
+        tuple(JsonlReplaySource(recording_root).iter_records(bundle.manifest))
+    )
+    for replay_record in replay_records:
         for epoch in engine.observe(replay_record, replay_record.available_at_ms):
             records.extend(epoch.contexts)
     for epoch in engine.flush(bundle.manifest.end_ms):
