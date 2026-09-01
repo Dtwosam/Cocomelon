@@ -71,23 +71,77 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
+def _validate_declared_batch_ids(payload: dict[str, object]) -> tuple[str, ...]:
+    raw = payload.get("batch_ids")
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("checkpoint report requires attested batch provenance")
+    if not all(isinstance(item, str) and item.strip() for item in raw):
+        raise ValueError("checkpoint report batch_ids are invalid")
+    batch_ids = tuple(raw)
+    if len(set(batch_ids)) != len(batch_ids):
+        raise ValueError("checkpoint report batch_ids are not unique")
+    return batch_ids
+
+
+def _validated_scoped_provenance(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    batch_ids: tuple[str, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if not batch_ids:
+        raise ValueError("checkpoint report requires attested batch provenance")
+    if not _table_exists(connection, "research_batch_seals") or not _table_exists(
+        connection, "research_batch_attestations"
+    ):
+        raise ValueError("checkpoint report requires attested batch provenance")
+    placeholders = ", ".join("?" for _ in batch_ids)
+    rows = connection.execute(
+        f"""
+        SELECT b.batch_id, b.source_id
+        FROM research_batches AS b
+        INNER JOIN research_batch_seals AS s
+          ON s.batch_id = b.batch_id AND s.candidate_id = b.candidate_id
+        INNER JOIN research_batch_attestations AS a
+          ON a.batch_id = b.batch_id AND a.candidate_id = b.candidate_id
+        WHERE b.candidate_id = ?
+          AND b.status = 'admitted'
+          AND b.batch_id IN ({placeholders})
+        ORDER BY b.batch_id, b.source_id
+        """,
+        (candidate_id, *batch_ids),
+    ).fetchall()
+    canonical_batch_ids = tuple(str(row["batch_id"]) for row in rows)
+    if len(canonical_batch_ids) != len(batch_ids) or set(canonical_batch_ids) != set(batch_ids):
+        raise ValueError("checkpoint report batch provenance is not sealed and attested")
+    source_ids = tuple(sorted({str(row["source_id"]) for row in rows}))
+    return canonical_batch_ids, source_ids
+
+
 def _expected_attested_sample_identities(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
+    batch_ids: tuple[str, ...] | None = None,
 ) -> set[tuple[str, str, str]]:
     if not _table_exists(connection, "research_batch_attestations"):
         return set()
+    scope = ""
+    parameters: tuple[object, ...] = (candidate_id,)
+    if batch_ids is not None:
+        placeholders = ", ".join("?" for _ in batch_ids)
+        scope = f" AND a.batch_id IN ({placeholders})"
+        parameters = (candidate_id, *batch_ids)
     rows = connection.execute(
-        """
+        f"""
         SELECT a.batch_id, a.sample_identities_json
         FROM research_batch_attestations AS a
         JOIN research_batches AS b
           ON b.batch_id = a.batch_id AND b.candidate_id = a.candidate_id
-        WHERE a.candidate_id = ? AND b.status = 'admitted'
+        WHERE a.candidate_id = ? AND b.status = 'admitted'{scope}
         ORDER BY a.batch_id
         """,
-        (candidate_id,),
+        parameters,
     ).fetchall()
     expected: set[tuple[str, str, str]] = set()
     for row in rows:
@@ -113,16 +167,32 @@ def _load_observations(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
+    batch_ids: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, object], ...]:
     if not _table_exists(connection, "research_trade_observations"):
-        if _expected_attested_sample_identities(connection, candidate_id=candidate_id):
+        if _expected_attested_sample_identities(
+            connection,
+            candidate_id=candidate_id,
+            batch_ids=batch_ids,
+        ):
             raise ValueError(
                 "checkpoint report is not reproducible from complete attested observations"
             )
         return ()
+
+    observation_scope = ""
+    observation_parameters: tuple[object, ...] = (candidate_id,)
+    if batch_ids is not None:
+        placeholders = ", ".join("?" for _ in batch_ids)
+        observation_scope = f" AND batch_id IN ({placeholders})"
+        observation_parameters = (candidate_id, *batch_ids)
     total_row = connection.execute(
-        "SELECT COUNT(*) FROM research_trade_observations WHERE candidate_id = ?",
-        (candidate_id,),
+        f"""
+        SELECT COUNT(*)
+        FROM research_trade_observations
+        WHERE candidate_id = ?{observation_scope}
+        """,
+        observation_parameters,
     ).fetchone()
     total = 0 if total_row is None else int(total_row[0])
     if not _table_exists(connection, "research_batch_attestations"):
@@ -131,18 +201,25 @@ def _load_observations(
                 "checkpoint report is not reproducible from immutable observations/provenance"
             )
         return ()
+
+    joined_scope = ""
+    joined_parameters: tuple[object, ...] = (candidate_id,)
+    if batch_ids is not None:
+        placeholders = ", ".join("?" for _ in batch_ids)
+        joined_scope = f" AND o.batch_id IN ({placeholders})"
+        joined_parameters = (candidate_id, *batch_ids)
     rows = connection.execute(
-        """
+        f"""
         SELECT o.batch_id, o.trade_id, o.sample_id, o.payload_json
         FROM research_trade_observations AS o
         JOIN research_batches AS b
           ON b.batch_id = o.batch_id AND b.candidate_id = o.candidate_id
         JOIN research_batch_attestations AS a
           ON a.batch_id = o.batch_id AND a.candidate_id = o.candidate_id
-        WHERE o.candidate_id = ? AND b.status = 'admitted'
+        WHERE o.candidate_id = ? AND b.status = 'admitted'{joined_scope}
         ORDER BY o.closed_at_ms, o.trade_id
         """,
-        (candidate_id,),
+        joined_parameters,
     ).fetchall()
     if total != len(rows):
         raise ValueError(
@@ -158,6 +235,7 @@ def _load_observations(
     expected = _expected_attested_sample_identities(
         connection,
         candidate_id=candidate_id,
+        batch_ids=batch_ids,
     )
     if actual != expected:
         raise ValueError(
@@ -227,17 +305,24 @@ def _attested_health(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
+    batch_ids: tuple[str, ...] | None = None,
 ) -> tuple[bool, bool]:
     if not _table_exists(connection, "research_batch_attestations"):
         return False, False
+    scope = ""
+    parameters: tuple[object, ...] = (candidate_id,)
+    if batch_ids is not None:
+        placeholders = ", ".join("?" for _ in batch_ids)
+        scope = f" AND a.batch_id IN ({placeholders})"
+        parameters = (candidate_id, *batch_ids)
     rows = connection.execute(
-        """
+        f"""
         SELECT a.operational_failure, a.hard_risk_failure
         FROM research_batch_attestations AS a
         JOIN research_batches AS b ON b.batch_id = a.batch_id
-        WHERE a.candidate_id = ? AND b.status = 'admitted'
+        WHERE a.candidate_id = ? AND b.status = 'admitted'{scope}
         """,
-        (candidate_id,),
+        parameters,
     ).fetchall()
     return (
         any(bool(int(row["operational_failure"])) for row in rows),
@@ -245,13 +330,14 @@ def _attested_health(
     )
 
 
-def assert_checkpoint_report_backed_by_observations(
+def _assert_checkpoint_report_backed_by_observations(
     connection: sqlite3.Connection,
     *,
     candidate_id: str,
     report_id: str,
     payload: dict[str, object],
     state: ResearchCandidateState,
+    batch_scope: tuple[str, ...] | None,
 ) -> None:
     unsigned_payload = dict(payload)
     embedded_report_id = unsigned_payload.pop("report_id", None)
@@ -263,7 +349,25 @@ def assert_checkpoint_report_backed_by_observations(
     if embedded_report_id is not None and embedded_report_id != report_id:
         raise ValueError("checkpoint report id does not authenticate payload")
 
-    observations = _load_observations(connection, candidate_id=candidate_id)
+    if batch_scope is None:
+        batch_ids, source_ids = load_sealed_admitted_batch_provenance(
+            connection,
+            candidate_id=candidate_id,
+        )
+    else:
+        batch_ids, source_ids = _validated_scoped_provenance(
+            connection,
+            candidate_id=candidate_id,
+            batch_ids=batch_scope,
+        )
+    if not batch_ids:
+        raise ValueError("checkpoint report requires attested batch provenance")
+
+    observations = _load_observations(
+        connection,
+        candidate_id=candidate_id,
+        batch_ids=None if batch_scope is None else batch_ids,
+    )
     identity = _candidate_identity(connection, candidate_id=candidate_id)
     net_r_values = tuple(
         _decimal_string(observation.get("net_r"), "net_r") for observation in observations
@@ -296,15 +400,10 @@ def assert_checkpoint_report_backed_by_observations(
         observations,
         configured_risk_per_trade=configured_risk,
     )
-    batch_ids, source_ids = load_sealed_admitted_batch_provenance(
-        connection,
-        candidate_id=candidate_id,
-    )
-    if not batch_ids:
-        raise ValueError("checkpoint report requires attested batch provenance")
     operational_failure, hard_risk_failure = _attested_health(
         connection,
         candidate_id=candidate_id,
+        batch_ids=None if batch_scope is None else batch_ids,
     )
 
     with localcontext(AUTHORITATIVE_CONTEXT):
@@ -393,3 +492,40 @@ def assert_checkpoint_report_backed_by_observations(
         raise ValueError(
             "checkpoint report is not reproducible from immutable observations/provenance: state"
         )
+
+
+def assert_checkpoint_report_backed_by_observations(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    report_id: str,
+    payload: dict[str, object],
+    state: ResearchCandidateState,
+) -> None:
+    _assert_checkpoint_report_backed_by_observations(
+        connection,
+        candidate_id=candidate_id,
+        report_id=report_id,
+        payload=payload,
+        state=state,
+        batch_scope=None,
+    )
+
+
+def assert_historical_checkpoint_report_backed_by_observations(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    report_id: str,
+    payload: dict[str, object],
+    state: ResearchCandidateState,
+) -> None:
+    batch_scope = _validate_declared_batch_ids(payload)
+    _assert_checkpoint_report_backed_by_observations(
+        connection,
+        candidate_id=candidate_id,
+        report_id=report_id,
+        payload=payload,
+        state=state,
+        batch_scope=batch_scope,
+    )
