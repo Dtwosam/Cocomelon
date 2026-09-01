@@ -380,5 +380,11 @@ def test_status_records_authority_sync_as_implemented_and_advances_next_action()
     assert ".github/workflows/research-v4-registry-sync.yml" in status
     assert "implemented" in lowered
     assert "remaining operational dependency is a separate authoritative v4" not in lowered
-    assert "Add a separate authoritative V4 interval/completeness synchronization path" not in next_action
-    assert "Observe the implemented authoritative V4 interval/completeness synchronization path" in next_action
+    assert (
+        "Add a separate authoritative V4 interval/completeness synchronization path"
+        not in next_action
+    )
+    assert (
+        "Observe the implemented authoritative V4 interval/completeness synchronization path"
+        in next_action
+    )
