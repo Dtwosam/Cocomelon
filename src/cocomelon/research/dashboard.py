@@ -7,7 +7,10 @@ from collections import Counter
 from cocomelon.research.checkpoint_history import load_authenticated_checkpoint_commits
 from cocomelon.research.contracts import ResearchCandidateState, TimeInterval
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
-from cocomelon.research.report_auth import assert_checkpoint_report_backed_by_observations
+from cocomelon.research.report_auth import (
+    assert_checkpoint_report_backed_by_observations,
+    assert_historical_checkpoint_report_backed_by_observations,
+)
 
 RESEARCH_STATUS_LABEL = "TOUCHED / NON-PROMOTIONAL"
 
@@ -144,6 +147,7 @@ def _checkpoint_history(
         raise ResearchRegistryError(str(exc)) from exc
 
     history: list[dict[str, object]] = []
+    previous_batch_ids: set[str] = set()
     for commit in commits:
         payload = reports[commit.report_id]
         _verified_report_id(commit.report_id, payload)
@@ -151,7 +155,23 @@ def _checkpoint_history(
             raise ResearchRegistryError("research dashboard checkpoint candidate is invalid")
         if payload.get("candidate_state") != commit.state.value:
             raise ResearchRegistryError("research dashboard checkpoint state is invalid")
+        try:
+            assert_historical_checkpoint_report_backed_by_observations(
+                registry.connection,
+                candidate_id=candidate_id,
+                report_id=commit.report_id,
+                payload=payload,
+                state=commit.state,
+            )
+        except ValueError as exc:
+            raise ResearchRegistryError(str(exc)) from exc
         batch_ids = _string_list(payload, "batch_ids")
+        current_batch_ids = set(batch_ids)
+        if not previous_batch_ids.issubset(current_batch_ids):
+            raise ResearchRegistryError(
+                "research dashboard checkpoint history is not cumulative"
+            )
+        previous_batch_ids = current_batch_ids
         checkpoint = dict(payload)
         checkpoint["commit_index"] = commit.commit_index
         checkpoint["source_end_ms"] = _source_end_ms(
