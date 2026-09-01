@@ -175,7 +175,7 @@ The trust chain is now:
 
 This does **not** convert research results into promotion evidence. `RESEARCH_PROMISING` remains touched/non-promotional and cannot produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, advance Phase 10, or enable live orders.
 
-PR #120 implements the dedicated research dashboard/status surface as a separate read-only D-023 layer. The scheduled/replay research runner remains a separate follow-up.
+PR #120 implements the dedicated research dashboard/status surface as a separate read-only D-023 layer. The scheduled/replay research runner is now implemented as a separate D-023 layer described below.
 
 ### Dedicated research status surface
 
@@ -190,6 +190,23 @@ PR #120 adds a research-only status path without changing the frozen V4 dashboar
 - regression coverage proves snapshot/render/CLI reads are semantically non-mutating and expose no V4 economic or live-execution surface.
 
 The status surface does not produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, alter frozen V4 readiness, or enable live orders.
+
+### Scheduled/replay research runner
+
+The next D-023 rollout layer adds a research-only mainnet paper replay campaign without changing frozen V4 acquisition, curation, or one-shot evaluation:
+
+- every runner attempt is persisted before artifact verification with immutable attempt/batch/source identity; terminal success, failure, and contamination outcomes cannot be rewritten;
+- retries require a new attempt and batch identity, so infrastructure failures remain auditable and economic outcomes cannot authorize a hidden rerun;
+- the runner derives the actual source interval, code revision, and config digest from the authenticated artifact rather than caller or schedule timestamps;
+- candidate code/config identity must match the verified artifact and the V4 registry completeness watermark must be authoritative through the artifact end time before research economics are released;
+- actual V4 overlap records a contaminated attempt and rejects the candidate through the canonical contamination state path;
+- `cocomelon-research-runner` exposes only authenticated artifact execution and non-economic attempt history;
+- the research cohort builder requires the acquisition transport summary, validates the physical public-mainnet recording, freezes and replays offline, requires complete/gap-free/flat evidence, emits `economic_claim="none"`, and self-verifies the finished genuine-mainnet cohort;
+- `.github/workflows/research-campaign-scheduled.yml` runs one paper-only public-mainnet acquisition per workflow run at `2 7 * * *` UTC, restores the authoritative research registry, persists the attempt before acquisition, evaluates only through the canonical runner, and uploads the complete audit trail even on failure;
+- the workflow never creates or advances V4 interval authority. If the authoritative registry artifact is unavailable or its V4 registry completeness does not cover the actual research interval, the campaign fails closed before research economics;
+- successful runner checkpoints continue to publish only through the dedicated **TOUCHED / NON-PROMOTIONAL** research status surface.
+
+This runner cannot produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, alter frozen V4 readiness, or enable live execution. The remaining operational dependency is a separate authoritative V4 interval/completeness synchronization path that supplies current non-economic V4 source-time authority to `research-authoritative-registry` without exposing hidden V4 performance.
 
 ## Evidence dashboard
 
@@ -240,8 +257,8 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 
 1. Keep Phase 10 and live trading blocked.
 2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, or performance-condition V4 cohorts.
-3. Keep PR #119's research-core economics and PR #120's status output strictly **TOUCHED / NON-PROMOTIONAL**; do not use research outputs for a V4 promotion claim.
-4. Continue D-023 rollout separately with the isolated scheduled/replay research runner, preserving artifact-authoritative input and V4 source-time separation while publishing through the dedicated research status surface.
+3. Keep PR #119's research-core economics, PR #120's status output, and scheduled research-runner results strictly **TOUCHED / NON-PROMOTIONAL**; do not use research outputs for a V4 promotion claim.
+4. Add a separate authoritative V4 interval/completeness synchronization path that updates `research-authoritative-registry` from non-economic V4 acquisition provenance only; do not inspect, reconstruct, or export hidden V4 economics.
 5. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
 6. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
 7. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
