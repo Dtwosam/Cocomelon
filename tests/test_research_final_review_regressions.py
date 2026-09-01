@@ -33,6 +33,21 @@ def _candidate() -> ResearchCandidateManifest:
     )
 
 
+def _batch_row_count(registry: ResearchRegistry, table_name: str, batch_id: str) -> int:
+    table = registry.connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    if table is None:
+        return 0
+    row = registry.connection.execute(
+        f"SELECT COUNT(*) FROM {table_name} WHERE batch_id = ?",
+        (batch_id,),
+    ).fetchone()
+    assert row is not None
+    return int(row[0])
+
+
 def test_failed_final_checkpoint_rolls_back_new_batch_economics(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -72,22 +87,22 @@ def test_failed_final_checkpoint_rolls_back_new_batch_economics(
                 artifact_batches=(artifact,),
             )
 
-        batch_count = registry.connection.execute(
-            "SELECT COUNT(*) FROM research_batches WHERE batch_id = ?",
-            ("failed-final-batch",),
-        ).fetchone()[0]
-        observation_count = registry.connection.execute(
-            "SELECT COUNT(*) FROM research_trade_observations WHERE batch_id = ?",
-            ("failed-final-batch",),
-        ).fetchone()[0]
-        seal_count = registry.connection.execute(
-            "SELECT COUNT(*) FROM research_batch_seals WHERE batch_id = ?",
-            ("failed-final-batch",),
-        ).fetchone()[0]
-        attestation_count = registry.connection.execute(
-            "SELECT COUNT(*) FROM research_batch_attestations WHERE batch_id = ?",
-            ("failed-final-batch",),
-        ).fetchone()[0]
+        batch_count = _batch_row_count(registry, "research_batches", "failed-final-batch")
+        observation_count = _batch_row_count(
+            registry,
+            "research_trade_observations",
+            "failed-final-batch",
+        )
+        seal_count = _batch_row_count(
+            registry,
+            "research_batch_seals",
+            "failed-final-batch",
+        )
+        attestation_count = _batch_row_count(
+            registry,
+            "research_batch_attestations",
+            "failed-final-batch",
+        )
     finally:
         registry.close()
 
