@@ -12,6 +12,7 @@ permissions:
 
 env:
   V4_ACQUISITION_WORKFLOW: .github/workflows/evidence-campaign-v4-scheduled.yml
+  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}
 
 concurrency:
   group: research-v4-acquisition-authority-sync
@@ -21,6 +22,9 @@ jobs:
   synchronize:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
     steps:
       - name: Checkout trusted research authority revision
         uses: actions/checkout@v4
@@ -115,6 +119,32 @@ jobs:
           fi
           printf '%s\n' "$ARTIFACT_ID" > research-sync/state/restored-artifact-id.txt
 
+      - name: Ensure configured research bootstrap candidate exists
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.bootstrap import ensure_bootstrap_candidate
+          from cocomelon.research.registry import ResearchRegistry
+
+          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
+          if not candidate_id:
+              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
+          registry = ResearchRegistry(Path("research-sync/state/research.sqlite3"))
+          try:
+              ensure_bootstrap_candidate(
+                  registry,
+                  candidate_id=candidate_id,
+                  code_revision=os.environ["GITHUB_SHA"],
+              )
+          finally:
+              registry.close()
+          PY
+
       - name: Snapshot already-recorded V4 acquisition identities
         env:
           PYTHONPATH: ${{ github.workspace }}/src
@@ -147,68 +177,88 @@ jobs:
             /usr/bin/gh api --paginate \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?event=schedule&per_page=100" \
               --jq '.workflow_runs[]
-                | [.id, .run_attempt, .status, (.conclusion // ""),
-                   (.run_started_at // .created_at), .path]
+                | [.id, .run_attempt, .path]
                 | @tsv'
           )"
 
-          while IFS=$'\t' read -r RUN_ID RUN_ATTEMPT RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT RUN_WORKFLOW_PATH; do
-            if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ] || [ -z "$RUN_STATUS" ]; then
+          while IFS=$'\t' read -r RUN_ID LATEST_ATTEMPT RUN_WORKFLOW_PATH; do
+            if [ -z "$RUN_ID" ] || [ -z "$LATEST_ATTEMPT" ]; then
               continue
             fi
             if [ "$RUN_WORKFLOW_PATH" != "$V4_ACQUISITION_WORKFLOW" ]; then
               echo "unexpected V4 acquisition workflow path: $RUN_WORKFLOW_PATH" >&2
               exit 69
             fi
-            CANONICAL_ID="github-v4-${RUN_ID}-attempt-${RUN_ATTEMPT}"
-            if grep -Fxq "$CANONICAL_ID" research-sync/inventory/known-run-ids.txt; then
-              continue
-            fi
 
-            CAPTURE_CONCLUSION="$(
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=all&per_page=100" \
-                --jq '[.jobs[]
-                  | select(.name == "acquire-evidence")
-                  | .steps[]?
-                  | select(.name == "Record thesis-expiry genuine public mainnet evidence")
-                  | (.conclusion // "")][0] // ""'
-            )"
-            ARTIFACT_ROOT=""
-
-            if [ "$RUN_STATUS" = "completed" ] && [ "$CAPTURE_CONCLUSION" != "skipped" ]; then
-              EXPECTED_NAME="v4-acquisition-stage-${RUN_ID}-attempt-${RUN_ATTEMPT}"
-              ARTIFACT_ID="$(
+            for ATTEMPT in $(seq 1 "$LATEST_ATTEMPT"); do
+              ATTEMPT_ROW="$(
                 /usr/bin/gh api \
-                  "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
-                  --jq ".artifacts
-                    | map(select(.expired == false and .name == \"$EXPECTED_NAME\"))
-                    | .[0].id // empty"
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$ATTEMPT" \
+                  --jq '[.status, (.conclusion // ""),
+                         (.run_started_at // .created_at), .path]
+                        | @tsv'
               )"
-              if [ -z "$ARTIFACT_ID" ]; then
-                echo "completed V4 run lacks authoritative acquisition artifact: $RUN_ID" >&2
-                exit 67
+              IFS=$'\t' read -r RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT ATTEMPT_WORKFLOW_PATH \
+                <<< "$ATTEMPT_ROW"
+              if [ -z "$RUN_STATUS" ] || [ -z "$RUN_STARTED_AT" ]; then
+                echo "V4 workflow attempt metadata is incomplete: $RUN_ID attempt $ATTEMPT" >&2
+                exit 70
               fi
-              ARTIFACT_ROOT="research-sync/v4-artifacts/${RUN_ID}-attempt-${RUN_ATTEMPT}"
-              mkdir -p "$ARTIFACT_ROOT"
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
-                > "${ARTIFACT_ROOT}.zip"
-              unzip -q "${ARTIFACT_ROOT}.zip" -d "$ARTIFACT_ROOT"
-              test -f "$ARTIFACT_ROOT/recording/recording-session.json"
-              test -f "$ARTIFACT_ROOT/output/finished-at-utc.txt"
-              test -f "$ARTIFACT_ROOT/diagnostics/recorder-exit-status.txt"
-            fi
+              if [ "$ATTEMPT_WORKFLOW_PATH" != "$V4_ACQUISITION_WORKFLOW" ]; then
+                echo "unexpected V4 acquisition attempt workflow path: $ATTEMPT_WORKFLOW_PATH" >&2
+                exit 71
+              fi
 
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-              "$RUN_ID" \
-              "$RUN_ATTEMPT" \
-              "$RUN_STATUS" \
-              "$RUN_CONCLUSION" \
-              "$RUN_STARTED_AT" \
-              "$CAPTURE_CONCLUSION" \
-              "$ARTIFACT_ROOT" \
-              >> research-sync/inventory/runs.tsv
+              CANONICAL_ID="github-v4-${RUN_ID}-attempt-${ATTEMPT}"
+              if grep -Fxq "$CANONICAL_ID" research-sync/inventory/known-run-ids.txt; then
+                continue
+              fi
+
+              CAPTURE_CONCLUSION="$(
+                /usr/bin/gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=100" \
+                  --jq '[.jobs[]
+                    | select(.name == "acquire-evidence")
+                    | .steps[]?
+                    | select(.name == "Record thesis-expiry genuine public mainnet evidence")
+                    | (.conclusion // "")][0] // ""'
+              )"
+              ARTIFACT_ROOT=""
+
+              if [ "$RUN_STATUS" = "completed" ] && [ "$CAPTURE_CONCLUSION" != "skipped" ]; then
+                EXPECTED_NAME="v4-acquisition-stage-${RUN_ID}-attempt-${ATTEMPT}"
+                ARTIFACT_ID="$(
+                  /usr/bin/gh api \
+                    "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+                    --jq ".artifacts
+                      | map(select(.expired == false and .name == \"$EXPECTED_NAME\"))
+                      | .[0].id // empty"
+                )"
+                if [ -z "$ARTIFACT_ID" ]; then
+                  echo "completed V4 run attempt lacks authoritative acquisition artifact: $RUN_ID attempt $ATTEMPT" >&2
+                  exit 67
+                fi
+                ARTIFACT_ROOT="research-sync/v4-artifacts/${RUN_ID}-attempt-${ATTEMPT}"
+                mkdir -p "$ARTIFACT_ROOT"
+                /usr/bin/gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+                  > "${ARTIFACT_ROOT}.zip"
+                unzip -q "${ARTIFACT_ROOT}.zip" -d "$ARTIFACT_ROOT"
+                test -f "$ARTIFACT_ROOT/recording/recording-session.json"
+                test -f "$ARTIFACT_ROOT/output/finished-at-utc.txt"
+                test -f "$ARTIFACT_ROOT/diagnostics/recorder-exit-status.txt"
+              fi
+
+              printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$RUN_ID" \
+                "$ATTEMPT" \
+                "$RUN_STATUS" \
+                "$RUN_CONCLUSION" \
+                "$RUN_STARTED_AT" \
+                "$CAPTURE_CONCLUSION" \
+                "$ARTIFACT_ROOT" \
+                >> research-sync/inventory/runs.tsv
+            done
           done <<< "$RUN_ROWS"
 
       - name: Apply non-economic V4 acquisition authority inventory
