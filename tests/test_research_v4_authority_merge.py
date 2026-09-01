@@ -181,7 +181,7 @@ def test_refresh_rolls_back_all_v4_updates_on_conflicting_snapshot(tmp_path: Pat
             source_id="authoritative-v4-inventory",
         )
 
-        with pytest.raises(ResearchRegistryError, match="different data"):
+        with pytest.raises(ResearchRegistryError, match="omitted or rewrote existing interval"):
             merge_v4_authority_snapshot(local, authority.path)
 
         rows = _v4_rows(local)
