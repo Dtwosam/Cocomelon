@@ -119,6 +119,86 @@ jobs:
           fi
           printf '%s\n' "$ARTIFACT_ID" > research-sync/state/restored-artifact-id.txt
 
+      - name: Restore durable V4 authority seed when registry snapshot is unavailable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          if [ -n "$(cat research-sync/state/restored-artifact-id.txt)" ]; then
+            exit 0
+          fi
+
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-v4-authority-seed&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          SEED_ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ] || [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (.conclusion == "success")
+                  and (.path == ".github/workflows/research-v4-registry-sync.yml")
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" = "true" ] && [ "$RUN_HEAD_SHA" = "$ARTIFACT_HEAD_SHA" ]; then
+              SEED_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+              break
+            fi
+          done <<< "$ARTIFACT_ROWS"
+
+          if [ -z "$SEED_ARTIFACT_ID" ]; then
+            exit 0
+          fi
+
+          mkdir -p research-sync/state/durable-seed
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$SEED_ARTIFACT_ID/zip" \
+            > research-sync/state/durable-seed.zip
+          unzip -q research-sync/state/durable-seed.zip -d research-sync/state/durable-seed
+          SEED_PATH="$(
+            find research-sync/state/durable-seed \
+              -type f -name research-v4-authority-seed.sqlite3 -print -quit
+          )"
+          if [ -z "$SEED_PATH" ]; then
+            echo "trusted V4 authority seed artifact did not contain its SQLite snapshot" >&2
+            exit 72
+          fi
+          cp "$SEED_PATH" research-sync/state/restored-v4-authority-seed.sqlite3
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-sync/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-sync/state/restored-v4-authority-seed.sqlite3"),
+              )
+          finally:
+              registry.close()
+          PY
+
       - name: Ensure configured research bootstrap candidate exists
         env:
           PYTHONPATH: ${{ github.workspace }}/src
@@ -411,6 +491,37 @@ jobs:
           )
           PY
           fi
+
+      - name: Build durable V4 authority seed
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          seed_path = Path("research-sync/state/research-v4-authority-seed.sqlite3")
+          seed_path.unlink(missing_ok=True)
+          seed = ResearchRegistry(seed_path)
+          try:
+              merge_v4_authority_snapshot(
+                  seed,
+                  Path("research-sync/state/research.sqlite3"),
+              )
+          finally:
+              seed.close()
+          PY
+
+      - name: Publish durable V4 authority seed
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-v4-authority-seed
+          path: research-sync/state/research-v4-authority-seed.sqlite3
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Publish synchronized authoritative research registry
         uses: actions/upload-artifact@v4
