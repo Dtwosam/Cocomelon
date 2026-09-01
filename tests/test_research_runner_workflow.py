@@ -101,6 +101,30 @@ def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
     assert "UPDATE research_runner_attempts" in failure
 
 
+def test_research_campaign_refreshes_v4_authority_after_capture_before_evaluation() -> None:
+    source = _source()
+    refresh = source.split("- name: Refresh V4 authority after acquisition", 1)[1].split(
+        "- name: Evaluate authenticated research attempt",
+        1,
+    )[0]
+
+    assert source.index("Acquire one public mainnet research cohort") < source.index(
+        "Refresh V4 authority after acquisition"
+    )
+    assert source.index("Refresh V4 authority after acquisition") < source.index(
+        "Evaluate authenticated research attempt"
+    )
+    assert "/actions/artifacts?name=research-authoritative-registry" in refresh
+    assert '.path == ".github/workflows/research-v4-registry-sync.yml"' in refresh
+    assert '.head_branch == "main"' in refresh
+    assert '.status == "completed"' in refresh
+    assert '.conclusion == "success"' in refresh
+    assert "merge_v4_authority_snapshot" in refresh
+    assert "research-campaign/state/research.sqlite3" in refresh
+    assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh
+    assert "cp \"$REGISTRY_PATH\" research-campaign/state/research.sqlite3" not in refresh
+
+
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
     source = _source()
     lowered = source.lower()
