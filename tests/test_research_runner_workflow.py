@@ -39,6 +39,18 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
         assert forbidden not in lowered
 
 
+def test_research_campaign_pins_runtime_to_candidate_code_revision() -> None:
+    source = _source()
+
+    assert "Resolve candidate code revision from authoritative registry" in source
+    assert "SELECT code_revision FROM research_candidates WHERE candidate_id = ?" in source
+    assert 'RESEARCH_CODE_REVISION=' in source
+    assert "Checkout candidate code revision" in source
+    assert "ref: ${{ env.RESEARCH_CODE_REVISION }}" in source
+    assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
+    assert source.index("Install Cocomelon") < source.index("record-mainnet-evidence")
+
+
 def test_research_campaign_uses_one_outcome_blind_acquisition_identity() -> None:
     source = _source()
     lowered = source.lower()
