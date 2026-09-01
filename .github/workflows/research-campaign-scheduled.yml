@@ -1,0 +1,209 @@
+name: Scheduled Research Mainnet Replay Campaign
+
+on:
+  schedule:
+    - cron: "2 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  research-campaign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    concurrency:
+      group: research-mainnet-replay-campaign
+      cancel-in-progress: false
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}
+      ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
+      BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
+      SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}
+      GITHUB_RUN_ID: ${{ github.run_id }}
+      GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout research runner revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Prepare research campaign directories
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            research-campaign/recording \
+            research-campaign/output \
+            research-campaign/state \
+            research-campaign/diagnostics
+
+      - name: Restore authoritative research registry
+        run: |
+          set -euo pipefail
+          ARTIFACT_ID="$(
+            gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts | map(select(.expired == false)) | sort_by(.created_at) | reverse | .[0].id // empty'
+          )"
+          if [ -z "$ARTIFACT_ID" ]; then
+            printf '%s\n' \
+              'Authoritative research registry unavailable; V4 registry completeness cannot be proven.' \
+              > research-campaign/diagnostics/authoritative-registry-unavailable.txt
+            exit 65
+          fi
+          gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/research-authoritative-registry.zip
+          unzip -q \
+            research-campaign/state/research-authoritative-registry.zip \
+            -d research-campaign/state/restored
+          REGISTRY_PATH="$(find research-campaign/state/restored -type f -name research.sqlite3 -print -quit)"
+          if [ -z "$REGISTRY_PATH" ]; then
+            printf '%s\n' \
+              'Authoritative registry artifact did not contain research.sqlite3; V4 registry completeness is unavailable.' \
+              > research-campaign/diagnostics/authoritative-registry-unavailable.txt
+            exit 66
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3
+
+      - name: Validate candidate and persist acquisition attempt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.runner_history import record_runner_attempt_started
+
+          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
+          if not candidate_id:
+              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              registry.load_candidate(candidate_id)
+              record_runner_attempt_started(
+                  registry.connection,
+                  attempt_id=os.environ["ATTEMPT_ID"],
+                  candidate_id=candidate_id,
+                  batch_id=os.environ["BATCH_ID"],
+                  source_id=os.environ["SOURCE_ID"],
+                  artifact_root="research-campaign/output",
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Acquire one public mainnet research cohort
+        run: |
+          set -euo pipefail
+          printf '1\n' > research-campaign/output/acquisition-attempt.txt
+          cocomelon record-mainnet-evidence \
+            --root research-campaign/recording \
+            --seconds 1200 \
+            --deep-limit 5 \
+            > research-campaign/output/record-transport.json
+
+      - name: Build offline authenticated research cohort
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from decimal import Decimal
+
+          from cocomelon.research.cohort import build_research_cohort
+
+          build_research_cohort(
+              "research-campaign/recording",
+              "research-campaign/output",
+              Decimal("10000"),
+              trigger_head_sha=os.environ["GITHUB_SHA"],
+          )
+          PY
+
+      - name: Evaluate authenticated research attempt
+        run: |
+          set -euo pipefail
+          cocomelon-research-runner run-artifact \
+            --registry research-campaign/state/research.sqlite3 \
+            --attempt-id "$ATTEMPT_ID" \
+            --candidate-id "$RESEARCH_CANDIDATE_ID" \
+            --batch-id "$BATCH_ID" \
+            --source-id "$SOURCE_ID" \
+            --artifact-root research-campaign/output \
+            > research-campaign/output/runner.json
+          cocomelon-research-status \
+            --registry research-campaign/state/research.sqlite3 \
+            --format json \
+            > research-campaign/output/status.json
+
+      - name: Persist workflow failure in attempt ledger
+        if: ${{ failure() }}
+        run: |
+          set -euo pipefail
+          if [ ! -f research-campaign/state/research.sqlite3 ]; then
+            exit 0
+          fi
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.runner_history import (
+              ResearchRunnerAttemptStatus,
+              finish_runner_attempt,
+              load_runner_attempts,
+          )
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              attempt_id = os.environ["ATTEMPT_ID"]
+              attempts = load_runner_attempts(registry.connection)
+              attempt = next((item for item in attempts if item.attempt_id == attempt_id), None)
+              if attempt is not None and attempt.status is ResearchRunnerAttemptStatus.RUNNING:
+                  finish_runner_attempt(
+                      registry.connection,
+                      attempt_id=attempt_id,
+                      status=ResearchRunnerAttemptStatus.FAILED,
+                      start_ms=None,
+                      end_ms=None,
+                      report_id=None,
+                      error_type="WorkflowFailure",
+                      error_message="research campaign failed before authenticated checkpoint",
+                  )
+          finally:
+              registry.close()
+          PY
+
+      - name: Upload complete research campaign audit trail
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish authoritative research registry
+        if: ${{ success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-campaign/state/research.sqlite3
+          if-no-files-found: error
+          retention-days: 30
