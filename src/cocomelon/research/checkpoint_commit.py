@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from collections.abc import Iterator
 
 from cocomelon.research.checkpoint_history import (
     load_authenticated_checkpoint_commits,
