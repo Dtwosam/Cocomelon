@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -60,7 +61,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit_json(snapshot, stream=sys.stdout)
         else:
             print(render_research_status_markdown(snapshot), end="")
-    except (OSError, ValueError, ResearchRegistryError, json.JSONDecodeError) as exc:
+    except (
+        OSError,
+        ValueError,
+        ResearchRegistryError,
+        json.JSONDecodeError,
+        sqlite3.Error,
+    ) as exc:
         _emit_json(
             {"error": str(exc), "error_type": type(exc).__name__},
             stream=sys.stderr,
