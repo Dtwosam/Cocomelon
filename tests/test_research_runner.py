@@ -257,6 +257,14 @@ def test_contamination_rejection_and_attempt_outcome_are_atomic(tmp_path: Path) 
         )
         artifact = _artifact(tmp_path, batch_id="atomic-contamination-batch")
         request = _request(artifact, attempt_id="attempt-atomic-contamination")
+        record_runner_attempt_started(
+            registry.connection,
+            attempt_id=request.attempt_id,
+            candidate_id=request.candidate_id,
+            batch_id=request.batch_id,
+            source_id=request.source_id,
+            artifact_root=str(request.artifact_root),
+        )
         registry.connection.execute(
             """
             CREATE TRIGGER fail_contaminated_attempt_update
