@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from decimal import Decimal
 from importlib import import_module
 from pathlib import Path
@@ -239,6 +240,44 @@ def test_runner_marks_actual_interval_overlap_contaminated_and_rejects_candidate
     assert attempts[0].start_ms == 1_000
     assert attempts[0].end_ms == 3_000
     assert candidate.state is ResearchCandidateState.REJECTED_CONTAMINATION
+
+
+def test_contamination_rejection_and_attempt_outcome_are_atomic(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate())
+        registry.record_v4_interval(
+            run_id="v4-atomic-overlap",
+            interval=TimeInterval(1_500, 2_000),
+            disposition="accepted",
+        )
+        registry.mark_v4_registry_complete_through(
+            through_ms=3_000,
+            source_id="authoritative-v4-inventory",
+        )
+        artifact = _artifact(tmp_path, batch_id="atomic-contamination-batch")
+        request = _request(artifact, attempt_id="attempt-atomic-contamination")
+        registry.connection.execute(
+            """
+            CREATE TRIGGER fail_contaminated_attempt_update
+            BEFORE UPDATE OF status ON research_runner_attempts
+            WHEN NEW.status = 'contaminated'
+            BEGIN
+                SELECT RAISE(ABORT, 'synthetic contaminated attempt update failure');
+            END
+            """
+        )
+        registry.connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError, match="synthetic contaminated"):
+            run_research_artifact_attempt(registry, request)
+        attempts = load_runner_attempts(registry.connection)
+        candidate = registry.load_candidate("runner-candidate")
+    finally:
+        registry.close()
+
+    assert attempts[0].status is ResearchRunnerAttemptStatus.RUNNING
+    assert candidate.state is ResearchCandidateState.DRAFT
 
 
 def test_runner_rejects_candidate_code_or_config_mismatch_before_checkpoint(
