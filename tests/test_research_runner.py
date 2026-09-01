@@ -244,7 +244,9 @@ def test_interrupted_evaluation_cannot_be_reclaimed_by_same_attempt(
         def interrupt_evaluator(**_kwargs: object) -> None:
             nonlocal calls
             calls += 1
-            raise KeyboardInterrupt("synthetic interruption after evaluation claim")
+            if calls == 1:
+                raise KeyboardInterrupt("synthetic interruption after evaluation claim")
+            raise AssertionError("same attempt reclaimed evaluation")
 
         monkeypatch.setattr(runner_module, "evaluate_research_checkpoint", interrupt_evaluator)
         with pytest.raises(KeyboardInterrupt, match="synthetic interruption"):
