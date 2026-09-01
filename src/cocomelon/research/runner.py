@@ -65,14 +65,20 @@ def _assert_candidate_matches_artifact(
     *,
     request: ResearchRunnerRequest,
     code_revision: str,
-    config_digest: str,
+    manifest_config_digest: str,
+    candidate_config_digest: str | None,
 ) -> None:
     candidate = registry.load_candidate(request.candidate_id)
     if candidate.code_revision != code_revision:
         raise ResearchRegistryError(
             "research runner artifact code revision does not match candidate"
         )
-    if candidate.config_digest != config_digest:
+    resolved_config_digest = (
+        candidate_config_digest
+        if candidate_config_digest is not None
+        else manifest_config_digest
+    )
+    if candidate.config_digest != resolved_config_digest:
         raise ResearchRegistryError(
             "research runner artifact config digest does not match candidate"
         )
@@ -130,7 +136,8 @@ def run_research_artifact_attempt(
             registry,
             request=request,
             code_revision=verified.code_revision,
-            config_digest=verified.config_digest,
+            manifest_config_digest=verified.config_digest,
+            candidate_config_digest=verified.candidate_config_digest,
         )
         registry.assert_batch_disjoint_from_v4(verified.interval)
     except ResearchContaminationError as exc:
