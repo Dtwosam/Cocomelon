@@ -377,9 +377,26 @@ def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
     }
 
 
+def _active_transaction_has_contaminated_candidate(registry: ResearchRegistry) -> bool:
+    row = registry.connection.execute(
+        """
+        SELECT 1
+        FROM research_candidates
+        WHERE state = ?
+        LIMIT 1
+        """,
+        (ResearchCandidateState.REJECTED_CONTAMINATION.value,),
+    ).fetchone()
+    return row is not None
+
+
 def build_research_status(registry: ResearchRegistry) -> dict[str, object]:
     connection = registry.connection
     owns_snapshot = not connection.in_transaction
+    if not owns_snapshot and _active_transaction_has_contaminated_candidate(registry):
+        raise ResearchRegistryError(
+            "research status cannot authenticate contamination inside active transaction"
+        )
     if owns_snapshot:
         connection.execute("BEGIN")
     try:
