@@ -10,6 +10,9 @@ permissions:
   contents: read
   actions: read
 
+env:
+  V4_ACQUISITION_WORKFLOW: .github/workflows/evidence-campaign-v4-scheduled.yml
+
 concurrency:
   group: research-v4-acquisition-authority-sync
   cancel-in-progress: false
@@ -144,13 +147,18 @@ jobs:
             /usr/bin/gh api --paginate \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?event=schedule&per_page=100" \
               --jq '.workflow_runs[]
-                | [.id, .run_attempt, .status, (.conclusion // ""), (.run_started_at // .created_at)]
+                | [.id, .run_attempt, .status, (.conclusion // ""),
+                   (.run_started_at // .created_at), .path]
                 | @tsv'
           )"
 
-          while IFS=$'\t' read -r RUN_ID RUN_ATTEMPT RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT; do
+          while IFS=$'\t' read -r RUN_ID RUN_ATTEMPT RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT RUN_WORKFLOW_PATH; do
             if [ -z "$RUN_ID" ] || [ -z "$RUN_ATTEMPT" ] || [ -z "$RUN_STATUS" ]; then
               continue
+            fi
+            if [ "$RUN_WORKFLOW_PATH" != "$V4_ACQUISITION_WORKFLOW" ]; then
+              echo "unexpected V4 acquisition workflow path: $RUN_WORKFLOW_PATH" >&2
+              exit 69
             fi
             CANONICAL_ID="github-v4-${RUN_ID}-attempt-${RUN_ATTEMPT}"
             if grep -Fxq "$CANONICAL_ID" research-sync/inventory/known-run-ids.txt; then
