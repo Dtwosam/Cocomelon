@@ -225,7 +225,7 @@ def _seal_legacy_checkpoint_prefix(
 
     legacy.sort(key=lambda item: (item[0], item[1], item[2]))
     previous_batch_ids: set[str] = set()
-    for _source_end_ms, _batch_count, report_id, state, batch_ids in legacy:
+    for _source_end_ms, _batch_count, _report_id, _state, batch_ids in legacy:
         current_batch_ids = set(batch_ids)
         if not previous_batch_ids.issubset(current_batch_ids):
             return
