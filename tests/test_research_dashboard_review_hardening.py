@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import cocomelon.research_dashboard_cli as research_dashboard_cli
+from cocomelon.research.checkpoint_history import load_authenticated_checkpoint_commits
 from cocomelon.research.contracts import (
     ResearchCandidateManifest,
     ResearchCandidateState,
@@ -92,6 +93,106 @@ def test_status_reconstructs_authenticated_legacy_checkpoint_history(tmp_path: P
         second_report.report_id,
     ]
     assert [item["source_end_ms"] for item in checkpoints] == [200_000, 400_000]
+
+
+def test_first_post_upgrade_checkpoint_atomically_seals_legacy_prefix(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("upgrade-candidate"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        first = write_research_artifact(
+            tmp_path / "upgrade-first",
+            batch_id="upgrade-batch-first",
+            source_id="upgrade-source-first",
+            replay_run_id="upgrade-replay-first",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),),
+        )
+        first_report = evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="upgrade-candidate",
+            artifact_batches=(first,),
+        )
+        registry.connection.execute("DROP TABLE research_checkpoint_commits")
+        registry.connection.commit()
+
+        second = write_research_artifact(
+            tmp_path / "upgrade-second",
+            batch_id="upgrade-batch-second",
+            source_id="upgrade-source-second",
+            replay_run_id="upgrade-replay-second",
+            start_ms=200_000,
+            end_ms=400_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=300_000, net_r=Decimal("-0.10")),),
+        )
+        second_report = evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="upgrade-candidate",
+            artifact_batches=(second,),
+        )
+        commits = load_authenticated_checkpoint_commits(
+            registry.connection,
+            candidate_id="upgrade-candidate",
+        )
+    finally:
+        registry.close()
+
+    assert [commit.report_id for commit in commits] == [
+        first_report.report_id,
+        second_report.report_id,
+    ]
+
+
+def test_status_rejects_mixed_sealed_and_unsealed_checkpoint_history(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("mixed-candidate"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        first = write_research_artifact(
+            tmp_path / "mixed-first",
+            batch_id="mixed-batch-first",
+            source_id="mixed-source-first",
+            replay_run_id="mixed-replay-first",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),),
+        )
+        first_report = evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="mixed-candidate",
+            artifact_batches=(first,),
+        )
+        second = write_research_artifact(
+            tmp_path / "mixed-second",
+            batch_id="mixed-batch-second",
+            source_id="mixed-source-second",
+            replay_run_id="mixed-replay-second",
+            start_ms=200_000,
+            end_ms=400_000,
+            trades=(ArtifactTradeSpec(closed_at_ms=300_000, net_r=Decimal("-0.10")),),
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="mixed-candidate",
+            artifact_batches=(second,),
+        )
+        registry.connection.execute(
+            "DELETE FROM research_checkpoint_commits WHERE report_id = ?",
+            (first_report.report_id,),
+        )
+        registry.connection.commit()
+
+        with pytest.raises(ResearchRegistryError, match="unauthenticated performance report"):
+            build_research_status(registry)
+    finally:
+        registry.close()
 
 
 def test_status_cli_does_not_initialize_existing_unrelated_sqlite_file(
