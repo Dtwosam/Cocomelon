@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from collections import Counter
 
 from cocomelon.research.checkpoint_history import load_authenticated_checkpoint_commits
@@ -91,6 +92,7 @@ def _source_end_ms(
     *,
     candidate_id: str,
     batch_ids: list[str],
+    allow_contaminated: bool = False,
 ) -> int:
     if not batch_ids:
         raise ResearchRegistryError("research dashboard checkpoint lacks batch provenance")
@@ -98,7 +100,7 @@ def _source_end_ms(
     for batch_id in batch_ids:
         row = registry.connection.execute(
             """
-            SELECT candidate_id, end_ms, status
+            SELECT candidate_id, end_ms, status, contamination_v4_run_id
             FROM research_batches
             WHERE batch_id = ?
             """,
@@ -106,7 +108,15 @@ def _source_end_ms(
         ).fetchone()
         if row is None or str(row["candidate_id"]) != candidate_id:
             raise ResearchRegistryError("research dashboard checkpoint batch provenance is invalid")
-        if str(row["status"]) != "admitted":
+        status = str(row["status"])
+        contamination_id = row["contamination_v4_run_id"]
+        valid_status = status == "admitted" or (
+            allow_contaminated
+            and status == "rejected_contamination"
+            and contamination_id is not None
+            and str(contamination_id).strip() != ""
+        )
+        if not valid_status:
             raise ResearchRegistryError(
                 "research dashboard cannot expose economics from contaminated research batches"
             )
@@ -121,6 +131,33 @@ def _interval_payload(intervals: tuple[TimeInterval, ...]) -> list[dict[str, int
     ]
 
 
+def _contamination_authentication_connection(
+    registry: ResearchRegistry,
+    *,
+    candidate_id: str,
+) -> sqlite3.Connection:
+    shadow = sqlite3.connect(":memory:")
+    shadow.row_factory = sqlite3.Row
+    try:
+        registry.connection.backup(shadow)
+        shadow.execute(
+            """
+            UPDATE research_batches
+            SET status = 'admitted'
+            WHERE candidate_id = ?
+              AND status = 'rejected_contamination'
+              AND contamination_v4_run_id IS NOT NULL
+              AND contamination_v4_run_id != ''
+            """,
+            (candidate_id,),
+        )
+        shadow.commit()
+    except Exception:
+        shadow.close()
+        raise
+    return shadow
+
+
 def _authenticate_history_report(
     registry: ResearchRegistry,
     *,
@@ -128,6 +165,8 @@ def _authenticate_history_report(
     report_id: str,
     payload: dict[str, object],
     state: ResearchCandidateState,
+    authentication_connection: sqlite3.Connection | None = None,
+    allow_contaminated_batches: bool = False,
 ) -> tuple[list[str], int]:
     _verified_report_id(report_id, payload)
     if payload.get("candidate_id") != candidate_id:
@@ -136,7 +175,9 @@ def _authenticate_history_report(
         raise ResearchRegistryError("research dashboard checkpoint state is invalid")
     try:
         assert_historical_checkpoint_report_backed_by_observations(
-            registry.connection,
+            registry.connection
+            if authentication_connection is None
+            else authentication_connection,
             candidate_id=candidate_id,
             report_id=report_id,
             payload=payload,
@@ -149,6 +190,7 @@ def _authenticate_history_report(
         registry,
         candidate_id=candidate_id,
         batch_ids=batch_ids,
+        allow_contaminated=allow_contaminated_batches,
     )
 
 
@@ -163,8 +205,6 @@ def _checkpoint_history(
         registry.connection,
         candidate_id=candidate_id,
     )
-    if candidate_state is ResearchCandidateState.REJECTED_CONTAMINATION:
-        return []
     if not reports:
         if commits:
             raise ResearchRegistryError(
@@ -172,104 +212,123 @@ def _checkpoint_history(
             )
         return []
 
-    commits_by_report = {commit.report_id: commit for commit in commits}
-    committed_ids = set(commits_by_report)
-    if not committed_ids.issubset(reports):
-        raise ResearchRegistryError(
-            "research dashboard checkpoint commit is missing its performance report"
+    suppress_economics = candidate_state is ResearchCandidateState.REJECTED_CONTAMINATION
+    authentication_connection: sqlite3.Connection | None = None
+    if suppress_economics:
+        authentication_connection = _contamination_authentication_connection(
+            registry,
+            candidate_id=candidate_id,
         )
 
-    ordered: list[
-        tuple[int, str, ResearchCandidateState, list[str], int, dict[str, object]]
-    ] = []
-    if set(reports) == committed_ids:
-        for commit in commits:
-            payload = reports[commit.report_id]
-            batch_ids, source_end_ms = _authenticate_history_report(
-                registry,
-                candidate_id=candidate_id,
-                report_id=commit.report_id,
-                payload=payload,
-                state=commit.state,
+    try:
+        commits_by_report = {commit.report_id: commit for commit in commits}
+        committed_ids = set(commits_by_report)
+        if not committed_ids.issubset(reports):
+            raise ResearchRegistryError(
+                "research dashboard checkpoint commit is missing its performance report"
             )
-            ordered.append(
-                (
-                    commit.commit_index,
-                    commit.report_id,
-                    commit.state,
-                    batch_ids,
-                    source_end_ms,
-                    payload,
-                )
-            )
-    else:
-        legacy: list[
-            tuple[int, int, str, ResearchCandidateState, list[str], dict[str, object]]
+
+        ordered: list[
+            tuple[int, str, ResearchCandidateState, list[str], int, dict[str, object]]
         ] = []
-        for report_id, payload in reports.items():
-            try:
-                state = _report_state(payload)
-                existing_commit = commits_by_report.get(report_id)
-                if existing_commit is not None and existing_commit.state is not state:
-                    raise ResearchRegistryError(
-                        "research dashboard checkpoint state is invalid"
-                    )
+        if set(reports) == committed_ids:
+            for commit in commits:
+                payload = reports[commit.report_id]
                 batch_ids, source_end_ms = _authenticate_history_report(
                     registry,
                     candidate_id=candidate_id,
-                    report_id=report_id,
+                    report_id=commit.report_id,
                     payload=payload,
-                    state=state,
+                    state=commit.state,
+                    authentication_connection=authentication_connection,
+                    allow_contaminated_batches=suppress_economics,
                 )
-            except ResearchRegistryError as exc:
+                ordered.append(
+                    (
+                        commit.commit_index,
+                        commit.report_id,
+                        commit.state,
+                        batch_ids,
+                        source_end_ms,
+                        payload,
+                    )
+                )
+        else:
+            legacy: list[
+                tuple[int, int, str, ResearchCandidateState, list[str], dict[str, object]]
+            ] = []
+            for report_id, payload in reports.items():
+                try:
+                    state = _report_state(payload)
+                    existing_commit = commits_by_report.get(report_id)
+                    if existing_commit is not None and existing_commit.state is not state:
+                        raise ResearchRegistryError(
+                            "research dashboard checkpoint state is invalid"
+                        )
+                    batch_ids, source_end_ms = _authenticate_history_report(
+                        registry,
+                        candidate_id=candidate_id,
+                        report_id=report_id,
+                        payload=payload,
+                        state=state,
+                        authentication_connection=authentication_connection,
+                        allow_contaminated_batches=suppress_economics,
+                    )
+                except ResearchRegistryError as exc:
+                    raise ResearchRegistryError(
+                        "research dashboard found unauthenticated performance report"
+                    ) from exc
+                legacy.append(
+                    (source_end_ms, len(batch_ids), report_id, state, batch_ids, payload)
+                )
+            legacy.sort(key=lambda item: (item[0], item[1], item[2]))
+            ordered = [
+                (index, report_id, state, batch_ids, source_end_ms, payload)
+                for index, (
+                    source_end_ms,
+                    _batch_count,
+                    report_id,
+                    state,
+                    batch_ids,
+                    payload,
+                ) in enumerate(legacy, start=1)
+            ]
+
+        previous_batch_ids: set[str] = set()
+        history: list[dict[str, object]] = []
+        for commit_index, _report_id, _state, batch_ids, source_end_ms, payload in ordered:
+            current_batch_ids = set(batch_ids)
+            if not previous_batch_ids.issubset(current_batch_ids):
                 raise ResearchRegistryError(
-                    "research dashboard found unauthenticated performance report"
-                ) from exc
-            legacy.append(
-                (source_end_ms, len(batch_ids), report_id, state, batch_ids, payload)
-            )
-        legacy.sort(key=lambda item: (item[0], item[1], item[2]))
-        ordered = [
-            (index, report_id, state, batch_ids, source_end_ms, payload)
-            for index, (
-                source_end_ms,
-                _batch_count,
-                report_id,
-                state,
-                batch_ids,
-                payload,
-            ) in enumerate(legacy, start=1)
-        ]
+                    "research dashboard checkpoint history is not cumulative"
+                )
+            previous_batch_ids = current_batch_ids
+            checkpoint = dict(payload)
+            checkpoint["commit_index"] = commit_index
+            checkpoint["source_end_ms"] = source_end_ms
+            history.append(checkpoint)
 
-    previous_batch_ids: set[str] = set()
-    history: list[dict[str, object]] = []
-    for commit_index, _report_id, _state, batch_ids, source_end_ms, payload in ordered:
-        current_batch_ids = set(batch_ids)
-        if not previous_batch_ids.issubset(current_batch_ids):
-            raise ResearchRegistryError(
-                "research dashboard checkpoint history is not cumulative"
-            )
-        previous_batch_ids = current_batch_ids
-        checkpoint = dict(payload)
-        checkpoint["commit_index"] = commit_index
-        checkpoint["source_end_ms"] = source_end_ms
-        history.append(checkpoint)
+        if suppress_economics:
+            return []
 
-    latest_index, latest_report_id, latest_state, _batch_ids, _source_end, latest_payload = (
-        ordered[-1]
-    )
-    del latest_index
-    try:
-        assert_checkpoint_report_backed_by_observations(
-            registry.connection,
-            candidate_id=candidate_id,
-            report_id=latest_report_id,
-            payload=latest_payload,
-            state=latest_state,
+        latest_index, latest_report_id, latest_state, _batch_ids, _source_end, latest_payload = (
+            ordered[-1]
         )
-    except ValueError as exc:
-        raise ResearchRegistryError(str(exc)) from exc
-    return history
+        del latest_index
+        try:
+            assert_checkpoint_report_backed_by_observations(
+                registry.connection,
+                candidate_id=candidate_id,
+                report_id=latest_report_id,
+                payload=latest_payload,
+                state=latest_state,
+            )
+        except ValueError as exc:
+            raise ResearchRegistryError(str(exc)) from exc
+        return history
+    finally:
+        if authentication_connection is not None:
+            authentication_connection.close()
 
 
 def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
