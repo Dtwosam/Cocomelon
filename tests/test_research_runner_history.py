@@ -10,6 +10,7 @@ from cocomelon.research.runner_history import (
     load_runner_attempts,
     record_runner_attempt_started,
 )
+
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
