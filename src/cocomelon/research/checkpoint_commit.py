@@ -323,6 +323,64 @@ def _validate_runner_commit_context(
         )
 
 
+def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def _claimed_runner_commit_context(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+    payload: dict[str, object],
+) -> tuple[str, int, int] | None:
+    if not _table_exists(connection, "research_runner_attempts"):
+        return None
+    batch_ids = payload.get("batch_ids")
+    if not isinstance(batch_ids, list) or not batch_ids:
+        return None
+    resolved_batch_ids = tuple(
+        str(batch_id) for batch_id in batch_ids if isinstance(batch_id, str) and batch_id.strip()
+    )
+    if len(resolved_batch_ids) != len(batch_ids):
+        raise ResearchRegistryError("checkpoint report batch provenance is invalid")
+    placeholders = ",".join("?" for _ in resolved_batch_ids)
+    rows = connection.execute(
+        f"""
+        SELECT attempt_id, batch_id
+        FROM research_runner_attempts
+        WHERE candidate_id = ? AND status = 'evaluating'
+          AND batch_id IN ({placeholders})
+        ORDER BY attempt_id
+        """,
+        (candidate_id, *resolved_batch_ids),
+    ).fetchall()
+    if not rows:
+        return None
+    if len(rows) != 1:
+        raise ResearchRegistryError(
+            "authenticated checkpoint matches multiple evaluating runner attempts"
+        )
+    attempt_id = str(rows[0]["attempt_id"])
+    batch_id = str(rows[0]["batch_id"])
+    batch = connection.execute(
+        """
+        SELECT start_ms, end_ms, status
+        FROM research_batches
+        WHERE batch_id = ? AND candidate_id = ?
+        """,
+        (batch_id, candidate_id),
+    ).fetchone()
+    if batch is None or str(batch["status"]) != "admitted":
+        raise ResearchRegistryError(
+            "evaluating runner attempt is not backed by an admitted research batch"
+        )
+    return attempt_id, int(batch["start_ms"]), int(batch["end_ms"])
+
+
 def commit_checkpoint_report_and_state(
     registry: ResearchRegistry,
     *,
@@ -345,6 +403,14 @@ def commit_checkpoint_report_and_state(
         _validate_transition(current.state, state)
         canonical_payload = _canonical_payload(registry, payload)
         _require_attested_batch_provenance(canonical_payload)
+        if runner_attempt_id is None:
+            inferred_runner = _claimed_runner_commit_context(
+                registry.connection,
+                candidate_id=candidate_id,
+                payload=canonical_payload,
+            )
+            if inferred_runner is not None:
+                runner_attempt_id, runner_start_ms, runner_end_ms = inferred_runner
         try:
             assert_checkpoint_report_backed_by_observations(
                 registry.connection,
