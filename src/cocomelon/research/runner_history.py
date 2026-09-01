@@ -144,6 +144,70 @@ def record_runner_attempt_started(
         raise
 
 
+def bind_runner_attempt_source_interval(
+    connection: sqlite3.Connection,
+    *,
+    attempt_id: str,
+    start_ms: int,
+    end_ms: int,
+) -> None:
+    _ensure_schema(connection)
+    resolved_attempt_id = _require_text(attempt_id, "attempt_id")
+    if start_ms < 0 or end_ms <= start_ms:
+        raise ResearchRegistryError("research runner source interval is invalid")
+
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        existing = connection.execute(
+            """
+            SELECT status, start_ms, end_ms
+            FROM research_runner_attempts
+            WHERE attempt_id = ?
+            """,
+            (resolved_attempt_id,),
+        ).fetchone()
+        if existing is None:
+            raise ResearchRegistryError(
+                f"research runner attempt not found: {resolved_attempt_id}"
+            )
+        existing_status = _stored_status(existing["status"])
+        stored_start = existing["start_ms"]
+        stored_end = existing["end_ms"]
+        if (stored_start is None) != (stored_end is None):
+            raise ResearchRegistryError("stored research runner source interval is incomplete")
+        if stored_start is not None and stored_end is not None:
+            if (int(stored_start), int(stored_end)) != (start_ms, end_ms):
+                raise ResearchRegistryError(
+                    "research runner attempt already has a different source interval"
+                )
+            connection.commit()
+            return
+        if existing_status is not ResearchRunnerAttemptStatus.RUNNING:
+            raise ResearchRegistryError(
+                "research runner source interval must be bound before evaluation"
+            )
+        cursor = connection.execute(
+            """
+            UPDATE research_runner_attempts
+            SET start_ms = ?, end_ms = ?
+            WHERE attempt_id = ? AND status = ?
+              AND start_ms IS NULL AND end_ms IS NULL
+            """,
+            (
+                start_ms,
+                end_ms,
+                resolved_attempt_id,
+                ResearchRunnerAttemptStatus.RUNNING.value,
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ResearchRegistryError("research runner source interval changed concurrently")
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
 def claim_runner_attempt_evaluation(
     connection: sqlite3.Connection,
     *,
