@@ -159,7 +159,9 @@ def _validate_finish(
         if report_id is None or not report_id.strip():
             raise ResearchRegistryError("successful research runner attempt requires report_id")
         if error_type is not None or error_message is not None:
-            raise ResearchRegistryError("successful research runner attempt cannot contain an error")
+            raise ResearchRegistryError(
+                "successful research runner attempt cannot contain an error"
+            )
     elif report_id is not None:
         raise ResearchRegistryError("unsuccessful research runner attempt cannot contain report_id")
 
