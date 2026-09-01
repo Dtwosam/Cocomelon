@@ -75,6 +75,14 @@ def _require_string(value: object, field: str) -> str:
     return value
 
 
+def _require_strings(value: object, field: str) -> list[str]:
+    if not isinstance(value, (list, tuple)) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ValueError(f"{field} must be a non-empty string sequence")
+    return [str(item) for item in value]
+
+
 def _require_int(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"{field} must be a non-negative integer")
@@ -102,14 +110,14 @@ def _normalized_record(
         raise ValueError("research cohort transport session does not match recording")
     _require_int(record.get("event_count"), "research cohort transport event_count")
 
-    selected = record.get("selected_markets")
-    if not isinstance(selected, (list, tuple)) or not all(
-        isinstance(item, str) and item.strip() for item in selected
-    ):
-        raise ValueError("research cohort transport selected_markets is invalid")
+    selected = _require_strings(
+        record.get("selected_markets"),
+        "research cohort transport selected_markets",
+    )
     expected_markets = sorted(item.market.canonical for item in session.selected)
     if sorted(selected) != expected_markets:
         raise ValueError("research cohort transport markets do not match recording session")
+    record["selected_markets"] = selected
     return record
 
 
@@ -257,7 +265,10 @@ def build_research_cohort(
             replay.get("risk_rejections"),
             "research replay risk_rejections",
         ),
-        "selected_markets": list(record["selected_markets"]),
+        "selected_markets": _require_strings(
+            record.get("selected_markets"),
+            "research record selected_markets",
+        ),
         "strategy_decisions": _require_int(
             replay.get("strategy_decisions"),
             "research replay strategy_decisions",
