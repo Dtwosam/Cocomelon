@@ -112,6 +112,31 @@ def test_builder_emits_verified_genuine_mainnet_research_cohort(tmp_path: Path) 
     assert mainnet["live_orders"] is False
 
 
+def test_research_replay_has_precommitted_entry_and_exit_horizon(tmp_path: Path) -> None:
+    recording_root, output_root, session = _cohort_roots(tmp_path)
+
+    build_research_cohort(
+        recording_root,
+        output_root,
+        Decimal("10000"),
+        trigger_head_sha="f" * 40,
+    )
+    bundle = load_baseline_replay_bundle(output_root / "bundle.json")
+    replay = json.loads((output_root / "replay.json").read_text(encoding="utf-8"))
+
+    assert cohort_module.RESEARCH_ENTRY_WINDOW_MS == 300_000
+    assert cohort_module.RESEARCH_MAX_POSITION_AGE_MS == 1_200_000
+    assert cohort_module.RESEARCH_CAPTURE_SECONDS == 1_800
+    assert (
+        cohort_module.RESEARCH_ENTRY_WINDOW_MS + cohort_module.RESEARCH_MAX_POSITION_AGE_MS
+        < cohort_module.RESEARCH_CAPTURE_SECONDS * 1_000
+    )
+    assert bundle.replay_config.execution.max_position_age_ms == 1_200_000
+    assert replay["entry_window_ms"] == 300_000
+    assert replay["max_position_age_ms"] == 1_200_000
+    assert replay["new_exposure_cutoff_ms"] == session.started_at_ms + 300_000
+
+
 def test_production_cohort_uses_candidate_stable_replay_config_identity(
     tmp_path: Path,
 ) -> None:
