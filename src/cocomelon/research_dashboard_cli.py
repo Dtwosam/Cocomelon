@@ -11,7 +11,8 @@ from cocomelon.research.dashboard import (
     build_research_status,
     render_research_status_markdown,
 )
-from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
+from cocomelon.research.read_only_registry import ReadOnlyResearchRegistry
+from cocomelon.research.registry import ResearchRegistryError
 
 
 def _emit_json(value: object, *, stream: TextIO) -> None:
@@ -51,9 +52,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 2
 
-    registry: ResearchRegistry | None = None
+    registry: ReadOnlyResearchRegistry | None = None
     try:
-        registry = ResearchRegistry(registry_path)
+        registry = ReadOnlyResearchRegistry(registry_path)
         snapshot = build_research_status(registry)
         if args.format == "json":
             _emit_json(snapshot, stream=sys.stdout)
