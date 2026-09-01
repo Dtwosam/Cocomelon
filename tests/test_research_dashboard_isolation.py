@@ -7,7 +7,11 @@ from pathlib import Path
 
 import cocomelon.research.dashboard as research_dashboard
 import cocomelon.research_dashboard_cli as research_dashboard_cli
-from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState, TimeInterval
+from cocomelon.research.contracts import (
+    ResearchCandidateManifest,
+    ResearchCandidateState,
+    TimeInterval,
+)
 from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
