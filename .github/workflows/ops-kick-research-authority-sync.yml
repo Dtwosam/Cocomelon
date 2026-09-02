@@ -1,4 +1,4 @@
-name: One-shot Research Campaign Kick
+name: One-shot Research Campaign Cancel
 
 on:
   push:
@@ -12,16 +12,15 @@ permissions:
   actions: write
 
 jobs:
-  dispatch:
+  cancel:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Dispatch trusted main paper research campaign
+      - name: Cancel overlapping paper research campaign
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           /usr/bin/gh api \
             --method POST \
-            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/dispatches" \
-            -f ref=main
+            "/repos/$GITHUB_REPOSITORY/actions/runs/33680737242/cancel"
