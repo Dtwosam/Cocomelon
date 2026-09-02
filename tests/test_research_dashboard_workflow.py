@@ -10,12 +10,13 @@ def _workflow() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_research_dashboard_refreshes_from_research_campaign_and_on_main_push() -> None:
+def test_research_dashboard_refreshes_from_trusted_producers_and_on_main_push() -> None:
     workflow = _workflow()
 
     assert "Cocomelon Research Dashboard Refresh" in workflow
     assert "workflow_run:" in workflow
     assert '"Scheduled Research Mainnet Replay Campaign"' in workflow
+    assert '"Research V4 Acquisition Authority Sync"' in workflow
     assert "types: [completed]" in workflow
     assert "schedule:" in workflow
     assert "workflow_dispatch:" in workflow
