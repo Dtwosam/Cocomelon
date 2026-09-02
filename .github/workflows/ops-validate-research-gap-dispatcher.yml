@@ -1,0 +1,27 @@
+name: One-shot Research Gap Dispatcher Validation
+
+on:
+  push:
+    branches:
+      - ops/validate-research-gap-dispatcher-20260902
+    paths:
+      - .github/workflows/ops-validate-research-gap-dispatcher.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch-gap-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch research daily gap dispatcher on main
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
+            -f ref=main
