@@ -299,7 +299,6 @@ jobs:
                 /usr/bin/gh api \
                   "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$ATTEMPT/jobs?per_page=100" \
                   --jq '[.jobs[]
-                    | select(.name == "acquire-evidence")
                     | .steps[]?
                     | select(.name == "Record thesis-expiry genuine public mainnet evidence")
                     | (.conclusion // "")][0] // ""'
@@ -307,12 +306,15 @@ jobs:
               ARTIFACT_ROOT=""
 
               if [ "$RUN_STATUS" = "completed" ] && [ "$CAPTURE_CONCLUSION" != "skipped" ]; then
-                EXPECTED_NAME="v4-acquisition-stage-${RUN_ID}-attempt-${ATTEMPT}"
+                STAGE_NAME="v4-acquisition-stage-${RUN_ID}-attempt-${ATTEMPT}"
+                RETAINED_NAME="scheduled-genuine-mainnet-evidence-v4-${RUN_ID}-attempt-${ATTEMPT}"
                 ARTIFACT_ID="$(
                   /usr/bin/gh api \
                     "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
                     --jq ".artifacts
-                      | map(select(.expired == false and .name == \"$EXPECTED_NAME\"))
+                      | map(select(.expired == false and
+                          (.name == \"$STAGE_NAME\" or .name == \"$RETAINED_NAME\")))
+                      | sort_by(if .name == \"$STAGE_NAME\" then 0 else 1 end)
                       | .[0].id // empty"
                 )"
                 if [ -z "$ARTIFACT_ID" ]; then
