@@ -277,9 +277,9 @@ jobs:
                   "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$ATTEMPT" \
                   --jq '[.status, (.conclusion // ""),
                          (.run_started_at // .created_at), .path]
-                        | @tsv'
+                        | join("|")'
               )"
-              IFS=$'\t' read -r RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT ATTEMPT_WORKFLOW_PATH \
+              IFS='|' read -r RUN_STATUS RUN_CONCLUSION RUN_STARTED_AT ATTEMPT_WORKFLOW_PATH \
                 <<< "$ATTEMPT_ROW"
               if [ -z "$RUN_STATUS" ] || [ -z "$RUN_STARTED_AT" ]; then
                 echo "V4 workflow attempt metadata is incomplete: $RUN_ID attempt $ATTEMPT" >&2
