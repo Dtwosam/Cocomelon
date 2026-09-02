@@ -1,4 +1,4 @@
-name: One-shot Research Capture Fix Patch
+name: One-shot Research Campaign Kick
 
 on:
   push:
@@ -8,68 +8,20 @@ on:
       - .github/workflows/ops-kick-research-authority-sync.yml
 
 permissions:
-  contents: write
+  contents: read
+  actions: write
 
 jobs:
-  patch:
+  dispatch:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    env:
-      GH_TOKEN: ${{ github.token }}
-      TARGET_BRANCH: fix/research-capture-recorder-cwd-20260902
-      TARGET_FILE: .github/workflows/research-campaign-scheduled.yml
     steps:
-      - name: Patch only the PR branch capture command
+      - name: Dispatch trusted main paper research campaign
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          META="$(
-            /usr/bin/gh api --method GET \
-              "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
-              -f ref="$TARGET_BRANCH"
-          )"
-          FILE_SHA="$(jq -r '.sha' <<< "$META")"
-          jq -r '.content' <<< "$META" \
-            | tr -d '\n' \
-            | base64 -d \
-            > /tmp/research-campaign.yml
-
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("/tmp/research-campaign.yml")
-          source = path.read_text(encoding="utf-8")
-          old = "\n".join(
-              [
-                  "          cocomelon record-mainnet-evidence \\",
-                  "            --root research-campaign/recording \\",
-                  "            --seconds 1800 \\",
-                  "            --deep-limit 5 \\",
-                  "            > research-campaign/output/record-transport.json",
-              ]
-          )
-          new = "\n".join(
-              [
-                  "          cd control-src",
-                  "          cocomelon record-mainnet-evidence \\",
-                  '            --root "$GITHUB_WORKSPACE/research-campaign/recording" \\',
-                  "            --seconds 1800 \\",
-                  "            --deep-limit 5 \\",
-                  '            > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json"',
-              ]
-          )
-          if source.count(old) != 1:
-              raise RuntimeError("expected exactly one research recorder command to patch")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
-          PY
-
-          CONTENT="$(base64 -w0 /tmp/research-campaign.yml)"
-          jq -n \
-            --arg message "fix: resolve research recorder provenance from trusted checkout" \
-            --arg content "$CONTENT" \
-            --arg sha "$FILE_SHA" \
-            --arg branch "$TARGET_BRANCH" \
-            '{message: $message, content: $content, sha: $sha, branch: $branch}' \
-            > /tmp/update.json
-          /usr/bin/gh api --method PUT \
-            "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
-            --input /tmp/update.json
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/dispatches" \
+            -f ref=main
