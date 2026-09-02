@@ -1,4 +1,4 @@
-name: One-shot Research Gate Commit Builder
+name: One-shot Research Gate Test Updater
 
 on:
   push:
@@ -11,75 +11,69 @@ permissions:
   contents: write
 
 jobs:
-  build-commit:
+  update-tests:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_BRANCH: fix/research-predecision-v4-gate-20260902
-      TARGET_FILE: .github/workflows/research-campaign-scheduled.yml
-      TARGET_PARENT_SHA: 8482a6fd2be1a03c698d4f03f71a480db597c096
-      TARGET_BASE_TREE_SHA: e417d64edcdab0a62f274e7576fa24e5ffae5d9c
     steps:
-      - name: Build unreferenced workflow commit from exact target blob
+      - name: Update only superseded workflow-order assertions
         run: |
           set -euo pipefail
-          echo 'stage=read-target'
-          META="$(
+
+          fetch_file() {
+            local repo_path="$1"
+            local local_path="$2"
+            local meta_path="$3"
             /usr/bin/gh api --method GET \
-              "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
-              -f ref="$TARGET_BRANCH"
-          )"
-          jq -r '.content' <<< "$META" | tr -d '\n' | base64 -d > /tmp/workflow.yml
+              "/repos/$GITHUB_REPOSITORY/contents/$repo_path" \
+              -f ref="$TARGET_BRANCH" > "$meta_path"
+            jq -r '.content' "$meta_path" | tr -d '\n' | base64 -d > "$local_path"
+          }
 
-          echo 'stage=transform'
-          printf '%s' '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' | base64 -d | gzip -d | python
+          fetch_file tests/test_research_predecision_v4_gate.py \
+            /tmp/test_research_predecision_v4_gate.py /tmp/pre-meta.json
+          fetch_file tests/test_research_review_hardening.py \
+            /tmp/test_research_review_hardening.py /tmp/review-meta.json
+          fetch_file tests/test_research_runner_workflow.py \
+            /tmp/test_research_runner_workflow.py /tmp/runner-meta.json
 
-          python - <<'PY'
+          printf '%s' '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' | base64 -d | gzip -d | python
+
+          put_file() {
+            local repo_path="$1"
+            local local_path="$2"
+            local meta_path="$3"
+            local message="$4"
+            local request_path="$5"
+            REPO_PATH="$repo_path" LOCAL_PATH="$local_path" META_PATH="$meta_path" MESSAGE="$message" \
+              TARGET_BRANCH="$TARGET_BRANCH" REQUEST_PATH="$request_path" python - <<'PY'
           import json
+          import os
           from pathlib import Path
-          with Path('/tmp/blob.json').open('w', encoding='utf-8') as handle:
-              json.dump(
-                  {'content': Path('/tmp/workflow.yml').read_text(encoding='utf-8'), 'encoding': 'utf-8'},
-                  handle,
-              )
+
+          content = Path(os.environ['LOCAL_PATH']).read_text(encoding='utf-8')
+          meta = json.loads(Path(os.environ['META_PATH']).read_text(encoding='utf-8'))
+          payload = {
+              'message': os.environ['MESSAGE'],
+              'content': __import__('base64').b64encode(content.encode()).decode(),
+              'sha': meta['sha'],
+              'branch': os.environ['TARGET_BRANCH'],
+          }
+          Path(os.environ['REQUEST_PATH']).write_text(json.dumps(payload), encoding='utf-8')
           PY
+            /usr/bin/gh api --method PUT \
+              "/repos/$GITHUB_REPOSITORY/contents/$repo_path" \
+              --input "$request_path" > /dev/null
+          }
 
-          echo 'stage=create-blob'
-          BLOB_SHA="$(
-            /usr/bin/gh api --method POST \
-              "/repos/$GITHUB_REPOSITORY/git/blobs" \
-              --input /tmp/blob.json \
-              --jq '.sha'
-          )"
-          echo "blob=$BLOB_SHA"
-
-          echo 'stage=create-tree'
-          jq -n \
-            --arg base_tree "$TARGET_BASE_TREE_SHA" \
-            --arg path "$TARGET_FILE" \
-            --arg sha "$BLOB_SHA" \
-            '{base_tree: $base_tree, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}]}' \
-            > /tmp/tree.json
-          TREE_SHA="$(
-            /usr/bin/gh api --method POST \
-              "/repos/$GITHUB_REPOSITORY/git/trees" \
-              --input /tmp/tree.json \
-              --jq '.sha'
-          )"
-          echo "tree=$TREE_SHA"
-
-          echo 'stage=create-commit'
-          jq -n \
-            --arg message 'fix: authorize research observation before candidate decisions' \
-            --arg tree "$TREE_SHA" \
-            --arg parent "$TARGET_PARENT_SHA" \
-            '{message: $message, tree: $tree, parents: [$parent]}' \
-            > /tmp/commit.json
-          COMMIT_SHA="$(
-            /usr/bin/gh api --method POST \
-              "/repos/$GITHUB_REPOSITORY/git/commits" \
-              --input /tmp/commit.json \
-              --jq '.sha'
-          )"
-          printf 'CANDIDATE_COMMIT_SHA=%s\n' "$COMMIT_SHA"
+          put_file tests/test_research_predecision_v4_gate.py \
+            /tmp/test_research_predecision_v4_gate.py /tmp/pre-meta.json \
+            'test: assert research authority through job dependencies' /tmp/pre-put.json
+          put_file tests/test_research_review_hardening.py \
+            /tmp/test_research_review_hardening.py /tmp/review-meta.json \
+            'test: preserve pre-decision V4 trust boundary' /tmp/review-put.json
+          put_file tests/test_research_runner_workflow.py \
+            /tmp/test_research_runner_workflow.py /tmp/runner-meta.json \
+            'test: reflect authority-before-decisions artifact flow' /tmp/runner-put.json
