@@ -1,0 +1,27 @@
+name: Ops Kick Research Authority Sync 20260903
+
+on:
+  push:
+    branches:
+      - ops/kick-research-authority-sync-20260903
+    paths:
+      - ".github/workflows/ops-kick-research-authority-sync-20260903.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch trusted research V4 authority sync on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+            -f ref=main
