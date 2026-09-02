@@ -5,7 +5,11 @@ SYNC = pathlib.Path(".github/workflows/research-v4-registry-sync.yml")
 
 def _inventory_block() -> str:
     source = SYNC.read_text(encoding="utf-8")
-    return source.split("- name: Inventory actual V4 acquisition runs and capture evidence", 1)[1].split(
+    inventory = source.split(
+        "- name: Inventory actual V4 acquisition runs and capture evidence",
+        1,
+    )[1]
+    return inventory.split(
         "- name: Apply non-economic V4 acquisition authority inventory",
         1,
     )[0]
