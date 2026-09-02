@@ -12,7 +12,8 @@ permissions:
 
 env:
   V4_ACQUISITION_WORKFLOW: .github/workflows/evidence-campaign-v4-scheduled.yml
-  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}
+  # Operator override source: RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}
+  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
 
 concurrency:
   group: research-v4-acquisition-authority-sync

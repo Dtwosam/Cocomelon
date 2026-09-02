@@ -16,7 +16,7 @@ env:
   COCOMELON_EXECUTION_MODE: paper
   COCOMELON_API_URL: https://api.hyperliquid.xyz
   COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID }}
+  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
   ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
   BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
   SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}
