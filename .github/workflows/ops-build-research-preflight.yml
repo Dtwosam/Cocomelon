@@ -34,38 +34,44 @@ jobs:
 
           path = Path("/tmp/target.py")
           source = path.read_text(encoding="utf-8")
-          old = '''    for forbidden in (
-        "evidence-campaign-v4-scheduled",
-        "v4-mainnet-corpus",
-'''
-          new = '''    for forbidden in (
-        "v4-mainnet-corpus",
-'''
+          old = "\n".join([
+              "    for forbidden in (",
+              '        "evidence-campaign-v4-scheduled",',
+              '        "v4-mainnet-corpus",',
+          ]) + "\n"
+          new = "\n".join([
+              "    for forbidden in (",
+              '        "v4-mainnet-corpus",',
+          ]) + "\n"
           if source.count(old) != 1:
               raise RuntimeError("V4 separation forbidden tuple must occur exactly once")
           source = source.replace(old, new, 1)
 
-          anchor = '''    for forbidden in (
-        "v4-mainnet-corpus",
-        "evidence_corpus_curator",
-        "phase9_v4_one_shot",
-        "candidate_edge",
-        "private_key",
-        "wallet",
-        "withdraw",
-        "transfer",
-        "send_order",
-        "live_order",
-    ):
-        assert forbidden not in lowered
-'''
-          addition = '''    assert lowered.count("evidence-campaign-v4-scheduled") == 1
-    preflight = source.split(
-        "- name: Refuse research capture while V4 acquisition is active",
-        1,
-    )[1].split("- name: Upload prepared research control state", 1)[0]
-    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight
-'''
+          anchor_lines = [
+              "    for forbidden in (",
+              '        "v4-mainnet-corpus",',
+              '        "evidence_corpus_curator",',
+              '        "phase9_v4_one_shot",',
+              '        "candidate_edge",',
+              '        "private_key",',
+              '        "wallet",',
+              '        "withdraw",',
+              '        "transfer",',
+              '        "send_order",',
+              '        "live_order",',
+              "    ):",
+              "        assert forbidden not in lowered",
+          ]
+          anchor = "\n".join(anchor_lines) + "\n"
+          addition_lines = [
+              '    assert lowered.count("evidence-campaign-v4-scheduled") == 1',
+              "    preflight = source.split(",
+              '        "- name: Refuse research capture while V4 acquisition is active",',
+              "        1,",
+              '    )[1].split("- name: Upload prepared research control state", 1)[0]',
+              '    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight',
+          ]
+          addition = "\n".join(addition_lines) + "\n"
           if source.count(anchor) != 1:
               raise RuntimeError("V4 separation assertion block must occur exactly once")
           source = source.replace(anchor, anchor + addition, 1)
