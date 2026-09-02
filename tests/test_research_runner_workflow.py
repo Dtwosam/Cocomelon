@@ -32,7 +32,6 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
     assert "research-authoritative-registry" in source
 
     for forbidden in (
-        "evidence-campaign-v4-scheduled",
         "v4-mainnet-corpus",
         "evidence_corpus_curator",
         "phase9_v4_one_shot",
@@ -45,6 +44,12 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
         "live_order",
     ):
         assert forbidden not in lowered
+    assert lowered.count("evidence-campaign-v4-scheduled") == 1
+    preflight = source.split(
+        "- name: Refuse research capture while V4 acquisition is active",
+        1,
+    )[1].split("- name: Upload prepared research control state", 1)[0]
+    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight
 
 
 def test_research_campaign_pins_candidate_strategy_before_trusted_capture() -> None:
@@ -161,7 +166,8 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "GH_TOKEN:" not in finalizer_before_rebase
     assert "GH_TOKEN: ${{ github.token }}" in finalizer_rebase
     assert "GH_TOKEN:" not in finalizer_after_rebase
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 5
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 6
+    assert prepare.count("GH_TOKEN: ${{ github.token }}") == 2
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download

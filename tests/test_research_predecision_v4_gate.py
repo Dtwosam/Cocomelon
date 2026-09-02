@@ -29,3 +29,38 @@ def test_v4_authority_is_verified_before_candidate_observes_capture() -> None:
 
     assert "Authorize candidate observation and record research touch" in refresh
     assert "refresh-authority" in decisions.split("steps:", 1)[0]
+
+
+def test_known_active_v4_is_rejected_before_candidate_build_or_capture() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    prepare = _job(source, "prepare-control", "candidate-build")
+    marker = "Refuse research capture while V4 acquisition is active"
+
+    assert marker in prepare
+    preflight = prepare.split(f"- name: {marker}", 1)[1].split(
+        "- name: Upload prepared research control state",
+        1,
+    )[0]
+    assert "GH_TOKEN: ${{ github.token }}" in preflight
+    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight
+    assert '.head_branch == "main"' in preflight
+    assert '.event == "schedule" or .event == "workflow_dispatch"' in preflight
+    assert '.status != "completed"' in preflight
+    assert "v4-active-run" in preflight
+
+    for forbidden in (
+        "net_pnl",
+        "mean_net_r",
+        "posterior_probability",
+        "profit_factor",
+        "final_equity",
+        "phase9_v4_one_shot",
+    ):
+        assert forbidden not in preflight.lower()
+
+    assert prepare.index("Persist acquisition attempt before candidate setup") < prepare.index(
+        marker
+    )
+    assert prepare.index(marker) < prepare.index("Upload prepared research control state")
+    assert source.index(marker) < source.index("Checkout candidate code revision")
+    assert source.index(marker) < source.index("record-mainnet-evidence")
