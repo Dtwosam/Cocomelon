@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - "Scheduled Research Mainnet Replay Campaign"
+      - "Research V4 Acquisition Authority Sync"
     types: [completed]
   schedule:
     - cron: "23 * * * *"
