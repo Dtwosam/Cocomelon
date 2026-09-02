@@ -65,3 +65,14 @@ def test_research_dashboard_issue_lookup_fails_closed_before_creation() -> None:
     assert 'ISSUE_NUMBERS_TEXT="$(' in workflow
     assert 'if [ -n "$ISSUE_NUMBERS_TEXT" ]; then' in workflow
     assert "mapfile -t ISSUE_NUMBERS < <(" not in workflow
+
+
+def test_research_dashboard_publishes_safe_bootstrap_state_without_registry() -> None:
+    workflow = _workflow()
+
+    assert 'printf \'false\\n\' > dashboard/registry-available.txt' in workflow
+    assert 'printf \'true\\n\' > dashboard/registry-available.txt' in workflow
+    assert 'if [ "$(cat dashboard/registry-available.txt)" = "true" ]; then' in workflow
+    assert "No trusted research registry has been published yet." in workflow
+    assert "Research economics are unavailable until" in workflow
+    assert 'exit 65' not in workflow

@@ -59,6 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dashboard/registry
+          printf 'false\n' > dashboard/registry-available.txt
           ARTIFACT_ROWS="$(
             /usr/bin/gh api \
               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
@@ -103,8 +104,8 @@ jobs:
             break
           done <<< "$ARTIFACT_ROWS"
           if [ -z "$ARTIFACT_ID" ]; then
-            echo "trusted research-authoritative-registry unavailable" >&2
-            exit 65
+            echo "trusted research-authoritative-registry not published yet; publishing bootstrap dashboard without economics"
+            exit 0
           fi
           /usr/bin/gh api \
             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
@@ -118,15 +119,28 @@ jobs:
             exit 66
           fi
           cp "$REGISTRY_PATH" dashboard/research.sqlite3
+          printf 'true\n' > dashboard/registry-available.txt
 
       - name: Render authenticated research status
         run: |
           set -euo pipefail
-          cocomelon-research-status \
-            --registry dashboard/research.sqlite3 \
-            --format markdown \
-            > dashboard/status.md
-          grep -Fq "TOUCHED / NON-PROMOTIONAL" dashboard/status.md
+          if [ "$(cat dashboard/registry-available.txt)" = "true" ]; then
+            cocomelon-research-status \
+              --registry dashboard/research.sqlite3 \
+              --format markdown \
+              > dashboard/status.md
+            grep -Fq "TOUCHED / NON-PROMOTIONAL" dashboard/status.md
+          else
+            cat > dashboard/status.md <<'EOF'
+          # Research Status
+
+          **TOUCHED / NON-PROMOTIONAL**
+
+          No trusted research registry has been published yet.
+
+          Research economics are unavailable until the first provenance-validated authority sync or research campaign publishes `research-authoritative-registry`.
+          EOF
+          fi
 
       - name: Build dashboard issue body
         run: |
@@ -134,7 +148,7 @@ jobs:
           UPDATED_AT="$(date -u '+%Y-%m-%d %H:%M UTC')"
           {
             printf '# Cocomelon Research Dashboard\n\n'
-            printf '> Auto-refreshed from the latest provenance-validated research registry. Last updated **%s**.\n\n' "$UPDATED_AT"
+            printf '> Auto-refreshed from the latest provenance-validated research state. Last updated **%s**.\n\n' "$UPDATED_AT"
             cat dashboard/status.md
             printf '\n---\n\n'
             printf 'This dashboard is **TOUCHED / NON-PROMOTIONAL** research evidence only. '
