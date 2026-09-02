@@ -34,10 +34,11 @@ jobs:
 
           path = Path("/tmp/target.py")
           source = path.read_text(encoding="utf-8")
-          old = '    assert source.count("GH_TOKEN: ${{ github.token }}") == 5\n'
+          token_expression = "$" + "{{ github.token }}"
+          old = f'    assert source.count("GH_TOKEN: {token_expression}") == 5\n'
           new = (
-              '    assert source.count("GH_TOKEN: ${{ github.token }}") == 6\n'
-              '    assert prepare.count("GH_TOKEN: ${{ github.token }}") == 2\n'
+              f'    assert source.count("GH_TOKEN: {token_expression}") == 6\n'
+              f'    assert prepare.count("GH_TOKEN: {token_expression}") == 2\n'
           )
           if source.count(old) != 1:
               raise RuntimeError("trusted-token count assertion must occur exactly once")
