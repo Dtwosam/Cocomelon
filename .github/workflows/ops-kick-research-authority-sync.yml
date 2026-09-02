@@ -1,4 +1,4 @@
-name: One-shot Research Authority Sync Kick
+name: One-shot Research Dashboard Refresh Kick
 
 on:
   push:
@@ -16,13 +16,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Dispatch trusted main research authority sync
+      - name: Dispatch trusted main research dashboard refresh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Re-dispatch after trusted retained-artifact compatibility fix.
           /usr/bin/gh api \
             --method POST \
-            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \
             -f ref=main
