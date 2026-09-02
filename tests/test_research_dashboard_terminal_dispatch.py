@@ -25,8 +25,8 @@ def test_campaign_dispatches_dashboard_from_isolated_terminal_job() -> None:
     assert "if: ${{ always() }}" in header
     assert "actions: write" in header
     assert "contents: none" in header
-    assert "GH_TOKEN: ${{ github.token }}" in steps
-    assert 'actions/workflows/research-dashboard.yml/dispatches' in steps
+    assert "GITHUB_TOKEN: ${{ github.token }}" in steps
+    assert "actions/workflows/research-dashboard.yml/dispatches" in steps
     assert "--method POST" in steps
     assert "-f ref=main" in steps
 
