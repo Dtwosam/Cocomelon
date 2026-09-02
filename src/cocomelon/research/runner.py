@@ -1,0 +1,244 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from cocomelon.research.artifact import verify_research_batch_artifact
+from cocomelon.research.checkpoint_commit import bind_runner_checkpoint_commit
+from cocomelon.research.contracts import ResearchCandidateState
+from cocomelon.research.evaluator import (
+    ResearchArtifactBatch,
+    evaluate_research_checkpoint,
+)
+from cocomelon.research.registry import (
+    ResearchContaminationError,
+    ResearchRegistry,
+    ResearchRegistryError,
+)
+from cocomelon.research.runner_history import (
+    ResearchRunnerAttemptStatus,
+    claim_runner_attempt_evaluation,
+    finish_runner_attempt,
+    finish_runner_attempt_uncommitted,
+    record_runner_attempt_started,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchRunnerRequest:
+    attempt_id: str
+    candidate_id: str
+    batch_id: str
+    source_id: str
+    artifact_root: Path
+
+
+@dataclass(frozen=True, slots=True)
+class ResearchRunnerResult:
+    attempt_id: str
+    start_ms: int
+    end_ms: int
+    report_id: str
+
+
+def _finish_failure(
+    registry: ResearchRegistry,
+    *,
+    request: ResearchRunnerRequest,
+    status: ResearchRunnerAttemptStatus,
+    start_ms: int | None,
+    end_ms: int | None,
+    exc: Exception,
+) -> None:
+    finish_runner_attempt(
+        registry.connection,
+        attempt_id=request.attempt_id,
+        status=status,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        report_id=None,
+        error_type=type(exc).__name__,
+        error_message=str(exc),
+    )
+
+
+def _assert_candidate_matches_artifact(
+    registry: ResearchRegistry,
+    *,
+    request: ResearchRunnerRequest,
+    code_revision: str,
+    manifest_config_digest: str,
+    candidate_config_digest: str | None,
+) -> None:
+    candidate = registry.load_candidate(request.candidate_id)
+    if candidate.code_revision != code_revision:
+        raise ResearchRegistryError(
+            "research runner artifact code revision does not match candidate"
+        )
+    resolved_config_digest = (
+        candidate_config_digest
+        if candidate_config_digest is not None
+        else manifest_config_digest
+    )
+    if candidate.config_digest != resolved_config_digest:
+        raise ResearchRegistryError(
+            "research runner artifact config digest does not match candidate"
+        )
+
+
+def _assert_contamination_transition_allowed(state: ResearchCandidateState) -> None:
+    if state in {
+        ResearchCandidateState.REJECTED_OPERATIONAL,
+        ResearchCandidateState.REJECTED_FUTILITY,
+        ResearchCandidateState.VALIDATED_EDGE,
+        ResearchCandidateState.NO_EDGE,
+    }:
+        raise ResearchRegistryError(f"candidate is terminal: {state.value}")
+    if state is ResearchCandidateState.FROZEN_CHALLENGER:
+        raise ResearchRegistryError(
+            "candidate is terminal to research checkpoints: frozen_challenger"
+        )
+    if state not in {
+        ResearchCandidateState.DRAFT,
+        ResearchCandidateState.RESEARCHING,
+        ResearchCandidateState.RESEARCH_PROMISING,
+        ResearchCandidateState.REJECTED_CONTAMINATION,
+    }:
+        raise ResearchRegistryError(
+            f"invalid research state transition: {state.value} -> rejected_contamination"
+        )
+
+
+def _reject_contamination(
+    registry: ResearchRegistry,
+    *,
+    request: ResearchRunnerRequest,
+    start_ms: int | None,
+    end_ms: int | None,
+    exc: ResearchContaminationError,
+) -> None:
+    connection = registry.connection
+    if connection.in_transaction:
+        raise ResearchRegistryError("contamination outcome transaction is already active")
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        candidate = registry.load_candidate(request.candidate_id)
+        _assert_contamination_transition_allowed(candidate.state)
+        if candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION:
+            registry._force_candidate_contamination(
+                request.candidate_id,
+                reason="v4_source_interval_overlap",
+            )
+        finish_runner_attempt_uncommitted(
+            connection,
+            attempt_id=request.attempt_id,
+            status=ResearchRunnerAttemptStatus.CONTAMINATED,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            report_id=None,
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+
+
+def run_research_artifact_attempt(
+    registry: ResearchRegistry,
+    request: ResearchRunnerRequest,
+) -> ResearchRunnerResult:
+    record_runner_attempt_started(
+        registry.connection,
+        attempt_id=request.attempt_id,
+        candidate_id=request.candidate_id,
+        batch_id=request.batch_id,
+        source_id=request.source_id,
+        artifact_root=str(request.artifact_root),
+    )
+
+    start_ms: int | None = None
+    end_ms: int | None = None
+    try:
+        verified = verify_research_batch_artifact(
+            request.artifact_root,
+            batch_id=request.batch_id,
+            source_id=request.source_id,
+        )
+        start_ms = verified.interval.start_ms
+        end_ms = verified.interval.end_ms
+        _assert_candidate_matches_artifact(
+            registry,
+            request=request,
+            code_revision=verified.code_revision,
+            manifest_config_digest=verified.config_digest,
+            candidate_config_digest=verified.candidate_config_digest,
+        )
+        registry.assert_batch_disjoint_from_v4(verified.interval)
+    except ResearchContaminationError as exc:
+        _reject_contamination(
+            registry,
+            request=request,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
+    except Exception as exc:
+        _finish_failure(
+            registry,
+            request=request,
+            status=ResearchRunnerAttemptStatus.FAILED,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
+
+    claim_runner_attempt_evaluation(
+        registry.connection,
+        attempt_id=request.attempt_id,
+    )
+    try:
+        with bind_runner_checkpoint_commit(
+            attempt_id=request.attempt_id,
+            batch_id=request.batch_id,
+        ):
+            report = evaluate_research_checkpoint(
+                registry=registry,
+                candidate_id=request.candidate_id,
+                artifact_batches=(
+                    ResearchArtifactBatch(
+                        artifact_root=request.artifact_root,
+                        batch_id=request.batch_id,
+                        source_id=request.source_id,
+                    ),
+                ),
+            )
+    except ResearchContaminationError as exc:
+        _reject_contamination(
+            registry,
+            request=request,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
+    except Exception as exc:
+        _finish_failure(
+            registry,
+            request=request,
+            status=ResearchRunnerAttemptStatus.FAILED,
+            start_ms=start_ms,
+            end_ms=end_ms,
+            exc=exc,
+        )
+        raise
+
+    return ResearchRunnerResult(
+        attempt_id=request.attempt_id,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        report_id=report.report_id,
+    )

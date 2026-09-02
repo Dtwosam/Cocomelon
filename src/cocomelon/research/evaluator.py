@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, localcontext
@@ -340,7 +341,7 @@ def _verify_artifact_batches(
     return tuple(verified_batches)
 
 
-def evaluate_research_checkpoint(
+def _evaluate_research_checkpoint_unprotected(
     *,
     registry: ResearchRegistry,
     candidate_id: str,
@@ -513,3 +514,30 @@ def evaluate_research_checkpoint(
         payload=report.to_dict(),
     )
     return report
+
+
+def evaluate_research_checkpoint(
+    *,
+    registry: ResearchRegistry,
+    candidate_id: str,
+    artifact_batches: tuple[ResearchArtifactBatch, ...],
+) -> ResearchCheckpointReport:
+    """Evaluate a checkpoint and restore pre-admission state on any non-contamination failure."""
+
+    snapshot = sqlite3.connect(":memory:")
+    registry.connection.backup(snapshot)
+    try:
+        return _evaluate_research_checkpoint_unprotected(
+            registry=registry,
+            candidate_id=candidate_id,
+            artifact_batches=artifact_batches,
+        )
+    except ResearchContaminationError:
+        raise
+    except Exception:
+        if registry.connection.in_transaction:
+            registry.connection.rollback()
+        snapshot.backup(registry.connection)
+        raise
+    finally:
+        snapshot.close()

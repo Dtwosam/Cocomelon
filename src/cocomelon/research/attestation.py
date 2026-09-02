@@ -64,7 +64,12 @@ def attest_verified_research_batch(
         raise ResearchRegistryError(
             "authoritative research artifact code revision does not match candidate"
         )
-    if str(candidate["config_digest"]) != verified.config_digest:
+    candidate_config_digest = (
+        verified.candidate_config_digest
+        if verified.candidate_config_digest is not None
+        else verified.config_digest
+    )
+    if str(candidate["config_digest"]) != candidate_config_digest:
         raise ResearchRegistryError(
             "authoritative research artifact config digest does not match candidate"
         )
