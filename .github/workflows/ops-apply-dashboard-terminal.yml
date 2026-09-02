@@ -32,27 +32,26 @@ jobs:
               raise RuntimeError("refresh-dashboard job already exists")
           opening = "$" + "{{"
           closing = "}}"
-          addition = f"""
-
-  refresh-dashboard:
-    needs: finalize-publish
-    if: {opening} always() {closing}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: none
-      actions: write
-    steps:
-      - name: Dispatch research dashboard refresh after finalization
-        env:
-          GITHUB_TOKEN: {opening} github.token {closing}
-        run: |
-          set -euo pipefail
-          /usr/bin/gh api \\
-            --method POST \\
-            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \\
-            -f ref=main
-"""
+          addition = (
+              "\n\n  refresh-dashboard:\n"
+              "    needs: finalize-publish\n"
+              f"    if: {opening} always() {closing}\n"
+              "    runs-on: ubuntu-24.04\n"
+              "    timeout-minutes: 5\n"
+              "    permissions:\n"
+              "      contents: none\n"
+              "      actions: write\n"
+              "    steps:\n"
+              "      - name: Dispatch research dashboard refresh after finalization\n"
+              "        env:\n"
+              f"          GITHUB_TOKEN: {opening} github.token {closing}\n"
+              "        run: |\n"
+              "          set -euo pipefail\n"
+              "          /usr/bin/gh api \\\n"
+              "            --method POST \\\n"
+              "            \"/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches\" \\\n"
+              "            -f ref=main\n"
+          )
           path.write_text(source.rstrip() + addition + "\n", encoding="utf-8")
           Path(".github/workflows/ops-apply-dashboard-terminal.yml").unlink()
           PY
