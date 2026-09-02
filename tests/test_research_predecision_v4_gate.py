@@ -27,7 +27,5 @@ def test_v4_authority_is_verified_before_candidate_observes_capture() -> None:
     assert "candidate-decisions" in evaluation.split("steps:", 1)[0]
     assert "Download candidate research stage" in evaluation
 
-    authority_gate = source.index("assert_batch_disjoint_from_v4")
-    research_touch = source.index("record_touched_interval")
-    candidate_observation = source.index("Run candidate strategy against trusted contexts")
-    assert authority_gate < research_touch < candidate_observation
+    assert "Authorize candidate observation and record research touch" in refresh
+    assert "refresh-authority" in decisions.split("steps:", 1)[0]
