@@ -58,7 +58,9 @@ def test_known_active_v4_is_rejected_before_candidate_build_or_capture() -> None
     ):
         assert forbidden not in preflight.lower()
 
-    assert prepare.index("Persist acquisition attempt before candidate setup") < prepare.index(marker)
+    assert prepare.index("Persist acquisition attempt before candidate setup") < prepare.index(
+        marker
+    )
     assert prepare.index(marker) < prepare.index("Upload prepared research control state")
     assert source.index(marker) < source.index("Checkout candidate code revision")
     assert source.index(marker) < source.index("record-mainnet-evidence")
