@@ -1,0 +1,112 @@
+name: One-shot Research Daily Gap Dispatcher Blob Builder
+
+on:
+  push:
+    branches:
+      - ops/build-research-daily-gap-dispatcher-20260902
+    paths:
+      - .github/workflows/ops-build-research-daily-gap-dispatcher.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-blobs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: fix/research-daily-gap-dispatcher-20260902
+    steps:
+      - name: Build exact campaign and hardening-test blobs
+        run: |
+          set -euo pipefail
+          fetch_file() {
+            local path="$1"
+            local output="$2"
+            /usr/bin/gh api --method GET \
+              "/repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f ref="$TARGET_BRANCH" \
+              --jq '.content' \
+              | tr -d '\n' \
+              | base64 -d > "$output"
+          }
+
+          fetch_file ".github/workflows/research-campaign-scheduled.yml" /tmp/campaign.yml
+          fetch_file "tests/test_research_runner_workflow.py" /tmp/runner_test.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("/tmp/campaign.yml")
+          source = path.read_text(encoding="utf-8")
+          anchor = "      - name: Persist acquisition attempt before candidate setup\n"
+          if source.count(anchor) != 1:
+              raise RuntimeError("attempt-persistence anchor must occur exactly once")
+
+          token_expression = "$" + "{{ github.token }}"
+          guard = f'''      - name: Refuse duplicate successful research cohort for current UTC day
+            env:
+              GH_TOKEN: {token_expression}
+            run: |
+              set -euo pipefail
+              DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
+              SUCCESS_ROWS="$(
+                /usr/bin/gh api --paginate \\
+                  "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \\
+                  --jq ".workflow_runs[]
+                    | select(.id != $GITHUB_RUN_ID)
+                    | select(.head_branch == \\"main\\")
+                    | select(.path == \\".github/workflows/research-campaign-scheduled.yml\\")
+                    | select(.event == \\"schedule\\" or .event == \\"workflow_dispatch\\")
+                    | select(.status == \\"completed\\")
+                    | select(.conclusion == \\"success\\")
+                    | select(.created_at >= \\"$DAY_START\\")
+                    | [.id, .created_at]
+                    | @tsv"
+              )"
+              if [ -n "$SUCCESS_ROWS" ]; then
+                printf '%s\\n' "$SUCCESS_ROWS" \\
+                  > research-campaign/diagnostics/research-success-today.txt
+                echo "successful research cohort already exists for current UTC day; refusing duplicate" >&2
+                exit 77
+              fi
+              printf '%s\\n' 'none' \\
+                > research-campaign/diagnostics/research-success-today.txt
+
+          '''
+          path.write_text(source.replace(anchor, guard + anchor, 1), encoding="utf-8")
+          PY
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("/tmp/runner_test.py")
+          source = path.read_text(encoding="utf-8")
+          token_expression = "$" + "{{ github.token }}"
+          old = (
+              f'    assert source.count("GH_TOKEN: {token_expression}") == 6\n'
+              f'    assert prepare.count("GH_TOKEN: {token_expression}") == 2\n'
+          )
+          new = (
+              f'    assert source.count("GH_TOKEN: {token_expression}") == 7\n'
+              f'    assert prepare.count("GH_TOKEN: {token_expression}") == 3\n'
+          )
+          if source.count(old) != 1:
+              raise RuntimeError("trusted-token confinement assertion must occur exactly once")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
+          make_blob() {
+            local input="$1"
+            /usr/bin/jq -Rs '{content: ., encoding: "utf-8"}' "$input" > /tmp/blob.json
+            /usr/bin/gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/git/blobs" \
+              --input /tmp/blob.json \
+              --jq '.sha'
+          }
+
+          CAMPAIGN_BLOB_SHA="$(make_blob /tmp/campaign.yml)"
+          TOKEN_TEST_BLOB_SHA="$(make_blob /tmp/runner_test.py)"
+          printf 'CAMPAIGN_BLOB_SHA=%s\n' "$CAMPAIGN_BLOB_SHA"
+          printf 'TOKEN_TEST_BLOB_SHA=%s\n' "$TOKEN_TEST_BLOB_SHA"
