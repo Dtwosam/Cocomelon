@@ -1,0 +1,27 @@
+name: Ops Kick Research Dashboard Catch-up
+
+on:
+  push:
+    branches:
+      - ops/kick-research-dashboard-catchup-20260903
+    paths:
+      - ".github/workflows/ops-kick-research-dashboard-catchup.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch stale-aware research dashboard catch-up on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard-catchup.yml/dispatches" \
+            -f ref=main
