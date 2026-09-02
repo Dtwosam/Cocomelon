@@ -1,0 +1,110 @@
+name: Research Dashboard Catch-up Dispatcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: research-dashboard-catchup
+  cancel-in-progress: false
+
+permissions:
+  contents: none
+  actions: write
+
+jobs:
+  catch-up:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch dashboard only when trusted research state is newer
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RUNS_JSON="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100"
+          )"
+
+          ACTIVE_DASHBOARD_COUNT="$(
+            printf '%s' "$RUNS_JSON" | jq -r '
+              [
+                .workflow_runs[]
+                | select(
+                    .path == ".github/workflows/research-dashboard.yml"
+                    and .head_branch == "main"
+                    and .status != "completed"
+                  )
+              ]
+              | length
+            '
+          )"
+          if [[ "$ACTIVE_DASHBOARD_COUNT" != "0" ]]; then
+            echo "research dashboard refresh already active; skipping catch-up dispatch"
+            exit 0
+          fi
+
+          LATEST_SOURCE_COMPLETED_AT="$(
+            printf '%s' "$RUNS_JSON" | jq -r '
+              [
+                .workflow_runs[]
+                | select(
+                    .head_branch == "main"
+                    and .status == "completed"
+                    and (
+                      (
+                        .path == ".github/workflows/research-campaign-scheduled.yml"
+                        and (.event == "schedule" or .event == "workflow_dispatch")
+                        and (.conclusion == "success" or .conclusion == "failure")
+                      )
+                      or
+                      (
+                        .path == ".github/workflows/research-v4-registry-sync.yml"
+                        and (.event == "schedule" or .event == "workflow_dispatch")
+                        and .conclusion == "success"
+                      )
+                    )
+                  )
+              ]
+              | sort_by(.updated_at)
+              | last
+              | .updated_at // ""
+            '
+          )"
+          if [[ -z "$LATEST_SOURCE_COMPLETED_AT" ]]; then
+            echo "no completed trusted research-state producer found; skipping catch-up dispatch"
+            exit 0
+          fi
+
+          LATEST_DASHBOARD_COMPLETED_AT="$(
+            printf '%s' "$RUNS_JSON" | jq -r '
+              [
+                .workflow_runs[]
+                | select(
+                    .path == ".github/workflows/research-dashboard.yml"
+                    and .head_branch == "main"
+                    and .status == "completed"
+                    and .conclusion == "success"
+                  )
+              ]
+              | sort_by(.updated_at)
+              | last
+              | .updated_at // ""
+            '
+          )"
+
+          if [[ -n "$LATEST_DASHBOARD_COMPLETED_AT" ]] \
+            && [[ "$LATEST_DASHBOARD_COMPLETED_AT" > "$LATEST_SOURCE_COMPLETED_AT" \
+              || "$LATEST_DASHBOARD_COMPLETED_AT" == "$LATEST_SOURCE_COMPLETED_AT" ]]; then
+            echo "latest trusted research state is already rendered; skipping catch-up dispatch"
+            exit 0
+          fi
+
+          echo "trusted research state is newer than the dashboard; dispatching refresh"
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \
+            -f ref=main
