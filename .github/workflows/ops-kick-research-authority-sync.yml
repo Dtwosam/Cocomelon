@@ -21,6 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Re-dispatch after trusted attempt-metadata parser fix.
           /usr/bin/gh api \
             --method POST \
             "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
