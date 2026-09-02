@@ -166,8 +166,8 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "GH_TOKEN:" not in finalizer_before_rebase
     assert "GH_TOKEN: ${{ github.token }}" in finalizer_rebase
     assert "GH_TOKEN:" not in finalizer_after_rebase
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 6
-    assert prepare.count("GH_TOKEN: ${{ github.token }}") == 2
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 7
+    assert prepare.count("GH_TOKEN: ${{ github.token }}") == 3
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
     assert "GH_TOKEN: ${{ github.token }}" in refresh_download

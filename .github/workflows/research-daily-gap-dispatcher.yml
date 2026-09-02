@@ -1,0 +1,90 @@
+name: Research Daily Gap Dispatcher
+
+on:
+  workflow_run:
+    workflows:
+      - Scheduled Genuine Mainnet Evidence Campaign V4
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: research-daily-gap-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  dispatch-if-safe:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'schedule')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch one safe daily research cohort
+        run: |
+          set -euo pipefail
+          DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
+
+          ACTIVE_V4_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
+              --jq '.workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status != "completed")
+                | [.id, .status, .event]
+                | @tsv'
+          )"
+          if [ -n "$ACTIVE_V4_ROWS" ]; then
+            echo "protected V4 acquisition is active; daily research dispatch skipped"
+            printf '%s\n' "$ACTIVE_V4_ROWS"
+            exit 0
+          fi
+
+          ACTIVE_RESEARCH_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/runs?per_page=100" \
+              --jq '.workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status != "completed")
+                | [.id, .status, .event]
+                | @tsv'
+          )"
+          if [ -n "$ACTIVE_RESEARCH_ROWS" ]; then
+            echo "research campaign already active; daily research dispatch skipped"
+            printf '%s\n' "$ACTIVE_RESEARCH_ROWS"
+            exit 0
+          fi
+
+          SUCCESS_TODAY_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/runs?per_page=100" \
+              | /usr/bin/jq -r \
+                --arg day_start "$DAY_START" '
+                  .workflow_runs[]
+                  | select(.head_branch == "main")
+                  | select(.event == "schedule" or .event == "workflow_dispatch")
+                  | select(.status == "completed")
+                  | select(.conclusion == "success")
+                  | select(.created_at >= $day_start)
+                  | [.id, .created_at]
+                  | @tsv
+                '
+          )"
+          if [ -n "$SUCCESS_TODAY_ROWS" ]; then
+            echo "successful research cohort already exists for current UTC day; dispatch skipped"
+            printf '%s\n' "$SUCCESS_TODAY_ROWS"
+            exit 0
+          fi
+
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/dispatches" \
+            -f ref=main
