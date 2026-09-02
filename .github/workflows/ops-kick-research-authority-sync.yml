@@ -1,4 +1,4 @@
-name: One-shot Research Campaign Cancel
+name: One-shot Research Gate Commit Builder
 
 on:
   push:
@@ -8,19 +8,261 @@ on:
       - .github/workflows/ops-kick-research-authority-sync.yml
 
 permissions:
-  contents: read
-  actions: write
+  contents: write
 
 jobs:
-  cancel:
+  build-commit:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: fix/research-predecision-v4-gate-20260902
+      TARGET_FILE: .github/workflows/research-campaign-scheduled.yml
     steps:
-      - name: Cancel overlapping paper research campaign
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Build unreferenced workflow commit from exact target blob
         run: |
           set -euo pipefail
-          /usr/bin/gh api \
-            --method POST \
-            "/repos/$GITHUB_REPOSITORY/actions/runs/33680737242/cancel"
+          META="$(
+            /usr/bin/gh api --method GET \
+              "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
+              -f ref="$TARGET_BRANCH"
+          )"
+          jq -r '.content' <<< "$META" | tr -d '\n' | base64 -d > /tmp/workflow.yml
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/workflow.yml')
+          source = path.read_text(encoding='utf-8')
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global source
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+              source = source.replace(old, new, 1)
+
+          replace_once(
+              '''              registry.record_touched_interval(
+                  os.environ["RESEARCH_CANDIDATE_ID"],
+                  interval,
+                  source_id=os.environ["SOURCE_ID"],
+              )
+''',
+              '',
+              'remove pre-authority research touch',
+          )
+          replace_once(
+              '''  candidate-decisions:
+    needs:
+      - prepare-control
+      - candidate-build
+      - capture-control
+''',
+              '''  candidate-decisions:
+    needs:
+      - prepare-control
+      - candidate-build
+      - capture-control
+      - refresh-authority
+''',
+              'gate candidate decisions on authority refresh',
+          )
+          replace_once(
+              '''  refresh-authority:
+    needs:
+      - prepare-control
+      - capture-control
+      - candidate-decisions
+''',
+              '''  refresh-authority:
+    needs:
+      - prepare-control
+      - capture-control
+''',
+              'remove candidate dependency from authority refresh',
+          )
+          replace_once(
+              '''      - name: Download candidate research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+''',
+              '',
+              'remove decision artifact from pre-decision authority refresh',
+          )
+          replace_once(
+              '''      - name: Resolve bound research interval end
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT end_ms FROM research_runner_attempts WHERE attempt_id = ?",
+                  (os.environ["ATTEMPT_ID"],),
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None or row[0] is None or int(row[0]) <= 0:
+              raise RuntimeError("trusted research attempt is missing its bound source interval")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"BOUND_END_MS={int(row[0])}\\n")
+          PY
+''',
+              '''      - name: Resolve bound research interval
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT start_ms, end_ms FROM research_runner_attempts WHERE attempt_id = ?",
+                  (os.environ["ATTEMPT_ID"],),
+              ).fetchone()
+          finally:
+              connection.close()
+          if (
+              row is None
+              or row[0] is None
+              or row[1] is None
+              or int(row[0]) < 0
+              or int(row[1]) <= int(row[0])
+          ):
+              raise RuntimeError("trusted research attempt is missing its bound source interval")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"BOUND_START_MS={int(row[0])}\\n")
+              handle.write(f"BOUND_END_MS={int(row[1])}\\n")
+          PY
+''',
+              'resolve complete bound interval',
+          )
+          marker = '''      - name: Upload refreshed research stage
+'''
+          authorization = '''      - name: Authorize candidate observation and record research touch
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.contracts import TimeInterval
+          from cocomelon.research.registry import ResearchRegistry
+
+          interval = TimeInterval(
+              start_ms=int(os.environ["BOUND_START_MS"]),
+              end_ms=int(os.environ["BOUND_END_MS"]),
+          )
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              registry.assert_batch_disjoint_from_v4(interval)
+              registry.record_touched_interval(
+                  os.environ["RESEARCH_CANDIDATE_ID"],
+                  interval,
+                  source_id=os.environ["SOURCE_ID"],
+              )
+          finally:
+              registry.close()
+          PY
+
+'''
+          replace_once(marker, authorization + marker, 'insert pre-decision authority gate')
+          replace_once(
+              '''  evaluate-research:
+    needs: refresh-authority
+''',
+              '''  evaluate-research:
+    needs:
+      - refresh-authority
+      - candidate-decisions
+''',
+              'recombine candidate decisions at evaluation',
+          )
+          refreshed = '''      - name: Download refreshed research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+'''
+          decision_download = '''      - name: Download candidate research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+'''
+          replace_once(
+              refreshed,
+              refreshed + decision_download,
+              'download isolated decisions only at evaluation',
+          )
+
+          if source.count('record_touched_interval') != 1:
+              raise RuntimeError('expected exactly one research touch after reorder')
+          if source.count('assert_batch_disjoint_from_v4') != 1:
+              raise RuntimeError('expected exactly one explicit pre-decision V4 gate')
+          path.write_text(source, encoding='utf-8')
+          PY
+
+          PARENT_SHA="$(
+            /usr/bin/gh api --method GET \
+              "/repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" \
+              --jq '.object.sha'
+          )"
+          BASE_TREE_SHA="$(
+            /usr/bin/gh api --method GET \
+              "/repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" \
+              --jq '.tree.sha'
+          )"
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          with Path('/tmp/blob.json').open('w', encoding='utf-8') as handle:
+              json.dump({'content': Path('/tmp/workflow.yml').read_text(encoding='utf-8'), 'encoding': 'utf-8'}, handle)
+          PY
+          BLOB_SHA="$(
+            /usr/bin/gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/git/blobs" \
+              --input /tmp/blob.json \
+              --jq '.sha'
+          )"
+          jq -n \
+            --arg base_tree "$BASE_TREE_SHA" \
+            --arg path "$TARGET_FILE" \
+            --arg sha "$BLOB_SHA" \
+            '{base_tree: $base_tree, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}]}' \
+            > /tmp/tree.json
+          TREE_SHA="$(
+            /usr/bin/gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/git/trees" \
+              --input /tmp/tree.json \
+              --jq '.sha'
+          )"
+          jq -n \
+            --arg message 'fix: authorize research observation before candidate decisions' \
+            --arg tree "$TREE_SHA" \
+            --arg parent "$PARENT_SHA" \
+            '{message: $message, tree: $tree, parents: [$parent]}' \
+            > /tmp/commit.json
+          COMMIT_SHA="$(
+            /usr/bin/gh api --method POST \
+              "/repos/$GITHUB_REPOSITORY/git/commits" \
+              --input /tmp/commit.json \
+              --jq '.sha'
+          )"
+          printf 'PARENT_SHA=%s\n' "$PARENT_SHA"
+          printf 'CANDIDATE_COMMIT_SHA=%s\n' "$COMMIT_SHA"
