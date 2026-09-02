@@ -34,9 +34,7 @@ jobs:
 
           path = Path("/tmp/workflow.yml")
           source = path.read_text(encoding="utf-8")
-          anchor = """      - name: Upload prepared research control state
-        if: ${{ always() }}
-"""
+          anchor = "      - name: Upload prepared research control state\n"
           if source.count(anchor) != 1:
               raise RuntimeError("prepared-state upload anchor must occur exactly once")
 
