@@ -1,4 +1,4 @@
-name: One-shot Research Dashboard Refresh Kick
+name: One-shot Research Campaign Kick
 
 on:
   push:
@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Dispatch trusted main research dashboard refresh
+      - name: Dispatch trusted main paper research campaign
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           /usr/bin/gh api \
             --method POST \
-            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/dispatches" \
             -f ref=main
