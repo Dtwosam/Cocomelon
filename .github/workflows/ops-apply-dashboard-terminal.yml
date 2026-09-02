@@ -1,0 +1,69 @@
+name: Ops Apply Research Dashboard Terminal
+
+on:
+  push:
+    branches:
+      - fix/research-dashboard-terminal-refresh-20260903
+    paths:
+      - ".github/workflows/ops-apply-dashboard-terminal.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-dashboard-terminal-refresh-20260903
+          fetch-depth: 1
+
+      - name: Append isolated terminal dashboard dispatcher
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/research-campaign-scheduled.yml")
+          source = path.read_text(encoding="utf-8")
+          if "\n  refresh-dashboard:\n" in source:
+              raise RuntimeError("refresh-dashboard job already exists")
+          opening = "$" + "{{"
+          closing = "}}"
+          addition = f"""
+
+  refresh-dashboard:
+    needs: finalize-publish
+    if: {opening} always() {closing}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: none
+      actions: write
+    steps:
+      - name: Dispatch research dashboard refresh after finalization
+        env:
+          GITHUB_TOKEN: {opening} github.token {closing}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \\
+            --method POST \\
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \\
+            -f ref=main
+"""
+          path.write_text(source.rstrip() + addition + "\n", encoding="utf-8")
+          Path(".github/workflows/ops-apply-dashboard-terminal.yml").unlink()
+          PY
+
+      - name: Commit terminal dashboard dispatcher
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            .github/workflows/research-campaign-scheduled.yml \
+            .github/workflows/ops-apply-dashboard-terminal.yml
+          git commit -m "fix: refresh research dashboard after campaign"
+          git push origin HEAD:fix/research-dashboard-terminal-refresh-20260903
