@@ -39,34 +39,35 @@ jobs:
               raise RuntimeError("prepared-state upload anchor must occur exactly once")
 
           token_expression = "$" + "{{ github.token }}"
-          preflight = f"""      - name: Refuse research capture while V4 acquisition is active
-        env:
-          GH_TOKEN: {token_expression}
-        run: |
-          set -euo pipefail
-          ACTIVE_ROWS="$(
-            /usr/bin/gh api --paginate \\
-              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \\
-              --jq '.workflow_runs[]
-                | select(.head_branch == "main")
-                | select(.event == "schedule" or .event == "workflow_dispatch")
-                | select(.status != "completed")
-                | [.id, .status, .event]
-                | @tsv'
-          )"
-          if [ -n "$ACTIVE_ROWS" ]; then
-            printf '%s\\n' "$ACTIVE_ROWS" \\
-              > research-campaign/diagnostics/v4-active-run.txt
-            echo "protected V4 acquisition is active; refusing research capture" >&2
-            while IFS=$'\\t' read -r RUN_ID RUN_STATUS RUN_EVENT; do
-              printf 'V4 run %s is %s (%s)\\n' "$RUN_ID" "$RUN_STATUS" "$RUN_EVENT" >&2
-            done <<< "$ACTIVE_ROWS"
-            exit 76
-          fi
-          printf '%s\\n' 'none' \\
-            > research-campaign/diagnostics/v4-active-run.txt
-
-"""
+          lines = [
+              "      - name: Refuse research capture while V4 acquisition is active",
+              "        env:",
+              f"          GH_TOKEN: {token_expression}",
+              "        run: |",
+              "          set -euo pipefail",
+              "          ACTIVE_ROWS=\"$(",
+              "            /usr/bin/gh api --paginate \\",
+              "              \"/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100\" \\",
+              "              --jq '.workflow_runs[]",
+              "                | select(.head_branch == \"main\")",
+              "                | select(.event == \"schedule\" or .event == \"workflow_dispatch\")",
+              "                | select(.status != \"completed\")",
+              "                | [.id, .status, .event]",
+              "                | @tsv'",
+              "          )\"",
+              "          if [ -n \"$ACTIVE_ROWS\" ]; then",
+              "            printf '%s\\n' \"$ACTIVE_ROWS\" \\",
+              "              > research-campaign/diagnostics/v4-active-run.txt",
+              "            echo \"protected V4 acquisition is active; refusing research capture\" >&2",
+              "            while IFS=$'\\t' read -r RUN_ID RUN_STATUS RUN_EVENT; do",
+              "              printf 'V4 run %s is %s (%s)\\n' \"$RUN_ID\" \"$RUN_STATUS\" \"$RUN_EVENT\" >&2",
+              "            done <<< \"$ACTIVE_ROWS\"",
+              "            exit 76",
+              "          fi",
+              "          printf '%s\\n' 'none' \\",
+              "            > research-campaign/diagnostics/v4-active-run.txt",
+          ]
+          preflight = "\n".join(lines) + "\n\n"
           path.write_text(source.replace(anchor, preflight + anchor, 1), encoding="utf-8")
           PY
 
