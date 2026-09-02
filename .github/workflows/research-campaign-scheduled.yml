@@ -371,11 +371,6 @@ jobs:
                   start_ms=interval.start_ms,
                   end_ms=interval.end_ms,
               )
-              registry.record_touched_interval(
-                  os.environ["RESEARCH_CANDIDATE_ID"],
-                  interval,
-                  source_id=os.environ["SOURCE_ID"],
-              )
           finally:
               registry.close()
           PY
@@ -413,6 +408,7 @@ jobs:
       - prepare-control
       - candidate-build
       - capture-control
+      - refresh-authority
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -500,7 +496,6 @@ jobs:
     needs:
       - prepare-control
       - capture-control
-      - candidate-decisions
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
@@ -532,13 +527,7 @@ jobs:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Download candidate research stage
-        uses: actions/download-artifact@v4
-        with:
-          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: research-campaign
-
-      - name: Resolve bound research interval end
+      - name: Resolve bound research interval
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -549,15 +538,22 @@ jobs:
           connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
           try:
               row = connection.execute(
-                  "SELECT end_ms FROM research_runner_attempts WHERE attempt_id = ?",
+                  "SELECT start_ms, end_ms FROM research_runner_attempts WHERE attempt_id = ?",
                   (os.environ["ATTEMPT_ID"],),
               ).fetchone()
           finally:
               connection.close()
-          if row is None or row[0] is None or int(row[0]) <= 0:
+          if (
+              row is None
+              or row[0] is None
+              or row[1] is None
+              or int(row[0]) < 0
+              or int(row[1]) <= int(row[0])
+          ):
               raise RuntimeError("trusted research attempt is missing its bound source interval")
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
-              handle.write(f"BOUND_END_MS={int(row[0])}\n")
+              handle.write(f"BOUND_START_MS={int(row[0])}\n")
+              handle.write(f"BOUND_END_MS={int(row[1])}\n")
           PY
 
       - name: Dispatch post-capture V4 authority synchronization
@@ -689,6 +685,34 @@ jobs:
               registry.close()
           PY
 
+      - name: Authorize candidate observation and record research touch
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.contracts import TimeInterval
+          from cocomelon.research.registry import ResearchRegistry
+
+          interval = TimeInterval(
+              start_ms=int(os.environ["BOUND_START_MS"]),
+              end_ms=int(os.environ["BOUND_END_MS"]),
+          )
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              registry.assert_batch_disjoint_from_v4(interval)
+              registry.record_touched_interval(
+                  os.environ["RESEARCH_CANDIDATE_ID"],
+                  interval,
+                  source_id=os.environ["SOURCE_ID"],
+              )
+          finally:
+              registry.close()
+          PY
+
       - name: Upload refreshed research stage
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -699,7 +723,9 @@ jobs:
           retention-days: 2
 
   evaluate-research:
-    needs: refresh-authority
+    needs:
+      - refresh-authority
+      - candidate-decisions
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     concurrency:
@@ -729,6 +755,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download candidate research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
       - name: Install trusted research runner runtime

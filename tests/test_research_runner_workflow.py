@@ -196,9 +196,11 @@ def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
     assert "UPDATE research_runner_attempts" in failure
 
 
-def test_refresh_recombines_control_capture_and_decisions_before_v4_merge() -> None:
+def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_decisions() -> None:
     source = _source()
     refresh = _job_block(source, "refresh-authority", "evaluate-research")
+    decisions = _job_block(source, "candidate-decisions", "refresh-authority")
+    evaluation = _job_block(source, "evaluate-research", "finalize-publish")
     refresh_download = source.split(
         "- name: Download refreshed V4 authority after acquisition",
         1,
@@ -211,23 +213,30 @@ def test_refresh_recombines_control_capture_and_decisions_before_v4_merge() -> N
     assert "Download prepared research control state for authority merge" in refresh
     assert "research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
     assert "Download trusted research capture stage" in refresh
-    assert "research-capture-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
-    assert "Download candidate research stage" in refresh
-    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
+    assert "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}" in refresh
+    assert "Download candidate research stage" not in refresh
+    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" not in refresh
+    assert "refresh-authority" in decisions.split("steps:", 1)[0]
+    assert "candidate-decisions" not in refresh.split("steps:", 1)[0]
+    assert "candidate-decisions" in evaluation.split("steps:", 1)[0]
+    assert "Download candidate research stage" in evaluation
+    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in evaluation
     assert source.index("Acquire one public mainnet research cohort") < source.index(
         "Download refreshed V4 authority after acquisition"
     )
-    assert source.index("Download refreshed V4 authority after acquisition") < source.index(
+    assert refresh.index("Download refreshed V4 authority after acquisition") < refresh.index(
         "Merge refreshed V4 authority after acquisition"
     )
-    assert source.index("Merge refreshed V4 authority after acquisition") < source.index(
-        "Evaluate authenticated research attempt"
+    assert refresh.index("Merge refreshed V4 authority after acquisition") < refresh.index(
+        "Authorize candidate observation and record research touch"
     )
     assert '"$RUN_PATH" != ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
     assert '"$RUN_BRANCH" != "main"' in refresh_download
     assert '"$RUN_STATUS" != "completed"' in refresh_download
     assert '"$RUN_CONCLUSION" != "success"' in refresh_download
     assert "merge_v4_authority_snapshot" in refresh_merge
+    assert "assert_batch_disjoint_from_v4" in refresh_merge
+    assert "record_touched_interval" in refresh_merge
     assert "research-campaign/state/research.sqlite3" in refresh_merge
     assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh_merge
     assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_download
