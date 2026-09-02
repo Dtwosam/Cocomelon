@@ -144,12 +144,20 @@ jobs:
       - name: Create or update one research dashboard issue
         run: |
           set -euo pipefail
-          mapfile -t ISSUE_NUMBERS < <(
+          ISSUE_NUMBERS_TEXT="$(
             /usr/bin/gh api \
               "/repos/$GITHUB_REPOSITORY/issues?state=all&per_page=100" \
               --paginate \
               --jq ".[] | select((has(\"pull_request\") | not) and .title == \"$DASHBOARD_TITLE\") | .number"
-          )
+          )"
+          ISSUE_NUMBERS=()
+          if [ -n "$ISSUE_NUMBERS_TEXT" ]; then
+            while IFS= read -r ISSUE_NUMBER; do
+              if [ -n "$ISSUE_NUMBER" ]; then
+                ISSUE_NUMBERS+=("$ISSUE_NUMBER")
+              fi
+            done <<< "$ISSUE_NUMBERS_TEXT"
+          fi
           if [ "${#ISSUE_NUMBERS[@]}" -gt 1 ]; then
             echo "multiple matching research dashboard issues found" >&2
             exit 67
