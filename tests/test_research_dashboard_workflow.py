@@ -57,3 +57,11 @@ def test_research_dashboard_maintains_one_named_issue() -> None:
     assert "gh api --method POST" in workflow
     assert "gh api --method PATCH" in workflow
     assert "TOUCHED / NON-PROMOTIONAL" in workflow
+
+
+def test_research_dashboard_issue_lookup_fails_closed_before_creation() -> None:
+    workflow = _workflow()
+
+    assert 'ISSUE_NUMBERS_TEXT="$(' in workflow
+    assert 'if [ -n "$ISSUE_NUMBERS_TEXT" ]; then' in workflow
+    assert "mapfile -t ISSUE_NUMBERS < <(" not in workflow
