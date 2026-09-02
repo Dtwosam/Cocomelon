@@ -67,14 +67,15 @@ def test_running_attempt_source_interval_is_bound_once_before_evaluation(tmp_pat
     assert attempts[0].end_ms == 2_000
 
 
-def test_capture_binds_candidate_touch_before_any_candidate_runtime() -> None:
+def test_capture_binds_interval_and_authority_touches_before_candidate_runtime() -> None:
     source = _source()
     capture = _job(source, "capture-control", "candidate-decisions")
     decisions = _job(source, "candidate-decisions", "refresh-authority")
+    refresh = _job(source, "refresh-authority", "evaluate-research")
 
     assert "Bind trusted capture interval before candidate execution" in capture
     assert "bind_runner_attempt_source_interval" in capture
-    assert "record_touched_interval" in capture
+    assert "record_touched_interval" not in capture
     assert (
         "research-capture-control-stage-${{ github.run_id }}-${{ github.run_attempt }}"
         in capture
@@ -83,9 +84,13 @@ def test_capture_binds_candidate_touch_before_any_candidate_runtime() -> None:
         "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}"
         in capture
     )
-    assert source.index("Bind trusted capture interval before candidate execution") < source.index(
-        "Run candidate strategy against trusted contexts"
+    assert "assert_batch_disjoint_from_v4" in refresh
+    assert "record_touched_interval" in refresh
+    assert refresh.index("assert_batch_disjoint_from_v4") < refresh.index(
+        "record_touched_interval"
     )
+    assert "refresh-authority" in decisions.split("steps:", 1)[0]
+    assert "candidate-decisions" not in refresh.split("steps:", 1)[0]
     assert "research.sqlite3" not in decisions
     assert (
         "research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}"
