@@ -1,4 +1,4 @@
-name: One-shot Research Preflight Blob Builder
+name: One-shot Research Preflight Test Blob Builder
 
 on:
   push:
@@ -17,9 +17,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       TARGET_BRANCH: fix/research-preflight-v4-active-20260902
-      TARGET_FILE: .github/workflows/research-campaign-scheduled.yml
+      TARGET_FILE: tests/test_research_runner_workflow.py
     steps:
-      - name: Build exact research workflow blob with V4 preflight
+      - name: Build exact hardening-test blob for trusted preflight token
         run: |
           set -euo pipefail
           META="$(
@@ -27,48 +27,21 @@ jobs:
               "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
               -f ref="$TARGET_BRANCH"
           )"
-          jq -r '.content' <<< "$META" | tr -d '\n' | base64 -d > /tmp/workflow.yml
+          jq -r '.content' <<< "$META" | tr -d '\n' | base64 -d > /tmp/target.py
 
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("/tmp/workflow.yml")
+          path = Path("/tmp/target.py")
           source = path.read_text(encoding="utf-8")
-          anchor = "      - name: Upload prepared research control state\n"
-          if source.count(anchor) != 1:
-              raise RuntimeError("prepared-state upload anchor must occur exactly once")
-
-          token_expression = "$" + "{{ github.token }}"
-          lines = [
-              "      - name: Refuse research capture while V4 acquisition is active",
-              "        env:",
-              f"          GH_TOKEN: {token_expression}",
-              "        run: |",
-              "          set -euo pipefail",
-              "          ACTIVE_ROWS=\"$(",
-              "            /usr/bin/gh api --paginate \\",
-              "              \"/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100\" \\",
-              "              --jq '.workflow_runs[]",
-              "                | select(.head_branch == \"main\")",
-              "                | select(.event == \"schedule\" or .event == \"workflow_dispatch\")",
-              "                | select(.status != \"completed\")",
-              "                | [.id, .status, .event]",
-              "                | @tsv'",
-              "          )\"",
-              "          if [ -n \"$ACTIVE_ROWS\" ]; then",
-              "            printf '%s\\n' \"$ACTIVE_ROWS\" \\",
-              "              > research-campaign/diagnostics/v4-active-run.txt",
-              "            echo \"protected V4 acquisition is active; refusing research capture\" >&2",
-              "            while IFS=$'\\t' read -r RUN_ID RUN_STATUS RUN_EVENT; do",
-              "              printf 'V4 run %s is %s (%s)\\n' \"$RUN_ID\" \"$RUN_STATUS\" \"$RUN_EVENT\" >&2",
-              "            done <<< \"$ACTIVE_ROWS\"",
-              "            exit 76",
-              "          fi",
-              "          printf '%s\\n' 'none' \\",
-              "            > research-campaign/diagnostics/v4-active-run.txt",
-          ]
-          preflight = "\n".join(lines) + "\n\n"
-          path.write_text(source.replace(anchor, preflight + anchor, 1), encoding="utf-8")
+          old = '    assert source.count("GH_TOKEN: ${{ github.token }}") == 5\n'
+          new = (
+              '    assert source.count("GH_TOKEN: ${{ github.token }}") == 6\n'
+              '    assert prepare.count("GH_TOKEN: ${{ github.token }}") == 2\n'
+          )
+          if source.count(old) != 1:
+              raise RuntimeError("trusted-token count assertion must occur exactly once")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
           PY
 
           python - <<'PY'
@@ -78,7 +51,7 @@ jobs:
           with Path("/tmp/blob.json").open("w", encoding="utf-8") as handle:
               json.dump(
                   {
-                      "content": Path("/tmp/workflow.yml").read_text(encoding="utf-8"),
+                      "content": Path("/tmp/target.py").read_text(encoding="utf-8"),
                       "encoding": "utf-8",
                   },
                   handle,
