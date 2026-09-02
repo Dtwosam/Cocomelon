@@ -1,0 +1,183 @@
+name: Cocomelon Research Dashboard Refresh
+
+on:
+  workflow_run:
+    workflows:
+      - "Scheduled Research Mainnet Replay Campaign"
+    types: [completed]
+  schedule:
+    - cron: "23 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/research-dashboard.yml"
+      - "src/cocomelon/research/dashboard.py"
+      - "src/cocomelon/research_dashboard_cli.py"
+      - "pyproject.toml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: cocomelon-research-dashboard
+  cancel-in-progress: true
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  DASHBOARD_TITLE: "Cocomelon Research Dashboard"
+  EVENT_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+  EVENT_WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted dashboard renderer
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install research status renderer
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Restore latest trusted research registry
+        run: |
+          set -euo pipefail
+          mkdir -p dashboard/registry
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "trusted research-authoritative-registry unavailable" >&2
+            exit 65
+          fi
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > dashboard/registry.zip
+          unzip -q dashboard/registry.zip -d dashboard/registry
+          REGISTRY_PATH="$(
+            find dashboard/registry -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            echo "trusted registry artifact did not contain research.sqlite3" >&2
+            exit 66
+          fi
+          cp "$REGISTRY_PATH" dashboard/research.sqlite3
+
+      - name: Render authenticated research status
+        run: |
+          set -euo pipefail
+          cocomelon-research-status \
+            --registry dashboard/research.sqlite3 \
+            --format markdown \
+            > dashboard/status.md
+          grep -Fq "TOUCHED / NON-PROMOTIONAL" dashboard/status.md
+
+      - name: Build dashboard issue body
+        run: |
+          set -euo pipefail
+          UPDATED_AT="$(date -u '+%Y-%m-%d %H:%M UTC')"
+          {
+            printf '# Cocomelon Research Dashboard\n\n'
+            printf '> Auto-refreshed from the latest provenance-validated research registry. Last updated **%s**.\n\n' "$UPDATED_AT"
+            cat dashboard/status.md
+            printf '\n---\n\n'
+            printf 'This dashboard is **TOUCHED / NON-PROMOTIONAL** research evidence only. '
+            printf 'It cannot establish verified edge, advance Phase 10, mutate the frozen V4 corpus, or enable live orders.\n'
+          } > dashboard/body.md
+
+      - name: Create or update one research dashboard issue
+        run: |
+          set -euo pipefail
+          mapfile -t ISSUE_NUMBERS < <(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/issues?state=all&per_page=100" \
+              --paginate \
+              --jq ".[] | select((has(\"pull_request\") | not) and .title == \"$DASHBOARD_TITLE\") | .number"
+          )
+          if [ "${#ISSUE_NUMBERS[@]}" -gt 1 ]; then
+            echo "multiple matching research dashboard issues found" >&2
+            exit 67
+          fi
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          body = Path("dashboard/body.md").read_text(encoding="utf-8")
+          title = os.environ["DASHBOARD_TITLE"]
+          Path("dashboard/create-issue.json").write_text(
+              json.dumps({"title": title, "body": body}),
+              encoding="utf-8",
+          )
+          Path("dashboard/update-issue.json").write_text(
+              json.dumps({"title": title, "body": body, "state": "open"}),
+              encoding="utf-8",
+          )
+          PY
+          if [ "${#ISSUE_NUMBERS[@]}" -eq 0 ]; then
+            /usr/bin/gh api --method POST \
+              "repos/$GITHUB_REPOSITORY/issues" \
+              --input dashboard/create-issue.json \
+              > dashboard/issue-result.json
+          else
+            /usr/bin/gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/issues/${ISSUE_NUMBERS[0]}" \
+              --input dashboard/update-issue.json \
+              > dashboard/issue-result.json
+          fi
