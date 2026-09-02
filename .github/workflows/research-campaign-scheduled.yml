@@ -158,33 +158,33 @@ jobs:
           PY
 
       - name: Refuse duplicate successful research cohort for current UTC day
-  env:
-    GH_TOKEN: ${{ github.token }}
-  run: |
-    set -euo pipefail
-    DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
-    SUCCESS_ROWS="$(
-      /usr/bin/gh api --paginate \
-        "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-        --jq ".workflow_runs[]
-          | select(.id != $GITHUB_RUN_ID)
-          | select(.head_branch == \"main\")
-          | select(.path == \".github/workflows/research-campaign-scheduled.yml\")
-          | select(.event == \"schedule\" or .event == \"workflow_dispatch\")
-          | select(.status == \"completed\")
-          | select(.conclusion == \"success\")
-          | select(.created_at >= \"$DAY_START\")
-          | [.id, .created_at]
-          | @tsv"
-    )"
-    if [ -n "$SUCCESS_ROWS" ]; then
-      printf '%s\n' "$SUCCESS_ROWS" \
-        > research-campaign/diagnostics/research-success-today.txt
-      echo "successful research cohort already exists for current UTC day; refusing duplicate" >&2
-      exit 77
-    fi
-    printf '%s\n' 'none' \
-      > research-campaign/diagnostics/research-success-today.txt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
+          SUCCESS_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+              --jq ".workflow_runs[]
+                | select(.id != $GITHUB_RUN_ID)
+                | select(.head_branch == \"main\")
+                | select(.path == \".github/workflows/research-campaign-scheduled.yml\")
+                | select(.event == \"schedule\" or .event == \"workflow_dispatch\")
+                | select(.status == \"completed\")
+                | select(.conclusion == \"success\")
+                | select(.created_at >= \"$DAY_START\")
+                | [.id, .created_at]
+                | @tsv"
+          )"
+          if [ -n "$SUCCESS_ROWS" ]; then
+            printf '%s\n' "$SUCCESS_ROWS" \
+              > research-campaign/diagnostics/research-success-today.txt
+            echo "successful research cohort already exists for current UTC day; refusing duplicate" >&2
+            exit 77
+          fi
+          printf '%s\n' 'none' \
+            > research-campaign/diagnostics/research-success-today.txt
 
       - name: Persist acquisition attempt before candidate setup
         env:
