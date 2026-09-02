@@ -312,11 +312,12 @@ jobs:
             research-campaign/output \
             research-campaign/diagnostics
           printf '1\n' > research-campaign/output/acquisition-attempt.txt
+          cd control-src
           cocomelon record-mainnet-evidence \
-            --root research-campaign/recording \
+            --root "$GITHUB_WORKSPACE/research-campaign/recording" \
             --seconds 1800 \
             --deep-limit 5 \
-            > research-campaign/output/record-transport.json
+            > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json"
 
       - name: Prepare trusted frozen research source
         working-directory: control-src
