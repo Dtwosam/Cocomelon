@@ -18,28 +18,23 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TARGET_BRANCH: fix/research-predecision-v4-gate-20260902
       TARGET_FILE: .github/workflows/research-campaign-scheduled.yml
+      TARGET_PARENT_SHA: 8482a6fd2be1a03c698d4f03f71a480db597c096
+      TARGET_BASE_TREE_SHA: e417d64edcdab0a62f274e7576fa24e5ffae5d9c
     steps:
       - name: Build unreferenced workflow commit from exact target blob
         run: |
           set -euo pipefail
+          echo 'stage=read-target'
           META="$(
             /usr/bin/gh api --method GET \
               "/repos/$GITHUB_REPOSITORY/contents/$TARGET_FILE" \
               -f ref="$TARGET_BRANCH"
           )"
           jq -r '.content' <<< "$META" | tr -d '\n' | base64 -d > /tmp/workflow.yml
+
+          echo 'stage=transform'
           printf '%s' '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' | base64 -d | gzip -d | python
 
-          PARENT_SHA="$(
-            /usr/bin/gh api --method GET \
-              "/repos/$GITHUB_REPOSITORY/git/ref/heads/$TARGET_BRANCH" \
-              --jq '.object.sha'
-          )"
-          BASE_TREE_SHA="$(
-            /usr/bin/gh api --method GET \
-              "/repos/$GITHUB_REPOSITORY/git/commits/$PARENT_SHA" \
-              --jq '.tree.sha'
-          )"
           python - <<'PY'
           import json
           from pathlib import Path
@@ -49,14 +44,19 @@ jobs:
                   handle,
               )
           PY
+
+          echo 'stage=create-blob'
           BLOB_SHA="$(
             /usr/bin/gh api --method POST \
               "/repos/$GITHUB_REPOSITORY/git/blobs" \
               --input /tmp/blob.json \
               --jq '.sha'
           )"
+          echo "blob=$BLOB_SHA"
+
+          echo 'stage=create-tree'
           jq -n \
-            --arg base_tree "$BASE_TREE_SHA" \
+            --arg base_tree "$TARGET_BASE_TREE_SHA" \
             --arg path "$TARGET_FILE" \
             --arg sha "$BLOB_SHA" \
             '{base_tree: $base_tree, tree: [{path: $path, mode: "100644", type: "blob", sha: $sha}]}' \
@@ -67,10 +67,13 @@ jobs:
               --input /tmp/tree.json \
               --jq '.sha'
           )"
+          echo "tree=$TREE_SHA"
+
+          echo 'stage=create-commit'
           jq -n \
             --arg message 'fix: authorize research observation before candidate decisions' \
             --arg tree "$TREE_SHA" \
-            --arg parent "$PARENT_SHA" \
+            --arg parent "$TARGET_PARENT_SHA" \
             '{message: $message, tree: $tree, parents: [$parent]}' \
             > /tmp/commit.json
           COMMIT_SHA="$(
@@ -79,5 +82,4 @@ jobs:
               --input /tmp/commit.json \
               --jq '.sha'
           )"
-          printf 'PARENT_SHA=%s\n' "$PARENT_SHA"
           printf 'CANDIDATE_COMMIT_SHA=%s\n' "$COMMIT_SHA"
