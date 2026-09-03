@@ -1,6 +1,8 @@
 name: Research Daily Gap Dispatcher
 
 on:
+  schedule:
+    - cron: "*/15 * * * *"
   workflow_run:
     workflows:
       - Scheduled Genuine Mainnet Evidence Campaign V4
@@ -18,6 +20,7 @@ concurrency:
 jobs:
   dispatch-if-safe:
     if: >-
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.event == 'schedule')
@@ -26,21 +29,21 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout trusted research dispatch control
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Dispatch one safe daily research cohort
         run: |
           set -euo pipefail
           DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
 
-          ACTIVE_V4_ROWS="$(
-            /usr/bin/gh api --paginate \
-              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
-              --jq '.workflow_runs[]
-                | select(.head_branch == "main")
-                | select(.event == "schedule" or .event == "workflow_dispatch")
-                | select(.status != "completed")
-                | [.id, .status, .event]
-                | @tsv'
-          )"
+          if ! ACTIVE_V4_ROWS="$(scripts/research_v4_active_acquisition.sh)"; then
+            echo "V4 acquisition metadata unavailable; daily research dispatch failed closed" >&2
+            exit 79
+          fi
           if [ -n "$ACTIVE_V4_ROWS" ]; then
             echo "protected V4 acquisition is active; daily research dispatch skipped"
             printf '%s\n' "$ACTIVE_V4_ROWS"

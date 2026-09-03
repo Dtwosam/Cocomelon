@@ -49,7 +49,7 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
         "- name: Refuse research capture while V4 acquisition is active",
         1,
     )[1].split("- name: Upload prepared research control state", 1)[0]
-    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight
+    assert "scripts/research_v4_active_acquisition.sh" in preflight
 
 
 def test_research_campaign_pins_candidate_strategy_before_trusted_capture() -> None:
