@@ -518,6 +518,7 @@ jobs:
         working-directory: control-src
         run: |
           set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/research-campaign/diagnostics"
           printf '%s\n' "$CANDIDATE_SANDBOX_POLICY" \
             > "$GITHUB_WORKSPACE/research-campaign/diagnostics/candidate-sandbox-policy.txt"
           python - <<'PY'
