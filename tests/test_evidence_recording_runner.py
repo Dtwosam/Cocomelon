@@ -314,7 +314,7 @@ def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_fundin
 
 
 def test_rest_poll_failure_records_gap_instead_of_fabricating_data(tmp_path: Path) -> None:
-    config = _config()
+    config = _config(duration_seconds=0.5)
     bootstrap = _bootstrap(config)
     reader = FakeReader(fail_context=True)
     connection = FakeConnection()
