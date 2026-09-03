@@ -285,13 +285,14 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 1. Keep Phase 10 and live trading blocked.
 2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, extend, or performance-condition V4 cohorts.
 3. Keep research strictly **TOUCHED / NON-PROMOTIONAL**; no research result can directly create `CANDIDATE_EDGE`, mutate V4 evidence, or enable live trading.
-4. Let old research run `33753704553` finish naturally through the canonical post-capture V4 authority/disjointness path; do not manually cancel or retry it.
-5. For subsequent research runs, retain #139's mid-capture V4 watcher and fail-closed metadata behavior; V4 always has priority and is never delayed or cancelled by research.
-6. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
-7. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
-8. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
-9. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
-10. Keep issue #124 and all research checkpoint outputs permanently labeled **TOUCHED / NON-PROMOTIONAL**; a promising research state may only justify a future frozen clean-validation challenger, never direct promotion.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path in scheduled operation; preserve its non-economic provenance-only boundary and fail closed on missing or insufficient authority.
+5. Let old research run `33753704553` finish naturally through the canonical post-capture V4 authority/disjointness path; do not manually cancel or retry it.
+6. For subsequent research runs, retain #139's mid-capture V4 watcher and fail-closed metadata behavior; V4 always has priority and is never delayed or cancelled by research.
+7. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
+8. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
+9. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
+10. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+11. Keep issue #124 and all research checkpoint outputs permanently labeled **TOUCHED / NON-PROMOTIONAL**; a promising research state may only justify a future frozen clean-validation challenger, never direct promotion.
 
 ## Profitability and live-trading status
 
