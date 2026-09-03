@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 OBSERVER = Path(".github/workflows/research-v4-acquisition-gap-observer.yml")
 
 
