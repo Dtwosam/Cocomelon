@@ -42,10 +42,7 @@ def test_known_active_v4_is_rejected_before_candidate_build_or_capture() -> None
         1,
     )[0]
     assert "GH_TOKEN: ${{ github.token }}" in preflight
-    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in preflight
-    assert '.head_branch == "main"' in preflight
-    assert '.event == "schedule" or .event == "workflow_dispatch"' in preflight
-    assert '.status != "completed"' in preflight
+    assert "scripts/research_v4_active_acquisition.sh" in preflight
     assert "v4-active-run" in preflight
 
     for forbidden in (

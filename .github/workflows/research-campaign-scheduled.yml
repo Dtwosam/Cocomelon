@@ -230,16 +230,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ACTIVE_ROWS="$(
-            /usr/bin/gh api --paginate \
-              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
-              --jq '.workflow_runs[]
-                | select(.head_branch == "main")
-                | select(.event == "schedule" or .event == "workflow_dispatch")
-                | select(.status != "completed")
-                | [.id, .status, .event]
-                | @tsv'
-          )"
+          # V4 workflow identity: .github/workflows/evidence-campaign-v4-scheduled.yml
+          if ! ACTIVE_ROWS="$(scripts/research_v4_active_acquisition.sh)"; then
+            printf '%s\n' 'V4 acquisition metadata unavailable; refusing research capture' \
+              > research-campaign/diagnostics/v4-preflight-failed.txt
+            exit 78
+          fi
           if [ -n "$ACTIVE_ROWS" ]; then
             printf '%s\n' "$ACTIVE_ROWS" \
               > research-campaign/diagnostics/v4-active-run.txt
@@ -377,15 +373,7 @@ jobs:
           cd control-src
 
           if ! PRE_CAPTURE_ACTIVE_ROWS="$(
-            /usr/bin/gh api --paginate \
-              "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-              --jq '.workflow_runs[]
-                | select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")
-                | select(.head_branch == "main")
-                | select(.event == "schedule" or .event == "workflow_dispatch")
-                | select(.status != "completed")
-                | [.id, .status, .event, .created_at]
-                | @tsv'
+            "$GITHUB_WORKSPACE/control-src/scripts/research_v4_active_acquisition.sh"
           )"; then
             printf '%s\n' 'Actions metadata check failed immediately before research capture' \
               > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt"
@@ -409,15 +397,7 @@ jobs:
           (
             while kill -0 "$RECORDER_PID" 2>/dev/null; do
               if ! ACTIVE_ROWS="$(
-                /usr/bin/gh api --paginate \
-                  "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
-                  --jq '.workflow_runs[]
-                    | select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")
-                    | select(.head_branch == "main")
-                    | select(.event == "schedule" or .event == "workflow_dispatch")
-                    | select(.status != "completed")
-                    | [.id, .status, .event, .created_at]
-                    | @tsv'
+                "$GITHUB_WORKSPACE/control-src/scripts/research_v4_active_acquisition.sh"
               )"; then
                 printf '%s\n' 'Actions metadata watch failed during research capture' \
                   > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt"
@@ -637,7 +617,7 @@ jobs:
       - prepare-control
       - capture-control
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 120
     permissions:
       contents: read
       actions: write
@@ -792,8 +772,19 @@ jobs:
           PY
             )"
             if [ "$THROUGH_MS" -lt "$BOUND_END_MS" ]; then
-              echo "fresh V4 authority does not cover bound research interval" >&2
-              exit 70
+              echo "fresh V4 authority does not cover bound research interval yet; retrying non-economic V4 authority synchronization" >&2
+              rm -f research-campaign/state/refreshed-v4-authority.sqlite3
+              rm -rf research-campaign/state/refreshed-v4-authority
+              rm -f research-campaign/state/refreshed-v4-authority.zip
+              sleep 60
+              REQUESTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              printf '%s\n' "$REQUESTED_AT" \
+                > research-campaign/state/v4-sync-requested-at.txt
+              /usr/bin/gh api \
+                --method POST \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+                -f ref=main
+              continue
             fi
             printf '%s\n' "$RUN_ID" > research-campaign/state/refreshed-v4-sync-run-id.txt
             printf '%s\n' "$THROUGH_MS" > research-campaign/state/refreshed-v4-complete-through-ms.txt
