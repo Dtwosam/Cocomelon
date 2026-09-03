@@ -31,8 +31,14 @@ def test_dashboard_catchup_dispatches_only_when_trusted_source_is_newer() -> Non
     assert '.status != "completed"' in source
     assert "LATEST_SOURCE_COMPLETED_AT" in source
     assert "LATEST_DASHBOARD_COMPLETED_AT" in source
-    assert "latest trusted research state is already rendered" in source
+    assert "latest dashboard attempt already follows trusted research state" in source
     assert "research dashboard refresh already active" in source
+
+    dashboard_attempt_query = source.split(
+        'LATEST_DASHBOARD_COMPLETED_AT="$(' , 1
+    )[1].split(')"\n\n          if [[ -n "$LATEST_DASHBOARD_COMPLETED_AT" ]]', 1)[0]
+    assert '.conclusion == "success"' not in dashboard_attempt_query
+    assert '.conclusion == "failure"' not in dashboard_attempt_query
 
     assert "actions/workflows/research-dashboard.yml/dispatches" in source
     assert "--method POST" in source
