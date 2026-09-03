@@ -28,6 +28,26 @@ def test_research_capture_aborts_when_v4_becomes_active_after_preflight() -> Non
     assert "--seconds 1800" in acquire
 
 
+def test_capture_rechecks_v4_synchronously_before_starting_recorder() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    capture = _job(source, "capture-control", "candidate-decisions")
+    acquire = capture.split("- name: Acquire one public mainnet research cohort", 1)[1].split(
+        "- name: Prepare trusted frozen research source",
+        1,
+    )[0]
+    before_recorder = acquire.split("env -u GITHUB_TOKEN cocomelon record-mainnet-evidence", 1)[0]
+
+    assert 'PRE_CAPTURE_ACTIVE_ROWS="$(' in before_recorder
+    assert "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" in before_recorder
+    assert 'select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")' in before_recorder
+    assert "v4-active-before-recorder.txt" in before_recorder
+    assert (
+        "protected V4 acquisition is active immediately before research capture"
+        in before_recorder
+    )
+    assert "exit 76" in before_recorder
+
+
 def test_midcapture_guard_fails_closed_when_actions_metadata_is_unavailable() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     capture = _job(source, "capture-control", "candidate-decisions")
