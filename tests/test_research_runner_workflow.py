@@ -359,3 +359,22 @@ def test_research_campaign_never_synthesizes_v4_completeness_from_schedule() -> 
     assert "record_v4_interval" not in source
     assert "v4 registry completeness" in lowered
     assert "nominal" not in lowered
+
+
+def test_finalizer_dispatches_dashboard_through_isolated_actions_write_job() -> None:
+    source = _source()
+    finalization = _job_block(source, "finalize-publish", "dispatch-dashboard")
+    dispatch = _job_block(source, "dispatch-dashboard", None)
+    permissions = dispatch.split("steps:", 1)[0]
+
+    assert "needs: finalize-publish" in dispatch
+    assert "needs.finalize-publish.result == 'success'" in dispatch
+    assert "actions: write" in permissions
+    assert "GH_TOKEN: ${{ github.token }}" in dispatch
+    assert "actions/workflows/research-dashboard.yml/dispatches" in dispatch
+    assert "--method POST" in dispatch
+    assert "-f ref=main" in dispatch
+    assert "actions/checkout" not in dispatch
+    assert "research.sqlite3" not in dispatch
+    assert "record-mainnet-evidence" not in dispatch
+    assert "actions: write" not in finalization.split("steps:", 1)[0]
