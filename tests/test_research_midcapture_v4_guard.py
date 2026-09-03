@@ -21,7 +21,8 @@ def test_research_capture_aborts_when_v4_becomes_active_after_preflight() -> Non
     assert "actions: read" in capture.split("steps:", 1)[0]
     assert "GITHUB_TOKEN: ${{ github.token }}" in acquire
     assert "env -u GITHUB_TOKEN cocomelon record-mainnet-evidence" in acquire
-    assert "evidence-campaign-v4-scheduled.yml/runs?per_page=100" in acquire
+    assert "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" in acquire
+    assert 'select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")' in acquire
     assert "v4-became-active.txt" in acquire
     assert 'kill "$RECORDER_PID"' in acquire
     assert "--seconds 1800" in acquire
