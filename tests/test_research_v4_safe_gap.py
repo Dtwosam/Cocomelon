@@ -110,7 +110,7 @@ def test_campaign_and_dispatcher_use_acquisition_aware_guard() -> None:
     campaign = CAMPAIGN.read_text(encoding="utf-8")
     dispatcher = DISPATCHER.read_text(encoding="utf-8")
 
-    assert 'cron: "*/15 * * * *"' in dispatcher
+    assert 'cron: "*/5 * * * *"' in dispatcher
     assert "scripts/research_v4_active_acquisition.sh" in dispatcher
     assert campaign.count("scripts/research_v4_active_acquisition.sh") >= 3
 

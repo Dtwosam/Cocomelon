@@ -20,7 +20,7 @@ def test_gap_dispatcher_uses_actual_run_state_and_caps_daily_success() -> None:
     assert "contents: read" in source
 
     assert "scripts/research_v4_active_acquisition.sh" in source
-    assert 'cron: "*/15 * * * *"' in source
+    assert 'cron: "*/5 * * * *"' in source
 
     assert "research-campaign-scheduled.yml" in source
     assert 'date -u +%Y-%m-%dT00:00:00Z' in source
