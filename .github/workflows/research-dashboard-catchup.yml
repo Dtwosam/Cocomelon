@@ -87,7 +87,6 @@ jobs:
                     .path == ".github/workflows/research-dashboard.yml"
                     and .head_branch == "main"
                     and .status == "completed"
-                    and .conclusion == "success"
                   )
               ]
               | sort_by(.updated_at)
@@ -99,7 +98,7 @@ jobs:
           if [[ -n "$LATEST_DASHBOARD_COMPLETED_AT" ]] \
             && [[ "$LATEST_DASHBOARD_COMPLETED_AT" > "$LATEST_SOURCE_COMPLETED_AT" \
               || "$LATEST_DASHBOARD_COMPLETED_AT" == "$LATEST_SOURCE_COMPLETED_AT" ]]; then
-            echo "latest trusted research state is already rendered; skipping catch-up dispatch"
+            echo "latest dashboard attempt already follows trusted research state; skipping catch-up dispatch"
             exit 0
           fi
 
