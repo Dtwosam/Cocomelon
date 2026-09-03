@@ -116,7 +116,8 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     decisions = _job_block(source, "candidate-decisions", "refresh-authority")
     refresh = _job_block(source, "refresh-authority", "evaluate-research")
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
-    finalization = _job_block(source, "finalize-publish", None)
+    finalization = _job_block(source, "finalize-publish", "dispatch-dashboard")
+    dashboard_dispatch = _job_block(source, "dispatch-dashboard", None)
     refresh_dispatch = source.split(
         "- name: Dispatch post-capture V4 authority synchronization",
         1,
@@ -158,6 +159,7 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "actions: write" in refresh
     assert "actions: read" in evaluation
     assert "actions: read" in finalization
+    assert "actions: write" in dashboard_dispatch.split("steps:", 1)[0]
     for isolated in (candidate, capture, decisions):
         assert "GH_TOKEN:" not in isolated
     assert "GH_TOKEN:" not in evaluation_before_rebase
@@ -166,7 +168,8 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "GH_TOKEN:" not in finalizer_before_rebase
     assert "GH_TOKEN: ${{ github.token }}" in finalizer_rebase
     assert "GH_TOKEN:" not in finalizer_after_rebase
-    assert source.count("GH_TOKEN: ${{ github.token }}") == 7
+    assert "GH_TOKEN: ${{ github.token }}" in dashboard_dispatch
+    assert source.count("GH_TOKEN: ${{ github.token }}") == 8
     assert prepare.count("GH_TOKEN: ${{ github.token }}") == 3
     assert "GH_TOKEN: ${{ github.token }}" in prepare
     assert "GH_TOKEN: ${{ github.token }}" in refresh_dispatch
@@ -177,6 +180,7 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     assert "/usr/bin/gh api" in refresh_download
     assert "/usr/bin/gh api" in evaluation_rebase
     assert "/usr/bin/gh api" in finalizer_rebase
+    assert "/usr/bin/gh api" in dashboard_dispatch
     assert "import sqlite3" in refresh_download
     assert "from cocomelon" not in refresh_download.lower()
     assert "merge_v4_authority_snapshot" in refresh_merge
@@ -311,7 +315,7 @@ def test_research_campaign_publishes_audit_state_on_failure() -> None:
 
 def test_finalizer_falls_back_to_last_registry_stage_and_always_terminalizes() -> None:
     source = _source()
-    finalization = _job_block(source, "finalize-publish", None)
+    finalization = _job_block(source, "finalize-publish", "dispatch-dashboard")
 
     for step_name in (
         "Download evaluated stage for publication",
