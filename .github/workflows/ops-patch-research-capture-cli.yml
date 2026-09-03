@@ -1,0 +1,73 @@
+name: Ops Patch Research Capture CLI
+
+on:
+  push:
+    branches:
+      - fix/research-capture-epoch-alignment-20260903
+    paths:
+      - ".github/workflows/ops-patch-research-capture-cli.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-capture-epoch-alignment-20260903
+          fetch-depth: 1
+
+      - name: Wire research-only capture timing at CLI seam
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/cocomelon/cli.py")
+          source = path.read_text(encoding="utf-8")
+
+          import_anchor = "import json\nimport sqlite3\n"
+          if import_anchor not in source:
+              raise RuntimeError("standard-library import anchor not found")
+          source = source.replace(import_anchor, "import json\nimport os\nimport sqlite3\n", 1)
+
+          module_anchor = (
+              "from cocomelon.replay.source import JsonlReplaySource, validate_recording\n"
+              "from cocomelon.scanner.eligibility import (\n"
+          )
+          module_replacement = (
+              "from cocomelon.replay.source import JsonlReplaySource, validate_recording\n"
+              "from cocomelon.research.capture_timing import maybe_wait_for_research_capture_phase\n"
+              "from cocomelon.scanner.eligibility import (\n"
+          )
+          if module_anchor not in source:
+              raise RuntimeError("project import anchor not found")
+          source = source.replace(module_anchor, module_replacement, 1)
+
+          command_anchor = (
+              "        elif args.command == \"record-mainnet-evidence\":\n"
+              "            payload = record_mainnet_evidence_payload(\n"
+          )
+          command_replacement = (
+              "        elif args.command == \"record-mainnet-evidence\":\n"
+              "            maybe_wait_for_research_capture_phase(os.environ.get(\"SOURCE_ID\"))\n"
+              "            payload = record_mainnet_evidence_payload(\n"
+          )
+          if command_anchor not in source:
+              raise RuntimeError("recording command anchor not found")
+          source = source.replace(command_anchor, command_replacement, 1)
+
+          path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Commit CLI seam
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/cocomelon/cli.py
+          git commit -m "feat: align research recorder at CLI seam"
+          git push origin HEAD:fix/research-capture-epoch-alignment-20260903
