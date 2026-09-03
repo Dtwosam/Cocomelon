@@ -4,7 +4,7 @@
 
 **Snapshot updated:** 2026-09-03  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `6d0b6da32e4ec4a001ab2c45c175b91c25352cb3`  
+**Current verified `main` at snapshot:** `64a8f73a6e771ddd27de3587ad44ba0ef3532304`  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -109,14 +109,20 @@ Research checkpoints must come through the canonical authenticated artifact/atte
 
 ### Current research status
 
-Issue #124 currently reports:
+Issue #124 was refreshed from trusted state at approximately `2026-09-03 15:10 UTC` and currently reports:
 
 - candidate `scheduled-research-root`;
 - state `draft`;
 - **0 authenticated checkpoints**;
 - no research economic conclusion.
 
-Its visible timestamp is stale, but the zero-checkpoint semantics match the latest authoritative registry. All research output remains explicitly **TOUCHED / NON-PROMOTIONAL**.
+The clean zero-checkpoint baseline matches the authoritative research #8 result. All research output remains explicitly **TOUCHED / NON-PROMOTIONAL**.
+
+### Research candidate revision
+
+`scheduled-research-root` is immutably pinned to `721dc98c22c389e3f6f85e382f84e2889fbefe31`. Candidate-build logs from research run `33753704553` show that exact revision was checked out and frozen into the candidate image.
+
+A compare from `721dc98c...` to verified main `64a8f73a...` contains no changes under `src/cocomelon/strategies` or the strategy-evaluation domain/feature path. The actual strategy engine blob `src/cocomelon/strategies/engine.py` is identical at both revisions (`6d43979c1e9497a57c168a8b78f3fb0b8f5a7a7d`). Do not create or silently repin a descendant merely for infrastructure drift; create a descendant only for an intentional future strategy mutation, preserving touched lineage.
 
 ---
 
@@ -126,7 +132,8 @@ Control plane:
 
 - `.github/workflows/research-campaign-scheduled.yml` — fixed 1800-second paper-only public-mainnet research capture;
 - `.github/workflows/research-v4-registry-sync.yml` — trusted non-economic inventory of actual V4 acquisition intervals/completeness; publishes `research-authoritative-registry`;
-- `.github/workflows/research-v4-sync-dispatcher.yml` — data-less V4-completion bridge that API-dispatches the trusted authority sync for completed scheduled main-branch V4 runs;
+- `.github/workflows/research-v4-sync-dispatcher.yml` — data-less completed-V4 bridge that API-dispatches the trusted authority sync for completed scheduled main-branch V4 runs;
+- `.github/workflows/research-v4-acquisition-gap-observer.yml` — metadata-only **prospective** observer that watches future scheduled V4 `acquire-evidence` jobs and wakes the existing safe-gap dispatcher within roughly one minute after physical acquisition ends;
 - `.github/workflows/research-daily-gap-dispatcher.yml` — safe-gap launcher with one-successful-cohort-per-UTC-day cap;
 - `.github/workflows/research-dashboard.yml` — dedicated touched/non-promotional dashboard;
 - `.github/workflows/research-dashboard-catchup.yml` — redundant stale-state catch-up.
@@ -143,17 +150,19 @@ Important reliability changes merged on 2026-09-03:
 - **PR #146** (`5abca9cb38df855aa811a2d8a6b464c5a0c1be9d`) reduces only the safe-gap dispatcher poll from 15 minutes to **5 minutes**. Capture duration and every V4/provenance/economic gate are unchanged.
 - **PR #148** (`48e387d39bf79a8b8de23aab1bdc949c86cfdec2`) dispatches a trusted research-dashboard refresh after successful V4 authority synchronization from a separate no-checkout `actions: write` job; the authority publisher remains read-only.
 - **PR #149** (`6d0b6da32e4ec4a001ab2c45c175b91c25352cb3`) adds an event-driven V4-completion -> trusted authority-sync bridge. It reacts only to completed scheduled V4 runs on `main`, intentionally includes failed runs because their acquisition intervals still matter, excludes manual V4 runs, uses `contents: none`, and preserves trusted sync identity by API-dispatching `research-v4-registry-sync.yml` as `workflow_dispatch`.
+- **PR #151** (`2300acd546e03dc7cbca28f16fc4b8f68ce513c7`) removes a CI-only async recorder test race; production recorder/runtime timing is unchanged.
+- **PR #152** (`64a8f73a6e771ddd27de3587ad44ba0ef3532304`) adds the metadata-only V4 acquisition-gap observer. It sees only Actions job/run state, fails closed on ambiguity, and can wake only `research-daily-gap-dispatcher.yml`, which re-applies all V4/research/daily-success gates before any research dispatch. It was merged after V4 #21 had already emitted its `in_progress` event, so it applies naturally to later scheduled V4 runs rather than retroactively attaching to #21.
 
 Verified integration:
 
-- PR #148 exact-head CI `33767848741`: success.
-- PR #148 PR-context CI `33767988476`: success.
-- PR #148 post-merge main CI `33768116378`: success.
-- PR #149 exact-head CI `33768651695`: success.
-- PR #149 PR-context CI `33768741732`: success.
-- PR #149 post-merge main CI `33768857608`: success.
+- PR #151 exact-head CI `33771441769`: success.
+- PR #151 PR-context CI `33771542570`: success.
+- PR #151 post-merge main CI `33771640553`: success.
+- PR #152 exact-head CI `33772056693`: success.
+- PR #152 PR-context CI `33772166298`: success.
+- PR #152 post-merge main CI `33772264990`: success.
 
-GitHub schedule delivery has shown material drift. Actual scheduled sync/catch-up runs have arrived well after nominal cron times, so cron is retained only as redundant orchestration. Actual run/job/session timing remains authority. Production now prefers the event-driven chain `scheduled V4 completion -> V4 sync dispatcher -> trusted authority sync -> isolated dashboard refresh`.
+GitHub schedule delivery has shown material drift. The five-minute safe-gap dispatcher did not produce a fresh schedule run during the live observation window even while other schedules were delivered, so cron is only redundant orchestration. Actual run/job/session timing remains authority. Production now prefers event-driven wake-ups: acquisition-end observer -> safe-gap gate, and completed V4 -> trusted authority sync -> dashboard refresh.
 
 ---
 
@@ -179,15 +188,16 @@ This run is closed audit evidence, not an unresolved experiment and not a resear
 
 1. Keep Phase 10 and live trading blocked.
 2. Let active protected V4 run `33754093934` finish naturally.
-3. **Observe the implemented authoritative V4 interval/completeness synchronization path** when V4 #21 completes and on the first subsequent research cohort that reaches a genuine acquisition-free gap.
-4. Verify the deployed event-driven chain: scheduled V4 completion -> `research-v4-sync-dispatcher` -> trusted sync via `workflow_dispatch` -> isolated research-dashboard refresh. Failed scheduled V4 attempts must still enter interval authority; manual V4 runs must not.
-5. Observe the safe-gap dispatcher: it must skip while V4 acquisition is active and may dispatch only when acquisition is inactive, no research campaign is active, and no successful research cohort exists for that UTC day. Do not rely on nominal cron delivery.
+3. Do not retrofit the newly deployed acquisition-gap observer into already-running V4 #21. Observe the existing completion and redundant fallback paths for that run.
+4. On the next scheduled V4 run after PR #152, verify `research-v4-acquisition-gap-observer.yml` starts from the V4 `in_progress` event and wakes the existing safe-gap dispatcher after the unique `acquire-evidence` job completes.
+5. **Observe the implemented authoritative V4 interval/completeness synchronization path** when V4 #21 completes and on the first subsequent research cohort that reaches a genuine acquisition-free gap.
 6. For a launched research cohort, verify acquisition-aware preflight, synchronous pre-recorder recheck, mid-capture V4 preemption, fixed 1800-second capture, post-capture authority completeness refresh, canonical disjointness, authenticated evaluation, finalizer publication, and dashboard refresh.
-7. Fix future infrastructure defects with RED -> GREEN TDD, but never weaken V4 authority, overlap, completeness, touched-lineage, research authentication, or one-shot gates.
-8. Keep research permanently **TOUCHED / NON-PROMOTIONAL**.
-9. Admit only clean, complete, flat frozen-runtime V4 sources into `v4-mainnet-corpus`.
-10. Let the frozen V4 one-shot check readiness after trusted corpus updates; do not inspect interim V4 economics.
-11. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+7. Keep `scheduled-research-root` pinned to `721dc98c...` unless strategy code itself intentionally changes; infrastructure-only commits do not justify a descendant.
+8. Fix future infrastructure defects with RED -> GREEN TDD, but never weaken V4 authority, overlap, completeness, touched-lineage, research authentication, or one-shot gates.
+9. Keep research permanently **TOUCHED / NON-PROMOTIONAL**.
+10. Admit only clean, complete, flat frozen-runtime V4 sources into `v4-mainnet-corpus`.
+11. Let the frozen V4 one-shot check readiness after trusted corpus updates; do not inspect interim V4 economics.
+12. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ---
 
