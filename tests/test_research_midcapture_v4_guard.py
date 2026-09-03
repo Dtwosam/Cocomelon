@@ -28,6 +28,20 @@ def test_research_capture_aborts_when_v4_becomes_active_after_preflight() -> Non
     assert "--seconds 1800" in acquire
 
 
+def test_midcapture_guard_fails_closed_when_actions_metadata_is_unavailable() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    capture = _job(source, "capture-control", "candidate-decisions")
+    acquire = capture.split("- name: Acquire one public mainnet research cohort", 1)[1].split(
+        "- name: Prepare trusted frozen research source",
+        1,
+    )[0]
+
+    assert 'if ! ACTIVE_ROWS="$(' in acquire
+    assert "v4-watch-failed.txt" in acquire
+    assert "Actions metadata watch failed during research capture" in acquire
+    assert 'kill "$RECORDER_PID"' in acquire
+
+
 def test_midcapture_guard_does_not_modify_frozen_v4_workflow() -> None:
     v4 = V4_WORKFLOW.read_text(encoding="utf-8")
 
