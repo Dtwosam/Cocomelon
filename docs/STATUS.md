@@ -1,8 +1,9 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-09-01  
+**Last updated:** 2026-09-03  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
+**Current verified main merge:** `d1b18f28b5325eec5eb8b4d88a99662d925e68ea`  
 **Verified V4 execution runtime:** `0c14c9cfa37c80babc65d050fed6d4465dcb9032`  
 **Funding-corrected V4 activation merge:** `fa89892a1ec27412d11d8457dc5d41334afdaf11`  
 **Frozen V4 Phase 9 evaluator:** `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`  
@@ -42,18 +43,21 @@ V3 scheduled acquisition is retired. Its workflow remains manual-only for frozen
 
 ## Active V4 evidence progress
 
-The trusted dashboard state as of 2026-08-31 08:37 UTC is:
+The trusted dashboard state as of **2026-09-03 12:15 UTC** is:
 
-- **1 accepted V4 cohort**;
-- **2 / 100 closed paper trades**;
-- **1 / 30 closed-trade days**;
-- **105 strategy decisions** in the accepted V4 corpus;
-- **no V4 economic edge claim**;
+- **11 accepted V4 cohorts**;
+- **19 / 100 closed paper trades**;
+- **4 / 30 closed-trade days**;
+- **1,155 strategy decisions** in the accepted V4 corpus;
+- **raw Phase 9 minimums not met**;
+- **economic edge not measured yet**;
 - **live orders disabled**.
+
+Scheduled V4 run `33723341721` completed its full protected acquisition, offline replay, paper-only semantic assertions, and final artifact publication successfully. Curator run `33753694785` then independently verified and admitted that source into `v4-mainnet-corpus`, producing corpus artifact `9892695744`. The next naturally scheduled protected V4 run, `33754093934`, was already active when this snapshot was written and must be allowed to finish naturally without manual dispatch, retry, extension, or outcome-conditioned intervention.
 
 The first accepted corrected-runtime source was scheduled campaign run `33338032370`, admitted by curator run `33356082082` into `v4-mainnet-corpus` artifact `9745203020`.
 
-The subsequent scheduled campaign run `33369130434` failed during acquisition after a simultaneous redundant WebSocket disconnect created `redundant_disconnect` gaps across subscribed streams. The gap watcher failed closed and verification was skipped. That run contributes zero economic progress and the accepted corpus remains unchanged.
+The subsequent scheduled campaign run `33369130434` failed during acquisition after a simultaneous redundant WebSocket disconnect created `redundant_disconnect` gaps across subscribed streams. The gap watcher failed closed and verification was skipped. That run contributes zero economic progress.
 
 No failed or pre-fix V4 source has been retried, reclassified, or retroactively admitted. All remain diagnostic evidence only and contribute zero economic progress.
 
@@ -210,6 +214,27 @@ The implemented D-023 rollout layer adds a research-only mainnet paper replay ca
 
 This runner cannot produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, alter frozen V4 readiness, or enable live execution. The authoritative V4 interval/completeness synchronization path is implemented; the campaign fails closed whenever current non-economic V4 source-time authority cannot be proven through the bound research interval.
 
+## Research operations reliability — 2026-09-03
+
+The D-023 research control plane is operational while remaining strictly **TOUCHED / NON-PROMOTIONAL**:
+
+- the authoritative V4 interval/completeness synchronizer publishes `research-authoritative-registry` from actual trusted V4 acquisition evidence only; it handles both current split-job acquisition artifacts and trusted legacy V4 acquisition artifacts without importing V4 economics;
+- research workflows use the canonical bootstrap candidate `scheduled-research-root` when no repository override is configured;
+- authority inventory parsing preserves empty GitHub run conclusions without shifting attempt metadata fields;
+- `.github/workflows/research-daily-gap-dispatcher.yml` catches a missed daily research cohort after scheduled V4 completion, refuses dispatch while any protected V4 run or research campaign is active, and caps successful research acquisition to one cohort per UTC day;
+- PR #136 recreates the candidate-decision diagnostics workspace before writing its sandbox-policy audit file, closing the artifact-transfer empty-directory failure from run `33714348425`;
+- PR #137 aligns only research captures to a fixed decision-relative phase so the first frozen decision remains inside the existing five-minute entry window without changing that window or any V4 timing/economics;
+- PR #138 raises only the research `capture-control` timeout to cover the deterministic alignment wait plus the unchanged 30-minute recorder and local freeze/bind/upload overhead;
+- live run `33753704553` exposed a time-of-check/time-of-use race: it passed the point-in-time no-active-V4 guard before delayed scheduled V4 run `33754093934` materialized. The existing post-capture V4 authority/disjointness gate still protects economics, but the old workflow can waste a full capture before that rejection;
+- PR #139 fixes that efficiency race on current `main`: trusted `capture-control` now watches read-only repository Actions metadata every 10 seconds, terminates only the research recorder when a protected V4 run appears, strips `GITHUB_TOKEN` from the recorder subprocess itself, and fails closed if the metadata watch becomes unavailable. Frozen V4 files and schedules are untouched;
+- exact-head PR CI `33755504363` and post-merge main CI `33755628640` both passed research checks, compileall, Ruff, mypy, and full pytest for #139;
+- `.github/workflows/research-dashboard-catchup.yml` checks every five minutes for stale research status using Actions metadata only, dispatches the existing dashboard when trusted research state is newer, and caps catch-up to one prompt dashboard attempt per newer trusted source; the normal hourly dashboard remains the retry fallback;
+- issue #124 currently reports `scheduled-research-root` in `draft` with **zero authenticated checkpoints**, so no research economic conclusion exists yet.
+
+The still-running old-code research run `33753704553` is audit evidence for the race and must be allowed to finish through its existing canonical authority path. Do not manually cancel it, reinterpret it, or count it as a checkpoint unless the authenticated research registry actually publishes one. The deployed #139 watcher applies to subsequent research runs from current `main`.
+
+These reliability paths are research-side and non-economic. They do not change V4 strategy, risk, execution, curation, schedule, corpus economics, or one-shot policy.
+
 ## Evidence dashboard
 
 Issue #82 remains the canonical human-readable V4 validation tracker. It treats V4 as active and V3/V2 as historical. Historical counts and research-lane metrics are never added to V4 progress.
@@ -258,13 +283,16 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, or performance-condition V4 cohorts.
-3. Keep PR #119's research-core economics, PR #120's status output, and scheduled research-runner results strictly **TOUCHED / NON-PROMOTIONAL**; do not use research outputs for a V4 promotion claim.
+2. Continue naturally scheduled V4 acquisition unchanged; do not manually dispatch, retry, extend, or performance-condition V4 cohorts.
+3. Keep research strictly **TOUCHED / NON-PROMOTIONAL**; no research result can directly create `CANDIDATE_EDGE`, mutate V4 evidence, or enable live trading.
 4. Observe the implemented authoritative V4 interval/completeness synchronization path in scheduled operation; preserve its non-economic provenance-only boundary and fail closed on missing or insufficient authority.
-5. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
-6. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
-7. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
-8. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+5. Let old research run `33753704553` finish naturally through the canonical post-capture V4 authority/disjointness path; do not manually cancel or retry it.
+6. For subsequent research runs, retain #139's mid-capture V4 watcher and fail-closed metadata behavior; V4 always has priority and is never delayed or cancelled by research.
+7. Admit only clean, complete, flat corrected-runtime V4 sources into `v4-mainnet-corpus`.
+8. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
+9. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
+10. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+11. Keep issue #124 and all research checkpoint outputs permanently labeled **TOUCHED / NON-PROMOTIONAL**; a promising research state may only justify a future frozen clean-validation challenger, never direct promotion.
 
 ## Profitability and live-trading status
 
