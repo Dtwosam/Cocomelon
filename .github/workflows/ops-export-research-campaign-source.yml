@@ -1,4 +1,4 @@
-name: Ops Export Research Campaign Source
+name: Ops Build Patched Research Campaign Commit
 
 on:
   push:
@@ -8,10 +8,10 @@ on:
       - ".github/workflows/ops-export-research-campaign-source.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export:
+  build-commit:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -20,9 +20,80 @@ jobs:
           ref: fix/research-candidate-diagnostics-dir-20260903
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Patch exact candidate diagnostics precondition
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/research-campaign-scheduled.yml")
+          source = path.read_text(encoding="utf-8")
+          prefix = "          set -euo pipefail\n"
+          policy = (
+              "          printf '%s\\n' \"$CANDIDATE_SANDBOX_POLICY\" "
+              + "\\"
+              + "\n"
+          )
+          old = prefix + policy
+          new = (
+              prefix
+              + '          mkdir -p "$GITHUB_WORKSPACE/research-campaign/diagnostics"\n'
+              + policy
+          )
+          if source.count(old) != 1:
+              raise RuntimeError(
+                  f"expected exactly one candidate policy precondition target; found {source.count(old)}"
+              )
+          path.write_text(source.replace(old, new), encoding="utf-8")
+          PY
+          git diff --check
+          git diff -- .github/workflows/research-campaign-scheduled.yml
+
+      - name: Create unreachable patched commit object
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TARGET=.github/workflows/research-campaign-scheduled.yml
+          BASE_TREE="$(git rev-parse 'HEAD^{tree}')"
+          BLOB_SHA="$(
+            jq -Rs '{content: ., encoding: "utf-8"}' < "$TARGET" \
+              | /usr/bin/gh api \
+                  --method POST \
+                  "/repos/$GITHUB_REPOSITORY/git/blobs" \
+                  --input - \
+                  --jq '.sha'
+          )"
+          TREE_SHA="$(
+            jq -n \
+              --arg base "$BASE_TREE" \
+              --arg blob "$BLOB_SHA" \
+              '{base_tree: $base, tree: [{path: ".github/workflows/research-campaign-scheduled.yml", mode: "100644", type: "blob", sha: $blob}]}' \
+              | /usr/bin/gh api \
+                  --method POST \
+                  "/repos/$GITHUB_REPOSITORY/git/trees" \
+                  --input - \
+                  --jq '.sha'
+          )"
+          COMMIT_SHA="$(
+            jq -n \
+              --arg message "fix: create candidate diagnostics workspace" \
+              --arg tree "$TREE_SHA" \
+              --arg parent "$GITHUB_SHA" \
+              '{message: $message, tree: $tree, parents: [$parent]}' \
+              | /usr/bin/gh api \
+                  --method POST \
+                  "/repos/$GITHUB_REPOSITORY/git/commits" \
+                  --input - \
+                  --jq '.sha'
+          )"
+          echo "PATCHED_COMMIT_SHA=$COMMIT_SHA"
+          echo "$COMMIT_SHA" > patched-commit-sha.txt
+
       - uses: actions/upload-artifact@v4
         with:
-          name: research-campaign-source-${{ github.sha }}
-          path: .github/workflows/research-campaign-scheduled.yml
+          name: patched-research-campaign-commit-${{ github.sha }}
+          path: patched-commit-sha.txt
           if-no-files-found: error
           retention-days: 1
