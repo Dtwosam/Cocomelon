@@ -376,6 +376,29 @@ jobs:
           printf '1\n' > research-campaign/output/acquisition-attempt.txt
           cd control-src
 
+          if ! PRE_CAPTURE_ACTIVE_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+              --jq '.workflow_runs[]
+                | select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")
+                | select(.head_branch == "main")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status != "completed")
+                | [.id, .status, .event, .created_at]
+                | @tsv'
+          )"; then
+            printf '%s\n' 'Actions metadata check failed immediately before research capture' \
+              > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt"
+            echo "Actions metadata check failed immediately before research capture" >&2
+            exit 78
+          fi
+          if [ -n "$PRE_CAPTURE_ACTIVE_ROWS" ]; then
+            printf '%s\n' "$PRE_CAPTURE_ACTIVE_ROWS" \
+              > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-active-before-recorder.txt"
+            echo "protected V4 acquisition is active immediately before research capture; aborting research cohort" >&2
+            exit 76
+          fi
+
           env -u GITHUB_TOKEN cocomelon record-mainnet-evidence \
             --root "$GITHUB_WORKSPACE/research-campaign/recording" \
             --seconds 1800 \
