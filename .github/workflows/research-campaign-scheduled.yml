@@ -385,16 +385,22 @@ jobs:
 
           (
             while kill -0 "$RECORDER_PID" 2>/dev/null; do
-              ACTIVE_ROWS="$(
+              if ! ACTIVE_ROWS="$(
                 /usr/bin/gh api --paginate \
-                  "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
                   --jq '.workflow_runs[]
+                    | select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")
                     | select(.head_branch == "main")
                     | select(.event == "schedule" or .event == "workflow_dispatch")
                     | select(.status != "completed")
                     | [.id, .status, .event, .created_at]
                     | @tsv'
-              )"
+              )"; then
+                printf '%s\n' 'Actions metadata watch failed during research capture' \
+                  > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt"
+                kill "$RECORDER_PID" 2>/dev/null || true
+                exit 78
+              fi
               if [ -n "$ACTIVE_ROWS" ]; then
                 printf '%s\n' "$ACTIVE_ROWS" \
                   > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-became-active.txt"
@@ -416,6 +422,11 @@ jobs:
             wait "$V4_WATCH_PID" || true
             echo "protected V4 acquisition became active during research capture; aborting research cohort" >&2
             exit 76
+          fi
+          if [ -f "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt" ]; then
+            wait "$V4_WATCH_PID" || true
+            echo "Actions metadata watch failed during research capture; aborting research cohort" >&2
+            exit 78
           fi
 
           kill "$V4_WATCH_PID" 2>/dev/null || true
@@ -965,7 +976,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os
-          from decimal import Decimal
           from pathlib import Path
 
           from cocomelon.research.cohort import complete_research_cohort
