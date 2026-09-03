@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import sqlite3
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -49,6 +50,7 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.replay.clock import canonical_record_order
 from cocomelon.replay.compaction import compact_recording
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
+from cocomelon.research.capture_timing import maybe_wait_for_research_capture_phase
 from cocomelon.scanner.eligibility import (
     EligibilityConfig,
     derive_eligibility_thresholds,
@@ -709,6 +711,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         elif args.command == "scan-once":
             payload = scan_once_payload(settings, limit=args.limit)
         elif args.command == "record-mainnet-evidence":
+            maybe_wait_for_research_capture_phase(os.environ.get("SOURCE_ID"))
             payload = record_mainnet_evidence_payload(
                 settings,
                 root=args.root,
