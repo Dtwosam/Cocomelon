@@ -1,0 +1,1216 @@
+name: Scheduled Research Mainnet Replay Campaign
+
+on:
+  schedule:
+    - cron: "2 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-mainnet-replay-campaign
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+  COCOMELON_API_URL: https://api.hyperliquid.xyz
+  COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+  RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
+  ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
+  BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
+  SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}
+  GITHUB_RUN_ID: ${{ github.run_id }}
+  GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+
+jobs:
+  prepare-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      candidate_revision: ${{ steps.candidate.outputs.revision }}
+    steps:
+      - name: Checkout research campaign control revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Prepare research campaign directories
+        run: |
+          set -euo pipefail
+          mkdir -p research-campaign/state research-campaign/diagnostics
+          printf '%s\n' 'research control preparation started' \
+            > research-campaign/diagnostics/control-started.txt
+
+      - name: Restore authoritative research registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            printf '%s\n' \
+              'Trusted authoritative research registry unavailable; V4 registry completeness cannot be proven.' \
+              > research-campaign/diagnostics/authoritative-registry-unavailable.txt
+            exit 65
+          fi
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/research-authoritative-registry.zip
+          unzip -q \
+            research-campaign/state/research-authoritative-registry.zip \
+            -d research-campaign/state/restored
+          REGISTRY_PATH="$(
+            find research-campaign/state/restored -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            printf '%s\n' \
+              'Authoritative registry artifact did not contain research.sqlite3; V4 registry completeness is unavailable.' \
+              > research-campaign/diagnostics/authoritative-registry-unavailable.txt
+            exit 66
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3
+
+      - name: Resolve candidate code revision from authoritative registry
+        id: candidate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
+          if not candidate_id:
+              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT code_revision FROM research_candidates WHERE candidate_id = ?",
+                  (candidate_id,),
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None or not isinstance(row[0], str):
+              raise RuntimeError("research candidate is missing from authoritative registry")
+          revision = row[0].strip().lower()
+          if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+              raise RuntimeError("research candidate code_revision must be a 40-character commit SHA")
+          Path("research-campaign/state/research-code-revision.txt").write_text(
+              revision + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"revision={revision}\n")
+          PY
+
+      - name: Refuse duplicate successful research cohort for current UTC day
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          DAY_START="$(date -u +%Y-%m-%dT00:00:00Z)"
+          SUCCESS_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+              | /usr/bin/jq -r \
+                --arg day_start "$DAY_START" \
+                --argjson current_run "$GITHUB_RUN_ID" '
+                  .workflow_runs[]
+                  | select(.id != $current_run)
+                  | select(.head_branch == "main")
+                  | select(.path == ".github/workflows/research-campaign-scheduled.yml")
+                  | select(.event == "schedule" or .event == "workflow_dispatch")
+                  | select(.status == "completed")
+                  | select(.conclusion == "success")
+                  | select(.created_at >= $day_start)
+                  | [.id, .created_at]
+                  | @tsv
+                '
+          )"
+          if [ -n "$SUCCESS_ROWS" ]; then
+            printf '%s\n' "$SUCCESS_ROWS" \
+              > research-campaign/diagnostics/research-success-today.txt
+            echo "successful research cohort already exists for current UTC day; refusing duplicate" >&2
+            exit 77
+          fi
+          printf '%s\n' 'none' \
+            > research-campaign/diagnostics/research-success-today.txt
+
+      - name: Persist acquisition attempt before candidate setup
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.runner_history import record_runner_attempt_started
+
+          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
+          if not candidate_id:
+              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
+          revision = Path(
+              "research-campaign/state/research-code-revision.txt"
+          ).read_text(encoding="utf-8").strip()
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              candidate = registry.load_candidate(candidate_id)
+              if candidate.code_revision != revision:
+                  raise RuntimeError("restored research candidate code revision changed")
+              record_runner_attempt_started(
+                  registry.connection,
+                  attempt_id=os.environ["ATTEMPT_ID"],
+                  candidate_id=candidate_id,
+                  batch_id=os.environ["BATCH_ID"],
+                  source_id=os.environ["SOURCE_ID"],
+                  artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / "output"),
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Refuse research capture while V4 acquisition is active
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ACTIVE_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
+              --jq '.workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status != "completed")
+                | [.id, .status, .event]
+                | @tsv'
+          )"
+          if [ -n "$ACTIVE_ROWS" ]; then
+            printf '%s\n' "$ACTIVE_ROWS" \
+              > research-campaign/diagnostics/v4-active-run.txt
+            echo "protected V4 acquisition is active; refusing research capture" >&2
+            while IFS=$'\t' read -r RUN_ID RUN_STATUS RUN_EVENT; do
+              printf 'V4 run %s is %s (%s)\n' "$RUN_ID" "$RUN_STATUS" "$RUN_EVENT" >&2
+            done <<< "$ACTIVE_ROWS"
+            exit 76
+          fi
+          printf '%s\n' 'none' \
+            > research-campaign/diagnostics/v4-active-run.txt
+
+      - name: Upload prepared research control state
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/
+          if-no-files-found: error
+          retention-days: 2
+
+  candidate-build:
+    needs: prepare-control
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: none
+    steps:
+      - name: Checkout candidate code revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-control.outputs.candidate_revision }}
+          path: candidate-src
+          fetch-depth: 1
+          clean: false
+          persist-credentials: false
+
+      - name: Checkout trusted strategy worker revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          clean: false
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: candidate-src/pyproject.toml
+
+      - name: Install Cocomelon candidate build dependencies
+        run: |
+          python -m pip install --upgrade pip
+
+      - name: Freeze candidate strategy image before observation capture
+        env:
+          CANDIDATE_REVISION: ${{ needs.prepare-control.outputs.candidate_revision }}
+        run: |
+          set -euo pipefail
+          cat > Dockerfile.research-candidate <<'EOF'
+          FROM python:3.12-slim
+          WORKDIR /candidate
+          COPY candidate-src /candidate
+          RUN python -m pip install --no-cache-dir .
+          RUN mkdir -p /trusted
+          COPY control-src/src/cocomelon/research/strategy_worker.py /trusted/strategy_worker.py
+          COPY control-src/src/cocomelon/research/strategy_seam.py /trusted/strategy_seam.py
+          ENTRYPOINT ["python", "/trusted/strategy_worker.py"]
+          EOF
+          docker build --pull \
+            -f Dockerfile.research-candidate \
+            -t "research-candidate:${CANDIDATE_REVISION}" \
+            .
+          mkdir -p candidate-package
+          docker save "research-candidate:${CANDIDATE_REVISION}" \
+            | gzip -1 > candidate-package/candidate-image.tar.gz
+          printf '%s\n' "$CANDIDATE_REVISION" > candidate-package/candidate-revision.txt
+
+      - name: Upload candidate research stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate-package/
+          if-no-files-found: error
+          retention-days: 2
+
+  capture-control:
+    needs:
+      - prepare-control
+      - candidate-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: none
+    steps:
+      - name: Checkout trusted research capture control revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: control-src/pyproject.toml
+
+      - name: Download prepared research control state
+        uses: actions/download-artifact@v4
+        with:
+          name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-control
+
+      - name: Install trusted research capture runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./control-src
+
+      - name: Acquire one public mainnet research cohort
+        run: |
+          set -euo pipefail
+          mkdir -p \
+            research-campaign/recording \
+            research-campaign/output \
+            research-campaign/diagnostics
+          printf '1\n' > research-campaign/output/acquisition-attempt.txt
+          cd control-src
+          cocomelon record-mainnet-evidence \
+            --root "$GITHUB_WORKSPACE/research-campaign/recording" \
+            --seconds 1800 \
+            --deep-limit 5 \
+            > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json"
+
+      - name: Prepare trusted frozen research source
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from decimal import Decimal
+          from pathlib import Path
+
+          from cocomelon.research.cohort import prepare_research_cohort_source
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          campaign = workspace / "research-campaign"
+          prepare_research_cohort_source(
+              campaign / "recording",
+              campaign / "output",
+              Decimal("10000"),
+              trigger_head_sha=os.environ["GITHUB_SHA"],
+          )
+          PY
+
+      - name: Bind trusted capture interval before candidate execution
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.evidence.bundle import load_baseline_replay_bundle
+          from cocomelon.research.contracts import TimeInterval
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.runner_history import bind_runner_attempt_source_interval
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          bundle = load_baseline_replay_bundle(
+              workspace / "research-campaign" / "output" / "bundle.json"
+          )
+          interval = TimeInterval(
+              start_ms=bundle.manifest.start_ms,
+              end_ms=bundle.manifest.end_ms,
+          )
+          registry = ResearchRegistry(
+              workspace / "research-control" / "state" / "research.sqlite3"
+          )
+          try:
+              bind_runner_attempt_source_interval(
+                  registry.connection,
+                  attempt_id=os.environ["ATTEMPT_ID"],
+                  start_ms=interval.start_ms,
+                  end_ms=interval.end_ms,
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Upload capture-bound research control stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-control/
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload trusted capture control stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-capture-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-control/
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Upload trusted capture source stage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            research-campaign/recording/
+            research-campaign/output/
+            research-campaign/diagnostics/
+          if-no-files-found: error
+          retention-days: 2
+
+  candidate-decisions:
+    needs:
+      - prepare-control
+      - candidate-build
+      - capture-control
+      - refresh-authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: none
+    steps:
+      - name: Checkout trusted strategy orchestration revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: control-src/pyproject.toml
+
+      - name: Download frozen candidate strategy image
+        uses: actions/download-artifact@v4
+        with:
+          name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: candidate-package
+
+      - name: Download trusted capture source
+        uses: actions/download-artifact@v4
+        with:
+          name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Install trusted strategy orchestration runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./control-src
+
+      - name: Load frozen candidate strategy image
+        run: |
+          set -euo pipefail
+          gunzip -c candidate-package/candidate-image.tar.gz | docker load
+
+      - name: Run candidate strategy against trusted contexts
+        env:
+          CANDIDATE_REVISION: ${{ needs.prepare-control.outputs.candidate_revision }}
+          CANDIDATE_SANDBOX_POLICY: --network none --read-only --cap-drop ALL --security-opt no-new-privileges
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/research-campaign/diagnostics"
+          printf '%s\n' "$CANDIDATE_SANDBOX_POLICY" \
+            > "$GITHUB_WORKSPACE/research-campaign/diagnostics/candidate-sandbox-policy.txt"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.strategy_seam import (
+              DockerStrategyEvaluator,
+              build_candidate_strategy_decisions,
+          )
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          campaign = workspace / "research-campaign"
+          revision = os.environ["CANDIDATE_REVISION"]
+          build_candidate_strategy_decisions(
+              recording_root=campaign / "recording",
+              bundle_path=campaign / "output" / "bundle.json",
+              output_path=campaign / "output" / "strategy-decisions.json",
+              candidate_code_revision=revision,
+              evaluator=DockerStrategyEvaluator(f"research-candidate:{revision}"),
+          )
+          PY
+
+      - name: Upload candidate decision stage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            research-campaign/output/strategy-decisions.json
+            research-campaign/diagnostics/
+          if-no-files-found: error
+          retention-days: 2
+
+  refresh-authority:
+    needs:
+      - prepare-control
+      - capture-control
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Checkout research authority control revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Download prepared research control state for authority merge
+        uses: actions/download-artifact@v4
+        with:
+          name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download trusted research capture stage
+        uses: actions/download-artifact@v4
+        with:
+          # The former unsplit source identity was research-capture-stage-${{ github.run_id }}-${{ github.run_attempt }}.
+          name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Resolve bound research interval
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              row = connection.execute(
+                  "SELECT start_ms, end_ms FROM research_runner_attempts WHERE attempt_id = ?",
+                  (os.environ["ATTEMPT_ID"],),
+              ).fetchone()
+          finally:
+              connection.close()
+          if (
+              row is None
+              or row[0] is None
+              or row[1] is None
+              or int(row[0]) < 0
+              or int(row[1]) <= int(row[0])
+          ):
+              raise RuntimeError("trusted research attempt is missing its bound source interval")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"BOUND_START_MS={int(row[0])}\n")
+              handle.write(f"BOUND_END_MS={int(row[1])}\n")
+          PY
+
+      - name: Dispatch post-capture V4 authority synchronization
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          date -u +%Y-%m-%dT%H:%M:%SZ > research-campaign/state/v4-sync-requested-at.txt
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+            -f ref=main
+
+      - name: Download refreshed V4 authority after acquisition
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REQUESTED_AT="$(cat research-campaign/state/v4-sync-requested-at.txt)"
+          rm -rf research-campaign/state/refreshed-v4-authority
+          for _ in $(seq 1 240); do
+            RUN_ID="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+                --jq ".workflow_runs
+                  | map(select(.created_at >= \"$REQUESTED_AT\"
+                    and .head_branch == \"main\"
+                    and .path == \".github/workflows/research-v4-registry-sync.yml\"))
+                  | sort_by(.created_at)
+                  | reverse
+                  | .[0].id // empty"
+            )"
+            if [ -z "$RUN_ID" ]; then
+              sleep 10
+              continue
+            fi
+            RUN_STATE="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '[.status, (.conclusion // ""), .head_branch, .event, .path] | @tsv'
+            )"
+            IFS=$'\t' read -r RUN_STATUS RUN_CONCLUSION RUN_BRANCH RUN_EVENT RUN_PATH <<< "$RUN_STATE"
+            if [ "$RUN_STATUS" != "completed" ]; then
+              sleep 10
+              continue
+            fi
+            if [ "$RUN_CONCLUSION" != "success" ] \
+              || [ "$RUN_BRANCH" != "main" ] \
+              || [ "$RUN_EVENT" != "workflow_dispatch" ] \
+              || [ "$RUN_PATH" != ".github/workflows/research-v4-registry-sync.yml" ]; then
+              echo "post-capture V4 authority synchronization failed provenance validation" >&2
+              exit 67
+            fi
+            ARTIFACT_ID="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+                --jq '.artifacts
+                  | map(select(.expired == false and .name == "research-authoritative-registry"))
+                  | .[0].id // empty'
+            )"
+            if [ -z "$ARTIFACT_ID" ]; then
+              echo "post-capture V4 authority synchronization produced no registry" >&2
+              exit 68
+            fi
+            mkdir -p research-campaign/state/refreshed-v4-authority
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+              > research-campaign/state/refreshed-v4-authority.zip
+            unzip -q \
+              research-campaign/state/refreshed-v4-authority.zip \
+              -d research-campaign/state/refreshed-v4-authority
+            REGISTRY_PATH="$(
+              find research-campaign/state/refreshed-v4-authority \
+                -type f -name research.sqlite3 -print -quit
+            )"
+            if [ -z "$REGISTRY_PATH" ]; then
+              echo "trusted V4 sync artifact did not contain research.sqlite3" >&2
+              exit 69
+            fi
+            cp "$REGISTRY_PATH" research-campaign/state/refreshed-v4-authority.sqlite3
+            THROUGH_MS="$(
+              REGISTRY_PATH=research-campaign/state/refreshed-v4-authority.sqlite3 python - <<'PY'
+          import os
+          import sqlite3
+
+          connection = sqlite3.connect(os.environ["REGISTRY_PATH"])
+          try:
+              row = connection.execute(
+                  "SELECT complete_through_ms FROM research_v4_registry_state WHERE singleton = 1"
+              ).fetchone()
+          finally:
+              connection.close()
+          if row is None:
+              raise SystemExit(2)
+          print(int(row[0]))
+          PY
+            )"
+            if [ "$THROUGH_MS" -lt "$BOUND_END_MS" ]; then
+              echo "fresh V4 authority does not cover bound research interval" >&2
+              exit 70
+            fi
+            printf '%s\n' "$RUN_ID" > research-campaign/state/refreshed-v4-sync-run-id.txt
+            printf '%s\n' "$THROUGH_MS" > research-campaign/state/refreshed-v4-complete-through-ms.txt
+            break
+          done
+          if [ ! -f research-campaign/state/refreshed-v4-authority.sqlite3 ]; then
+            echo "timed out waiting for post-capture V4 authority synchronization" >&2
+            exit 71
+          fi
+
+      - name: Merge refreshed V4 authority after acquisition
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-campaign/state/refreshed-v4-authority.sqlite3"),
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Authorize candidate observation and record research touch
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.contracts import TimeInterval
+          from cocomelon.research.registry import ResearchRegistry
+
+          interval = TimeInterval(
+              start_ms=int(os.environ["BOUND_START_MS"]),
+              end_ms=int(os.environ["BOUND_END_MS"]),
+          )
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              registry.assert_batch_disjoint_from_v4(interval)
+              registry.record_touched_interval(
+                  os.environ["RESEARCH_CANDIDATE_ID"],
+                  interval,
+                  source_id=os.environ["SOURCE_ID"],
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Upload refreshed research stage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/
+          if-no-files-found: error
+          retention-days: 2
+
+  evaluate-research:
+    needs:
+      - refresh-authority
+      - candidate-decisions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      registry_published: ${{ steps.publish-committed-registry.outcome }}
+    steps:
+      - name: Checkout trusted research runner control revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: control-src/pyproject.toml
+
+      - name: Download refreshed research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download candidate research stage
+        uses: actions/download-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Install trusted research runner runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ./control-src
+
+      - name: Rebase staged registry onto latest trusted authority under publisher lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          rm -rf research-campaign/state/latest-authority research-campaign/state/latest-authority.zip
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "latest trusted authority unavailable under publisher lock" >&2
+            exit 72
+          fi
+          mkdir -p research-campaign/state/latest-authority
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/latest-authority.zip
+          unzip -q \
+            research-campaign/state/latest-authority.zip \
+            -d research-campaign/state/latest-authority
+          REGISTRY_PATH="$(
+            find research-campaign/state/latest-authority -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            echo "latest trusted authority artifact did not contain research.sqlite3" >&2
+            exit 73
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/latest-authority.sqlite3
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-campaign/state/latest-authority.sqlite3"),
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Complete trusted research cohort from candidate decisions
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.cohort import complete_research_cohort
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          campaign = workspace / "research-campaign"
+          complete_research_cohort(
+              campaign / "recording",
+              campaign / "output",
+              strategy_decisions_path=campaign / "output" / "strategy-decisions.json",
+          )
+          PY
+
+      - name: Evaluate authenticated research attempt
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          cocomelon-research-runner run-artifact \
+            --registry "$GITHUB_WORKSPACE/research-campaign/state/research.sqlite3" \
+            --attempt-id "$ATTEMPT_ID" \
+            --candidate-id "$RESEARCH_CANDIDATE_ID" \
+            --batch-id "$BATCH_ID" \
+            --source-id "$SOURCE_ID" \
+            --artifact-root "$GITHUB_WORKSPACE/research-campaign/output" \
+            > "$GITHUB_WORKSPACE/research-campaign/output/runner.json"
+
+      - name: Publish committed authoritative research registry
+        id: publish-committed-registry
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-campaign/state/research.sqlite3
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Render authenticated research status
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          cocomelon-research-status \
+            --registry "$GITHUB_WORKSPACE/research-campaign/state/research.sqlite3" \
+            --format json \
+            > "$GITHUB_WORKSPACE/research-campaign/output/status.json"
+
+      - name: Upload evaluated research stage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/
+          if-no-files-found: error
+          retention-days: 2
+
+  finalize-publish:
+    needs:
+      - prepare-control
+      - candidate-build
+      - capture-control
+      - candidate-decisions
+      - refresh-authority
+      - evaluate-research
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout trusted finalizer control revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: control-src
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download committed authoritative registry from evaluation
+        if: ${{ always() && needs.evaluate-research.outputs.registry_published == 'success' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-campaign/state
+
+      - name: Download evaluated stage for publication
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download refreshed stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.refresh-authority.result != 'skipped' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download control stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.capture-control.result != 'skipped' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Download prepared control stage fallback
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign
+
+      - name: Rebase recovered fallback registry onto latest trusted authority
+        id: rebase-fallback-authority
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          rm -rf \
+            research-campaign/state/finalizer-latest-authority \
+            research-campaign/state/finalizer-latest-authority.zip
+          ARTIFACT_ROWS="$(
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" \
+              --jq '.artifacts
+                | map(select(.expired == false and .workflow_run != null))
+                | sort_by(.created_at)
+                | reverse
+                | .[]
+                | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha]
+                | @tsv'
+          )"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            if [ -z "$CANDIDATE_ARTIFACT_ID" ] || [ -z "$RUN_ID" ]; then
+              continue
+            fi
+            if [ "$ARTIFACT_BRANCH" != "main" ]; then
+              continue
+            fi
+            RUN_IS_TRUSTED="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '(.head_branch == "main")
+                  and (.status == "completed")
+                  and (
+                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                      and (.conclusion == "success" or .conclusion == "failure"))
+                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                      and (.conclusion == "success"))
+                  )
+                  and (.event == "schedule" or .event == "workflow_dispatch")'
+            )"
+            RUN_HEAD_SHA="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.head_sha // empty'
+            )"
+            if [ "$RUN_IS_TRUSTED" != "true" ] || [ "$RUN_HEAD_SHA" != "$ARTIFACT_HEAD_SHA" ]; then
+              continue
+            fi
+            ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+            break
+          done <<< "$ARTIFACT_ROWS"
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "latest trusted authority unavailable to finalizer under publisher lock" >&2
+            exit 74
+          fi
+          mkdir -p research-campaign/state/finalizer-latest-authority
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > research-campaign/state/finalizer-latest-authority.zip
+          unzip -q \
+            research-campaign/state/finalizer-latest-authority.zip \
+            -d research-campaign/state/finalizer-latest-authority
+          REGISTRY_PATH="$(
+            find research-campaign/state/finalizer-latest-authority \
+              -type f -name research.sqlite3 -print -quit
+          )"
+          if [ -z "$REGISTRY_PATH" ]; then
+            echo "latest trusted finalizer authority artifact did not contain research.sqlite3" >&2
+            exit 75
+          fi
+          cp "$REGISTRY_PATH" research-campaign/state/finalizer-latest-authority.sqlite3
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.v4_authority import merge_v4_authority_snapshot
+
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
+          try:
+              merge_v4_authority_snapshot(
+                  registry,
+                  Path("research-campaign/state/finalizer-latest-authority.sqlite3"),
+              )
+          finally:
+              registry.close()
+          PY
+
+      - name: Download capture evidence for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/audit/capture
+
+      - name: Download candidate decision evidence for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/audit/decisions
+
+      - name: Download evaluated products for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/audit/evaluated
+
+      - name: Persist workflow failure in attempt ledger
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          if [ ! -f research-campaign/state/research.sqlite3 ]; then
+            exit 0
+          fi
+          python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          try:
+              table = connection.execute(
+                  """
+                  SELECT 1 FROM sqlite_master
+                  WHERE type = 'table' AND name = 'research_runner_attempts'
+                  """
+              ).fetchone()
+              if table is None:
+                  raise SystemExit(0)
+              cursor = connection.execute(
+                  """
+                  UPDATE research_runner_attempts
+                  SET status = 'failed', report_id = NULL,
+                      error_type = 'WorkflowFailure',
+                      error_message = 'research campaign failed before authenticated checkpoint'
+                  WHERE attempt_id = ? AND status IN ('running', 'evaluating')
+                  """,
+                  (os.environ["ATTEMPT_ID"],),
+              )
+              if cursor.rowcount not in (0, 1):
+                  raise RuntimeError("research runner failure finalization was ambiguous")
+              connection.commit()
+          finally:
+              connection.close()
+          PY
+
+      - name: Upload complete research campaign audit trail
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish authoritative research registry
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-campaign/state/research.sqlite3
+          if-no-files-found: error
+          retention-days: 30
