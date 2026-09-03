@@ -1,0 +1,73 @@
+name: Research V4 Acquisition Gap Observer
+
+on:
+  workflow_run:
+    workflows:
+      - Scheduled Genuine Mainnet Evidence Campaign V4
+    types: [in_progress]
+
+permissions:
+  actions: write
+
+concurrency:
+  group: research-v4-acquisition-gap-observer-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  observe-acquisition:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 340
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+    steps:
+      - name: Dispatch safe-gap gate when V4 acquisition completes
+        run: |
+          set -euo pipefail
+
+          while true; do
+            JOBS_JSON="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100"
+            )"
+
+            ACQUIRE_COUNT="$(
+              printf '%s' "$JOBS_JSON" | /usr/bin/jq -r \
+                '[.jobs[] | select(.name == "acquire-evidence")] | length'
+            )"
+
+            if [ "$ACQUIRE_COUNT" -gt 1 ]; then
+              echo "acquire-evidence job metadata is ambiguous; refusing safe-gap dispatch" >&2
+              exit 79
+            fi
+
+            if [ "$ACQUIRE_COUNT" -eq 1 ]; then
+              ACQUIRE_STATUS="$(
+                printf '%s' "$JOBS_JSON" | /usr/bin/jq -r \
+                  '.jobs[] | select(.name == "acquire-evidence") | .status'
+              )"
+              if [ "$ACQUIRE_STATUS" = "completed" ]; then
+                /usr/bin/gh api \
+                  --method POST \
+                  "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
+                  -f ref=main
+                exit 0
+              fi
+            fi
+
+            RUN_STATUS="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+                --jq '.status'
+            )"
+            if [ "$RUN_STATUS" = "completed" ]; then
+              echo "V4 workflow completed before a unique acquire-evidence completion was observed; refusing dispatch" >&2
+              exit 79
+            fi
+
+            sleep 60
+          done
