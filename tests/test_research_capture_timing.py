@@ -6,6 +6,7 @@ from cocomelon.research.capture_timing import (
     RESEARCH_CAPTURE_DECISION_LEAD_MS,
     research_capture_wait_ms,
 )
+
 from cocomelon.evidence.epochs import DECISION_INTERVAL_MS
 
 
