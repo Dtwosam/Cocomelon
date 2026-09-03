@@ -1,0 +1,70 @@
+name: Ops Build Research Timeout Blob
+
+on:
+  push:
+    branches:
+      - fix/research-capture-timeout-headroom-20260903
+    paths:
+      - ".github/workflows/ops-build-research-timeout-blob.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-blob:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-capture-timeout-headroom-20260903
+          fetch-depth: 1
+
+      - name: Build exact one-line workflow blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          path = Path(".github/workflows/research-campaign-scheduled.yml")
+          source = path.read_text(encoding="utf-8")
+          before, rest = source.split("\n  capture-control:\n", 1)
+          capture, after = rest.split("\n  candidate-decisions:\n", 1)
+          old = "    timeout-minutes: 45\n"
+          new = "    timeout-minutes: 60\n"
+          if capture.count(old) != 1:
+              raise RuntimeError("capture-control timeout anchor is not unique")
+          capture = capture.replace(old, new, 1)
+          patched = before + "\n  capture-control:\n" + capture + "\n  candidate-decisions:\n" + after
+          if len(patched) != len(source):
+              raise RuntimeError("timeout patch unexpectedly changed workflow byte length")
+          path.write_text(patched, encoding="utf-8")
+          payload = {
+              "content": base64.b64encode(path.read_bytes()).decode("ascii"),
+              "encoding": "base64",
+          }
+          Path("/tmp/blob.json").write_text(json.dumps(payload), encoding="utf-8")
+          PY
+          BLOB_SHA="$(
+            /usr/bin/gh api \
+              --method POST \
+              "/repos/$GITHUB_REPOSITORY/git/blobs" \
+              --input /tmp/blob.json \
+              --jq '.sha'
+          )"
+          mkdir -p .ops
+          printf '%s\n' "$BLOB_SHA" > .ops/research-timeout-blob-sha.txt
+
+      - name: Publish blob SHA only
+        run: |
+          set -euo pipefail
+          git restore .github/workflows/research-campaign-scheduled.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ops/research-timeout-blob-sha.txt
+          git commit -m "ops: publish research timeout blob sha"
+          git push origin HEAD:fix/research-capture-timeout-headroom-20260903
