@@ -1,0 +1,51 @@
+name: Research V4 Authority Sync Dispatcher
+
+on:
+  workflow_run:
+    workflows:
+      - Scheduled Genuine Mainnet Evidence Campaign V4
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: none
+  actions: write
+
+concurrency:
+  group: research-v4-authority-sync-dispatcher
+  cancel-in-progress: false
+
+jobs:
+  dispatch-sync:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.event == 'schedule')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Dispatch trusted V4 authority synchronization
+        run: |
+          set -euo pipefail
+          ACTIVE_SYNC_ROWS="$(
+            /usr/bin/gh api --paginate \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/runs?per_page=100" \
+              --jq '.workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "schedule" or .event == "workflow_dispatch")
+                | select(.status != "completed")
+                | [.id, .status, .event]
+                | @tsv'
+          )"
+          if [ -n "$ACTIVE_SYNC_ROWS" ]; then
+            echo "V4 authority sync already active; dispatch skipped"
+            printf '%s\n' "$ACTIVE_SYNC_ROWS"
+            exit 0
+          fi
+
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-registry-sync.yml/dispatches" \
+            -f ref=main
