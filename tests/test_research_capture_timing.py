@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from cocomelon.research.capture_timing import (
     RESEARCH_CAPTURE_DECISION_LEAD_MS,
     research_capture_wait_ms,
