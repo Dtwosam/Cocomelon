@@ -21,6 +21,7 @@ jobs:
       - name: Dispatch research daily gap dispatcher on main
         run: |
           set -euo pipefail
+          # Current-main live validation while protected V4 acquisition is active.
           /usr/bin/gh api \
             --method POST \
             "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
