@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 SYNC_WORKFLOW = Path(".github/workflows/research-v4-registry-sync.yml")
 
 
