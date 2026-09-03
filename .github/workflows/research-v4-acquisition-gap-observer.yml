@@ -5,19 +5,26 @@ on:
     workflows:
       - Scheduled Genuine Mainnet Evidence Campaign V4
     types: [in_progress]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/research-v4-acquisition-gap-observer.yml
 
 permissions:
   actions: write
 
 concurrency:
-  group: research-v4-acquisition-gap-observer-${{ github.event.workflow_run.id }}
+  group: research-v4-acquisition-gap-observer-${{ github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   observe-acquisition:
     if: >-
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.event == 'schedule'
+      github.event_name == 'push' ||
+      (
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'schedule'
+      )
     runs-on: ubuntu-24.04
     timeout-minutes: 340
     env:
@@ -28,6 +35,80 @@ jobs:
       - name: Dispatch safe-gap gate when V4 acquisition completes
         run: |
           set -euo pipefail
+
+          dispatch_safe_gap() {
+            /usr/bin/gh api \
+              --method POST \
+              "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
+              -f ref=main
+          }
+
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            RUNS_JSON="$(
+              /usr/bin/gh api --paginate \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100"
+            )"
+            RUN_ROWS="$(
+              printf '%s' "$RUNS_JSON" | /usr/bin/jq -r '
+                .workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "schedule")
+                | select(.status != "completed")
+                | [.id, (.run_attempt // 1)]
+                | @tsv
+              '
+            )"
+
+            ACTIVE_ROWS=""
+            NONCOMPLETED_COUNT=0
+            while IFS=$'\t' read -r CANDIDATE_RUN_ID CANDIDATE_RUN_ATTEMPT; do
+              if [ -z "$CANDIDATE_RUN_ID" ]; then
+                continue
+              fi
+              NONCOMPLETED_COUNT=$((NONCOMPLETED_COUNT + 1))
+              CANDIDATE_JOBS_JSON="$(
+                /usr/bin/gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT/jobs?per_page=100"
+              )"
+              CANDIDATE_ACQUIRE_COUNT="$(
+                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
+                  '[.jobs[] | select(.name == "acquire-evidence")] | length'
+              )"
+              if [ "$CANDIDATE_ACQUIRE_COUNT" -ne 1 ]; then
+                echo "bootstrap V4 workflow metadata is ambiguous; refusing safe-gap dispatch" >&2
+                exit 79
+              fi
+              CANDIDATE_ACQUIRE_STATUS="$(
+                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
+                  '.jobs[] | select(.name == "acquire-evidence") | .status'
+              )"
+              if [ "$CANDIDATE_ACQUIRE_STATUS" != "completed" ]; then
+                ACTIVE_ROWS="${ACTIVE_ROWS}${CANDIDATE_RUN_ID}"$'\t'"${CANDIDATE_RUN_ATTEMPT}"$'\n'
+              fi
+            done <<< "$RUN_ROWS"
+
+            ACTIVE_COUNT="$(printf '%s' "$ACTIVE_ROWS" | sed '/^$/d' | wc -l | tr -d ' ')"
+            if [ "$ACTIVE_COUNT" -gt 1 ]; then
+              echo "bootstrap V4 workflow metadata is ambiguous; refusing safe-gap dispatch" >&2
+              exit 79
+            fi
+            if [ "$ACTIVE_COUNT" -eq 0 ]; then
+              if [ "$NONCOMPLETED_COUNT" -eq 0 ]; then
+                echo "bootstrap found no active scheduled V4 acquisition"
+                exit 0
+              fi
+              echo "bootstrap found no active scheduled V4 acquisition; waking safe-gap gate"
+              dispatch_safe_gap
+              exit 0
+            fi
+
+            IFS=$'\t' read -r RUN_ID RUN_ATTEMPT <<< "$(printf '%s' "$ACTIVE_ROWS" | sed '/^$/d')"
+          fi
+
+          if [ -z "${RUN_ID:-}" ] || [ -z "${RUN_ATTEMPT:-}" ]; then
+            echo "V4 acquisition observer target is unavailable; refusing dispatch" >&2
+            exit 79
+          fi
 
           while true; do
             JOBS_JSON="$(
@@ -51,10 +132,7 @@ jobs:
                   '.jobs[] | select(.name == "acquire-evidence") | .status'
               )"
               if [ "$ACQUIRE_STATUS" = "completed" ]; then
-                /usr/bin/gh api \
-                  --method POST \
-                  "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
-                  -f ref=main
+                dispatch_safe_gap
                 exit 0
               fi
             fi
