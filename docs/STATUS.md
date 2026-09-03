@@ -1,6 +1,6 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-09-01  
+**Last updated:** 2026-09-03  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
 **Verified V4 execution runtime:** `0c14c9cfa37c80babc65d050fed6d4465dcb9032`  
@@ -42,12 +42,12 @@ V3 scheduled acquisition is retired. Its workflow remains manual-only for frozen
 
 ## Active V4 evidence progress
 
-The trusted dashboard state as of 2026-08-31 08:37 UTC is:
+The trusted dashboard state as of 2026-09-03 00:13 UTC is:
 
-- **1 accepted V4 cohort**;
-- **2 / 100 closed paper trades**;
-- **1 / 30 closed-trade days**;
-- **105 strategy decisions** in the accepted V4 corpus;
+- **9 accepted V4 cohorts**;
+- **17 / 100 closed paper trades**;
+- **3 / 30 closed-trade days**;
+- **945 strategy decisions** in the accepted V4 corpus;
 - **no V4 economic edge claim**;
 - **live orders disabled**.
 
@@ -210,6 +210,20 @@ The implemented D-023 rollout layer adds a research-only mainnet paper replay ca
 
 This runner cannot produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, alter frozen V4 readiness, or enable live execution. The authoritative V4 interval/completeness synchronization path is implemented; the campaign fails closed whenever current non-economic V4 source-time authority cannot be proven through the bound research interval.
 
+## Research operations reliability — 2026-09-03
+
+The D-023 research control plane is now operational while remaining strictly **TOUCHED / NON-PROMOTIONAL**:
+
+- the authoritative V4 interval/completeness synchronizer publishes `research-authoritative-registry` from actual trusted V4 acquisition evidence only; it handles both current split-job acquisition artifacts and trusted legacy V4 acquisition artifacts without importing V4 economics;
+- research workflows use the canonical bootstrap candidate `scheduled-research-root` when no repository override is configured;
+- authority inventory parsing preserves empty GitHub run conclusions without shifting attempt metadata fields;
+- `.github/workflows/research-daily-gap-dispatcher.yml` catches a missed daily research cohort after scheduled V4 completion, refuses dispatch while any protected V4 run or research campaign is active, and caps successful research acquisition to one cohort per UTC day;
+- `.github/workflows/research-dashboard-catchup.yml` checks every five minutes for stale research status using Actions metadata only, dispatches the existing dashboard when trusted research state is newer, and caps catch-up to one prompt dashboard attempt per newer trusted source; the normal hourly dashboard remains the retry fallback;
+- live validation on 2026-09-03 confirmed the gap dispatcher saw V4 run `33687935497` in progress and skipped research cleanly; the most recent research run `33688074006` had already failed fast at the same active-V4 guard before candidate build/capture and still finalized its audit trail;
+- issue #124 currently reports `scheduled-research-root` in `draft` with zero authenticated checkpoints, so no research economic conclusion exists yet.
+
+These reliability paths are research-side and non-economic. They do not change V4 strategy, risk, execution, curation, schedule, corpus economics, or one-shot policy.
+
 ## Evidence dashboard
 
 Issue #82 remains the canonical human-readable V4 validation tracker. It treats V4 as active and V3/V2 as historical. Historical counts and research-lane metrics are never added to V4 progress.
@@ -265,6 +279,8 @@ Before any Phase 10 promotion, genuine untouched V4 evidence must satisfy at lea
 6. Continue frozen V4 acquisition without strategy tuning until the economic minimums are reached.
 7. Let the V4 one-shot workflow check fixed-protocol readiness after trusted corpus updates.
 8. Advance toward Phase 10 only if an authoritative untouched one-shot result reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+9. Let `research-daily-gap-dispatcher.yml` launch at most one safe daily research cohort only when no protected V4 acquisition/research run is active; never bypass that guard to accelerate evidence.
+10. Keep issue #124 and all research checkpoint outputs permanently labeled **TOUCHED / NON-PROMOTIONAL**; a promising research state may only justify a future frozen clean-validation challenger, never direct promotion.
 
 ## Profitability and live-trading status
 
