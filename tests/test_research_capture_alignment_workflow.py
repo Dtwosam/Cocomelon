@@ -17,7 +17,8 @@ def test_research_capture_uses_current_control_with_unique_source_identity() -> 
 
 def test_research_capture_timeout_has_alignment_headroom() -> None:
     source = RESEARCH_WORKFLOW.read_text(encoding="utf-8")
-    capture_job = source.split("\n  capture-control:\n", 1)[1].split("\n  candidate-decisions:\n", 1)[0]
+    capture_job = source.split("\n  capture-control:\n", 1)[1]
+    capture_job = capture_job.split("\n  candidate-decisions:\n", 1)[0]
 
     assert "timeout-minutes: 60" in capture_job
     assert "--seconds 1800" in capture_job
