@@ -542,3 +542,22 @@ jobs:
           path: research-sync/inventory/
           if-no-files-found: error
           retention-days: 30
+
+  dispatch-dashboard:
+    needs: synchronize
+    if: ${{ always() && needs.synchronize.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: none
+      actions: write
+    steps:
+      - name: Dispatch authoritative research dashboard refresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-dashboard.yml/dispatches" \
+            -f ref=main
