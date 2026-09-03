@@ -337,7 +337,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      actions: none
+      actions: read
     steps:
       - name: Checkout trusted research capture control revision
         uses: actions/checkout@v4
@@ -365,6 +365,8 @@ jobs:
           python -m pip install -e ./control-src
 
       - name: Acquire one public mainnet research cohort
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p \
@@ -373,11 +375,65 @@ jobs:
             research-campaign/diagnostics
           printf '1\n' > research-campaign/output/acquisition-attempt.txt
           cd control-src
-          cocomelon record-mainnet-evidence \
+
+          env -u GITHUB_TOKEN cocomelon record-mainnet-evidence \
             --root "$GITHUB_WORKSPACE/research-campaign/recording" \
             --seconds 1800 \
             --deep-limit 5 \
-            > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json"
+            > "$GITHUB_WORKSPACE/research-campaign/output/record-transport.json" &
+          RECORDER_PID=$!
+
+          (
+            while kill -0 "$RECORDER_PID" 2>/dev/null; do
+              if ! ACTIVE_ROWS="$(
+                /usr/bin/gh api --paginate \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+                  --jq '.workflow_runs[]
+                    | select(.name == "Scheduled Genuine Mainnet Evidence Campaign V4")
+                    | select(.head_branch == "main")
+                    | select(.event == "schedule" or .event == "workflow_dispatch")
+                    | select(.status != "completed")
+                    | [.id, .status, .event, .created_at]
+                    | @tsv'
+              )"; then
+                printf '%s\n' 'Actions metadata watch failed during research capture' \
+                  > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt"
+                kill "$RECORDER_PID" 2>/dev/null || true
+                exit 78
+              fi
+              if [ -n "$ACTIVE_ROWS" ]; then
+                printf '%s\n' "$ACTIVE_ROWS" \
+                  > "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-became-active.txt"
+                kill "$RECORDER_PID" 2>/dev/null || true
+                exit 76
+              fi
+              sleep 10
+            done
+          ) &
+          V4_WATCH_PID=$!
+
+          if wait "$RECORDER_PID"; then
+            RECORDER_STATUS=0
+          else
+            RECORDER_STATUS=$?
+          fi
+
+          if [ -f "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-became-active.txt" ]; then
+            wait "$V4_WATCH_PID" || true
+            echo "protected V4 acquisition became active during research capture; aborting research cohort" >&2
+            exit 76
+          fi
+          if [ -f "$GITHUB_WORKSPACE/research-campaign/diagnostics/v4-watch-failed.txt" ]; then
+            wait "$V4_WATCH_PID" || true
+            echo "Actions metadata watch failed during research capture; aborting research cohort" >&2
+            exit 78
+          fi
+
+          kill "$V4_WATCH_PID" 2>/dev/null || true
+          wait "$V4_WATCH_PID" 2>/dev/null || true
+          if [ "$RECORDER_STATUS" -ne 0 ]; then
+            exit "$RECORDER_STATUS"
+          fi
 
       - name: Prepare trusted frozen research source
         working-directory: control-src
