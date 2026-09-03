@@ -1,0 +1,28 @@
+name: Ops Export Research Campaign Source
+
+on:
+  push:
+    branches:
+      - fix/research-candidate-diagnostics-dir-20260903
+    paths:
+      - ".github/workflows/ops-export-research-campaign-source.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-candidate-diagnostics-dir-20260903
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-campaign-source-${{ github.sha }}
+          path: .github/workflows/research-campaign-scheduled.yml
+          if-no-files-found: error
+          retention-days: 1
