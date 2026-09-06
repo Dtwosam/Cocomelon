@@ -107,3 +107,27 @@ def test_trusted_completion_rejects_preexisting_economic_products(tmp_path: Path
             output_root,
             strategy_decisions_path=decisions_path,
         )
+
+
+def test_docker_strategy_evaluator_keeps_stdin_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run(command: list[str], **kwargs: object) -> object:
+        seen["command"] = command
+        seen["input"] = kwargs["input"]
+        return strategy_seam.subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="{}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(strategy_seam.subprocess, "run", fake_run)
+
+    result = strategy_seam.DockerStrategyEvaluator("candidate:test")(
+        {"context": {}}
+    )
+
+    assert result == {}
+    assert "-i" in seen["command"]
+    assert seen["input"] == "{\"context\":{}}\n"
