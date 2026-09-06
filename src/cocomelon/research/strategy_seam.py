@@ -1039,6 +1039,7 @@ class DockerStrategyEvaluator:
         command = [
             "docker",
             "run",
+            "-i",
             "--rm",
             "--pull",
             "never",
