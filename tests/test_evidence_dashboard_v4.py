@@ -235,3 +235,35 @@ def test_v4_intake_reclassifies_trusted_capture_step_failure() -> None:
     assert diagnostic(repo, report, source, jobs) == "capture_step_failed"
     enriched = {**report, "diagnostic_status": "capture_step_failed"}
     assert summary(enriched) == "rejected — diagnostics: capture_step_failed"
+
+
+def test_v4_dashboard_reports_actual_active_run_age() -> None:
+    summary = _function(BUILDER, "_v4_campaign_age_summary")
+    run = {
+        "status": "in_progress",
+        "run_started_at": "2026-09-09T12:28:34Z",
+    }
+
+    assert summary(
+        run,
+        now=datetime(2026, 9, 9, 16, 20, 34, tzinfo=UTC),
+    ) == (
+        "active run age 3h52m; fixed capture duration 5h15m — actual run timing is "
+        "authoritative; nominal cron drift is not a backfill signal"
+    )
+
+
+def test_v4_dashboard_marks_post_capture_age_without_declaring_failure() -> None:
+    summary = _function(BUILDER, "_v4_campaign_age_summary")
+    run = {
+        "status": "in_progress",
+        "run_started_at": "2026-09-09T10:00:00Z",
+    }
+
+    assert summary(
+        run,
+        now=datetime(2026, 9, 9, 15, 30, tzinfo=UTC),
+    ) == (
+        "active run age 5h30m; fixed capture duration 5h15m — capture duration has "
+        "elapsed; inspect post-capture state without retrying, cancelling, or inferring failure"
+    )
