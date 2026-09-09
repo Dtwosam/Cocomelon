@@ -49,6 +49,8 @@ def _snapshot() -> dict[str, object]:
                         "posterior_probability_positive": None,
                         "checkpoint_state": "insufficient_trades",
                         "candidate_state": "researching",
+                        "long_count": 1,
+                        "short_count": 0,
                         "new_batch_count": 1,
                         "new_closed_trade_count": 1,
                         "new_closed_trade_days": 1,
@@ -69,6 +71,8 @@ def _snapshot() -> dict[str, object]:
                         "posterior_probability_positive": None,
                         "checkpoint_state": "insufficient_trades",
                         "candidate_state": "researching",
+                        "long_count": 1,
+                        "short_count": 1,
                         "new_batch_count": 1,
                         "new_closed_trade_count": 1,
                         "new_closed_trade_days": 1,
@@ -134,6 +138,8 @@ def test_checkpoint_history_makes_zero_trade_cohort_explicit() -> None:
     second["closed_trade_days"] = 1
     second["net_pnl"] = "6.250000"
     second["mean_net_r"] = "0.25"
+    second["long_count"] = 1
+    second["short_count"] = 0
     second["new_closed_trade_count"] = 0
     second["new_closed_trade_days"] = 0
     second["net_pnl_delta"] = "0"
