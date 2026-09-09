@@ -195,6 +195,120 @@ def _authenticate_history_report(
     )
 
 
+def _authenticated_checkpoint_integer(
+    checkpoint: dict[str, object],
+    field: str,
+) -> int:
+    value = checkpoint.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ResearchRegistryError(
+            f"research dashboard checkpoint {field} must be a non-negative integer"
+        )
+    return value
+
+
+def _authenticated_checkpoint_decimal(
+    checkpoint: dict[str, object],
+    field: str,
+) -> Decimal:
+    value = checkpoint.get(field)
+    if not isinstance(value, str):
+        raise ResearchRegistryError(
+            f"research dashboard checkpoint {field} must be a decimal string"
+        )
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise ResearchRegistryError(
+            f"research dashboard checkpoint {field} must be a decimal string"
+        ) from exc
+    if not result.is_finite():
+        raise ResearchRegistryError(
+            f"research dashboard checkpoint {field} must be finite"
+        )
+    return result
+
+
+def _decimal_delta(value: Decimal) -> str:
+    return "0" if value == 0 else format(value, "f")
+
+
+def _derive_checkpoint_diagnostics(
+    history: list[dict[str, object]],
+) -> None:
+    previous_batch_ids: set[str] = set()
+    previous_trade_count = 0
+    previous_trade_days = 0
+    previous_net_pnl = Decimal("0")
+    previous_long_count = 0
+    previous_short_count = 0
+
+    for checkpoint in history:
+        batch_ids = set(_string_list(checkpoint, "batch_ids"))
+        if not previous_batch_ids.issubset(batch_ids):
+            raise ResearchRegistryError(
+                "research dashboard checkpoint batch history is not cumulative"
+            )
+
+        trade_count = _authenticated_checkpoint_integer(
+            checkpoint,
+            "closed_trade_count",
+        )
+        trade_days = _authenticated_checkpoint_integer(
+            checkpoint,
+            "closed_trade_days",
+        )
+        long_count = _authenticated_checkpoint_integer(checkpoint, "long_count")
+        short_count = _authenticated_checkpoint_integer(checkpoint, "short_count")
+        if (
+            trade_count < previous_trade_count
+            or trade_days < previous_trade_days
+            or long_count < previous_long_count
+            or short_count < previous_short_count
+        ):
+            raise ResearchRegistryError(
+                "research dashboard checkpoint trade history is not cumulative"
+            )
+        if long_count + short_count != trade_count:
+            raise ResearchRegistryError(
+                "research dashboard checkpoint direction counts do not match trades"
+            )
+
+        net_pnl = _authenticated_checkpoint_decimal(checkpoint, "net_pnl")
+        checkpoint["new_batch_count"] = len(batch_ids - previous_batch_ids)
+        checkpoint["new_closed_trade_count"] = trade_count - previous_trade_count
+        checkpoint["new_closed_trade_days"] = trade_days - previous_trade_days
+        checkpoint["net_pnl_delta"] = _decimal_delta(net_pnl - previous_net_pnl)
+        checkpoint["new_long_count"] = long_count - previous_long_count
+        checkpoint["new_short_count"] = short_count - previous_short_count
+
+        previous_batch_ids = batch_ids
+        previous_trade_count = trade_count
+        previous_trade_days = trade_days
+        previous_net_pnl = net_pnl
+        previous_long_count = long_count
+        previous_short_count = short_count
+
+
+def _trade_density_summary(
+    checkpoints: list[dict[str, object]],
+) -> tuple[int, int | None]:
+    zero_trade_streak = 0
+    last_trade_checkpoint_index: int | None = None
+    for checkpoint in checkpoints:
+        new_trade_count = _authenticated_checkpoint_integer(
+            checkpoint,
+            "new_closed_trade_count",
+        )
+        commit_index = _authenticated_checkpoint_integer(checkpoint, "commit_index")
+        if new_trade_count > 0:
+            zero_trade_streak = 0
+            last_trade_checkpoint_index = commit_index
+        else:
+            zero_trade_streak += 1
+    return zero_trade_streak, last_trade_checkpoint_index
+
+
 def _checkpoint_history(
     registry: ResearchRegistry,
     *,
@@ -325,6 +439,7 @@ def _checkpoint_history(
             )
         except ValueError as exc:
             raise ResearchRegistryError(str(exc)) from exc
+        _derive_checkpoint_diagnostics(history)
         return history
     finally:
         if authentication_connection is not None:
@@ -343,6 +458,16 @@ def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
             candidate_state=candidate.state,
         )
         reports = _performance_reports(registry, candidate_id=candidate_id)
+        economics_visible = (
+            candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION
+        )
+        if economics_visible:
+            zero_trade_streak, last_trade_checkpoint_index = _trade_density_summary(
+                checkpoints
+            )
+        else:
+            zero_trade_streak = None
+            last_trade_checkpoint_index = None
         candidates.append(
             {
                 "candidate_id": candidate.candidate_id,
@@ -364,9 +489,9 @@ def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
                     candidate.effective_touched_intervals
                 ),
                 "checkpoint_count": len(reports),
-                "economics_visible": (
-                    candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION
-                ),
+                "economics_visible": economics_visible,
+                "zero_trade_checkpoint_streak": zero_trade_streak,
+                "last_trade_checkpoint_index": last_trade_checkpoint_index,
                 "checkpoints": checkpoints,
             }
         )
@@ -432,39 +557,6 @@ def _candidate_latest(candidate: dict[str, object]) -> dict[str, object] | None:
     return checkpoints[-1] if checkpoints else None
 
 
-def _checkpoint_integer(checkpoint: dict[str, object], field: str) -> int:
-    value = checkpoint.get(field)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"research status checkpoint {field} must be a non-negative integer")
-    return value
-
-
-def _checkpoint_decimal(checkpoint: dict[str, object], field: str) -> Decimal:
-    value = checkpoint.get(field)
-    if not isinstance(value, str):
-        raise ValueError(f"research status checkpoint {field} must be a decimal string")
-    try:
-        result = Decimal(value)
-    except InvalidOperation as exc:
-        raise ValueError(f"research status checkpoint {field} must be a decimal string") from exc
-    if not result.is_finite():
-        raise ValueError(f"research status checkpoint {field} must be finite")
-    return result
-
-
-def _checkpoint_batch_ids(checkpoint: dict[str, object]) -> set[str]:
-    value = checkpoint.get("batch_ids")
-    if not isinstance(value, list) or not all(
-        isinstance(item, str) and item.strip() for item in value
-    ):
-        raise ValueError("research status checkpoint batch_ids must be a string array")
-    return set(value)
-
-
-def _decimal_delta(value: Decimal) -> str:
-    return "0" if value == 0 else format(value, "f")
-
-
 def render_research_status_markdown(snapshot: dict[str, object]) -> str:
     if snapshot.get("label") != RESEARCH_STATUS_LABEL:
         raise ValueError("research status label is not the locked non-promotional label")
@@ -483,8 +575,14 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
 
     lines.extend(
         [
-            "| Candidate | State | Checkpoints | Trades | Days | Net PnL | Mean R | Posterior |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            (
+                "| Candidate | State | Checkpoints | Trades | Long | Short | Days | "
+                "No-trade streak | Net PnL | Mean R | Posterior |"
+            ),
+            (
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: |"
+            ),
         ]
     )
     for candidate in candidates:
@@ -497,7 +595,10 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                     _cell(candidate.get("state")),
                     _cell(candidate.get("checkpoint_count")),
                     _cell(None if latest is None else latest.get("closed_trade_count")),
+                    _cell(None if latest is None else latest.get("long_count")),
+                    _cell(None if latest is None else latest.get("short_count")),
                     _cell(None if latest is None else latest.get("closed_trade_days")),
+                    _cell(candidate.get("zero_trade_checkpoint_streak")),
                     _cell(None if latest is None else latest.get("net_pnl")),
                     _cell(None if latest is None else latest.get("mean_net_r")),
                     _cell(
@@ -523,28 +624,16 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
         lines.extend(
             [
                 (
-                    "| # | Source end ms | Checkpoint | New batches | New trades | Trades | "
-                    "New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
+                    "| # | Source end ms | Checkpoint | New batches | New trades | New L | New S | "
+                    "Trades | New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
                 ),
                 (
                     "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
-                    "---: | ---: | ---: |"
+                    "---: | ---: | ---: | ---: | ---: |"
                 ),
             ]
         )
-        previous_batch_ids: set[str] = set()
-        previous_trade_count = 0
-        previous_trade_days = 0
-        previous_net_pnl = Decimal("0")
         for checkpoint in checkpoints:
-            batch_ids = _checkpoint_batch_ids(checkpoint)
-            if not previous_batch_ids.issubset(batch_ids):
-                raise ValueError("research status checkpoint batch history is not cumulative")
-            trade_count = _checkpoint_integer(checkpoint, "closed_trade_count")
-            trade_days = _checkpoint_integer(checkpoint, "closed_trade_days")
-            if trade_count < previous_trade_count or trade_days < previous_trade_days:
-                raise ValueError("research status checkpoint trade history is not cumulative")
-            net_pnl = _checkpoint_decimal(checkpoint, "net_pnl")
             lines.append(
                 "| "
                 + " | ".join(
@@ -552,12 +641,14 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                         _cell(checkpoint.get("commit_index")),
                         _cell(checkpoint.get("source_end_ms")),
                         _cell(checkpoint.get("checkpoint_state")),
-                        _cell(len(batch_ids - previous_batch_ids)),
-                        _cell(trade_count - previous_trade_count),
-                        _cell(trade_count),
-                        _cell(trade_days - previous_trade_days),
-                        _cell(trade_days),
-                        _cell(_decimal_delta(net_pnl - previous_net_pnl)),
+                        _cell(checkpoint.get("new_batch_count")),
+                        _cell(checkpoint.get("new_closed_trade_count")),
+                        _cell(checkpoint.get("new_long_count")),
+                        _cell(checkpoint.get("new_short_count")),
+                        _cell(checkpoint.get("closed_trade_count")),
+                        _cell(checkpoint.get("new_closed_trade_days")),
+                        _cell(checkpoint.get("closed_trade_days")),
+                        _cell(checkpoint.get("net_pnl_delta")),
                         _cell(checkpoint.get("net_pnl")),
                         _cell(checkpoint.get("mean_net_r")),
                         _cell(checkpoint.get("posterior_probability_positive")),
@@ -565,8 +656,4 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                 )
                 + " |"
             )
-            previous_batch_ids = batch_ids
-            previous_trade_count = trade_count
-            previous_trade_days = trade_days
-            previous_net_pnl = net_pnl
     return "\n".join(lines) + "\n"
