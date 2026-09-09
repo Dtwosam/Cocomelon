@@ -676,10 +676,7 @@ def _body(
             "Curator outcome is therefore kept separate from accepted-corpus counts. "
             "Failed or unverified campaign evidence is never counted just because a job ran.",
             "",
-            (
-                "Scheduler drift is observational only. Missed V4 slots are never manually "
-                "backfilled, retried, or extended."
-            ),
+            "Scheduler drift is observational only. Missed V4 slots are never manually backfilled, retried, or extended.",
             "",
             "## Direct tracking links",
             "",
