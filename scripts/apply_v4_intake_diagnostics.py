@@ -298,7 +298,12 @@ def _latest_intake_report(repo: str) -> JsonObject | None:
     return _enrich_failed_report(report, _source_probe(repo, report))
 
 
-def _apply_intake_summary(patch: JsonObject, summary: str) -> JsonObject:
+def _apply_intake_summary(
+    patch: JsonObject,
+    summary: str,
+    *,
+    source_run_id: int | None = None,
+) -> JsonObject:
     body = patch.get("body")
     if not isinstance(body, str):
         raise RuntimeError("dashboard patch body is invalid")
@@ -306,6 +311,8 @@ def _apply_intake_summary(patch: JsonObject, summary: str) -> JsonObject:
     lines = body.splitlines()
     existing = [index for index, line in enumerate(lines) if line.startswith(prefix)]
     replacement = f"{prefix}{summary}**"
+    if source_run_id is not None:
+        replacement += f" — source run `{source_run_id}`"
     if len(existing) > 1:
         raise RuntimeError("dashboard has duplicate V4 intake lines")
     if existing:
@@ -343,7 +350,12 @@ def main() -> int:
     patch = _read_patch(patch_path)
     report = _latest_intake_report(repo)
     summary = "unavailable" if report is None else _intake_summary(report)
-    updated = _apply_intake_summary(patch, summary)
+    source_run_id = None if report is None else _int_field(report, "source_run_id")
+    updated = _apply_intake_summary(
+        patch,
+        summary,
+        source_run_id=source_run_id,
+    )
     patch_path.write_text(
         json.dumps(updated, ensure_ascii=False) + "\n",
         encoding="utf-8",
