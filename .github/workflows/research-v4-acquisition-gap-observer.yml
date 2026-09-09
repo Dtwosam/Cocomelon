@@ -37,6 +37,51 @@ jobs:
           set -euo pipefail
 
           dispatch_safe_gap() {
+            if ! PROTECTED_RUN_ROWS="$(
+              /usr/bin/gh api --paginate \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" \
+                --jq '.workflow_runs[]
+                  | select(.head_branch == "main")
+                  | select(.event == "schedule")
+                  | select(.status != "completed")
+                  | [.id, (.run_attempt // 1)]
+                  | @tsv'
+            )"; then
+              echo "protected V4 metadata unavailable; refusing safe-gap wakeup" >&2
+              return 79
+            fi
+
+            while read -r CANDIDATE_RUN_ID CANDIDATE_RUN_ATTEMPT; do
+              if [ -z "$CANDIDATE_RUN_ID" ]; then
+                continue
+              fi
+              if ! CANDIDATE_JOBS_JSON="$(
+                /usr/bin/gh api \
+                  "/repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT/jobs?per_page=100"
+              )"; then
+                echo "protected V4 job metadata unavailable; refusing safe-gap wakeup" >&2
+                return 79
+              fi
+              CANDIDATE_ACQUIRE_COUNT="$(
+                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
+                  '[.jobs[] | select(.name == "acquire-evidence")] | length'
+              )"
+              if [ "$CANDIDATE_ACQUIRE_COUNT" -ne 1 ]; then
+                echo "protected V4 acquisition metadata is ambiguous; refusing safe-gap wakeup" >&2
+                return 79
+              fi
+              CANDIDATE_ACQUIRE_STATUS="$(
+                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
+                  '.jobs[] | select(.name == "acquire-evidence") | .status'
+              )"
+              if [ "$CANDIDATE_ACQUIRE_STATUS" != "completed" ]; then
+                echo "protected V4 acquisition already exists; safe-gap wakeup skipped"
+                printf '%s %s %s\n' \
+                  "$CANDIDATE_RUN_ID" "$CANDIDATE_RUN_ATTEMPT" "$CANDIDATE_ACQUIRE_STATUS"
+                return 0
+              fi
+            done <<< "$PROTECTED_RUN_ROWS"
+
             /usr/bin/gh api \
               --method POST \
               "/repos/$GITHUB_REPOSITORY/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" \
