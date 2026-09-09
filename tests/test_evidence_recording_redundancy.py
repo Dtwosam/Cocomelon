@@ -192,7 +192,7 @@ def test_bounded_recording_single_lane_disconnect_uses_redundant_coverage(
     tmp_path: Path,
 ) -> None:
     config = EvidenceRecordingConfig(
-        duration_seconds=0.50,  # type: ignore[arg-type]
+        duration_seconds=1,
         deep_limit=1,
         context_poll_seconds=60,
         funding_poll_seconds=60,
