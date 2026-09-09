@@ -5,6 +5,7 @@ import sqlite3
 
 from cocomelon.research.artifact import VerifiedResearchBatch
 from cocomelon.research.registry import ResearchRegistryError
+from cocomelon.research.throughput import normalize_decision_throughput_payload
 
 
 def _canonical_json(value: object) -> str:
@@ -32,11 +33,23 @@ def ensure_batch_attestation_schema(connection: sqlite3.Connection) -> None:
             operational_failure INTEGER NOT NULL,
             hard_risk_failure INTEGER NOT NULL,
             health_reason_codes_json TEXT NOT NULL,
+            decision_throughput_json TEXT,
             FOREIGN KEY(batch_id) REFERENCES research_batches(batch_id),
             FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
         )
         """
     )
+    columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(research_batch_attestations)"
+        ).fetchall()
+    }
+    if "decision_throughput_json" not in columns:
+        connection.execute(
+            "ALTER TABLE research_batch_attestations "
+            "ADD COLUMN decision_throughput_json TEXT"
+        )
     connection.commit()
 
 
@@ -83,6 +96,19 @@ def attest_verified_research_batch(
             for trade_id, value in verified.planned_risk_fractions
         )
     )
+    if verified.decision_throughput is None:
+        throughput_json: str | None = None
+    else:
+        try:
+            throughput_json = _canonical_json(
+                normalize_decision_throughput_payload(
+                    verified.decision_throughput
+                )
+            )
+        except ValueError as exc:
+            raise ResearchRegistryError(
+                "authoritative research decision throughput is invalid"
+            ) from exc
     incoming = (
         candidate_id,
         verified.source_digest,
@@ -94,6 +120,7 @@ def attest_verified_research_batch(
         int(verified.operational_failure),
         int(verified.hard_risk_failure),
         _canonical_json(verified.health_reason_codes),
+        throughput_json,
     )
 
     connection.execute("BEGIN IMMEDIATE")
@@ -135,7 +162,8 @@ def attest_verified_research_batch(
             """
             SELECT candidate_id, source_digest, manifest_id, result_digest,
                    sample_digest, sample_identities_json, planned_risk_fractions_json,
-                   operational_failure, hard_risk_failure, health_reason_codes_json
+                   operational_failure, hard_risk_failure, health_reason_codes_json,
+                   decision_throughput_json
             FROM research_batch_attestations
             WHERE batch_id = ?
             """,
@@ -154,6 +182,7 @@ def attest_verified_research_batch(
                 int(stored[7]),
                 int(stored[8]),
                 str(stored[9]),
+                None if stored[10] is None else str(stored[10]),
             )
             if normalized_stored != incoming:
                 raise ResearchRegistryError(
@@ -168,8 +197,9 @@ def attest_verified_research_batch(
             INSERT INTO research_batch_attestations (
                 batch_id, candidate_id, source_digest, manifest_id, result_digest,
                 sample_digest, sample_identities_json, planned_risk_fractions_json,
-                operational_failure, hard_risk_failure, health_reason_codes_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                operational_failure, hard_risk_failure, health_reason_codes_json,
+                decision_throughput_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (verified.batch_id, *incoming),
         )
@@ -206,3 +236,68 @@ def load_candidate_attested_health(
             raise ResearchRegistryError("stored research batch health reasons are invalid")
         reasons.update(decoded)
     return operational_failure, hard_risk_failure, tuple(sorted(reasons))
+
+
+
+def load_candidate_attested_decision_throughput(
+    connection: sqlite3.Connection,
+    *,
+    candidate_id: str,
+) -> dict[str, dict[str, object] | None]:
+    table = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'research_batch_attestations'
+        """
+    ).fetchone()
+    if table is None:
+        return {}
+
+    columns = {
+        str(row["name"])
+        for row in connection.execute(
+            "PRAGMA table_info(research_batch_attestations)"
+        ).fetchall()
+    }
+    has_throughput = "decision_throughput_json" in columns
+    if has_throughput:
+        rows = connection.execute(
+            """
+            SELECT a.batch_id, a.decision_throughput_json
+            FROM research_batch_attestations AS a
+            JOIN research_batches AS b
+              ON b.batch_id = a.batch_id AND b.candidate_id = a.candidate_id
+            WHERE a.candidate_id = ? AND b.status = 'admitted'
+            ORDER BY a.batch_id
+            """,
+            (candidate_id,),
+        ).fetchall()
+    else:
+        rows = connection.execute(
+            """
+            SELECT a.batch_id
+            FROM research_batch_attestations AS a
+            JOIN research_batches AS b
+              ON b.batch_id = a.batch_id AND b.candidate_id = a.candidate_id
+            WHERE a.candidate_id = ? AND b.status = 'admitted'
+            ORDER BY a.batch_id
+            """,
+            (candidate_id,),
+        ).fetchall()
+
+    result: dict[str, dict[str, object] | None] = {}
+    for row in rows:
+        batch_id = str(row["batch_id"])
+        if not has_throughput or row["decision_throughput_json"] is None:
+            result[batch_id] = None
+            continue
+        try:
+            decoded = json.loads(str(row["decision_throughput_json"]))
+            normalized = normalize_decision_throughput_payload(decoded)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise ResearchRegistryError(
+                "stored research decision throughput is invalid"
+            ) from exc
+        result[batch_id] = normalized
+    return result
