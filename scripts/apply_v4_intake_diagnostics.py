@@ -17,6 +17,7 @@ _CAMPAIGN_NAME = "Scheduled Genuine Mainnet Evidence Campaign V4"
 _CAMPAIGN_PATH = ".github/workflows/evidence-campaign-v4-scheduled.yml"
 _INTAKE_PREFIX = "v4-mainnet-intake-"
 _SOURCE_PREFIX = "scheduled-genuine-mainnet-evidence-v4-"
+_CAPTURE_STEP_NAME = "Record thesis-expiry genuine public mainnet evidence"
 _SAFE_REASONS = {
     "replay_incomplete",
     "dataset_incomplete",
@@ -30,6 +31,7 @@ _SAFE_DIAGNOSTIC_STATUSES = {
     "eligibility_probe_unavailable",
     "eligibility_probe_invalid",
     "eligibility_probe",
+    "capture_step_failed",
 }
 
 
@@ -237,6 +239,90 @@ def _probe_from_zip(blob: bytes) -> JsonObject | None:
     return payload if isinstance(payload, dict) else None
 
 
+def _capture_step_diagnostic(
+    repo: str,
+    report: JsonObject,
+    source: JsonObject,
+    jobs_payload: JsonObject,
+) -> str | None:
+    _base_intake_valid(report)
+    if (
+        report.get("source_conclusion") != "failure"
+        or report.get("diagnostic_status") != "artifact_unavailable"
+    ):
+        return None
+
+    source_run_id = _int_field(report, "source_run_id")
+    run_attempt = source.get("run_attempt")
+    trusted = (
+        source.get("id") == source_run_id
+        and source.get("name") == _CAMPAIGN_NAME
+        and source.get("path") == _CAMPAIGN_PATH
+        and source.get("event") == "schedule"
+        and source.get("status") == "completed"
+        and source.get("conclusion") == report.get("source_conclusion")
+        and isinstance(run_attempt, int)
+        and not isinstance(run_attempt, bool)
+        and run_attempt > 0
+        and _repository_name(source.get("repository")) == repo
+        and _repository_name(source.get("head_repository")) == repo
+    )
+    if not trusted:
+        return None
+
+    raw_jobs = jobs_payload.get("jobs")
+    if not isinstance(raw_jobs, list):
+        return None
+    acquire_jobs = [
+        item
+        for item in raw_jobs
+        if isinstance(item, dict) and item.get("name") == "acquire-evidence"
+    ]
+    if len(acquire_jobs) != 1:
+        return None
+    steps = acquire_jobs[0].get("steps")
+    if not isinstance(steps, list):
+        return None
+    capture_steps = [
+        item
+        for item in steps
+        if isinstance(item, dict) and item.get("name") == _CAPTURE_STEP_NAME
+    ]
+    if len(capture_steps) != 1:
+        return None
+    if capture_steps[0].get("conclusion") == "failure":
+        return "capture_step_failed"
+    return None
+
+
+def _source_capture_step_diagnostic(
+    repo: str,
+    report: JsonObject,
+) -> str | None:
+    if report.get("diagnostic_status") != "artifact_unavailable":
+        return None
+    source_run_id = _int_field(report, "source_run_id")
+    try:
+        source = _gh_json(repo, f"actions/runs/{source_run_id}")
+    except (subprocess.CalledProcessError, RuntimeError, json.JSONDecodeError):
+        return None
+    run_attempt = source.get("run_attempt")
+    if (
+        isinstance(run_attempt, bool)
+        or not isinstance(run_attempt, int)
+        or run_attempt <= 0
+    ):
+        return None
+    try:
+        jobs_payload = _gh_json(
+            repo,
+            f"actions/runs/{source_run_id}/attempts/{run_attempt}/jobs?per_page=100",
+        )
+    except (subprocess.CalledProcessError, RuntimeError, json.JSONDecodeError):
+        return None
+    return _capture_step_diagnostic(repo, report, source, jobs_payload)
+
+
 def _source_probe(repo: str, report: JsonObject) -> JsonObject | None:
     if report.get("source_conclusion") != "failure" or "diagnostic_status" in report:
         return None
@@ -295,7 +381,11 @@ def _latest_intake_report(repo: str) -> JsonObject | None:
     artifact_id = _int_field(matches[0], "id")
     blob = _gh_bytes(repo, f"actions/artifacts/{artifact_id}/zip")
     report = _report_from_zip(blob)
-    return _enrich_failed_report(report, _source_probe(repo, report))
+    report = _enrich_failed_report(report, _source_probe(repo, report))
+    capture_status = _source_capture_step_diagnostic(repo, report)
+    if capture_status is not None:
+        report = {**report, "diagnostic_status": capture_status}
+    return report
 
 
 def _apply_intake_summary(
