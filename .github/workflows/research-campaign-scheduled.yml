@@ -1003,6 +1003,84 @@ jobs:
           )
           PY
 
+      - name: Render research decision throughput summary
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          summary_path = Path("research-campaign/output/cohort-summary.json")
+          payload = json.loads(summary_path.read_text(encoding="utf-8"))
+          throughput = payload["decision_throughput"]
+
+          directions = throughput["direction_counts"]
+          eligible_directions = throughput["entry_eligible_direction_counts"]
+          post_cutoff_directions = throughput["post_cutoff_direction_counts"]
+
+          rows = (
+              (
+                  "Total",
+                  throughput["decision_count"],
+                  throughput["signal_count"],
+                  directions["long"],
+                  directions["short"],
+                  directions["no_trade"],
+              ),
+              (
+                  "Entry eligible",
+                  throughput["entry_eligible_decision_count"],
+                  throughput["entry_eligible_signal_count"],
+                  eligible_directions["long"],
+                  eligible_directions["short"],
+                  eligible_directions["no_trade"],
+              ),
+              (
+                  "Post cutoff",
+                  throughput["post_cutoff_decision_count"],
+                  throughput["post_cutoff_signal_count"],
+                  post_cutoff_directions["long"],
+                  post_cutoff_directions["short"],
+                  post_cutoff_directions["no_trade"],
+              ),
+          )
+
+          lines = [
+              "## Research decision throughput",
+              "",
+              "**TOUCHED / NON-PROMOTIONAL — read-only diagnostics.**",
+              "",
+              f"New-exposure cutoff: `{throughput['new_exposure_cutoff_ms']}` ms",
+              "",
+              "| Scope | Decisions | Signals | LONG | SHORT | NO_TRADE |",
+              "| --- | ---: | ---: | ---: | ---: | ---: |",
+          ]
+          lines.extend(
+              f"| {scope} | {decisions} | {signals} | {longs} | {shorts} | {no_trade} |"
+              for scope, decisions, signals, longs, shorts, no_trade in rows
+          )
+
+          for title, key in (
+              ("Entry-eligible reasons", "entry_eligible_reason_counts"),
+              ("Post-cutoff reasons", "post_cutoff_reason_counts"),
+          ):
+              reasons = throughput[key]
+              lines.extend(["", f"**{title}:**"])
+              if reasons:
+                  lines.extend(
+                      f"- `{reason}`: {count}"
+                      for reason, count in sorted(reasons.items())
+                  )
+              else:
+                  lines.append("- none")
+
+          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          with summary_file.open("a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+
       - name: Evaluate authenticated research attempt
         working-directory: control-src
         run: |

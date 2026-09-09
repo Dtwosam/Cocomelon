@@ -253,6 +253,35 @@ def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_d
     assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_merge
 
 
+
+
+
+def test_evaluation_renders_non_blocking_decision_throughput_summary() -> None:
+    source = _source()
+    evaluation = _job_block(source, "evaluate-research", "finalize-publish")
+    completion = evaluation.index("Complete trusted research cohort from candidate decisions")
+    summary = evaluation.index("Render research decision throughput summary")
+    runner = evaluation.index("Evaluate authenticated research attempt")
+
+    assert completion < summary < runner
+    block = evaluation.split(
+        "- name: Render research decision throughput summary",
+        1,
+    )[1].split("- name: Evaluate authenticated research attempt", 1)[0]
+    assert "continue-on-error: true" in block
+    assert "cohort-summary.json" in block
+    assert "decision_throughput" in block
+    assert "entry_eligible_decision_count" in block
+    assert "post_cutoff_decision_count" in block
+    assert "entry_eligible_signal_count" in block
+    assert "post_cutoff_signal_count" in block
+    assert "GITHUB_STEP_SUMMARY" in block
+    assert "cocomelon-research-runner" not in block
+    assert "research.sqlite3" not in block
+    assert "net_pnl" not in block.lower()
+    assert "posterior" not in block.lower()
+
+
 def test_evaluation_registry_and_economics_are_owned_only_by_trusted_control_code() -> None:
     source = _source()
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
