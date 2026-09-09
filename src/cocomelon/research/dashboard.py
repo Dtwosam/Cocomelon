@@ -803,4 +803,39 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                 )
                 + " |"
             )
+        lines.extend(
+            [
+                "",
+                "### Decision throughput diagnostics",
+                "",
+                (
+                    "Decision throughput is read-only diagnostic provenance and is not "
+                    "checkpoint economics."
+                ),
+                "",
+                (
+                    "| # | Diagnostics | Decisions | Signals | LONG | SHORT | "
+                    "Entry-eligible signals | Post-cutoff signals | NO_TRADE |"
+                ),
+                "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for checkpoint in checkpoints:
+            lines.append(
+                "| "
+                + " | ".join(
+                    (
+                        _cell(checkpoint.get("commit_index")),
+                        _cell(checkpoint.get("throughput_state")),
+                        _cell(checkpoint.get("new_decision_count")),
+                        _cell(checkpoint.get("new_signal_count")),
+                        _cell(checkpoint.get("new_long_signal_count")),
+                        _cell(checkpoint.get("new_short_signal_count")),
+                        _cell(checkpoint.get("new_entry_eligible_signal_count")),
+                        _cell(checkpoint.get("new_post_cutoff_signal_count")),
+                        _cell(checkpoint.get("new_no_trade_decision_count")),
+                    )
+                )
+                + " |"
+            )
     return "\n".join(lines) + "\n"
