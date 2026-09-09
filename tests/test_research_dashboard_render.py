@@ -33,6 +33,8 @@ def _snapshot() -> dict[str, object]:
                 ],
                 "checkpoint_count": 2,
                 "economics_visible": True,
+                "zero_trade_checkpoint_streak": 0,
+                "last_trade_checkpoint_index": 2,
                 "checkpoints": [
                     {
                         "report_id": "r1",
@@ -47,6 +49,12 @@ def _snapshot() -> dict[str, object]:
                         "posterior_probability_positive": None,
                         "checkpoint_state": "insufficient_trades",
                         "candidate_state": "researching",
+                        "new_batch_count": 1,
+                        "new_closed_trade_count": 1,
+                        "new_closed_trade_days": 1,
+                        "net_pnl_delta": "6.250000",
+                        "new_long_count": 1,
+                        "new_short_count": 0,
                     },
                     {
                         "report_id": "r2",
@@ -61,6 +69,12 @@ def _snapshot() -> dict[str, object]:
                         "posterior_probability_positive": None,
                         "checkpoint_state": "insufficient_trades",
                         "candidate_state": "researching",
+                        "new_batch_count": 1,
+                        "new_closed_trade_count": 1,
+                        "new_closed_trade_days": 1,
+                        "net_pnl_delta": "-2.500000",
+                        "new_long_count": 0,
+                        "new_short_count": 1,
                     },
                 ],
             }
@@ -73,18 +87,21 @@ def test_markdown_is_explicitly_non_promotional_and_research_only() -> None:
 
     assert rendered.startswith("# Research Status\n\n**TOUCHED / NON-PROMOTIONAL**")
     assert "Research results are not promotion or verified-edge evidence." in rendered
-    assert "| candidate-a | researching | 2 | 2 | 2 | 3.750000 | 0.075 | — |" in rendered
+    assert (
+        "| candidate-a | researching | 2 | 2 | 1 | 1 | 2 | 0 | "
+        "3.750000 | 0.075 | — |"
+    ) in rendered
     assert "## candidate-a checkpoint history" in rendered
     assert (
-        "| # | Source end ms | Checkpoint | New batches | New trades | Trades | "
-        "New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
+        "| # | Source end ms | Checkpoint | New batches | New trades | New L | New S | "
+        "Trades | New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
     ) in rendered
     assert (
-        "| 1 | 200000 | insufficient_trades | 1 | 1 | 1 | 1 | 1 | "
+        "| 1 | 200000 | insufficient_trades | 1 | 1 | 1 | 0 | 1 | 1 | 1 | "
         "6.250000 | 6.250000 | 0.25 | — |"
     ) in rendered
     assert (
-        "| 2 | 400000 | insufficient_trades | 1 | 1 | 2 | 1 | 2 | "
+        "| 2 | 400000 | insufficient_trades | 1 | 1 | 0 | 1 | 2 | 1 | 2 | "
         "-2.500000 | 3.750000 | 0.075 | — |"
     ) in rendered
     assert "V4 validation" not in rendered
@@ -117,10 +134,21 @@ def test_checkpoint_history_makes_zero_trade_cohort_explicit() -> None:
     second["closed_trade_days"] = 1
     second["net_pnl"] = "6.250000"
     second["mean_net_r"] = "0.25"
+    second["new_closed_trade_count"] = 0
+    second["new_closed_trade_days"] = 0
+    second["net_pnl_delta"] = "0"
+    second["new_long_count"] = 0
+    second["new_short_count"] = 0
+    candidate["zero_trade_checkpoint_streak"] = 1
+    candidate["last_trade_checkpoint_index"] = 1
 
     rendered = render_research_status_markdown(snapshot)
 
     assert (
-        "| 2 | 400000 | insufficient_trades | 1 | 0 | 1 | 0 | 1 | "
+        "| candidate-a | researching | 2 | 1 | 1 | 0 | 1 | 1 | "
+        "6.250000 | 0.25 | — |"
+    ) in rendered
+    assert (
+        "| 2 | 400000 | insufficient_trades | 1 | 0 | 0 | 0 | 1 | 0 | 1 | "
         "0 | 6.250000 | 0.25 | — |"
     ) in rendered
