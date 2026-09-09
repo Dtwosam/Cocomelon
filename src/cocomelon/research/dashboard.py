@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 from collections import Counter
+from decimal import Decimal, InvalidOperation
 
 from cocomelon.research.checkpoint_history import load_authenticated_checkpoint_commits
 from cocomelon.research.contracts import ResearchCandidateState, TimeInterval
@@ -431,6 +432,39 @@ def _candidate_latest(candidate: dict[str, object]) -> dict[str, object] | None:
     return checkpoints[-1] if checkpoints else None
 
 
+def _checkpoint_integer(checkpoint: dict[str, object], field: str) -> int:
+    value = checkpoint.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"research status checkpoint {field} must be a non-negative integer")
+    return value
+
+
+def _checkpoint_decimal(checkpoint: dict[str, object], field: str) -> Decimal:
+    value = checkpoint.get(field)
+    if not isinstance(value, str):
+        raise ValueError(f"research status checkpoint {field} must be a decimal string")
+    try:
+        result = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError(f"research status checkpoint {field} must be a decimal string") from exc
+    if not result.is_finite():
+        raise ValueError(f"research status checkpoint {field} must be finite")
+    return result
+
+
+def _checkpoint_batch_ids(checkpoint: dict[str, object]) -> set[str]:
+    value = checkpoint.get("batch_ids")
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ValueError("research status checkpoint batch_ids must be a string array")
+    return set(value)
+
+
+def _decimal_delta(value: Decimal) -> str:
+    return "0" if value == 0 else format(value, "f")
+
+
 def render_research_status_markdown(snapshot: dict[str, object]) -> str:
     if snapshot.get("label") != RESEARCH_STATUS_LABEL:
         raise ValueError("research status label is not the locked non-promotional label")
@@ -488,11 +522,29 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
             continue
         lines.extend(
             [
-                "| # | Source end ms | Checkpoint | Trades | Days | Net PnL | Mean R | Posterior |",
-                "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+                (
+                    "| # | Source end ms | Checkpoint | New batches | New trades | Trades | "
+                    "New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
+                ),
+                (
+                    "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: |"
+                ),
             ]
         )
+        previous_batch_ids: set[str] = set()
+        previous_trade_count = 0
+        previous_trade_days = 0
+        previous_net_pnl = Decimal("0")
         for checkpoint in checkpoints:
+            batch_ids = _checkpoint_batch_ids(checkpoint)
+            if not previous_batch_ids.issubset(batch_ids):
+                raise ValueError("research status checkpoint batch history is not cumulative")
+            trade_count = _checkpoint_integer(checkpoint, "closed_trade_count")
+            trade_days = _checkpoint_integer(checkpoint, "closed_trade_days")
+            if trade_count < previous_trade_count or trade_days < previous_trade_days:
+                raise ValueError("research status checkpoint trade history is not cumulative")
+            net_pnl = _checkpoint_decimal(checkpoint, "net_pnl")
             lines.append(
                 "| "
                 + " | ".join(
@@ -500,8 +552,12 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                         _cell(checkpoint.get("commit_index")),
                         _cell(checkpoint.get("source_end_ms")),
                         _cell(checkpoint.get("checkpoint_state")),
-                        _cell(checkpoint.get("closed_trade_count")),
-                        _cell(checkpoint.get("closed_trade_days")),
+                        _cell(len(batch_ids - previous_batch_ids)),
+                        _cell(trade_count - previous_trade_count),
+                        _cell(trade_count),
+                        _cell(trade_days - previous_trade_days),
+                        _cell(trade_days),
+                        _cell(_decimal_delta(net_pnl - previous_net_pnl)),
                         _cell(checkpoint.get("net_pnl")),
                         _cell(checkpoint.get("mean_net_r")),
                         _cell(checkpoint.get("posterior_probability_positive")),
@@ -509,4 +565,8 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                 )
                 + " |"
             )
+            previous_batch_ids = batch_ids
+            previous_trade_count = trade_count
+            previous_trade_days = trade_days
+            previous_net_pnl = net_pnl
     return "\n".join(lines) + "\n"
