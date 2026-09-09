@@ -75,8 +75,18 @@ def test_markdown_is_explicitly_non_promotional_and_research_only() -> None:
     assert "Research results are not promotion or verified-edge evidence." in rendered
     assert "| candidate-a | researching | 2 | 2 | 2 | 3.750000 | 0.075 | — |" in rendered
     assert "## candidate-a checkpoint history" in rendered
-    assert "| 1 | 200000 | insufficient_trades | 1 | 1 | 6.250000 | 0.25 | — |" in rendered
-    assert "| 2 | 400000 | insufficient_trades | 2 | 2 | 3.750000 | 0.075 | — |" in rendered
+    assert (
+        "| # | Source end ms | Checkpoint | New batches | New trades | Trades | "
+        "New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
+    ) in rendered
+    assert (
+        "| 1 | 200000 | insufficient_trades | 1 | 1 | 1 | 1 | 1 | "
+        "6.250000 | 6.250000 | 0.25 | — |"
+    ) in rendered
+    assert (
+        "| 2 | 400000 | insufficient_trades | 1 | 1 | 2 | 1 | 2 | "
+        "-2.500000 | 3.750000 | 0.075 | — |"
+    ) in rendered
     assert "V4 validation" not in rendered
     assert "CANDIDATE_EDGE" not in rendered
 
@@ -93,3 +103,24 @@ def test_markdown_handles_empty_status_without_inventing_economics() -> None:
 
     assert "No research candidates." in rendered
     assert "Net PnL" not in rendered
+
+
+def test_checkpoint_history_makes_zero_trade_cohort_explicit() -> None:
+    snapshot = _snapshot()
+    candidate = snapshot["candidates"][0]
+    assert isinstance(candidate, dict)
+    checkpoints = candidate["checkpoints"]
+    assert isinstance(checkpoints, list)
+    second = checkpoints[1]
+    assert isinstance(second, dict)
+    second["closed_trade_count"] = 1
+    second["closed_trade_days"] = 1
+    second["net_pnl"] = "6.250000"
+    second["mean_net_r"] = "0.25"
+
+    rendered = render_research_status_markdown(snapshot)
+
+    assert (
+        "| 2 | 400000 | insufficient_trades | 1 | 0 | 1 | 0 | 1 | "
+        "0 | 6.250000 | 0.25 | — |"
+    ) in rendered
