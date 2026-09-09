@@ -26,7 +26,10 @@ from cocomelon.research.strategy_seam import (
     load_candidate_strategy_decisions,
     strategy_decision_from_payload,
 )
-from cocomelon.research.throughput import decision_throughput_payload
+from cocomelon.research.throughput import (
+    decision_throughput_payload,
+    normalize_decision_throughput_payload,
+)
 
 _HARD_RISK_REASONS = frozenset(
     {
@@ -58,6 +61,7 @@ class VerifiedResearchBatch:
     sample_digest: str
     samples: tuple[TradeEvaluationSample, ...]
     planned_risk_fractions: tuple[tuple[str, Decimal], ...]
+    decision_throughput: dict[str, object] | None
     operational_failure: bool
     hard_risk_failure: bool
     health_reason_codes: tuple[str, ...]
@@ -275,6 +279,7 @@ def verify_research_batch_artifact(
     planned_risk_fractions: list[tuple[str, Decimal]] = []
     health_reasons: set[str] = set()
     hard_risk_reasons: set[str] = set()
+    decision_throughput: dict[str, object] | None = None
 
     with tempfile.TemporaryDirectory(prefix="cocomelon-research-artifact-") as temporary:
         work_root = Path(temporary)
@@ -375,6 +380,9 @@ def verify_research_batch_artifact(
                         "research replay new exposure cutoff is invalid"
                     )
                 try:
+                    normalized_stored_throughput = normalize_decision_throughput_payload(
+                        stored_throughput
+                    )
                     expected_throughput = decision_throughput_payload(
                         candidate_strategy_artifact,
                         new_exposure_cutoff_ms=cutoff_ms,
@@ -383,7 +391,7 @@ def verify_research_batch_artifact(
                     raise ResearchArtifactError(
                         "research decision throughput is invalid"
                     ) from exc
-                if stored_throughput != expected_throughput:
+                if normalized_stored_throughput != expected_throughput:
                     raise ResearchArtifactError(
                         "research decision throughput does not match candidate decisions"
                     )
@@ -391,6 +399,7 @@ def verify_research_batch_artifact(
                     raise ResearchArtifactError(
                         "research decision throughput does not match canonical replay"
                     )
+                decision_throughput = expected_throughput
 
             try:
                 built = build_evaluation_dataset(
@@ -485,6 +494,7 @@ def verify_research_batch_artifact(
         sample_digest=_sample_digest(samples),
         samples=samples,
         planned_risk_fractions=tuple(planned_risk_fractions),
+        decision_throughput=decision_throughput,
         operational_failure=bool(operational_reasons),
         hard_risk_failure=bool(hard_risk_reasons),
         health_reason_codes=tuple(sorted(health_reasons)),
