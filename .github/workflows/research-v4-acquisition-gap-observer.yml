@@ -51,114 +51,7 @@ jobs:
               return 79
             fi
 
-            while IFS=
-          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-            RUNS_JSON="$(
-              /usr/bin/gh api --paginate \
-                "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100"
-            )"
-            RUN_ROWS="$(
-              printf '%s' "$RUNS_JSON" | /usr/bin/jq -r '
-                .workflow_runs[]
-                | select(.head_branch == "main")
-                | select(.event == "schedule")
-                | select(.status != "completed")
-                | [.id, (.run_attempt // 1)]
-                | @tsv
-              '
-            )"
-
-            ACTIVE_ROWS=""
-            NONCOMPLETED_COUNT=0
-            while IFS=$'\t' read -r CANDIDATE_RUN_ID CANDIDATE_RUN_ATTEMPT; do
-              if [ -z "$CANDIDATE_RUN_ID" ]; then
-                continue
-              fi
-              NONCOMPLETED_COUNT=$((NONCOMPLETED_COUNT + 1))
-              CANDIDATE_JOBS_JSON="$(
-                /usr/bin/gh api \
-                  "/repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID/attempts/$CANDIDATE_RUN_ATTEMPT/jobs?per_page=100"
-              )"
-              CANDIDATE_ACQUIRE_COUNT="$(
-                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
-                  '[.jobs[] | select(.name == "acquire-evidence")] | length'
-              )"
-              if [ "$CANDIDATE_ACQUIRE_COUNT" -ne 1 ]; then
-                echo "bootstrap V4 workflow metadata is ambiguous; refusing safe-gap dispatch" >&2
-                exit 79
-              fi
-              CANDIDATE_ACQUIRE_STATUS="$(
-                printf '%s' "$CANDIDATE_JOBS_JSON" | /usr/bin/jq -r \
-                  '.jobs[] | select(.name == "acquire-evidence") | .status'
-              )"
-              if [ "$CANDIDATE_ACQUIRE_STATUS" != "completed" ]; then
-                ACTIVE_ROWS="${ACTIVE_ROWS}${CANDIDATE_RUN_ID}"$'\t'"${CANDIDATE_RUN_ATTEMPT}"$'\n'
-              fi
-            done <<< "$RUN_ROWS"
-
-            ACTIVE_COUNT="$(printf '%s' "$ACTIVE_ROWS" | sed '/^$/d' | wc -l | tr -d ' ')"
-            if [ "$ACTIVE_COUNT" -gt 1 ]; then
-              echo "bootstrap V4 workflow metadata is ambiguous; refusing safe-gap dispatch" >&2
-              exit 79
-            fi
-            if [ "$ACTIVE_COUNT" -eq 0 ]; then
-              if [ "$NONCOMPLETED_COUNT" -eq 0 ]; then
-                echo "bootstrap found no active scheduled V4 acquisition"
-                exit 0
-              fi
-              echo "bootstrap found no active scheduled V4 acquisition; waking safe-gap gate"
-              dispatch_safe_gap
-              exit 0
-            fi
-
-            IFS=$'\t' read -r RUN_ID RUN_ATTEMPT <<< "$(printf '%s' "$ACTIVE_ROWS" | sed '/^$/d')"
-          fi
-
-          if [ -z "${RUN_ID:-}" ] || [ -z "${RUN_ATTEMPT:-}" ]; then
-            echo "V4 acquisition observer target is unavailable; refusing dispatch" >&2
-            exit 79
-          fi
-
-          while true; do
-            JOBS_JSON="$(
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs?per_page=100"
-            )"
-
-            ACQUIRE_COUNT="$(
-              printf '%s' "$JOBS_JSON" | /usr/bin/jq -r \
-                '[.jobs[] | select(.name == "acquire-evidence")] | length'
-            )"
-
-            if [ "$ACQUIRE_COUNT" -gt 1 ]; then
-              echo "acquire-evidence job metadata is ambiguous; refusing safe-gap dispatch" >&2
-              exit 79
-            fi
-
-            if [ "$ACQUIRE_COUNT" -eq 1 ]; then
-              ACQUIRE_STATUS="$(
-                printf '%s' "$JOBS_JSON" | /usr/bin/jq -r \
-                  '.jobs[] | select(.name == "acquire-evidence") | .status'
-              )"
-              if [ "$ACQUIRE_STATUS" = "completed" ]; then
-                dispatch_safe_gap
-                exit 0
-              fi
-            fi
-
-            RUN_STATUS="$(
-              /usr/bin/gh api \
-                "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
-                --jq '.status'
-            )"
-            if [ "$RUN_STATUS" = "completed" ]; then
-              echo "V4 workflow completed before a unique acquire-evidence completion was observed; refusing dispatch" >&2
-              exit 79
-            fi
-
-            sleep 60
-          done
-\t' read -r CANDIDATE_RUN_ID CANDIDATE_RUN_ATTEMPT; do
+            while read -r CANDIDATE_RUN_ID CANDIDATE_RUN_ATTEMPT; do
               if [ -z "$CANDIDATE_RUN_ID" ]; then
                 continue
               fi
@@ -183,7 +76,7 @@ jobs:
               )"
               if [ "$CANDIDATE_ACQUIRE_STATUS" != "completed" ]; then
                 echo "protected V4 acquisition already exists; safe-gap wakeup skipped"
-                printf '%s\t%s\t%s\n' \
+                printf '%s %s %s\n' \
                   "$CANDIDATE_RUN_ID" "$CANDIDATE_RUN_ATTEMPT" "$CANDIDATE_ACQUIRE_STATUS"
                 return 0
               fi
