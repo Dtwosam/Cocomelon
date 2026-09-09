@@ -221,8 +221,23 @@ def test_markdown_renders_attempt_audit_history_without_counting_failures() -> N
     snapshot = _snapshot()
     candidate = snapshot["candidates"][0]
     assert isinstance(candidate, dict)
-    candidate["attempt_count"] = 2
+    candidate["attempt_count"] = 3
     candidate["attempts"] = [
+        {
+            "attempt_index": 3,
+            "attempt_id": "attempt-workflow-failure",
+            "status": "failed",
+            "counted": False,
+            "batch_id": "batch-workflow-failure",
+            "start_ms": None,
+            "end_ms": None,
+            "report_id": None,
+            "error_type": "WorkflowFailure",
+            "error_message": (
+                "research campaign failed before authenticated checkpoint; "
+                "failed_jobs=prepare-control=failure,refresh-authority=cancelled"
+            ),
+        },
         {
             "attempt_index": 2,
             "attempt_id": "attempt-failure",
@@ -254,12 +269,19 @@ def test_markdown_renders_attempt_audit_history_without_counting_failures() -> N
     assert "### Research attempt audit history" in rendered
     assert "Failed, contaminated, running, and evaluating attempts are NOT COUNTED" in rendered
     assert (
-        "| Attempt | Status | Checkpoint accounting | Batch | Start ms | End ms | Error |"
+        "| Attempt | Status | Checkpoint accounting | Batch | Start ms | End ms | "
+        "Failure stage | Error |"
     ) in rendered
     assert (
-        "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | "
+        "| attempt-workflow-failure | failed | NOT COUNTED | batch-workflow-failure | — | — | "
+        "prepare-control=failure, refresh-authority=cancelled | "
+        "WorkflowFailure: research campaign failed before authenticated checkpoint; "
+        "failed_jobs=prepare-control=failure,refresh-authority=cancelled |"
+    ) in rendered
+    assert (
+        "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | — | "
         "RuntimeError: synthetic audit failure |"
     ) in rendered
     assert (
-        "| attempt-success | succeeded | COUNTED | batch-first | 1000 | 200000 | — |"
+        "| attempt-success | succeeded | COUNTED | batch-first | 1000 | 200000 | — | — |"
     ) in rendered
