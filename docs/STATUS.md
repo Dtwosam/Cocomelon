@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-09  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main merge:** `d3540593d7a9`  
-**Latest verified main CI:** run `34351785499` — success  
+**Current verified main merge:** `8516a4456674`  
+**Latest verified main CI:** run `34369649861` — success  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -29,7 +29,7 @@ Phase 10 and any live promotion remain blocked until the frozen untouched eviden
 
 ## Active V4 evidence progress
 
-Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-09 11:12 UTC:
+Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-09 15:21 UTC:
 
 - **30 accepted V4 cohorts**;
 - **47 / 100 closed paper trades**;
@@ -47,6 +47,12 @@ Current protected scheduled V4 acquisition:
 - observer run `34351237156` is attached and waiting for acquisition completion.
 
 This run must finish naturally. Do not manually dispatch, retry, extend, cancel, or performance-condition it.
+
+Current pipeline diagnostics are explicitly non-actionable:
+
+- scheduler health reports drift because the latest scheduled run preceded the nominal 13:37 UTC slot;
+- scheduler drift is observational only; missed V4 slots are never manually backfilled, retried, or extended;
+- the latest rejected intake diagnostic is `capture_step_failed` for older source run `34320018279`, not the active acquisition.
 
 ## Research lane: D-023
 
@@ -71,7 +77,7 @@ The authoritative V4 interval/completeness synchronization path is implemented i
 
 ## Current research state
 
-Latest trusted Research Dashboard snapshot, refreshed 2026-09-09 12:28 UTC:
+Latest trusted Research Dashboard snapshot, refreshed 2026-09-09 14:33 UTC:
 
 - candidate: `scheduled-research-root`;
 - state: `researching`;
@@ -95,9 +101,14 @@ Recent mainline work hardened research observability without changing strategy, 
 - PR #161 validates and persists verified throughput attestations;
 - PR #162 renders durable research throughput history;
 - PR #163 adds research attempt audit history to the dashboard;
-- PR #164 records research workflow failure stages.
+- PR #164 records research workflow failure stages;
+- PR #166 renders trusted workflow failure stages separately in the research dashboard;
+- PR #167 removes a CI-only redundant-coverage timing race without changing runtime behavior;
+- PR #168 makes V4 scheduler drift explicitly non-actionable on the evidence dashboard;
+- PR #169 attaches authenticated source-run provenance to V4 intake diagnostics;
+- PR #170 reclassifies trusted failed capture steps without reading economic artifacts or changing curator/admission behavior.
 
-Current main head is `d3540593d7a9` and main CI run `34351785499` passed.
+Current verified implementation merge is `8516a4456674` and main CI run `34369649861` passed.
 
 ## Exact next action
 
