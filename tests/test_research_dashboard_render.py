@@ -214,3 +214,52 @@ def test_markdown_renders_separate_read_only_throughput_history() -> None:
     ) in rendered
     assert "| 1 | unavailable | — | — | — | — | — | — | — |" in rendered
     assert "| 2 | verified | 10 | 1 | 1 | 0 | 0 | 1 | 9 |" in rendered
+
+
+
+def test_markdown_renders_attempt_audit_history_without_counting_failures() -> None:
+    snapshot = _snapshot()
+    candidate = snapshot["candidates"][0]
+    assert isinstance(candidate, dict)
+    candidate["attempt_count"] = 2
+    candidate["attempts"] = [
+        {
+            "attempt_index": 2,
+            "attempt_id": "attempt-failure",
+            "status": "failed",
+            "counted": False,
+            "batch_id": "batch-failure",
+            "start_ms": 200_000,
+            "end_ms": 300_000,
+            "report_id": None,
+            "error_type": "RuntimeError",
+            "error_message": "synthetic audit failure",
+        },
+        {
+            "attempt_index": 1,
+            "attempt_id": "attempt-success",
+            "status": "succeeded",
+            "counted": True,
+            "batch_id": "batch-first",
+            "start_ms": 1_000,
+            "end_ms": 200_000,
+            "report_id": "r1",
+            "error_type": None,
+            "error_message": None,
+        },
+    ]
+
+    rendered = render_research_status_markdown(snapshot)
+
+    assert "### Research attempt audit history" in rendered
+    assert "Failed, contaminated, running, and evaluating attempts are NOT COUNTED" in rendered
+    assert (
+        "| Attempt | Status | Checkpoint accounting | Batch | Start ms | End ms | Error |"
+    ) in rendered
+    assert (
+        "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | "
+        "RuntimeError: synthetic audit failure |"
+    ) in rendered
+    assert (
+        "| attempt-success | succeeded | COUNTED | batch-first | 1000 | 200000 | — |"
+    ) in rendered
