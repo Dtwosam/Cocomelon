@@ -97,6 +97,21 @@ def test_in_progress_v4_acquisition_is_reported_active(tmp_path: Path) -> None:
     assert "in_progress" in result.stdout
 
 
+def test_pending_scheduled_v4_acquisition_is_reported_active(tmp_path: Path) -> None:
+    result = _run_guard(
+        _fake_gh(
+            tmp_path,
+            workflow_status="pending",
+            acquire_status="pending",
+            acquire_conclusion=None,
+        )
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "12345" in result.stdout
+    assert "pending" in result.stdout
+
+
 def test_ambiguous_or_unavailable_job_metadata_fails_closed(tmp_path: Path) -> None:
     ambiguous = _run_guard(_fake_gh(tmp_path, include_acquire_job=False))
     unavailable = _run_guard(_fake_gh(tmp_path, fail_jobs_query=True))
