@@ -156,3 +156,13 @@ def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
     script = _read_required(SCHEDULER_APPLIER, "V4 scheduler health")
     assert "Scheduled Genuine Mainnet Evidence Campaign V4" in script
     assert ".github/workflows/evidence-campaign-v4-scheduled.yml" in script
+
+
+def test_v4_dashboard_makes_scheduler_drift_observational_only() -> None:
+    builder = _read_required(BUILDER, "evidence dashboard builder")
+
+    assert (
+        "Scheduler drift is observational only. Missed V4 slots are never manually "
+        "backfilled, retried, or extended."
+        in builder
+    )
