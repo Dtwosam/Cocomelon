@@ -65,6 +65,10 @@ Research may not:
 
 A frozen challenger can begin untouched validation only after the documented embargo and clean-validation requirements.
 
+## Implemented authoritative V4 synchronization
+
+The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`. Research finalization/recovery consumes this trusted authority and fails closed when V4 coverage is incomplete or overlap cannot be ruled out.
+
 ## Current research state
 
 Latest trusted Research Dashboard snapshot, refreshed 2026-09-09 12:28 UTC:
