@@ -30,3 +30,18 @@ def test_v4_acquisition_gap_observer_wakes_existing_safe_gap_dispatcher() -> Non
         "/actions/workflows/research-daily-gap-dispatcher.yml/dispatches" in text
     )
     assert "/actions/workflows/research-campaign-scheduled.yml/dispatches" not in text
+
+
+def test_observer_rechecks_for_newer_protected_v4_before_safe_gap_dispatch() -> None:
+    text = OBSERVER.read_text(encoding="utf-8")
+    dispatch = text.split("dispatch_safe_gap() {", 1)[1].split("\n          }", 1)[0]
+
+    assert "protected V4 acquisition already exists; safe-gap wakeup skipped" in dispatch
+    assert "/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100" in dispatch
+    assert "/attempts/$CANDIDATE_RUN_ATTEMPT/jobs?per_page=100" in dispatch
+    assert 'select(.status != "completed")' in dispatch
+    assert "CANDIDATE_ACQUIRE_STATUS" in dispatch
+    assert 'if [ "$CANDIDATE_ACQUIRE_STATUS" != "completed" ]; then' in dispatch
+    assert dispatch.index("protected V4 acquisition already exists") < dispatch.index(
+        "/actions/workflows/research-daily-gap-dispatcher.yml/dispatches"
+    )
