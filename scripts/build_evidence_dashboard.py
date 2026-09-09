@@ -65,9 +65,46 @@ SCHEDULER_DRIFT_NOTE = (
     "Scheduler drift is observational only. Missed V4 slots are never manually "
     "backfilled, retried, or extended."
 )
+V4_CAPTURE_SECONDS = 18_900
 
 JsonObject = dict[str, object]
 CorpusSnapshot = tuple[JsonObject, JsonObject, int, int]
+
+
+def _duration_hm(seconds: int) -> str:
+    bounded = max(0, seconds)
+    hours, remainder = divmod(bounded, 3600)
+    minutes = remainder // 60
+    return f"{hours}h{minutes:02d}m"
+
+
+def _v4_campaign_age_summary(
+    run: JsonObject | None,
+    *,
+    now: datetime,
+) -> str | None:
+    if run is None or run.get("status") != "in_progress":
+        return None
+    raw_started = run.get("run_started_at")
+    if not isinstance(raw_started, str) or not raw_started:
+        return "active run age unavailable; fixed capture duration 5h15m"
+    try:
+        started = datetime.fromisoformat(raw_started.replace("Z", "+00:00"))
+    except ValueError:
+        return "active run age unavailable; fixed capture duration 5h15m"
+    if started.tzinfo is None or now.tzinfo is None:
+        return "active run age unavailable; fixed capture duration 5h15m"
+    elapsed = max(0, int((now.astimezone(UTC) - started.astimezone(UTC)).total_seconds()))
+    age = _duration_hm(elapsed)
+    if elapsed < V4_CAPTURE_SECONDS:
+        return (
+            f"active run age {age}; fixed capture duration 5h15m — actual run timing is "
+            "authoritative; nominal cron drift is not a backfill signal"
+        )
+    return (
+        f"active run age {age}; fixed capture duration 5h15m — capture duration has "
+        "elapsed; inspect post-capture state without retrying, cancelling, or inferring failure"
+    )
 
 
 def _gh_json(repo: str, endpoint: str) -> JsonObject:
@@ -542,7 +579,9 @@ def _body(
     if edge == "none":
         edge = "Not measured yet"
     orders = "ENABLED" if active_progress.get("live_orders") is True else "DISABLED"
-    updated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(UTC)
+    updated = now.strftime("%Y-%m-%d %H:%M UTC")
+    campaign_age = _v4_campaign_age_summary(latest_v4_campaign, now=now)
 
     lines = [
         "# Cocomelon Evidence Dashboard",
@@ -638,9 +677,13 @@ def _body(
             "",
             f"- Latest Campaign V4: **{_state(latest_v4_campaign)}** — "
             f"{_run_link(repo, latest_v4_campaign)}",
-            f"- Latest V4 curator: **{_state(latest_v4_curator)}** — "
-            f"{_run_link(repo, latest_v4_curator)}",
         ]
+    )
+    if campaign_age is not None:
+        lines.append(f"- Active V4 run timing: **{campaign_age}**")
+    lines.append(
+        f"- Latest V4 curator: **{_state(latest_v4_curator)}** — "
+        f"{_run_link(repo, latest_v4_curator)}"
     )
     if event_workflow_run is not None:
         lines.append(
