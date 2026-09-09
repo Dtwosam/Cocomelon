@@ -156,3 +156,12 @@ def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
     script = _read_required(SCHEDULER_APPLIER, "V4 scheduler health")
     assert "Scheduled Genuine Mainnet Evidence Campaign V4" in script
     assert ".github/workflows/evidence-campaign-v4-scheduled.yml" in script
+
+
+def test_v4_dashboard_makes_scheduler_drift_observational_only() -> None:
+    namespace = runpy.run_path(str(BUILDER))
+
+    assert namespace["SCHEDULER_DRIFT_NOTE"] == (
+        "Scheduler drift is observational only. Missed V4 slots are never manually "
+        "backfilled, retried, or extended."
+    )

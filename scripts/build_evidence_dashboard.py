@@ -61,6 +61,11 @@ PHASE9_V3_STATE_BRANCH = "phase9-v3-protocol-state"
 PHASE9_V3_FREEZE_FILE = "phase9-v3-freeze.json"
 PHASE9_V3_FINAL_FILE = "phase9-v3-final.json"
 
+SCHEDULER_DRIFT_NOTE = (
+    "Scheduler drift is observational only. Missed V4 slots are never manually "
+    "backfilled, retried, or extended."
+)
+
 JsonObject = dict[str, object]
 CorpusSnapshot = tuple[JsonObject, JsonObject, int, int]
 
@@ -675,6 +680,8 @@ def _body(
             "A curator can finish red after safely writing a verified corpus artifact. "
             "Curator outcome is therefore kept separate from accepted-corpus counts. "
             "Failed or unverified campaign evidence is never counted just because a job ran.",
+            "",
+            SCHEDULER_DRIFT_NOTE,
             "",
             "## Direct tracking links",
             "",
