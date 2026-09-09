@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-09  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main merge:** `8516a4456674`  
-**Latest verified main CI:** run `34369649861` — success  
+**Current verified main merge:** `1fb5ee3b6be0`  
+**Latest verified main CI:** run `34384191787` — success  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -29,30 +29,42 @@ Phase 10 and any live promotion remain blocked until the frozen untouched eviden
 
 ## Active V4 evidence progress
 
-Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-09 15:21 UTC:
+Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-09 18:08 UTC:
 
-- **30 accepted V4 cohorts**;
-- **47 / 100 closed paper trades**;
+- **31 accepted V4 cohorts**;
+- **48 / 100 closed paper trades**;
 - **10 / 30 closed-trade days**;
-- **3,155 strategy decisions**;
+- **3,260 strategy decisions**;
 - raw Phase 9 minimums not met;
 - economic edge not measured yet;
 - live orders disabled.
 
+Latest completed protected V4 cohort:
+
+- workflow run `34351227954` completed successfully;
+- `acquire-evidence` completed successfully with exactly one acquisition attempt;
+- trusted transport capture recorded **416,794 events**, **0 gaps**, **0 duplicates**, **0 anomalies**, and **2 handled reconnects**;
+- recorder exit status was `0`, redundant WebSocket lane count remained `2`, and live orders remained disabled;
+- offline `verify-evidence` completed successfully and uploaded the final genuine V4 evidence artifact;
+- curator run `34386449144` accepted source run `34351227954` into the V4 corpus;
+- accepted-corpus progress advanced to **31 cohorts / 48 trades / 10 days / 3,260 decisions**.
+
 Current protected scheduled V4 acquisition:
 
-- workflow run `34351227954`;
+- workflow run `34381775915`;
 - `acquire-evidence` is in progress;
 - `Record thesis-expiry genuine public mainnet evidence` is in progress;
-- observer run `34351237156` is attached and waiting for acquisition completion.
+- observer run `34384715948` is attached to the active acquisition.
 
 This run must finish naturally. Do not manually dispatch, retry, extend, cancel, or performance-condition it.
 
-Current pipeline diagnostics are explicitly non-actionable:
+Current pipeline diagnostics:
 
-- scheduler health reports drift because the latest scheduled run preceded the nominal 13:37 UTC slot;
-- scheduler drift is observational only; missed V4 slots are never manually backfilled, retried, or extended;
-- the latest rejected intake diagnostic is `capture_step_failed` for older source run `34320018279`, not the active acquisition.
+- scheduler health is healthy because the latest configured slot was observed;
+- scheduler drift remains observational only; missed V4 slots are never manually backfilled, retried, or extended;
+- the latest V4 intake is `accepted into V4 corpus` for authenticated source run `34351227954`;
+- authority sync run `34386462515` recorded the completed cohort and advanced V4 completeness only through **2026-09-09 17:15:19 UTC**, the start of active run `34381775915`;
+- the Phase 9 V4 one-shot run `34386868872` prepared the current snapshot candidate but did not freeze or evaluate it because immutable finalization criteria are not yet met.
 
 ## Research lane: D-023
 
@@ -77,7 +89,7 @@ The authoritative V4 interval/completeness synchronization path is implemented i
 
 ## Current research state
 
-Latest trusted Research Dashboard snapshot, refreshed 2026-09-09 14:33 UTC:
+Latest trusted Research Dashboard snapshot, refreshed 2026-09-09 18:02 UTC:
 
 - candidate: `scheduled-research-root`;
 - state: `researching`;
@@ -106,21 +118,27 @@ Recent mainline work hardened research observability without changing strategy, 
 - PR #167 removes a CI-only redundant-coverage timing race without changing runtime behavior;
 - PR #168 makes V4 scheduler drift explicitly non-actionable on the evidence dashboard;
 - PR #169 attaches authenticated source-run provenance to V4 intake diagnostics;
-- PR #170 reclassifies trusted failed capture steps without reading economic artifacts or changing curator/admission behavior.
+- PR #170 reclassifies trusted failed capture steps without reading economic artifacts or changing curator/admission behavior;
+- PR #171 refreshes the authoritative verified status handoff;
+- PR #172 shows actual active V4 run age against the fixed 5h15m capture duration without changing acquisition behavior;
+- PR #173 regression-locks the requirement that candidate execution waits for V4 authority completeness through the bound research interval;
+- PR #174 regression-locks pending scheduled V4 acquisitions as protected, so a queued run cannot be mistaken for a research gap;
+- PR #175 keeps an active V4 acquisition visible on the evidence dashboard when a newer queued campaign exists.
 
-Current verified implementation merge is `8516a4456674` and main CI run `34369649861` passed.
+Current verified implementation merge is `1fb5ee3b6be0` and main CI run `34384191787` passed.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let V4 run `34351227954` finish naturally.
-3. Verify observer run `34351237156` remains attached during acquisition and only wakes the existing safe-gap path after the acquisition completes.
-4. Observe the implemented authoritative V4 interval/completeness synchronization path when the protected acquisition completes and before any subsequent research economics are admitted.
-5. Do not rerun research run `34349940827`; its duplicate-success guard is correct.
-6. On the next eligible research cohort, verify the newly merged throughput, attempt-audit, and failure-stage diagnostics are published from authenticated state without changing checkpoint economics.
-7. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
-8. Let the frozen V4 one-shot evaluate only when its immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-9. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+2. Let active V4 run `34381775915` finish naturally.
+3. Verify its attached observer remains fail-closed and the safe-gap dispatcher refuses research while any scheduled V4 acquisition is pending or in progress.
+4. Continue observing the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted.
+5. Preserve the verified authority boundary: completed run `34351227954` is recorded, while completeness stops at the start of active run `34381775915`.
+6. Do not rerun research run `34349940827`; its duplicate-success guard is correct.
+7. On the next eligible research cohort, verify the merged throughput, attempt-audit, failure-stage, pending-V4, and authority-completeness protections publish from authenticated state without changing checkpoint economics.
+8. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
+9. Let the frozen V4 one-shot evaluate only when its immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+10. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
