@@ -22,9 +22,11 @@ from cocomelon.evidence.bundle import load_baseline_replay_bundle
 from cocomelon.journal.store import JournalConsistencyError, JournalStore
 from cocomelon.research.contracts import TimeInterval
 from cocomelon.research.strategy_seam import (
+    CandidateStrategyDecisionArtifact,
     load_candidate_strategy_decisions,
     strategy_decision_from_payload,
 )
+from cocomelon.research.throughput import decision_throughput_payload
 
 _HARD_RISK_REASONS = frozenset(
     {
@@ -88,16 +90,20 @@ def _canonical_digest(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _read_replay(path: Path) -> dict[str, object]:
+def _read_mapping(path: Path, field: str) -> dict[str, object]:
     if not path.is_file():
-        raise ResearchArtifactError(f"research replay metadata is missing: {path}")
+        raise ResearchArtifactError(f"research {field} is missing: {path}")
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise ResearchArtifactError("research replay metadata must be valid JSON") from exc
+        raise ResearchArtifactError(f"research {field} must be valid JSON") from exc
     if not isinstance(raw, dict) or not all(isinstance(key, str) for key in raw):
-        raise ResearchArtifactError("research replay metadata must be an object")
+        raise ResearchArtifactError(f"research {field} must be an object")
     return raw
+
+
+def _read_replay(path: Path) -> dict[str, object]:
+    return _read_mapping(path, "replay metadata")
 
 
 def _sample_digest(samples: tuple[TradeEvaluationSample, ...]) -> str:
@@ -134,11 +140,16 @@ def _candidate_strategy_identity(
     manifest: ReplayManifest,
     journal: JournalStore,
     replay_run_id: str,
-) -> tuple[str, str | None, str | None]:
+) -> tuple[
+    str,
+    str | None,
+    str | None,
+    CandidateStrategyDecisionArtifact | None,
+]:
     strategy_path = source_root / "strategy-decisions.json"
     fallback_config = _candidate_config_digest(source_root, manifest)
     if not strategy_path.is_file():
-        return manifest.code_revision, fallback_config, None
+        return manifest.code_revision, fallback_config, None, None
 
     try:
         artifact = load_candidate_strategy_decisions(
@@ -183,6 +194,7 @@ def _candidate_strategy_identity(
         artifact.candidate_code_revision,
         artifact.candidate_config_digest,
         _sha256(strategy_path),
+        artifact,
     )
 
 
@@ -313,6 +325,7 @@ def verify_research_batch_artifact(
                 candidate_code_revision,
                 candidate_config_digest,
                 candidate_strategy_digest,
+                candidate_strategy_artifact,
             ) = _candidate_strategy_identity(
                 source_root,
                 manifest=manifest,
@@ -341,6 +354,43 @@ def verify_research_batch_artifact(
                 raise ResearchArtifactError(
                     "research replay order-execution flag must be boolean"
                 )
+
+            summary = _read_mapping(
+                source_root / "cohort-summary.json",
+                "cohort summary",
+            )
+            stored_throughput = summary.get("decision_throughput")
+            if stored_throughput is not None:
+                if candidate_strategy_artifact is None:
+                    raise ResearchArtifactError(
+                        "research decision throughput requires candidate decisions"
+                    )
+                cutoff_ms = replay.get("new_exposure_cutoff_ms")
+                if (
+                    isinstance(cutoff_ms, bool)
+                    or not isinstance(cutoff_ms, int)
+                    or cutoff_ms < 0
+                ):
+                    raise ResearchArtifactError(
+                        "research replay new exposure cutoff is invalid"
+                    )
+                try:
+                    expected_throughput = decision_throughput_payload(
+                        candidate_strategy_artifact,
+                        new_exposure_cutoff_ms=cutoff_ms,
+                    )
+                except ValueError as exc:
+                    raise ResearchArtifactError(
+                        "research decision throughput is invalid"
+                    ) from exc
+                if stored_throughput != expected_throughput:
+                    raise ResearchArtifactError(
+                        "research decision throughput does not match candidate decisions"
+                    )
+                if expected_throughput["decision_count"] != result.strategy_decisions:
+                    raise ResearchArtifactError(
+                        "research decision throughput does not match canonical replay"
+                    )
 
             try:
                 built = build_evaluation_dataset(

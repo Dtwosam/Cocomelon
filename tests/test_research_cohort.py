@@ -12,10 +12,11 @@ from cocomelon.evaluation.mainnet_evidence import verify_mainnet_evidence_cohort
 from cocomelon.evidence.bundle import load_baseline_replay_bundle, resolve_code_revision
 from cocomelon.evidence.recording import load_recording_session
 from cocomelon.replay.source import validate_recording
-from cocomelon.research.artifact import verify_research_batch_artifact
+from cocomelon.research.artifact import ResearchArtifactError, verify_research_batch_artifact
 from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
 from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry
+from cocomelon.research.strategy_seam import CandidateStrategyDecisionArtifact
 from tests.test_evidence_bridge_pipeline import _recording
 
 cohort_module = import_module("cocomelon.research.cohort")
@@ -80,6 +81,160 @@ def _cohort_roots(tmp_path: Path) -> tuple[Path, Path, object]:
         encoding="utf-8",
     )
     return recording_root, output_root, session
+
+
+
+
+def _decision_payload(
+    direction: str,
+    *,
+    evaluated_at_ms: int,
+    reason: str,
+    market: str,
+) -> dict[str, object]:
+    signal = direction != "no_trade"
+    return {
+        "boundary_ms": evaluated_at_ms - 30_000,
+        "evaluated_at_ms": evaluated_at_ms,
+        "feature_snapshot_id": f"feature-{market}-{evaluated_at_ms}",
+        "market": market,
+        "decision": {
+            "direction": direction,
+            "feature_snapshot_id": f"feature-{market}-{evaluated_at_ms}",
+            "invalidation_price": "95" if signal else None,
+            "lead_strategy": "breakout" if signal else None,
+            "market": {"coin": market, "dex": ""},
+            "reason_codes": [reason],
+            "score": "90" if signal else "0",
+            "signal_ids": [f"signal-{market}-{evaluated_at_ms}"],
+            "timestamp_ms": evaluated_at_ms,
+        },
+    }
+
+
+def test_decision_throughput_separates_entry_eligible_and_post_cutoff_signals() -> None:
+    artifact = CandidateStrategyDecisionArtifact(
+        candidate_code_revision="1" * 40,
+        candidate_config_digest="a" * 64,
+        recording_session_digest="b" * 64,
+        source_set_digest="c" * 64,
+        contexts_digest="d" * 64,
+        decisions=(
+            _decision_payload(
+                "no_trade",
+                evaluated_at_ms=100,
+                reason="not_deep_ready",
+                market="AAA",
+            ),
+            _decision_payload(
+                "short",
+                evaluated_at_ms=150,
+                reason="decision_threshold_met",
+                market="BBB",
+            ),
+            _decision_payload(
+                "long",
+                evaluated_at_ms=250,
+                reason="decision_threshold_met",
+                market="CCC",
+            ),
+            _decision_payload(
+                "no_trade",
+                evaluated_at_ms=250,
+                reason="not_rankable",
+                market="DDD",
+            ),
+        ),
+    )
+
+    throughput = cohort_module.decision_throughput_payload(
+        artifact,
+        new_exposure_cutoff_ms=200,
+    )
+
+    assert throughput == {
+        "decision_count": 4,
+        "direction_counts": {"long": 1, "no_trade": 2, "short": 1},
+        "entry_eligible_decision_count": 2,
+        "entry_eligible_direction_counts": {"long": 0, "no_trade": 1, "short": 1},
+        "entry_eligible_reason_counts": {
+            "decision_threshold_met": 1,
+            "not_deep_ready": 1,
+        },
+        "entry_eligible_signal_count": 1,
+        "new_exposure_cutoff_ms": 200,
+        "post_cutoff_decision_count": 2,
+        "post_cutoff_direction_counts": {"long": 1, "no_trade": 1, "short": 0},
+        "post_cutoff_reason_counts": {
+            "decision_threshold_met": 1,
+            "not_rankable": 1,
+        },
+        "post_cutoff_signal_count": 1,
+        "reason_counts": {
+            "decision_threshold_met": 2,
+            "not_deep_ready": 1,
+            "not_rankable": 1,
+        },
+        "signal_count": 2,
+    }
+
+
+def test_verified_cohort_summary_carries_decision_throughput(tmp_path: Path) -> None:
+    recording_root, output_root, _ = _cohort_roots(tmp_path)
+
+    build_research_cohort(
+        recording_root,
+        output_root,
+        Decimal("10000"),
+        trigger_head_sha="f" * 40,
+    )
+
+    summary = json.loads((output_root / "cohort-summary.json").read_text(encoding="utf-8"))
+    replay = json.loads((output_root / "replay.json").read_text(encoding="utf-8"))
+    throughput = summary["decision_throughput"]
+
+    assert throughput["decision_count"] == summary["strategy_decisions"]
+    assert (
+        throughput["entry_eligible_decision_count"]
+        + throughput["post_cutoff_decision_count"]
+        == throughput["decision_count"]
+    )
+    assert throughput["new_exposure_cutoff_ms"] == replay["new_exposure_cutoff_ms"]
+    assert throughput["signal_count"] == (
+        throughput["direction_counts"]["long"]
+        + throughput["direction_counts"]["short"]
+    )
+    verify_research_batch_artifact(
+        output_root,
+        batch_id="throughput-batch",
+        source_id="throughput-source",
+    )
+
+
+def test_research_artifact_rejects_tampered_decision_throughput(tmp_path: Path) -> None:
+    recording_root, output_root, _ = _cohort_roots(tmp_path)
+
+    build_research_cohort(
+        recording_root,
+        output_root,
+        Decimal("10000"),
+        trigger_head_sha="f" * 40,
+    )
+    summary_path = output_root / "cohort-summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["decision_throughput"]["decision_count"] += 1
+    summary_path.write_text(
+        json.dumps(summary, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ResearchArtifactError, match="decision throughput"):
+        verify_research_batch_artifact(
+            output_root,
+            batch_id="throughput-tamper-batch",
+            source_id="throughput-tamper-source",
+        )
+
 
 
 def test_builder_emits_verified_genuine_mainnet_research_cohort(tmp_path: Path) -> None:
