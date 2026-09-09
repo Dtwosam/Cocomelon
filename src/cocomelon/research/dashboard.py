@@ -1037,4 +1037,5 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                 )
                 + " |"
             )
-        _append_attempt_audit_history(lines, candidate)\n    return "\n".join(lines) + "\n"
+        _append_attempt_audit_history(lines, candidate)
+    return "\n".join(lines) + "\n"
