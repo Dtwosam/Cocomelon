@@ -6,6 +6,9 @@ import sqlite3
 from collections import Counter
 from decimal import Decimal, InvalidOperation
 
+from cocomelon.research.attestation import (
+    load_candidate_attested_decision_throughput,
+)
 from cocomelon.research.checkpoint_history import load_authenticated_checkpoint_commits
 from cocomelon.research.contracts import ResearchCandidateState, TimeInterval
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
@@ -290,6 +293,145 @@ def _derive_checkpoint_diagnostics(
         previous_short_count = short_count
 
 
+def _set_unavailable_throughput(checkpoint: dict[str, object]) -> None:
+    checkpoint["throughput_state"] = "unavailable"
+    checkpoint["new_decision_count"] = None
+    checkpoint["new_signal_count"] = None
+    checkpoint["new_long_signal_count"] = None
+    checkpoint["new_short_signal_count"] = None
+    checkpoint["new_entry_eligible_signal_count"] = None
+    checkpoint["new_post_cutoff_signal_count"] = None
+    checkpoint["new_no_trade_decision_count"] = None
+    checkpoint["new_entry_eligible_reason_counts"] = None
+    checkpoint["new_post_cutoff_reason_counts"] = None
+
+
+def _throughput_count(payload: dict[str, object], field: str) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ResearchRegistryError(
+            f"research dashboard throughput {field} must be a non-negative integer"
+        )
+    return value
+
+
+def _throughput_direction_count(
+    payload: dict[str, object],
+    direction: str,
+) -> int:
+    value = payload.get("direction_counts")
+    if not isinstance(value, dict):
+        raise ResearchRegistryError(
+            "research dashboard throughput direction_counts is invalid"
+        )
+    return _throughput_count(value, direction)
+
+
+def _throughput_reason_counts(
+    payload: dict[str, object],
+    field: str,
+) -> Counter[str]:
+    value = payload.get(field)
+    if not isinstance(value, dict) or not all(
+        isinstance(reason, str)
+        and reason.strip()
+        and isinstance(count, int)
+        and not isinstance(count, bool)
+        and count > 0
+        for reason, count in value.items()
+    ):
+        raise ResearchRegistryError(
+            f"research dashboard throughput {field} is invalid"
+        )
+    return Counter({str(reason): int(count) for reason, count in value.items()})
+
+
+def _derive_checkpoint_throughput_diagnostics(
+    registry: ResearchRegistry,
+    *,
+    candidate_id: str,
+    history: list[dict[str, object]],
+) -> None:
+    by_batch = load_candidate_attested_decision_throughput(
+        registry.connection,
+        candidate_id=candidate_id,
+    )
+    previous_batch_ids: set[str] = set()
+
+    for checkpoint in history:
+        batch_ids = set(_string_list(checkpoint, "batch_ids"))
+        if not previous_batch_ids.issubset(batch_ids):
+            raise ResearchRegistryError(
+                "research dashboard checkpoint batch history is not cumulative"
+            )
+        new_batch_ids = tuple(sorted(batch_ids - previous_batch_ids))
+        previous_batch_ids = batch_ids
+
+        payloads = [by_batch.get(batch_id) for batch_id in new_batch_ids]
+        if not new_batch_ids or any(payload is None for payload in payloads):
+            _set_unavailable_throughput(checkpoint)
+            continue
+
+        verified_payloads = [
+            payload for payload in payloads if isinstance(payload, dict)
+        ]
+        if len(verified_payloads) != len(payloads):
+            _set_unavailable_throughput(checkpoint)
+            continue
+
+        eligible_reasons: Counter[str] = Counter()
+        post_cutoff_reasons: Counter[str] = Counter()
+        for payload in verified_payloads:
+            eligible_reasons.update(
+                _throughput_reason_counts(
+                    payload,
+                    "entry_eligible_reason_counts",
+                )
+            )
+            post_cutoff_reasons.update(
+                _throughput_reason_counts(
+                    payload,
+                    "post_cutoff_reason_counts",
+                )
+            )
+
+        checkpoint["throughput_state"] = "verified"
+        checkpoint["new_decision_count"] = sum(
+            _throughput_count(payload, "decision_count")
+            for payload in verified_payloads
+        )
+        checkpoint["new_signal_count"] = sum(
+            _throughput_count(payload, "signal_count")
+            for payload in verified_payloads
+        )
+        checkpoint["new_long_signal_count"] = sum(
+            _throughput_direction_count(payload, "long")
+            for payload in verified_payloads
+        )
+        checkpoint["new_short_signal_count"] = sum(
+            _throughput_direction_count(payload, "short")
+            for payload in verified_payloads
+        )
+        checkpoint["new_entry_eligible_signal_count"] = sum(
+            _throughput_count(payload, "entry_eligible_signal_count")
+            for payload in verified_payloads
+        )
+        checkpoint["new_post_cutoff_signal_count"] = sum(
+            _throughput_count(payload, "post_cutoff_signal_count")
+            for payload in verified_payloads
+        )
+        checkpoint["new_no_trade_decision_count"] = sum(
+            _throughput_direction_count(payload, "no_trade")
+            for payload in verified_payloads
+        )
+        checkpoint["new_entry_eligible_reason_counts"] = dict(
+            sorted(eligible_reasons.items())
+        )
+        checkpoint["new_post_cutoff_reason_counts"] = dict(
+            sorted(post_cutoff_reasons.items())
+        )
+
+
 def _trade_density_summary(
     checkpoints: list[dict[str, object]],
 ) -> tuple[int, int | None]:
@@ -440,6 +582,11 @@ def _checkpoint_history(
         except ValueError as exc:
             raise ResearchRegistryError(str(exc)) from exc
         _derive_checkpoint_diagnostics(history)
+        _derive_checkpoint_throughput_diagnostics(
+            registry,
+            candidate_id=candidate_id,
+            history=history,
+        )
         return history
     finally:
         if authentication_connection is not None:
@@ -652,6 +799,41 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                         _cell(checkpoint.get("net_pnl")),
                         _cell(checkpoint.get("mean_net_r")),
                         _cell(checkpoint.get("posterior_probability_positive")),
+                    )
+                )
+                + " |"
+            )
+        lines.extend(
+            [
+                "",
+                "### Decision throughput diagnostics",
+                "",
+                (
+                    "Decision throughput is read-only diagnostic provenance and is not "
+                    "checkpoint economics."
+                ),
+                "",
+                (
+                    "| # | Diagnostics | Decisions | Signals | LONG | SHORT | "
+                    "Entry-eligible signals | Post-cutoff signals | NO_TRADE |"
+                ),
+                "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for checkpoint in checkpoints:
+            lines.append(
+                "| "
+                + " | ".join(
+                    (
+                        _cell(checkpoint.get("commit_index")),
+                        _cell(checkpoint.get("throughput_state")),
+                        _cell(checkpoint.get("new_decision_count")),
+                        _cell(checkpoint.get("new_signal_count")),
+                        _cell(checkpoint.get("new_long_signal_count")),
+                        _cell(checkpoint.get("new_short_signal_count")),
+                        _cell(checkpoint.get("new_entry_eligible_signal_count")),
+                        _cell(checkpoint.get("new_post_cutoff_signal_count")),
+                        _cell(checkpoint.get("new_no_trade_decision_count")),
                     )
                 )
                 + " |"

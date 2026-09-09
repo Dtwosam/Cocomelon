@@ -216,6 +216,109 @@ def test_research_status_reports_zero_trade_checkpoint_streak(tmp_path: Path) ->
     assert candidate["last_trade_checkpoint_index"] == 1
 
 
+
+
+
+def _throughput_payload() -> dict[str, object]:
+    return {
+        "decision_count": 10,
+        "direction_counts": {"long": 1, "no_trade": 9, "short": 0},
+        "entry_eligible_decision_count": 5,
+        "entry_eligible_direction_counts": {"long": 0, "no_trade": 5, "short": 0},
+        "entry_eligible_reason_counts": {"not_deep_ready": 5},
+        "entry_eligible_signal_count": 0,
+        "new_exposure_cutoff_ms": 250_000,
+        "post_cutoff_decision_count": 5,
+        "post_cutoff_direction_counts": {"long": 1, "no_trade": 4, "short": 0},
+        "post_cutoff_reason_counts": {
+            "decision_threshold_met": 1,
+            "not_deep_ready": 4,
+        },
+        "post_cutoff_signal_count": 1,
+        "reason_counts": {
+            "decision_threshold_met": 1,
+            "not_deep_ready": 9,
+        },
+        "signal_count": 1,
+    }
+
+
+def test_research_status_surfaces_only_complete_attested_throughput(
+    tmp_path: Path,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("candidate-throughput"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        first_artifact = write_research_artifact(
+            tmp_path / "throughput-first",
+            batch_id="throughput-batch-first",
+            source_id="throughput-source-first",
+            replay_run_id="throughput-replay-first",
+            start_ms=1_000,
+            end_ms=200_000,
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-throughput",
+            artifact_batches=(first_artifact,),
+        )
+        second_artifact = write_research_artifact(
+            tmp_path / "throughput-second",
+            batch_id="throughput-batch-second",
+            source_id="throughput-source-second",
+            replay_run_id="throughput-replay-second",
+            start_ms=200_000,
+            end_ms=400_000,
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-throughput",
+            artifact_batches=(second_artifact,),
+        )
+        with registry.connection:
+            registry.connection.execute(
+                """
+                UPDATE research_batch_attestations
+                SET decision_throughput_json = ?
+                WHERE batch_id = ?
+                """,
+                (
+                    json.dumps(
+                        _throughput_payload(),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "throughput-batch-second",
+                ),
+            )
+
+        status = build_research_status(registry)
+    finally:
+        registry.close()
+
+    checkpoints = status["candidates"][0]["checkpoints"]
+    assert checkpoints[0]["throughput_state"] == "unavailable"
+    assert checkpoints[0]["new_decision_count"] is None
+    assert checkpoints[0]["new_signal_count"] is None
+    assert checkpoints[1]["throughput_state"] == "verified"
+    assert checkpoints[1]["new_decision_count"] == 10
+    assert checkpoints[1]["new_signal_count"] == 1
+    assert checkpoints[1]["new_long_signal_count"] == 1
+    assert checkpoints[1]["new_short_signal_count"] == 0
+    assert checkpoints[1]["new_entry_eligible_signal_count"] == 0
+    assert checkpoints[1]["new_post_cutoff_signal_count"] == 1
+    assert checkpoints[1]["new_no_trade_decision_count"] == 9
+    assert checkpoints[1]["new_entry_eligible_reason_counts"] == {"not_deep_ready": 5}
+    assert checkpoints[1]["new_post_cutoff_reason_counts"] == {
+        "decision_threshold_met": 1,
+        "not_deep_ready": 4,
+    }
+
+
 def test_research_status_reauthenticates_every_historical_checkpoint(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     try:
