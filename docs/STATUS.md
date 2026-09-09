@@ -104,11 +104,12 @@ Current main head is `d3540593d7a9` and main CI run `34351785499` passed.
 1. Keep Phase 10 and live trading blocked.
 2. Let V4 run `34351227954` finish naturally.
 3. Verify observer run `34351237156` remains attached during acquisition and only wakes the existing safe-gap path after the acquisition completes.
-4. Do not rerun research run `34349940827`; its duplicate-success guard is correct.
-5. On the next eligible research cohort, verify the newly merged throughput, attempt-audit, and failure-stage diagnostics are published from authenticated state without changing checkpoint economics.
-6. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
-7. Let the frozen V4 one-shot evaluate only when its immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-8. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path when the protected acquisition completes and before any subsequent research economics are admitted.
+5. Do not rerun research run `34349940827`; its duplicate-success guard is correct.
+6. On the next eligible research cohort, verify the newly merged throughput, attempt-audit, and failure-stage diagnostics are published from authenticated state without changing checkpoint economics.
+7. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
+8. Let the frozen V4 one-shot evaluate only when its immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+9. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
