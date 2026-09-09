@@ -834,6 +834,23 @@ def _attempt_error_summary(attempt: dict[str, object]) -> str | None:
     return value
 
 
+def _attempt_failure_stage(attempt: dict[str, object]) -> str | None:
+    if attempt.get("error_type") != "WorkflowFailure":
+        return None
+    error_message = attempt.get("error_message")
+    if error_message is None:
+        return None
+    normalized = " ".join(str(error_message).split())
+    marker = "failed_jobs="
+    marker_index = normalized.find(marker)
+    if marker_index < 0:
+        return None
+    value = normalized[marker_index + len(marker) :].split(";", 1)[0].strip()
+    if not value:
+        return None
+    return ", ".join(part.strip() for part in value.split(",") if part.strip())
+
+
 def _append_attempt_audit_history(
     lines: list[str],
     candidate: dict[str, object],
@@ -864,9 +881,9 @@ def _append_attempt_audit_history(
         [
             (
                 "| Attempt | Status | Checkpoint accounting | Batch | Start ms | "
-                "End ms | Error |"
+                "End ms | Failure stage | Error |"
             ),
-            "| --- | --- | --- | --- | ---: | ---: | --- |",
+            "| --- | --- | --- | --- | ---: | ---: | --- | --- |",
         ]
     )
     for attempt in attempts:
@@ -887,6 +904,7 @@ def _append_attempt_audit_history(
                     _cell(attempt.get("batch_id")),
                     _cell(attempt.get("start_ms")),
                     _cell(attempt.get("end_ms")),
+                    _cell(_attempt_failure_stage(attempt)),
                     _cell(_attempt_error_summary(attempt)),
                 )
             )
