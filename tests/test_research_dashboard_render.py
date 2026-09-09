@@ -158,3 +158,59 @@ def test_checkpoint_history_makes_zero_trade_cohort_explicit() -> None:
         "| 2 | 400000 | insufficient_trades | 1 | 0 | 0 | 0 | 1 | 0 | 1 | "
         "0 | 6.250000 | 0.25 | — |"
     ) in rendered
+
+
+
+def test_markdown_renders_separate_read_only_throughput_history() -> None:
+    snapshot = _snapshot()
+    candidate = snapshot["candidates"][0]
+    assert isinstance(candidate, dict)
+    checkpoints = candidate["checkpoints"]
+    assert isinstance(checkpoints, list)
+    first = checkpoints[0]
+    second = checkpoints[1]
+    assert isinstance(first, dict)
+    assert isinstance(second, dict)
+
+    first.update(
+        {
+            "throughput_state": "unavailable",
+            "new_decision_count": None,
+            "new_signal_count": None,
+            "new_long_signal_count": None,
+            "new_short_signal_count": None,
+            "new_entry_eligible_signal_count": None,
+            "new_post_cutoff_signal_count": None,
+            "new_no_trade_decision_count": None,
+            "new_entry_eligible_reason_counts": None,
+            "new_post_cutoff_reason_counts": None,
+        }
+    )
+    second.update(
+        {
+            "throughput_state": "verified",
+            "new_decision_count": 10,
+            "new_signal_count": 1,
+            "new_long_signal_count": 1,
+            "new_short_signal_count": 0,
+            "new_entry_eligible_signal_count": 0,
+            "new_post_cutoff_signal_count": 1,
+            "new_no_trade_decision_count": 9,
+            "new_entry_eligible_reason_counts": {"not_deep_ready": 5},
+            "new_post_cutoff_reason_counts": {
+                "decision_threshold_met": 1,
+                "not_deep_ready": 4,
+            },
+        }
+    )
+
+    rendered = render_research_status_markdown(snapshot)
+
+    assert "### Decision throughput diagnostics" in rendered
+    assert "read-only diagnostic provenance and is not checkpoint economics" in rendered
+    assert (
+        "| # | Diagnostics | Decisions | Signals | LONG | SHORT | "
+        "Entry-eligible signals | Post-cutoff signals | NO_TRADE |"
+    ) in rendered
+    assert "| 1 | unavailable | — | — | — | — | — | — | — |" in rendered
+    assert "| 2 | verified | 10 | 1 | 1 | 0 | 0 | 1 | 9 |" in rendered
