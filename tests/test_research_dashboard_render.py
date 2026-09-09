@@ -248,7 +248,7 @@ def test_markdown_renders_attempt_audit_history_without_counting_failures() -> N
             "end_ms": 300_000,
             "report_id": None,
             "error_type": "RuntimeError",
-            "error_message": "synthetic audit failure",
+            "error_message": "synthetic audit failure; failed_jobs=not-authoritative",
         },
         {
             "attempt_index": 1,
@@ -280,7 +280,7 @@ def test_markdown_renders_attempt_audit_history_without_counting_failures() -> N
     ) in rendered
     assert (
         "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | — | "
-        "RuntimeError: synthetic audit failure |"
+        "RuntimeError: synthetic audit failure; failed_jobs=not-authoritative |"
     ) in rendered
     assert (
         "| attempt-success | succeeded | COUNTED | batch-first | 1000 | 200000 | — | — |"
