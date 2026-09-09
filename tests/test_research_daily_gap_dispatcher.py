@@ -44,16 +44,22 @@ def test_gap_dispatcher_uses_actual_run_state_and_caps_daily_success() -> None:
         assert forbidden not in lowered
 
 
-def test_campaign_refuses_second_successful_cohort_in_same_utc_day_before_attempt() -> None:
+def test_campaign_cleanly_skips_second_successful_cohort_before_attempt() -> None:
     source = CAMPAIGN.read_text(encoding="utf-8")
     prepare = source.split("\n  prepare-control:\n", 1)[1].split("\n  candidate-build:\n", 1)[0]
+    candidate = source.split("\n  candidate-build:\n", 1)[1].split(
+        "\n  capture-control:\n",
+        1,
+    )[0]
     marker = "Refuse duplicate successful research cohort for current UTC day"
 
     assert marker in prepare
+    assert "run_research: ${{ steps.daily_guard.outputs.run_research }}" in prepare
     guard = prepare.split(f"- name: {marker}", 1)[1].split(
         "- name: Persist acquisition attempt before candidate setup",
         1,
     )[0]
+    assert "id: daily_guard" in guard
     assert "GH_TOKEN: ${{ github.token }}" in guard
     assert 'date -u +%Y-%m-%dT00:00:00Z' in guard
     assert "research-campaign-scheduled.yml" in guard
@@ -61,6 +67,23 @@ def test_campaign_refuses_second_successful_cohort_in_same_utc_day_before_attemp
     assert '.conclusion == "success"' in guard
     assert '.event == "schedule" or .event == "workflow_dispatch"' in guard
     assert "GITHUB_RUN_ID" in guard
+    assert "run_research=false" in guard
+    assert "run_research=true" in guard
+    assert "exit 77" not in guard
+
+    persist = prepare.split(
+        "- name: Persist acquisition attempt before candidate setup",
+        1,
+    )[1].split("- name: Refuse research capture while V4 acquisition is active", 1)[0]
+    v4_guard = prepare.split(
+        "- name: Refuse research capture while V4 acquisition is active",
+        1,
+    )[1].split("- name: Upload prepared research control state", 1)[0]
+    gate = "if: ${{ steps.daily_guard.outputs.run_research == 'true' }}"
+    assert gate in persist
+    assert gate in v4_guard
+    assert "if: ${{ needs.prepare-control.outputs.run_research == 'true' }}" in candidate
+
     assert source.index(marker) < source.index("Persist acquisition attempt before candidate setup")
     assert source.index(marker) < source.index("Checkout candidate code revision")
     assert source.index(marker) < source.index("record-mainnet-evidence")
