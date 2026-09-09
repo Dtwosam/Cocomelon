@@ -13,6 +13,7 @@ from cocomelon.research.dashboard import (
     build_research_status,
 )
 from cocomelon.research.evaluator import evaluate_research_checkpoint
+from cocomelon.domain.strategy import Direction
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
@@ -114,7 +115,11 @@ def test_research_status_authenticates_and_orders_checkpoint_history(tmp_path: P
             start_ms=200_000,
             end_ms=400_000,
             trades=(
-                ArtifactTradeSpec(closed_at_ms=300_000, net_r=Decimal("-0.10")),
+                ArtifactTradeSpec(
+                    closed_at_ms=300_000,
+                    net_r=Decimal("-0.10"),
+                    direction=Direction.SHORT,
+                ),
             ),
         )
         second_report = evaluate_research_checkpoint(
@@ -140,6 +145,75 @@ def test_research_status_authenticates_and_orders_checkpoint_history(tmp_path: P
     assert checkpoints[1]["source_ids"] == ["source-first", "source-second"]
     assert checkpoints[1]["net_pnl"] == "3.750000"
     assert checkpoints[1]["mean_net_r"] == "0.075"
+    assert checkpoints[0]["new_batch_count"] == 1
+    assert checkpoints[0]["new_closed_trade_count"] == 1
+    assert checkpoints[0]["new_closed_trade_days"] == 1
+    assert checkpoints[0]["net_pnl_delta"] == "6.250000"
+    assert checkpoints[0]["new_long_count"] == 1
+    assert checkpoints[0]["new_short_count"] == 0
+    assert checkpoints[1]["new_batch_count"] == 1
+    assert checkpoints[1]["new_closed_trade_count"] == 1
+    assert checkpoints[1]["new_closed_trade_days"] == 0
+    assert checkpoints[1]["net_pnl_delta"] == "-2.500000"
+    assert checkpoints[1]["new_long_count"] == 0
+    assert checkpoints[1]["new_short_count"] == 1
+    assert candidate["zero_trade_checkpoint_streak"] == 0
+    assert candidate["last_trade_checkpoint_index"] == 2
+
+
+
+
+
+def test_research_status_reports_zero_trade_checkpoint_streak(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("candidate-stall"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        first_artifact = write_research_artifact(
+            tmp_path / "stall-first",
+            batch_id="stall-batch-first",
+            source_id="stall-source-first",
+            replay_run_id="stall-replay-first",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(
+                ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),
+            ),
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-stall",
+            artifact_batches=(first_artifact,),
+        )
+        second_artifact = write_research_artifact(
+            tmp_path / "stall-second",
+            batch_id="stall-batch-second",
+            source_id="stall-source-second",
+            replay_run_id="stall-replay-second",
+            start_ms=200_000,
+            end_ms=400_000,
+        )
+        evaluate_research_checkpoint(
+            registry=registry,
+            candidate_id="candidate-stall",
+            artifact_batches=(second_artifact,),
+        )
+
+        status = build_research_status(registry)
+    finally:
+        registry.close()
+
+    candidate = status["candidates"][0]
+    checkpoints = candidate["checkpoints"]
+    assert checkpoints[1]["new_closed_trade_count"] == 0
+    assert checkpoints[1]["new_long_count"] == 0
+    assert checkpoints[1]["new_short_count"] == 0
+    assert checkpoints[1]["net_pnl_delta"] == "0"
+    assert candidate["zero_trade_checkpoint_streak"] == 1
+    assert candidate["last_trade_checkpoint_index"] == 1
 
 
 def test_research_status_reauthenticates_every_historical_checkpoint(tmp_path: Path) -> None:
