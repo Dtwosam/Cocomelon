@@ -18,6 +18,7 @@ from cocomelon.research.report_auth import (
 )
 
 RESEARCH_STATUS_LABEL = "TOUCHED / NON-PROMOTIONAL"
+RESEARCH_ATTEMPT_HISTORY_LIMIT = 20
 
 
 def _canonical_json(value: object) -> str:
@@ -432,6 +433,118 @@ def _derive_checkpoint_throughput_diagnostics(
         )
 
 
+def _runner_attempt_audit_history(
+    registry: ResearchRegistry,
+    *,
+    candidate_id: str,
+) -> tuple[int, list[dict[str, object]]]:
+    table = registry.connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'research_runner_attempts'
+        """
+    ).fetchone()
+    if table is None:
+        return 0, []
+
+    total_row = registry.connection.execute(
+        """
+        SELECT COUNT(*)
+        FROM research_runner_attempts
+        WHERE candidate_id = ?
+        """,
+        (candidate_id,),
+    ).fetchone()
+    if total_row is None:
+        raise ResearchRegistryError("research dashboard attempt count is unavailable")
+    total = int(total_row[0])
+
+    rows = registry.connection.execute(
+        """
+        SELECT attempt_index, attempt_id, batch_id, status, start_ms, end_ms,
+               report_id, error_type, error_message
+        FROM research_runner_attempts
+        WHERE candidate_id = ?
+        ORDER BY attempt_index DESC
+        LIMIT ?
+        """,
+        (candidate_id, RESEARCH_ATTEMPT_HISTORY_LIMIT),
+    ).fetchall()
+    committed_report_ids = {
+        commit.report_id
+        for commit in load_authenticated_checkpoint_commits(
+            registry.connection,
+            candidate_id=candidate_id,
+        )
+    }
+    valid_statuses = {
+        "running",
+        "evaluating",
+        "succeeded",
+        "failed",
+        "contaminated",
+    }
+    result: list[dict[str, object]] = []
+    for row in rows:
+        status = str(row["status"])
+        if status not in valid_statuses:
+            raise ResearchRegistryError(
+                "research dashboard runner attempt status is invalid"
+            )
+
+        start_ms = None if row["start_ms"] is None else int(row["start_ms"])
+        end_ms = None if row["end_ms"] is None else int(row["end_ms"])
+        if (start_ms is None) != (end_ms is None):
+            raise ResearchRegistryError(
+                "research dashboard runner attempt interval is incomplete"
+            )
+        if start_ms is not None and end_ms is not None:
+            if start_ms < 0 or end_ms <= start_ms:
+                raise ResearchRegistryError(
+                    "research dashboard runner attempt interval is invalid"
+                )
+
+        report_id = None if row["report_id"] is None else str(row["report_id"])
+        if status == "succeeded":
+            if report_id is None or report_id not in committed_report_ids:
+                raise ResearchRegistryError(
+                    "research dashboard succeeded attempt lacks authenticated checkpoint"
+                )
+            counted = True
+        else:
+            if report_id is not None:
+                raise ResearchRegistryError(
+                    "research dashboard non-success attempt cannot claim checkpoint"
+                )
+            counted = False
+
+        error_type = None if row["error_type"] is None else str(row["error_type"])
+        error_message = (
+            None if row["error_message"] is None else str(row["error_message"])
+        )
+        if status == "succeeded" and (error_type is not None or error_message is not None):
+            raise ResearchRegistryError(
+                "research dashboard succeeded attempt cannot contain an error"
+            )
+
+        result.append(
+            {
+                "attempt_index": int(row["attempt_index"]),
+                "attempt_id": str(row["attempt_id"]),
+                "status": status,
+                "counted": counted,
+                "batch_id": str(row["batch_id"]),
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "report_id": report_id,
+                "error_type": error_type,
+                "error_message": error_message,
+            }
+        )
+    return total, result
+
+
 def _trade_density_summary(
     checkpoints: list[dict[str, object]],
 ) -> tuple[int, int | None]:
@@ -605,6 +718,10 @@ def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
             candidate_state=candidate.state,
         )
         reports = _performance_reports(registry, candidate_id=candidate_id)
+        attempt_count, attempts = _runner_attempt_audit_history(
+            registry,
+            candidate_id=candidate_id,
+        )
         economics_visible = (
             candidate.state is not ResearchCandidateState.REJECTED_CONTAMINATION
         )
@@ -636,6 +753,8 @@ def _build_research_status(registry: ResearchRegistry) -> dict[str, object]:
                     candidate.effective_touched_intervals
                 ),
                 "checkpoint_count": len(reports),
+                "attempt_count": attempt_count,
+                "attempts": attempts,
                 "economics_visible": economics_visible,
                 "zero_trade_checkpoint_streak": zero_trade_streak,
                 "last_trade_checkpoint_index": last_trade_checkpoint_index,
@@ -695,6 +814,84 @@ def _cell(value: object) -> str:
     if value is None:
         return "—"
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _attempt_error_summary(attempt: dict[str, object]) -> str | None:
+    error_type = attempt.get("error_type")
+    error_message = attempt.get("error_message")
+    if error_type is None and error_message is None:
+        return None
+    parts: list[str] = []
+    if error_type is not None:
+        parts.append(str(error_type))
+    if error_message is not None:
+        normalized = " ".join(str(error_message).split())
+        if normalized:
+            parts.append(normalized)
+    value = ": ".join(parts)
+    if len(value) > 160:
+        return value[:157] + "..."
+    return value
+
+
+def _append_attempt_audit_history(
+    lines: list[str],
+    candidate: dict[str, object],
+) -> None:
+    attempts = _mapping_list(candidate.get("attempts", []), "candidate attempts")
+    attempt_count = candidate.get("attempt_count")
+    if not attempts and attempt_count in (None, 0):
+        return
+
+    lines.extend(
+        [
+            "",
+            "### Research attempt audit history",
+            "",
+            (
+                "Failed, contaminated, running, and evaluating attempts are NOT COUNTED "
+                "toward authenticated checkpoint metrics."
+            ),
+            "",
+        ]
+    )
+    if isinstance(attempt_count, int) and attempt_count > len(attempts):
+        lines.append(
+            f"Showing latest {len(attempts)} of {attempt_count} recorded attempts."
+        )
+        lines.append("")
+    lines.extend(
+        [
+            (
+                "| Attempt | Status | Checkpoint accounting | Batch | Start ms | "
+                "End ms | Error |"
+            ),
+            "| --- | --- | --- | --- | ---: | ---: | --- |",
+        ]
+    )
+    for attempt in attempts:
+        counted = attempt.get("counted")
+        if counted is True:
+            accounting = "COUNTED"
+        elif counted is False:
+            accounting = "NOT COUNTED"
+        else:
+            raise ValueError("research status attempt counted flag must be boolean")
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _cell(attempt.get("attempt_id")),
+                    _cell(attempt.get("status")),
+                    accounting,
+                    _cell(attempt.get("batch_id")),
+                    _cell(attempt.get("start_ms")),
+                    _cell(attempt.get("end_ms")),
+                    _cell(_attempt_error_summary(attempt)),
+                )
+            )
+            + " |"
+        )
 
 
 def _candidate_latest(candidate: dict[str, object]) -> dict[str, object] | None:
@@ -763,10 +960,12 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
         lines.extend(["", f"## {candidate_id} checkpoint history", ""])
         if candidate.get("economics_visible") is not True:
             lines.append("Economics hidden because the candidate is contaminated.")
+            _append_attempt_audit_history(lines, candidate)
             continue
         checkpoints = _mapping_list(candidate.get("checkpoints"), "candidate checkpoints")
         if not checkpoints:
             lines.append("No authenticated checkpoints.")
+            _append_attempt_audit_history(lines, candidate)
             continue
         lines.extend(
             [
@@ -838,4 +1037,4 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
                 )
                 + " |"
             )
-    return "\n".join(lines) + "\n"
+        _append_attempt_audit_history(lines, candidate)\n    return "\n".join(lines) + "\n"
