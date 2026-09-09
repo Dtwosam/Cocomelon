@@ -187,7 +187,9 @@ def test_batch_attestation_rejects_changed_decision_throughput(tmp_path: Path) -
             verified=verified,
         )
         changed_payload = dict(verified.decision_throughput)
-        changed_payload["signal_count"] = int(changed_payload["signal_count"]) + 1
+        changed_payload["new_exposure_cutoff_ms"] = (
+            int(changed_payload["new_exposure_cutoff_ms"]) + 1
+        )
         changed = replace(verified, decision_throughput=changed_payload)
 
         with pytest.raises(
