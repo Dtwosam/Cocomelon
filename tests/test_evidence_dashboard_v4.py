@@ -159,10 +159,9 @@ def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
 
 
 def test_v4_dashboard_makes_scheduler_drift_observational_only() -> None:
-    builder = _read_required(BUILDER, "evidence dashboard builder")
+    namespace = runpy.run_path(str(BUILDER))
 
-    assert (
+    assert namespace["SCHEDULER_DRIFT_NOTE"] == (
         "Scheduler drift is observational only. Missed V4 slots are never manually "
         "backfilled, retried, or extended."
-        in builder
     )
