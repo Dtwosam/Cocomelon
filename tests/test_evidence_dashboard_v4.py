@@ -267,3 +267,30 @@ def test_v4_dashboard_marks_post_capture_age_without_declaring_failure() -> None
         "active run age 5h30m; fixed capture duration 5h15m — capture duration has "
         "elapsed; inspect post-capture state without retrying, cancelling, or inferring failure"
     )
+
+
+def test_v4_dashboard_keeps_active_run_visible_when_newer_run_is_pending() -> None:
+    active = _function(BUILDER, "_active_v4_campaign")
+    runs = [
+        {
+            "id": 200,
+            "name": "Scheduled Genuine Mainnet Evidence Campaign V4",
+            "path": ".github/workflows/evidence-campaign-v4-scheduled.yml",
+            "event": "schedule",
+            "status": "pending",
+            "created_at": "2026-09-09T17:15:19Z",
+        },
+        {
+            "id": 100,
+            "name": "Scheduled Genuine Mainnet Evidence Campaign V4",
+            "path": ".github/workflows/evidence-campaign-v4-scheduled.yml",
+            "event": "schedule",
+            "status": "in_progress",
+            "created_at": "2026-09-09T12:28:34Z",
+        },
+    ]
+
+    selected = active(runs)
+
+    assert selected is not None
+    assert selected["id"] == 100

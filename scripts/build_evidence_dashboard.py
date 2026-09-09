@@ -244,6 +244,20 @@ def _latest_protocol_run(
     return max(matches, key=lambda item: str(item.get("created_at", "")))
 
 
+def _active_v4_campaign(runs: list[JsonObject]) -> JsonObject | None:
+    matches = [
+        item
+        for item in runs
+        if item.get("name") == V4.campaign_name
+        and item.get("path") == V4.campaign_path
+        and item.get("event") == "schedule"
+        and item.get("status") == "in_progress"
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda item: str(item.get("created_at", "")))
+
+
 def _run_id(payload: JsonObject, field: str = "id") -> int:
     value = payload.get(field)
     if isinstance(value, bool) or not isinstance(value, int):
@@ -567,6 +581,7 @@ def _body(
     historical_v2_progress: JsonObject | None,
     historical_v2_snapshot: CorpusSnapshot | None,
     latest_v4_campaign: JsonObject | None,
+    active_v4_campaign: JsonObject | None,
     latest_v4_curator: JsonObject | None,
     event_workflow_run: JsonObject | None,
     event_curator: JsonObject | None,
@@ -581,7 +596,7 @@ def _body(
     orders = "ENABLED" if active_progress.get("live_orders") is True else "DISABLED"
     now = datetime.now(UTC)
     updated = now.strftime("%Y-%m-%d %H:%M UTC")
-    campaign_age = _v4_campaign_age_summary(latest_v4_campaign, now=now)
+    campaign_age = _v4_campaign_age_summary(active_v4_campaign, now=now)
 
     lines = [
         "# Cocomelon Evidence Dashboard",
@@ -679,6 +694,14 @@ def _body(
             f"{_run_link(repo, latest_v4_campaign)}",
         ]
     )
+    if active_v4_campaign is not None:
+        latest_id = _run_id(latest_v4_campaign) if latest_v4_campaign is not None else None
+        active_id = _run_id(active_v4_campaign)
+        if active_id != latest_id:
+            lines.append(
+                f"- Active V4 acquisition: **{_state(active_v4_campaign)}** — "
+                f"{_run_link(repo, active_v4_campaign)}"
+            )
     if campaign_age is not None:
         lines.append(f"- Active V4 run timing: **{campaign_age}**")
     lines.append(
@@ -764,6 +787,7 @@ def build_issue_patch(repo: str) -> JsonObject:
         name=V4.campaign_name,
         path=V4.campaign_path,
     )
+    active_v4_campaign = _active_v4_campaign(campaign_runs)
     latest_v4_curator = _latest_protocol_run(
         curator_runs,
         name=V4.curator_name,
@@ -808,6 +832,7 @@ def build_issue_patch(repo: str) -> JsonObject:
             historical_v2_progress=historical_v2_progress,
             historical_v2_snapshot=historical_v2_snapshot,
             latest_v4_campaign=latest_v4_campaign,
+            active_v4_campaign=active_v4_campaign,
             latest_v4_curator=latest_v4_curator,
             event_workflow_run=event_workflow_run,
             event_curator=event_curator,
