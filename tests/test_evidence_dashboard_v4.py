@@ -189,3 +189,49 @@ def test_v4_intake_dashboard_line_names_source_run() -> None:
         "- Latest V4 source intake: **rejected — diagnostics: artifact_unavailable** "
         "— source run `34320018279`"
     )
+
+
+def test_v4_intake_reclassifies_trusted_capture_step_failure() -> None:
+    diagnostic = _function(INTAKE_APPLIER, "_capture_step_diagnostic")
+    summary = _function(INTAKE_APPLIER, "_intake_summary")
+    repo = "Dtwosam/Cocomelon"
+    report = {
+        "schema_version": 1,
+        "protocol": "v4-thesis-expiry-mainnet",
+        "source_run_id": 456,
+        "source_conclusion": "failure",
+        "source_verified": False,
+        "corpus_mutated": False,
+        "reason": "source_workflow_not_successful",
+        "diagnostic_status": "artifact_unavailable",
+        "economic_claim": "none",
+        "live_orders": False,
+    }
+    source = {
+        "id": 456,
+        "name": "Scheduled Genuine Mainnet Evidence Campaign V4",
+        "path": ".github/workflows/evidence-campaign-v4-scheduled.yml",
+        "event": "schedule",
+        "status": "completed",
+        "conclusion": "failure",
+        "run_attempt": 1,
+        "repository": {"full_name": repo},
+        "head_repository": {"full_name": repo},
+    }
+    jobs = {
+        "jobs": [
+            {
+                "name": "acquire-evidence",
+                "steps": [
+                    {
+                        "name": "Record thesis-expiry genuine public mainnet evidence",
+                        "conclusion": "failure",
+                    }
+                ],
+            }
+        ]
+    }
+
+    assert diagnostic(repo, report, source, jobs) == "capture_step_failed"
+    enriched = {**report, "diagnostic_status": "capture_step_failed"}
+    assert summary(enriched) == "rejected — diagnostics: capture_step_failed"
