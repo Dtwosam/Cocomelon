@@ -35,6 +35,7 @@ from cocomelon.research.strategy_seam import (
     strategy_context_from_payload,
     strategy_decision_to_payload,
 )
+from cocomelon.research.throughput import decision_throughput_payload
 from cocomelon.strategies.engine import evaluate_strategies
 
 RESEARCH_ENTRY_WINDOW_MS = 300_000
@@ -451,7 +452,7 @@ def complete_research_cohort(
     bundle = load_baseline_replay_bundle(output / "bundle.json")
     if validate_recording(recording) != bundle.manifest.segments:
         raise ValueError("trusted research source changed after preparation")
-    load_candidate_strategy_decisions(
+    strategy_artifact = load_candidate_strategy_decisions(
         strategy_decisions_path,
         bundle_path=output / "bundle.json",
     )
@@ -476,6 +477,23 @@ def complete_research_cohort(
     _write_json(output / "dataset.json", dataset)
 
     record = _read_mapping(output / "record.json", "record result")
+    cutoff_ms = _require_int(
+        replay.get("new_exposure_cutoff_ms"),
+        "research replay new_exposure_cutoff_ms",
+    )
+    decision_throughput = decision_throughput_payload(
+        strategy_artifact,
+        new_exposure_cutoff_ms=cutoff_ms,
+    )
+    strategy_decisions = _require_int(
+        replay.get("strategy_decisions"),
+        "research replay strategy_decisions",
+    )
+    if decision_throughput["decision_count"] != strategy_decisions:
+        raise ValueError(
+            "research decision throughput does not match canonical replay decisions"
+        )
+
     closed_trade_ids = replay.get("closed_trade_ids")
     if not isinstance(closed_trade_ids, list) or not all(
         isinstance(item, str) and item.strip() for item in closed_trade_ids
@@ -497,6 +515,7 @@ def complete_research_cohort(
             dataset.get("trade_count"),
             "research dataset trade_count",
         ),
+        "decision_throughput": decision_throughput,
         "economic_claim": "none",
         "evidence_kind": MAINNET_EVIDENCE_KIND,
         "excluded_trade_count": _require_int(
@@ -545,10 +564,7 @@ def complete_research_cohort(
             record.get("selected_markets"),
             "research record selected_markets",
         ),
-        "strategy_decisions": _require_int(
-            replay.get("strategy_decisions"),
-            "research replay strategy_decisions",
-        ),
+        "strategy_decisions": strategy_decisions,
         "trigger_head_sha": (output / "trigger-head.txt").read_text(encoding="utf-8").strip(),
         "validated_segment_count": len(bundle.manifest.segments),
     }
