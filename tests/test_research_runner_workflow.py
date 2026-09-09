@@ -372,6 +372,35 @@ def test_finalizer_falls_back_to_last_registry_stage_and_always_terminalizes() -
     assert "if: ${{ always() }}" in terminalize
 
 
+def test_workflow_failure_attempt_records_root_failed_jobs() -> None:
+    source = _source()
+    finalization = _job_block(source, "finalize-publish", "dispatch-dashboard")
+    terminalize = finalization.split(
+        "- name: Persist workflow failure in attempt ledger",
+        1,
+    )[1].split("- name: Upload complete research campaign audit trail", 1)[0]
+
+    expected_results = (
+        ("PREPARE_CONTROL_RESULT", "prepare-control"),
+        ("CANDIDATE_BUILD_RESULT", "candidate-build"),
+        ("CAPTURE_CONTROL_RESULT", "capture-control"),
+        ("CANDIDATE_DECISIONS_RESULT", "candidate-decisions"),
+        ("REFRESH_AUTHORITY_RESULT", "refresh-authority"),
+        ("EVALUATE_RESEARCH_RESULT", "evaluate-research"),
+    )
+    for key, job in expected_results:
+        expression = key + ": $" + "{{ needs." + job + ".result }}"
+        assert expression in terminalize
+
+    assert "failed_jobs" in terminalize
+    assert '{"failure", "cancelled"}' in terminalize
+    assert "research campaign failed before authenticated checkpoint;" in terminalize
+    assert "error_type = 'WorkflowFailure'" in terminalize
+    assert "net_pnl" not in terminalize.lower()
+    assert "mean_net_r" not in terminalize.lower()
+    assert "posterior" not in terminalize.lower()
+
+
 def test_failed_attempt_is_retained_in_next_authoritative_registry_snapshot() -> None:
     source = _source()
     publish = source.split("- name: Publish authoritative research registry", 1)[1]
