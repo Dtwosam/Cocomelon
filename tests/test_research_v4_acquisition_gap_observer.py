@@ -45,3 +45,19 @@ def test_observer_rechecks_for_newer_protected_v4_before_safe_gap_dispatch() -> 
     assert dispatch.index("protected V4 acquisition already exists") < dispatch.index(
         "/actions/workflows/research-daily-gap-dispatcher.yml/dispatches"
     )
+
+
+def test_push_bootstrap_does_not_attach_when_workflow_run_observer_is_active() -> None:
+    text = OBSERVER.read_text(encoding="utf-8")
+    push = text.split('if [ "$GITHUB_EVENT_NAME" = "push" ]; then', 1)[1].split(
+        '          fi\n\n          if [ -z "${RUN_ID:-}" ]',
+        1,
+    )[0]
+
+    assert "/actions/workflows/research-v4-acquisition-gap-observer.yml/runs?per_page=100" in push
+    assert 'select(.event == "workflow_run")' in push
+    assert 'select(.status != "completed")' in push
+    assert "active workflow-run observer already exists; bootstrap attachment skipped" in push
+    assert push.index("active workflow-run observer already exists") < push.index(
+        "/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100"
+    )

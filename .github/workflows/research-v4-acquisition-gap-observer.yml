@@ -89,6 +89,20 @@ jobs:
           }
 
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            ACTIVE_WORKFLOW_RUN_OBSERVERS="$(
+              /usr/bin/gh api --paginate \
+                "/repos/$GITHUB_REPOSITORY/actions/workflows/research-v4-acquisition-gap-observer.yml/runs?per_page=100" \
+                --jq '.workflow_runs[]
+                  | select(.event == "workflow_run")
+                  | select(.status != "completed")
+                  | .id'
+            )"
+            if [ -n "$ACTIVE_WORKFLOW_RUN_OBSERVERS" ]; then
+              echo "active workflow-run observer already exists; bootstrap attachment skipped"
+              printf '%s\n' "$ACTIVE_WORKFLOW_RUN_OBSERVERS"
+              exit 0
+            fi
+
             RUNS_JSON="$(
               /usr/bin/gh api --paginate \
                 "/repos/$GITHUB_REPOSITORY/actions/workflows/evidence-campaign-v4-scheduled.yml/runs?per_page=100"
