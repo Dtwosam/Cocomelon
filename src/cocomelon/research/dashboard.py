@@ -522,8 +522,14 @@ def render_research_status_markdown(snapshot: dict[str, object]) -> str:
             continue
         lines.extend(
             [
-                "| # | Source end ms | Checkpoint | New batches | New trades | Trades | New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |",
-                "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                (
+                    "| # | Source end ms | Checkpoint | New batches | New trades | Trades | "
+                    "New days | Days | Δ Net PnL | Net PnL | Mean R | Posterior |"
+                ),
+                (
+                    "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: |"
+                ),
             ]
         )
         previous_batch_ids: set[str] = set()
