@@ -15,6 +15,12 @@ from cocomelon.research.dashboard import (
 )
 from cocomelon.research.evaluator import evaluate_research_checkpoint
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
+from cocomelon.research.runner import ResearchRunnerRequest, run_research_artifact_attempt
+from cocomelon.research.runner_history import (
+    ResearchRunnerAttemptStatus,
+    finish_runner_attempt,
+    record_runner_attempt_started,
+)
 from tests.research_artifact_support import ArtifactTradeSpec, write_research_artifact
 
 EXECUTION_CONFIG = '{"mode":"paper","slippage_model":"recorded"}'
@@ -317,6 +323,80 @@ def test_research_status_surfaces_only_complete_attested_throughput(
         "decision_threshold_met": 1,
         "not_deep_ready": 4,
     }
+
+
+def test_research_status_includes_separate_counted_and_not_counted_attempt_history(
+    tmp_path: Path,
+) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    try:
+        registry.create_candidate(_candidate("candidate-attempts"))
+        registry.mark_v4_registry_complete_through(
+            through_ms=400_000,
+            source_id="authoritative-v4-test-inventory",
+        )
+        successful_artifact = write_research_artifact(
+            tmp_path / "attempt-success",
+            batch_id="attempt-batch-success",
+            source_id="attempt-source-success",
+            replay_run_id="attempt-replay-success",
+            start_ms=1_000,
+            end_ms=200_000,
+            trades=(
+                ArtifactTradeSpec(closed_at_ms=100_000, net_r=Decimal("0.25")),
+            ),
+        )
+        successful = run_research_artifact_attempt(
+            registry,
+            ResearchRunnerRequest(
+                attempt_id="attempt-success",
+                candidate_id="candidate-attempts",
+                batch_id=successful_artifact.batch_id,
+                source_id=successful_artifact.source_id,
+                artifact_root=successful_artifact.artifact_root,
+            ),
+        )
+
+        record_runner_attempt_started(
+            registry.connection,
+            attempt_id="attempt-failure",
+            candidate_id="candidate-attempts",
+            batch_id="attempt-batch-failure",
+            source_id="attempt-source-failure",
+            artifact_root="/audit/attempt-failure",
+        )
+        finish_runner_attempt(
+            registry.connection,
+            attempt_id="attempt-failure",
+            status=ResearchRunnerAttemptStatus.FAILED,
+            start_ms=200_000,
+            end_ms=300_000,
+            report_id=None,
+            error_type="RuntimeError",
+            error_message="synthetic audit failure",
+        )
+
+        status = build_research_status(registry)
+    finally:
+        registry.close()
+
+    candidate = status["candidates"][0]
+    assert candidate["attempt_count"] == 2
+    attempts = candidate["attempts"]
+    assert [item["attempt_id"] for item in attempts] == [
+        "attempt-failure",
+        "attempt-success",
+    ]
+    assert attempts[0]["status"] == "failed"
+    assert attempts[0]["counted"] is False
+    assert attempts[0]["report_id"] is None
+    assert attempts[0]["error_type"] == "RuntimeError"
+    assert attempts[0]["error_message"] == "synthetic audit failure"
+    assert attempts[1]["status"] == "succeeded"
+    assert attempts[1]["counted"] is True
+    assert attempts[1]["report_id"] == successful.report_id
+    assert candidate["checkpoint_count"] == 1
+    assert candidate["checkpoints"][0]["closed_trade_count"] == 1
 
 
 def test_research_status_reauthenticates_every_historical_checkpoint(tmp_path: Path) -> None:
