@@ -393,3 +393,19 @@ def test_status_records_authority_sync_as_implemented_and_advances_next_action()
         "Observe the implemented authoritative V4 interval/completeness synchronization path"
         in next_action
     )
+
+
+def test_candidate_execution_waits_for_v4_authority_completeness() -> None:
+    source = _source()
+    refresh = _job(source, "refresh-authority", "evaluate-research")
+    decisions = _job(source, "candidate-decisions", "refresh-authority")
+
+    assert 'if [ "$THROUGH_MS" -lt "$BOUND_END_MS" ]; then' in refresh
+    assert (
+        "fresh V4 authority does not cover bound research interval yet; "
+        "retrying non-economic V4 authority synchronization"
+        in refresh
+    )
+    assert "research-v4-registry-sync.yml/dispatches" in refresh
+    assert "assert_batch_disjoint_from_v4" in refresh
+    assert "refresh-authority" in decisions.split("steps:", 1)[0]
