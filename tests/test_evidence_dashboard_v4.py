@@ -165,3 +165,27 @@ def test_v4_dashboard_makes_scheduler_drift_observational_only() -> None:
         "Scheduler drift is observational only. Missed V4 slots are never manually "
         "backfilled, retried, or extended."
     )
+
+
+def test_v4_intake_dashboard_line_names_source_run() -> None:
+    apply_summary = _function(INTAKE_APPLIER, "_apply_intake_summary")
+    patch = {
+        "body": (
+            "## Pipeline health\n\n"
+            "- Latest V4 curator: **success** — curator\n"
+            "- Latest V4 source intake: **unavailable**\n"
+        )
+    }
+
+    updated = apply_summary(
+        patch,
+        "rejected — diagnostics: artifact_unavailable",
+        source_run_id=34320018279,
+    )
+
+    assert updated["body"] == (
+        "## Pipeline health\n\n"
+        "- Latest V4 curator: **success** — curator\n"
+        "- Latest V4 source intake: **rejected — diagnostics: artifact_unavailable** "
+        "— source run `34320018279`"
+    )
