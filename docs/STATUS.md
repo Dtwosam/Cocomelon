@@ -132,7 +132,7 @@ Current verified implementation merge is `1fb5ee3b6be0` and main CI run `3438419
 1. Keep Phase 10 and live trading blocked.
 2. Let active V4 run `34381775915` finish naturally.
 3. Verify its attached observer remains fail-closed and the safe-gap dispatcher refuses research while any scheduled V4 acquisition is pending or in progress.
-4. Continue observing the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path when the protected acquisition completes and before any subsequent research economics are admitted.
 5. Preserve the verified authority boundary: completed run `34351227954` is recorded, while completeness stops at the start of active run `34381775915`.
 6. Do not rerun research run `34349940827`; its duplicate-success guard is correct.
 7. On the next eligible research cohort, verify the merged throughput, attempt-audit, failure-stage, pending-V4, and authority-completeness protections publish from authenticated state without changing checkpoint economics.
