@@ -28,6 +28,8 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.replay.adapters import ReplayRequirements
 from cocomelon.replay.engine import ReplayEngine, replay_run_id
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
+from cocomelon.research.contracts import ResearchCandidateManifest
+from cocomelon.research.registry import ResearchRegistry
 from cocomelon.research.strategy_seam import (
     CandidateDecisionEpochEngine,
     build_candidate_strategy_decisions,
@@ -168,8 +170,20 @@ def _assert_sibling_layout(recording_root: Path, output_root: Path) -> None:
         )
 
 
+def _assert_research_replay_config(replay_config: BaselineReplayConfig) -> None:
+    if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:
+        raise ValueError("research replay engine version does not match bounded protocol")
+    if replay_config.config_version != RESEARCH_REPLAY_CONFIG_VERSION:
+        raise ValueError("research replay config version does not match bounded protocol")
+    max_position_age_ms = replay_config.execution.max_position_age_ms
+    if max_position_age_ms is None or max_position_age_ms <= 0:
+        raise ValueError("research replay max position age must be positive and bounded")
+    if RESEARCH_ENTRY_WINDOW_MS + max_position_age_ms >= RESEARCH_CAPTURE_SECONDS * 1_000:
+        raise ValueError("research candidate exit horizon must fit inside capture")
+
+
 def _research_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:
-    return BaselineReplayConfig(
+    replay_config = BaselineReplayConfig(
         starting_cash=starting_cash,
         execution=PaperExecutionConfig(
             config_version=RESEARCH_EXECUTION_CONFIG_VERSION,
@@ -178,6 +192,76 @@ def _research_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:
         replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,
         config_version=RESEARCH_REPLAY_CONFIG_VERSION,
     )
+    _assert_research_replay_config(replay_config)
+    return replay_config
+
+
+def research_replay_config_from_candidate(
+    candidate: ResearchCandidateManifest,
+) -> BaselineReplayConfig:
+    try:
+        payload = json.loads(candidate.execution_config_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError("research candidate execution config must be valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("research candidate execution config must be an object")
+    expected_keys = {"config_version", "max_position_age_ms", "starting_cash"}
+    if set(payload) != expected_keys:
+        raise ValueError("research candidate execution config fields are not supported")
+    config_version = _require_string(
+        payload.get("config_version"),
+        "research candidate execution config_version",
+    )
+    max_position_age_ms = _require_int(
+        payload.get("max_position_age_ms"),
+        "research candidate execution max_position_age_ms",
+    )
+    starting_cash_raw = _require_string(
+        payload.get("starting_cash"),
+        "research candidate execution starting_cash",
+    )
+    try:
+        starting_cash = Decimal(starting_cash_raw)
+    except Exception as exc:
+        raise ValueError("research candidate execution starting_cash must be decimal") from exc
+    if not starting_cash.is_finite() or starting_cash <= 0:
+        raise ValueError("research candidate execution starting_cash must be positive and finite")
+    replay_config = BaselineReplayConfig(
+        starting_cash=starting_cash,
+        execution=PaperExecutionConfig(
+            config_version=config_version,
+            max_position_age_ms=max_position_age_ms,
+        ),
+        replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,
+        config_version=RESEARCH_REPLAY_CONFIG_VERSION,
+    )
+    _assert_research_replay_config(replay_config)
+    if replay_config.config_digest != candidate.config_digest:
+        raise ValueError("research candidate execution config digest does not match manifest")
+    return replay_config
+
+
+def _active_candidate_replay_config_from_environment(
+    starting_cash: Decimal,
+) -> BaselineReplayConfig | None:
+    workspace_raw = os.environ.get("GITHUB_WORKSPACE", "").strip()
+    candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
+    if not candidate_id:
+        return None
+    if not workspace_raw:
+        raise ValueError("research candidate execution binding requires GITHUB_WORKSPACE")
+    registry_path = Path(workspace_raw) / "research-control" / "state" / "research.sqlite3"
+    if not registry_path.is_file():
+        raise ValueError("authoritative research registry is unavailable for candidate binding")
+    registry = ResearchRegistry(registry_path)
+    try:
+        candidate = registry.load_candidate(candidate_id)
+    finally:
+        registry.close()
+    replay_config = research_replay_config_from_candidate(candidate)
+    if replay_config.starting_cash != starting_cash:
+        raise ValueError("research starting cash does not match active candidate config")
+    return replay_config
 
 
 def _attach_recording_locator(
@@ -196,9 +280,9 @@ def _attach_recording_locator(
 def _freeze_research_replay_payload(
     recording_root: Path,
     bundle_path: Path,
-    starting_cash: Decimal,
+    replay_config: BaselineReplayConfig,
 ) -> dict[str, object]:
-    replay_config = _research_replay_config(starting_cash)
+    _assert_research_replay_config(replay_config)
     code_revision = resolve_code_revision(None, cwd=Path.cwd())
     bundle = freeze_baseline_replay_bundle(
         recording_root,
@@ -219,7 +303,7 @@ def _freeze_research_replay_payload(
         "evidence_class": bundle.manifest.evidence_class.value,
         _ORDER_FLAG_KEY: False,
         "manifest_id": bundle.manifest.manifest_id,
-        "max_position_age_ms": RESEARCH_MAX_POSITION_AGE_MS,
+        "max_position_age_ms": replay_config.execution.max_position_age_ms,
         "network_access": False,
         "out": str(bundle_path),
         "recording_session_digest": bundle.recording_session_digest,
@@ -245,17 +329,7 @@ def _validated_bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
 
 
 def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None:
-    replay_config = bundle.replay_config
-    if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:
-        raise ValueError("research replay engine version does not match bounded protocol")
-    if replay_config.config_version != RESEARCH_REPLAY_CONFIG_VERSION:
-        raise ValueError("research replay config version does not match bounded protocol")
-    execution = replay_config.execution
-    if (
-        execution.config_version != RESEARCH_EXECUTION_CONFIG_VERSION
-        or execution.max_position_age_ms != RESEARCH_MAX_POSITION_AGE_MS
-    ):
-        raise ValueError("research replay execution config does not match bounded protocol")
+    _assert_research_replay_config(bundle.replay_config)
 
 
 def prepare_research_cohort_source(
@@ -264,6 +338,7 @@ def prepare_research_cohort_source(
     starting_cash: Decimal,
     *,
     trigger_head_sha: str,
+    replay_config: BaselineReplayConfig | None = None,
 ) -> ResearchCohortSourceResult:
     recording = Path(recording_root)
     output = Path(output_root)
@@ -277,10 +352,23 @@ def prepare_research_cohort_source(
     record = _normalized_record(output, recording_root=recording)
     _write_json(output / "record.json", record)
 
+    active_candidate_config = _active_candidate_replay_config_from_environment(starting_cash)
+    if (
+        replay_config is not None
+        and active_candidate_config is not None
+        and replay_config.config_digest != active_candidate_config.config_digest
+    ):
+        raise ValueError("explicit research replay config does not match active candidate")
+    resolved_replay_config = (
+        replay_config or active_candidate_config or _research_replay_config(starting_cash)
+    )
+    if resolved_replay_config.starting_cash != starting_cash:
+        raise ValueError("research starting cash does not match candidate replay config")
+    _assert_research_replay_config(resolved_replay_config)
     freeze = _freeze_research_replay_payload(
         recording,
         output / "bundle.json",
-        starting_cash,
+        resolved_replay_config,
     )
     _write_json(output / "freeze.json", freeze)
     workflow_head = _require_sha(
@@ -385,7 +473,7 @@ def run_baseline_replay_payload(
             "journal": str(Path(journal_path)),
             _ORDER_FLAG_KEY: False,
             "manifest_id": result.manifest_id,
-            "max_position_age_ms": RESEARCH_MAX_POSITION_AGE_MS,
+            "max_position_age_ms": bundle.replay_config.execution.max_position_age_ms,
             "network_access": False,
             "new_exposure_cutoff_ms": new_exposure_cutoff_ms,
             "opened_positions": result.opened_positions,
@@ -402,7 +490,11 @@ def run_baseline_replay_payload(
         journal.close()
 
 
-def _assert_replay_eligible(replay: dict[str, object]) -> None:
+def _assert_replay_eligible(
+    replay: dict[str, object],
+    *,
+    replay_config: BaselineReplayConfig,
+) -> None:
     if replay.get("network_access") is not False:
         raise ValueError("research cohort replay must be offline")
     if replay.get(_ORDER_FLAG_KEY) is not False:
@@ -411,8 +503,8 @@ def _assert_replay_eligible(replay: dict[str, object]) -> None:
         raise ValueError("research cohort replay must be complete")
     if replay.get("entry_window_ms") != RESEARCH_ENTRY_WINDOW_MS:
         raise ValueError("research cohort replay entry window is not precommitted")
-    if replay.get("max_position_age_ms") != RESEARCH_MAX_POSITION_AGE_MS:
-        raise ValueError("research cohort replay exit horizon is not precommitted")
+    if replay.get("max_position_age_ms") != replay_config.execution.max_position_age_ms:
+        raise ValueError("research cohort replay exit horizon does not match frozen config")
     opened = _require_int(replay.get("opened_positions"), "research replay opened_positions")
     closed = _require_int(replay.get("closed_positions"), "research replay closed_positions")
     if opened != closed:
@@ -464,7 +556,7 @@ def complete_research_cohort(
         output / "facts.sqlite3",
         strategy_decisions_path=strategy_decisions_path,
     )
-    _assert_replay_eligible(replay)
+    _assert_replay_eligible(replay, replay_config=bundle.replay_config)
     _write_json(output / "replay.json", replay)
 
     run_id = _require_string(replay.get("run_id"), "research replay run_id")
@@ -490,9 +582,7 @@ def complete_research_cohort(
         "research replay strategy_decisions",
     )
     if decision_throughput["decision_count"] != strategy_decisions:
-        raise ValueError(
-            "research decision throughput does not match canonical replay decisions"
-        )
+        raise ValueError("research decision throughput does not match canonical replay decisions")
 
     closed_trade_ids = replay.get("closed_trade_ids")
     if not isinstance(closed_trade_ids, list) or not all(
@@ -603,6 +693,7 @@ def build_research_cohort(
     starting_cash: Decimal,
     *,
     trigger_head_sha: str,
+    replay_config: BaselineReplayConfig | None = None,
 ) -> ResearchCohortBuildResult:
     recording = Path(recording_root)
     output = Path(output_root)
@@ -611,6 +702,7 @@ def build_research_cohort(
         output,
         starting_cash,
         trigger_head_sha=trigger_head_sha,
+        replay_config=replay_config,
     )
     decisions_path = output / "strategy-decisions.json"
     build_candidate_strategy_decisions(
