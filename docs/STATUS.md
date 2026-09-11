@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-11  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main code merge:** `70bce251a419`
-**Latest verified main CI:** run `34652687199` — success
+**Current verified main code merge:** `6fc270665f86`
+**Latest verified main CI:** run `34654206493` — success
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -167,6 +167,7 @@ Recent mainline work relevant to the current handoff includes:
 - PR #187 adds a read-only root+challenger rollout verifier and runs it in the scheduled research finalizer whenever an authenticated two-candidate fan-out artifact is present;
 - PR #188 hardens that verifier so successful candidate artifacts must match the exact fan-out code/config and authenticated capture identity, and independently reasserts authoritative V4 disjointness/completeness while preserving nonfatal challenger failure;
 - PR #189 removes a CI timing flake from the bounded recorder test without changing production recorder behavior.
+- PR #191 upgrades GitHub workflow runtime actions to checkout/setup-python v7, removes the Node 20 deprecation path, and regression-locks against reintroducing the deprecated majors without changing workflow semantics.
 
 None of these changes alter frozen V4 economics, promotion thresholds, the daily research cap, or live-trading controls.
 
