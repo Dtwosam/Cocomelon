@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-11  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main code merge:** `873ff4270efb`
-**Latest verified main CI:** run `34636936027` — success
+**Current verified main code merge:** `f8ffb4892da3`
+**Latest verified main CI:** run `34647758708` — success
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -173,8 +173,8 @@ None of these changes alter frozen V4 economics, promotion thresholds, the daily
 2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator; do not manually retry, extend, cancel, dispatch, or backfill protected V4 runs.
 3. Observe the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted, and respect the one-success-per-UTC-day research guard. Scheduled run `34597347820` correctly stopped before capture on 2026-09-11 because a successful research cohort already existed for that UTC day. Do not override or weaken that guard.
 4. On the first naturally eligible scheduled research cohort after challenger activation, let the finalizer's `cocomelon.research.rollout_verifier` check that exactly one authenticated public-mainnet capture is reused for both `scheduled-research-root` and `research-r1-exit-15m-v1`; a two-candidate rollout must fail closed if this contract is not satisfied.
-5. Require that verification to confirm the root's immutable 20-minute paper replay config and the challenger's immutable 15-minute paper replay config share the same authenticated source interval, with candidate-specific attempts/artifacts and serialized authoritative registry updates.
-6. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint; require V4-disjointness/completeness and all existing provenance checks to pass before either candidate's economics are admitted.
+5. Require that verification to confirm the root's immutable 20-minute paper replay config and the challenger's immutable 15-minute paper replay config share the same authenticated source interval. Successful candidate decision artifacts must match the exact fan-out code/config identity and the capture's recording/source digests.
+6. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint. The finalizer must independently reassert authoritative V4 disjointness/completeness for the shared interval before accepting the rollout verification.
 7. Keep every challenger result permanently **TOUCHED / NON-PROMOTIONAL**. Apply only the precommitted D-023 futility/promising rules: candidates may fail fast; candidates may not succeed fast.
 8. If the challenger becomes `RESEARCH_PROMISING`, freeze a new immutable challenger identity and enforce the inherited touched-period plus 6-hour embargo before any future untouched validation claim.
 9. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.

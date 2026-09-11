@@ -6,6 +6,9 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from cocomelon.research.contracts import TimeInterval
+from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
+
 ROOT_CANDIDATE_ID = "scheduled-research-root"
 CHALLENGER_CANDIDATE_ID = "research-r1-exit-15m-v1"
 ROOT_MAX_POSITION_AGE_MS = 1_200_000
@@ -50,6 +53,42 @@ def _execution_horizon(candidate: dict[str, object], *, label: str) -> int:
     return value
 
 
+def _candidate_audit_root(root: Path, candidate: dict[str, object]) -> Path:
+    artifact_key = candidate.get("artifact_key")
+    if not isinstance(artifact_key, str) or not artifact_key:
+        raise ValueError("rollout candidate artifact key is invalid")
+    matches = tuple(
+        (root / "audit" / "decisions").glob(f"research-decision-stage-{artifact_key}-*")
+    )
+    if len(matches) != 1 or not matches[0].is_dir():
+        raise ValueError("rollout candidate artifact is missing or ambiguous")
+    return matches[0]
+
+
+def _verify_candidate_decision_artifact(
+    artifact_root: Path,
+    *,
+    candidate: dict[str, object],
+    recording_session_digest: str,
+    source_set_digest: str,
+) -> None:
+    output = artifact_root / "output"
+    if not (output / "bundle.json").is_file():
+        raise ValueError("rollout candidate artifact bundle is missing")
+    payload = _load_json(output / "strategy-decisions.json")
+    expected = {
+        "candidate_code_revision": candidate.get("code_revision"),
+        "candidate_config_digest": candidate.get("config_digest"),
+        "recording_session_digest": recording_session_digest,
+        "source_set_digest": source_set_digest,
+    }
+    if payload.get("schema_version") != 1:
+        raise ValueError("rollout candidate artifact schema is invalid")
+    for field, value in expected.items():
+        if not isinstance(value, str) or not value or payload.get(field) != value:
+            raise ValueError(f"rollout candidate artifact {field} does not match fanout")
+
+
 def verify_research_fanout_rollout(
     campaign_root: str | Path,
     *,
@@ -84,6 +123,12 @@ def verify_research_fanout_rollout(
         raise ValueError("capture start_ms is invalid")
     if isinstance(end_ms, bool) or not isinstance(end_ms, int) or end_ms <= start_ms:
         raise ValueError("capture end_ms is invalid")
+    recording_session_digest = capture.get("recording_session_digest")
+    source_set_digest = capture.get("source_set_digest")
+    if not isinstance(recording_session_digest, str) or not recording_session_digest:
+        raise ValueError("capture recording_session_digest is invalid")
+    if not isinstance(source_set_digest, str) or not source_set_digest:
+        raise ValueError("capture source_set_digest is invalid")
 
     root_horizon = _execution_horizon(root_candidate, label="root")
     challenger_horizon = _execution_horizon(challenger, label="challenger")
@@ -126,6 +171,30 @@ def verify_research_fanout_rollout(
     challenger_status = str(latest[challenger_candidate_id]["status"])
     if challenger_status not in _TERMINAL_CHALLENGER_STATUSES:
         raise ValueError("optional challenger rollout attempt is not terminal")
+
+    root_artifact = _candidate_audit_root(root, root_candidate)
+    _verify_candidate_decision_artifact(
+        root_artifact,
+        candidate=root_candidate,
+        recording_session_digest=recording_session_digest,
+        source_set_digest=source_set_digest,
+    )
+    if challenger_status == "succeeded":
+        challenger_artifact = _candidate_audit_root(root, challenger)
+        _verify_candidate_decision_artifact(
+            challenger_artifact,
+            candidate=challenger,
+            recording_session_digest=recording_session_digest,
+            source_set_digest=source_set_digest,
+        )
+
+    registry = ResearchRegistry(root / "state" / "research.sqlite3")
+    try:
+        registry.assert_batch_disjoint_from_v4(TimeInterval(start_ms, end_ms))
+    except ResearchRegistryError as exc:
+        raise ValueError("rollout V4 authority does not cover a disjoint shared capture") from exc
+    finally:
+        registry.close()
 
     return ResearchFanoutRolloutVerification(
         root_candidate_id=root_candidate_id,
