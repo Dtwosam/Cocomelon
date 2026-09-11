@@ -121,6 +121,10 @@ def test_capture_source_is_candidate_neutral_and_reusable(tmp_path: Path) -> Non
     assert root_bundle.replay_config.config_digest == root_config.config_digest
     assert challenger_bundle.replay_config.config_digest == challenger_config.config_digest
     assert root_bundle.replay_config.config_digest != challenger_bundle.replay_config.config_digest
+    assert root_bundle.manifest.code_revision == root_candidate.code_revision
+    assert challenger_bundle.manifest.code_revision == challenger.code_revision
+    assert root.code_revision == root_candidate.code_revision
+    assert alternate.code_revision == challenger.code_revision
 
 
 def test_candidate_materialization_refuses_changed_capture_source(tmp_path: Path) -> None:
