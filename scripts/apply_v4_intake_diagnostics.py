@@ -199,6 +199,7 @@ def _latest_curator_run(repo: str) -> JsonObject | None:
         and item.get("path") == _CURATOR_PATH
         and item.get("event") == "workflow_run"
         and item.get("status") == "completed"
+        and item.get("conclusion") in {"success", "failure"}
         and _repository_name(item.get("repository")) == repo
         and _repository_name(item.get("head_repository")) == repo
     ]
