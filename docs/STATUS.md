@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-11  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main code merge:** `eaabc164f6d4`  
-**Latest verified main CI:** run `34598196411` — success  
+**Current verified main code merge:** `5f8c2dbb4109`
+**Latest verified main CI:** run `34617465388` — success
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -55,7 +55,7 @@ Latest completed protected V4 cohort:
 
 V4 one-shot state remains **waiting for finalizable snapshot**. No interim V4 economics have been used for research or promotion decisions.
 
-At this verified handoff there are no in-progress `main`-branch workflows. The next scheduled V4 acquisition must still start and finish naturally; do not manually dispatch, retry, extend, cancel, or backfill it.
+At this verified handoff, protected V4 workflow run `34598433641` is still in progress on its original `main` commit. Let it finish naturally; do not manually dispatch, retry, extend, cancel, or backfill it.
 
 ## Pipeline diagnostics
 
@@ -117,6 +117,23 @@ The bounded research replay now:
 
 This change does **not** create, promote, or activate a challenger. It provides the provenance foundation required for safe parallel challenger evaluation on already-authorized research data.
 
+## Single-capture research fan-out
+
+PR #183 (`5f8c2dbb4109`) implements the bounded research fan-out path on `main`.
+
+The scheduled research workflow now:
+
+- resolves the required root candidate plus at most one optional registered challenger from authoritative state;
+- performs exactly one authenticated public-mainnet capture for the research run;
+- writes a candidate-neutral `capture-source.json` and binds that same source interval to every fan-out attempt;
+- builds and runs candidate strategy decisions in isolated candidate-keyed jobs without registry or GitHub credentials and with Docker network access disabled;
+- materializes each candidate replay from the same authenticated recording using that candidate's immutable execution configuration and code revision;
+- serializes authoritative economics/registry updates under the publisher lock;
+- treats root failure as fatal while terminalizing optional challenger failure independently;
+- preserves the V4-disjointness/completeness checks and the one-success-per-UTC-day research capture gate.
+
+No challenger is implicitly registered or activated by this merge. `RESEARCH_CHALLENGER_CANDIDATE_ID` remains optional and must reference an immutable candidate already present in authoritative research state before it can participate.
+
 ## Implemented authoritative V4 synchronization
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`. Research finalization/recovery consumes this trusted authority and fails closed when V4 coverage is incomplete or overlap cannot be ruled out.
@@ -130,21 +147,23 @@ Recent mainline work relevant to the current handoff includes:
 - PR #178 deduplicates observer bootstrap attachment when a workflow-run observer is already active;
 - PR #179 makes V4 intake diagnostics ignore cancelled/incomplete curator artifacts that lack a valid intake report and extends curator time for offline aggregation;
 - PR #180 keeps downloaded V4 transport archives in scratch space so durable intake diagnostics remain lightweight without changing admission semantics;
-- PR #181 binds research replay economics to the immutable registered candidate execution config and regression-locks that provenance relationship.
+- PR #181 binds research replay economics to the immutable registered candidate execution config and regression-locks that provenance relationship;
+- PR #183 reuses one authenticated daily research capture across the required root plus at most one optional registered challenger while keeping candidate economics, provenance, failures, and authoritative registry updates isolated.
 
 None of these changes alter frozen V4 economics, promotion thresholds, the daily research cap, or live-trading controls.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
-3. Let every scheduled V4 acquisition start and finish naturally; do not manually retry, extend, cancel, or backfill a cohort.
+2. Let protected V4 run `34598433641` finish naturally; do not manually retry, extend, cancel, dispatch, or backfill it.
+3. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
 4. Observe the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted.
-5. On the next eligible research cohort, verify the merged candidate-execution binding reconstructs the root candidate's exact registered 20-minute paper replay identity from authoritative state.
-6. Build research speed through **safe research data and parallel challenger work**, not through more captures: future challenger fan-out must reuse an already-authorized research recording and must not weaken the one-success-per-UTC-day acquisition gate.
-7. Keep each challenger immutable and lineage-aware. A challenger may accumulate touched evidence independently, but no touched result can directly advance Phase 10 or mutate V4 evidence.
-8. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-9. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+5. On the next eligible scheduled research cohort, verify the merged single-capture path preserves exactly one authenticated capture, reconstructs the root candidate's exact registered 20-minute paper replay identity, and publishes the authoritative root result normally.
+6. Do not set `RESEARCH_CHALLENGER_CANDIDATE_ID` merely to exercise the new path. Only point it at an immutable challenger that is already registered in authoritative research state with precommitted code/config lineage.
+7. When such a challenger exists, let the same scheduled cohort evaluate root plus challenger from the one authorized recording; require independent candidate-keyed artifacts/attempts and treat challenger failure as nonfatal to a valid root result.
+8. Keep every touched challenger result permanently non-promotional. It may guide rejection or later untouched validation design, but it cannot directly advance Phase 10 or mutate V4 evidence.
+9. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+10. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
