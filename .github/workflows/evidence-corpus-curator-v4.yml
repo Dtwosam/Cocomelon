@@ -44,7 +44,7 @@ jobs:
         id: curate
         run: |
           set -euo pipefail
-          mkdir -p intake source prior corpus
+          mkdir -p intake source prior corpus scratch
           git rev-parse HEAD > intake/curator-head.txt
           printf '%s\n' "$SOURCE_RUN_ID" > intake/source-run-id.txt
           printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
@@ -89,12 +89,12 @@ jobs:
               set +e
               gh api \
                 "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
-                > intake/failed-source-artifact.zip
+                > scratch/failed-source-artifact.zip
               ARTIFACT_DOWNLOAD_STATUS=$?
               set -e
               if [ "$ARTIFACT_DOWNLOAD_STATUS" -eq 0 ]; then
                 mkdir -p failed-source
-                if unzip -q intake/failed-source-artifact.zip -d failed-source; then
+                if unzip -q scratch/failed-source-artifact.zip -d failed-source; then
                   mapfile -t PROBES < <(
                     find failed-source -type f -name eligibility-probe.json -print
                   )
@@ -204,8 +204,8 @@ jobs:
           printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
-            > intake/source-artifact.zip
-          unzip -q intake/source-artifact.zip -d source
+            > scratch/source-artifact.zip
+          unzip -q scratch/source-artifact.zip -d source
 
           mapfile -t SUMMARIES < <(
             find source -type f -name cohort-summary.json -path '*/output/*' -print
@@ -325,8 +325,8 @@ jobs:
           if [ -n "$TRUSTED_PRIOR_ARTIFACT_ID" ]; then
             gh api \
               "repos/$GITHUB_REPOSITORY/actions/artifacts/$TRUSTED_PRIOR_ARTIFACT_ID/zip" \
-              > intake/prior-corpus.zip
-            unzip -q intake/prior-corpus.zip -d prior
+              > scratch/prior-corpus.zip
+            unzip -q scratch/prior-corpus.zip -d prior
             mapfile -t ATTESTATIONS < <(find prior -type f -name mainnet-attestation.json -print)
             if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
               echo "Prior V4 corpus must contain exactly one mainnet attestation" >&2
