@@ -1,0 +1,45 @@
+name: Temporary fix candidate binding generator formatting
+
+on:
+  push:
+    branches:
+      - fix/research-bind-candidate-execution-20260911
+    paths:
+      - .github/workflows/_tmp-fix-apply-generator.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-bind-candidate-execution-20260911
+          fetch-depth: 1
+
+      - name: Wrap generated binding error message
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/_tmp-apply-research-execution-binding.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '        raise ValueError("research candidate execution binding requires GITHUB_WORKSPACE and RESEARCH_CANDIDATE_ID")\\n'
+          new = (
+              '        raise ValueError(\\n'
+              '            "research candidate execution binding requires "\\n'
+              '            "GITHUB_WORKSPACE and RESEARCH_CANDIDATE_ID"\\n'
+              '        )\\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f'unexpected binding error occurrence count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm .github/workflows/_tmp-fix-apply-generator.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows
+          git commit -m "chore: wrap candidate binding error message"
+          git push origin HEAD:fix/research-bind-candidate-execution-20260911
