@@ -41,7 +41,7 @@ jobs:
       EVENT_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
     steps:
       - name: Checkout dashboard builder
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 1

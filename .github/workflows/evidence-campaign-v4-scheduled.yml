@@ -27,12 +27,12 @@ jobs:
       MAX_POSITION_AGE_SECONDS: 14400
     steps:
       - name: Checkout pinned V4 evidence revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 0c14c9cfa37c80babc65d050fed6d4465dcb9032
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -150,12 +150,12 @@ jobs:
       MAX_POSITION_AGE_SECONDS: 14400
     steps:
       - name: Checkout pinned V4 evidence revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 0c14c9cfa37c80babc65d050fed6d4465dcb9032
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
