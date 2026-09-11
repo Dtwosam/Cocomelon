@@ -1,0 +1,72 @@
+name: Temporary apply research candidate execution binding v2
+
+on:
+  push:
+    branches:
+      - fix/research-bind-candidate-execution-20260911
+    paths:
+      - .github/workflows/_tmp-apply-research-execution-binding-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-bind-candidate-execution-20260911
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Apply tested production patch
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path(
+              '.github/workflows/_tmp-apply-research-execution-binding.yml'
+          ).read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          script = textwrap.dedent(workflow[start:end])
+          exec(compile(script, '<candidate-binding-generator>', 'exec'))
+
+          path = Path('src/cocomelon/research/cohort.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if not workspace_raw and not candidate_id:\n        return None\n    if not workspace_raw or not candidate_id:\n        raise ValueError(\n            "research candidate execution binding requires "\n            "GITHUB_WORKSPACE and RESEARCH_CANDIDATE_ID"\n        )\n'''
+          new = '''    if not candidate_id:\n        return None\n    if not workspace_raw:\n        raise ValueError(\n            "research candidate execution binding requires GITHUB_WORKSPACE"\n        )\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'unexpected environment binding block count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Verify focused binding invariants
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src tests scripts
+          python -m ruff format src/cocomelon/research/cohort.py
+          python -m ruff check src tests scripts
+          python -m mypy src
+          python -m pytest tests/test_research_candidate_execution_binding.py -q
+          git diff --check
+
+      - name: Commit production patch
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/cocomelon/research/cohort.py
+          git commit -m "fix: bind research replay to candidate execution config"
+          git push origin HEAD:fix/research-bind-candidate-execution-20260911
