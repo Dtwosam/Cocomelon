@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 WORKFLOW = Path(".github/workflows/research-campaign-scheduled.yml")
 
 
@@ -35,33 +34,45 @@ def test_candidate_build_and_decisions_are_fanned_out_but_isolated() -> None:
     source = _source()
     candidate = _job(source, "candidate-build", "capture-control")
     decisions = _job(source, "candidate-decisions", "refresh-authority")
+    matrix = "matrix: ${{ fromJSON(needs.prepare-control.outputs.candidate_matrix) }}"
+    candidate_stage = (
+        "research-candidate-stage-${{ matrix.artifact_key }}-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    decision_stage = (
+        "research-decision-stage-${{ matrix.artifact_key }}-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+    )
 
     for block in (candidate, decisions):
-        assert "matrix: ${{ fromJSON(needs.prepare-control.outputs.candidate_matrix) }}" in block
+        assert matrix in block
         assert "candidate_id" in block
         assert "research.sqlite3" not in block
         assert "GH_TOKEN:" not in block
 
-    assert "research-candidate-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}" in candidate
+    assert candidate_stage in candidate
     assert "ref: ${{ matrix.code_revision }}" in candidate
-    assert "research-decision-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}" in decisions
+    assert decision_stage in decisions
     assert "materialize_research_candidate_source" in decisions
     assert "--network none" in decisions
     assert "docker load" in decisions
 
 
-def test_candidate_evaluation_serializes_registry_updates_and_allows_optional_failure() -> None:
+def test_candidate_evaluation_serializes_registry_updates_and_contains_optional_failure() -> None:
     source = _source()
     evaluation = _job(source, "evaluate-research", "finalize-publish")
+    header = evaluation.split("steps:", 1)[0]
 
-    assert "matrix: ${{ fromJSON(needs.prepare-control.outputs.candidate_matrix) }}" in evaluation
-    assert "max-parallel: 1" in evaluation
-    assert "continue-on-error: ${{ !matrix.required }}" in evaluation
-    assert "research-decision-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}" in evaluation
-    assert "--attempt-id \"${{ matrix.attempt_id }}\"" in evaluation
-    assert "--candidate-id \"${{ matrix.candidate_id }}\"" in evaluation
-    assert "--batch-id \"${{ matrix.batch_id }}\"" in evaluation
-    assert "--source-id \"${{ matrix.source_id }}\"" in evaluation
+    assert "matrix:" not in header
+    assert "research-authoritative-registry-publisher" in evaluation
+    assert "Download all candidate decision stages" in evaluation
+    assert "research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}" in evaluation
+    assert "for candidate in fanout" in evaluation
+    assert "candidate.required" in evaluation
+    assert "candidate.attempt_id" in evaluation
+    assert "candidate.candidate_id" in evaluation
+    assert "candidate.batch_id" in evaluation
+    assert "candidate.source_id" in evaluation
     assert "assert_batch_disjoint_from_v4" in evaluation
     assert "record_touched_interval" in evaluation
     assert "research-authoritative-registry" in evaluation
