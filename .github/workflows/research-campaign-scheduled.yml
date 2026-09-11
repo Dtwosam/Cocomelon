@@ -87,6 +87,8 @@ jobs:
                       and (.conclusion == "success" or .conclusion == "failure"))
                     or ((.path == ".github/workflows/research-v4-registry-sync.yml")
                       and (.conclusion == "success"))
+                    or ((.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
                   )
                   and (.event == "schedule" or .event == "workflow_dispatch")'
             )"
@@ -953,6 +955,8 @@ jobs:
                       and (.conclusion == "success" or .conclusion == "failure"))
                     or ((.path == ".github/workflows/research-v4-registry-sync.yml")
                       and (.conclusion == "success"))
+                    or ((.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
                   )
                   and (.event == "schedule" or .event == "workflow_dispatch")'
             )"
@@ -1262,6 +1266,8 @@ jobs:
                       and (.conclusion == "success" or .conclusion == "failure"))
                     or ((.path == ".github/workflows/research-v4-registry-sync.yml")
                       and (.conclusion == "success"))
+                    or ((.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
                   )
                   and (.event == "schedule" or .event == "workflow_dispatch")'
             )"
