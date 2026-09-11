@@ -5,7 +5,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from cocomelon.research.contracts import ResearchCandidateManifest
+from cocomelon.research.contracts import (
+    ResearchCandidateManifest,
+    ResearchCandidateState,
+)
 from cocomelon.research.registry import ResearchRegistry
 
 
@@ -36,7 +39,7 @@ class ResearchFanoutCandidate:
             code_revision=self.code_revision,
             execution_config_json=self.execution_config_json,
             risk_config_json=self.risk_config_json,
-            state=_draft_state(),
+            state=ResearchCandidateState.DRAFT,
             first_observation_ms=None,
             last_observation_ms=None,
             source_provenance_ids=(),
@@ -69,12 +72,6 @@ class ResearchFanoutCandidate:
             "required": self.required,
             "source_id": self.source_id,
         }
-
-
-def _draft_state():
-    from cocomelon.research.contracts import ResearchCandidateState
-
-    return ResearchCandidateState.DRAFT
 
 
 def _require_id(value: str, field: str) -> str:
