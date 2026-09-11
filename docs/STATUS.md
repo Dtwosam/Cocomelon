@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-11  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main code merge:** `5f8c2dbb4109`
-**Latest verified main CI:** run `34617465388` — success
+**Current verified main code merge:** `873ff4270efb`
+**Latest verified main CI:** run `34636936027` — success
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -29,39 +29,37 @@ Phase 10 and any live promotion remain blocked until the frozen untouched eviden
 
 ## Active V4 evidence progress
 
-Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-11 12:12 UTC:
+Latest trusted Evidence Dashboard snapshot, refreshed 2026-09-11 18:30 UTC:
 
-- **36 accepted V4 cohorts**;
-- **58 / 100 closed paper trades**;
+- **37 accepted V4 cohorts**;
+- **60 / 100 closed paper trades**;
 - **12 / 30 closed-trade days**;
-- **3,785 strategy decisions**;
+- **3,890 strategy decisions**;
 - raw Phase 9 minimums not met;
 - economic edge not measured yet;
 - live orders disabled.
 
 The **30 closed-trade-day requirement is currently the dominant calendar gate**. Additional same-day cohorts cannot substitute for missing unique closed-trade days.
 
-Latest completed protected V4 cohort:
+Latest completed and accepted protected V4 cohort:
 
-- workflow run `34570685217` completed successfully;
-- `acquire-evidence` completed successfully after the fixed natural capture;
-- offline `verify-evidence` completed successfully;
-- attached acquisition-end observer run `34570691858` completed successfully;
-- authority synchronization completed successfully;
-- curator run `34597000426` accepted source run `34570685217` into the V4 corpus;
-- accepted-corpus progress advanced from **35 / 56 / 11 / 3,680** to **36 cohorts / 58 trades / 12 days / 3,785 decisions**;
-- latest V4 corpus artifact ID is `10263210137`;
-- latest V4 mainnet attestation begins `8ca8efcff38f283d…`.
+- workflow run `34598433641` completed successfully on its original schedule;
+- no manual retry, extension, cancellation, dispatch, or backfill was used;
+- curator run `34630832992` accepted source run `34598433641` into the V4 corpus;
+- accepted-corpus progress is now **37 cohorts / 60 trades / 12 days / 3,890 decisions**;
+- latest V4 corpus artifact ID is `10275789596`;
+- latest V4 mainnet attestation begins `d82a8e9d6e5fc758…`.
 
 V4 one-shot state remains **waiting for finalizable snapshot**. No interim V4 economics have been used for research or promotion decisions.
 
-At this verified handoff, protected V4 workflow run `34598433641` is still in progress on its original `main` commit. Let it finish naturally; do not manually dispatch, retry, extend, cancel, or backfill it.
+A newer protected V4 workflow run `34626237790` started naturally at 2026-09-11 17:11 UTC and remains in progress. Let it finish on its fixed schedule; do not manually retry, extend, cancel, dispatch, or backfill it. Its interim economics remain opaque.
 
 ## Pipeline diagnostics
 
-- Latest Campaign V4: **success** — run `34570685217`.
-- Latest V4 curator: **success** — run `34597000426`.
-- Latest V4 source intake: **accepted into V4 corpus** — source run `34570685217`.
+- Latest Campaign V4: **in progress** — run `34626237790`.
+- Latest completed accepted V4 source: **success** — run `34598433641`.
+- Latest V4 curator: **success** — run `34630832992`.
+- Latest V4 source intake: **accepted into V4 corpus** — source run `34598433641`.
 - Scheduler health currently reports **drift** because the latest scheduled run preceded the nominal 07:37 UTC slot.
 - Scheduler drift is observational only. It does not authorize manual backfill, retry, extension, or cancellation.
 - Actual run/job/session intervals remain authoritative; nominal cron timing is never used as a substitute for interval authority.
@@ -134,6 +132,21 @@ The scheduled research workflow now:
 
 No challenger is implicitly registered or activated by this merge. `RESEARCH_CHALLENGER_CANDIDATE_ID` remains optional and must reference an immutable candidate already present in authoritative research state before it can participate.
 
+## Registered 15-minute research challenger
+
+PR #185 (`873ff4270efb`) adds the fixed-spec, publisher-locked challenger registration path. Registration workflow run `34637024563` completed successfully and published the authoritative candidate `research-r1-exit-15m-v1` as a child of `scheduled-research-root`.
+
+The registered challenger:
+
+- keeps the root strategy code revision and risk configuration;
+- changes only the bounded paper max-position-age to **15 minutes** (`900000` ms);
+- remains paper-only and **TOUCHED / NON-PROMOTIONAL**;
+- inherits the root lineage's effective touched intervals;
+- has no local challenger observations at registration time;
+- is selected through `RESEARCH_CHALLENGER_CANDIDATE_ID` for future eligible scheduled research fan-out only.
+
+No research capture was manually dispatched to activate it. Future root-vs-challenger evidence must come from naturally eligible scheduled research captures using the same authenticated recording.
+
 ## Implemented authoritative V4 synchronization
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`. Research finalization/recovery consumes this trusted authority and fails closed when V4 coverage is incomplete or overlap cannot be ruled out.
@@ -148,20 +161,21 @@ Recent mainline work relevant to the current handoff includes:
 - PR #179 makes V4 intake diagnostics ignore cancelled/incomplete curator artifacts that lack a valid intake report and extends curator time for offline aggregation;
 - PR #180 keeps downloaded V4 transport archives in scratch space so durable intake diagnostics remain lightweight without changing admission semantics;
 - PR #181 binds research replay economics to the immutable registered candidate execution config and regression-locks that provenance relationship;
-- PR #183 reuses one authenticated daily research capture across the required root plus at most one optional registered challenger while keeping candidate economics, provenance, failures, and authoritative registry updates isolated.
+- PR #183 reuses one authenticated daily research capture across the required root plus at most one optional registered challenger while keeping candidate economics, provenance, failures, and authoritative registry updates isolated;
+- PR #185 registers the fixed 15-minute touched challenger through the publisher-locked authoritative registry path and activates it only for future scheduled research fan-out.
 
 None of these changes alter frozen V4 economics, promotion thresholds, the daily research cap, or live-trading controls.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let protected V4 run `34598433641` finish naturally; do not manually retry, extend, cancel, dispatch, or backfill it.
-3. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator.
-4. Observe the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted.
-5. On the next eligible scheduled research cohort, verify the merged single-capture path preserves exactly one authenticated capture, reconstructs the root candidate's exact registered 20-minute paper replay identity, and publishes the authoritative root result normally.
-6. Do not set `RESEARCH_CHALLENGER_CANDIDATE_ID` merely to exercise the new path. Only point it at an immutable challenger that is already registered in authoritative research state with precommitted code/config lineage.
-7. When such a challenger exists, let the same scheduled cohort evaluate root plus challenger from the one authorized recording; require independent candidate-keyed artifacts/attempts and treat challenger failure as nonfatal to a valid root result.
-8. Keep every touched challenger result permanently non-promotional. It may guide rejection or later untouched validation design, but it cannot directly advance Phase 10 or mutate V4 evidence.
+2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator; do not manually retry, extend, cancel, dispatch, or backfill protected V4 runs.
+3. Observe the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted, and respect the one-success-per-UTC-day research guard. Scheduled run `34597347820` correctly stopped before capture on 2026-09-11 because a successful research cohort already existed for that UTC day. Do not override or weaken that guard.
+4. On the first naturally eligible scheduled research cohort after challenger activation, verify exactly one authenticated public-mainnet capture is reused for both `scheduled-research-root` and `research-r1-exit-15m-v1`.
+5. Verify that cohort reconstructs the root's immutable 20-minute paper replay config and the challenger's immutable 15-minute paper replay config from the same authenticated source interval, with candidate-specific attempts/artifacts and serialized authoritative registry updates.
+6. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint; require V4-disjointness/completeness and all existing provenance checks to pass before either candidate's economics are admitted.
+7. Keep every challenger result permanently **TOUCHED / NON-PROMOTIONAL**. Apply only the precommitted D-023 futility/promising rules: candidates may fail fast; candidates may not succeed fast.
+8. If the challenger becomes `RESEARCH_PROMISING`, freeze a new immutable challenger identity and enforce the inherited touched-period plus 6-hour embargo before any future untouched validation claim.
 9. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
 10. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
