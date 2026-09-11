@@ -291,13 +291,19 @@ def _freeze_research_replay_payload(
     recording_root: Path,
     bundle_path: Path,
     replay_config: BaselineReplayConfig,
+    *,
+    code_revision: str | None = None,
 ) -> dict[str, object]:
     _assert_research_replay_config(replay_config)
-    code_revision = resolve_code_revision(None, cwd=Path.cwd())
+    resolved_code_revision = (
+        resolve_code_revision(None, cwd=Path.cwd())
+        if code_revision is None
+        else _require_sha(code_revision, "research replay code_revision")
+    )
     bundle = freeze_baseline_replay_bundle(
         recording_root,
         replay_config=replay_config,
-        code_revision=code_revision,
+        code_revision=resolved_code_revision,
     )
     write_baseline_replay_bundle(bundle_path, bundle)
     _attach_recording_locator(
@@ -469,6 +475,7 @@ def materialize_research_candidate_source(
         recording,
         output / "bundle.json",
         replay_config,
+        code_revision=candidate.code_revision,
     )
     bundle = load_baseline_replay_bundle(output / "bundle.json")
     materialized = (
