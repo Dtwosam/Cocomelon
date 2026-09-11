@@ -32,7 +32,7 @@ def test_candidate_package_is_frozen_before_trusted_capture() -> None:
     assert "candidate-build" in capture
     assert "Checkout trusted research capture control revision" in capture
     assert "record-mainnet-evidence" in capture
-    assert "prepare_research_cohort_source" in capture
+    assert "prepare_research_capture_source" in capture
     assert "candidate-src" not in capture
 
 
@@ -58,7 +58,8 @@ def test_trusted_evaluation_constructs_economic_artifact_without_candidate_runti
     assert "Checkout trusted research runner control revision" in evaluation
     assert "complete_research_cohort" in evaluation
     assert "strategy-decisions.json" in evaluation
-    assert "cocomelon-research-runner run-artifact" in evaluation
+    assert "cocomelon-research-runner" in evaluation
+    assert '"run-artifact"' in evaluation
     assert "candidate-src" not in evaluation
     assert "docker run" not in evaluation
 

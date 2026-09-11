@@ -17,6 +17,7 @@ env:
   COCOMELON_API_URL: https://api.hyperliquid.xyz
   COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
   RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
+  RESEARCH_CHALLENGER_CANDIDATE_ID: ${{ vars.RESEARCH_CHALLENGER_CANDIDATE_ID }}
   ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
   BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
   SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}
@@ -31,7 +32,7 @@ jobs:
       contents: read
       actions: read
     outputs:
-      candidate_revision: ${{ steps.candidate.outputs.revision }}
+      candidate_matrix: ${{ steps.candidates.outputs.matrix }}
     steps:
       - name: Checkout research campaign control revision
         uses: actions/checkout@v4
@@ -123,38 +124,35 @@ jobs:
           fi
           cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3
 
-      - name: Resolve candidate code revision from authoritative registry
-        id: candidate
+      - name: Resolve research fanout from authoritative registry
+        id: candidates
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           import os
-          import sqlite3
           from pathlib import Path
 
-          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
-          if not candidate_id:
-              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
+          from cocomelon.research.fanout import resolve_research_fanout, write_research_fanout_plan
+          from cocomelon.research.registry import ResearchRegistry
 
-          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
+          registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
           try:
-              row = connection.execute(
-                  "SELECT code_revision FROM research_candidates WHERE candidate_id = ?",
-                  (candidate_id,),
-              ).fetchone()
+              fanout = resolve_research_fanout(
+                  registry,
+                  root_candidate_id=os.environ["RESEARCH_CANDIDATE_ID"],
+                  challenger_candidate_id=os.environ.get("RESEARCH_CHALLENGER_CANDIDATE_ID"),
+                  run_id=os.environ["GITHUB_RUN_ID"],
+                  run_attempt=int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              )
           finally:
-              connection.close()
-          if row is None or not isinstance(row[0], str):
-              raise RuntimeError("research candidate is missing from authoritative registry")
-          revision = row[0].strip().lower()
-          if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
-              raise RuntimeError("research candidate code_revision must be a 40-character commit SHA")
-          Path("research-campaign/state/research-code-revision.txt").write_text(
-              revision + "\n",
-              encoding="utf-8",
-          )
+              registry.close()
+          write_research_fanout_plan("research-campaign/state/research-fanout.json", fanout)
+          matrix = json.dumps({"include": [candidate.to_matrix_dict() for candidate in fanout]}, separators=(",", ":"))
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
-              handle.write(f"revision={revision}\n")
+              handle.write(f"matrix={matrix}\n")
           PY
 
       - name: Refuse duplicate successful research cohort for current UTC day
@@ -190,37 +188,35 @@ jobs:
           printf '%s\n' 'none' \
             > research-campaign/diagnostics/research-success-today.txt
 
-      - name: Persist acquisition attempt before candidate setup
+      - name: Persist fanout attempts before candidate setup
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           import os
           from pathlib import Path
 
           from cocomelon.research.registry import ResearchRegistry
           from cocomelon.research.runner_history import record_runner_attempt_started
 
-          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()
-          if not candidate_id:
-              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")
-          revision = Path(
-              "research-campaign/state/research-code-revision.txt"
-          ).read_text(encoding="utf-8").strip()
+          payload = json.loads(Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8"))
+          fanout = payload["candidates"]
           registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
           try:
-              candidate = registry.load_candidate(candidate_id)
-              if candidate.code_revision != revision:
-                  raise RuntimeError("restored research candidate code revision changed")
-              record_runner_attempt_started(
-                  registry.connection,
-                  attempt_id=os.environ["ATTEMPT_ID"],
-                  candidate_id=candidate_id,
-                  batch_id=os.environ["BATCH_ID"],
-                  source_id=os.environ["SOURCE_ID"],
-                  artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / "output"),
-              )
+              for candidate in fanout:
+                  manifest = registry.load_candidate(candidate["candidate_id"])
+                  if manifest.code_revision != candidate["code_revision"]:
+                      raise RuntimeError("restored research candidate code revision changed")
+                  record_runner_attempt_started(
+                      registry.connection,
+                      attempt_id=candidate["attempt_id"],
+                      candidate_id=candidate["candidate_id"],
+                      batch_id=candidate["batch_id"],
+                      source_id=candidate["source_id"],
+                      artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / candidate["artifact_key"] / "output"),
+                  )
           finally:
               registry.close()
           PY
@@ -257,18 +253,32 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
+      - name: Upload isolated research fanout plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/state/research-fanout.json
+          if-no-files-found: error
+          retention-days: 2
+
   candidate-build:
     needs: prepare-control
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-control.outputs.candidate_matrix) }}
+    continue-on-error: ${{ !matrix.required }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
       actions: none
+    env:
+      CANDIDATE_ID: ${{ matrix.candidate_id }}
     steps:
       - name: Checkout candidate code revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare-control.outputs.candidate_revision }}
+          ref: ${{ matrix.code_revision }}
           path: candidate-src
           fetch-depth: 1
           clean: false
@@ -295,7 +305,7 @@ jobs:
 
       - name: Freeze candidate strategy image before observation capture
         env:
-          CANDIDATE_REVISION: ${{ needs.prepare-control.outputs.candidate_revision }}
+          CANDIDATE_REVISION: ${{ matrix.code_revision }}
         run: |
           set -euo pipefail
           cat > Dockerfile.research-candidate <<'EOF'
@@ -320,7 +330,7 @@ jobs:
       - name: Upload candidate research stage
         uses: actions/upload-artifact@v4
         with:
-          name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          name: research-candidate-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate-package/
           if-no-files-found: error
           retention-days: 2
@@ -444,17 +454,15 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import os
-          from decimal import Decimal
           from pathlib import Path
 
-          from cocomelon.research.cohort import prepare_research_cohort_source
+          from cocomelon.research.cohort import prepare_research_capture_source
 
           workspace = Path(os.environ["GITHUB_WORKSPACE"])
           campaign = workspace / "research-campaign"
-          prepare_research_cohort_source(
+          prepare_research_capture_source(
               campaign / "recording",
               campaign / "output",
-              Decimal("10000"),
               trigger_head_sha=os.environ["GITHUB_SHA"],
           )
           PY
@@ -467,29 +475,22 @@ jobs:
           import os
           from pathlib import Path
 
-          from cocomelon.evidence.bundle import load_baseline_replay_bundle
-          from cocomelon.research.contracts import TimeInterval
+          import json
           from cocomelon.research.registry import ResearchRegistry
           from cocomelon.research.runner_history import bind_runner_attempt_source_interval
 
           workspace = Path(os.environ["GITHUB_WORKSPACE"])
-          bundle = load_baseline_replay_bundle(
-              workspace / "research-campaign" / "output" / "bundle.json"
-          )
-          interval = TimeInterval(
-              start_ms=bundle.manifest.start_ms,
-              end_ms=bundle.manifest.end_ms,
-          )
-          registry = ResearchRegistry(
-              workspace / "research-control" / "state" / "research.sqlite3"
-          )
+          capture = json.loads((workspace / "research-campaign" / "output" / "capture-source.json").read_text(encoding="utf-8"))
+          fanout = json.loads((workspace / "research-control" / "state" / "research-fanout.json").read_text(encoding="utf-8"))["candidates"]
+          registry = ResearchRegistry(workspace / "research-control" / "state" / "research.sqlite3")
           try:
-              bind_runner_attempt_source_interval(
-                  registry.connection,
-                  attempt_id=os.environ["ATTEMPT_ID"],
-                  start_ms=interval.start_ms,
-                  end_ms=interval.end_ms,
-              )
+              for candidate in fanout:
+                  bind_runner_attempt_source_interval(
+                      registry.connection,
+                      attempt_id=candidate["attempt_id"],
+                      start_ms=int(capture["start_ms"]),
+                      end_ms=int(capture["end_ms"]),
+                  )
           finally:
               registry.close()
           PY
@@ -528,11 +529,17 @@ jobs:
       - candidate-build
       - capture-control
       - refresh-authority
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-control.outputs.candidate_matrix) }}
+    continue-on-error: ${{ !matrix.required }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     permissions:
       contents: read
       actions: none
+    env:
+      CANDIDATE_ID: ${{ matrix.candidate_id }}
     steps:
       - name: Checkout trusted strategy orchestration revision
         uses: actions/checkout@v4
@@ -551,7 +558,7 @@ jobs:
       - name: Download frozen candidate strategy image
         uses: actions/download-artifact@v4
         with:
-          name: research-candidate-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          name: research-candidate-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate-package
 
       - name: Download trusted capture source
@@ -560,10 +567,47 @@ jobs:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
+      - name: Download isolated research fanout plan
+        uses: actions/download-artifact@v4
+        with:
+          name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-fanout
+
       - name: Install trusted strategy orchestration runtime
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ./control-src
+
+      - name: Materialize candidate replay source
+        env:
+          CANDIDATE_ID: ${{ matrix.candidate_id }}
+        working-directory: control-src
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.cohort import materialize_research_candidate_source
+          from cocomelon.research.fanout import ResearchFanoutCandidate
+
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          fanout_path = workspace / "research-fanout" / "research-fanout.json"
+          fanout = json.loads(fanout_path.read_text(encoding="utf-8"))["candidates"]
+          selected = next(
+              item for item in fanout
+              if item["candidate_id"] == os.environ["CANDIDATE_ID"]
+          )
+          candidate = ResearchFanoutCandidate(**selected).manifest
+          campaign = workspace / "research-campaign"
+          materialize_research_candidate_source(
+              campaign / "recording",
+              campaign / "output",
+              capture_source_path=campaign / "output" / "capture-source.json",
+              candidate=candidate,
+          )
+          PY
 
       - name: Load frozen candidate strategy image
         run: |
@@ -572,7 +616,7 @@ jobs:
 
       - name: Run candidate strategy against trusted contexts
         env:
-          CANDIDATE_REVISION: ${{ needs.prepare-control.outputs.candidate_revision }}
+          CANDIDATE_REVISION: ${{ matrix.code_revision }}
           CANDIDATE_SANDBOX_POLICY: --network none --read-only --cap-drop ALL --security-opt no-new-privileges
         working-directory: control-src
         run: |
@@ -605,9 +649,9 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          name: research-decision-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            research-campaign/output/strategy-decisions.json
+            research-campaign/output/
             research-campaign/diagnostics/
           if-no-files-found: error
           retention-days: 2
@@ -647,33 +691,17 @@ jobs:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Resolve bound research interval
+      - name: Resolve shared research capture interval
         run: |
           set -euo pipefail
           python - <<'PY'
+          import json
           import os
-          import sqlite3
           from pathlib import Path
-
-          connection = sqlite3.connect(Path("research-campaign/state/research.sqlite3"))
-          try:
-              row = connection.execute(
-                  "SELECT start_ms, end_ms FROM research_runner_attempts WHERE attempt_id = ?",
-                  (os.environ["ATTEMPT_ID"],),
-              ).fetchone()
-          finally:
-              connection.close()
-          if (
-              row is None
-              or row[0] is None
-              or row[1] is None
-              or int(row[0]) < 0
-              or int(row[1]) <= int(row[0])
-          ):
-              raise RuntimeError("trusted research attempt is missing its bound source interval")
+          payload = json.loads(Path("research-campaign/output/capture-source.json").read_text(encoding="utf-8"))
           with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as handle:
-              handle.write(f"BOUND_START_MS={int(row[0])}\n")
-              handle.write(f"BOUND_END_MS={int(row[1])}\n")
+              handle.write(f"BOUND_START_MS={int(payload['start_ms'])}\n")
+              handle.write(f"BOUND_END_MS={int(payload['end_ms'])}\n")
           PY
 
       - name: Dispatch post-capture V4 authority synchronization
@@ -816,7 +844,7 @@ jobs:
               registry.close()
           PY
 
-      - name: Authorize candidate observation and record research touch
+      - name: Assert shared capture is disjoint from protected V4
         env:
           PYTHONPATH: ${{ github.workspace }}/src
         run: |
@@ -824,22 +852,12 @@ jobs:
           python - <<'PY'
           import os
           from pathlib import Path
-
           from cocomelon.research.contracts import TimeInterval
           from cocomelon.research.registry import ResearchRegistry
-
-          interval = TimeInterval(
-              start_ms=int(os.environ["BOUND_START_MS"]),
-              end_ms=int(os.environ["BOUND_END_MS"]),
-          )
+          interval = TimeInterval(start_ms=int(os.environ["BOUND_START_MS"]), end_ms=int(os.environ["BOUND_END_MS"]))
           registry = ResearchRegistry(Path("research-campaign/state/research.sqlite3"))
           try:
               registry.assert_batch_disjoint_from_v4(interval)
-              registry.record_touched_interval(
-                  os.environ["RESEARCH_CANDIDATE_ID"],
-                  interval,
-                  source_id=os.environ["SOURCE_ID"],
-              )
           finally:
               registry.close()
           PY
@@ -888,11 +906,11 @@ jobs:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
-      - name: Download candidate research stage
+      - name: Download all candidate decision stages
         uses: actions/download-artifact@v4
         with:
-          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
-          path: research-campaign
+          pattern: research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/decisions
 
       - name: Install trusted research runner runtime
         run: |
@@ -984,115 +1002,127 @@ jobs:
               registry.close()
           PY
 
-      - name: Complete trusted research cohort from candidate decisions
+      - name: Evaluate fanout candidates serially
         working-directory: control-src
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          from cocomelon.research.cohort import complete_research_cohort
-
-          workspace = Path(os.environ["GITHUB_WORKSPACE"])
-          campaign = workspace / "research-campaign"
-          complete_research_cohort(
-              campaign / "recording",
-              campaign / "output",
-              strategy_decisions_path=campaign / "output" / "strategy-decisions.json",
-          )
-          PY
-
-      - name: Render research decision throughput summary
-        continue-on-error: true
         run: |
           set -euo pipefail
           python - <<'PY'
           import json
           import os
+          import shutil
+          import subprocess
           from pathlib import Path
+          from types import SimpleNamespace
 
-          summary_path = Path("research-campaign/output/cohort-summary.json")
-          payload = json.loads(summary_path.read_text(encoding="utf-8"))
-          throughput = payload["decision_throughput"]
-
-          directions = throughput["direction_counts"]
-          eligible_directions = throughput["entry_eligible_direction_counts"]
-          post_cutoff_directions = throughput["post_cutoff_direction_counts"]
-
-          rows = (
-              (
-                  "Total",
-                  throughput["decision_count"],
-                  throughput["signal_count"],
-                  directions["long"],
-                  directions["short"],
-                  directions["no_trade"],
-              ),
-              (
-                  "Entry eligible",
-                  throughput["entry_eligible_decision_count"],
-                  throughput["entry_eligible_signal_count"],
-                  eligible_directions["long"],
-                  eligible_directions["short"],
-                  eligible_directions["no_trade"],
-              ),
-              (
-                  "Post cutoff",
-                  throughput["post_cutoff_decision_count"],
-                  throughput["post_cutoff_signal_count"],
-                  post_cutoff_directions["long"],
-                  post_cutoff_directions["short"],
-                  post_cutoff_directions["no_trade"],
-              ),
+          from cocomelon.research.cohort import complete_research_cohort
+          from cocomelon.research.contracts import TimeInterval
+          from cocomelon.research.registry import ResearchRegistry
+          from cocomelon.research.runner_history import (
+              ResearchRunnerAttemptStatus,
+              finish_runner_attempt,
           )
 
-          lines = [
-              "## Research decision throughput",
-              "",
-              "**TOUCHED / NON-PROMOTIONAL — read-only diagnostics.**",
-              "",
-              f"New-exposure cutoff: `{throughput['new_exposure_cutoff_ms']}` ms",
-              "",
-              "| Scope | Decisions | Signals | LONG | SHORT | NO_TRADE |",
-              "| --- | ---: | ---: | ---: | ---: | ---: |",
-          ]
-          lines.extend(
-              f"| {scope} | {decisions} | {signals} | {longs} | {shorts} | {no_trade} |"
-              for scope, decisions, signals, longs, shorts, no_trade in rows
+          workspace = Path(os.environ["GITHUB_WORKSPACE"])
+          campaign = workspace / "research-campaign"
+          fanout_payload = json.loads(
+              (campaign / "state" / "research-fanout.json").read_text(encoding="utf-8")
+          )["candidates"]
+          fanout = [SimpleNamespace(**payload) for payload in fanout_payload]
+          capture = json.loads(
+              (campaign / "output" / "capture-source.json").read_text(encoding="utf-8")
           )
-
-          for title, key in (
-              ("Entry-eligible reasons", "entry_eligible_reason_counts"),
-              ("Post-cutoff reasons", "post_cutoff_reason_counts"),
-          ):
-              reasons = throughput[key]
-              lines.extend(["", f"**{title}:**"])
-              if reasons:
-                  lines.extend(
-                      f"- `{reason}`: {count}"
-                      for reason, count in sorted(reasons.items())
+          interval = TimeInterval(
+              start_ms=int(capture["start_ms"]),
+              end_ms=int(capture["end_ms"]),
+          )
+          for candidate in fanout:
+              candidate_root = campaign / candidate.artifact_key
+              recording_root = candidate_root / "recording"
+              output_root = candidate_root / "output"
+              decision_root = (
+                  campaign
+                  / "decisions"
+                  / (
+                      f"research-decision-stage-{candidate.artifact_key}-"
+                      f"{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}"
                   )
-              else:
-                  lines.append("- none")
+              )
+              try:
+                  registry = ResearchRegistry(campaign / "state" / "research.sqlite3")
+                  try:
+                      registry.assert_batch_disjoint_from_v4(interval)
+                      registry.record_touched_interval(
+                          candidate.candidate_id,
+                          interval,
+                          source_id=candidate.source_id,
+                      )
+                  finally:
+                      registry.close()
 
-          summary_file = Path(os.environ["GITHUB_STEP_SUMMARY"])
-          with summary_file.open("a", encoding="utf-8") as handle:
-              handle.write("\n".join(lines) + "\n")
+                  source_output = next(
+                      path.parent for path in decision_root.rglob("bundle.json")
+                  )
+                  if candidate_root.exists():
+                      shutil.rmtree(candidate_root)
+                  candidate_root.mkdir(parents=True)
+                  recording_root.symlink_to(campaign / "recording", target_is_directory=True)
+                  shutil.copytree(source_output, output_root)
+
+                  complete_research_cohort(
+                      recording_root,
+                      output_root,
+                      strategy_decisions_path=output_root / "strategy-decisions.json",
+                  )
+                  runner_path = output_root / "runner.json"
+                  with runner_path.open("w", encoding="utf-8") as runner_output:
+                      subprocess.run(
+                          [
+                              "cocomelon-research-runner",
+                              "run-artifact",
+                              "--registry",
+                              str(campaign / "state" / "research.sqlite3"),
+                              "--attempt-id",
+                              candidate.attempt_id,
+                              "--candidate-id",
+                              candidate.candidate_id,
+                              "--batch-id",
+                              candidate.batch_id,
+                              "--source-id",
+                              candidate.source_id,
+                              "--artifact-root",
+                              str(output_root),
+                          ],
+                          check=True,
+                          stdout=runner_output,
+                      )
+              except Exception as exc:
+                  registry = ResearchRegistry(campaign / "state" / "research.sqlite3")
+                  try:
+                      stored = registry.connection.execute(
+                          "SELECT status FROM research_runner_attempts WHERE attempt_id = ?",
+                          (candidate.attempt_id,),
+                      ).fetchone()
+                      if stored is not None and stored["status"] in {"running", "evaluating"}:
+                          finish_runner_attempt(
+                              registry.connection,
+                              attempt_id=candidate.attempt_id,
+                              status=ResearchRunnerAttemptStatus.FAILED,
+                              start_ms=interval.start_ms,
+                              end_ms=interval.end_ms,
+                              report_id=None,
+                              error_type=type(exc).__name__,
+                              error_message=str(exc),
+                          )
+                  finally:
+                      registry.close()
+                  if candidate.required:
+                      raise
           PY
 
-      - name: Evaluate authenticated research attempt
-        working-directory: control-src
+      - name: Render research decision throughput summary
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          cocomelon-research-runner run-artifact \
-            --registry "$GITHUB_WORKSPACE/research-campaign/state/research.sqlite3" \
-            --attempt-id "$ATTEMPT_ID" \
-            --candidate-id "$RESEARCH_CANDIDATE_ID" \
-            --batch-id "$BATCH_ID" \
-            --source-id "$SOURCE_ID" \
-            --artifact-root "$GITHUB_WORKSPACE/research-campaign/output" \
-            > "$GITHUB_WORKSPACE/research-campaign/output/runner.json"
+          echo "Fanout evaluation completed; per-candidate artifacts remain TOUCHED / NON-PROMOTIONAL." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish committed authoritative research registry
         id: publish-committed-registry
@@ -1295,7 +1325,7 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          name: research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          pattern: research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/decisions
 
       - name: Download evaluated products for final audit
@@ -1321,6 +1351,7 @@ jobs:
             exit 0
           fi
           python - <<'PY'
+          import json
           import os
           import sqlite3
           from pathlib import Path
@@ -1358,18 +1389,26 @@ jobs:
               ).fetchone()
               if table is None:
                   raise SystemExit(0)
-              cursor = connection.execute(
-                  """
-                  UPDATE research_runner_attempts
-                  SET status = 'failed', report_id = NULL,
-                      error_type = 'WorkflowFailure',
-                      error_message = ?
-                  WHERE attempt_id = ? AND status IN ('running', 'evaluating')
-                  """,
-                  (error_message, os.environ["ATTEMPT_ID"]),
-              )
-              if cursor.rowcount not in (0, 1):
-                  raise RuntimeError("research runner failure finalization was ambiguous")
+              fanout_path = Path("research-campaign/state/research-fanout.json")
+              if not fanout_path.is_file():
+                  connection.commit()
+                  raise SystemExit(0)
+              fanout = json.loads(fanout_path.read_text(encoding="utf-8"))["candidates"]
+              for candidate in fanout:
+                  cursor = connection.execute(
+                      """
+                      UPDATE research_runner_attempts
+                      SET status = 'failed', report_id = NULL,
+                          error_type = 'WorkflowFailure',
+                          error_message = ?
+                      WHERE attempt_id = ? AND status IN ('running', 'evaluating')
+                      """,
+                      (error_message, candidate["attempt_id"]),
+                  )
+                  if cursor.rowcount not in (0, 1):
+                      raise RuntimeError(
+                          "research runner failure finalization was ambiguous"
+                      )
               connection.commit()
           finally:
               connection.close()

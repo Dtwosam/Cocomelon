@@ -46,6 +46,7 @@ def test_candidate_build_and_decisions_are_fanned_out_but_isolated() -> None:
 
     for block in (candidate, decisions):
         assert matrix in block
+        assert "continue-on-error: ${{ !matrix.required }}" in block
         assert "candidate_id" in block
         assert "research.sqlite3" not in block
         assert "GH_TOKEN:" not in block
@@ -75,6 +76,9 @@ def test_candidate_evaluation_serializes_registry_updates_and_contains_optional_
     assert "candidate.source_id" in evaluation
     assert "assert_batch_disjoint_from_v4" in evaluation
     assert "record_touched_interval" in evaluation
+    assert "finish_runner_attempt" in evaluation
+    assert "ResearchRunnerAttemptStatus.FAILED" in evaluation
+    assert "str(output_root)" in evaluation
     assert "research-authoritative-registry" in evaluation
 
 

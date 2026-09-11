@@ -85,8 +85,10 @@ def test_capture_binds_interval_and_authority_touches_before_candidate_runtime()
         in capture
     )
     assert "assert_batch_disjoint_from_v4" in refresh
-    assert "record_touched_interval" in refresh
-    assert refresh.index("assert_batch_disjoint_from_v4") < refresh.index(
+    assert "record_touched_interval" not in refresh
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+    assert "record_touched_interval" in evaluation
+    assert evaluation.index("assert_batch_disjoint_from_v4") < evaluation.index(
         "record_touched_interval"
     )
     assert "refresh-authority" in decisions.split("steps:", 1)[0]
@@ -104,7 +106,7 @@ def test_committed_checkpoint_registry_is_transferred_before_secondary_stage_upl
     evaluation = _job(source, "evaluate-research", "finalize-publish")
     finalization = _job(source, "finalize-publish", None)
 
-    runner_index = evaluation.index("Evaluate authenticated research attempt")
+    runner_index = evaluation.index("Evaluate fanout candidates serially")
     publish_index = evaluation.index("Publish committed authoritative research registry")
     stage_index = evaluation.index("Upload evaluated research stage")
     assert runner_index < publish_index < stage_index
@@ -141,7 +143,10 @@ def test_final_audit_retains_capture_and_candidate_failure_evidence_independentl
     )
     assert "research-campaign/audit/capture" in capture
     assert "continue-on-error: true" in decisions
-    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in decisions
+    assert (
+        "research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}"
+        in decisions
+    )
     assert "research-campaign/audit/decisions" in decisions
     audit = finalization.split("- name: Upload complete research campaign audit trail", 1)[1]
     assert "path: research-campaign/" in audit
@@ -251,10 +256,11 @@ def test_persisted_runner_artifact_root_matches_absolute_cli_request() -> None:
     evaluation = _job(source, "evaluate-research", "finalize-publish")
 
     assert (
-        'artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" / "output")'
-        in prepare
+        'artifact_root=str(Path(os.environ["GITHUB_WORKSPACE"]) / "research-campaign" '
+        '/ candidate["artifact_key"] / "output")' in prepare
     )
-    assert '--artifact-root "$GITHUB_WORKSPACE/research-campaign/output"' in evaluation
+    assert '"--artifact-root",' in evaluation
+    assert "str(output_root)" in evaluation
 
 
 def test_evaluation_rebases_latest_authority_after_acquiring_publisher_lock() -> None:
@@ -267,7 +273,7 @@ def test_evaluation_rebases_latest_authority_after_acquiring_publisher_lock() ->
     rebase_index = evaluation.index(
         "Rebase staged registry onto latest trusted authority under publisher lock"
     )
-    runner_index = evaluation.index("Evaluate authenticated research attempt")
+    runner_index = evaluation.index("Evaluate fanout candidates serially")
     assert rebase_index < runner_index
     rebase = evaluation[rebase_index:runner_index]
     assert "GH_TOKEN: ${{ github.token }}" in rebase

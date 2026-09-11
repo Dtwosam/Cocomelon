@@ -51,7 +51,7 @@ def test_campaign_refuses_second_successful_cohort_in_same_utc_day_before_attemp
 
     assert marker in prepare
     guard = prepare.split(f"- name: {marker}", 1)[1].split(
-        "- name: Persist acquisition attempt before candidate setup",
+        "- name: Persist fanout attempts before candidate setup",
         1,
     )[0]
     assert "GH_TOKEN: ${{ github.token }}" in guard
@@ -61,7 +61,7 @@ def test_campaign_refuses_second_successful_cohort_in_same_utc_day_before_attemp
     assert '.conclusion == "success"' in guard
     assert '.event == "schedule" or .event == "workflow_dispatch"' in guard
     assert "GITHUB_RUN_ID" in guard
-    assert source.index(marker) < source.index("Persist acquisition attempt before candidate setup")
+    assert source.index(marker) < source.index("Persist fanout attempts before candidate setup")
     assert source.index(marker) < source.index("Checkout candidate code revision")
     assert source.index(marker) < source.index("record-mainnet-evidence")
 
