@@ -103,6 +103,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
           python -m compileall -q src tests scripts
+          python -m ruff format src/cocomelon/research/cohort.py
           python -m ruff check src tests scripts
           python -m mypy src
           python -m pytest tests/test_research_candidate_execution_binding.py -q
