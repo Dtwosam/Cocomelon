@@ -1,0 +1,134 @@
+name: Temporary render research candidate execution binding
+
+on:
+  push:
+    branches:
+      - fix/research-bind-candidate-execution-20260911
+    paths:
+      - .github/workflows/_tmp-render-research-execution-binding.yml
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/research-bind-candidate-execution-20260911
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Render exact candidate execution binding patch
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          cohort_path = Path('src/cocomelon/research/cohort.py')
+          text = cohort_path.read_text(encoding='utf-8')
+
+          anchor = '''from cocomelon.research.strategy_seam import (\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit('unexpected research strategy seam import count')
+          text = text.replace(
+              anchor,
+              'from cocomelon.research.contracts import ResearchCandidateManifest\n' + anchor,
+              1,
+          )
+
+          old = '''def _research_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:\n    return BaselineReplayConfig(\n        starting_cash=starting_cash,\n        execution=PaperExecutionConfig(\n            config_version=RESEARCH_EXECUTION_CONFIG_VERSION,\n            max_position_age_ms=RESEARCH_MAX_POSITION_AGE_MS,\n        ),\n        replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,\n        config_version=RESEARCH_REPLAY_CONFIG_VERSION,\n    )\n'''
+          new = '''def _assert_research_replay_config(replay_config: BaselineReplayConfig) -> None:\n    if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:\n        raise ValueError("research replay engine version does not match bounded protocol")\n    if replay_config.config_version != RESEARCH_REPLAY_CONFIG_VERSION:\n        raise ValueError("research replay config version does not match bounded protocol")\n    max_position_age_ms = replay_config.execution.max_position_age_ms\n    if max_position_age_ms is None or max_position_age_ms <= 0:\n        raise ValueError("research replay max position age must be positive and bounded")\n    if RESEARCH_ENTRY_WINDOW_MS + max_position_age_ms >= RESEARCH_CAPTURE_SECONDS * 1_000:\n        raise ValueError("research candidate exit horizon must fit inside capture")\n\n\ndef _research_replay_config(starting_cash: Decimal) -> BaselineReplayConfig:\n    replay_config = BaselineReplayConfig(\n        starting_cash=starting_cash,\n        execution=PaperExecutionConfig(\n            config_version=RESEARCH_EXECUTION_CONFIG_VERSION,\n            max_position_age_ms=RESEARCH_MAX_POSITION_AGE_MS,\n        ),\n        replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,\n        config_version=RESEARCH_REPLAY_CONFIG_VERSION,\n    )\n    _assert_research_replay_config(replay_config)\n    return replay_config\n\n\ndef research_replay_config_from_candidate(\n    candidate: ResearchCandidateManifest,\n) -> BaselineReplayConfig:\n    try:\n        payload = json.loads(candidate.execution_config_json)\n    except json.JSONDecodeError as exc:\n        raise ValueError("research candidate execution config must be valid JSON") from exc\n    if not isinstance(payload, dict):\n        raise ValueError("research candidate execution config must be an object")\n    expected_keys = {"config_version", "max_position_age_ms", "starting_cash"}\n    if set(payload) != expected_keys:\n        raise ValueError("research candidate execution config fields are not supported")\n\n    config_version = _require_string(\n        payload.get("config_version"),\n        "research candidate execution config_version",\n    )\n    max_position_age_ms = _require_int(\n        payload.get("max_position_age_ms"),\n        "research candidate execution max_position_age_ms",\n    )\n    starting_cash_raw = _require_string(\n        payload.get("starting_cash"),\n        "research candidate execution starting_cash",\n    )\n    try:\n        starting_cash = Decimal(starting_cash_raw)\n    except Exception as exc:\n        raise ValueError("research candidate execution starting_cash must be decimal") from exc\n    if not starting_cash.is_finite() or starting_cash <= 0:\n        raise ValueError("research candidate execution starting_cash must be positive and finite")\n\n    replay_config = BaselineReplayConfig(\n        starting_cash=starting_cash,\n        execution=PaperExecutionConfig(\n            config_version=config_version,\n            max_position_age_ms=max_position_age_ms,\n        ),\n        replay_engine_version=RESEARCH_REPLAY_ENGINE_VERSION,\n        config_version=RESEARCH_REPLAY_CONFIG_VERSION,\n    )\n    _assert_research_replay_config(replay_config)\n    if replay_config.config_digest != candidate.config_digest:\n        raise ValueError("research candidate execution config digest does not match manifest")\n    return replay_config\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected default replay config block count')
+          text = text.replace(old, new, 1)
+
+          old = '''def _freeze_research_replay_payload(\n    recording_root: Path,\n    bundle_path: Path,\n    starting_cash: Decimal,\n) -> dict[str, object]:\n    replay_config = _research_replay_config(starting_cash)\n'''
+          new = '''def _freeze_research_replay_payload(\n    recording_root: Path,\n    bundle_path: Path,\n    replay_config: BaselineReplayConfig,\n) -> dict[str, object]:\n    _assert_research_replay_config(replay_config)\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected freeze replay signature count')
+          text = text.replace(old, new, 1)
+
+          old = '''def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None:\n    replay_config = bundle.replay_config\n    if replay_config.replay_engine_version != RESEARCH_REPLAY_ENGINE_VERSION:\n        raise ValueError("research replay engine version does not match bounded protocol")\n    if replay_config.config_version != RESEARCH_REPLAY_CONFIG_VERSION:\n        raise ValueError("research replay config version does not match bounded protocol")\n    execution = replay_config.execution\n    if (\n        execution.config_version != RESEARCH_EXECUTION_CONFIG_VERSION\n        or execution.max_position_age_ms != RESEARCH_MAX_POSITION_AGE_MS\n    ):\n        raise ValueError("research replay execution config does not match bounded protocol")\n'''
+          new = '''def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None:\n    _assert_research_replay_config(bundle.replay_config)\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected bundle protocol block count')
+          text = text.replace(old, new, 1)
+
+          old = '''def prepare_research_cohort_source(\n    recording_root: str | Path,\n    output_root: str | Path,\n    starting_cash: Decimal,\n    *,\n    trigger_head_sha: str,\n) -> ResearchCohortSourceResult:\n'''
+          new = '''def prepare_research_cohort_source(\n    recording_root: str | Path,\n    output_root: str | Path,\n    starting_cash: Decimal,\n    *,\n    trigger_head_sha: str,\n    replay_config: BaselineReplayConfig | None = None,\n) -> ResearchCohortSourceResult:\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected prepare signature count')
+          text = text.replace(old, new, 1)
+
+          old = '''    freeze = _freeze_research_replay_payload(\n        recording,\n        output / "bundle.json",\n        starting_cash,\n    )\n'''
+          new = '''    resolved_replay_config = replay_config or _research_replay_config(starting_cash)\n    if resolved_replay_config.starting_cash != starting_cash:\n        raise ValueError("research starting cash does not match candidate replay config")\n    _assert_research_replay_config(resolved_replay_config)\n    freeze = _freeze_research_replay_payload(\n        recording,\n        output / "bundle.json",\n        resolved_replay_config,\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected prepare freeze call count')
+          text = text.replace(old, new, 1)
+
+          old = '''        "max_position_age_ms": RESEARCH_MAX_POSITION_AGE_MS,\n'''
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f'unexpected max-position-age payload count: {count}')
+          text = text.replace(
+              old,
+              '        "max_position_age_ms": replay_config.execution.max_position_age_ms,\n',
+              1,
+          )
+          text = text.replace(
+              old,
+              '            "max_position_age_ms": bundle.replay_config.execution.max_position_age_ms,\n',
+              1,
+          )
+
+          old = '''def build_research_cohort(\n    recording_root: str | Path,\n    output_root: str | Path,\n    starting_cash: Decimal,\n    *,\n    trigger_head_sha: str,\n) -> ResearchCohortBuildResult:\n'''
+          new = '''def build_research_cohort(\n    recording_root: str | Path,\n    output_root: str | Path,\n    starting_cash: Decimal,\n    *,\n    trigger_head_sha: str,\n    replay_config: BaselineReplayConfig | None = None,\n) -> ResearchCohortBuildResult:\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected builder signature count')
+          text = text.replace(old, new, 1)
+
+          old = '''        starting_cash,\n        trigger_head_sha=trigger_head_sha,\n    )\n'''
+          new = '''        starting_cash,\n        trigger_head_sha=trigger_head_sha,\n        replay_config=replay_config,\n    )\n'''
+          if text.count(old) != 1:
+              raise SystemExit('unexpected builder prepare call count')
+          text = text.replace(old, new, 1)
+          cohort_path.write_text(text, encoding='utf-8')
+
+          workflow_path = Path('.github/workflows/research-campaign-scheduled.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          old = '''          import os\n          from decimal import Decimal\n          from pathlib import Path\n\n          from cocomelon.research.cohort import prepare_research_cohort_source\n\n          workspace = Path(os.environ["GITHUB_WORKSPACE"])\n          campaign = workspace / "research-campaign"\n          prepare_research_cohort_source(\n              campaign / "recording",\n              campaign / "output",\n              Decimal("10000"),\n              trigger_head_sha=os.environ["GITHUB_SHA"],\n          )\n'''
+          new = '''          import os\n          from pathlib import Path\n\n          from cocomelon.research.cohort import (\n              prepare_research_cohort_source,\n              research_replay_config_from_candidate,\n          )\n          from cocomelon.research.registry import ResearchRegistry\n\n          workspace = Path(os.environ["GITHUB_WORKSPACE"])\n          campaign = workspace / "research-campaign"\n          candidate_id = os.environ.get("RESEARCH_CANDIDATE_ID", "").strip()\n          if not candidate_id:\n              raise RuntimeError("RESEARCH_CANDIDATE_ID repository variable is required")\n          registry = ResearchRegistry(\n              workspace / "research-control" / "state" / "research.sqlite3"\n          )\n          try:\n              candidate = registry.load_candidate(candidate_id)\n          finally:\n              registry.close()\n          replay_config = research_replay_config_from_candidate(candidate)\n          prepare_research_cohort_source(\n              campaign / "recording",\n              campaign / "output",\n              replay_config.starting_cash,\n              trigger_head_sha=os.environ["GITHUB_SHA"],\n              replay_config=replay_config,\n          )\n'''
+          if workflow.count(old) != 1:
+              raise SystemExit('unexpected research source preparation workflow block count')
+          workflow_path.write_text(workflow.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Verify rendered patch
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m compileall -q src tests scripts
+          python -m ruff check src tests scripts
+          python -m mypy src
+          python -m pytest tests/test_research_candidate_execution_binding.py -q
+          git diff --check
+
+      - name: Upload rendered files
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-research-execution-binding
+          path: |
+            src/cocomelon/research/cohort.py
+            .github/workflows/research-campaign-scheduled.yml
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
