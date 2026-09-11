@@ -22,12 +22,15 @@ def test_v4_authority_is_verified_before_candidate_observes_capture() -> None:
     assert "candidate-decisions" not in refresh.split("steps:", 1)[0]
     assert "Download candidate research stage" not in refresh
     assert "assert_batch_disjoint_from_v4" in refresh
-    assert "record_touched_interval" in refresh
-    assert refresh.index("assert_batch_disjoint_from_v4") < refresh.index("record_touched_interval")
+    assert "record_touched_interval" not in refresh
+    assert "record_touched_interval" in evaluation
+    assert evaluation.index("assert_batch_disjoint_from_v4") < evaluation.index(
+        "record_touched_interval"
+    )
     assert "candidate-decisions" in evaluation.split("steps:", 1)[0]
-    assert "Download candidate research stage" in evaluation
+    assert "Download all candidate decision stages" in evaluation
 
-    assert "Authorize candidate observation and record research touch" in refresh
+    assert "Assert shared capture is disjoint from protected V4" in refresh
     assert "refresh-authority" in decisions.split("steps:", 1)[0]
 
 
@@ -55,7 +58,7 @@ def test_known_active_v4_is_rejected_before_candidate_build_or_capture() -> None
     ):
         assert forbidden not in preflight.lower()
 
-    assert prepare.index("Persist acquisition attempt before candidate setup") < prepare.index(
+    assert prepare.index("Persist fanout attempts before candidate setup") < prepare.index(
         marker
     )
     assert prepare.index(marker) < prepare.index("Upload prepared research control state")

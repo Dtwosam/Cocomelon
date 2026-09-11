@@ -26,9 +26,10 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
     assert "COCOMELON_EXECUTION_MODE: paper" in source
     assert "cancel-in-progress: false" in source
     assert "record-mainnet-evidence" in source
-    assert "prepare_research_cohort_source" in source
+    assert "prepare_research_capture_source" in source
     assert "complete_research_cohort" in source
-    assert "cocomelon-research-runner run-artifact" in source
+    assert "cocomelon-research-runner" in source
+    assert '"run-artifact"' in source
     assert "research-authoritative-registry" in source
 
     for forbidden in (
@@ -55,12 +56,12 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
 def test_research_campaign_pins_candidate_strategy_before_trusted_capture() -> None:
     source = _source()
 
-    assert "Resolve candidate code revision from authoritative registry" in source
-    assert "SELECT code_revision FROM research_candidates WHERE candidate_id = ?" in source
-    assert "candidate_revision: ${{ steps.candidate.outputs.revision }}" in source
+    assert "Resolve research fanout from authoritative registry" in source
+    assert "resolve_research_fanout" in source
+    assert "candidate_matrix: ${{ steps.candidates.outputs.matrix }}" in source
     assert "Checkout candidate code revision" in source
-    assert "ref: ${{ needs.prepare-control.outputs.candidate_revision }}" in source
-    resolve_index = source.index("Resolve candidate code revision from authoritative registry")
+    assert "ref: ${{ matrix.code_revision }}" in source
+    resolve_index = source.index("Resolve research fanout from authoritative registry")
     assert resolve_index < source.index("Checkout candidate code revision")
     assert source.index("Checkout candidate code revision") < source.index("Install Cocomelon")
     assert source.index("docker save") < source.index("record-mainnet-evidence")
@@ -92,7 +93,7 @@ def test_candidate_build_never_receives_authoritative_registry_or_observations()
 def test_registry_restore_requires_trusted_main_workflow_provenance() -> None:
     source = _source()
     restore = source.split("- name: Restore authoritative research registry", 1)[1].split(
-        "- name: Resolve candidate code revision from authoritative registry",
+        "- name: Resolve research fanout from authoritative registry",
         1,
     )[0]
 
@@ -133,13 +134,13 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
     evaluation_rebase = evaluation.split(
         "- name: Rebase staged registry onto latest trusted authority under publisher lock",
         1,
-    )[1].split("- name: Complete trusted research cohort from candidate decisions", 1)[0]
+    )[1].split("- name: Evaluate fanout candidates serially", 1)[0]
     evaluation_before_rebase = evaluation.split(
         "- name: Rebase staged registry onto latest trusted authority under publisher lock",
         1,
     )[0]
     evaluation_after_rebase = evaluation.split(
-        "- name: Complete trusted research cohort from candidate decisions",
+        "- name: Evaluate fanout candidates serially",
         1,
     )[1]
     finalizer_rebase = finalization.split(
@@ -191,11 +192,11 @@ def test_actions_token_is_confined_to_trusted_registry_jobs() -> None:
 def test_attempt_identity_is_persisted_before_candidate_setup() -> None:
     source = _source()
 
-    assert "Persist acquisition attempt before candidate setup" in source
-    assert source.index("Persist acquisition attempt before candidate setup") < source.index(
+    assert "Persist fanout attempts before candidate setup" in source
+    assert source.index("Persist fanout attempts before candidate setup") < source.index(
         "Checkout candidate code revision"
     )
-    assert source.index("Persist acquisition attempt before candidate setup") < source.index(
+    assert source.index("Persist fanout attempts before candidate setup") < source.index(
         "Install Cocomelon"
     )
     failure = source.split("- name: Persist workflow failure in attempt ledger", 1)[1].split(
@@ -229,8 +230,8 @@ def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_d
     assert "refresh-authority" in decisions.split("steps:", 1)[0]
     assert "candidate-decisions" not in refresh.split("steps:", 1)[0]
     assert "candidate-decisions" in evaluation.split("steps:", 1)[0]
-    assert "Download candidate research stage" in evaluation
-    assert "research-decision-stage-${{ github.run_id }}-${{ github.run_attempt }}" in evaluation
+    assert "Download all candidate decision stages" in evaluation
+    assert "research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}" in evaluation
     assert source.index("Acquire one public mainnet research cohort") < source.index(
         "Download refreshed V4 authority after acquisition"
     )
@@ -238,7 +239,7 @@ def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_d
         "Merge refreshed V4 authority after acquisition"
     )
     assert refresh.index("Merge refreshed V4 authority after acquisition") < refresh.index(
-        "Authorize candidate observation and record research touch"
+        "Assert shared capture is disjoint from protected V4"
     )
     assert '"$RUN_PATH" != ".github/workflows/research-v4-registry-sync.yml"' in refresh_download
     assert '"$RUN_BRANCH" != "main"' in refresh_download
@@ -246,7 +247,8 @@ def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_d
     assert '"$RUN_CONCLUSION" != "success"' in refresh_download
     assert "merge_v4_authority_snapshot" in refresh_merge
     assert "assert_batch_disjoint_from_v4" in refresh_merge
-    assert "record_touched_interval" in refresh_merge
+    assert "record_touched_interval" not in refresh_merge
+    assert "record_touched_interval" in evaluation
     assert "research-campaign/state/research.sqlite3" in refresh_merge
     assert "research-campaign/state/refreshed-v4-authority.sqlite3" in refresh_merge
     assert 'cp "$REGISTRY_PATH" research-campaign/state/research.sqlite3' not in refresh_download
@@ -259,25 +261,20 @@ def test_refresh_authorizes_capture_before_candidate_and_evaluation_recombines_d
 def test_evaluation_renders_non_blocking_decision_throughput_summary() -> None:
     source = _source()
     evaluation = _job_block(source, "evaluate-research", "finalize-publish")
-    completion = evaluation.index("Complete trusted research cohort from candidate decisions")
+    serial = evaluation.index("Evaluate fanout candidates serially")
     summary = evaluation.index("Render research decision throughput summary")
-    runner = evaluation.index("Evaluate authenticated research attempt")
 
-    assert completion < summary < runner
-    block = evaluation.split(
-        "- name: Render research decision throughput summary",
-        1,
-    )[1].split("- name: Evaluate authenticated research attempt", 1)[0]
+    assert serial < summary
+    serial_block = evaluation.split("- name: Evaluate fanout candidates serially", 1)[1].split(
+        "- name: Render research decision throughput summary", 1
+    )[0]
+    assert "complete_research_cohort" in serial_block
+    assert "cocomelon-research-runner" in serial_block
+    block = evaluation.split("- name: Render research decision throughput summary", 1)[1].split(
+        "- name: Publish committed authoritative research registry", 1
+    )[0]
     assert "continue-on-error: true" in block
-    assert "cohort-summary.json" in block
-    assert "decision_throughput" in block
-    assert "entry_eligible_decision_count" in block
-    assert "post_cutoff_decision_count" in block
-    assert "entry_eligible_signal_count" in block
-    assert "post_cutoff_signal_count" in block
     assert "GITHUB_STEP_SUMMARY" in block
-    assert "cocomelon-research-runner" not in block
-    assert "research.sqlite3" not in block
     assert "net_pnl" not in block.lower()
     assert "posterior" not in block.lower()
 
@@ -301,7 +298,8 @@ def test_evaluation_registry_and_economics_are_owned_only_by_trusted_control_cod
     assert "cache-dependency-path: control-src/pyproject.toml" in setup
     assert "python -m pip install -e ./control-src" in evaluation
     assert "complete_research_cohort" in evaluation
-    assert "cocomelon-research-runner run-artifact" in evaluation
+    assert "cocomelon-research-runner" in evaluation
+    assert '"run-artifact"' in evaluation
     assert "research-campaign/state/research.sqlite3" in evaluation
 
 

@@ -70,6 +70,16 @@ class ResearchCohortSourceResult:
     code_revision: str
 
 
+@dataclass(frozen=True, slots=True)
+class ResearchCaptureSourceResult:
+    output_root: Path
+    start_ms: int
+    end_ms: int
+    recording_session_digest: str
+    source_set_digest: str
+    code_revision: str
+
+
 def _read_mapping(path: Path, field: str) -> dict[str, object]:
     if not path.is_file():
         raise ValueError(f"research cohort {field} is missing: {path}")
@@ -281,13 +291,19 @@ def _freeze_research_replay_payload(
     recording_root: Path,
     bundle_path: Path,
     replay_config: BaselineReplayConfig,
+    *,
+    code_revision: str | None = None,
 ) -> dict[str, object]:
     _assert_research_replay_config(replay_config)
-    code_revision = resolve_code_revision(None, cwd=Path.cwd())
+    resolved_code_revision = (
+        resolve_code_revision(None, cwd=Path.cwd())
+        if code_revision is None
+        else _require_sha(code_revision, "research replay code_revision")
+    )
     bundle = freeze_baseline_replay_bundle(
         recording_root,
         replay_config=replay_config,
-        code_revision=code_revision,
+        code_revision=resolved_code_revision,
     )
     write_baseline_replay_bundle(bundle_path, bundle)
     _attach_recording_locator(
@@ -330,6 +346,162 @@ def _validated_bundle_source_root(bundle_path: Path, bundle_id: str) -> Path:
 
 def _assert_research_bundle_protocol(bundle: FrozenBaselineReplayBundle) -> None:
     _assert_research_replay_config(bundle.replay_config)
+
+
+def _capture_source_probe(recording_root: Path) -> FrozenBaselineReplayBundle:
+    probe = freeze_baseline_replay_bundle(
+        recording_root,
+        replay_config=_research_replay_config(Decimal("10000")),
+        code_revision=resolve_code_revision(None, cwd=Path.cwd()),
+    )
+    if probe.manifest.gap_refs:
+        raise ValueError("research capture source contains a coverage gap")
+    return probe
+
+
+def prepare_research_capture_source(
+    recording_root: str | Path,
+    output_root: str | Path,
+    *,
+    trigger_head_sha: str,
+) -> ResearchCaptureSourceResult:
+    recording = Path(recording_root)
+    output = Path(output_root)
+    _assert_sibling_layout(recording, output)
+    if not output.is_dir():
+        raise ValueError("research capture output root must already exist")
+    trigger_head = _require_sha(trigger_head_sha, "trigger_head_sha")
+    segments = validate_recording(recording)
+    if not segments:
+        raise ValueError("research capture recording must contain validated segments")
+    record = _normalized_record(output, recording_root=recording)
+    _write_json(output / "record.json", record)
+
+    probe = _capture_source_probe(recording)
+    source_payload: dict[str, object] = {
+        "code_revision": probe.manifest.code_revision,
+        "end_ms": probe.manifest.end_ms,
+        "evidence_class": probe.manifest.evidence_class.value,
+        "recording_session_digest": probe.recording_session_digest,
+        "schema_version": 1,
+        "segment_count": len(probe.manifest.segments),
+        "source_set_digest": probe.source_set_digest,
+        "start_ms": probe.manifest.start_ms,
+        "trigger_head_sha": trigger_head,
+    }
+    _write_json(output / "capture-source.json", source_payload)
+    workflow_head = _require_sha(probe.manifest.code_revision, "research capture code_revision")
+    (output / "workflow-head.txt").write_text(workflow_head + "\n", encoding="utf-8")
+    (output / "trigger-head.txt").write_text(trigger_head + "\n", encoding="utf-8")
+    return ResearchCaptureSourceResult(
+        output_root=output,
+        start_ms=probe.manifest.start_ms,
+        end_ms=probe.manifest.end_ms,
+        recording_session_digest=probe.recording_session_digest,
+        source_set_digest=probe.source_set_digest,
+        code_revision=workflow_head,
+    )
+
+
+def _load_capture_source(path: Path) -> dict[str, object]:
+    payload = _read_mapping(path, "capture source")
+    required = {
+        "code_revision",
+        "end_ms",
+        "evidence_class",
+        "recording_session_digest",
+        "schema_version",
+        "segment_count",
+        "source_set_digest",
+        "start_ms",
+        "trigger_head_sha",
+    }
+    if set(payload) != required or payload.get("schema_version") != 1:
+        raise ValueError("research capture source contract is invalid")
+    _require_sha(
+        _require_string(payload.get("code_revision"), "capture source code_revision"),
+        "capture source code_revision",
+    )
+    _require_sha(
+        _require_string(payload.get("trigger_head_sha"), "capture source trigger_head_sha"),
+        "capture source trigger_head_sha",
+    )
+    for field in ("start_ms", "end_ms", "segment_count"):
+        _require_int(payload.get(field), f"capture source {field}")
+    for field in ("recording_session_digest", "source_set_digest", "evidence_class"):
+        _require_string(payload.get(field), f"capture source {field}")
+    return payload
+
+
+def materialize_research_candidate_source(
+    recording_root: str | Path,
+    output_root: str | Path,
+    *,
+    capture_source_path: str | Path,
+    candidate: ResearchCandidateManifest,
+) -> ResearchCohortSourceResult:
+    recording = Path(recording_root)
+    output = Path(output_root)
+    capture_path = Path(capture_source_path)
+    if not output.is_dir():
+        raise ValueError("research candidate output root must already exist")
+    capture = _load_capture_source(capture_path)
+    segments = validate_recording(recording)
+    if not segments:
+        raise ValueError("research candidate recording must contain validated segments")
+    probe = _capture_source_probe(recording)
+    expected = (
+        probe.manifest.start_ms,
+        probe.manifest.end_ms,
+        probe.recording_session_digest,
+        probe.source_set_digest,
+        len(probe.manifest.segments),
+    )
+    observed = (
+        _require_int(capture.get("start_ms"), "capture source start_ms"),
+        _require_int(capture.get("end_ms"), "capture source end_ms"),
+        _require_string(
+            capture.get("recording_session_digest"),
+            "capture source recording_session_digest",
+        ),
+        _require_string(capture.get("source_set_digest"), "capture source source_set_digest"),
+        _require_int(capture.get("segment_count"), "capture source segment_count"),
+    )
+    if observed != expected:
+        raise ValueError("research candidate recording does not match capture source")
+
+    replay_config = research_replay_config_from_candidate(candidate)
+    freeze = _freeze_research_replay_payload(
+        recording,
+        output / "bundle.json",
+        replay_config,
+        code_revision=candidate.code_revision,
+    )
+    bundle = load_baseline_replay_bundle(output / "bundle.json")
+    materialized = (
+        bundle.manifest.start_ms,
+        bundle.manifest.end_ms,
+        bundle.recording_session_digest,
+        bundle.source_set_digest,
+        len(bundle.manifest.segments),
+    )
+    if materialized != expected:
+        raise ValueError("research candidate bundle does not match capture source")
+    _write_json(output / "freeze.json", freeze)
+
+    capture_root = capture_path.parent
+    for name in ("record.json", "workflow-head.txt", "trigger-head.txt"):
+        source = capture_root / name
+        if not source.is_file():
+            raise ValueError(f"research capture source companion is missing: {name}")
+        (output / name).write_bytes(source.read_bytes())
+    return ResearchCohortSourceResult(
+        output_root=output,
+        bundle_id=bundle.bundle_id,
+        recording_session_digest=bundle.recording_session_digest,
+        source_set_digest=bundle.source_set_digest,
+        code_revision=_require_sha(bundle.manifest.code_revision, "candidate bundle code_revision"),
+    )
 
 
 def prepare_research_cohort_source(
