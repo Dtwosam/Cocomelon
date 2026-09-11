@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 WORKFLOW = Path(".github/workflows/evidence-dashboard.yml")
+CURATOR = Path(".github/workflows/evidence-corpus-curator-v4.yml")
 BUILDER = Path("scripts/build_evidence_dashboard.py")
 VERDICT_APPLIER = Path("scripts/apply_phase9_v4_final_verdict.py")
 INTAKE_APPLIER = Path("scripts/apply_v4_intake_diagnostics.py")
@@ -142,6 +143,50 @@ def test_v4_intake_summary_is_performance_blind() -> None:
         "bootstrap",
     )
     assert all(field not in script for field in forbidden)
+
+
+def test_v4_intake_ignores_cancelled_partial_curator_run() -> None:
+    namespace = runpy.run_path(str(INTAKE_APPLIER))
+    latest = namespace["_latest_curator_run"]
+    repo = "Dtwosam/Cocomelon"
+    payload = {
+        "workflow_runs": [
+            {
+                "id": 200,
+                "name": "Verified V4 Mainnet Evidence Corpus Curator",
+                "path": ".github/workflows/evidence-corpus-curator-v4.yml",
+                "event": "workflow_run",
+                "status": "completed",
+                "conclusion": "cancelled",
+                "created_at": "2026-09-11T04:54:50Z",
+                "repository": {"full_name": repo},
+                "head_repository": {"full_name": repo},
+            },
+            {
+                "id": 100,
+                "name": "Verified V4 Mainnet Evidence Corpus Curator",
+                "path": ".github/workflows/evidence-corpus-curator-v4.yml",
+                "event": "workflow_run",
+                "status": "completed",
+                "conclusion": "success",
+                "created_at": "2026-09-10T23:06:49Z",
+                "repository": {"full_name": repo},
+                "head_repository": {"full_name": repo},
+            },
+        ]
+    }
+    latest.__globals__["_gh_json"] = lambda _repo, _endpoint: payload
+
+    selected = latest(repo)
+
+    assert selected is not None
+    assert selected["id"] == 100
+
+
+def test_v4_curator_has_offline_aggregation_headroom() -> None:
+    workflow = _read_required(CURATOR, "V4 corpus curator workflow")
+
+    assert "timeout-minutes: 60" in workflow
 
 
 def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
