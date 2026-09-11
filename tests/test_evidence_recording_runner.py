@@ -269,7 +269,9 @@ def test_populated_root_without_session_metadata_cannot_be_claimed(tmp_path: Pat
 def test_bounded_runner_records_bootstrap_ws_periodic_context_and_dedupes_funding(
     tmp_path: Path,
 ) -> None:
-    config = _config()
+    # Periodic REST readers use asyncio.to_thread behind a shared lock. Give the
+    # scheduler enough real time to run both initial polls even on loaded CI hosts.
+    config = _config(duration_seconds=1)
     bootstrap = _bootstrap(config)
     reader = FakeReader()
     connection = FakeConnection()
