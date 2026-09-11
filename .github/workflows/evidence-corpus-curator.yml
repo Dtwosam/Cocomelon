@@ -109,12 +109,12 @@ jobs:
 
       - name: Checkout current evaluation tooling
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
         with:
           python-version: "3.12"
@@ -664,7 +664,7 @@ jobs:
 
       - name: Checkout frozen Phase 9 evaluator
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 629db6294822c97690c006591802f8a47e08652e
           path: phase9-tooling

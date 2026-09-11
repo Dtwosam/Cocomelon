@@ -167,14 +167,14 @@ jobs:
 
       - name: Checkout pinned selection audit archive tooling
         if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 0d3c4240bf49987e8ffe16deecddfe18405006ee
           path: archive-tooling
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: ${{ steps.state.outputs.final_exists == 'true' && steps.state.outputs.archive_exists != 'true' }}
         with:
           python-version: "3.12"

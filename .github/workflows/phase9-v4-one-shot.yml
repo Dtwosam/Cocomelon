@@ -235,14 +235,14 @@ jobs:
 
       - name: Checkout frozen Phase 9 V4 evaluator
         if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff
           path: phase9-v4-tooling
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: ${{ steps.phase9_v4_durable.outputs.final_exists != 'true' && steps.phase9_v4_durable.outputs.freeze_exists != 'true' && steps.phase9_v4_artifacts.outputs.existing_final != 'true' }}
         with:
           python-version: "3.12"
@@ -493,14 +493,14 @@ jobs:
           echo "kind=$(cat audit/phase9-v4-finalization-kind.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout frozen Phase 9 V4 evaluator
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff
           path: phase9-v4-tooling
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

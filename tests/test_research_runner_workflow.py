@@ -77,9 +77,9 @@ def test_candidate_build_never_receives_authoritative_registry_or_observations()
     assert "research-campaign/recording" not in candidate
     assert "SELECT config_digest FROM research_candidates" not in candidate
     assert candidate.index("Checkout candidate code revision") < candidate.index(
-        "actions/setup-python@v5"
+        "actions/setup-python@v7"
     )
-    setup = candidate.split("- uses: actions/setup-python@v5", 1)[1].split(
+    setup = candidate.split("- uses: actions/setup-python@v7", 1)[1].split(
         "- name: Install Cocomelon",
         1,
     )[0]
@@ -289,9 +289,9 @@ def test_evaluation_registry_and_economics_are_owned_only_by_trusted_control_cod
     assert "candidate-src" not in evaluation
     assert "needs.prepare-control.outputs.candidate_revision" not in evaluation
     assert evaluation.index("Checkout trusted research runner control revision") < evaluation.index(
-        "actions/setup-python@v5"
+        "actions/setup-python@v7"
     )
-    setup = evaluation.split("- uses: actions/setup-python@v5", 1)[1].split(
+    setup = evaluation.split("- uses: actions/setup-python@v7", 1)[1].split(
         "- name: Download refreshed research stage",
         1,
     )[0]

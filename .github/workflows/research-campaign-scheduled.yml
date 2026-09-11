@@ -35,12 +35,12 @@ jobs:
       candidate_matrix: ${{ steps.candidates.outputs.matrix }}
     steps:
       - name: Checkout research campaign control revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -278,7 +278,7 @@ jobs:
       CANDIDATE_ID: ${{ matrix.candidate_id }}
     steps:
       - name: Checkout candidate code revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ matrix.code_revision }}
           path: candidate-src
@@ -287,7 +287,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout trusted strategy worker revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control-src
@@ -295,7 +295,7 @@ jobs:
           clean: false
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -348,14 +348,14 @@ jobs:
       actions: read
     steps:
       - name: Checkout trusted research capture control revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control-src
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -544,14 +544,14 @@ jobs:
       CANDIDATE_ID: ${{ matrix.candidate_id }}
     steps:
       - name: Checkout trusted strategy orchestration revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control-src
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -669,12 +669,12 @@ jobs:
       actions: write
     steps:
       - name: Checkout research authority control revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -889,14 +889,14 @@ jobs:
       registry_published: ${{ steps.publish-committed-registry.outcome }}
     steps:
       - name: Checkout trusted research runner control revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control-src
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -1175,14 +1175,14 @@ jobs:
       actions: read
     steps:
       - name: Checkout trusted finalizer control revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: control-src
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 

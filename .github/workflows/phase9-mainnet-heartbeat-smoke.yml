@@ -22,12 +22,12 @@ jobs:
       COHORT_CODE_REVISION: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
     steps:
       - name: Checkout spaced pinned cohort
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 6de9d86aa7c36fce4f459e0bcc4e004de9215f25
           fetch-depth: 1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip

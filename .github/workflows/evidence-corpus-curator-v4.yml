@@ -24,13 +24,13 @@ jobs:
       V4_CODE_REVISION: 0c14c9cfa37c80babc65d050fed6d4465dcb9032
     steps:
       - name: Checkout pinned V4 verification tooling
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: 0c14c9cfa37c80babc65d050fed6d4465dcb9032
           fetch-depth: 1
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
