@@ -1,0 +1,52 @@
+name: Temporary V4 curator scratch patch
+
+on:
+  push:
+    branches:
+      - fix/v4-curator-intake-scratch-20260911
+    paths:
+      - .github/workflows/_tmp-patch-v4-curator.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-curator-intake-scratch-20260911
+          fetch-depth: 1
+
+      - name: Apply exact scratch-path patch and remove helper
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/evidence-corpus-curator-v4.yml')
+          text = path.read_text(encoding='utf-8')
+          replacements = (
+              ('mkdir -p intake source prior corpus', 'mkdir -p intake source prior corpus scratch'),
+              ('> intake/failed-source-artifact.zip', '> scratch/failed-source-artifact.zip'),
+              ('unzip -q intake/failed-source-artifact.zip -d failed-source', 'unzip -q scratch/failed-source-artifact.zip -d failed-source'),
+              ('> intake/source-artifact.zip', '> scratch/source-artifact.zip'),
+              ('unzip -q intake/source-artifact.zip -d source', 'unzip -q scratch/source-artifact.zip -d source'),
+              ('> intake/prior-corpus.zip', '> scratch/prior-corpus.zip'),
+              ('unzip -q intake/prior-corpus.zip -d prior', 'unzip -q scratch/prior-corpus.zip -d prior'),
+          )
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence of {old!r}, found {count}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          PY
+          rm .github/workflows/_tmp-patch-v4-curator.yml
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/evidence-corpus-curator-v4.yml .github/workflows/_tmp-patch-v4-curator.yml
+          git commit -m "fix: isolate V4 curator transport scratch"
+          git push origin HEAD:fix/v4-curator-intake-scratch-20260911
