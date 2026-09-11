@@ -162,7 +162,8 @@ Recent mainline work relevant to the current handoff includes:
 - PR #180 keeps downloaded V4 transport archives in scratch space so durable intake diagnostics remain lightweight without changing admission semantics;
 - PR #181 binds research replay economics to the immutable registered candidate execution config and regression-locks that provenance relationship;
 - PR #183 reuses one authenticated daily research capture across the required root plus at most one optional registered challenger while keeping candidate economics, provenance, failures, and authoritative registry updates isolated;
-- PR #185 registers the fixed 15-minute touched challenger through the publisher-locked authoritative registry path and activates it only for future scheduled research fan-out.
+- PR #185 registers the fixed 15-minute touched challenger through the publisher-locked authoritative registry path and activates it only for future scheduled research fan-out;
+- PR #187 adds a read-only root+challenger rollout verifier and runs it in the scheduled research finalizer whenever an authenticated two-candidate fan-out artifact is present.
 
 None of these changes alter frozen V4 economics, promotion thresholds, the daily research cap, or live-trading controls.
 
@@ -171,8 +172,8 @@ None of these changes alter frozen V4 economics, promotion thresholds, the daily
 1. Keep Phase 10 and live trading blocked.
 2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator; do not manually retry, extend, cancel, dispatch, or backfill protected V4 runs.
 3. Observe the implemented authoritative V4 interval/completeness synchronization path before any subsequent research economics are admitted, and respect the one-success-per-UTC-day research guard. Scheduled run `34597347820` correctly stopped before capture on 2026-09-11 because a successful research cohort already existed for that UTC day. Do not override or weaken that guard.
-4. On the first naturally eligible scheduled research cohort after challenger activation, verify exactly one authenticated public-mainnet capture is reused for both `scheduled-research-root` and `research-r1-exit-15m-v1`.
-5. Verify that cohort reconstructs the root's immutable 20-minute paper replay config and the challenger's immutable 15-minute paper replay config from the same authenticated source interval, with candidate-specific attempts/artifacts and serialized authoritative registry updates.
+4. On the first naturally eligible scheduled research cohort after challenger activation, let the finalizer's `cocomelon.research.rollout_verifier` check that exactly one authenticated public-mainnet capture is reused for both `scheduled-research-root` and `research-r1-exit-15m-v1`; a two-candidate rollout must fail closed if this contract is not satisfied.
+5. Require that verification to confirm the root's immutable 20-minute paper replay config and the challenger's immutable 15-minute paper replay config share the same authenticated source interval, with candidate-specific attempts/artifacts and serialized authoritative registry updates.
 6. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint; require V4-disjointness/completeness and all existing provenance checks to pass before either candidate's economics are admitted.
 7. Keep every challenger result permanently **TOUCHED / NON-PROMOTIONAL**. Apply only the precommitted D-023 futility/promising rules: candidates may fail fast; candidates may not succeed fast.
 8. If the challenger becomes `RESEARCH_PROMISING`, freeze a new immutable challenger identity and enforce the inherited touched-period plus 6-hour embargo before any future untouched validation claim.

@@ -93,3 +93,13 @@ def test_shared_capture_interval_is_bound_to_every_fanout_attempt() -> None:
     assert "capture-source.json" in refresh
     assert "assert_batch_disjoint_from_v4" in refresh
     assert "record_touched_interval" not in refresh
+
+
+def test_finalizer_verifies_two_candidate_rollout_contract() -> None:
+    source = _source()
+    finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
+
+    assert "Verify root+challenger rollout contract" in finalizer
+    assert "research-fanout.json" in finalizer
+    assert "rollout_verifier" in finalizer
+    assert "PYTHONPATH" in finalizer
