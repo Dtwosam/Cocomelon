@@ -14,6 +14,7 @@ from cocomelon.research.contracts import (
 )
 from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
 from cocomelon.research.lifecycle import activate_validation_cutover
+from cocomelon.research.registration import register_candidate_spec
 from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 
@@ -116,6 +117,10 @@ def build_parser() -> argparse.ArgumentParser:
     candidate_parser.add_argument("--execution-config-json", required=True)
     candidate_parser.add_argument("--risk-config-json", required=True)
 
+    register_candidate_parser = subparsers.add_parser("register-candidate-spec")
+    _add_registry_argument(register_candidate_parser)
+    register_candidate_parser.add_argument("--spec", required=True, type=Path)
+
     batch_parser = subparsers.add_parser("record-batch")
     _add_registry_argument(batch_parser)
     batch_parser.add_argument("--candidate-id", required=True)
@@ -206,6 +211,14 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
             }
         if args.command == "create-candidate":
             return _create_candidate(registry, args)
+        if args.command == "register-candidate-spec":
+            candidate = register_candidate_spec(registry, args.spec)
+            return {
+                "candidate_id": candidate.candidate_id,
+                "command": "register-candidate-spec",
+                "parent_candidate_id": candidate.parent_candidate_id,
+                "state": candidate.state.value,
+            }
         if args.command == "record-batch":
             interval = TimeInterval(args.start_ms, args.end_ms)
             registry.record_batch(

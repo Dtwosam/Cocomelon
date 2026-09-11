@@ -1,0 +1,75 @@
+name: Register Research Challenger
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  register:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    concurrency:
+      group: research-authoritative-registry-publisher
+      cancel-in-progress: false
+    steps:
+      - name: Checkout trusted registration revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install registration runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Restore latest trusted research authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p research-control/state/latest
+          ARTIFACT_ROWS="$(/usr/bin/gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=research-authoritative-registry&per_page=100" --jq '.artifacts | map(select(.expired == false and .workflow_run != null)) | sort_by(.created_at) | reverse | .[] | [.id, .workflow_run.id, .workflow_run.head_branch, .workflow_run.head_sha] | @tsv')"
+          ARTIFACT_ID=""
+          while IFS=$'\t' read -r CANDIDATE_ARTIFACT_ID RUN_ID ARTIFACT_BRANCH ARTIFACT_HEAD_SHA; do
+            [ -n "$CANDIDATE_ARTIFACT_ID" ] || continue
+            [ "$ARTIFACT_BRANCH" = "main" ] || continue
+            RUN_JSON="$(/usr/bin/gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+            RUN_IS_TRUSTED="$(printf '%s' "$RUN_JSON" | jq -r '(.head_branch == "main") and (.status == "completed") and (((.path == ".github/workflows/research-campaign-scheduled.yml") and (.conclusion == "success" or .conclusion == "failure")) or ((.path == ".github/workflows/research-v4-registry-sync.yml") and (.conclusion == "success")) or ((.path == ".github/workflows/research-candidate-register.yml") and (.conclusion == "success" and .event == "workflow_dispatch")))')"
+            RUN_HEAD_SHA="$(printf '%s' "$RUN_JSON" | jq -r '.head_sha // empty')"
+            if [ "$RUN_IS_TRUSTED" = "true" ] && [ "$RUN_HEAD_SHA" = "$ARTIFACT_HEAD_SHA" ]; then
+              ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+              break
+            fi
+          done <<< "$ARTIFACT_ROWS"
+          [ -n "$ARTIFACT_ID" ] || { echo "trusted authority unavailable" >&2; exit 72; }
+          /usr/bin/gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > research-control/state/latest.zip
+          unzip -q research-control/state/latest.zip -d research-control/state/latest
+          REGISTRY_PATH="$(find research-control/state/latest -type f -name research.sqlite3 -print -quit)"
+          [ -n "$REGISTRY_PATH" ] || { echo "research.sqlite3 missing" >&2; exit 73; }
+          cp "$REGISTRY_PATH" research-control/state/research.sqlite3
+
+      - name: Register immutable touched challenger
+        run: |
+          set -euo pipefail
+          cocomelon-research register-candidate-spec \
+            --registry research-control/state/research.sqlite3 \
+            --spec docs/research-r1-exit-15m-v1.json
+
+      - name: Publish authoritative research registry
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-authoritative-registry
+          path: research-control/state/research.sqlite3
+          if-no-files-found: error
+          retention-days: 30

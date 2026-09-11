@@ -1,0 +1,9 @@
+{
+  "candidate_id": "research-r1-exit-15m-v1",
+  "parent_candidate_id": "scheduled-research-root",
+  "execution_config": {
+    "config_version": "research-paper-15m-expiry-v1",
+    "max_position_age_ms": 900000,
+    "starting_cash": "10000"
+  }
+}
