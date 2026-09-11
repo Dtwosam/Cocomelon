@@ -110,3 +110,18 @@ def test_v4_curator_binds_prior_corpus_to_exact_trusted_producer() -> None:
     assert "TRUSTED_PRIOR_ARTIFACT_ID" in text
     assert "CANDIDATE_RUN_ID" in text
     assert 'repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID' in text
+
+
+def test_v4_curator_keeps_transport_archives_out_of_intake_artifact() -> None:
+    text = _text()
+
+    assert "mkdir -p intake source prior corpus scratch" in text
+    assert "> scratch/source-artifact.zip" in text
+    assert "unzip -q scratch/source-artifact.zip -d source" in text
+    assert "> scratch/prior-corpus.zip" in text
+    assert "unzip -q scratch/prior-corpus.zip -d prior" in text
+    assert "> scratch/failed-source-artifact.zip" in text
+    assert "unzip -q scratch/failed-source-artifact.zip -d failed-source" in text
+    assert "> intake/source-artifact.zip" not in text
+    assert "> intake/prior-corpus.zip" not in text
+    assert "> intake/failed-source-artifact.zip" not in text
