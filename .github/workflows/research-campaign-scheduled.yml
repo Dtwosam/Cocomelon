@@ -1342,6 +1342,26 @@ jobs:
           name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/evaluated
 
+      - name: Verify root+challenger rollout contract
+        if: ${{ always() && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          CANDIDATE_COUNT="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
+          )
+          print(len(payload.get("candidates", [])))
+          PY
+          )"
+          if [ "$CANDIDATE_COUNT" = "2" ]; then
+            python -m cocomelon.research.rollout_verifier research-campaign
+          fi
+
       - name: Persist workflow failure in attempt ledger
         if: ${{ always() }}
         env:
