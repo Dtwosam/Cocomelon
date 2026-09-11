@@ -1,0 +1,61 @@
+name: Temporary render V4 curator scratch patch
+
+on:
+  push:
+    branches:
+      - fix/v4-curator-intake-scratch-20260911
+    paths:
+      - .github/workflows/_tmp-render-v4-curator.yml
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/v4-curator-intake-scratch-20260911
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Render exact patched workflow
+        run: |
+          set -euo pipefail
+          mkdir -p patched
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/evidence-corpus-curator-v4.yml')
+          text = source.read_text(encoding='utf-8')
+          replacements = (
+              ('mkdir -p intake source prior corpus', 'mkdir -p intake source prior corpus scratch'),
+              ('> intake/failed-source-artifact.zip', '> scratch/failed-source-artifact.zip'),
+              ('unzip -q intake/failed-source-artifact.zip -d failed-source', 'unzip -q scratch/failed-source-artifact.zip -d failed-source'),
+              ('> intake/source-artifact.zip', '> scratch/source-artifact.zip'),
+              ('unzip -q intake/source-artifact.zip -d source', 'unzip -q scratch/source-artifact.zip -d source'),
+              ('> intake/prior-corpus.zip', '> scratch/prior-corpus.zip'),
+              ('unzip -q intake/prior-corpus.zip -d prior', 'unzip -q scratch/prior-corpus.zip -d prior'),
+          )
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence of {old!r}, found {count}')
+              text = text.replace(old, new)
+          target = Path('patched/evidence-corpus-curator-v4.yml')
+          target.write_text(text, encoding='utf-8')
+          PY
+          grep -F 'mkdir -p intake source prior corpus scratch' patched/evidence-corpus-curator-v4.yml
+          ! grep -F '> intake/source-artifact.zip' patched/evidence-corpus-curator-v4.yml
+          ! grep -F '> intake/prior-corpus.zip' patched/evidence-corpus-curator-v4.yml
+          ! grep -F '> intake/failed-source-artifact.zip' patched/evidence-corpus-curator-v4.yml
+
+      - name: Upload patched workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: patched-v4-curator-workflow
+          path: patched/evidence-corpus-curator-v4.yml
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
