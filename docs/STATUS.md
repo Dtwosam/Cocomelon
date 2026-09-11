@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-11  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Current verified main code merge:** `f8ffb4892da3`
-**Latest verified main CI:** run `34647758708` — success
+**Current verified main code merge:** `70bce251a419`
+**Latest verified main CI:** run `34652687199` — success
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -52,11 +52,12 @@ Latest completed and accepted protected V4 cohort:
 
 V4 one-shot state remains **waiting for finalizable snapshot**. No interim V4 economics have been used for research or promotion decisions.
 
-A newer protected V4 workflow run `34626237790` started naturally at 2026-09-11 17:11 UTC and remains in progress. Let it finish on its fixed schedule; do not manually retry, extend, cancel, dispatch, or backfill it. Its interim economics remain opaque.
+Protected V4 workflow run `34626237790` started naturally at 2026-09-11 17:11 UTC and remains in progress. The next naturally scheduled V4 run `34651521838` is pending behind it. Let the scheduler/concurrency controls resolve both naturally; do not manually retry, extend, cancel, dispatch, or backfill either run. Interim economics remain opaque.
 
 ## Pipeline diagnostics
 
-- Latest Campaign V4: **in progress** — run `34626237790`.
+- Latest scheduled Campaign V4: **pending** — run `34651521838`.
+- Active Campaign V4: **in progress** — run `34626237790`.
 - Latest completed accepted V4 source: **success** — run `34598433641`.
 - Latest V4 curator: **success** — run `34630832992`.
 - Latest V4 source intake: **accepted into V4 corpus** — source run `34598433641`.
@@ -163,7 +164,9 @@ Recent mainline work relevant to the current handoff includes:
 - PR #181 binds research replay economics to the immutable registered candidate execution config and regression-locks that provenance relationship;
 - PR #183 reuses one authenticated daily research capture across the required root plus at most one optional registered challenger while keeping candidate economics, provenance, failures, and authoritative registry updates isolated;
 - PR #185 registers the fixed 15-minute touched challenger through the publisher-locked authoritative registry path and activates it only for future scheduled research fan-out;
-- PR #187 adds a read-only root+challenger rollout verifier and runs it in the scheduled research finalizer whenever an authenticated two-candidate fan-out artifact is present.
+- PR #187 adds a read-only root+challenger rollout verifier and runs it in the scheduled research finalizer whenever an authenticated two-candidate fan-out artifact is present;
+- PR #188 hardens that verifier so successful candidate artifacts must match the exact fan-out code/config and authenticated capture identity, and independently reasserts authoritative V4 disjointness/completeness while preserving nonfatal challenger failure;
+- PR #189 removes a CI timing flake from the bounded recorder test without changing production recorder behavior.
 
 None of these changes alter frozen V4 economics, promotion thresholds, the daily research cap, or live-trading controls.
 
