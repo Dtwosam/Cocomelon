@@ -58,8 +58,8 @@ def test_v4_campaign_replay_has_independent_time_budget() -> None:
     assert "verify-evidence:" in text
     assert "needs: acquire-evidence" in text
     assert "timeout-minutes: 90" in text
-    assert "actions/upload-artifact@v4" in text
-    assert "actions/download-artifact@v4" in text
+    assert "actions/upload-artifact@v7" in text
+    assert "actions/download-artifact@v8" in text
     stage_name = (
         "v4-acquisition-stage-${{ github.run_id }}-"
         "attempt-${{ github.run_attempt }}"
