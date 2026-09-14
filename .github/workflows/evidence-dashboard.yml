@@ -40,7 +40,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       DASHBOARD_ISSUE: "82"
-      EVENT_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+      EVENT_WORKFLOW_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.name != 'CI' && github.event.workflow_run.id || '' }}
     steps:
       - name: Checkout dashboard builder
         uses: actions/checkout@v7
