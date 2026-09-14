@@ -13,6 +13,6 @@ for path in "${changed[@]}"; do
 done
 base_tree="$(git rev-parse 'HEAD^^{tree}')"
 tree_sha="$(jq -s --arg base_tree "$base_tree" '{base_tree:$base_tree,tree:.}' /tmp/artifact-upgrade-tree.jsonl | gh api --method POST "/repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)"
-parent="$(git rev-parse HEAD^^)"
+parent="$(git rev-parse HEAD^)"
 commit_sha="$(jq -n --arg message 'ci: upgrade artifact action runtime majors' --arg tree "$tree_sha" --arg parent "$parent" '{message:$message,tree:$tree,parents:[$parent]}' | gh api --method POST "/repos/$GITHUB_REPOSITORY/git/commits" --input - --jq .sha)"
 printf 'REMOTE_PATCH_COMMIT_SHA=%s\n' "$commit_sha"
