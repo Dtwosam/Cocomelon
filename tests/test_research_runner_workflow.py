@@ -21,7 +21,9 @@ def test_research_campaign_is_separate_paper_only_and_offset_from_v4() -> None:
     lowered = source.lower()
 
     assert "name: Scheduled Research Mainnet Replay Campaign" in source
-    assert 'cron: "2 7 * * *"' in source
+    trigger_block = source.split("\npermissions:\n", 1)[0]
+    assert "workflow_dispatch:" in trigger_block
+    assert "schedule:" not in trigger_block
     assert 'cron: "37 1,7,13,19 * * *"' not in source
     assert "COCOMELON_EXECUTION_MODE: paper" in source
     assert "cancel-in-progress: false" in source

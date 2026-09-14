@@ -44,6 +44,15 @@ def test_gap_dispatcher_uses_actual_run_state_and_caps_daily_success() -> None:
         assert forbidden not in lowered
 
 
+def test_research_campaign_launches_only_through_safe_gap_dispatcher() -> None:
+    source = CAMPAIGN.read_text(encoding="utf-8")
+    trigger_block = source.split("\npermissions:\n", 1)[0]
+
+    assert "workflow_dispatch:" in trigger_block
+    assert "schedule:" not in trigger_block
+    assert 'cron: "2 7 * * *"' not in trigger_block
+
+
 def test_campaign_refuses_second_successful_cohort_in_same_utc_day_before_attempt() -> None:
     source = CAMPAIGN.read_text(encoding="utf-8")
     prepare = source.split("\n  prepare-control:\n", 1)[1].split("\n  candidate-build:\n", 1)[0]

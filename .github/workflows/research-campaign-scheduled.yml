@@ -1,8 +1,6 @@
 name: Scheduled Research Mainnet Replay Campaign
 
 on:
-  schedule:
-    - cron: "2 7 * * *"
   workflow_dispatch:
 
 permissions:
