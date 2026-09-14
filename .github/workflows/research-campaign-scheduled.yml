@@ -1126,6 +1126,31 @@ jobs:
         run: |
           echo "Fanout evaluation completed; per-candidate artifacts remain TOUCHED / NON-PROMOTIONAL." >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Verify root+challenger rollout contract before authoritative publish
+        env:
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          TARGET_PAIR="$(python - <<'PY2'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
+          )
+          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
+          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
+          print("true" if candidate_ids == expected else "false")
+          PY2
+          )"
+          if [ "$TARGET_PAIR" = "true" ]; then
+            rm -rf research-campaign/audit/capture research-campaign/audit/decisions
+            mkdir -p research-campaign/audit/capture/output research-campaign/audit/decisions
+            cp research-campaign/output/capture-source.json               research-campaign/audit/capture/output/capture-source.json
+            cp -a research-campaign/decisions/. research-campaign/audit/decisions/
+            python -m cocomelon.research.rollout_verifier research-campaign
+          fi
+
       - name: Publish committed authoritative research registry
         id: publish-committed-registry
         continue-on-error: true
@@ -1193,7 +1218,7 @@ jobs:
           path: research-campaign/state
 
       - name: Download evaluated stage for publication
-        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' }}
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result == 'success' }}
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
@@ -1316,6 +1341,14 @@ jobs:
               registry.close()
           PY
 
+      - name: Download isolated research fanout plan for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/state
+
       - name: Download capture evidence for final audit
         if: ${{ always() }}
         continue-on-error: true
@@ -1341,22 +1374,25 @@ jobs:
           path: research-campaign/audit/evaluated
 
       - name: Verify root+challenger rollout contract
-        if: ${{ always() && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}
+        id: verify-rollout-final
+        if: ${{ always() && needs.evaluate-research.result == 'success' && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}
         env:
           PYTHONPATH: ${{ github.workspace }}/control-src/src
         run: |
           set -euo pipefail
-          CANDIDATE_COUNT="$(python - <<'PY'
+          TARGET_PAIR="$(python - <<'PY'
           import json
           from pathlib import Path
 
           payload = json.loads(
               Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
           )
-          print(len(payload.get("candidates", [])))
+          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
+          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
+          print("true" if candidate_ids == expected else "false")
           PY
           )"
-          if [ "$CANDIDATE_COUNT" = "2" ]; then
+          if [ "$TARGET_PAIR" = "true" ]; then
             python -m cocomelon.research.rollout_verifier research-campaign
           fi
 
@@ -1448,7 +1484,7 @@ jobs:
           retention-days: 30
 
       - name: Publish authoritative research registry
-        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' }}
+        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' && (needs.evaluate-research.result != 'success' || steps.verify-rollout-final.outcome == 'success') }}
         uses: actions/upload-artifact@v7
         with:
           name: research-authoritative-registry
