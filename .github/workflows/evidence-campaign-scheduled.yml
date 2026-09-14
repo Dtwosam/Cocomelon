@@ -334,7 +334,7 @@ jobs:
 
       - name: Upload genuine evidence artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scheduled-genuine-mainnet-evidence-v3-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: evidence-cohort/

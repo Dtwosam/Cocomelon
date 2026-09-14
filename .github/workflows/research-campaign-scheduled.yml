@@ -248,7 +248,7 @@ jobs:
 
       - name: Upload prepared research control state
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/
@@ -256,7 +256,7 @@ jobs:
           retention-days: 2
 
       - name: Upload isolated research fanout plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/state/research-fanout.json
@@ -330,7 +330,7 @@ jobs:
           printf '%s\n' "$CANDIDATE_REVISION" > candidate-package/candidate-revision.txt
 
       - name: Upload candidate research stage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-candidate-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate-package/
@@ -362,7 +362,7 @@ jobs:
           cache-dependency-path: control-src/pyproject.toml
 
       - name: Download prepared research control state
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-control
@@ -498,7 +498,7 @@ jobs:
           PY
 
       - name: Upload capture-bound research control stage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-control/
@@ -506,7 +506,7 @@ jobs:
           retention-days: 2
 
       - name: Upload trusted capture control stage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-capture-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-control/
@@ -515,7 +515,7 @@ jobs:
 
       - name: Upload trusted capture source stage
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -558,19 +558,19 @@ jobs:
           cache-dependency-path: control-src/pyproject.toml
 
       - name: Download frozen candidate strategy image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-candidate-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: candidate-package
 
       - name: Download trusted capture source
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
       - name: Download isolated research fanout plan
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-fanout
@@ -649,7 +649,7 @@ jobs:
 
       - name: Upload candidate decision stage
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-decision-stage-${{ matrix.artifact_key }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -681,13 +681,13 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Download prepared research control state for authority merge
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
       - name: Download trusted research capture stage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           # The former unsplit source identity was research-capture-stage-${{ github.run_id }}-${{ github.run_attempt }}.
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
@@ -866,7 +866,7 @@ jobs:
 
       - name: Upload refreshed research stage
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/
@@ -903,13 +903,13 @@ jobs:
           cache-dependency-path: control-src/pyproject.toml
 
       - name: Download refreshed research stage
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
 
       - name: Download all candidate decision stages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/decisions
@@ -1131,7 +1131,7 @@ jobs:
       - name: Publish committed authoritative research registry
         id: publish-committed-registry
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-authoritative-registry
           path: research-campaign/state/research.sqlite3
@@ -1149,7 +1149,7 @@ jobs:
 
       - name: Upload evaluated research stage
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/
@@ -1189,7 +1189,7 @@ jobs:
       - name: Download committed authoritative registry from evaluation
         if: ${{ always() && needs.evaluate-research.outputs.registry_published == 'success' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-authoritative-registry
           path: research-campaign/state
@@ -1197,7 +1197,7 @@ jobs:
       - name: Download evaluated stage for publication
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
@@ -1205,7 +1205,7 @@ jobs:
       - name: Download refreshed stage fallback
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.refresh-authority.result != 'skipped' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-refreshed-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
@@ -1213,7 +1213,7 @@ jobs:
       - name: Download control stage fallback
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.capture-control.result != 'skipped' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
@@ -1221,7 +1221,7 @@ jobs:
       - name: Download prepared control stage fallback
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-prepared-control-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign
@@ -1321,7 +1321,7 @@ jobs:
       - name: Download capture evidence for final audit
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-capture-source-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/capture
@@ -1329,7 +1329,7 @@ jobs:
       - name: Download candidate decision evidence for final audit
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: research-decision-stage-*-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/decisions
@@ -1337,7 +1337,7 @@ jobs:
       - name: Download evaluated products for final audit
         if: ${{ always() }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: research-evaluated-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/audit/evaluated
@@ -1442,7 +1442,7 @@ jobs:
 
       - name: Upload complete research campaign audit trail
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/
@@ -1451,7 +1451,7 @@ jobs:
 
       - name: Publish authoritative research registry
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-authoritative-registry
           path: research-campaign/state/research.sqlite3

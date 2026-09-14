@@ -128,7 +128,7 @@ def test_phase9_final_state_is_persisted_by_narrow_write_job() -> None:
     assert "actions: read" in persist_text
     assert STATE_BRANCH in persist_text
     assert STATE_FILE in persist_text
-    assert "actions/download-artifact@v4" in persist_text
+    assert "actions/download-artifact@v8" in persist_text
     assert "gh api --method PUT" in persist_text
     assert "refusing to replace" in persist_text.lower()
 

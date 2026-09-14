@@ -253,7 +253,7 @@ jobs:
 
       - name: Upload durable selection audit archive candidate
         if: ${{ steps.build_candidate.outputs.ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-phase9-selection-audit-archive-candidate-${{ github.run_id }}
           path: archive-candidate/
@@ -276,7 +276,7 @@ jobs:
       PHASE9_SELECTION_AUDIT_ARCHIVE_FILE: phase9-v2-selection-audits.json
     steps:
       - name: Download archive candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v2-phase9-selection-audit-archive-candidate-${{ github.run_id }}
           path: archive-candidate

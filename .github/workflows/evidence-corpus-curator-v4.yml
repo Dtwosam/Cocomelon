@@ -450,7 +450,7 @@ jobs:
 
       - name: Upload V4 mainnet corpus
         if: ${{ steps.curate.outputs.corpus_ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-mainnet-corpus
           path: corpus/
@@ -460,7 +460,7 @@ jobs:
 
       - name: Upload V4 intake report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-mainnet-intake-${{ github.event.workflow_run.id }}
           path: intake/
