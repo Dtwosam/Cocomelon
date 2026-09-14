@@ -98,6 +98,10 @@ Research run `34851584868` was **NOT COUNTED**. It reached the repaired shared-c
 
 The one-success-per-UTC-day research guard remains locked. Do not weaken the daily research-cap, overlap, provenance, or completeness gates to accumulate trades faster.
 
+## Implemented authoritative V4 synchronization
+
+The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`. Research capture/evaluation/finalization consumes this trusted authority and fails closed when V4 coverage is incomplete or overlap cannot be ruled out.
+
 ## Single-capture root + challenger rollout
 
 The bounded root+challenger architecture is implemented on `main`:
@@ -132,13 +136,14 @@ Verified `main` CI for the #195 merge is run `34861704259`: compile, Ruff, mypy,
 1. Keep Phase 10 and live trading blocked.
 2. Let protected V4 run `34855303556` finish naturally; do not manually retry, extend, cancel, dispatch, or backfill V4.
 3. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator and keep interim V4 economics opaque.
-4. On the next naturally eligible research safe gap, let the dispatcher launch the campaign without manual intervention.
-5. Require the rollout verifier to prove exactly one authenticated public-mainnet capture is reused by `scheduled-research-root` and `research-r1-exit-15m-v1`, with exact candidate code/config identity and recording/source digests.
-6. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint.
-7. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
-8. Apply only the precommitted D-023 futility/promising rules. Do not infer edge from the current four-trade research sample.
-9. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-10. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any subsequent research economics, and require actual interval coverage/disjointness rather than nominal cron assumptions.
+5. On the next naturally eligible research safe gap, let the dispatcher launch the campaign without manual intervention.
+6. Require the rollout verifier to prove exactly one authenticated public-mainnet capture is reused by `scheduled-research-root` and `research-r1-exit-15m-v1`, with exact candidate code/config identity and recording/source digests.
+7. Require the root result to remain mandatory and challenger failure to remain nonfatal to an otherwise valid root checkpoint.
+8. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
+9. Apply only the precommitted D-023 futility/promising rules. Do not infer edge from the current four-trade research sample.
+10. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+11. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
