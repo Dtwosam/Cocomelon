@@ -80,7 +80,7 @@ def test_v3_one_shot_persists_state_in_narrow_write_job() -> None:
     assert "needs: evaluate-v3" in persist_text
     assert "contents: write" in persist_text
     assert "actions: read" in persist_text
-    assert "actions/download-artifact@v4" in persist_text
+    assert "actions/download-artifact@v8" in persist_text
     assert "gh api --method PUT" in persist_text
     assert "refusing to replace" in persist_text.lower()
 
