@@ -6,49 +6,55 @@ on:
       - chore/artifact-actions-node24
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  emit:
+  stage:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        path:
-          - .github/workflows/evidence-campaign-scheduled.yml
-          - .github/workflows/evidence-campaign-v4-scheduled.yml
-          - .github/workflows/evidence-corpus-curator-v3.yml
-          - .github/workflows/evidence-corpus-curator-v4.yml
-          - .github/workflows/evidence-corpus-curator.yml
-          - .github/workflows/phase9-selection-audit-archive.yml
-          - .github/workflows/phase9-v3-one-shot.yml
-          - .github/workflows/phase9-v4-one-shot.yml
-          - .github/workflows/research-campaign-scheduled.yml
-          - .github/workflows/research-v4-registry-sync.yml
     steps:
       - uses: actions/checkout@v7
         with:
           ref: chore/artifact-actions-node24
           fetch-depth: 1
-          persist-credentials: false
-      - name: Emit byte-exact upgraded file
+      - name: Stage byte-exact upgraded workflow blobs
         shell: bash
-        env:
-          TARGET: ${{ matrix.path }}
         run: |
           set -euo pipefail
+          if [ -d artifact-upgrade-output ]; then
+            echo "staged artifact action outputs already exist"
+            exit 0
+          fi
           python - <<'PY'
-          import os
           from pathlib import Path
 
-          path = Path(os.environ["TARGET"])
-          source = path.read_text(encoding="utf-8")
-          updated = source.replace("actions/upload-artifact@v4", "actions/upload-artifact@v7")
-          updated = updated.replace("actions/download-artifact@v4", "actions/download-artifact@v8")
-          path.write_text(updated, encoding="utf-8")
+          targets = (
+              ".github/workflows/evidence-campaign-scheduled.yml",
+              ".github/workflows/evidence-campaign-v4-scheduled.yml",
+              ".github/workflows/evidence-corpus-curator-v3.yml",
+              ".github/workflows/evidence-corpus-curator-v4.yml",
+              ".github/workflows/evidence-corpus-curator.yml",
+              ".github/workflows/phase9-selection-audit-archive.yml",
+              ".github/workflows/phase9-v3-one-shot.yml",
+              ".github/workflows/phase9-v4-one-shot.yml",
+              ".github/workflows/research-campaign-scheduled.yml",
+              ".github/workflows/research-v4-registry-sync.yml",
+          )
+          out = Path("artifact-upgrade-output")
+          out.mkdir()
+          for target in targets:
+              source = Path(target).read_text(encoding="utf-8")
+              updated = source.replace(
+                  "actions/upload-artifact@v4", "actions/upload-artifact@v7"
+              ).replace(
+                  "actions/download-artifact@v4", "actions/download-artifact@v8"
+              )
+              if updated == source:
+                  raise SystemExit(f"expected deprecated artifact action in {target}")
+              (out / Path(target).name).write_text(updated, encoding="utf-8")
           PY
-          git diff --check -- "$TARGET"
-          printf 'TARGET_PATH=%s\n' "$TARGET"
-          printf 'TARGET_B64_BEGIN\n'
-          base64 -w0 "$TARGET"
-          printf '\nTARGET_B64_END\n'
+          git diff --check -- artifact-upgrade-output
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifact-upgrade-output
+          git commit -m "ci: stage byte-exact artifact action workflow blobs"
+          git push origin HEAD:chore/artifact-actions-node24
