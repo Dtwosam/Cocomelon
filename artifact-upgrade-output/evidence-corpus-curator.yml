@@ -1,0 +1,1092 @@
+name: Verified V2 Mainnet Evidence Corpus Curator
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Genuine Mainnet Evidence Campaign V2"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: genuine-mainnet-evidence-v2-corpus
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      phase9_state_candidate_ready: ${{ steps.phase9_state_candidate.outputs.ready }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
+      SELECTION_AUDIT_INTRO_SHA: 70e51d1e897cdafa236dc4ef06787939d2b726b4
+      EXPECTED_ATTEMPT_LEDGER_REVISION: e87a575a755074e36e22729c63c4831b474cf339
+    steps:
+      - name: Inspect durable one-shot Phase 9 state
+        id: phase9_durable
+        run: |
+          set -euo pipefail
+          mkdir -p intake
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > intake/phase9-state-branch.json
+          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$STATE_ENDPOINT" > intake/phase9-durable-state-meta.json \
+            2> intake/phase9-durable-state.stderr
+          STATE_STATUS=$?
+          set -e
+          if [ "$STATE_STATUS" -eq 0 ]; then
+            python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("intake/phase9-durable-state-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          expected = hashlib.sha256(encoded).hexdigest()
+          if final_id != expected:
+              raise SystemExit("durable Phase 9 final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("durable Phase 9 protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("durable Phase 9 state is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("durable Phase 9 state violates offline-only semantics")
+          Path("intake/phase9-durable-state.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          audit = {
+              "durable_final_exists": True,
+              "final_id": final_id,
+              "protocol_state": payload.get("protocol_state"),
+          }
+          Path("intake/phase9-durable-audit.json").write_text(
+              json.dumps(audit, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "final_exists=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "HTTP 404" intake/phase9-durable-state.stderr; then
+            STATE_HISTORY_ENDPOINT="repos/$GITHUB_REPOSITORY/commits?sha=$PHASE9_STATE_BRANCH&path=$PHASE9_STATE_FILE&per_page=1"
+            gh api "$STATE_HISTORY_ENDPOINT" > intake/phase9-state-history.json
+            if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          history = json.loads(Path("intake/phase9-state-history.json").read_text())
+          raise SystemExit(0 if history else 1)
+          PY
+            then
+              echo "Phase 9 final state was previously recorded but is now missing" >&2
+              exit 61
+            fi
+            printf '%s\n' \
+              '{"durable_final_exists": false, "economic_claim": "none"}' \
+              > intake/phase9-durable-audit.json
+            echo "final_exists=false" >> "$GITHUB_OUTPUT"
+          else
+            cat intake/phase9-durable-state.stderr >&2
+            exit "$STATE_STATUS"
+          fi
+
+      - name: Checkout current evaluation tooling
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Prepare trusted curator artifact selector
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          cat > intake/select-trusted-curator-artifact.sh <<'SH'
+          select_trusted_curator_artifact() {
+            local LIST_FILE="$1"
+            local ARTIFACT_NAME="$2"
+            local AUDIT_PREFIX="$3"
+            TRUSTED_ARTIFACT_ID=""
+            TRUSTED_RUN_ID=""
+            mapfile -t CANDIDATES < <(python - "$LIST_FILE" "$ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cocomelon.ops.artifact_provenance import ranked_artifact_candidates
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          for item in ranked_artifact_candidates(payload, sys.argv[2]):
+              print(f"{item.artifact_id}\t{item.workflow_run_id}")
+          PY
+            )
+            for CANDIDATE in "${CANDIDATES[@]}"; do
+              CANDIDATE_ARTIFACT_ID=${CANDIDATE%%$'\t'*}
+              CANDIDATE_RUN_ID=${CANDIDATE#*$'\t'}
+              RUN_FILE="${AUDIT_PREFIX}-run-${CANDIDATE_RUN_ID}.json"
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$CANDIDATE_RUN_ID" \
+                > "$RUN_FILE"
+              if python - "$RUN_FILE" "$CANDIDATE_RUN_ID" "$GITHUB_REPOSITORY" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from cocomelon.ops.artifact_provenance import trusted_curator_run
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          trusted = trusted_curator_run(
+              payload,
+              repository=sys.argv[3],
+              expected_run_id=int(sys.argv[2]),
+          )
+          raise SystemExit(0 if trusted else 1)
+          PY
+              then
+                TRUSTED_ARTIFACT_ID="$CANDIDATE_ARTIFACT_ID"
+                TRUSTED_RUN_ID="$CANDIDATE_RUN_ID"
+                return 0
+              fi
+              continue
+            done
+            return 0
+          }
+          SH
+
+      - name: Download and independently verify source intake
+        id: intake
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          mkdir -p intake source
+          git rev-parse HEAD > intake/curator-head.txt
+          printf '%s\n' "$SOURCE_RUN_ID" > intake/source-run-id.txt
+          printf '%s\n' "$SOURCE_CONCLUSION" > intake/source-conclusion.txt
+
+          SOURCE_ARTIFACT_ID=""
+          SOURCE_ARTIFACT_NAME=""
+          for POLL in 1 2 3 4 5 6; do
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+              > intake/source-artifacts.json
+            SOURCE_SELECTION=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/source-artifacts.json").read_text())
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if not item.get("expired", False)
+              and str(item.get("name", "")).startswith(
+                  "scheduled-genuine-mainnet-evidence-v2-"
+              )
+          ]
+          if matches:
+              item = max(matches, key=lambda candidate: candidate.get("created_at", ""))
+              print(f"{item['id']}\t{item['name']}")
+          PY
+            )
+            if [ -n "$SOURCE_SELECTION" ]; then
+              SOURCE_ARTIFACT_ID=${SOURCE_SELECTION%%$'\t'*}
+              SOURCE_ARTIFACT_NAME=${SOURCE_SELECTION#*$'\t'}
+              break
+            fi
+            sleep 5
+          done
+
+          printf '%s\n' "$SOURCE_ARTIFACT_ID" > intake/source-artifact-id.txt
+          printf '%s\n' "$SOURCE_ARTIFACT_NAME" > intake/source-artifact-name.txt
+
+          if [ -z "$SOURCE_ARTIFACT_ID" ]; then
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_artifact_found": False,
+              "source_verified": False,
+              "source_verify_status": None,
+              "selection_audit_required": False,
+              "selection_audit_verified": False,
+              "selection_audit_status": "source_not_verified",
+              "selection_audit_id": None,
+              "corpus_mutated": False,
+              "economic_claim": "none",
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+            echo "source_artifact_found=false" >> "$GITHUB_OUTPUT"
+            echo "source_verified=false" >> "$GITHUB_OUTPUT"
+            echo "source_root=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SOURCE_ARTIFACT_ID/zip" \
+            > intake/source-artifact.zip
+          unzip -q intake/source-artifact.zip -d source
+
+          mapfile -t SUMMARIES < <(find source -type f -name cohort-summary.json -path '*/output/*' -print)
+          if [ "${#SUMMARIES[@]}" -ne 1 ]; then
+            SOURCE_ROOT=""
+            SOURCE_VERIFY_STATUS=90
+          else
+            SOURCE_ROOT=$(dirname "${SUMMARIES[0]}")
+            set +e
+            cocomelon-mainnet-evidence verify \
+              --source-root "$SOURCE_ROOT" \
+              > intake/source-verify.json \
+              2> intake/source-verify.stderr
+            SOURCE_VERIFY_STATUS=$?
+            set -e
+          fi
+          printf '%s\n' "$SOURCE_VERIFY_STATUS" > intake/source-verify-status.txt
+
+          SOURCE_VERIFIED=false
+          if [ "$SOURCE_CONCLUSION" = "success" ] \
+            && [ "$SOURCE_VERIFY_STATUS" -eq 0 ]; then
+            SOURCE_VERIFIED=true
+          fi
+
+          SOURCE_ARTIFACT_ID="$SOURCE_ARTIFACT_ID" \
+          SOURCE_ARTIFACT_NAME="$SOURCE_ARTIFACT_NAME" \
+          SOURCE_VERIFY_STATUS="$SOURCE_VERIFY_STATUS" \
+          SOURCE_VERIFIED="$SOURCE_VERIFIED" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = {
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_conclusion": os.environ["SOURCE_CONCLUSION"],
+              "source_artifact_found": True,
+              "source_artifact_id": int(os.environ["SOURCE_ARTIFACT_ID"]),
+              "source_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
+              "source_verified": os.environ["SOURCE_VERIFIED"] == "true",
+              "source_verify_status": int(os.environ["SOURCE_VERIFY_STATUS"]),
+              "selection_audit_required": False,
+              "selection_audit_verified": False,
+              "selection_audit_status": (
+                  "pending" if os.environ["SOURCE_VERIFIED"] == "true"
+                  else "source_not_verified"
+              ),
+              "selection_audit_id": None,
+              "corpus_mutated": False,
+              "economic_claim": "none",
+          }
+          Path("intake/intake-report.json").write_text(
+              json.dumps(report, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+          echo "source_artifact_found=true" >> "$GITHUB_OUTPUT"
+          echo "source_verified=$SOURCE_VERIFIED" >> "$GITHUB_OUTPUT"
+          echo "source_root=$SOURCE_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify and bind retry-selection audit
+        id: selection_audit
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' }}
+        env:
+          SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
+        run: |
+          set -euo pipefail
+          TRIGGER_SHA=$(cat "$SOURCE_ROOT/trigger-head.txt")
+          if ! [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Selection-audit trigger sha is invalid" >&2
+            exit 35
+          fi
+          gh api \
+            "repos/$GITHUB_REPOSITORY/compare/$SELECTION_AUDIT_INTRO_SHA...$TRIGGER_SHA" \
+            > intake/selection-audit-introduction-compare.json
+          COMPARE_STATUS=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("intake/selection-audit-introduction-compare.json").read_text()
+          )
+          print(payload.get("status", ""))
+          PY
+          )
+
+          SELECTION_AUDIT_REQUIRED=false
+          SELECTION_AUDIT_VERIFIED=false
+          SELECTION_AUDIT_STATUS=legacy_pre_selection_audit
+          SELECTION_AUDIT_ID=""
+          case "$COMPARE_STATUS" in
+            behind)
+              ;;
+            identical|ahead)
+              SELECTION_AUDIT_REQUIRED=true
+              SELECTION_AUDIT_STATUS=required_pending
+              ;;
+            *)
+              echo "Selection-audit trigger history is not comparable to introduction" >&2
+              exit 35
+              ;;
+          esac
+
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ]; then
+            SOURCE_COHORT_ROOT=$(dirname "$SOURCE_ROOT")
+            SOURCE_ARTIFACT_ID=$(cat intake/source-artifact-id.txt)
+            set +e
+            python -m cocomelon.ops.selection_audit \
+              --cohort-root "$SOURCE_COHORT_ROOT" \
+              --source-run-id "$SOURCE_RUN_ID" \
+              --source-artifact-id "$SOURCE_ARTIFACT_ID" \
+              --expected-ledger-revision "$EXPECTED_ATTEMPT_LEDGER_REVISION" \
+              --out intake/selection-audit.json \
+              > intake/selection-audit-command.json \
+              2> intake/selection-audit.stderr
+            AUDIT_STATUS=$?
+            set -e
+            if [ "$AUDIT_STATUS" -eq 0 ]; then
+              SELECTION_AUDIT_VERIFIED=true
+              SELECTION_AUDIT_STATUS=verified
+              SELECTION_AUDIT_ID=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("intake/selection-audit.json").read_text())
+          print(payload["selection_audit_id"])
+          PY
+              )
+            else
+              SELECTION_AUDIT_STATUS=invalid_selection_audit
+            fi
+          fi
+
+          SELECTION_AUDIT_REQUIRED="$SELECTION_AUDIT_REQUIRED" \
+          SELECTION_AUDIT_VERIFIED="$SELECTION_AUDIT_VERIFIED" \
+          SELECTION_AUDIT_STATUS="$SELECTION_AUDIT_STATUS" \
+          SELECTION_AUDIT_ID="$SELECTION_AUDIT_ID" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("intake/intake-report.json")
+          report = json.loads(path.read_text())
+          report.update(
+              {
+                  "selection_audit_required": os.environ[
+                      "SELECTION_AUDIT_REQUIRED"
+                  ] == "true",
+                  "selection_audit_verified": os.environ[
+                      "SELECTION_AUDIT_VERIFIED"
+                  ] == "true",
+                  "selection_audit_status": os.environ["SELECTION_AUDIT_STATUS"],
+                  "selection_audit_id": os.environ["SELECTION_AUDIT_ID"] or None,
+              }
+          )
+          path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+          PY
+
+          echo "required=$SELECTION_AUDIT_REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "verified=$SELECTION_AUDIT_VERIFIED" >> "$GITHUB_OUTPUT"
+          echo "id=$SELECTION_AUDIT_ID" >> "$GITHUB_OUTPUT"
+          echo "status=$SELECTION_AUDIT_STATUS" >> "$GITHUB_OUTPUT"
+
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ] \
+            && [ "$SELECTION_AUDIT_VERIFIED" != "true" ]; then
+            cat intake/selection-audit.stderr >&2 || true
+            exit 36
+          fi
+
+      - name: Roll verified source into latest attested corpus
+        id: aggregate
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && always() && steps.intake.outputs.source_verified == 'true' && steps.selection_audit.outcome == 'success' }}
+        env:
+          SOURCE_ROOT: ${{ steps.intake.outputs.source_root }}
+          SELECTION_AUDIT_REQUIRED: ${{ steps.selection_audit.outputs.required }}
+          SELECTION_AUDIT_VERIFIED: ${{ steps.selection_audit.outputs.verified }}
+          SELECTION_AUDIT_ID: ${{ steps.selection_audit.outputs.id }}
+        run: |
+          set -euo pipefail
+          mkdir -p corpus prior
+          source intake/select-trusted-curator-artifact.sh
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-mainnet-corpus&per_page=100" \
+            > intake/prior-artifacts.json
+          select_trusted_curator_artifact \
+            intake/prior-artifacts.json \
+            v2-mainnet-corpus \
+            intake/prior-corpus-provenance
+          PRIOR_ARTIFACT_ID="$TRUSTED_ARTIFACT_ID"
+          PRIOR_RUN_ID="$TRUSTED_RUN_ID"
+          printf '%s\n' "$PRIOR_ARTIFACT_ID" > intake/prior-corpus-artifact-id.txt
+          printf '%s\n' "$PRIOR_RUN_ID" > intake/prior-corpus-producer-run-id.txt
+
+          if [ -n "$PRIOR_ARTIFACT_ID" ]; then
+            gh api \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$PRIOR_ARTIFACT_ID/zip" \
+              > intake/prior-corpus.zip
+            unzip -q intake/prior-corpus.zip -d prior
+            mapfile -t ATTESTATIONS < <(find prior -type f -name mainnet-attestation.json -print)
+            if [ "${#ATTESTATIONS[@]}" -ne 1 ]; then
+              echo "Prior corpus artifact does not contain exactly one attestation" >&2
+              exit 31
+            fi
+            PRIOR_ROOT=$(dirname "${ATTESTATIONS[0]}")
+            cp -a "$PRIOR_ROOT/." corpus/
+          fi
+
+          mkdir -p corpus/selection-audits
+          if [ "$SELECTION_AUDIT_REQUIRED" = "true" ]; then
+            if [ "$SELECTION_AUDIT_VERIFIED" != "true" ] \
+              || [ -z "$SELECTION_AUDIT_ID" ]; then
+              echo "Required selection audit is not verified" >&2
+              exit 32
+            fi
+            SELECTION_AUDIT_TARGET="corpus/selection-audits/$SOURCE_RUN_ID.json"
+            if [ -f "$SELECTION_AUDIT_TARGET" ]; then
+              if ! cmp -s "$SELECTION_AUDIT_TARGET" intake/selection-audit.json; then
+                echo "Refusing conflicting selection audit for source run" >&2
+                exit 32
+              fi
+            else
+              cp intake/selection-audit.json "$SELECTION_AUDIT_TARGET"
+            fi
+          fi
+
+          cocomelon-mainnet-evidence aggregate \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            --source-root "$SOURCE_ROOT" \
+            > corpus/aggregate-latest.json
+          cocomelon-mainnet-evidence progress \
+            --journal corpus/journal.sqlite3 \
+            --facts corpus/facts.sqlite3 \
+            > corpus/progress.json
+
+          PRIOR_ARTIFACT_ID="$PRIOR_ARTIFACT_ID" \
+          PRIOR_RUN_ID="$PRIOR_RUN_ID" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          verify = json.loads(Path("intake/source-verify.json").read_text())
+          aggregate = json.loads(Path("corpus/aggregate-latest.json").read_text())
+          progress = json.loads(Path("corpus/progress.json").read_text())
+          curator_head = Path("intake/curator-head.txt").read_text().strip()
+          source_artifact_id = int(Path("intake/source-artifact-id.txt").read_text())
+          prior_raw = os.environ.get("PRIOR_ARTIFACT_ID", "")
+          prior_run_raw = os.environ.get("PRIOR_RUN_ID", "")
+          selection_audit_id = os.environ.get("SELECTION_AUDIT_ID", "") or None
+          selection_audit_files = sorted(
+              (Path("corpus") / "selection-audits").glob("*.json")
+          )
+          index = {
+              "schema_version": 1,
+              "economic_claim": "none",
+              "corpus_mutated": True,
+              "curator_code_revision": curator_head,
+              "campaign_code_revision": verify["code_revision"],
+              "source_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_artifact_id": source_artifact_id,
+              "previous_corpus_artifact_id": int(prior_raw) if prior_raw else None,
+              "previous_corpus_producer_run_id": (
+                  int(prior_run_raw) if prior_run_raw else None
+              ),
+              "mainnet_attestation_id": progress["mainnet_attestation_id"],
+              "attested_run_count": progress["attested_run_count"],
+              "closed_trade_count": progress["closed_trade_count"],
+              "closed_trade_days": progress["closed_trade_days"],
+              "raw_corpus_can_satisfy_oos_minimums": progress[
+                  "raw_corpus_can_satisfy_oos_minimums"
+              ],
+              "selection_audit_required": os.environ.get(
+                  "SELECTION_AUDIT_REQUIRED", "false"
+              ) == "true",
+              "selection_audit_verified": os.environ.get(
+                  "SELECTION_AUDIT_VERIFIED", "false"
+              ) == "true",
+              "selection_audit_id": selection_audit_id,
+              "selection_audit_count": len(selection_audit_files),
+              "latest_aggregate": aggregate,
+          }
+          Path("corpus/corpus-index.json").write_text(
+              json.dumps(index, indent=2, sort_keys=True) + "\n"
+          )
+
+          intake = json.loads(Path("intake/intake-report.json").read_text())
+          intake.update(
+              {
+                  "corpus_mutated": True,
+                  "mainnet_attestation_id": progress["mainnet_attestation_id"],
+                  "attested_run_count": progress["attested_run_count"],
+                  "closed_trade_count": progress["closed_trade_count"],
+                  "closed_trade_days": progress["closed_trade_days"],
+              }
+          )
+          Path("intake/intake-report.json").write_text(
+              json.dumps(intake, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+      - name: Inspect existing one-shot Phase 9 artifacts
+        id: phase9_artifacts
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          source intake/select-trusted-curator-artifact.sh
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-evaluation&per_page=100" \
+            > intake/phase9-evaluation-artifacts.json
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-frozen-snapshot&per_page=100" \
+            > intake/phase9-snapshot-artifacts.json
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts?name=v2-phase9-terminal-insufficient&per_page=100" \
+            > intake/phase9-terminal-artifacts.json
+
+          select_trusted_curator_artifact \
+            intake/phase9-evaluation-artifacts.json \
+            v2-phase9-evaluation \
+            intake/phase9-evaluation-provenance
+          PHASE9_EVALUATION_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_EVALUATION_RUN_ID="$TRUSTED_RUN_ID"
+
+          select_trusted_curator_artifact \
+            intake/phase9-snapshot-artifacts.json \
+            v2-phase9-frozen-snapshot \
+            intake/phase9-snapshot-provenance
+          PHASE9_SNAPSHOT_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_SNAPSHOT_RUN_ID="$TRUSTED_RUN_ID"
+
+          select_trusted_curator_artifact \
+            intake/phase9-terminal-artifacts.json \
+            v2-phase9-terminal-insufficient \
+            intake/phase9-terminal-provenance
+          PHASE9_TERMINAL_ID="$TRUSTED_ARTIFACT_ID"
+          PHASE9_TERMINAL_RUN_ID="$TRUSTED_RUN_ID"
+
+          PHASE9_EVALUATION_EXISTS=false
+          PHASE9_SNAPSHOT_EXISTS=false
+          PHASE9_TERMINAL_EXISTS=false
+          if [ -n "$PHASE9_EVALUATION_ID" ]; then
+            PHASE9_EVALUATION_EXISTS=true
+          fi
+          if [ -n "$PHASE9_SNAPSHOT_ID" ]; then
+            PHASE9_SNAPSHOT_EXISTS=true
+          fi
+          if [ -n "$PHASE9_TERMINAL_ID" ]; then
+            PHASE9_TERMINAL_EXISTS=true
+          fi
+
+          printf '%s\n' "$PHASE9_EVALUATION_ID" > intake/phase9-evaluation-artifact-id.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_ID" > intake/phase9-snapshot-artifact-id.txt
+          printf '%s\n' "$PHASE9_TERMINAL_ID" > intake/phase9-terminal-artifact-id.txt
+          printf '%s\n' "$PHASE9_EVALUATION_RUN_ID" > intake/phase9-evaluation-producer-run-id.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_RUN_ID" > intake/phase9-snapshot-producer-run-id.txt
+          printf '%s\n' "$PHASE9_TERMINAL_RUN_ID" > intake/phase9-terminal-producer-run-id.txt
+          printf '%s\n' "$PHASE9_EVALUATION_EXISTS" > intake/phase9-evaluation-exists.txt
+          printf '%s\n' "$PHASE9_SNAPSHOT_EXISTS" > intake/phase9-snapshot-exists.txt
+          printf '%s\n' "$PHASE9_TERMINAL_EXISTS" > intake/phase9-terminal-exists.txt
+
+          echo "evaluation_exists=$PHASE9_EVALUATION_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "evaluation_id=$PHASE9_EVALUATION_ID" >> "$GITHUB_OUTPUT"
+          echo "snapshot_exists=$PHASE9_SNAPSHOT_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "snapshot_id=$PHASE9_SNAPSHOT_ID" >> "$GITHUB_OUTPUT"
+          echo "terminal_exists=$PHASE9_TERMINAL_EXISTS" >> "$GITHUB_OUTPUT"
+          echo "terminal_id=$PHASE9_TERMINAL_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download existing Phase 9 final artifact for durable backfill
+        id: phase9_existing_final
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && (steps.phase9_artifacts.outputs.evaluation_exists == 'true' || steps.phase9_artifacts.outputs.terminal_exists == 'true') && success() }}
+        env:
+          EVALUATION_EXISTS: ${{ steps.phase9_artifacts.outputs.evaluation_exists }}
+          EVALUATION_ID: ${{ steps.phase9_artifacts.outputs.evaluation_id }}
+          TERMINAL_EXISTS: ${{ steps.phase9_artifacts.outputs.terminal_exists }}
+          TERMINAL_ID: ${{ steps.phase9_artifacts.outputs.terminal_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVALUATION_EXISTS" = "true" ] && [ "$TERMINAL_EXISTS" = "true" ]; then
+            echo "Phase 9 cannot have both evaluation and terminal final artifacts" >&2
+            exit 44
+          fi
+          FINAL_ARTIFACT_ID="$EVALUATION_ID"
+          if [ "$TERMINAL_EXISTS" = "true" ]; then
+            FINAL_ARTIFACT_ID="$TERMINAL_ID"
+          fi
+          rm -rf phase9-final-existing
+          mkdir -p phase9-final-existing
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$FINAL_ARTIFACT_ID/zip" \
+            > intake/phase9-existing-final.zip
+          unzip -q intake/phase9-existing-final.zip -d phase9-final-existing
+          mapfile -t SNAPSHOTS < <(find phase9-final-existing -type f -name snapshot.json -print)
+          mapfile -t READINESS < <(find phase9-final-existing -type f -name phase9-readiness.json -print)
+          if [ "${#SNAPSHOTS[@]}" -ne 1 ] || [ "${#READINESS[@]}" -ne 1 ]; then
+            echo "Existing Phase 9 final artifact is incomplete" >&2
+            exit 45
+          fi
+          FINAL_ROOT=$(dirname "${SNAPSHOTS[0]}")
+          echo "final_root=$FINAL_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout frozen Phase 9 evaluator
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        uses: actions/checkout@v7
+        with:
+          ref: 629db6294822c97690c006591802f8a47e08652e
+          path: phase9-tooling
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install frozen Phase 9 evaluator
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          EXPECTED_PHASE9_REVISION=629db6294822c97690c006591802f8a47e08652e
+          ACTUAL_PHASE9_REVISION=$(git -C phase9-tooling rev-parse HEAD)
+          printf '%s\n' "$ACTUAL_PHASE9_REVISION" > intake/phase9-tooling-revision.txt
+          if [ "$ACTUAL_PHASE9_REVISION" != "$EXPECTED_PHASE9_REVISION" ]; then
+            echo "Frozen Phase 9 evaluator revision mismatch" >&2
+            exit 43
+          fi
+          python -m pip install -e ./phase9-tooling
+
+      - name: Download existing frozen Phase 9 snapshot
+        id: phase9_existing
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.snapshot_exists == 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
+        env:
+          SNAPSHOT_ARTIFACT_ID: ${{ steps.phase9_artifacts.outputs.snapshot_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p phase9-existing
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$SNAPSHOT_ARTIFACT_ID/zip" \
+            > intake/phase9-existing-snapshot.zip
+          unzip -q intake/phase9-existing-snapshot.zip -d phase9-existing
+          mapfile -t SNAPSHOTS < <(find phase9-existing -type f -name snapshot.json -print)
+          if [ "${#SNAPSHOTS[@]}" -ne 1 ]; then
+            echo "Frozen Phase 9 artifact must contain exactly one snapshot.json" >&2
+            exit 41
+          fi
+          SNAPSHOT_ROOT=$(dirname "${SNAPSHOTS[0]}")
+          echo "snapshot_root=$SNAPSHOT_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare one-shot Phase 9 V2 snapshot candidate
+        id: phase9_prepare
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.intake.outputs.source_verified == 'true' && success() }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-candidate
+          cocomelon-mainnet-evidence prepare-phase9-v2 \
+            --corpus-root corpus \
+            --out-root phase9-candidate \
+            > intake/phase9-prepare.json
+          cp phase9-candidate/phase9-readiness.json intake/phase9-readiness.json
+          PHASE9_STATE=$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 readiness is not one_shot_oos")
+          ready = payload.get("ready_for_untouched_evaluation") is True
+          test_window_complete = payload.get("test_window_complete") is True
+          terminal_insufficient = test_window_complete and not ready
+          print(f"{str(ready).lower()}\t{str(terminal_insufficient).lower()}")
+          PY
+          )
+          READY=${PHASE9_STATE%%$'\t'*}
+          TERMINAL_INSUFFICIENT=${PHASE9_STATE#*$'\t'}
+          echo "ready=$READY" >> "$GITHUB_OUTPUT"
+          echo "terminal_insufficient=$TERMINAL_INSUFFICIENT" >> "$GITHUB_OUTPUT"
+          echo "snapshot_root=phase9-candidate" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare terminal insufficient-evidence artifact
+        id: phase9_terminal
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-terminal
+          mkdir -p phase9-terminal
+          cp phase9-candidate/phase9-readiness.json phase9-terminal/phase9-readiness.json
+          cp phase9-candidate/snapshot.json phase9-terminal/snapshot.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          readiness = json.loads(Path("phase9-candidate/phase9-readiness.json").read_text())
+          snapshot = json.loads(Path("phase9-candidate/snapshot.json").read_text())
+          if readiness.get("test_window_complete") is not True:
+              raise SystemExit("terminal Phase 9 state requires a complete test window")
+          if readiness.get("ready_for_untouched_evaluation") is True:
+              raise SystemExit("ready Phase 9 state must not be marked insufficient")
+          terminal = {
+              "schema_version": 1,
+              "edge_status": "insufficient_evidence",
+              "economic_claim": "phase9_readiness_only",
+              "one_shot_oos": True,
+              "ready_for_untouched_evaluation": False,
+              "test_window_complete": True,
+              "snapshot_id": snapshot["snapshot_id"],
+              "dataset_manifest_id": readiness["dataset_manifest_id"],
+              "test_trade_count": readiness["test_trade_count"],
+              "test_covered_days": readiness["test_covered_days"],
+              "eligible_walkforward_windows": readiness["eligible_walkforward_windows"],
+              "reason_codes": readiness["reason_codes"],
+              "network_access": False,
+              "live_orders": False,
+          }
+          Path("phase9-terminal/terminal-status.json").write_text(
+              json.dumps(terminal, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+
+      - name: Upload terminal insufficient-evidence result
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-phase9-terminal-insufficient
+          path: phase9-terminal/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload frozen one-shot Phase 9 snapshot
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-phase9-frozen-snapshot
+          path: phase9-candidate/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Evaluate frozen one-shot Phase 9 snapshot
+        id: phase9_evaluate
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient != 'true' && (steps.phase9_artifacts.outputs.snapshot_exists == 'true' || steps.phase9_prepare.outputs.ready == 'true') && success() }}
+        env:
+          EXISTING_SNAPSHOT_ROOT: ${{ steps.phase9_existing.outputs.snapshot_root }}
+          NEW_SNAPSHOT_ROOT: ${{ steps.phase9_prepare.outputs.snapshot_root }}
+        run: |
+          set -euo pipefail
+          SNAPSHOT_ROOT="$EXISTING_SNAPSHOT_ROOT"
+          if [ -z "$SNAPSHOT_ROOT" ]; then
+            SNAPSHOT_ROOT="$NEW_SNAPSHOT_ROOT"
+          fi
+          if [ -z "$SNAPSHOT_ROOT" ]; then
+            echo "No frozen Phase 9 snapshot root is available" >&2
+            exit 42
+          fi
+          cocomelon-mainnet-evidence evaluate-phase9-v2 \
+            --snapshot-root "$SNAPSHOT_ROOT" \
+            > intake/phase9-evaluate.json
+          mkdir -p phase9-evaluation
+          cp "$SNAPSHOT_ROOT/evaluation.json" phase9-evaluation/evaluation.json
+          cp "$SNAPSHOT_ROOT/snapshot.json" phase9-evaluation/snapshot.json
+          cp "$SNAPSHOT_ROOT/phase9-readiness.json" phase9-evaluation/phase9-readiness.json
+          cp intake/phase9-evaluate.json phase9-evaluation/evaluation-command.json
+          printf '%s\n' "$SNAPSHOT_ROOT" > phase9-evaluation/snapshot-root.txt
+
+      - name: Upload one-shot Phase 9 evaluation
+        if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_evaluate.outcome == 'success' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-phase9-evaluation
+          path: phase9-evaluation/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Build durable Phase 9 final state candidate
+        id: phase9_state_candidate
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' && (steps.phase9_existing_final.outcome == 'success' || steps.phase9_terminal.outcome == 'success' || steps.phase9_evaluate.outcome == 'success') }}
+        env:
+          EXISTING_FINAL_ROOT: ${{ steps.phase9_existing_final.outputs.final_root }}
+        run: |
+          set -euo pipefail
+          rm -rf phase9-persist
+          mkdir -p phase9-persist
+          EXISTING_ROOT="$EXISTING_FINAL_ROOT" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          existing_root = os.environ.get("EXISTING_ROOT", "").strip()
+          if existing_root:
+              root = Path(existing_root)
+          elif Path("phase9-evaluation/evaluation.json").is_file():
+              root = Path("phase9-evaluation")
+          elif Path("phase9-terminal/terminal-status.json").is_file():
+              root = Path("phase9-terminal")
+          else:
+              raise SystemExit("no Phase 9 final payload is available for persistence")
+
+          snapshot = json.loads((root / "snapshot.json").read_text(encoding="utf-8"))
+          readiness = json.loads(
+              (root / "phase9-readiness.json").read_text(encoding="utf-8")
+          )
+          evaluation_path = root / "evaluation.json"
+          terminal_path = root / "terminal-status.json"
+          evaluation = (
+              json.loads(evaluation_path.read_text(encoding="utf-8"))
+              if evaluation_path.is_file()
+              else None
+          )
+          terminal = (
+              json.loads(terminal_path.read_text(encoding="utf-8"))
+              if terminal_path.is_file()
+              else None
+          )
+          if (evaluation is None) == (terminal is None):
+              raise SystemExit("Phase 9 durable state requires exactly one final outcome")
+          if snapshot.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 durable snapshot must be one-shot OOS")
+          if readiness.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 durable readiness must be one-shot OOS")
+          if evaluation is not None:
+              if evaluation.get("one_shot_oos") is not True:
+                  raise SystemExit("Phase 9 evaluation must be one-shot OOS")
+              if evaluation.get("snapshot_id") != snapshot.get("snapshot_id"):
+                  raise SystemExit("Phase 9 evaluation snapshot id mismatch")
+              protocol_state = "evaluated"
+              economic_claim = evaluation.get("economic_claim")
+          else:
+              if terminal.get("one_shot_oos") is not True:
+                  raise SystemExit("Phase 9 terminal state must be one-shot OOS")
+              if terminal.get("snapshot_id") != snapshot.get("snapshot_id"):
+                  raise SystemExit("Phase 9 terminal snapshot id mismatch")
+              protocol_state = "insufficient_evidence"
+              economic_claim = terminal.get("economic_claim")
+
+          base = {
+              "schema_version": 1,
+              "protocol_id": "v2-phase9-one-shot",
+              "protocol_state": protocol_state,
+              "one_shot_oos": True,
+              "economic_claim": economic_claim,
+              "evaluator_revision": "629db6294822c97690c006591802f8a47e08652e",
+              "curator_code_revision": Path("intake/curator-head.txt").read_text().strip(),
+              "source_curator_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_curator_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "mainnet_attestation_id": snapshot.get("mainnet_attestation_id"),
+              "snapshot": snapshot,
+              "readiness": readiness,
+              "evaluation": evaluation,
+              "terminal": terminal,
+              "network_access": False,
+              "live_orders": False,
+          }
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          payload = {**base, "final_id": hashlib.sha256(encoded).hexdigest()}
+          Path("phase9-persist/phase9-v2-final.json").write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload durable Phase 9 state candidate
+        if: ${{ steps.phase9_state_candidate.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-phase9-state-candidate-${{ github.run_id }}
+          path: phase9-persist/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+
+      - name: Upload intake audit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-mainnet-intake-${{ github.event.workflow_run.id }}-${{ github.run_id }}
+          path: intake/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload rolled attested corpus
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2-mainnet-corpus
+          path: corpus/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Enforce successful source verification
+        if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' }}
+        env:
+          SOURCE_VERIFIED: ${{ steps.intake.outputs.source_verified }}
+          SOURCE_ARTIFACT_FOUND: ${{ steps.intake.outputs.source_artifact_found }}
+        run: |
+          if [ "$SOURCE_CONCLUSION" = "success" ] \
+            && { [ "$SOURCE_ARTIFACT_FOUND" != "true" ] \
+              || [ "$SOURCE_VERIFIED" != "true" ]; }; then
+            echo "Successful V2 campaign did not produce independently verified evidence" >&2
+            exit 1
+          fi
+
+  persist-phase9-state:
+    needs: curate
+    if: ${{ always() && needs.curate.outputs.phase9_state_candidate_ready == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PHASE9_STATE_BRANCH: phase9-v2-protocol-state
+      PHASE9_STATE_FILE: phase9-v2-final.json
+    steps:
+      - name: Download durable state candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: v2-phase9-state-candidate-${{ github.run_id }}
+          path: phase9-state-candidate
+
+      - name: Persist append-once Phase 9 final state
+        run: |
+          set -euo pipefail
+          CANDIDATE=phase9-state-candidate/phase9-v2-final.json
+          if [ ! -f "$CANDIDATE" ]; then
+            echo "Phase 9 durable state candidate is missing" >&2
+            exit 51
+          fi
+          CANDIDATE_ID=$(python3 - "$CANDIDATE" <<'PY'
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          expected = hashlib.sha256(encoded).hexdigest()
+          if final_id != expected:
+              raise SystemExit("Phase 9 candidate final_id is invalid")
+          if payload.get("protocol_id") != "v2-phase9-one-shot":
+              raise SystemExit("Phase 9 candidate protocol id is invalid")
+          if payload.get("one_shot_oos") is not True:
+              raise SystemExit("Phase 9 candidate is not one-shot OOS")
+          if payload.get("network_access") is not False or payload.get("live_orders") is not False:
+              raise SystemExit("Phase 9 candidate violates offline-only semantics")
+          print(final_id)
+          PY
+          )
+
+          gh api \
+            "repos/$GITHUB_REPOSITORY/branches/$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-state-branch.json
+          STATE_ENDPOINT="repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE?ref=$PHASE9_STATE_BRANCH"
+          set +e
+          gh api "$STATE_ENDPOINT" > /tmp/phase9-existing-meta.json 2> /tmp/phase9-existing.stderr
+          EXISTING_STATUS=$?
+          set -e
+          if [ "$EXISTING_STATUS" -eq 0 ]; then
+            EXISTING_ID=$(python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-existing-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          final_id = payload.get("final_id")
+          base = {key: value for key, value in payload.items() if key != "final_id"}
+          encoded = json.dumps(
+              base,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          ).encode("utf-8")
+          if final_id != hashlib.sha256(encoded).hexdigest():
+              raise SystemExit("Existing durable Phase 9 final_id is invalid during persistence")
+          print(final_id)
+          PY
+            )
+            if [ "$EXISTING_ID" = "$CANDIDATE_ID" ]; then
+              echo "Durable Phase 9 state already exists with identical final_id"
+              exit 0
+            fi
+            echo "Refusing to replace existing durable Phase 9 final state" >&2
+            exit 52
+          elif ! grep -q "HTTP 404" /tmp/phase9-existing.stderr; then
+            cat /tmp/phase9-existing.stderr >&2
+            exit "$EXISTING_STATUS"
+          fi
+
+          ENCODED=$(base64 -w0 "$CANDIDATE")
+          gh api --method PUT \
+            "repos/$GITHUB_REPOSITORY/contents/$PHASE9_STATE_FILE" \
+            -f message="Persist immutable Phase 9 V2 final state" \
+            -f content="$ENCODED" \
+            -f branch="$PHASE9_STATE_BRANCH" \
+            > /tmp/phase9-persist-result.json
+
+          gh api "$STATE_ENDPOINT" > /tmp/phase9-confirm-meta.json
+          CONFIRMED_ID=$(python3 - <<'PY'
+          import base64
+          import json
+          from pathlib import Path
+
+          meta = json.loads(Path("/tmp/phase9-confirm-meta.json").read_text())
+          payload = json.loads(base64.b64decode(meta["content"]).decode("utf-8"))
+          print(payload.get("final_id", ""))
+          PY
+          )
+          if [ "$CONFIRMED_ID" != "$CANDIDATE_ID" ]; then
+            echo "Persisted Phase 9 final state does not match candidate" >&2
+            exit 53
+          fi
