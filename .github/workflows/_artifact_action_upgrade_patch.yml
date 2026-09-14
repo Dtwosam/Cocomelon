@@ -16,7 +16,7 @@ jobs:
         with:
           ref: chore/artifact-actions-node24
           fetch-depth: 0
-      - name: Upgrade artifact action majors
+      - name: Build patch commit
         shell: bash
         run: |
           set -euo pipefail
@@ -27,11 +27,11 @@ jobs:
               "actions/upload-artifact@v4": "actions/upload-artifact@v7",
               "actions/download-artifact@v4": "actions/download-artifact@v8",
           }
-          paths = list(Path(".github/workflows").glob("*.yml"))
+          helper = Path(".github/workflows/_artifact_action_upgrade_patch.yml")
+          paths = [p for p in Path(".github/workflows").glob("*.yml") if p != helper]
           paths += [
-              path
-              for path in Path("tests").glob("*.py")
-              if path.name != "test_github_actions_runtime_versions.py"
+              p for p in Path("tests").glob("*.py")
+              if p.name != "test_github_actions_runtime_versions.py"
           ]
           for path in paths:
               source = path.read_text(encoding="utf-8")
@@ -42,12 +42,9 @@ jobs:
                   path.write_text(updated, encoding="utf-8")
           PY
           git diff --check
-          python -m pytest tests/test_github_actions_runtime_versions.py -q || true
-          if git diff --quiet; then
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/workflows tests
           git commit -m "ci: upgrade artifact action runtime majors"
-          git push origin HEAD:chore/artifact-actions-node24
+          git show --stat --oneline HEAD
+          git show --format='%H' --no-patch HEAD
