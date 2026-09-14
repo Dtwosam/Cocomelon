@@ -82,6 +82,17 @@ def test_candidate_evaluation_serializes_registry_updates_and_contains_optional_
     assert "research-authoritative-registry" in evaluation
 
 
+def test_successful_fanout_is_verified_before_authoritative_registry_publish() -> None:
+    source = _source()
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+
+    verifier = "Verify root+challenger rollout contract before authoritative publish"
+    publisher = "Publish committed authoritative research registry"
+    assert verifier in evaluation
+    assert "rollout_verifier" in evaluation
+    assert evaluation.index(verifier) < evaluation.index(publisher)
+
+
 def test_shared_capture_interval_is_bound_to_every_fanout_attempt() -> None:
     source = _source()
     capture = _job(source, "capture-control", "candidate-decisions")
