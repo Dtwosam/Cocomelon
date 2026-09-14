@@ -6,46 +6,49 @@ on:
       - chore/artifact-actions-node24
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch:
+  emit:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        path:
+          - .github/workflows/evidence-campaign-scheduled.yml
+          - .github/workflows/evidence-campaign-v4-scheduled.yml
+          - .github/workflows/evidence-corpus-curator-v3.yml
+          - .github/workflows/evidence-corpus-curator-v4.yml
+          - .github/workflows/evidence-corpus-curator.yml
+          - .github/workflows/phase9-selection-audit-archive.yml
+          - .github/workflows/phase9-v3-one-shot.yml
+          - .github/workflows/phase9-v4-one-shot.yml
+          - .github/workflows/research-campaign-scheduled.yml
+          - .github/workflows/research-v4-registry-sync.yml
     steps:
       - uses: actions/checkout@v7
         with:
           ref: chore/artifact-actions-node24
-          fetch-depth: 0
-      - name: Build patch commit object
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Emit byte-exact upgraded file
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.path }}
         run: |
           set -euo pipefail
           python - <<'PY'
+          import os
           from pathlib import Path
 
-          replacements = {
-              "actions/upload-artifact@v4": "actions/upload-artifact@v7",
-              "actions/download-artifact@v4": "actions/download-artifact@v8",
-          }
-          helper = Path(".github/workflows/_artifact_action_upgrade_patch.yml")
-          paths = [p for p in Path(".github/workflows").glob("*.yml") if p != helper]
-          paths += [
-              p for p in Path("tests").glob("*.py")
-              if p.name != "test_github_actions_runtime_versions.py"
-          ]
-          for path in paths:
-              source = path.read_text(encoding="utf-8")
-              updated = source
-              for old, new in replacements.items():
-                  updated = updated.replace(old, new)
-              if updated != source:
-                  path.write_text(updated, encoding="utf-8")
+          path = Path(os.environ["TARGET"])
+          source = path.read_text(encoding="utf-8")
+          updated = source.replace("actions/upload-artifact@v4", "actions/upload-artifact@v7")
+          updated = updated.replace("actions/download-artifact@v4", "actions/download-artifact@v8")
+          path.write_text(updated, encoding="utf-8")
           PY
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows tests
-          git commit -m "ci: upgrade artifact action runtime majors"
-          bash scripts/create_artifact_upgrade_git_object.sh
+          git diff --check -- "$TARGET"
+          printf 'TARGET_PATH=%s\n' "$TARGET"
+          printf 'TARGET_B64_BEGIN\n'
+          base64 -w0 "$TARGET"
+          printf '\nTARGET_B64_END\n'
