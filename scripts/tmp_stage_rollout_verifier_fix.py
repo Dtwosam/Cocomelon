@@ -1,0 +1,103 @@
+from pathlib import Path
+
+source = Path('.github/workflows/research-campaign-scheduled.yml')
+text = source.read_text(encoding='utf-8')
+
+old = "if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' }}"
+new = "if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result == 'success' }}"
+assert text.count(old) == 1
+text = text.replace(old, new)
+
+publisher = "      - name: Publish committed authoritative research registry\n"
+assert text.count(publisher) == 1
+prepublish = '''      - name: Verify root+challenger rollout contract before authoritative publish
+        env:
+          PYTHONPATH: ${{ github.workspace }}/control-src/src
+        run: |
+          set -euo pipefail
+          TARGET_PAIR="$(python - <<'PY2'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
+          )
+          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
+          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
+          print("true" if candidate_ids == expected else "false")
+          PY2
+          )"
+          if [ "$TARGET_PAIR" = "true" ]; then
+            rm -rf research-campaign/audit/capture research-campaign/audit/decisions
+            mkdir -p research-campaign/audit/capture/output research-campaign/audit/decisions
+            cp research-campaign/output/capture-source.json \
+              research-campaign/audit/capture/output/capture-source.json
+            cp -a research-campaign/decisions/. research-campaign/audit/decisions/
+            python -m cocomelon.research.rollout_verifier research-campaign
+          fi
+
+'''
+text = text.replace(publisher, prepublish + publisher)
+
+capture_audit = "      - name: Download capture evidence for final audit\n"
+assert text.count(capture_audit) == 1
+fanout_download = '''      - name: Download isolated research fanout plan for final audit
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: research-campaign/state
+
+'''
+text = text.replace(capture_audit, fanout_download + capture_audit)
+
+verifier_if = "        if: ${{ always() && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}\n"
+assert text.count(verifier_if) == 1
+text = text.replace(
+    verifier_if,
+    "        id: verify-rollout-final\n"
+    "        if: ${{ always() && needs.evaluate-research.result == 'success' && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}\n",
+)
+
+old_check = '''          CANDIDATE_COUNT="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
+          )
+          print(len(payload.get("candidates", [])))
+          PY
+          )"
+          if [ "$CANDIDATE_COUNT" = "2" ]; then
+            python -m cocomelon.research.rollout_verifier research-campaign
+          fi
+'''
+new_check = '''          TARGET_PAIR="$(python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
+          )
+          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
+          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
+          print("true" if candidate_ids == expected else "false")
+          PY
+          )"
+          if [ "$TARGET_PAIR" = "true" ]; then
+            python -m cocomelon.research.rollout_verifier research-campaign
+          fi
+'''
+assert text.count(old_check) == 1
+text = text.replace(old_check, new_check)
+
+old_publish = "        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' }}\n"
+new_publish = "        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' && (needs.evaluate-research.result != 'success' || steps.verify-rollout-final.outcome == 'success') }}\n"
+assert text.count(old_publish) == 1
+text = text.replace(old_publish, new_publish)
+
+out = Path('tmp/research-campaign-scheduled.yml')
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(text, encoding='utf-8')
