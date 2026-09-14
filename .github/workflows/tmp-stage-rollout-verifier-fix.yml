@@ -24,9 +24,11 @@ jobs:
 
           source = Path('.github/workflows/research-campaign-scheduled.yml')
           text = source.read_text(encoding='utf-8')
+          op = '$' + '{' + '{'
+          cl = '}' + '}'
 
-          old = "if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' }}"
-          new = "if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result == 'success' }}"
+          old = f"if: {op} always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result != 'skipped' {cl}"
+          new = f"if: {op} always() && hashFiles('research-campaign/state/research.sqlite3') == '' && needs.evaluate-research.result == 'success' {cl}"
           assert text.count(old) == 1
           text = text.replace(old, new)
 
@@ -34,7 +36,7 @@ jobs:
           assert text.count(publisher) == 1
           prepublish = '''      - name: Verify root+challenger rollout contract before authoritative publish
         env:
-          PYTHONPATH: ${{ github.workspace }}/control-src/src
+          PYTHONPATH: __EXPR__ github.workspace __CLOSE__/control-src/src
         run: |
           set -euo pipefail
           TARGET_PAIR="$(python - <<'PY2'
@@ -58,29 +60,29 @@ jobs:
             python -m cocomelon.research.rollout_verifier research-campaign
           fi
 
-'''
+'''.replace('__EXPR__', op).replace('__CLOSE__', cl)
           text = text.replace(publisher, prepublish + publisher)
 
           capture_audit = "      - name: Download capture evidence for final audit\n"
           assert text.count(capture_audit) == 1
           fanout_download = '''      - name: Download isolated research fanout plan for final audit
-        if: ${{ always() }}
+        if: __EXPR__ always() __CLOSE__
         continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          name: research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}
+          name: research-fanout-stage-__EXPR__ github.run_id __CLOSE__-__EXPR__ github.run_attempt __CLOSE__
           path: research-campaign/state
 
-'''
+'''.replace('__EXPR__', op).replace('__CLOSE__', cl)
           text = text.replace(capture_audit, fanout_download + capture_audit)
 
-          verifier_if = "        if: ${{ always() && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}\n"
+          verifier_if = f"        if: {op} always() && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' {cl}\n"
           assert text.count(verifier_if) == 1
-          text = text.replace(
-              verifier_if,
+          verifier_new = (
               "        id: verify-rollout-final\n"
-              "        if: ${{ always() && needs.evaluate-research.result == 'success' && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' }}\n",
+              + f"        if: {op} always() && needs.evaluate-research.result == 'success' && hashFiles('research-campaign/state/research-fanout.json') != '' && hashFiles('research-campaign/state/research.sqlite3') != '' && hashFiles('research-campaign/audit/capture/output/capture-source.json') != '' {cl}\n"
           )
+          text = text.replace(verifier_if, verifier_new)
 
           old_check = '''          CANDIDATE_COUNT="$(python - <<'PY'
           import json
@@ -115,8 +117,8 @@ jobs:
           assert text.count(old_check) == 1
           text = text.replace(old_check, new_check)
 
-          old_publish = "        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' }}\n"
-          new_publish = "        if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' && (needs.evaluate-research.result != 'success' || steps.verify-rollout-final.outcome == 'success') }}\n"
+          old_publish = f"        if: {op} always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' {cl}\n"
+          new_publish = f"        if: {op} always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' && (needs.evaluate-research.result != 'success' || steps.verify-rollout-final.outcome == 'success') {cl}\n"
           assert text.count(old_publish) == 1
           text = text.replace(old_publish, new_publish)
 
