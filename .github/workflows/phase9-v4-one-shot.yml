@@ -337,7 +337,7 @@ jobs:
 
       - name: Upload permanent Phase 9 V4 freeze candidate
         if: ${{ steps.phase9_v4_freeze_candidate.outputs.ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-phase9-freeze-candidate
           path: phase9-v4-freeze-candidate/
@@ -346,7 +346,7 @@ jobs:
 
       - name: Upload frozen one-shot Phase 9 V4 snapshot
         if: ${{ steps.phase9_v4_freeze_candidate.outputs.ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-phase9-frozen-snapshot
           path: phase9-v4-candidate/
@@ -355,7 +355,7 @@ jobs:
 
       - name: Upload Phase 9 V4 prepare audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: phase9-v4-prepare-audit-${{ github.run_id }}
           path: audit/
@@ -374,7 +374,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download durable V4 freeze candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v4-phase9-freeze-candidate
           path: phase9-v4-freeze-candidate
@@ -452,13 +452,13 @@ jobs:
       SOURCE_CURATOR_RUN_ID: ${{ github.event.workflow_run.id }}
     steps:
       - name: Download frozen Phase 9 V4 snapshot
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v4-phase9-frozen-snapshot
           path: phase9-v4-candidate
 
       - name: Download Phase 9 V4 freeze candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v4-phase9-freeze-candidate
           path: phase9-v4-freeze-candidate
@@ -553,7 +553,7 @@ jobs:
 
       - name: Upload V4 terminal insufficient-evidence result
         if: ${{ steps.phase9_v4_terminal.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-phase9-terminal-insufficient
           path: phase9-v4-terminal/
@@ -575,7 +575,7 @@ jobs:
 
       - name: Upload one-shot Phase 9 V4 evaluation
         if: ${{ steps.phase9_v4_evaluate.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-phase9-evaluation
           path: phase9-v4-evaluation/
@@ -644,7 +644,7 @@ jobs:
 
       - name: Upload durable Phase 9 V4 state candidate
         if: ${{ steps.phase9_v4_state_candidate.outputs.ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v4-phase9-final-state-candidate
           path: phase9-v4-final-state-candidate/
@@ -663,7 +663,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Download durable V4 state candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v4-phase9-final-state-candidate
           path: phase9-v4-final-state-candidate

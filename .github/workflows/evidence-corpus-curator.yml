@@ -776,7 +776,7 @@ jobs:
 
       - name: Upload terminal insufficient-evidence result
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.terminal_insufficient == 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-phase9-terminal-insufficient
           path: phase9-terminal/
@@ -786,7 +786,7 @@ jobs:
 
       - name: Upload frozen one-shot Phase 9 snapshot
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_prepare.outputs.ready == 'true' && steps.phase9_artifacts.outputs.snapshot_exists != 'true' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && steps.phase9_artifacts.outputs.terminal_exists != 'true' && success() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-phase9-frozen-snapshot
           path: phase9-candidate/
@@ -822,7 +822,7 @@ jobs:
 
       - name: Upload one-shot Phase 9 evaluation
         if: ${{ steps.phase9_durable.outputs.final_exists != 'true' && steps.phase9_evaluate.outcome == 'success' && steps.phase9_artifacts.outputs.evaluation_exists != 'true' && success() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-phase9-evaluation
           path: phase9-evaluation/
@@ -927,7 +927,7 @@ jobs:
 
       - name: Upload durable Phase 9 state candidate
         if: ${{ steps.phase9_state_candidate.outputs.ready == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-phase9-state-candidate-${{ github.run_id }}
           path: phase9-persist/
@@ -937,7 +937,7 @@ jobs:
 
       - name: Upload intake audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-mainnet-intake-${{ github.event.workflow_run.id }}-${{ github.run_id }}
           path: intake/
@@ -947,7 +947,7 @@ jobs:
 
       - name: Upload rolled attested corpus
         if: ${{ always() && steps.phase9_durable.outputs.final_exists != 'true' && steps.intake.outputs.source_verified == 'true' && steps.aggregate.outcome == 'success' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: v2-mainnet-corpus
           path: corpus/
@@ -982,7 +982,7 @@ jobs:
       PHASE9_STATE_FILE: phase9-v2-final.json
     steps:
       - name: Download durable state candidate
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: v2-phase9-state-candidate-${{ github.run_id }}
           path: phase9-state-candidate

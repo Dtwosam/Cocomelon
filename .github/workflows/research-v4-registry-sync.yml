@@ -523,7 +523,7 @@ jobs:
           PY
 
       - name: Publish durable V4 authority seed
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-v4-authority-seed
           path: research-sync/state/research-v4-authority-seed.sqlite3
@@ -531,7 +531,7 @@ jobs:
           retention-days: 90
 
       - name: Publish synchronized authoritative research registry
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-authoritative-registry
           path: research-sync/state/research.sqlite3
@@ -540,7 +540,7 @@ jobs:
 
       - name: Upload V4 authority synchronization audit
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: research-v4-authority-sync-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-sync/inventory/
