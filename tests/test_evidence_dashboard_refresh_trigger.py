@@ -23,6 +23,6 @@ def test_dashboard_refreshes_after_main_ci_without_relying_on_schedule() -> None
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert "workflow_run:" in workflow
-    assert 'workflows: ["CI"]' in workflow
+    assert '- "CI"' in workflow
     assert "types: [completed]" in workflow
     assert "github.event.workflow_run.head_branch == 'main'" in workflow
