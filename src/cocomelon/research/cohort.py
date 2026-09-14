@@ -475,7 +475,10 @@ def materialize_research_candidate_source(
         recording,
         output / "bundle.json",
         replay_config,
-        code_revision=candidate.code_revision,
+        code_revision=_require_sha(
+            _require_string(capture.get("code_revision"), "capture source code_revision"),
+            "capture source code_revision",
+        ),
     )
     bundle = load_baseline_replay_bundle(output / "bundle.json")
     materialized = (
