@@ -117,6 +117,10 @@ A read-only retrospective audit of the archived run artifact passed the full fix
 
 However, the old workflow's finalizer **skipped** `Verify root+challenger rollout contract` because the successful evaluation path did not restore `research-fanout.json` into the finalizer state. Therefore this cohort is contract-consistent and remains counted, but it did not prove that the verifier was an in-workflow publication gate.
 
+## Implemented authoritative V4 synchronization
+
+The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`. Research capture, evaluation, and finalization consume this trusted authority and fail closed when actual V4 coverage is incomplete or overlap cannot be ruled out. Nominal cron timing is not a substitute for this authority.
+
 ## Rollout verification enforcement
 
 PR #197 fixed the demonstrated publication-order defect and merged as `cfe993ded68d19d0f4491c05d7d49ac20416722f`:
@@ -152,14 +156,15 @@ Recent verified reliability changes include:
 1. Keep Phase 10 and live trading blocked.
 2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator and keep interim V4 economics opaque.
 3. Do not manually retry, extend, cancel, dispatch, or backfill V4 or research evidence based on outcome.
-4. Let the next naturally eligible post-#197 research safe gap launch through the dispatcher.
-5. Require `Verify root+challenger rollout contract before authoritative publish` to succeed before any new fixed-pair research registry checkpoint can become authoritative.
-6. Require the independent final rollout verifier to succeed for that cohort; otherwise do not count it as successful rollout validation.
-7. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
-8. At 20 closed research trades, apply only the precommitted futility rule; do not infer edge from the current four-trade root sample or zero-trade challenger sample.
-9. Do not label a candidate `RESEARCH_PROMISING` before at least 40 closed research trades, 7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-10. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-11. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any subsequent research economics, and require actual interval coverage/disjointness rather than nominal cron assumptions.
+5. Let the next naturally eligible post-#197 research safe gap launch through the dispatcher.
+6. Require `Verify root+challenger rollout contract before authoritative publish` to succeed before any new fixed-pair research registry checkpoint can become authoritative.
+7. Require the independent final rollout verifier to succeed for that cohort; otherwise do not count it as successful rollout validation.
+8. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
+9. At 20 closed research trades, apply only the precommitted futility rule; do not infer edge from the current four-trade root sample or zero-trade challenger sample.
+10. Do not label a candidate `RESEARCH_PROMISING` before at least 40 closed research trades, 7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
+11. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+12. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
