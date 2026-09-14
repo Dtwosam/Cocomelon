@@ -93,6 +93,17 @@ def test_successful_fanout_is_verified_before_authoritative_registry_publish() -
     assert evaluation.index(verifier) < evaluation.index(publisher)
 
 
+def test_failed_evaluation_cannot_restore_post_evaluation_state_for_publish() -> None:
+    source = _source()
+    finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
+    evaluated = finalizer.split("- name: Download evaluated stage for publication", 1)[1].split(
+        "- name: Download refreshed stage fallback", 1
+    )[0]
+
+    assert "needs.evaluate-research.result == 'success'" in evaluated
+    assert "needs.evaluate-research.result != 'skipped'" not in evaluated
+
+
 def test_shared_capture_interval_is_bound_to_every_fanout_attempt() -> None:
     source = _source()
     capture = _job(source, "capture-control", "candidate-decisions")
@@ -110,7 +121,11 @@ def test_finalizer_verifies_two_candidate_rollout_contract() -> None:
     source = _source()
     finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
 
-    assert "Verify root+challenger rollout contract" in finalizer
+    fanout_download = "Download isolated research fanout plan for final audit"
+    verifier = "Verify root+challenger rollout contract"
+    assert fanout_download in finalizer
+    assert "research-fanout-stage-${{ github.run_id }}-${{ github.run_attempt }}" in finalizer
     assert "research-fanout.json" in finalizer
     assert "rollout_verifier" in finalizer
     assert "PYTHONPATH" in finalizer
+    assert finalizer.index(fanout_download) < finalizer.index(verifier)
