@@ -26,3 +26,11 @@ def test_dashboard_refreshes_after_main_ci_without_relying_on_schedule() -> None
     assert '- "CI"' in workflow
     assert "types: [completed]" in workflow
     assert "github.event.workflow_run.head_branch == 'main'" in workflow
+
+
+def test_ci_wakeup_does_not_enter_evidence_event_provenance_gate() -> None:
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "github.event.workflow_run.name != 'CI'" in workflow
+    assert "github.event.workflow_run.id || ''" in workflow
+    assert "EVENT_WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}" not in workflow
