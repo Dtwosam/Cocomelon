@@ -35,3 +35,31 @@ jobs:
           tests/test_replay_compaction.py
           tests/test_parquet_replay_source.py
           -q
+
+  stage-safe-gap-workflow:
+    if: github.ref_name == 'fix/research-safe-gap-only-launch' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Stage byte-exact campaign workflow without direct cron
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/research-campaign-scheduled.yml').read_text(encoding='utf-8')
+          old = 'on:\n  schedule:\n    - cron: "2 7 * * *"\n  workflow_dispatch:\n'
+          new = 'on:\n  workflow_dispatch:\n'
+          if source.count(old) != 1:
+              raise SystemExit('expected exactly one direct research schedule trigger')
+          Path('staged-research-campaign.yml').write_text(source.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add staged-research-campaign.yml
+          git commit -m "ci: stage safe-gap-only research workflow"
+          git push origin HEAD:fix/research-safe-gap-only-launch
