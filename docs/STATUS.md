@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-14  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `567491b8f115bfb5fcc7965e5201d751736851a9`  
-**Latest verified baseline CI:** run `34903119463` — success  
+**Verified implementation baseline:** `dc7585aa0ec52b8e1c2382999cda9b4e3e805bd4`  
+**Latest verified baseline CI:** run `34909567321` — success  
 **Live trading:** **DISABLED**  
 **Real baseline edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
@@ -29,7 +29,7 @@ Phase 10 and any live promotion remain blocked until the frozen untouched eviden
 
 ## Active V4 evidence progress
 
-Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-14 22:15 UTC**:
+Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-14 23:36 UTC**:
 
 - **48 accepted V4 cohorts**;
 - **83 / 100 closed paper trades**;
@@ -50,7 +50,7 @@ Latest accepted protected V4 state:
 - latest V4 mainnet attestation begins `eb5d2ae18e7e1d26…`;
 - V4 one-shot state: **waiting for finalizable snapshot**.
 
-The configured **2026-09-14 19:37 UTC** V4 acquisition slot was not observed. Its 90-minute scheduler-health grace expired at 21:07 UTC, and the trusted dashboard now reports **stale — configured 19:37 UTC slot not observed**. This is scheduler observability only: the missed economic slot is not retried, manually dispatched, extended, or backfilled. Scheduled delivery later resumed for the non-economic V4 authority-sync workflow at 22:08 UTC. The next frozen nominal V4 slot is **2026-09-15 01:37 UTC**.
+The configured **2026-09-14 19:37 UTC** V4 slot was not observed by the end of its 90-minute scheduler-health grace at 21:07 UTC, so the dashboard correctly marked that slot stale. GitHub later delivered a genuine `schedule` event naturally as V4 run `34905496349` at **22:43:23 UTC**. That run is currently **in progress** on the fixed 5h15m capture and has not yet been admitted into the V4 corpus. No manual retry, dispatch, extension, or backfill was performed. The trusted dashboard now reports **healthy — latest configured slot observed** and identifies run `34905496349` as the active V4 campaign. Accepted-cohort/trade/day counts remain unchanged until a trusted curator admits a completed acquisition.
 
 Nominal scheduler timing is observational only. Actual run/job/session intervals remain authoritative and nominal cron drift is never a backfill signal.
 
@@ -99,7 +99,7 @@ Latest trusted Research Dashboard snapshot, refreshed **2026-09-14 20:31 UTC**:
 
 These economics are touched research only. They are not verified edge and cannot support live promotion.
 
-The successful research cohort `34888205962` already consumed the one-success-per-UTC-day allowance for **2026-09-14 UTC**. No second successful research cohort should be created that day merely to exercise the new verifier gate. The next post-#197 rollout proof must come from a naturally eligible later UTC-day safe gap.
+The successful research cohort `34888205962` already consumed the one-success-per-UTC-day allowance for **2026-09-14 UTC**. Scheduled dispatcher run `34904264713` later rechecked the guard and explicitly skipped dispatch because that successful cohort already existed. No second successful research cohort was created for the UTC day merely to exercise the new verifier gate. The next post-#197 rollout proof must come from a naturally eligible later UTC-day safe gap and must remain disjoint from all actual V4 acquisition intervals, including delayed schedule delivery.
 
 ## First natural root + challenger cohort
 
@@ -155,7 +155,8 @@ Recent verified reliability changes include:
 - PR #195 eliminated the delayed direct-research-cron race while preserving all overlap, daily-cap, V4, promotion, and live guards;
 - PR #197 made root+challenger rollout verification an authoritative publication gate and preserved safe pre-evaluation fallback semantics;
 - PR #201 added successful `main` CI completion as an independent evidence-dashboard wakeup so scheduler-health reporting does not rely solely on schedule delivery;
-- PR #202 kept that CI wakeup outside trusted evidence-event provenance, preserving strict curator/one-shot provenance validation.
+- PR #202 kept that CI wakeup outside trusted evidence-event provenance, preserving strict curator/one-shot provenance validation;
+- PR #203 recorded the verified scheduler-health observability state without changing runtime behavior.
 
 Verified production evidence for the scheduler-observability path:
 
@@ -165,23 +166,26 @@ Verified production evidence for the scheduler-observability path:
 - #202 merged as `567491b8f115bfb5fcc7965e5201d751736851a9`;
 - post-merge `main` CI `34903119463` passed compile, Ruff, mypy, full pytest, and research smoke;
 - push-triggered dashboard run `34903119502` passed end-to-end;
-- decisive CI-triggered dashboard `workflow_run` `34903200802` passed end-to-end and refreshed issue #82 while keeping CI outside evidence provenance.
+- decisive CI-triggered dashboard `workflow_run` `34903200802` passed end-to-end and refreshed issue #82 while keeping CI outside evidence provenance;
+- #203 merged as `dc7585aa0ec52b8e1c2382999cda9b4e3e805bd4`, and post-merge `main` CI `34909567321` passed compile, Ruff, mypy, full pytest, and research smoke;
+- the resulting CI-triggered dashboard run `34909623145` passed end-to-end and correctly transitioned scheduler health from the earlier stale observation to the naturally late active V4 run `34905496349`.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
 2. Continue admitting only clean, complete, flat frozen-runtime V4 evidence through the frozen curator and keep interim V4 economics opaque.
-3. Do not manually retry, extend, cancel, dispatch, or backfill the missed 2026-09-14 19:37 UTC V4 slot or any later V4/research evidence based on outcome.
-4. Let the next frozen V4 slot at 2026-09-15 01:37 UTC occur naturally; scheduler health may observe it but must not synthesize it.
-5. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any subsequent research economics, and require actual interval coverage/disjointness rather than nominal cron assumptions.
-6. Let the next naturally eligible post-#197 research safe gap on a later UTC day launch through the dispatcher.
-7. Require `Verify root+challenger rollout contract before authoritative publish` to succeed before any new fixed-pair research registry checkpoint can become authoritative.
-8. Require the independent final rollout verifier to succeed for that cohort; otherwise do not count it as successful rollout validation.
-9. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
-10. At 20 closed research trades, apply only the precommitted futility rule; do not infer edge from the current four-trade root sample or zero-trade challenger sample.
-11. Do not label a candidate `RESEARCH_PROMISING` before at least 40 closed research trades, 7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-12. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
-13. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+3. Do not manually retry, extend, cancel, dispatch, or backfill V4 or research evidence based on outcome or schedule delay.
+4. Let active scheduled V4 run `34905496349` complete naturally. Do not count it until a trusted curator admits it into the frozen V4 corpus.
+5. Allow later nominal V4 schedule events to be handled naturally by the existing workflow/concurrency rules; scheduler health may observe timing drift but must not synthesize economic evidence.
+6. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any subsequent research economics, and require actual interval coverage/disjointness rather than nominal cron assumptions.
+7. Let the next naturally eligible post-#197 research safe gap on a later UTC day launch through the dispatcher only after the active/protected V4 interval is safely excluded and the daily-cap guard allows it.
+8. Require `Verify root+challenger rollout contract before authoritative publish` to succeed before any new fixed-pair research registry checkpoint can become authoritative.
+9. Require the independent final rollout verifier to succeed for that cohort; otherwise do not count it as successful rollout validation.
+10. Count only authenticated successful research checkpoints; failed, contaminated, running, and evaluating attempts remain **NOT COUNTED**.
+11. At 20 closed research trades, apply only the precommitted futility rule; do not infer edge from the current four-trade root sample or zero-trade challenger sample.
+12. Do not label a candidate `RESEARCH_PROMISING` before at least 40 closed research trades, 7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
+13. Let the frozen V4 one-shot evaluate only when immutable finalization criteria are met; do not inspect or infer interim V4 economics.
+14. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
 
 ## Hard prohibitions
 
