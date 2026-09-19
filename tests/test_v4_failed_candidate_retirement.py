@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 V4_WORKFLOW = Path(".github/workflows/evidence-campaign-v4-scheduled.yml")
 
 
