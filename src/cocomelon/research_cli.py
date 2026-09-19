@@ -120,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_candidate_parser = subparsers.add_parser("register-candidate-spec")
     _add_registry_argument(register_candidate_parser)
     register_candidate_parser.add_argument("--spec", required=True, type=Path)
+    register_candidate_parser.add_argument("--code-revision")
 
     batch_parser = subparsers.add_parser("record-batch")
     _add_registry_argument(batch_parser)
@@ -212,7 +213,11 @@ def _execute(args: argparse.Namespace) -> dict[str, object]:
         if args.command == "create-candidate":
             return _create_candidate(registry, args)
         if args.command == "register-candidate-spec":
-            candidate = register_candidate_spec(registry, args.spec)
+            candidate = register_candidate_spec(
+                registry,
+                args.spec,
+                code_revision=args.code_revision,
+            )
             return {
                 "candidate_id": candidate.candidate_id,
                 "command": "register-candidate-spec",
