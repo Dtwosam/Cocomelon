@@ -27,9 +27,18 @@ def _string(value: object, field: str) -> str:
     return value.strip()
 
 
+def _revision(value: str) -> str:
+    revision = value.strip().lower()
+    if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+        raise ValueError("candidate code_revision must be a 40-character commit SHA")
+    return revision
+
+
 def register_candidate_spec(
     registry: ResearchRegistry,
     spec_path: str | Path,
+    *,
+    code_revision: str | None = None,
 ) -> ResearchCandidateManifest:
     payload = _mapping(
         json.loads(Path(spec_path).read_text(encoding="utf-8")),
@@ -76,13 +85,16 @@ def register_candidate_spec(
         ensure_ascii=False,
         allow_nan=False,
     )
+    candidate_code_revision = (
+        parent.code_revision if code_revision is None else _revision(code_revision)
+    )
     manifest = ResearchCandidateManifest(
         candidate_id=candidate_id,
         family_id=parent.family_id,
         parent_candidate_id=parent.candidate_id,
         ancestor_candidate_ids=parent.ancestor_candidate_ids + (parent.candidate_id,),
         config_digest=replay_config.config_digest,
-        code_revision=parent.code_revision,
+        code_revision=candidate_code_revision,
         execution_config_json=execution_config_json,
         risk_config_json=parent.risk_config_json,
         state=ResearchCandidateState.DRAFT,
