@@ -14,7 +14,12 @@ CHALLENGER = "research-r1-exit-15m-v1"
 
 
 def _write_audit(
-    tmp_path: Path, *, challenger_end_ms: int = 2000, challenger_horizon: int = 900_000
+    tmp_path: Path,
+    *,
+    challenger_end_ms: int = 2000,
+    challenger_horizon: int = 900_000,
+    challenger_id: str = CHALLENGER,
+    challenger_revision: str = "1" * 40,
 ) -> Path:
     campaign = tmp_path / "research-campaign"
     (campaign / "state").mkdir(parents=True)
@@ -35,13 +40,13 @@ def _write_audit(
             "execution_config_json": json.dumps({"max_position_age_ms": 1_200_000}),
         },
         {
-            "candidate_id": CHALLENGER,
+            "candidate_id": challenger_id,
             "required": False,
             "source_id": source_id,
             "attempt_id": "challenger-attempt",
             "batch_id": "challenger-batch",
             "artifact_key": "challengerkey",
-            "code_revision": "1" * 40,
+            "code_revision": challenger_revision,
             "config_digest": "d" * 64,
             "execution_config_json": json.dumps({"max_position_age_ms": challenger_horizon}),
         },
@@ -60,7 +65,10 @@ def _write_audit(
         ),
         encoding="utf-8",
     )
-    for artifact_key, config_digest in (("rootkey", "c" * 64), ("challengerkey", "d" * 64)):
+    for artifact_key, config_digest, revision in (
+        ("rootkey", "c" * 64, "1" * 40),
+        ("challengerkey", "d" * 64, challenger_revision),
+    ):
         output = (
             campaign
             / "audit"
@@ -73,7 +81,7 @@ def _write_audit(
         (output / "strategy-decisions.json").write_text(
             json.dumps(
                 {
-                    "candidate_code_revision": "1" * 40,
+                    "candidate_code_revision": revision,
                     "candidate_config_digest": config_digest,
                     "recording_session_digest": recording_session_digest,
                     "source_set_digest": source_set_digest,
@@ -105,7 +113,7 @@ def _write_audit(
             ),
             (
                 "challenger-attempt",
-                CHALLENGER,
+                challenger_id,
                 "challenger-batch",
                 source_id,
                 "succeeded",
@@ -134,6 +142,24 @@ def test_verifier_accepts_expected_root_challenger_shared_capture(tmp_path: Path
     assert result.source_interval == (1000, 2000)
     assert result.root_max_position_age_ms == 1_200_000
     assert result.challenger_max_position_age_ms == 900_000
+
+
+def test_verifier_accepts_strategy_code_challenger_with_root_execution_horizon(
+    tmp_path: Path,
+) -> None:
+    challenger_id = "research-r2-entry-quality-v1"
+    result = verify_research_fanout_rollout(
+        _write_audit(
+            tmp_path,
+            challenger_id=challenger_id,
+            challenger_horizon=1_200_000,
+            challenger_revision="2" * 40,
+        ),
+        challenger_candidate_id=challenger_id,
+    )
+
+    assert result.challenger_candidate_id == challenger_id
+    assert result.challenger_max_position_age_ms == 1_200_000
 
 
 def test_verifier_rejects_candidate_interval_mismatch(tmp_path: Path) -> None:
