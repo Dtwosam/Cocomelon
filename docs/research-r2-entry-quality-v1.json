@@ -1,0 +1,9 @@
+{
+  "candidate_id": "research-r2-entry-quality-v1",
+  "parent_candidate_id": "scheduled-research-root",
+  "execution_config": {
+    "config_version": "research-paper-20m-expiry-v1",
+    "max_position_age_ms": 1200000,
+    "starting_cash": "10000"
+  }
+}
