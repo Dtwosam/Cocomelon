@@ -1,8 +1,8 @@
 # Natural Research Rollout Validation Plan
 
-**Status:** active  
+**Status:** complete  
 **Created:** 2026-09-14  
-**Updated:** 2026-09-14  
+**Updated:** 2026-09-19  
 **Supersedes for active execution:** `2026-09-11-research-single-capture-fanout.md`  
 **Scope:** rollout verification only; no strategy, risk, promotion, V4, or live-order rule changes.
 
@@ -84,10 +84,10 @@ The old recorder/canonical `code_revision` mismatch did not recur. No generic ma
 - [x] Confirm only authenticated successful checkpoints changed dashboard accounting; both zero-trade checkpoints were counted and prior failed attempts remained NOT COUNTED.
 - [x] Confirm no research artifact entered V4, Phase 10, a verified-edge claim, or live-order state.
 - [x] Re-run the rollout-verifier contract read-only against archived `34888205962` artifacts and confirm V4 disjointness/completeness, candidate identities/horizons, exact attempts, and decision provenance all pass.
-- [ ] Confirm a naturally eligible **post-#197** cohort executes `Verify root+challenger rollout contract before authoritative publish` successfully in `evaluate-research`.
-- [ ] Confirm the same post-#197 cohort executes the independent final rollout verifier successfully before final publication completes.
+- [x] Confirm a naturally eligible **post-#197** cohort executes `Verify root+challenger rollout contract before authoritative publish` successfully in `evaluate-research`.
+- [x] Confirm the same post-#197 cohort executes the independent final rollout verifier successfully before final publication completes.
 
-The final two checks remain the operational proof that #197's enforcement path—not merely the verifier's semantics—works in production.
+Natural campaign `35420465214` satisfied both remaining checks: the pre-publication verifier succeeded inside `evaluate-research`, the independent final verifier succeeded, candidate jobs completed under the shared authenticated capture, and dashboard publication completed without manual evidence creation or guard weakening. The rollout-enforcement objective is therefore complete.
 
 ## Task 5: Repair only demonstrated rollout defects
 
@@ -109,16 +109,13 @@ Evidence:
 - PR #197 merged as `cfe993ded68d19d0f4491c05d7d49ac20416722f`;
 - post-merge `main` CI `34896797631` passed.
 
-## Task 6: Continue natural research accumulation after rollout verification
+## Task 6: Handoff to profitability research
 
-After the first post-#197 natural cohort proves the verifier gates in-workflow:
+- [x] Close rollout validation after natural production proof.
+- [x] Hand subsequent challenger economics and candidate iteration to the next active profitability-research plan.
+- [x] Preserve D-023 touched/non-promotional gates, futility thresholds, promising thresholds, lineage, and future clean-validation requirements.
 
-- [ ] Continue using naturally eligible shared captures only.
-- [ ] Keep root and challenger economics independent despite shared observations.
-- [ ] At 20 closed research trades, apply the precommitted futility posterior rule; reject if `P(mu > 0) < 0.05`.
-- [ ] Do not label a candidate `RESEARCH_PROMISING` before at least 40 closed research trades, 7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-- [ ] Treat any positive research result as TOUCHED / NON-PROMOTIONAL.
-- [ ] If a challenger legitimately becomes `RESEARCH_PROMISING`, freeze a new immutable challenger identity and enforce inherited touched periods plus the 6-hour embargo before future untouched validation.
+Further accumulation is no longer part of this rollout-verification plan.
 
 ## Completion condition
 
