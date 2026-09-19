@@ -48,7 +48,7 @@ def _execution_horizon(candidate: dict[str, object], *, label: str) -> int:
     if not isinstance(payload, dict):
         raise ValueError(f"{label} execution config must be an object")
     value = payload.get("max_position_age_ms")
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{label} max_position_age_ms is invalid")
     return value
 
@@ -92,8 +92,8 @@ def _verify_candidate_decision_artifact(
 def verify_research_fanout_rollout(
     campaign_root: str | Path,
     *,
-    root_candidate_id: str = ROOT_CANDIDATE_ID,
-    challenger_candidate_id: str = CHALLENGER_CANDIDATE_ID,
+    root_candidate_id: str | None = None,
+    challenger_candidate_id: str | None = None,
 ) -> ResearchFanoutRolloutVerification:
     root = Path(campaign_root)
     fanout = _load_json(root / "state" / "research-fanout.json")
@@ -105,12 +105,26 @@ def verify_research_fanout_rollout(
         for candidate in candidates
         if isinstance(candidate, dict)
     }
-    if set(by_id) != {root_candidate_id, challenger_candidate_id}:
+    required_ids = [
+        candidate_id
+        for candidate_id, candidate in by_id.items()
+        if candidate.get("required") is True
+    ]
+    optional_ids = [
+        candidate_id
+        for candidate_id, candidate in by_id.items()
+        if candidate.get("required") is False
+    ]
+    if len(required_ids) != 1 or len(optional_ids) != 1:
+        raise ValueError("rollout required/optional candidate roles are invalid")
+    resolved_root_candidate_id = root_candidate_id or required_ids[0]
+    resolved_challenger_candidate_id = challenger_candidate_id or optional_ids[0]
+    if set(by_id) != {resolved_root_candidate_id, resolved_challenger_candidate_id}:
         raise ValueError("rollout candidate identities do not match expected root and challenger")
+    root_candidate_id = resolved_root_candidate_id
+    challenger_candidate_id = resolved_challenger_candidate_id
     root_candidate = by_id[root_candidate_id]
     challenger = by_id[challenger_candidate_id]
-    if root_candidate.get("required") is not True or challenger.get("required") is not False:
-        raise ValueError("rollout required/optional candidate roles are invalid")
     source_ids = {root_candidate.get("source_id"), challenger.get("source_id")}
     if len(source_ids) != 1 or not all(isinstance(value, str) and value for value in source_ids):
         raise ValueError("rollout candidates do not share one source_id")
@@ -132,9 +146,15 @@ def verify_research_fanout_rollout(
 
     root_horizon = _execution_horizon(root_candidate, label="root")
     challenger_horizon = _execution_horizon(challenger, label="challenger")
-    if root_horizon != ROOT_MAX_POSITION_AGE_MS:
+    if (
+        root_candidate_id == ROOT_CANDIDATE_ID
+        and root_horizon != ROOT_MAX_POSITION_AGE_MS
+    ):
         raise ValueError("root rollout is not using the immutable 20-minute horizon")
-    if challenger_horizon != CHALLENGER_MAX_POSITION_AGE_MS:
+    if (
+        challenger_candidate_id == CHALLENGER_CANDIDATE_ID
+        and challenger_horizon != CHALLENGER_MAX_POSITION_AGE_MS
+    ):
         raise ValueError("challenger rollout is not using the immutable 15-minute horizon")
 
     connection = sqlite3.connect(root / "state" / "research.sqlite3")
