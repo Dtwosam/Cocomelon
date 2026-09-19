@@ -93,6 +93,17 @@ def test_successful_fanout_is_verified_before_authoritative_registry_publish() -
     assert evaluation.index(verifier) < evaluation.index(publisher)
 
 
+def test_rollout_verifier_is_not_hardcoded_to_legacy_candidate_pair() -> None:
+    source = _source()
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+    finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
+
+    assert "TARGET_PAIR" not in evaluation
+    assert "TARGET_PAIR" not in finalizer
+    assert '{"scheduled-research-root", "research-r1-exit-15m-v1"}' not in evaluation
+    assert '{"scheduled-research-root", "research-r1-exit-15m-v1"}' not in finalizer
+
+
 def test_failed_evaluation_cannot_restore_post_evaluation_state_for_publish() -> None:
     source = _source()
     finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
