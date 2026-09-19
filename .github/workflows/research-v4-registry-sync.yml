@@ -76,14 +76,21 @@ jobs:
                 --jq '(.head_branch == "main")
                   and (.status == "completed")
                   and (
-                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
-                      and (.conclusion == "success" or .conclusion == "failure"))
-                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
-                      and (.conclusion == "success"))
-                    or ((.path == ".github/workflows/research-candidate-register.yml")
-                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
-                  )
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
+                    (
+                      (
+                        ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                          and (.conclusion == "success" or .conclusion == "failure"))
+                        or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                          and (.conclusion == "success"))
+                      )
+                      and (.event == "schedule" or .event == "workflow_dispatch")
+                    )
+                    or (
+                      (.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success")
+                      and (.event == "workflow_dispatch" or .event == "push")
+                    )
+                  )'
             )"
             RUN_HEAD_SHA="$(
               /usr/bin/gh api \
@@ -445,14 +452,21 @@ jobs:
                 --jq '(.head_branch == "main")
                   and (.status == "completed")
                   and (
-                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
-                      and (.conclusion == "success" or .conclusion == "failure"))
-                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
-                      and (.conclusion == "success"))
-                    or ((.path == ".github/workflows/research-candidate-register.yml")
-                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
-                  )
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
+                    (
+                      (
+                        ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                          and (.conclusion == "success" or .conclusion == "failure"))
+                        or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                          and (.conclusion == "success"))
+                      )
+                      and (.event == "schedule" or .event == "workflow_dispatch")
+                    )
+                    or (
+                      (.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success")
+                      and (.event == "workflow_dispatch" or .event == "push")
+                    )
+                  )'
             )"
             RUN_HEAD_SHA="$(
               /usr/bin/gh api \
