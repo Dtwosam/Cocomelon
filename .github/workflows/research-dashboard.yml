@@ -5,6 +5,7 @@ on:
     workflows:
       - "Scheduled Research Mainnet Replay Campaign"
       - "Research V4 Acquisition Authority Sync"
+      - "Register Research Challenger"
     types: [completed]
   schedule:
     - cron: "23 * * * *"
