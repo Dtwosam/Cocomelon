@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from cocomelon.domain.strategy import Direction, StrategyContext, StrategyDecision, StrategySignal
+from cocomelon.domain.strategy import (
+    Direction,
+    StrategyContext,
+    StrategyDecision,
+    StrategySignal,
+)
 from cocomelon.strategies.breakout import evaluate_breakout
 from cocomelon.strategies.decision import combine_signals
 from cocomelon.strategies.funding_oi import evaluate_funding_oi
