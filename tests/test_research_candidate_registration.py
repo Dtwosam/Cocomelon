@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 from importlib import import_module
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 from cocomelon.research.bootstrap import ensure_bootstrap_candidate
 from cocomelon.research.cohort import research_replay_config_from_candidate
 from cocomelon.research.contracts import ResearchCandidateState, TimeInterval
+from cocomelon.research.registration import register_candidate_spec
 from cocomelon.research.registry import ResearchRegistry
 
 research_cli = import_module("cocomelon.research_cli")
@@ -146,11 +148,39 @@ def test_register_candidate_spec_is_idempotent_for_exact_identity(
     assert first[2] == second[2] == ""
 
 
+def test_register_candidate_spec_can_pin_distinct_strategy_code_revision(
+    tmp_path: Path,
+) -> None:
+    assert "code_revision" in inspect.signature(register_candidate_spec).parameters
+
+    registry_path = tmp_path / "research.sqlite3"
+    spec_path = tmp_path / "challenger.json"
+    _bootstrap_registry(registry_path)
+    _write_spec(spec_path)
+
+    registry = ResearchRegistry(registry_path)
+    try:
+        child = register_candidate_spec(
+            registry,
+            spec_path,
+            code_revision="2" * 40,
+        )
+    finally:
+        registry.close()
+
+    assert child.code_revision == "2" * 40
+    assert child.parent_candidate_id == "scheduled-research-root"
+    assert child.effective_touched_intervals == (TimeInterval(1_000, 2_000),)
+
+
 def test_registration_workflow_is_registry_only_and_publisher_locked() -> None:
     workflow = Path(".github/workflows/research-candidate-register.yml").read_text(
         encoding="utf-8"
     )
     assert "workflow_dispatch:" in workflow
+    assert "push:" in workflow
+    assert "docs/research-r2-entry-quality-v1.json" in workflow
+    assert '--code-revision "$GITHUB_SHA"' in workflow
     assert "research-authoritative-registry-publisher" in workflow
     assert "register-candidate-spec" in workflow
     assert "research-authoritative-registry" in workflow
@@ -159,7 +189,7 @@ def test_registration_workflow_is_registry_only_and_publisher_locked() -> None:
     assert "RESEARCH_CHALLENGER_CANDIDATE_ID" not in workflow
 
 
-def test_authority_consumers_trust_only_successful_registration_dispatch() -> None:
+def test_authority_consumers_trust_successful_registration_dispatch_or_main_push() -> None:
     for path in (
         Path(".github/workflows/research-campaign-scheduled.yml"),
         Path(".github/workflows/research-v4-registry-sync.yml"),
@@ -167,4 +197,4 @@ def test_authority_consumers_trust_only_successful_registration_dispatch() -> No
     ):
         workflow = path.read_text(encoding="utf-8")
         assert 'research-candidate-register.yml' in workflow
-        assert '(.event == "workflow_dispatch")' in workflow
+        assert '(.event == "workflow_dispatch" or .event == "push")' in workflow
