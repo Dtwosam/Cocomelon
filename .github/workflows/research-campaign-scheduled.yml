@@ -15,7 +15,7 @@ env:
   COCOMELON_API_URL: https://api.hyperliquid.xyz
   COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
   RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
-  RESEARCH_CHALLENGER_CANDIDATE_ID: ${{ vars.RESEARCH_CHALLENGER_CANDIDATE_ID }}
+  RESEARCH_CHALLENGER_CANDIDATE_ID: ${{ vars.RESEARCH_R2_CHALLENGER_CANDIDATE_ID || 'research-r2-entry-quality-v1' }}
   ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
   BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
   SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}
@@ -81,14 +81,21 @@ jobs:
                 --jq '(.head_branch == "main")
                   and (.status == "completed")
                   and (
-                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
-                      and (.conclusion == "success" or .conclusion == "failure"))
-                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
-                      and (.conclusion == "success"))
-                    or ((.path == ".github/workflows/research-candidate-register.yml")
-                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
-                  )
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
+                    (
+                      (
+                        ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                          and (.conclusion == "success" or .conclusion == "failure"))
+                        or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                          and (.conclusion == "success"))
+                      )
+                      and (.event == "schedule" or .event == "workflow_dispatch")
+                    )
+                    or (
+                      (.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success")
+                      and (.event == "workflow_dispatch" or .event == "push")
+                    )
+                  )'
             )"
             RUN_HEAD_SHA="$(
               /usr/bin/gh api \
@@ -949,14 +956,21 @@ jobs:
                 --jq '(.head_branch == "main")
                   and (.status == "completed")
                   and (
-                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
-                      and (.conclusion == "success" or .conclusion == "failure"))
-                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
-                      and (.conclusion == "success"))
-                    or ((.path == ".github/workflows/research-candidate-register.yml")
-                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
-                  )
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
+                    (
+                      (
+                        ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                          and (.conclusion == "success" or .conclusion == "failure"))
+                        or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                          and (.conclusion == "success"))
+                      )
+                      and (.event == "schedule" or .event == "workflow_dispatch")
+                    )
+                    or (
+                      (.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success")
+                      and (.event == "workflow_dispatch" or .event == "push")
+                    )
+                  )'
             )"
             RUN_HEAD_SHA="$(
               /usr/bin/gh api \
@@ -1131,25 +1145,12 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/control-src/src
         run: |
           set -euo pipefail
-          TARGET_PAIR="$(python - <<'PY2'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
-          )
-          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
-          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
-          print("true" if candidate_ids == expected else "false")
-          PY2
-          )"
-          if [ "$TARGET_PAIR" = "true" ]; then
-            rm -rf research-campaign/audit/capture research-campaign/audit/decisions
-            mkdir -p research-campaign/audit/capture/output research-campaign/audit/decisions
-            cp research-campaign/output/capture-source.json               research-campaign/audit/capture/output/capture-source.json
-            cp -a research-campaign/decisions/. research-campaign/audit/decisions/
-            python -m cocomelon.research.rollout_verifier research-campaign
-          fi
+          rm -rf research-campaign/audit/capture research-campaign/audit/decisions
+          mkdir -p research-campaign/audit/capture/output research-campaign/audit/decisions
+          cp research-campaign/output/capture-source.json \
+            research-campaign/audit/capture/output/capture-source.json
+          cp -a research-campaign/decisions/. research-campaign/audit/decisions/
+          python -m cocomelon.research.rollout_verifier research-campaign
 
       - name: Publish committed authoritative research registry
         id: publish-committed-registry
@@ -1285,14 +1286,21 @@ jobs:
                 --jq '(.head_branch == "main")
                   and (.status == "completed")
                   and (
-                    ((.path == ".github/workflows/research-campaign-scheduled.yml")
-                      and (.conclusion == "success" or .conclusion == "failure"))
-                    or ((.path == ".github/workflows/research-v4-registry-sync.yml")
-                      and (.conclusion == "success"))
-                    or ((.path == ".github/workflows/research-candidate-register.yml")
-                      and (.conclusion == "success") and (.event == "workflow_dispatch"))
-                  )
-                  and (.event == "schedule" or .event == "workflow_dispatch")'
+                    (
+                      (
+                        ((.path == ".github/workflows/research-campaign-scheduled.yml")
+                          and (.conclusion == "success" or .conclusion == "failure"))
+                        or ((.path == ".github/workflows/research-v4-registry-sync.yml")
+                          and (.conclusion == "success"))
+                      )
+                      and (.event == "schedule" or .event == "workflow_dispatch")
+                    )
+                    or (
+                      (.path == ".github/workflows/research-candidate-register.yml")
+                      and (.conclusion == "success")
+                      and (.event == "workflow_dispatch" or .event == "push")
+                    )
+                  )'
             )"
             RUN_HEAD_SHA="$(
               /usr/bin/gh api \
@@ -1380,21 +1388,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/control-src/src
         run: |
           set -euo pipefail
-          TARGET_PAIR="$(python - <<'PY'
-          import json
-          from pathlib import Path
-
-          payload = json.loads(
-              Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
-          )
-          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
-          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
-          print("true" if candidate_ids == expected else "false")
-          PY
-          )"
-          if [ "$TARGET_PAIR" = "true" ]; then
-            python -m cocomelon.research.rollout_verifier research-campaign
-          fi
+          python -m cocomelon.research.rollout_verifier research-campaign
 
       - name: Persist workflow failure in attempt ledger
         if: ${{ always() }}
