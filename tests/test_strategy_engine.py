@@ -119,6 +119,12 @@ def _short_candles() -> tuple[Candle, ...]:
     return (*prior, trigger)
 
 
+def _trend_short_candles() -> tuple[Candle, ...]:
+    prior = tuple(_candle(i, low="100", high="110", close="105") for i in range(20))
+    trigger = _candle(20, low="99", high="108", close="104")
+    return (*prior, trigger)
+
+
 def _context(
     *,
     feature: FeatureSnapshot | None = None,
@@ -161,9 +167,10 @@ def test_engine_runs_all_five_families_in_deterministic_name_order() -> None:
         signal.feature_snapshot_id == context.feature_snapshot.snapshot_id
         for signal in first.signals
     )
-    assert first.decision.direction is Direction.LONG
+    assert first.decision.direction is Direction.NO_TRADE
     assert first.decision.score == Decimal("99")
-    assert first.decision.lead_strategy == "breakout"
+    assert first.decision.lead_strategy is None
+    assert first.decision.reason_codes == ("entry_quality_challenger_filter",)
 
 
 def test_engine_produces_short_from_aligned_trend_and_breakout() -> None:
@@ -178,9 +185,30 @@ def test_engine_produces_short_from_aligned_trend_and_breakout() -> None:
     )
     evaluation = evaluate_strategies(_context(feature=feature, candles=_short_candles()))
 
-    assert evaluation.decision.direction is Direction.SHORT
+    assert evaluation.decision.direction is Direction.NO_TRADE
     assert evaluation.decision.score == Decimal("99")
-    assert evaluation.decision.lead_strategy == "breakout"
+    assert evaluation.decision.lead_strategy is None
+    assert evaluation.decision.reason_codes == ("entry_quality_challenger_filter",)
+
+
+def test_entry_quality_challenger_accepts_only_moderate_score_trend_short() -> None:
+    feature = _feature(
+        day_return=Decimal("-0.02"),
+        return_5m=Decimal("0.001"),
+        return_15m=Decimal("-0.01"),
+        return_1h=Decimal("-0.02"),
+        return_4h=Decimal("-0.03"),
+        relative_volume_15m=Decimal("0.8"),
+        book_imbalance=Decimal("0"),
+        trend_regime=TrendRegime.DOWN,
+    )
+    evaluation = evaluate_strategies(
+        _context(feature=feature, candles=_trend_short_candles())
+    )
+
+    assert evaluation.decision.direction is Direction.SHORT
+    assert evaluation.decision.score == Decimal("79")
+    assert evaluation.decision.lead_strategy == "trend"
 
 
 def test_engine_preserves_deep_readiness_as_hard_no_trade_gate() -> None:
