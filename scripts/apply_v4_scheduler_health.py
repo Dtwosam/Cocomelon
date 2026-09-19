@@ -16,6 +16,13 @@ _SCHEDULE_HOURS = (1, 7, 13, 19)
 _SCHEDULE_MINUTE = 37
 _SCHEDULE_GRACE = timedelta(minutes=90)
 _ACTIVATION_LEAD = timedelta(hours=1)
+_RETIRED_SUMMARY = "retired — scheduled acquisition disabled after touched economic failure"
+
+
+def _campaign_retired(path: Path = Path(_CAMPAIGN_PATH)) -> bool:
+    source = path.read_text(encoding="utf-8")
+    trigger_block = source.split("\npermissions:", 1)[0]
+    return "\n  schedule:" not in trigger_block and "cron:" not in trigger_block
 
 
 def _parse_time(value: object, label: str) -> datetime:
@@ -191,10 +198,14 @@ def main() -> int:
 
     patch_path = Path(args.patch).resolve()
     patch = _read_patch(patch_path)
-    summary = _scheduler_health(
-        datetime.now(UTC),
-        _latest_scheduled_run(repo),
-        _workflow_updated(repo),
+    summary = (
+        _RETIRED_SUMMARY
+        if _campaign_retired()
+        else _scheduler_health(
+            datetime.now(UTC),
+            _latest_scheduled_run(repo),
+            _workflow_updated(repo),
+        )
     )
     updated = _apply_scheduler_health(patch, summary)
     patch_path.write_text(
