@@ -60,10 +60,11 @@ def test_midcapture_guard_fails_closed_when_actions_metadata_is_unavailable() ->
     assert 'kill "$RECORDER_PID"' in acquire
 
 
-def test_midcapture_guard_does_not_modify_frozen_v4_workflow() -> None:
+def test_midcapture_guard_keeps_retired_v4_runtime_pinned() -> None:
     v4 = V4_WORKFLOW.read_text(encoding="utf-8")
 
-    assert 'cron: "37 1,7,13,19 * * *"' in v4
+    assert 'cron: "37 1,7,13,19 * * *"' not in v4
+    assert "workflow_dispatch:" in v4
     assert "COHORT_CODE_REVISION: 0c14c9cfa37c80babc65d050fed6d4465dcb9032" in v4
     assert "CAPTURE_WINDOW_SECONDS: 18900" in v4
     assert "MAX_POSITION_AGE_SECONDS: 14400" in v4
