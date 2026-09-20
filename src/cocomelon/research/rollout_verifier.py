@@ -228,8 +228,15 @@ def main(argv: list[str] | None = None) -> int:
         description="Verify the first root+challenger research fan-out rollout artifact."
     )
     parser.add_argument("campaign_root")
+    parser.add_argument(
+        "--challenger-candidate-id",
+        default=CHALLENGER_CANDIDATE_ID,
+    )
     args = parser.parse_args(argv)
-    result = verify_research_fanout_rollout(args.campaign_root)
+    result = verify_research_fanout_rollout(
+        args.campaign_root,
+        challenger_candidate_id=args.challenger_candidate_id,
+    )
     print(
         json.dumps(
             {
