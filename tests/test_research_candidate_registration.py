@@ -11,6 +11,9 @@ from cocomelon.research.registry import ResearchRegistry
 
 research_cli = import_module("cocomelon.research_cli")
 
+R2_CANDIDATE_ID = "research-r2-short-trend-quality-v1"
+R2_CODE_REVISION = "2ce088d69df01f044b0650b811b51015a5edda51"
+
 
 def _run_cli(capsys: object, argv: list[str]) -> tuple[int, str, str]:
     exit_code = research_cli.main(argv)
@@ -230,3 +233,34 @@ def test_authority_consumers_trust_only_successful_registration_dispatch() -> No
         workflow = path.read_text(encoding="utf-8")
         assert 'research-candidate-register.yml' in workflow
         assert '(.event == "workflow_dispatch")' in workflow
+
+
+def test_r2_quality_candidate_spec_is_pinned_to_quality_seam_revision() -> None:
+    payload = json.loads(
+        Path("docs/research-r2-short-trend-quality-v1.json").read_text(encoding="utf-8")
+    )
+
+    assert payload == {
+        "candidate_id": R2_CANDIDATE_ID,
+        "parent_candidate_id": "scheduled-research-root",
+        "code_revision": R2_CODE_REVISION,
+        "execution_config": {
+            "config_version": "research-paper-20m-expiry-v1",
+            "max_position_age_ms": 1_200_000,
+            "starting_cash": "10000",
+        },
+    }
+
+
+def test_r2_activation_hook_dispatches_registry_only_registration() -> None:
+    workflow = Path(".github/workflows/research-r2-activate.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "push:" in workflow
+    assert "branches:" in workflow
+    assert "main" in workflow
+    assert "actions: write" in workflow
+    assert "research-candidate-register.yml" in workflow
+    assert "workflow_dispatch" not in workflow
+    assert "record-mainnet-evidence" not in workflow
+    assert "research-campaign-scheduled.yml" not in workflow
