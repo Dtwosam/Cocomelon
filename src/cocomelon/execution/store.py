@@ -239,6 +239,29 @@ class PaperExecutionStore:
         self._migrate()
 
     def _migrate(self) -> None:
+        existing_tables = {
+            str(row[0])
+            for row in self._conn.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'table' AND name LIKE 'paper_%'"
+            )
+        }
+        existing_store = bool(existing_tables)
+        if existing_store:
+            if "paper_meta" not in existing_tables:
+                raise ValueError("missing paper schema metadata")
+            version_row = self._conn.execute(
+                "SELECT value FROM paper_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            if version_row is None:
+                raise ValueError("missing paper schema version")
+            persisted_version = str(version_row[0])
+            if persisted_version != str(SCHEMA_VERSION):
+                raise ValueError(
+                    "unsupported paper schema version: "
+                    f"{persisted_version}; supported={SCHEMA_VERSION}"
+                )
+
         with self._conn:
             self._conn.executescript(
                 """
@@ -291,10 +314,11 @@ class PaperExecutionStore:
                 );
                 """
             )
-            self._conn.execute(
-                "INSERT OR REPLACE INTO paper_meta(key, value) VALUES ('schema_version', ?)",
-                (str(SCHEMA_VERSION),),
-            )
+            if not existing_store:
+                self._conn.execute(
+                    "INSERT INTO paper_meta(key, value) VALUES ('schema_version', ?)",
+                    (str(SCHEMA_VERSION),),
+                )
 
     def close(self) -> None:
         self._conn.close()
