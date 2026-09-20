@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+from cocomelon.domain.strategy import StrategyContext, StrategyDecision
+
 
 def _load_trusted_seam() -> ModuleType:
     path = Path("/trusted/strategy_seam.py")
@@ -18,6 +20,18 @@ def _load_trusted_seam() -> ModuleType:
     return module
 
 
+def _evaluate_candidate_strategy(context: StrategyContext) -> StrategyDecision:
+    try:
+        from cocomelon.research.candidate_strategy import evaluate_candidate_strategy
+    except ModuleNotFoundError as exc:
+        if exc.name != "cocomelon.research.candidate_strategy":
+            raise
+        from cocomelon.strategies.engine import evaluate_strategies
+
+        return evaluate_strategies(context).decision
+    return evaluate_candidate_strategy(context)
+
+
 def main() -> int:
     seam = _load_trusted_seam()
     try:
@@ -28,9 +42,7 @@ def main() -> int:
         raise RuntimeError("candidate strategy input must be an object")
     context = seam.strategy_context_from_payload(payload.get("context"))
 
-    from cocomelon.strategies.engine import evaluate_strategies
-
-    decision = evaluate_strategies(context).decision
+    decision = _evaluate_candidate_strategy(context)
     encoded = json.dumps(
         seam.strategy_decision_to_payload(decision),
         sort_keys=True,

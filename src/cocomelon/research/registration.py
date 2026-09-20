@@ -27,6 +27,13 @@ def _string(value: object, field: str) -> str:
     return value.strip()
 
 
+def _code_revision(value: object, field: str) -> str:
+    revision = _string(value, field).lower()
+    if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+        raise ValueError(f"{field} must be a 40-character commit SHA")
+    return revision
+
+
 def register_candidate_spec(
     registry: ResearchRegistry,
     spec_path: str | Path,
@@ -35,13 +42,20 @@ def register_candidate_spec(
         json.loads(Path(spec_path).read_text(encoding="utf-8")),
         "candidate spec",
     )
-    if set(payload) != {"candidate_id", "parent_candidate_id", "execution_config"}:
+    required_fields = {"candidate_id", "parent_candidate_id", "execution_config"}
+    allowed_fields = required_fields | {"code_revision"}
+    if not required_fields.issubset(payload) or not set(payload).issubset(allowed_fields):
         raise ValueError("candidate spec fields are not supported")
 
     candidate_id = _string(payload.get("candidate_id"), "candidate_id")
     parent_candidate_id = _string(payload.get("parent_candidate_id"), "parent_candidate_id")
     parent = registry.load_candidate(parent_candidate_id)
     parent_replay_config = research_replay_config_from_candidate(parent)
+    code_revision = (
+        parent.code_revision
+        if payload.get("code_revision") is None
+        else _code_revision(payload.get("code_revision"), "code_revision")
+    )
 
     execution = _mapping(payload.get("execution_config"), "execution_config")
     if set(execution) != {"config_version", "max_position_age_ms", "starting_cash"}:
@@ -82,7 +96,7 @@ def register_candidate_spec(
         parent_candidate_id=parent.candidate_id,
         ancestor_candidate_ids=parent.ancestor_candidate_ids + (parent.candidate_id,),
         config_digest=replay_config.config_digest,
-        code_revision=parent.code_revision,
+        code_revision=code_revision,
         execution_config_json=execution_config_json,
         risk_config_json=parent.risk_config_json,
         state=ResearchCandidateState.DRAFT,

@@ -35,20 +35,25 @@ def _bootstrap_registry(path: Path) -> None:
         registry.close()
 
 
-def _write_spec(path: Path, *, starting_cash: str = "10000") -> None:
+def _write_spec(
+    path: Path,
+    *,
+    starting_cash: str = "10000",
+    code_revision: str | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "candidate_id": "research-r1-exit-15m-v1",
+        "parent_candidate_id": "scheduled-research-root",
+        "execution_config": {
+            "config_version": "research-paper-15m-expiry-v1",
+            "max_position_age_ms": 900_000,
+            "starting_cash": starting_cash,
+        },
+    }
+    if code_revision is not None:
+        payload["code_revision"] = code_revision
     path.write_text(
-        json.dumps(
-            {
-                "candidate_id": "research-r1-exit-15m-v1",
-                "parent_candidate_id": "scheduled-research-root",
-                "execution_config": {
-                    "config_version": "research-paper-15m-expiry-v1",
-                    "max_position_age_ms": 900_000,
-                    "starting_cash": starting_cash,
-                },
-            },
-            sort_keys=True,
-        ),
+        json.dumps(payload, sort_keys=True),
         encoding="utf-8",
     )
 
@@ -101,6 +106,63 @@ def test_register_candidate_spec_derives_identity_and_inherits_touched_lineage(
     assert replay_config.execution.max_position_age_ms == 900_000
     assert replay_config.execution.config_version == "research-paper-15m-expiry-v1"
     assert replay_config.starting_cash == parent_replay_config.starting_cash
+
+
+def test_register_candidate_spec_can_pin_distinct_strategy_code_revision(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    spec_path = tmp_path / "challenger.json"
+    _bootstrap_registry(registry_path)
+    _write_spec(spec_path, code_revision="2" * 40)
+
+    code, out, err = _run_cli(
+        capsys,
+        [
+            "register-candidate-spec",
+            "--registry",
+            str(registry_path),
+            "--spec",
+            str(spec_path),
+        ],
+    )
+
+    assert code == 0
+    assert err == ""
+    assert json.loads(out)["candidate_id"] == "research-r1-exit-15m-v1"
+    registry = ResearchRegistry(registry_path)
+    try:
+        child = registry.load_candidate("research-r1-exit-15m-v1")
+    finally:
+        registry.close()
+    assert child.code_revision == "2" * 40
+    assert child.effective_touched_intervals == (TimeInterval(1_000, 2_000),)
+
+
+def test_register_candidate_spec_rejects_invalid_distinct_code_revision(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    spec_path = tmp_path / "challenger.json"
+    _bootstrap_registry(registry_path)
+    _write_spec(spec_path, code_revision="not-a-sha")
+
+    code, out, err = _run_cli(
+        capsys,
+        [
+            "register-candidate-spec",
+            "--registry",
+            str(registry_path),
+            "--spec",
+            str(spec_path),
+        ],
+    )
+
+    assert code != 0
+    assert out == ""
+    assert "code_revision" in json.loads(err)["error"]
 
 
 def test_register_candidate_spec_rejects_starting_cash_change(

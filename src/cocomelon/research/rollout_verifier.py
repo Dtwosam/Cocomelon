@@ -11,8 +11,17 @@ from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 ROOT_CANDIDATE_ID = "scheduled-research-root"
 CHALLENGER_CANDIDATE_ID = "research-r1-exit-15m-v1"
+QUALITY_CHALLENGER_CANDIDATE_ID = "research-r2-short-trend-quality-v1"
 ROOT_MAX_POSITION_AGE_MS = 1_200_000
 CHALLENGER_MAX_POSITION_AGE_MS = 900_000
+QUALITY_CHALLENGER_MAX_POSITION_AGE_MS = 1_200_000
+_CHALLENGER_HORIZONS = {
+    CHALLENGER_CANDIDATE_ID: (CHALLENGER_MAX_POSITION_AGE_MS, "15-minute"),
+    QUALITY_CHALLENGER_CANDIDATE_ID: (
+        QUALITY_CHALLENGER_MAX_POSITION_AGE_MS,
+        "20-minute",
+    ),
+}
 _TERMINAL_CHALLENGER_STATUSES = {"succeeded", "failed", "contaminated"}
 
 
@@ -96,6 +105,10 @@ def verify_research_fanout_rollout(
     challenger_candidate_id: str = CHALLENGER_CANDIDATE_ID,
 ) -> ResearchFanoutRolloutVerification:
     root = Path(campaign_root)
+    expected_challenger = _CHALLENGER_HORIZONS.get(challenger_candidate_id)
+    if expected_challenger is None:
+        raise ValueError("rollout challenger identity is not an authorized immutable challenger")
+
     fanout = _load_json(root / "state" / "research-fanout.json")
     candidates = fanout.get("candidates")
     if not isinstance(candidates, list) or len(candidates) != 2:
@@ -134,8 +147,11 @@ def verify_research_fanout_rollout(
     challenger_horizon = _execution_horizon(challenger, label="challenger")
     if root_horizon != ROOT_MAX_POSITION_AGE_MS:
         raise ValueError("root rollout is not using the immutable 20-minute horizon")
-    if challenger_horizon != CHALLENGER_MAX_POSITION_AGE_MS:
-        raise ValueError("challenger rollout is not using the immutable 15-minute horizon")
+    expected_horizon, expected_label = expected_challenger
+    if challenger_horizon != expected_horizon:
+        raise ValueError(
+            f"challenger rollout is not using the immutable {expected_label} horizon"
+        )
 
     connection = sqlite3.connect(root / "state" / "research.sqlite3")
     connection.row_factory = sqlite3.Row
