@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "candidate_id": "v4-baseline-4h-thesis-expiry",
+  "state": "retired_touched_no_edge",
+  "revealed_at_utc": "2026-09-17T14:29:00Z",
+  "revealed_corpus_artifact_id": 10497424756,
+  "revealed_closed_trade_count": 100,
+  "revealed_closed_trade_days": 18,
+  "gross_pnl": "-537.62",
+  "net_pnl": "-629.91",
+  "mean_net_r": "-0.298",
+  "profit_factor": "0.44",
+  "realized_closed_trade_max_drawdown_fraction": "0.0780",
+  "economic_conclusion": "no_edge_demonstrated",
+  "promotion_eligible": false,
+  "live_orders": false
+}
