@@ -205,6 +205,30 @@ def test_verifier_cli_emits_machine_readable_success(
     assert payload["source_interval"] == [1000, 2000]
 
 
+def test_verifier_cli_can_select_quality_challenger(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from cocomelon.research import rollout_verifier
+
+    campaign = _write_audit(
+        tmp_path,
+        challenger_id=QUALITY_CHALLENGER,
+        challenger_horizon=1_200_000,
+    )
+    code = rollout_verifier.main(
+        [
+            str(campaign),
+            "--challenger-candidate-id",
+            QUALITY_CHALLENGER,
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["verified"] is True
+    assert payload["challenger_candidate_id"] == QUALITY_CHALLENGER
+    assert payload["challenger_max_position_age_ms"] == 1_200_000
+
+
 def test_verifier_rejects_incomplete_v4_authority(tmp_path: Path) -> None:
     campaign = _write_audit(tmp_path)
     connection = sqlite3.connect(campaign / "state" / "research.sqlite3")
