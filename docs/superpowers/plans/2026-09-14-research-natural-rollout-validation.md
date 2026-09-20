@@ -1,10 +1,11 @@
 # Natural Research Rollout Validation Plan
 
-**Status:** active  
+**Status:** superseded  
 **Created:** 2026-09-14  
-**Updated:** 2026-09-14  
+**Updated:** 2026-09-20  
 **Supersedes for active execution:** `2026-09-11-research-single-capture-fanout.md`  
-**Scope:** rollout verification only; no strategy, risk, promotion, V4, or live-order rule changes.
+**Superseded by:** `2026-09-20-r2-natural-research-validation.md`  
+**Scope:** historical root+r1 rollout verification. D-024 retired the revealed V4 baseline and PRs #205–#208 moved the active research frontier to root+r2. This plan is retained for audit only.
 
 ## Goal
 
