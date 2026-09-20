@@ -22,6 +22,7 @@ from cocomelon.execution.accounting import (
     apply_reduce_only_fills,
     empty_account,
     mark_to_market,
+    tighten_position_stop,
 )
 from cocomelon.execution.funding import FundingAccrual
 from cocomelon.execution.interface import (
@@ -305,10 +306,30 @@ class PaperExecutionAdapter:
             timestamp_ms=timestamp_ms,
         )
 
-        if action.action_type in {
-            PositionActionType.HOLD,
-            PositionActionType.TIGHTEN_STOP,
-        }:
+        if action.action_type is PositionActionType.HOLD:
+            return PositionManagement(
+                action=action,
+                plan=None,
+                rejection=None,
+                simulation=None,
+                account=self._account,
+            )
+
+        if action.action_type is PositionActionType.TIGHTEN_STOP:
+            if action.new_stop_price is None:
+                raise RuntimeError("tighten-stop action requires new_stop_price")
+            candidate = tighten_position_stop(
+                self._account,
+                market,
+                action.new_stop_price,
+                timestamp_ms,
+            )
+            try:
+                self.store.persist_account(candidate)
+            except Exception:
+                self._mark_store_failure("DURABLE_STOP_TIGHTEN_WRITE_FAILED")
+                raise
+            self._account = candidate
             return PositionManagement(
                 action=action,
                 plan=None,
