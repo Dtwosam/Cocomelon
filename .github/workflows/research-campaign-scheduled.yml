@@ -1131,24 +1131,37 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/control-src/src
         run: |
           set -euo pipefail
-          TARGET_PAIR="$(python - <<'PY2'
+          CHALLENGER_ID="$(python - <<'PY2'
           import json
           from pathlib import Path
 
           payload = json.loads(
               Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
           )
-          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
-          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
-          print("true" if candidate_ids == expected else "false")
+          candidates = payload.get("candidates", [])
+          if not isinstance(candidates, list):
+              raise SystemExit("research fanout candidates must be a list")
+          if len(candidates) != 2:
+              print("")
+          else:
+              candidate_ids = [candidate.get("candidate_id") for candidate in candidates]
+              challengers = [
+                  candidate_id
+                  for candidate_id in candidate_ids
+                  if candidate_id != "scheduled-research-root"
+              ]
+              if "scheduled-research-root" not in candidate_ids or len(challengers) != 1:
+                  raise SystemExit("research fanout must contain root plus one challenger")
+              print(challengers[0])
           PY2
           )"
-          if [ "$TARGET_PAIR" = "true" ]; then
+          if [ -n "$CHALLENGER_ID" ]; then
             rm -rf research-campaign/audit/capture research-campaign/audit/decisions
             mkdir -p research-campaign/audit/capture/output research-campaign/audit/decisions
             cp research-campaign/output/capture-source.json               research-campaign/audit/capture/output/capture-source.json
             cp -a research-campaign/decisions/. research-campaign/audit/decisions/
-            python -m cocomelon.research.rollout_verifier research-campaign
+            python -m cocomelon.research.rollout_verifier research-campaign \
+              --challenger-candidate-id "$CHALLENGER_ID"
           fi
 
       - name: Publish committed authoritative research registry
@@ -1380,20 +1393,33 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/control-src/src
         run: |
           set -euo pipefail
-          TARGET_PAIR="$(python - <<'PY'
+          CHALLENGER_ID="$(python - <<'PY'
           import json
           from pathlib import Path
 
           payload = json.loads(
               Path("research-campaign/state/research-fanout.json").read_text(encoding="utf-8")
           )
-          candidate_ids = {candidate["candidate_id"] for candidate in payload.get("candidates", [])}
-          expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}
-          print("true" if candidate_ids == expected else "false")
+          candidates = payload.get("candidates", [])
+          if not isinstance(candidates, list):
+              raise SystemExit("research fanout candidates must be a list")
+          if len(candidates) != 2:
+              print("")
+          else:
+              candidate_ids = [candidate.get("candidate_id") for candidate in candidates]
+              challengers = [
+                  candidate_id
+                  for candidate_id in candidate_ids
+                  if candidate_id != "scheduled-research-root"
+              ]
+              if "scheduled-research-root" not in candidate_ids or len(challengers) != 1:
+                  raise SystemExit("research fanout must contain root plus one challenger")
+              print(challengers[0])
           PY
           )"
-          if [ "$TARGET_PAIR" = "true" ]; then
-            python -m cocomelon.research.rollout_verifier research-campaign
+          if [ -n "$CHALLENGER_ID" ]; then
+            python -m cocomelon.research.rollout_verifier research-campaign \
+              --challenger-candidate-id "$CHALLENGER_ID"
           fi
 
       - name: Persist workflow failure in attempt ledger

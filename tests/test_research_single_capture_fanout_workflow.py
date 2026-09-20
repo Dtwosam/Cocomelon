@@ -140,3 +140,17 @@ def test_research_campaign_defaults_to_r2_quality_challenger() -> None:
         "'research-r2-short-trend-quality-v1'"
     ) in source
     assert "vars.RESEARCH_CHALLENGER_CANDIDATE_ID }}" not in source
+
+
+def test_authoritative_rollout_verification_uses_active_challenger_identity() -> None:
+    source = _source()
+    evaluation = _job(source, "evaluate-research", "finalize-publish")
+    finalizer = _job(source, "finalize-publish", "dispatch-dashboard")
+
+    hardcoded_r1_pair = (
+        'expected = {"scheduled-research-root", "research-r1-exit-15m-v1"}'
+    )
+    for block in (evaluation, finalizer):
+        assert hardcoded_r1_pair not in block
+        assert 'CHALLENGER_ID="' in block
+        assert "--challenger-candidate-id" in block
