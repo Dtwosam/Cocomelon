@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `99bba62a150d072496fd371b4f7d08fad0fe312b`  
-**Latest verified baseline CI:** run `35536105728` — success  
+**Verified implementation baseline:** `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`  
+**Latest verified baseline CI:** run `35537686365` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -27,7 +27,7 @@ One V4 acquisition that had already started before retirement, run `35524316366`
 
 ## Trusted V4 dashboard state
 
-Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-20 20:03 UTC**:
+Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-20 21:04 UTC**:
 
 - **68 accepted V4 cohorts**;
 - **120 closed paper trades**;
@@ -63,7 +63,7 @@ The legacy r1 15-minute challenger remains historical research state and is no l
 
 ### Current root reference
 
-Trusted Research Dashboard snapshot, refreshed **2026-09-20 19:31 UTC**:
+Trusted Research Dashboard snapshot, refreshed **2026-09-20 21:06 UTC**:
 
 - `scheduled-research-root`: **12 authenticated checkpoints**, **10 closed trades**, **7 closed-trade days**, cumulative touched net PnL about `-37.2371`, mean net R about `-0.14895`;
 - legacy `research-r1-exit-15m-v1`: **7 checkpoints**, **6 trades**, **4 days**, cumulative touched net PnL about `-36.9098`, mean net R about `-0.24607`;
@@ -87,7 +87,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#215 establish the current frontier:
+PRs #205–#220 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -98,9 +98,12 @@ PRs #205–#215 establish the current frontier:
 - #211 made strategy-driven paper stop tightening update the materialized account atomically and survive restart;
 - #212 refreshed the portable project handoff to the current r2 frontier;
 - #214 advanced the active r2 plan through the verified stop-durability fix;
-- #215 made paper restart reconciliation fail closed when the deterministic current `paper_position_events` record is missing or corrupted.
+- #215 made paper restart reconciliation fail closed when the deterministic current `paper_position_events` record is missing or corrupted;
+- #217 regression-locked LONG/SHORT tightened-stop restart durability and durable-write failure behavior;
+- #219 made existing paper execution stores reject missing/unsupported schema versions without rewriting persisted metadata;
+- #220 made journal/replay stores reject missing/unsupported schema versions without rewriting persisted metadata.
 
-Post-#215 main CI `35536105728` passed compile, Ruff, mypy, full pytest, and research smoke.
+Post-#220 main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ## Exact next action
 
