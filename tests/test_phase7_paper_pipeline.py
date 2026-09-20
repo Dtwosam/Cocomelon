@@ -6,10 +6,11 @@ from cocomelon.domain.execution import (
     ExecutionResult,
     InstrumentExecutionSpec,
     PaperExecutionConfig,
+    PositionActionType,
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import RiskDecision
-from cocomelon.domain.strategy import Direction
+from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.paper import PaperExecutionAdapter
 
@@ -250,6 +251,55 @@ def test_stop_exit_uses_reduce_only_ioc_and_closes_without_flip(tmp_path: Path) 
     assert managed.account.positions == ()
     assert managed.account.consecutive_losses == 1
     engine.close()
+
+
+def test_tightened_stop_updates_account_and_survives_restart(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    assert opened.account.positions[0].stop_price == Decimal("95")
+
+    strategy = StrategyDecision(
+        market=MARKET,
+        direction=Direction.LONG,
+        score=Decimal("80"),
+        timestamp_ms=2_000,
+        feature_snapshot_id="features-tighten",
+        lead_strategy="trend",
+        invalidation_price=Decimal("97"),
+        signal_ids=("signal-tighten",),
+        reason_codes=("TEST_TIGHTEN",),
+    )
+    managed = engine.manage_position(
+        MARKET,
+        instrument(),
+        mark("101", receive_ms=2_000),
+        book(bid="100.9", ask="101", exchange_ms=2_100, receive_ms=2_110),
+        strategy_decision=strategy,
+        strategy_fresh=True,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("101"),
+        timestamp_ms=2_100,
+        attempt_timestamp_ms=2_400,
+    )
+
+    assert managed.action.action_type is PositionActionType.TIGHTEN_STOP
+    assert managed.action.new_stop_price == Decimal("97")
+    assert managed.account.positions[0].stop_price == Decimal("97")
+    engine.close()
+
+    restarted = adapter(path)
+    assert restarted.health.healthy_for_new_exposure is True
+    assert restarted.account.positions[0].stop_price == Decimal("97")
+    restarted.close()
 
 
 def test_restart_inconsistency_blocks_new_exposure_but_is_visible_in_health(
