@@ -1,0 +1,10 @@
+{
+  "candidate_id": "research-r2-short-trend-quality-v1",
+  "parent_candidate_id": "scheduled-research-root",
+  "code_revision": "2ce088d69df01f044b0650b811b51015a5edda51",
+  "execution_config": {
+    "config_version": "research-paper-20m-expiry-v1",
+    "max_position_age_ms": 1200000,
+    "starting_cash": "10000"
+  }
+}
