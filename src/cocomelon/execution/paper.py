@@ -115,7 +115,12 @@ class PaperExecutionAdapter:
         *,
         timestamp_ms: int,
     ) -> PaperAccountState:
-        if self.store.has_funding_accrual(accrual.accrual_id):
+        try:
+            already_applied = self.store.has_funding_accrual(accrual.accrual_id)
+        except Exception:
+            self._mark_store_failure("DURABLE_FUNDING_READ_FAILED")
+            raise
+        if already_applied:
             return self._account
         candidate = apply_funding_accrual(self._account, accrual, timestamp_ms)
         try:
