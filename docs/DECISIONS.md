@@ -151,3 +151,18 @@ This file records decisions that should not be casually re-litigated in later ch
 **Clean-validation consequence:** A frozen challenger may begin untouched validation only after its freeze timestamp and a 6-hour embargo following the latest inherited touched interval. Promotion remains governed by the existing untouched OOS/walk-forward/bootstrap gates.
 
 **Safety:** Both lanes remain paper/shadow only at this stage. Live orders remain disabled and Phase 10 remains blocked until the authoritative promotion gates pass.
+
+
+## D-024 — Retire revealed V4 baseline; activate provenance-safe R2 research
+
+**Decision:** The V4 baseline is permanently **TOUCHED / NON-PROMOTIONAL** because the user explicitly authorized revealing its interim economics before the original immutable one-shot finalization gate. It is retired as a promotion candidate. Future scheduled V4 economic acquisition is stopped after any already-running protected acquisition finishes naturally.
+
+**Evidence:** The authenticated 100-trade V4 development snapshot from corpus artifact `10497424756` was approximately `-$629.91` net PnL, `-0.298 R/trade`, profit factor `0.44`, and `7.80%` realized closed-trade maximum drawdown. This demonstrates that the frozen baseline does not justify continued untouched promotion accumulation.
+
+**Research consequence:** `research-r2-short-trend-quality-v1` freezes a deterministic hypothesis derived from that deliberately touched 100-trade sample: retain only baseline SHORT decisions led by `trend` with baseline score 72–81 inclusive, while keeping the 20-minute research horizon and all existing risk limits. Its approximately `+$57.39` / PF ~`1.30` result on the same tuning sample is hypothesis-generation evidence only and is not an edge claim.
+
+**Lineage consequence:** R2 must import every authoritative V4 acquisition interval through development cutoff `1789645942986` ms into its effective touched history. Future candidate renames, config changes, or code revisions cannot reset that contamination lineage.
+
+**Validation consequence:** R2 remains paper-only touched research. The existing futility and `RESEARCH_PROMISING` gates continue to apply. Any later clean validation must use future data after freeze plus the existing six-hour embargo after the latest inherited touched interval. The revealed V4 sample can never serve as untouched OOS or promotion evidence.
+
+**Safety:** Risk limits are unchanged. Hyperliquid testnet remains forbidden. Phase 10 and live trading remain blocked until a future candidate passes all locked promotion gates and the user explicitly authorizes live capital.
