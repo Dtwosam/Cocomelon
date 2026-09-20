@@ -145,6 +145,40 @@ def test_schema_contains_separate_journal_and_replay_tables(tmp_path: Path) -> N
     } <= names
 
 
+def test_existing_journal_rejects_unsupported_schema_version_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "journal.sqlite3"
+    store = JournalStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE journal_meta SET value = '999' WHERE key = 'schema_version'"
+        )
+
+    with pytest.raises(JournalConsistencyError, match="unsupported journal schema version"):
+        JournalStore(path)
+
+    with sqlite3.connect(path) as connection:
+        version = connection.execute(
+            "SELECT value FROM journal_meta WHERE key = 'schema_version'"
+        ).fetchone()
+    assert version == ("999",)
+
+
+def test_existing_journal_rejects_missing_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "journal.sqlite3"
+    store = JournalStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DELETE FROM journal_meta WHERE key = 'schema_version'")
+
+    with pytest.raises(JournalConsistencyError, match="missing journal schema version"):
+        JournalStore(path)
+
+
 def test_identical_observation_retry_is_idempotent(tmp_path: Path) -> None:
     store = JournalStore(tmp_path / "journal.sqlite3")
     item = observation()
