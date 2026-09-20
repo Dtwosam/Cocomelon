@@ -1,9 +1,7 @@
 name: Phase 9 V4 One-Shot Evaluation
 
 on:
-  workflow_run:
-    workflows: ["Verified V4 Mainnet Evidence Corpus Curator"]
-    types: [completed]
+  workflow_dispatch: {}
 
 permissions:
   actions: read
