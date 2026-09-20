@@ -1,0 +1,86 @@
+# R2 Natural Research Validation Plan
+
+**Status:** active  
+**Created:** 2026-09-20  
+**Updated:** 2026-09-20  
+**Supersedes for active execution:** `2026-09-14-research-natural-rollout-validation.md`  
+**Scope:** touched research validation of `research-r2-short-trend-quality-v1`; paper/shadow only.
+
+## Goal
+
+Evaluate the immutable r2 short-trend quality challenger on naturally acquired, provenance-validated public Hyperliquid mainnet research cohorts without retuning it from the same disclosed V4 development sample and without weakening risk, overlap, daily-cap, replay-integrity, promotion, or live-order guards.
+
+The failed V4 baseline is permanently TOUCHED / DEVELOPMENT-ONLY under D-024. R2 is a hypothesis generated from that touched sample, not evidence of edge. Its next information must come from new natural research cohorts.
+
+## Locked candidate
+
+- Candidate: `research-r2-short-trend-quality-v1`.
+- Parent: `scheduled-research-root`.
+- Strategy code revision: `2ce088d69df01f044b0650b811b51015a5edda51`.
+- Execution horizon: 20 minutes.
+- Starting paper cash: 10,000.
+- Entry-quality rule: retain only trend-led SHORT decisions with baseline score 72–81 inclusive.
+- LONG decisions, non-trend leaders, and scores outside 72–81 are vetoed to NO_TRADE.
+- Risk limits remain unchanged.
+- Live orders remain disabled.
+
+These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes may not be used to silently retune this candidate.
+
+## Current verified state
+
+- Main implementation through PR #209: `033c20d22f7b68dc3baec696a36e94b8853b0fb8`.
+- Post-merge main CI `35534235276` passed compile, Ruff, mypy, full pytest, and research smoke.
+- The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
+- One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
+- Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.
+- Trusted research dashboard lists r2 as draft with zero authenticated checkpoints.
+- PR #208 restored both authoritative rollout-verifier gates for the active root+r2 pair.
+- No manual economic research dispatch is authorized merely to accelerate evidence.
+
+## Task 1 — Let the final protected V4 interval resolve naturally
+
+- [ ] Let run `35524316366` reach terminal state without cancellation, retry, extension, or outcome conditioning.
+- [ ] Preserve its actual run/job/session interval in V4 authority.
+- [ ] Require authoritative completeness/disjointness before any subsequent research economics are admitted.
+- [ ] Do not create any replacement V4 promotion sample for the retired baseline.
+
+## Task 2 — Validate the first natural root+r2 cohort
+
+On the next naturally eligible safe gap:
+
+- [ ] Require bot-controlled safe-gap dispatch; do not manually dispatch the economic campaign for proof.
+- [ ] Require exactly one authenticated public-mainnet capture shared by root and r2.
+- [ ] Require exact source ID, capture interval, recording-session digest, and source-set digest agreement.
+- [ ] Require root success; challenger failure remains auditable and nonfatal only where the locked verifier contract permits it.
+- [ ] Require `Verify root+challenger rollout contract before authoritative publish` to pass before an r2 checkpoint can become authoritative.
+- [ ] Require the independent final rollout verifier to pass.
+- [ ] Require actual V4 interval disjointness and completeness, not nominal cron assumptions.
+- [ ] Count only authenticated successful checkpoints.
+
+## Task 3 — Evaluate r2 without moving the goalposts
+
+- [ ] Before 20 closed r2 research trades, report evidence as insufficient and do not infer edge.
+- [ ] At >=20 closed r2 trades, apply only the precommitted Bayesian futility rule: reject if `P(mu > 0) < 0.05`.
+- [ ] Do not mark r2 `RESEARCH_PROMISING` before >=40 closed trades, >=7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
+- [ ] Keep all positive research TOUCHED / NON-PROMOTIONAL.
+- [ ] Do not create r3 merely because a few r2 trades disappoint or outperform; require a documented, testable new hypothesis and inherited touched lineage.
+
+## Task 4 — Future clean validation only after research success
+
+If r2 legitimately reaches `RESEARCH_PROMISING`:
+
+- [ ] Freeze the challenger specification and all execution/risk semantics.
+- [ ] Apply inherited touched-period handling and the documented six-hour embargo after the latest inherited touched interval.
+- [ ] Start a new clean validation sample only after freeze/embargo.
+- [ ] Require untouched OOS, walk-forward, cost-complete, drawdown, concentration, and all other locked promotion evidence.
+- [ ] Keep Phase 10 and live trading blocked until the source-of-truth promotion gates are satisfied.
+
+## Hard prohibitions
+
+- No Hyperliquid testnet.
+- No live wallet/order/transfer/withdrawal behavior in research/evidence workflows.
+- No manual economic dispatch, retry, extension, cancellation, or backfill to accelerate results.
+- No relabeling the disclosed V4 corpus as untouched evidence.
+- No threshold retuning of r2 from later V4 outcomes.
+- No risk-limit loosening to make a candidate appear profitable.
+- No shortcut from touched research to Phase 10 or live orders.
