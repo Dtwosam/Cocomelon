@@ -11,10 +11,15 @@ from cocomelon.research.rollout_verifier import verify_research_fanout_rollout
 
 ROOT = "scheduled-research-root"
 CHALLENGER = "research-r1-exit-15m-v1"
+QUALITY_CHALLENGER = "research-r2-short-trend-quality-v1"
 
 
 def _write_audit(
-    tmp_path: Path, *, challenger_end_ms: int = 2000, challenger_horizon: int = 900_000
+    tmp_path: Path,
+    *,
+    challenger_end_ms: int = 2000,
+    challenger_horizon: int = 900_000,
+    challenger_id: str = CHALLENGER,
 ) -> Path:
     campaign = tmp_path / "research-campaign"
     (campaign / "state").mkdir(parents=True)
@@ -35,7 +40,7 @@ def _write_audit(
             "execution_config_json": json.dumps({"max_position_age_ms": 1_200_000}),
         },
         {
-            "candidate_id": CHALLENGER,
+            "candidate_id": challenger_id,
             "required": False,
             "source_id": source_id,
             "attempt_id": "challenger-attempt",
@@ -105,7 +110,7 @@ def _write_audit(
             ),
             (
                 "challenger-attempt",
-                CHALLENGER,
+                challenger_id,
                 "challenger-batch",
                 source_id,
                 "succeeded",
@@ -134,6 +139,21 @@ def test_verifier_accepts_expected_root_challenger_shared_capture(tmp_path: Path
     assert result.source_interval == (1000, 2000)
     assert result.root_max_position_age_ms == 1_200_000
     assert result.challenger_max_position_age_ms == 900_000
+
+
+def test_verifier_accepts_quality_challenger_with_precommitted_20m_horizon(
+    tmp_path: Path,
+) -> None:
+    result = verify_research_fanout_rollout(
+        _write_audit(
+            tmp_path,
+            challenger_id=QUALITY_CHALLENGER,
+            challenger_horizon=1_200_000,
+        ),
+        challenger_candidate_id=QUALITY_CHALLENGER,
+    )
+    assert result.challenger_candidate_id == QUALITY_CHALLENGER
+    assert result.challenger_max_position_age_ms == 1_200_000
 
 
 def test_verifier_rejects_candidate_interval_mismatch(tmp_path: Path) -> None:
