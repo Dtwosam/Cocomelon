@@ -1,0 +1,29 @@
+name: Activate Research R2 Challenger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/research-r2-short-trend-quality-v1.json
+      - .github/workflows/research-candidate-register.yml
+      - .github/workflows/research-r2-activate.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch-registration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch trusted research candidate registration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-candidate-register.yml/dispatches" \
+            -f ref=main

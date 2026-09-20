@@ -15,7 +15,7 @@ env:
   COCOMELON_API_URL: https://api.hyperliquid.xyz
   COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
   RESEARCH_CANDIDATE_ID: ${{ vars.RESEARCH_CANDIDATE_ID || 'scheduled-research-root' }}
-  RESEARCH_CHALLENGER_CANDIDATE_ID: ${{ vars.RESEARCH_CHALLENGER_CANDIDATE_ID }}
+  RESEARCH_CHALLENGER_CANDIDATE_ID: ${{ vars.RESEARCH_CHALLENGER_CANDIDATE_ID_V2 || 'research-r2-short-trend-quality-v1' }}
   ATTEMPT_ID: research-${{ github.run_id }}-${{ github.run_attempt }}
   BATCH_ID: research-batch-${{ github.run_id }}-${{ github.run_attempt }}
   SOURCE_ID: research-mainnet-${{ github.run_id }}-${{ github.run_attempt }}

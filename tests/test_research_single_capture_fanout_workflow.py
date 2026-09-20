@@ -129,3 +129,14 @@ def test_finalizer_verifies_two_candidate_rollout_contract() -> None:
     assert "rollout_verifier" in finalizer
     assert "PYTHONPATH" in finalizer
     assert finalizer.index(fanout_download) < finalizer.index(verifier)
+
+
+def test_research_campaign_defaults_to_r2_quality_challenger() -> None:
+    source = _source()
+
+    assert "RESEARCH_CHALLENGER_CANDIDATE_ID_V2" in source
+    assert (
+        "vars.RESEARCH_CHALLENGER_CANDIDATE_ID_V2 || "
+        "'research-r2-short-trend-quality-v1'"
+    ) in source
+    assert "vars.RESEARCH_CHALLENGER_CANDIDATE_ID }}" not in source

@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           cocomelon-research register-candidate-spec \
             --registry research-control/state/research.sqlite3 \
-            --spec docs/research-r1-exit-15m-v1.json
+            --spec docs/research-r2-short-trend-quality-v1.json
 
       - name: Publish authoritative research registry
         uses: actions/upload-artifact@v7
