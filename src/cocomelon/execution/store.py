@@ -291,6 +291,20 @@ class PaperExecutionStore:
         self._migrate()
 
     def _migrate(self) -> None:
+        # A supported-version store must already be structurally complete.
+        required_tables = frozenset(
+            {
+                "paper_meta",
+                "paper_order_plans",
+                "paper_execution_attempts",
+                "paper_fills",
+                "paper_positions",
+                "paper_position_events",
+                "paper_funding_events",
+                "paper_account_state",
+                "paper_rolling_peak_candidates",
+            }
+        )
         existing_tables = {
             str(row[0])
             for row in self._conn.execute(
@@ -312,6 +326,12 @@ class PaperExecutionStore:
                 raise ValueError(
                     "unsupported paper schema version: "
                     f"{persisted_version}; supported={SCHEMA_VERSION}"
+                )
+            missing_tables = required_tables - existing_tables
+            if missing_tables:
+                raise ValueError(
+                    "incomplete paper schema: missing tables="
+                    + ",".join(sorted(missing_tables))
                 )
 
         with self._conn:

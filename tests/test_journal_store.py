@@ -179,6 +179,26 @@ def test_existing_journal_rejects_missing_schema_version(tmp_path: Path) -> None
         JournalStore(path)
 
 
+def test_existing_journal_rejects_missing_required_table_without_recreating(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "journal.sqlite3"
+    store = JournalStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE journal_trades")
+
+    with pytest.raises(JournalConsistencyError, match="incomplete journal schema"):
+        JournalStore(path)
+
+    with sqlite3.connect(path) as connection:
+        missing = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'journal_trades'"
+        ).fetchone()
+    assert missing is None
+
+
 def test_identical_observation_retry_is_idempotent(tmp_path: Path) -> None:
     store = JournalStore(tmp_path / "journal.sqlite3")
     item = observation()

@@ -185,6 +185,12 @@ class JournalStore:
                     "unsupported journal schema version: "
                     f"{persisted_version}; supported={SCHEMA_VERSION}"
                 )
+            missing_tables = known_tables - existing_tables
+            if missing_tables:
+                raise JournalConsistencyError(
+                    "incomplete journal schema: missing tables="
+                    + ",".join(sorted(missing_tables))
+                )
 
         self.connection.executescript(
             """
