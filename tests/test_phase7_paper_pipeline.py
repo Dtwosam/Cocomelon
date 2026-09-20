@@ -494,6 +494,92 @@ def test_reduce_only_plan_persistence_failure_keeps_position_and_degrades_health
     engine.close()
 
 
+def test_missing_opening_plan_lineage_degrades_health_during_position_management(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    opening_plan_id = opened.account.positions[0].opening_plan_id
+    with engine.store.raw_connection() as conn:
+        conn.execute(
+            "DELETE FROM paper_order_plans WHERE plan_id = ?",
+            (opening_plan_id,),
+        )
+
+    managed = engine.manage_position(
+        MARKET,
+        instrument(),
+        mark("94", receive_ms=2_000),
+        book(bid="94", ask="94.1", exchange_ms=2_100, receive_ms=2_110),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("94"),
+        timestamp_ms=2_100,
+        attempt_timestamp_ms=2_400,
+    )
+
+    assert managed.plan is None
+    assert managed.rejection is not None
+    assert managed.rejection.reason == "OPENING_PLAN_LINEAGE_MISSING"
+    assert len(managed.account.positions) == 1
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == ("OPENING_PLAN_LINEAGE_MISSING",)
+    engine.close()
+
+
+def test_unreadable_opening_plan_lineage_degrades_health_during_position_management(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    opening_plan_id = opened.account.positions[0].opening_plan_id
+    with engine.store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_order_plans SET payload_json = ? WHERE plan_id = ?",
+            ("{", opening_plan_id),
+        )
+
+    managed = engine.manage_position(
+        MARKET,
+        instrument(),
+        mark("94", receive_ms=2_000),
+        book(bid="94", ask="94.1", exchange_ms=2_100, receive_ms=2_110),
+        strategy_decision=None,
+        strategy_fresh=False,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("94"),
+        timestamp_ms=2_100,
+        attempt_timestamp_ms=2_400,
+    )
+
+    assert managed.plan is None
+    assert managed.rejection is not None
+    assert managed.rejection.reason == "OPENING_PLAN_LINEAGE_UNREADABLE"
+    assert len(managed.account.positions) == 1
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == ("OPENING_PLAN_LINEAGE_UNREADABLE",)
+    engine.close()
+
+
 def test_restart_inconsistency_blocks_new_exposure_but_is_visible_in_health(
     tmp_path: Path,
 ) -> None:
