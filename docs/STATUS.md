@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `a7e6f61483fe9c1613314887f2563ace93d5192b`  
-**Latest verified baseline CI:** run `35535409378` — success  
+**Verified implementation baseline:** `99bba62a150d072496fd371b4f7d08fad0fe312b`  
+**Latest verified baseline CI:** run `35536105728` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -87,7 +87,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#211 establish the current frontier:
+PRs #205–#215 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -95,9 +95,12 @@ PRs #205–#211 establish the current frontier:
 - #208 restored pre-publication and final rollout-verifier enforcement for root+r2;
 - #209 made the trusted dashboard one-shot state retirement-aware;
 - #210 made r2 natural research the active execution plan and reconciled status with D-024;
-- #211 made strategy-driven paper stop tightening update the materialized account atomically and survive restart.
+- #211 made strategy-driven paper stop tightening update the materialized account atomically and survive restart;
+- #212 refreshed the portable project handoff to the current r2 frontier;
+- #214 advanced the active r2 plan through the verified stop-durability fix;
+- #215 made paper restart reconciliation fail closed when the deterministic current `paper_position_events` record is missing or corrupted.
 
-Post-#211 main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
+Post-#215 main CI `35536105728` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ## Exact next action
 
