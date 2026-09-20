@@ -189,6 +189,38 @@ def _seed_adapter(path: Path, side: OrderSide) -> None:
     store.close()
 
 
+def test_adapter_funding_lookup_failure_degrades_health_without_mutating_account(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    _seed_adapter(path, OrderSide.BUY)
+    adapter = PaperExecutionAdapter(
+        path,
+        PaperExecutionConfig(),
+        starting_cash=STARTING_CASH,
+        startup_timestamp_ms=1_000,
+    )
+    accrual = _accrual(adapter.account)
+    original_state_id = adapter.account.state_id
+    original_cash = adapter.account.cash
+    original_funding = adapter.account.cumulative_funding
+
+    def fail_lookup(_accrual_id: str) -> bool:
+        raise RuntimeError("simulated funding lookup failure")
+
+    monkeypatch.setattr(adapter.store, "has_funding_accrual", fail_lookup)
+    with pytest.raises(RuntimeError, match="simulated funding lookup failure"):
+        adapter.apply_funding(accrual, timestamp_ms=APPLIED_MS)
+
+    assert adapter.account.state_id == original_state_id
+    assert adapter.account.cash == original_cash
+    assert adapter.account.cumulative_funding == original_funding
+    assert adapter.health.healthy_for_new_exposure is False
+    assert adapter.health.reason_codes == ("DURABLE_FUNDING_READ_FAILED",)
+    adapter.close()
+
+
 def test_adapter_funding_is_idempotent_before_and_after_restart(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     _seed_adapter(path, OrderSide.BUY)
