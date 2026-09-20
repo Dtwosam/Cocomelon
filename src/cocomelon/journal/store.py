@@ -153,6 +153,39 @@ class JournalStore:
         )
 
     def _initialize_schema(self) -> None:
+        known_tables = frozenset(
+            {
+                "journal_meta",
+                "journal_observations",
+                "journal_trades",
+                "journal_trade_refs",
+                "replay_manifests",
+                "replay_runs",
+                "compaction_manifests",
+            }
+        )
+        existing_tables = {
+            str(row[0])
+            for row in self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        existing_store = bool(existing_tables & known_tables)
+        if existing_store:
+            if "journal_meta" not in existing_tables:
+                raise JournalConsistencyError("missing journal schema metadata")
+            version_row = self.connection.execute(
+                "SELECT value FROM journal_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            if version_row is None:
+                raise JournalConsistencyError("missing journal schema version")
+            persisted_version = str(version_row[0])
+            if persisted_version != str(SCHEMA_VERSION):
+                raise JournalConsistencyError(
+                    "unsupported journal schema version: "
+                    f"{persisted_version}; supported={SCHEMA_VERSION}"
+                )
+
         self.connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS journal_meta (
@@ -199,10 +232,11 @@ class JournalStore:
             );
             """
         )
-        self.connection.execute(
-            "INSERT OR REPLACE INTO journal_meta(key, value) VALUES('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
-        )
+        if not existing_store:
+            self.connection.execute(
+                "INSERT INTO journal_meta(key, value) VALUES('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
         self.connection.commit()
 
     def _canonical_observation(self, observation: JournalObservation) -> str:
