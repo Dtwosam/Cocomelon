@@ -2,6 +2,8 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.execution import (
     ExecutionResult,
     InstrumentExecutionSpec,
@@ -299,6 +301,113 @@ def test_tightened_stop_updates_account_and_survives_restart(tmp_path: Path) -> 
     restarted = adapter(path)
     assert restarted.health.healthy_for_new_exposure is True
     assert restarted.account.positions[0].stop_price == Decimal("97")
+    restarted.close()
+
+
+def test_tightened_short_stop_updates_account_and_survives_restart(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(direction=Direction.SHORT),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    assert opened.account.positions[0].stop_price == Decimal("105")
+
+    strategy = StrategyDecision(
+        market=MARKET,
+        direction=Direction.SHORT,
+        score=Decimal("80"),
+        timestamp_ms=2_000,
+        feature_snapshot_id="features-tighten-short",
+        lead_strategy="trend",
+        invalidation_price=Decimal("103"),
+        signal_ids=("signal-tighten-short",),
+        reason_codes=("TEST_TIGHTEN_SHORT",),
+    )
+    managed = engine.manage_position(
+        MARKET,
+        instrument(),
+        mark("99", receive_ms=2_000),
+        book(bid="99", ask="99.1", exchange_ms=2_100, receive_ms=2_110),
+        strategy_decision=strategy,
+        strategy_fresh=True,
+        critical_health=False,
+        explicit_reduction_quantity=None,
+        reference_price=Decimal("99"),
+        timestamp_ms=2_100,
+        attempt_timestamp_ms=2_400,
+    )
+
+    assert managed.action.action_type is PositionActionType.TIGHTEN_STOP
+    assert managed.action.new_stop_price == Decimal("103")
+    assert managed.account.positions[0].stop_price == Decimal("103")
+    engine.close()
+
+    restarted = adapter(path)
+    assert restarted.health.healthy_for_new_exposure is True
+    assert restarted.account.positions[0].stop_price == Decimal("103")
+    restarted.close()
+
+
+def test_tightened_stop_persistence_failure_keeps_old_account_and_degrades_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    assert opened.account.positions[0].stop_price == Decimal("95")
+
+    strategy = StrategyDecision(
+        market=MARKET,
+        direction=Direction.LONG,
+        score=Decimal("80"),
+        timestamp_ms=2_000,
+        feature_snapshot_id="features-tighten-failure",
+        lead_strategy="trend",
+        invalidation_price=Decimal("97"),
+        signal_ids=("signal-tighten-failure",),
+        reason_codes=("TEST_TIGHTEN_FAILURE",),
+    )
+
+    def fail_persist(_account: object) -> None:
+        raise RuntimeError("simulated durable write failure")
+
+    monkeypatch.setattr(engine.store, "persist_account", fail_persist)
+    with pytest.raises(RuntimeError, match="simulated durable write failure"):
+        engine.manage_position(
+            MARKET,
+            instrument(),
+            mark("101", receive_ms=2_000),
+            book(bid="100.9", ask="101", exchange_ms=2_100, receive_ms=2_110),
+            strategy_decision=strategy,
+            strategy_fresh=True,
+            critical_health=False,
+            explicit_reduction_quantity=None,
+            reference_price=Decimal("101"),
+            timestamp_ms=2_100,
+            attempt_timestamp_ms=2_400,
+        )
+
+    assert engine.account.positions[0].stop_price == Decimal("95")
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == ("DURABLE_STOP_TIGHTEN_WRITE_FAILED",)
+    engine.close()
+
+    restarted = adapter(path)
+    assert restarted.account.positions[0].stop_price == Decimal("95")
+    assert restarted.health.healthy_for_new_exposure is True
     restarted.close()
 
 
