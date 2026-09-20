@@ -151,3 +151,20 @@ This file records decisions that should not be casually re-litigated in later ch
 **Clean-validation consequence:** A frozen challenger may begin untouched validation only after its freeze timestamp and a 6-hour embargo following the latest inherited touched interval. Promotion remains governed by the existing untouched OOS/walk-forward/bootstrap gates.
 
 **Safety:** Both lanes remain paper/shadow only at this stage. Live orders remain disabled and Phase 10 remains blocked until the authoritative promotion gates pass.
+
+
+## D-024 — Retire the revealed V4 baseline and move development to touched research
+
+**Decision:** The V4 baseline `v4-baseline-4h-thesis-expiry` is retired from future scheduled economic acquisition and from automatic Phase 9 one-shot evaluation. Its already-running acquisition at the time of this decision must finish naturally; it is not cancelled, retried, extended, or outcome-conditioned.
+
+**Why:** The user explicitly authorized revealing the interim V4 economics after the corpus reached 100 closed paper trades. That reveal intentionally ended the sample's performance-blind/untouched status. The revealed 100-trade snapshot showed negative gross and net expectancy: approximately `-537.62` gross PnL, `-629.91` net PnL, mean net R about `-0.298`, profit factor about `0.44`, and realized closed-trade maximum drawdown about `7.80%`. More automatic promotion evidence for the exact frozen baseline is therefore not economically justified.
+
+**Evidence identity:** The disclosed snapshot is bound to V4 corpus artifact `10497424756` and is recorded in `docs/v4-baseline-retirement.json`. Later V4 cohorts are not used to retune the already frozen r2 quality thresholds.
+
+**D-023 revision:** D-023 remains the governing design for touched research and future clean validation, but its performance-blind preservation clause no longer applies to the retired V4 baseline after the explicit reveal. The disclosed V4 sample is permanently **TOUCHED / DEVELOPMENT-ONLY** and can support hypothesis generation, never promotion or an untouched OOS claim.
+
+**Research consequence:** Development proceeds through immutable research candidates. `research-r2-short-trend-quality-v1` is pinned to the strategy seam introduced by PR #205 and registered through the authoritative research registry. Positive research remains non-promotional and must still satisfy the precommitted research thresholds before a challenger can be frozen.
+
+**Future validation consequence:** Any future promotion candidate requires a new clean validation sample collected only after that candidate is frozen and after all applicable touched-data/embargo rules are satisfied. The disclosed V4 corpus and any strategy decisions derived from it cannot be relabeled as untouched evidence.
+
+**Safety:** Risk limits are unchanged. Live orders remain disabled. Phase 10 remains blocked. Historical V4 artifacts, provenance, curator logic, and overlap authority remain available for audit; retirement only stops future automatic acquisition/evaluation for the failed touched baseline.

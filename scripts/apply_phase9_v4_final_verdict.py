@@ -9,6 +9,8 @@ from typing import Any
 
 JsonObject = dict[str, object]
 
+_RETIREMENT_PATH = Path("docs/v4-baseline-retirement.json")
+
 _ALLOWED_EDGE_STATUSES = {
     "invalid_evidence",
     "oos_contaminated",
@@ -16,6 +18,26 @@ _ALLOWED_EDGE_STATUSES = {
     "no_edge_demonstrated",
     "candidate_edge",
 }
+
+
+def _load_retirement(path: Path = _RETIREMENT_PATH) -> JsonObject | None:
+    if not path.is_file():
+        return None
+    try:
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("V4 retirement marker is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("V4 retirement marker must be an object")
+    return {str(key): value for key, value in payload.items()}
+
+
+def _v4_retirement_verdict(payload: JsonObject) -> str | None:
+    if payload.get("state") != "retired_touched_no_edge":
+        return None
+    if payload.get("promotion_eligible") is not False:
+        raise RuntimeError("retired V4 baseline must be non-promotional")
+    return "RETIRED / TOUCHED — NO EDGE DEMONSTRATED"
 
 
 def _phase9_v4_final_verdict(state: JsonObject) -> str:
@@ -139,8 +161,16 @@ def main() -> int:
 
     patch_path = Path(args.patch).resolve()
     patch = _read_patch(patch_path)
-    state = _load_dashboard_state(repo)
-    updated = apply_final_verdict(patch, state)
+    retirement = _load_retirement()
+    retired_verdict = None if retirement is None else _v4_retirement_verdict(retirement)
+    if retired_verdict is not None:
+        body = patch.get("body")
+        if not isinstance(body, str):
+            raise RuntimeError("dashboard patch body is invalid")
+        updated = {**patch, "body": _replace_edge_line(body, retired_verdict)}
+    else:
+        state = _load_dashboard_state(repo)
+        updated = apply_final_verdict(patch, state)
     patch_path.write_text(
         json.dumps(updated, ensure_ascii=False) + "\n",
         encoding="utf-8",

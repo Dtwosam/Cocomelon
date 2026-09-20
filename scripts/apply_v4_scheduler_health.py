@@ -16,6 +16,27 @@ _SCHEDULE_HOURS = (1, 7, 13, 19)
 _SCHEDULE_MINUTE = 37
 _SCHEDULE_GRACE = timedelta(minutes=90)
 _ACTIVATION_LEAD = timedelta(hours=1)
+_RETIREMENT_PATH = Path("docs/v4-baseline-retirement.json")
+
+
+def _load_retirement(path: Path = _RETIREMENT_PATH) -> JsonObject | None:
+    if not path.is_file():
+        return None
+    try:
+        payload: Any = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("V4 retirement marker is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("V4 retirement marker must be an object")
+    return {str(key): value for key, value in payload.items()}
+
+
+def _retirement_summary(payload: JsonObject) -> str | None:
+    if payload.get("state") != "retired_touched_no_edge":
+        return None
+    if payload.get("promotion_eligible") is not False:
+        raise RuntimeError("retired V4 baseline must be non-promotional")
+    return "retired — future scheduled acquisition disabled after touched baseline rejection"
 
 
 def _parse_time(value: object, label: str) -> datetime:
@@ -191,11 +212,16 @@ def main() -> int:
 
     patch_path = Path(args.patch).resolve()
     patch = _read_patch(patch_path)
-    summary = _scheduler_health(
-        datetime.now(UTC),
-        _latest_scheduled_run(repo),
-        _workflow_updated(repo),
-    )
+    retirement = _load_retirement()
+    retired_summary = None if retirement is None else _retirement_summary(retirement)
+    if retired_summary is not None:
+        summary = retired_summary
+    else:
+        summary = _scheduler_health(
+            datetime.now(UTC),
+            _latest_scheduled_run(repo),
+            _workflow_updated(repo),
+        )
     updated = _apply_scheduler_health(patch, summary)
     patch_path.write_text(
         json.dumps(updated, ensure_ascii=False) + "\n",

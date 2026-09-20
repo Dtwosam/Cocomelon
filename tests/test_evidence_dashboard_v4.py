@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import runpy
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,6 +12,7 @@ BUILDER = Path("scripts/build_evidence_dashboard.py")
 VERDICT_APPLIER = Path("scripts/apply_phase9_v4_final_verdict.py")
 INTAKE_APPLIER = Path("scripts/apply_v4_intake_diagnostics.py")
 SCHEDULER_APPLIER = Path("scripts/apply_v4_scheduler_health.py")
+RETIREMENT = Path("docs/v4-baseline-retirement.json")
 
 
 def _read_required(path: Path, label: str) -> str:
@@ -339,3 +341,35 @@ def test_v4_dashboard_keeps_active_run_visible_when_newer_run_is_pending() -> No
 
     assert selected is not None
     assert selected["id"] == 100
+
+
+def test_v4_retirement_marker_is_explicitly_non_promotional() -> None:
+    payload = json.loads(_read_required(RETIREMENT, "V4 retirement marker"))
+
+    assert payload["candidate_id"] == "v4-baseline-4h-thesis-expiry"
+    assert payload["state"] == "retired_touched_no_edge"
+    assert payload["revealed_closed_trade_count"] == 100
+    assert payload["promotion_eligible"] is False
+    assert payload["live_orders"] is False
+
+
+def test_v4_scheduler_health_reports_retired_instead_of_stale() -> None:
+    summary = _function(SCHEDULER_APPLIER, "_retirement_summary")
+    payload = {
+        "state": "retired_touched_no_edge",
+        "promotion_eligible": False,
+    }
+
+    assert summary(payload) == (
+        "retired — future scheduled acquisition disabled after touched baseline rejection"
+    )
+
+
+def test_v4_dashboard_verdict_reports_touched_retirement() -> None:
+    verdict = _function(VERDICT_APPLIER, "_v4_retirement_verdict")
+    payload = {
+        "state": "retired_touched_no_edge",
+        "promotion_eligible": False,
+    }
+
+    assert verdict(payload) == "RETIRED / TOUCHED — NO EDGE DEMONSTRATED"

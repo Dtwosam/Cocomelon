@@ -17,6 +17,8 @@ on:
     paths:
       - ".github/workflows/evidence-dashboard.yml"
       - ".github/workflows/phase9-v4-one-shot.yml"
+      - ".github/workflows/evidence-campaign-v4-scheduled.yml"
+      - "docs/v4-baseline-retirement.json"
       - "scripts/build_evidence_dashboard.py"
       - "scripts/apply_phase9_v4_final_verdict.py"
       - "scripts/apply_v4_intake_diagnostics.py"

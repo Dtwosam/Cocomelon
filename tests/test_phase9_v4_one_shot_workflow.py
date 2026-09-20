@@ -13,11 +13,13 @@ def _text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_v4_one_shot_consumes_only_completed_v4_curators() -> None:
+def test_v4_one_shot_is_retired_from_automatic_curator_consumption() -> None:
     text = _text()
+    trigger_block = text.split("\npermissions:\n", 1)[0]
     assert "name: Phase 9 V4 One-Shot Evaluation" in text
-    assert 'workflows: ["Verified V4 Mainnet Evidence Corpus Curator"]' in text
-    assert "types: [completed]" in text
+    assert "workflow_run:" not in trigger_block
+    assert "Verified V4 Mainnet Evidence Corpus Curator" not in trigger_block
+    assert "workflow_dispatch:" in trigger_block
     assert "github.event.workflow_run.conclusion == 'success'" in text
     assert "v4-mainnet-corpus" in text
 
