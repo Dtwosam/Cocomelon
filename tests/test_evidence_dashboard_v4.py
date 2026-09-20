@@ -189,6 +189,20 @@ def test_v4_curator_has_offline_aggregation_headroom() -> None:
     assert "timeout-minutes: 60" in workflow
 
 
+
+
+def test_v4_scheduler_health_reports_retired_when_future_schedule_is_removed() -> None:
+    health = _function(SCHEDULER_APPLIER, "_scheduler_health")
+    now = datetime(2026, 9, 20, 18, 0, tzinfo=UTC)
+    workflow_updated = datetime(2026, 9, 20, 17, 30, tzinfo=UTC)
+
+    assert health(
+        now,
+        None,
+        workflow_updated,
+        retired=True,
+    ) == "retired — no future V4 acquisition scheduled"
+
 def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
     health = _function(SCHEDULER_APPLIER, "_scheduler_health")
     now = datetime(2026, 8, 28, 21, 0, tzinfo=UTC)
