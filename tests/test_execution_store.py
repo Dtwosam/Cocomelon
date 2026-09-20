@@ -165,6 +165,26 @@ def test_existing_store_rejects_missing_schema_version(tmp_path: Path) -> None:
         PaperExecutionStore(path)
 
 
+def test_existing_store_rejects_missing_required_table_without_recreating(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    store = PaperExecutionStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as conn:
+        conn.execute("DROP TABLE paper_fills")
+
+    with pytest.raises(ValueError, match="incomplete paper schema"):
+        PaperExecutionStore(path)
+
+    with sqlite3.connect(path) as conn:
+        missing = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'paper_fills'"
+        ).fetchone()
+    assert missing is None
+
+
 def test_plan_and_execution_round_trip_restart_exactly(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
