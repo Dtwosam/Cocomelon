@@ -499,6 +499,28 @@ class PaperExecutionStore:
                 ("MATERIALIZED_POSITION_MISMATCH",),
             )
 
+        for position in account.positions:
+            event_id = f"{account.state_id}:{position.position_id}"
+            event_row = self._conn.execute(
+                "SELECT market, payload_json FROM paper_position_events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            expected_event = (
+                position.market.canonical,
+                _canonical_json(_position_payload(position)),
+            )
+            actual_event = (
+                None
+                if event_row is None
+                else (str(event_row[0]), str(event_row[1]))
+            )
+            if actual_event != expected_event:
+                return ReconciledPaperState(
+                    account,
+                    False,
+                    ("POSITION_EVENT_MISMATCH",),
+                )
+
         peak_rows = self._conn.execute(
             "SELECT timestamp_ms, equity FROM paper_rolling_peak_candidates ORDER BY ordinal"
         ).fetchall()
