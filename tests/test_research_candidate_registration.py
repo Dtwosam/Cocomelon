@@ -4,10 +4,12 @@ import json
 from importlib import import_module
 from pathlib import Path
 
+import pytest
+
 from cocomelon.research.bootstrap import ensure_bootstrap_candidate
 from cocomelon.research.cohort import research_replay_config_from_candidate
 from cocomelon.research.contracts import ResearchCandidateState, TimeInterval
-from cocomelon.research.registry import ResearchRegistry
+from cocomelon.research.registry import ResearchRegistry, ResearchRegistryError
 
 research_cli = import_module("cocomelon.research_cli")
 
@@ -40,6 +42,7 @@ def _write_spec(
     *,
     starting_cash: str = "10000",
     code_revision: str | None = None,
+    v4_touched_through_ms: int | None = None,
 ) -> None:
     payload: dict[str, object] = {
         "candidate_id": "research-r1-exit-15m-v1",
@@ -52,6 +55,8 @@ def _write_spec(
     }
     if code_revision is not None:
         payload["code_revision"] = code_revision
+    if v4_touched_through_ms is not None:
+        payload["v4_touched_through_ms"] = v4_touched_through_ms
     path.write_text(
         json.dumps(payload, sort_keys=True),
         encoding="utf-8",
@@ -165,6 +170,139 @@ def test_register_candidate_spec_rejects_invalid_distinct_code_revision(
     assert "code_revision" in json.loads(err)["error"]
 
 
+
+def test_register_candidate_spec_imports_declared_v4_development_history(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    spec_path = tmp_path / "challenger.json"
+    _bootstrap_registry(registry_path)
+    registry = ResearchRegistry(registry_path)
+    try:
+        registry.record_v4_interval(
+            run_id="v4-dev-accepted",
+            interval=TimeInterval(3_000, 4_000),
+            disposition="accepted",
+        )
+        registry.record_v4_interval(
+            run_id="v4-dev-diagnostic",
+            interval=TimeInterval(4_500, 4_800),
+            disposition="failed",
+        )
+        registry.record_v4_interval(
+            run_id="v4-after-cutoff",
+            interval=TimeInterval(6_000, 7_000),
+            disposition="accepted",
+        )
+        registry.mark_v4_registry_complete_through(
+            through_ms=8_000,
+            source_id="trusted-v4-authority",
+        )
+    finally:
+        registry.close()
+    _write_spec(
+        spec_path,
+        code_revision="2" * 40,
+        v4_touched_through_ms=5_000,
+    )
+
+    code, out, err = _run_cli(
+        capsys,
+        [
+            "register-candidate-spec",
+            "--registry",
+            str(registry_path),
+            "--spec",
+            str(spec_path),
+        ],
+    )
+
+    assert code == 0
+    assert err == ""
+    assert json.loads(out)["candidate_id"] == "research-r1-exit-15m-v1"
+    registry = ResearchRegistry(registry_path)
+    try:
+        child = registry.load_candidate("research-r1-exit-15m-v1")
+    finally:
+        registry.close()
+    assert child.local_touched_intervals == (
+        TimeInterval(3_000, 4_000),
+        TimeInterval(4_500, 4_800),
+    )
+    assert child.effective_touched_intervals == (
+        TimeInterval(1_000, 2_000),
+        TimeInterval(3_000, 4_000),
+        TimeInterval(4_500, 4_800),
+    )
+    assert child.source_provenance_ids == (
+        "v4-development:v4-dev-accepted",
+        "v4-development:v4-dev-diagnostic",
+    )
+
+
+def test_register_candidate_spec_fails_closed_when_v4_cutoff_is_not_authoritative(
+    tmp_path: Path,
+    capsys: object,
+) -> None:
+    registry_path = tmp_path / "research.sqlite3"
+    spec_path = tmp_path / "challenger.json"
+    _bootstrap_registry(registry_path)
+    registry = ResearchRegistry(registry_path)
+    try:
+        registry.record_v4_interval(
+            run_id="v4-dev",
+            interval=TimeInterval(3_000, 4_000),
+            disposition="accepted",
+        )
+        registry.mark_v4_registry_complete_through(
+            through_ms=4_999,
+            source_id="trusted-v4-authority",
+        )
+    finally:
+        registry.close()
+    _write_spec(spec_path, v4_touched_through_ms=5_000)
+
+    code, out, err = _run_cli(
+        capsys,
+        [
+            "register-candidate-spec",
+            "--registry",
+            str(registry_path),
+            "--spec",
+            str(spec_path),
+        ],
+    )
+
+    assert code != 0
+    assert out == ""
+    assert "completeness" in json.loads(err)["error"].lower()
+    registry = ResearchRegistry(registry_path)
+    try:
+        with pytest.raises(ResearchRegistryError, match="candidate not found"):
+            registry.load_candidate("research-r1-exit-15m-v1")
+    finally:
+        registry.close()
+
+
+def test_r2_spec_pins_strategy_revision_horizon_and_v4_development_cutoff() -> None:
+    payload = json.loads(
+        Path("docs/research-r2-short-trend-quality-v1.json").read_text(encoding="utf-8")
+    )
+
+    assert payload == {
+        "candidate_id": "research-r2-short-trend-quality-v1",
+        "parent_candidate_id": "scheduled-research-root",
+        "code_revision": "2ce088d69df01f044b0650b811b51015a5edda51",
+        "v4_touched_through_ms": 1789645942986,
+        "execution_config": {
+            "config_version": "research-paper-20m-short-trend-quality-v1",
+            "max_position_age_ms": 1_200_000,
+            "starting_cash": "10000",
+        },
+    }
+
+
 def test_register_candidate_spec_rejects_starting_cash_change(
     tmp_path: Path,
     capsys: object,
@@ -213,6 +351,10 @@ def test_registration_workflow_is_registry_only_and_publisher_locked() -> None:
         encoding="utf-8"
     )
     assert "workflow_dispatch:" in workflow
+    assert "push:" in workflow
+    assert "branches: [main]" in workflow
+    assert '"docs/research-r2-short-trend-quality-v1.json"' in workflow
+    assert "--spec docs/research-r2-short-trend-quality-v1.json" in workflow
     assert "research-authoritative-registry-publisher" in workflow
     assert "register-candidate-spec" in workflow
     assert "research-authoritative-registry" in workflow
@@ -221,7 +363,7 @@ def test_registration_workflow_is_registry_only_and_publisher_locked() -> None:
     assert "RESEARCH_CHALLENGER_CANDIDATE_ID" not in workflow
 
 
-def test_authority_consumers_trust_only_successful_registration_dispatch() -> None:
+def test_authority_consumers_trust_successful_registration_push_or_dispatch() -> None:
     for path in (
         Path(".github/workflows/research-campaign-scheduled.yml"),
         Path(".github/workflows/research-v4-registry-sync.yml"),
@@ -229,4 +371,5 @@ def test_authority_consumers_trust_only_successful_registration_dispatch() -> No
     ):
         workflow = path.read_text(encoding="utf-8")
         assert 'research-candidate-register.yml' in workflow
-        assert '(.event == "workflow_dispatch")' in workflow
+        assert '.event == "workflow_dispatch"' in workflow
+        assert '.event == "push"' in workflow
