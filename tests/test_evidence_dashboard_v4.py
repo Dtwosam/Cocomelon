@@ -203,6 +203,16 @@ def test_v4_scheduler_health_uses_exact_v4_campaign() -> None:
     assert ".github/workflows/evidence-campaign-v4-scheduled.yml" in script
 
 
+def test_v4_scheduler_health_reports_retired_baseline() -> None:
+    namespace = runpy.run_path(str(SCHEDULER_APPLIER))
+
+    assert namespace["_RETIRED_SUMMARY"] == (
+        "retired — touched V4 baseline no longer acquires new cohorts"
+    )
+    script = _read_required(SCHEDULER_APPLIER, "V4 scheduler health")
+    assert "summary = _RETIRED_SUMMARY" in script
+
+
 def test_v4_dashboard_makes_scheduler_drift_observational_only() -> None:
     namespace = runpy.run_path(str(BUILDER))
 
