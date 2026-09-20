@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `99bba62a150d072496fd371b4f7d08fad0fe312b`  
-**Latest verified main CI:** `35536105728` — success  
+**Current verified `main` at snapshot:** `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`  
+**Latest verified main CI:** `35537686365` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -95,7 +95,7 @@ Active challenger:
 
 R2 was generated from touched V4 development evidence. It is a hypothesis, not proof of edge. Its thresholds are immutable while it gathers new natural research evidence.
 
-Trusted research state at the current snapshot:
+Trusted research state at the 2026-09-20 21:06 UTC snapshot:
 
 - `scheduled-research-root`: 12 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
 - legacy `research-r1-exit-15m-v1`: 7 checkpoints, 6 trades, 4 days, touched net PnL about `-36.9098`;
@@ -132,9 +132,12 @@ Recent frontier PRs:
 - #211: fixed strategy-driven paper stop tightening so the updated stop is materialized atomically and survives restart;
 - #212: refreshed the portable handoff to the current r2 frontier;
 - #214: advanced the active r2 plan through the verified stop-durability fix;
-- #215: fails paper restart reconciliation closed when the deterministic current immutable position event is missing or corrupted.
+- #215: fails paper restart reconciliation closed when the deterministic current immutable position event is missing or corrupted;
+- #217: regression-locks LONG/SHORT tightened-stop persistence and fail-closed behavior on durable write failure;
+- #219: rejects missing/unsupported paper execution store schema versions without rewriting them;
+- #220: rejects missing/unsupported journal/replay store schema versions without rewriting them.
 
-PR #215 merged as `99bba62a150d072496fd371b4f7d08fad0fe312b`. Post-merge main CI `35536105728` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #220 merged as `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`. Post-merge main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
