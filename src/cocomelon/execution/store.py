@@ -7,7 +7,13 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from cocomelon.domain.execution import ExecutionAttempt, PaperFill, PaperOrderPlan
+from cocomelon.domain.execution import (
+    ExecutionAttempt,
+    OrderSide,
+    OrderType,
+    PaperFill,
+    PaperOrderPlan,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.execution.accounting import (
     PaperAccountState,
@@ -172,6 +178,52 @@ def _plan_payload(plan: PaperOrderPlan) -> dict[str, object]:
             else str(plan.effective_loss_fraction)
         ),
     }
+
+
+def _plan_from_payload(payload: dict[str, Any]) -> PaperOrderPlan:
+    reduce_only = payload["reduce_only"]
+    if not isinstance(reduce_only, bool):
+        raise ValueError("reduce_only must be a boolean")
+    stop_price = payload["stop_price"]
+    approved_risk_amount_ceiling = payload["approved_risk_amount_ceiling"]
+    stop_distance_fraction = payload["stop_distance_fraction"]
+    effective_loss_fraction = payload["effective_loss_fraction"]
+    return PaperOrderPlan(
+        risk_decision_id=str(payload["risk_decision_id"]),
+        strategy_decision_id=str(payload["strategy_decision_id"]),
+        market=_market_from_canonical(str(payload["market"])),
+        side=OrderSide(str(payload["side"])),
+        requested_quantity=Decimal(str(payload["requested_quantity"])),
+        order_type=OrderType(str(payload["order_type"])),
+        reduce_only=reduce_only,
+        execution_reference_price=Decimal(str(payload["execution_reference_price"])),
+        max_slippage_bps=Decimal(str(payload["max_slippage_bps"])),
+        stop_price=None if stop_price is None else Decimal(str(stop_price)),
+        approved_notional_ceiling=Decimal(str(payload["approved_notional_ceiling"])),
+        created_at_ms=int(payload["created_at_ms"]),
+        earliest_execution_ms=int(payload["earliest_execution_ms"]),
+        execution_config_version=str(payload["execution_config_version"]),
+        instrument_metadata_received_at_ms=int(payload["instrument_metadata_received_at_ms"]),
+        approved_risk_amount_ceiling=(
+            None
+            if approved_risk_amount_ceiling is None
+            else Decimal(str(approved_risk_amount_ceiling))
+        ),
+        stop_distance_fraction=(
+            None
+            if stop_distance_fraction is None
+            else Decimal(str(stop_distance_fraction))
+        ),
+        effective_loss_fraction=(
+            None
+            if effective_loss_fraction is None
+            else Decimal(str(effective_loss_fraction))
+        ),
+    )
+
+
+class _PlanIdMismatchError(ValueError):
+    pass
 
 
 def _attempt_payload(attempt: ExecutionAttempt) -> dict[str, object]:
@@ -361,6 +413,26 @@ class PaperExecutionStore:
                 payload,
             )
 
+    def load_plan(self, plan_id: str) -> PaperOrderPlan | None:
+        if not plan_id.strip():
+            raise ValueError("plan_id must not be empty")
+        row = self._conn.execute(
+            "SELECT payload_json FROM paper_order_plans WHERE plan_id = ?",
+            (plan_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(str(row[0]))
+            if not isinstance(payload, dict):
+                raise ValueError("plan payload is not an object")
+            plan = _plan_from_payload(payload)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("persisted plan payload is unreadable") from exc
+        if plan.plan_id != plan_id:
+            raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
+        return plan
+
     def _write_materialized_account(self, account: PaperAccountState) -> None:
         account_json = _canonical_json(_account_payload(account))
         existing = self._conn.execute(
@@ -524,6 +596,37 @@ class PaperExecutionStore:
             )
 
         for position in account.positions:
+            try:
+                opening_plan = self.load_plan(position.opening_plan_id)
+            except _PlanIdMismatchError:
+                return ReconciledPaperState(
+                    account,
+                    False,
+                    ("OPENING_PLAN_LINEAGE_MISMATCH",),
+                )
+            except ValueError:
+                return ReconciledPaperState(
+                    account,
+                    False,
+                    ("OPENING_PLAN_LINEAGE_UNREADABLE",),
+                )
+            if opening_plan is None:
+                return ReconciledPaperState(
+                    account,
+                    False,
+                    ("OPENING_PLAN_LINEAGE_MISSING",),
+                )
+            if (
+                opening_plan.reduce_only
+                or opening_plan.market != position.market
+                or opening_plan.risk_decision_id != position.initial_risk_decision_id
+            ):
+                return ReconciledPaperState(
+                    account,
+                    False,
+                    ("OPENING_PLAN_LINEAGE_MISMATCH",),
+                )
+
             event_id = f"{account.state_id}:{position.position_id}"
             event_row = self._conn.execute(
                 "SELECT market, payload_json FROM paper_position_events WHERE event_id = ?",
