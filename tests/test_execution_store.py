@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from decimal import Decimal
 from pathlib import Path
@@ -359,6 +360,35 @@ def test_unreadable_opening_plan_lineage_makes_restart_unhealthy(tmp_path: Path)
     store.close()
     assert result.healthy is False
     assert "OPENING_PLAN_LINEAGE_UNREADABLE" in result.reason_codes
+
+
+def test_tampered_opening_plan_payload_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        row = conn.execute(
+            "SELECT payload_json FROM paper_order_plans WHERE plan_id = ?",
+            (order.plan_id,),
+        ).fetchone()
+        assert row is not None
+        payload = json.loads(str(row[0]))
+        payload["risk_decision_id"] = "risk-tampered"
+        conn.execute(
+            "UPDATE paper_order_plans SET payload_json = ? WHERE plan_id = ?",
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")), order.plan_id),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "OPENING_PLAN_LINEAGE_MISMATCH" in result.reason_codes
 
 
 def test_database_enforces_one_active_position_per_market(tmp_path: Path) -> None:
