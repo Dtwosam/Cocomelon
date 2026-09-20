@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `a7e6f61483fe9c1613314887f2563ace93d5192b`  
-**Latest verified main CI:** `35535409378` — success  
+**Current verified `main` at snapshot:** `99bba62a150d072496fd371b4f7d08fad0fe312b`  
+**Latest verified main CI:** `35536105728` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -129,9 +129,12 @@ Recent frontier PRs:
 - #208: restored pre-publication and final rollout-verifier enforcement for root+r2;
 - #209: made the trusted dashboard retirement-aware;
 - #210: made r2 natural research the active execution plan;
-- #211: fixed strategy-driven paper stop tightening so the updated stop is materialized atomically and survives restart.
+- #211: fixed strategy-driven paper stop tightening so the updated stop is materialized atomically and survives restart;
+- #212: refreshed the portable handoff to the current r2 frontier;
+- #214: advanced the active r2 plan through the verified stop-durability fix;
+- #215: fails paper restart reconciliation closed when the deterministic current immutable position event is missing or corrupted.
 
-PR #211 merged as `a7e6f61483fe9c1613314887f2563ace93d5192b`. Post-merge main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #215 merged as `99bba62a150d072496fd371b4f7d08fad0fe312b`. Post-merge main CI `35536105728` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
