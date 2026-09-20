@@ -411,6 +411,89 @@ def test_tightened_stop_persistence_failure_keeps_old_account_and_degrades_healt
     restarted.close()
 
 
+def test_opening_plan_persistence_failure_degrades_execution_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+
+    def fail_persist(_plan: object) -> None:
+        raise RuntimeError("simulated plan write failure")
+
+    monkeypatch.setattr(engine.store, "persist_plan", fail_persist)
+    with pytest.raises(RuntimeError, match="simulated plan write failure"):
+        engine.submit_opening(
+            approved_risk(),
+            instrument(),
+            book(),
+            reference_price=Decimal("100"),
+            created_at_ms=1_000,
+            attempt_timestamp_ms=1_300,
+        )
+
+    assert engine.account.positions == ()
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == ("DURABLE_PLAN_WRITE_FAILED",)
+
+    blocked = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(exchange_ms=2_000, receive_ms=2_010),
+        reference_price=Decimal("100"),
+        created_at_ms=1_500,
+        attempt_timestamp_ms=2_100,
+    )
+    assert blocked.plan is None
+    assert blocked.rejection is not None
+    assert blocked.rejection.reason == "EXECUTION_STATE_UNHEALTHY"
+    engine.close()
+
+
+def test_reduce_only_plan_persistence_failure_keeps_position_and_degrades_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    engine = adapter(path)
+    opened = engine.submit_opening(
+        approved_risk(),
+        instrument(),
+        book(),
+        reference_price=Decimal("100"),
+        created_at_ms=1_000,
+        attempt_timestamp_ms=1_300,
+    )
+    original_state_id = opened.account.state_id
+    original_position_id = opened.account.positions[0].position_id
+
+    def fail_persist(_plan: object) -> None:
+        raise RuntimeError("simulated reduce plan write failure")
+
+    monkeypatch.setattr(engine.store, "persist_plan", fail_persist)
+    with pytest.raises(RuntimeError, match="simulated reduce plan write failure"):
+        engine.manage_position(
+            MARKET,
+            instrument(),
+            mark("94", receive_ms=2_000),
+            book(bid="94", ask="94.1", exchange_ms=2_100, receive_ms=2_110),
+            strategy_decision=None,
+            strategy_fresh=False,
+            critical_health=False,
+            explicit_reduction_quantity=None,
+            reference_price=Decimal("94"),
+            timestamp_ms=2_100,
+            attempt_timestamp_ms=2_400,
+        )
+
+    assert engine.account.state_id == original_state_id
+    assert len(engine.account.positions) == 1
+    assert engine.account.positions[0].position_id == original_position_id
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == ("DURABLE_PLAN_WRITE_FAILED",)
+    engine.close()
+
+
 def test_restart_inconsistency_blocks_new_exposure_but_is_visible_in_health(
     tmp_path: Path,
 ) -> None:

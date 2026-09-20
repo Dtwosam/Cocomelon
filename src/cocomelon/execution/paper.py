@@ -79,6 +79,13 @@ class PaperExecutionAdapter:
     def _mark_store_failure(self, reason: str) -> None:
         self._health = ExecutionHealth(False, (reason,))
 
+    def _persist_plan(self, plan: PaperOrderPlan) -> None:
+        try:
+            self.store.persist_plan(plan)
+        except Exception:
+            self._mark_store_failure("DURABLE_PLAN_WRITE_FAILED")
+            raise
+
     def mark_account_to_market(
         self,
         marks: Mapping[MarketId, Decimal],
@@ -184,7 +191,7 @@ class PaperExecutionAdapter:
                 account=self._account,
             )
 
-        self.store.persist_plan(planned)
+        self._persist_plan(planned)
         simulation = simulate_ioc(
             planned,
             book,
@@ -376,7 +383,7 @@ class PaperExecutionAdapter:
                 account=self._account,
             )
 
-        self.store.persist_plan(planned)
+        self._persist_plan(planned)
         return self._execute_reduce_only_plan(
             market,
             action,
