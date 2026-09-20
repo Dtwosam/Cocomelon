@@ -130,6 +130,40 @@ def test_store_creates_only_required_phase7_operational_tables(tmp_path: Path) -
     }
 
 
+def test_existing_store_rejects_unsupported_schema_version_without_rewriting(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    store = PaperExecutionStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "UPDATE paper_meta SET value = '999' WHERE key = 'schema_version'"
+        )
+
+    with pytest.raises(ValueError, match="unsupported paper schema version"):
+        PaperExecutionStore(path)
+
+    with sqlite3.connect(path) as conn:
+        version = conn.execute(
+            "SELECT value FROM paper_meta WHERE key = 'schema_version'"
+        ).fetchone()
+    assert version == ("999",)
+
+
+def test_existing_store_rejects_missing_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    store = PaperExecutionStore(path)
+    store.close()
+
+    with sqlite3.connect(path) as conn:
+        conn.execute("DELETE FROM paper_meta WHERE key = 'schema_version'")
+
+    with pytest.raises(ValueError, match="missing paper schema version"):
+        PaperExecutionStore(path)
+
+
 def test_plan_and_execution_round_trip_restart_exactly(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
