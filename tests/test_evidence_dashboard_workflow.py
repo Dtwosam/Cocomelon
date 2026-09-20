@@ -20,6 +20,11 @@ def _verdict_function(name: str) -> Any:
     return namespace[name]
 
 
+def _builder_function(name: str) -> Any:
+    namespace = runpy.run_path(str(BUILDER))
+    return namespace[name]
+
+
 def _intake_function(name: str) -> Any:
     namespace = runpy.run_path(str(INTAKE_APPLIER))
     return namespace[name]
@@ -123,6 +128,22 @@ def test_dashboard_shows_non_performance_leaking_v4_one_shot_status() -> None:
     assert "Freeze ID" in builder
     assert "source curator run" in builder.lower()
     assert "corpus artifact ID" in builder
+
+
+def test_dashboard_reports_retired_v4_one_shot_state_from_retirement_marker() -> None:
+    summary = _builder_function("_phase9_state_summary")
+    state = {"freeze": None, "final": None}
+    retirement = {
+        "schema_version": 1,
+        "candidate_id": "v4-baseline-4h-thesis-expiry",
+        "state": "retired_touched_no_edge",
+        "promotion_eligible": False,
+        "live_orders": False,
+    }
+
+    assert summary(state, label="V4", retirement=retirement) == [
+        "**V4 one-shot state:** retired / touched; automatic evaluation disabled  "
+    ]
 
 
 def test_dashboard_state_summary_does_not_render_pre_final_performance_fields() -> None:
