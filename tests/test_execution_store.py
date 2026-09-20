@@ -260,6 +260,29 @@ def test_materialized_position_tamper_makes_restart_unhealthy(tmp_path: Path) ->
     assert "MATERIALIZED_POSITION_MISMATCH" in result.reason_codes
 
 
+def test_position_event_tamper_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    event_id = f"{account.state_id}:{account.positions[0].position_id}"
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_position_events SET payload_json = '{}' WHERE event_id = ?",
+            (event_id,),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "POSITION_EVENT_MISMATCH" in result.reason_codes
+
+
 def test_database_enforces_one_active_position_per_market(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     store = PaperExecutionStore(path)
