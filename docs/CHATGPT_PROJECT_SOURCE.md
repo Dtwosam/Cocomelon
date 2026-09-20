@@ -2,15 +2,15 @@
 
 **Purpose:** Portable bootstrap context for continuing Cocomelon across ChatGPT chats. Live GitHub state and authoritative repository docs always outrank this summary.
 
-**Snapshot updated:** 2026-09-03  
+**Snapshot updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `d5c0cfb9e2914e70c782d3f575211a2295663050`  
+**Current verified `main` at snapshot:** `a7e6f61483fe9c1613314887f2563ace93d5192b`  
+**Latest verified main CI:** `35535409378` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
 **Hyperliquid testnet:** forbidden  
 **Live trading:** **DISABLED**  
-**Real V4 economic edge:** **UNMEASURED**  
 **Phase 10:** **BLOCKED**
 
 ---
@@ -28,179 +28,127 @@ Use this order:
 7. `docs/STATUS.md`;
 8. this portable bootstrap.
 
-Always inspect live `main`, recent Actions runs, open PR/review state, active V4 jobs, and current dashboard issues before acting. Do not rebuild already-merged work. Use RED -> GREEN TDD for behavior changes and verify exact-head, PR-context, and post-merge CI before claiming integration is green.
+Always inspect live `main`, recent Actions runs, open PR/review state, active V4 jobs, and trusted dashboard state before acting. Do not rebuild already-merged work. Use RED -> GREEN TDD for behavior changes and verify exact-head, PR-context, and post-merge CI before claiming integration is green.
 
 The user expects autonomous engineering. Real-money activation is the permanent exception: no live exchange order placement until objective promotion gates pass and the user explicitly authorizes live mode/capital.
 
 ---
 
-## 2. Locked safety and economic boundaries
+## 2. Locked safety boundaries
 
 - Hyperliquid testnet is forbidden.
-- Runtime market observations are public Hyperliquid mainnet only.
+- Runtime observations are public Hyperliquid mainnet only.
 - Current/default execution is paper/shadow.
-- No wallet/private-key signing, transfer, withdrawal, or private-account execution path belongs in V4/research evidence workflows.
+- No wallet/private-key signing, transfer, withdrawal, or private-account execution belongs in research/evidence workflows.
 - Strategy cannot bypass independent risk.
 - No averaging down, martingale/loss-recovery sizing, or stopless positions.
 - `NO_TRADE` is first-class.
 - Historical L2/order flow may not be fabricated from candles.
-- V4 interim economics remain hidden until the immutable one-shot protocol permits an authoritative result.
-- Never manually dispatch, retry, extend, cancel, or performance-condition V4 economic acquisition.
-- Research is permanently **TOUCHED / NON-PROMOTIONAL** and cannot directly produce `CANDIDATE_EDGE`, mutate `v4-mainnet-corpus`, advance Phase 10, or enable live orders.
+- Research is **TOUCHED / NON-PROMOTIONAL** and cannot directly advance Phase 10 or enable live orders.
 
 ---
 
-## 3. Frozen V4 Phase 9 lane
+## 3. Retired V4 baseline
 
-Active protocol: `v4-thesis-expiry-mainnet`.
+The formerly frozen `v4-baseline-4h-thesis-expiry` was explicitly revealed and retired under D-024.
 
-Frozen identity:
+The 100-trade / 18-day development snapshot was negative:
 
-- execution runtime `0c14c9cfa37c80babc65d050fed6d4465dcb9032`;
-- replay engine `phase8-v3-thesis-expiry`;
-- replay config `phase9-baseline-replay-v3-thesis-expiry`;
-- execution config `phase7-v2-4h-thesis-expiry`;
-- frozen evaluator `efd33f8f89bc11e51c0e4f94591b9d8d1ce5b5ff`.
+- gross PnL about `-537.62`;
+- net PnL about `-629.91`;
+- mean net R about `-0.298`;
+- profit factor about `0.44`;
+- realized closed-trade maximum drawdown about `7.80%`.
 
-Frozen acquisition contract:
+This evidence is permanently **TOUCHED / DEVELOPMENT-ONLY** and cannot become untouched OOS evidence.
 
-- 45-minute entry window;
-- exact 4-hour maximum position age;
-- fixed 5h15m total capture;
-- nominal schedule `37 1,7,13,19 * * *` UTC;
-- one acquisition attempt per cohort;
-- schedule-only economic acquisition;
-- final admission only for clean transport, complete replay/dataset evidence, no gaps, and flat replay exposure.
+Future scheduled V4 acquisition and automatic V4 one-shot evaluation for the retired baseline are disabled. One acquisition that had already started before retirement, run `35524316366`, remains protected and must finish naturally without cancellation, retry, extension, backfill, or outcome conditioning.
 
-Do not change V4 strategy/risk/execution/evaluator/curator/corpus/schedule/economics merely to improve counts or outcomes. Nominal cron delivery is not authority; actual run/job/session intervals are.
+Latest trusted dashboard snapshot recorded:
 
-Latest trusted dashboard counts:
-
-- **11 accepted V4 cohorts**;
-- **19 / 100 closed paper trades**;
-- **4 / 30 closed-trade days**;
-- **1,155 strategy decisions**;
-- raw Phase 9 minimums: **NO**;
-- economic edge: **Not measured yet**;
+- 68 accepted V4 cohorts;
+- 120 closed paper trades;
+- 21 closed-trade days;
+- 7,145 strategy decisions;
+- economic edge: **RETIRED / TOUCHED — NO EDGE DEMONSTRATED**;
 - live orders: **DISABLED**.
 
-Protected V4 run **#21**, `33754093934`, remains in `acquire-evidence` at this snapshot, with `Record thesis-expiry genuine public mainnet evidence` in progress. Let it finish naturally. Never manually dispatch/retry/extend/cancel/performance-condition it.
+Later V4 cohorts are historical/touched only and may not be used to retune the locked r2 thresholds.
 
 ---
 
-## 4. D-023 dual-lane research
+## 4. Active research frontier — r2
 
-Research is permanently **TOUCHED / NON-PROMOTIONAL**. Governing rule: **candidates may fail fast; candidates may not succeed fast**.
+Active plan: `docs/superpowers/plans/2026-09-20-r2-natural-research-validation.md`.
 
-Research economics may use only source-time intervals proven disjoint from every actual V4 acquisition interval, including failed/diagnostic attempts. Ambiguous or overlapping batches fail closed as `REJECTED_CONTAMINATION`. Descendants inherit ancestor touched intervals.
+Active challenger:
 
-Locked thresholds:
+- candidate: `research-r2-short-trend-quality-v1`;
+- parent: `scheduled-research-root`;
+- strategy revision: `2ce088d69df01f044b0650b811b51015a5edda51`;
+- execution max position age: 20 minutes;
+- starting paper cash: 10,000;
+- only trend-led SHORT decisions with baseline score 72–81 inclusive remain tradable;
+- LONG, non-trend, and out-of-band decisions are vetoed to NO_TRADE;
+- risk limits are unchanged;
+- live orders remain disabled.
 
-- futility rejection cannot occur before 20 closed research trades;
-- `RESEARCH_PROMISING` requires at least 40 closed research trades, 7 distinct UTC closed-trade days, and posterior `P(mu > 0) >= 0.80`;
-- `RESEARCH_PROMISING` remains non-promotional;
-- any selected challenger must be frozen and begin separate untouched validation only after a 6-hour embargo beyond its latest inherited touched interval.
+R2 was generated from touched V4 development evidence. It is a hypothesis, not proof of edge. Its thresholds are immutable while it gathers new natural research evidence.
 
-Canonical trust path:
+Trusted research state at the current snapshot:
 
-`canonical replay artifact -> verified batch -> immutable attestation -> authenticated checkpoint/report -> atomic research state commit`.
+- `scheduled-research-root`: 12 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
+- legacy `research-r1-exit-15m-v1`: 7 checkpoints, 6 trades, 4 days, touched net PnL about `-36.9098`;
+- r2: draft, 0 authenticated checkpoints, 0 closed trades.
 
-### Current research baseline
-
-Issue #124 was last refreshed from trusted state at approximately **2026-09-03 15:10 UTC** and reports:
-
-- candidate `scheduled-research-root`;
-- state `draft`;
-- **0 authenticated checkpoints**;
-- no research economic conclusion;
-- explicit **TOUCHED / NON-PROMOTIONAL** status.
-
-This matches the authoritative fail-closed research #8 result.
-
-### Candidate revision
-
-`scheduled-research-root` is immutably pinned to `721dc98c22c389e3f6f85e382f84e2889fbefe31`. Candidate-build logs from research run `33753704553` show that exact revision was checked out and frozen into the candidate image.
-
-Its strategy is current: `src/cocomelon/strategies/engine.py` has identical blob `6d43979c1e9497a57c168a8b78f3fb0b8f5a7a7d` at the candidate and current production lineage. Infrastructure-only drift is not a reason to create or silently repin a descendant.
+None of these results establishes verified edge.
 
 ---
 
-## 5. Research operations deployed
+## 5. Locked research gates
 
-Control plane:
-
-- `.github/workflows/research-campaign-scheduled.yml` — fixed 1800-second public-mainnet paper research capture;
-- `.github/workflows/research-v4-registry-sync.yml` — trusted non-economic V4 interval/completeness inventory;
-- `.github/workflows/research-v4-sync-dispatcher.yml` — completed scheduled V4 -> trusted authority-sync bridge;
-- `.github/workflows/research-v4-acquisition-gap-observer.yml` — metadata-only acquisition-end observer;
-- `.github/workflows/research-daily-gap-dispatcher.yml` — safe-gap launcher with one-successful-cohort-per-UTC-day cap;
-- `.github/workflows/research-dashboard.yml` — touched/non-promotional dashboard;
-- `.github/workflows/research-dashboard-catchup.yml` — redundant observability fallback.
-
-Important recent reliability changes:
-
-- PRs #136/#137/#138 harden research diagnostics, decision-epoch alignment, and capture timeout headroom without changing candidate economics.
-- PR #139 adds mid-capture V4 priority and research-only preemption.
-- PR #141 (`f26a21da8d59bfa586a834b7ce58ee4dcc47149e`) adds the synchronous pre-recorder V4 gate.
-- PR #142 (`9dc0c53f37227ae2f915015d9be2c3d58f6fdc1e`) isolates post-finalizer dashboard write scope.
-- PR #145 (`0d2ac2f949e8b950930f2385b88cf0be768de24b`) makes safe-gap gating acquisition-aware and keeps candidate observation blocked behind refreshed authority completeness/disjointness.
-- PR #146 (`5abca9cb38df855aa811a2d8a6b464c5a0c1be9d`) moves safe-gap polling to the 5-minute Actions floor without changing the fixed 1800-second capture.
-- PR #148 (`48e387d39bf79a8b8de23aab1bdc949c86cfdec2`) refreshes the research dashboard after trusted authority sync.
-- PR #149 (`6d0b6da32e4ec4a001ab2c45c175b91c25352cb3`) dispatches trusted authority synchronization after completed scheduled V4 runs.
-- PR #151 (`2300acd546e03dc7cbca28f16fc4b8f68ce513c7`) fixes a CI-only recorder-test race; runtime is unchanged.
-- PR #152 (`64a8f73a6e771ddd27de3587ad44ba0ef3532304`) adds the metadata-only acquisition-gap observer for future scheduled V4 `in_progress` events.
-- **PR #154** (`d5c0cfb9e2914e70c782d3f575211a2295663050`) adds a self-bootstrap path restricted to pushes of the observer workflow file on `main`. It discovers only scheduled main-branch V4 run/job metadata, fails closed on ambiguity, and can only wake `research-daily-gap-dispatcher.yml`. It never starts/stops/retries V4, never sees V4 economics, and never dispatches research directly.
-
-PR #154 verification:
-
-- RED CI `33777273875`: expected missing-bootstrap failure only;
-- exact-head CI `33777436656`: success;
-- PR-context CI `33777589885`: success;
-- merge `d5c0cfb9e2914e70c782d3f575211a2295663050`;
-- post-merge main CI `33777785186`: success.
-
-### Live #21 observer attachment
-
-PR #154's merge immediately triggered **Research V4 Acquisition Gap Observer** run `33777785906` via the new `push` path. The run entered its `observe-acquisition` wait step and remains active while V4 #21's `acquire-evidence` job remains active.
-
-This is a metadata-only attachment. When the unique #21 acquisition completes, the observer may wake `research-daily-gap-dispatcher.yml`. That dispatcher independently rechecks all active V4 acquisitions, active research campaigns, and the current UTC-day success cap before it can dispatch research. If a new protected V4 acquisition exists, the wake-up safely becomes a skip.
-
-GitHub cron delivery has shown material drift, including no fresh five-minute safe-gap run during the observed window. Cron is therefore a redundant fallback, not timing authority.
+- Candidates may fail fast; candidates may not succeed fast.
+- No futility rejection before 20 closed research trades.
+- At >=20 closed r2 trades, reject for futility only if `P(mu > 0) < 0.05`.
+- `RESEARCH_PROMISING` requires >=40 closed trades, >=7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
+- `RESEARCH_PROMISING` remains TOUCHED / NON-PROMOTIONAL.
+- Any future clean validation begins only after candidate freeze, inherited touched-period handling, and the documented six-hour embargo.
+- Live promotion still requires every gate in `MASTER_SPEC.md`, including >=500 closed mainnet paper trades and >=45 calendar days of shadow operation.
 
 ---
 
-## 6. Research run #8 resolved
+## 6. Current control-plane and paper-execution state
 
-Research run `33753704553` used pre-#139 control and overlapped delayed scheduled V4 run `33754093934`.
+The authoritative V4 interval/completeness synchronization path remains in `.github/workflows/research-v4-registry-sync.yml`. Research admission depends on actual authoritative V4 coverage/disjointness, never nominal cron timing.
 
-Canonical resolution:
+Recent frontier PRs:
 
-- refreshed V4 completeness did not cover the bound research interval;
-- `refresh-authority` failed with `fresh V4 authority does not cover bound research interval`, exit `70`;
-- candidate observation/touch authorization and evaluation were skipped;
-- **no authenticated checkpoint** and no research economics were admitted;
-- finalizer rebased trusted authority and published the audit/registry;
-- audit artifact `9894398717`;
-- authoritative registry artifact `9894399329`.
+- #205: added the deterministic r2 short-trend quality strategy seam;
+- #206: registered and activated r2 as the research challenger default without economic dispatch;
+- #207: retired future V4 acquisition/automatic one-shot evaluation for the disclosed failed baseline;
+- #208: restored pre-publication and final rollout-verifier enforcement for root+r2;
+- #209: made the trusted dashboard retirement-aware;
+- #210: made r2 natural research the active execution plan;
+- #211: fixed strategy-driven paper stop tightening so the updated stop is materialized atomically and survives restart.
 
-This run is closed fail-closed audit evidence, not a research checkpoint.
+PR #211 merged as `a7e6f61483fe9c1613314887f2563ace93d5192b`. Post-merge main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
 ## 7. Exact handoff / next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let protected V4 #21 (`33754093934`) finish naturally.
-3. Observe live observer `33777785906`; it should stay attached while #21 acquisition is active and may wake the safe-gap dispatcher after the unique acquisition job completes.
-4. Verify the safe-gap dispatcher rechecks all active V4 acquisitions, active research, and the UTC-day success cap before any research launch.
-5. **Observe the implemented authoritative V4 interval/completeness synchronization path** when #21 completes and on the first subsequent research cohort that reaches a genuine acquisition-free gap.
-6. For a launched research cohort, verify acquisition-aware preflight, synchronous pre-recorder recheck, mid-capture V4 preemption, fixed 1800-second capture, post-capture authority completeness refresh, canonical disjointness, authenticated evaluation, finalizer publication, and dashboard refresh.
-7. Keep `scheduled-research-root` pinned to `721dc98c...` unless strategy code itself intentionally changes.
-8. Fix future infrastructure defects with RED -> GREEN TDD, but never weaken V4 authority, overlap, completeness, touched-lineage, research authentication, or one-shot gates.
-9. Keep research permanently **TOUCHED / NON-PROMOTIONAL**.
-10. Admit only clean, complete, flat frozen-runtime V4 sources into `v4-mainnet-corpus`.
-11. Let the frozen V4 one-shot check readiness only after trusted corpus updates; do not inspect interim V4 economics.
-12. Advance toward Phase 10 only if the authoritative untouched one-shot eventually reaches `CANDIDATE_EDGE` and every locked promotion criterion passes.
+2. Let protected pre-retirement V4 run `35524316366` finish naturally.
+3. Do not resume retired-baseline V4 acquisition and do not run its automatic one-shot.
+4. Observe authoritative V4 interval/completeness synchronization after the protected run resolves.
+5. Let the next naturally eligible safe-gap research cohort launch through the existing dispatcher with root + r2. Do not manually dispatch economics merely to accelerate evidence.
+6. Require the pre-publication root+r2 rollout verifier and the independent final rollout verifier to pass before an r2 checkpoint is authoritative.
+7. Keep r2 immutable. Do not retune its 72–81 SHORT/trend filter from later V4 or r2 outcomes.
+8. At 20 r2 trades, apply only the locked futility rule.
+9. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, posterior >=0.80, complete costs, and clean integrity/risk state.
+10. Do not create r3 merely in reaction to a few r2 outcomes; require a documented new hypothesis and inherited touched lineage.
+11. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and start a new clean validation sample.
+12. Advance toward Phase 10 or live trading only after every locked validation/promotion gate passes.
 
 ---
 
@@ -208,9 +156,8 @@ This run is closed fail-closed audit evidence, not a research checkpoint.
 
 - Do not use Hyperliquid testnet.
 - Do not add live wallet/order/transfer/withdrawal behavior.
-- Do not manually retry/extend/cancel V4 because a cohort failed or produced an economic outcome.
-- Do not import V4 economics/history into research.
-- Do not turn research `RESEARCH_PROMISING` into direct promotion.
-- Do not weaken provenance, overlap, gap, replay-completeness, flat-exposure, attestation, or authentication checks to accumulate trades faster.
-- Do not use nominal cron timing as a substitute for actual V4 run/job/session authority.
+- Do not manually cancel/retry/extend/backfill protected V4 or research economics to accelerate results.
+- Do not relabel touched evidence as untouched.
+- Do not weaken provenance, overlap, completeness, replay, attestation, authentication, daily caps, or rollout-verifier gates.
+- Do not use nominal scheduler timing as a substitute for actual run/job/session authority.
 - Do not trust this file over newer live repository evidence.
