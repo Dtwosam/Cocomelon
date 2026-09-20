@@ -28,9 +28,10 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #211: `a7e6f61483fe9c1613314887f2563ace93d5192b`.
-- Post-merge main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
-- PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state. It does not change r2 entry thresholds, risk limits, or live-order controls.
+- Main implementation through PR #215: `99bba62a150d072496fd371b4f7d08fad0fe312b`.
+- Post-merge main CI `35536105728` passed compile, Ruff, mypy, full pytest, and research smoke.
+- PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state.
+- PR #215 now reconciles each current materialized paper position against its deterministic immutable `paper_position_events` record and fails closed on missing/corrupted event evidence. Neither change modifies r2 entry thresholds, risk limits, cadence, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
 - One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
 - Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.
