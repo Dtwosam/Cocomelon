@@ -3,10 +3,10 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from cocomelon.research.candidate_strategy import apply_short_trend_quality_filter
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction, StrategyDecision
-from cocomelon.research.candidate_strategy import apply_short_trend_quality_filter
 
 
 def _decision(
