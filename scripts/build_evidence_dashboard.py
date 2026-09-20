@@ -54,6 +54,7 @@ PHASE9_V4_ONE_SHOT_PATH = ".github/workflows/phase9-v4-one-shot.yml"
 PHASE9_V4_STATE_BRANCH = "phase9-v4-protocol-state"
 PHASE9_V4_FREEZE_FILE = "phase9-v4-freeze.json"
 PHASE9_V4_FINAL_FILE = "phase9-v4-final.json"
+V4_RETIREMENT_PATH = Path("docs/v4-baseline-retirement.json")
 
 PHASE9_V3_ONE_SHOT_NAME = "Phase 9 V3 One-Shot Evaluation"
 PHASE9_V3_ONE_SHOT_PATH = ".github/workflows/phase9-v3-one-shot.yml"
@@ -513,13 +514,48 @@ def _zero_progress() -> JsonObject:
     }
 
 
-def _phase9_state_summary(state: JsonObject, *, label: str) -> list[str]:
+def _load_v4_retirement(path: Path = V4_RETIREMENT_PATH) -> JsonObject | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("V4 retirement marker is invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("V4 retirement marker must be an object")
+    return {str(key): value for key, value in payload.items()}
+
+
+def _retired_v4_one_shot_status(payload: JsonObject) -> str | None:
+    if payload.get("state") != "retired_touched_no_edge":
+        return None
+    if payload.get("candidate_id") != "v4-baseline-4h-thesis-expiry":
+        raise RuntimeError("retired V4 baseline identity is invalid")
+    if payload.get("promotion_eligible") is not False:
+        raise RuntimeError("retired V4 baseline must be non-promotional")
+    if payload.get("live_orders") is not False:
+        raise RuntimeError("retired V4 baseline must keep live orders disabled")
+    return "retired / touched; automatic evaluation disabled"
+
+
+def _phase9_state_summary(
+    state: JsonObject,
+    *,
+    label: str,
+    retirement: JsonObject | None = None,
+) -> list[str]:
     freeze_obj = state.get("freeze")
     final_obj = state.get("final")
     freeze = freeze_obj if isinstance(freeze_obj, dict) else None
     final = final_obj if isinstance(final_obj, dict) else None
 
-    if freeze is None and final is None:
+    retirement_status = (
+        _retired_v4_one_shot_status(retirement) if retirement is not None else None
+    )
+
+    if final is None and retirement_status is not None:
+        status = retirement_status
+    elif freeze is None and final is None:
         status = "waiting for finalizable snapshot"
     elif freeze is not None and final is None:
         status = "frozen; finalization pending"
@@ -567,7 +603,11 @@ def _phase9_v3_state_summary(state: JsonObject) -> list[str]:
 
 
 def _phase9_v4_state_summary(state: JsonObject) -> list[str]:
-    return _phase9_state_summary(state, label="V4")
+    return _phase9_state_summary(
+        state,
+        label="V4",
+        retirement=_load_v4_retirement(),
+    )
 
 
 def _body(
