@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `033c20d22f7b68dc3baec696a36e94b8853b0fb8`  
-**Latest verified baseline CI:** run `35534235276` — success  
+**Verified implementation baseline:** `a7e6f61483fe9c1613314887f2563ace93d5192b`  
+**Latest verified baseline CI:** run `35535409378` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -87,15 +87,17 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#209 establish the current frontier:
+PRs #205–#211 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
 - #207 retired future V4 acquisition/automatic one-shot evaluation for the disclosed failed baseline;
 - #208 restored pre-publication and final rollout-verifier enforcement for root+r2;
-- #209 made the trusted dashboard one-shot state retirement-aware.
+- #209 made the trusted dashboard one-shot state retirement-aware;
+- #210 made r2 natural research the active execution plan and reconciled status with D-024;
+- #211 made strategy-driven paper stop tightening update the materialized account atomically and survive restart.
 
-Post-#209 main CI `35534235276` passed compile, Ruff, mypy, full pytest, and research smoke. Dashboard refresh `35534235322` passed end-to-end and issue #82 now renders the retirement state correctly.
+Post-#211 main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ## Exact next action
 
