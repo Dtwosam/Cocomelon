@@ -253,6 +253,45 @@ class PaperAccountState:
         )
 
 
+def tighten_position_stop(
+    account: PaperAccountState,
+    market: MarketId,
+    new_stop_price: Decimal,
+    timestamp_ms: int,
+) -> PaperAccountState:
+    _require_positive(new_stop_price, "new_stop_price")
+    if timestamp_ms < account.updated_at_ms:
+        raise ValueError("timestamp_ms must not move backward")
+
+    matches = tuple(position for position in account.positions if position.market == market)
+    if len(matches) != 1:
+        raise ValueError("stop tightening requires exactly one open position")
+    current = matches[0]
+    tighter = (
+        current.side is PositionSide.LONG and new_stop_price > current.stop_price
+    ) or (
+        current.side is PositionSide.SHORT and new_stop_price < current.stop_price
+    )
+    if not tighter:
+        raise ValueError("new_stop_price must tighten existing stop")
+
+    updated = replace(
+        current,
+        stop_price=new_stop_price,
+        updated_at_ms=timestamp_ms,
+    )
+    positions = tuple(
+        sorted(
+            (
+                updated if position.market == market else position
+                for position in account.positions
+            ),
+            key=lambda position: position.market.canonical,
+        )
+    )
+    return replace(account, positions=positions, updated_at_ms=timestamp_ms)
+
+
 def empty_account(starting_cash: Decimal, timestamp_ms: int) -> PaperAccountState:
     _require_positive(starting_cash, "starting_cash")
     if timestamp_ms < 0:

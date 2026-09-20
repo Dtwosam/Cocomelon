@@ -380,6 +380,15 @@ class PaperExecutionStore:
             (account.state_id, account_json),
         )
 
+    def persist_account(self, account: PaperAccountState) -> None:
+        try:
+            self._conn.execute("BEGIN IMMEDIATE")
+            self._write_materialized_account(account)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
     def persist_execution(
         self,
         attempt: ExecutionAttempt,
