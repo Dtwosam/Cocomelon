@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Mapping
 from decimal import Decimal
 from pathlib import Path
@@ -347,7 +348,8 @@ class PaperExecutionAdapter:
 
         try:
             lineage = load_plan_lineage(self.store, position.opening_plan_id)
-        except ValueError:
+        except (ValueError, sqlite3.Error):
+            self._mark_store_failure("OPENING_PLAN_LINEAGE_UNREADABLE")
             return PositionManagement(
                 action=action,
                 plan=None,
@@ -356,6 +358,7 @@ class PaperExecutionAdapter:
                 account=self._account,
             )
         if lineage is None:
+            self._mark_store_failure("OPENING_PLAN_LINEAGE_MISSING")
             return PositionManagement(
                 action=action,
                 plan=None,
