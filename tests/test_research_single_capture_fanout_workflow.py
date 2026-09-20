@@ -129,3 +129,23 @@ def test_finalizer_verifies_two_candidate_rollout_contract() -> None:
     assert "rollout_verifier" in finalizer
     assert "PYTHONPATH" in finalizer
     assert finalizer.index(fanout_download) < finalizer.index(verifier)
+
+
+def test_research_campaign_activates_source_controlled_r2_challenger() -> None:
+    source = _source()
+
+    assert (
+        "RESEARCH_CHALLENGER_CANDIDATE_ID: research-r2-short-trend-quality-v1"
+        in source
+    )
+    assert "research-r1-exit-15m-v1" not in source
+    expected_pair = (
+        'expected = {"scheduled-research-root", '
+        '"research-r2-short-trend-quality-v1"}'
+    )
+    assert source.count(expected_pair) == 2
+    cli = (
+        "--challenger-candidate-id "
+        "research-r2-short-trend-quality-v1"
+    )
+    assert source.count(cli) == 2
