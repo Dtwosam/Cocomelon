@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`  
-**Latest verified main CI:** `35537686365` — success  
+**Current verified `main` at snapshot:** `091de207ebb87047944693edd3024d662a89a0d4`  
+**Latest verified main CI:** `35539560588` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -135,9 +135,12 @@ Recent frontier PRs:
 - #215: fails paper restart reconciliation closed when the deterministic current immutable position event is missing or corrupted;
 - #217: regression-locks LONG/SHORT tightened-stop persistence and fail-closed behavior on durable write failure;
 - #219: rejects missing/unsupported paper execution store schema versions without rewriting them;
-- #220: rejects missing/unsupported journal/replay store schema versions without rewriting them.
+- #220: rejects missing/unsupported journal/replay store schema versions without rewriting them;
+- #222: fails closed on durable opening/reduce-only plan write errors;
+- #223: verifies deterministic active-position opening-plan lineage on restart and runtime exit planning;
+- #224: fails closed on funding-idempotency read errors before account mutation.
 
-PR #220 merged as `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`. Post-merge main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #224 merged as `091de207ebb87047944693edd3024d662a89a0d4`. Post-merge main CI `35539560588` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
