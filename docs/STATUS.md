@@ -85,6 +85,8 @@ Locked D-023 rules remain:
 
 ## Control-plane state
 
+The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
+
 PRs #205–#209 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
