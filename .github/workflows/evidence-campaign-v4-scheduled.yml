@@ -1,8 +1,9 @@
 name: Scheduled Genuine Mainnet Evidence Campaign V4
 
+# V4 touched baseline retired from new scheduled acquisition on 2026-09-20.
+# workflow_dispatch remains only as a fail-closed audit surface; the capture guard below
+# rejects every non-schedule invocation, so this workflow cannot create new cohorts.
 on:
-  schedule:
-    - cron: "37 1,7,13,19 * * *"
   workflow_dispatch:
 
 permissions:
