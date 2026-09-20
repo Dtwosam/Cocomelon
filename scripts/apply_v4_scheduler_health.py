@@ -16,6 +16,13 @@ _SCHEDULE_HOURS = (1, 7, 13, 19)
 _SCHEDULE_MINUTE = 37
 _SCHEDULE_GRACE = timedelta(minutes=90)
 _ACTIVATION_LEAD = timedelta(hours=1)
+RETIRED_SUMMARY = "retired — no future V4 acquisition schedule configured"
+
+
+def _campaign_schedule_enabled(
+    path: Path = Path(_CAMPAIGN_PATH),
+) -> bool:
+    return "\n  schedule:\n" in path.read_text(encoding="utf-8")
 
 
 def _parse_time(value: object, label: str) -> datetime:
@@ -191,11 +198,14 @@ def main() -> int:
 
     patch_path = Path(args.patch).resolve()
     patch = _read_patch(patch_path)
-    summary = _scheduler_health(
-        datetime.now(UTC),
-        _latest_scheduled_run(repo),
-        _workflow_updated(repo),
-    )
+    if _campaign_schedule_enabled():
+        summary = _scheduler_health(
+            datetime.now(UTC),
+            _latest_scheduled_run(repo),
+            _workflow_updated(repo),
+        )
+    else:
+        summary = RETIRED_SUMMARY
     updated = _apply_scheduler_health(patch, summary)
     patch_path.write_text(
         json.dumps(updated, ensure_ascii=False) + "\n",
