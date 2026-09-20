@@ -28,8 +28,9 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #209: `033c20d22f7b68dc3baec696a36e94b8853b0fb8`.
-- Post-merge main CI `35534235276` passed compile, Ruff, mypy, full pytest, and research smoke.
+- Main implementation through PR #211: `a7e6f61483fe9c1613314887f2563ace93d5192b`.
+- Post-merge main CI `35535409378` passed compile, Ruff, mypy, full pytest, and research smoke.
+- PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state. It does not change r2 entry thresholds, risk limits, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
 - One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
 - Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.
