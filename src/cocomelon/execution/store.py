@@ -291,6 +291,7 @@ class PaperExecutionStore:
         self._migrate()
 
     def _migrate(self) -> None:
+        # A supported-version store must already be structurally complete.
         required_tables = frozenset(
             {
                 "paper_meta",
