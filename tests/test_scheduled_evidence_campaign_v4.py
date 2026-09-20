@@ -13,12 +13,13 @@ def _text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_v4_campaign_is_exact_pinned_mainnet_paper_schedule() -> None:
+def test_v4_campaign_is_retired_from_automatic_acquisition() -> None:
     text = _text()
+    trigger_block = text.split("\npermissions:\n", 1)[0]
     assert "name: Scheduled Genuine Mainnet Evidence Campaign V4" in text
-    assert "schedule:" in text
-    assert '37 1,7,13,19 * * *' in text
-    assert "workflow_dispatch:" in text
+    assert "schedule:" not in trigger_block
+    assert '37 1,7,13,19 * * *' not in trigger_block
+    assert "workflow_dispatch:" in trigger_block
     assert "COCOMELON_EXECUTION_MODE: paper" in text
     assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in text
     assert "COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws" in text
