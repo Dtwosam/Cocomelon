@@ -285,3 +285,27 @@ def test_verifier_allows_failed_challenger_without_decision_artifact(tmp_path: P
 
     result = verify_research_fanout_rollout(campaign)
     assert result.challenger_status == "failed"
+
+
+def test_verifier_cli_accepts_authorized_quality_challenger(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from cocomelon.research import rollout_verifier
+
+    campaign = _write_audit(
+        tmp_path,
+        challenger_id=QUALITY_CHALLENGER,
+        challenger_horizon=1_200_000,
+    )
+    code = rollout_verifier.main(
+        [
+            str(campaign),
+            "--challenger-candidate-id",
+            QUALITY_CHALLENGER,
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["verified"] is True
+    assert payload["challenger_candidate_id"] == QUALITY_CHALLENGER
