@@ -151,3 +151,16 @@ This file records decisions that should not be casually re-litigated in later ch
 **Clean-validation consequence:** A frozen challenger may begin untouched validation only after its freeze timestamp and a 6-hour embargo following the latest inherited touched interval. Promotion remains governed by the existing untouched OOS/walk-forward/bootstrap gates.
 
 **Safety:** Both lanes remain paper/shadow only at this stage. Live orders remain disabled and Phase 10 remains blocked until the authoritative promotion gates pass.
+
+
+## D-024 — Retire revealed V4 baseline and pivot to profitability recovery
+
+**Decision:** The user-directed reveal of interim V4 economics makes the current `v4-baseline-4h-thesis-expiry` corpus **TOUCHED / NON-PROMOTIONAL**. The candidate is retired as a failed economic baseline. New scheduled acquisition for this candidate stops prospectively after any already-started acquisition is allowed to finish naturally.
+
+**Evidence:** The authenticated 100-closed-trade snapshot was negative after costs: approximately `-29.78R` total, `-0.298R/trade`, net PnL approximately `-$629.91`, profit factor approximately `0.44`, and realized closed-trade maximum drawdown approximately `7.80%`. Gross trading PnL was already negative before fees/funding, so cost reduction alone does not repair the candidate.
+
+**Research consequence:** The revealed V4 sample may now be used only as touched development evidence. It cannot be presented as untouched OOS or one-shot promotion evidence. Profitability recovery moves to the touched research lane. The first R2 hypothesis is stricter entry quality plus deterministic profit protection, with the current risk limits unchanged.
+
+**Validation consequence:** Any future promotion candidate must be frozen after touched research, inherit all touched periods, respect the documented embargo, and then begin a new clean untouched validation sample. Historical V4 artifacts remain preserved for audit; they are not deleted or relabeled as successful evidence.
+
+**Safety consequence:** Phase 10 and live trading remain blocked. This decision does not raise risk, enable live orders, use testnet, authorize outcome-conditioned retries, or permit a challenger to promote directly from touched research.
