@@ -16,6 +16,7 @@ _SCHEDULE_HOURS = (1, 7, 13, 19)
 _SCHEDULE_MINUTE = 37
 _SCHEDULE_GRACE = timedelta(minutes=90)
 _ACTIVATION_LEAD = timedelta(hours=1)
+_RETIRED_SUMMARY = "retired — touched V4 baseline no longer acquires new cohorts"
 
 
 def _parse_time(value: object, label: str) -> datetime:
@@ -191,11 +192,7 @@ def main() -> int:
 
     patch_path = Path(args.patch).resolve()
     patch = _read_patch(patch_path)
-    summary = _scheduler_health(
-        datetime.now(UTC),
-        _latest_scheduled_run(repo),
-        _workflow_updated(repo),
-    )
+    summary = _RETIRED_SUMMARY
     updated = _apply_scheduler_health(patch, summary)
     patch_path.write_text(
         json.dumps(updated, ensure_ascii=False) + "\n",
