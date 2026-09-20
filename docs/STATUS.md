@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`  
-**Latest verified baseline CI:** run `35537686365` — success  
+**Verified implementation baseline:** `58e88327188c6bea0374948ac228de15ff64ed4c`  
+**Latest verified baseline CI:** run `35540772886` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -27,7 +27,7 @@ One V4 acquisition that had already started before retirement, run `35524316366`
 
 ## Trusted V4 dashboard state
 
-Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-20 21:04 UTC**:
+Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-20 21:44 UTC**:
 
 - **68 accepted V4 cohorts**;
 - **120 closed paper trades**;
@@ -87,7 +87,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#220 establish the current frontier:
+PRs #205–#226 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -101,9 +101,13 @@ PRs #205–#220 establish the current frontier:
 - #215 made paper restart reconciliation fail closed when the deterministic current `paper_position_events` record is missing or corrupted;
 - #217 regression-locked LONG/SHORT tightened-stop restart durability and durable-write failure behavior;
 - #219 made existing paper execution stores reject missing/unsupported schema versions without rewriting persisted metadata;
-- #220 made journal/replay stores reject missing/unsupported schema versions without rewriting persisted metadata.
+- #220 made journal/replay stores reject missing/unsupported schema versions without rewriting persisted metadata;
+- #222 made durable paper order-plan write failures degrade execution health and block subsequent new exposure;
+- #223 validates active-position opening-plan lineage on restart and runtime exit planning, failing closed on missing, unreadable, or tampered lineage;
+- #224 makes funding-idempotency read errors degrade execution health before funding accounting can mutate state;
+- #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated.
 
-Post-#220 main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
+Post-#226 main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ## Exact next action
 

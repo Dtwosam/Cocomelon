@@ -28,12 +28,13 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #220: `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`.
-- Post-merge main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
+- Main implementation through PR #226: `58e88327188c6bea0374948ac228de15ff64ed4c`.
+- Post-merge main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
 - PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state.
 - PR #215 reconciles each current materialized paper position against its deterministic immutable `paper_position_events` record and fails closed on missing/corrupted event evidence.
 - PR #217 regression-locks LONG/SHORT tightened-stop restart durability plus durable-write failure behavior.
-- PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
+- PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata.
+- PR #222 fails closed on durable order-plan write errors; #223 validates active-position opening-plan lineage; #224 fails closed on funding-idempotency read errors; #226 rejects structurally incomplete supported-version paper/journal stores before migration DDL can conceal table loss. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
 - One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
 - Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.

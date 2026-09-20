@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-20  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`  
-**Latest verified main CI:** `35537686365` — success  
+**Current verified `main` at snapshot:** `58e88327188c6bea0374948ac228de15ff64ed4c`  
+**Latest verified main CI:** `35540772886` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -135,9 +135,13 @@ Recent frontier PRs:
 - #215: fails paper restart reconciliation closed when the deterministic current immutable position event is missing or corrupted;
 - #217: regression-locks LONG/SHORT tightened-stop persistence and fail-closed behavior on durable write failure;
 - #219: rejects missing/unsupported paper execution store schema versions without rewriting them;
-- #220: rejects missing/unsupported journal/replay store schema versions without rewriting them.
+- #220: rejects missing/unsupported journal/replay store schema versions without rewriting them;
+- #222: fails paper execution closed when durable order-plan persistence fails;
+- #223: validates active-position opening-plan lineage on restart and runtime exit planning;
+- #224: fails paper execution closed on funding-idempotency read errors before accounting mutation;
+- #226: rejects structurally incomplete supported-version paper and journal/replay stores before migration DDL can silently recreate missing required tables.
 
-PR #220 merged as `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`. Post-merge main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #226 merged as `58e88327188c6bea0374948ac228de15ff64ed4c`. Post-merge main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
