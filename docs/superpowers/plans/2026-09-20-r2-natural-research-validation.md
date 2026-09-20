@@ -28,12 +28,15 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #220: `6a911e4f7a4536f2738c85395b2cbe56dda3d23b`.
-- Post-merge main CI `35537686365` passed compile, Ruff, mypy, full pytest, and research smoke.
+- Main implementation through PR #224: `091de207ebb87047944693edd3024d662a89a0d4`.
+- Post-merge main CI `35539560588` passed compile, Ruff, mypy, full pytest, and research smoke.
 - PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state.
 - PR #215 reconciles each current materialized paper position against its deterministic immutable `paper_position_events` record and fails closed on missing/corrupted event evidence.
 - PR #217 regression-locks LONG/SHORT tightened-stop restart durability plus durable-write failure behavior.
-- PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
+- PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata.
+- PR #222 fails closed on durable opening/reduce-only plan write errors.
+- PR #223 validates the complete deterministic opening plan for every active position during restart and runtime exit planning, failing closed on missing/unreadable/tampered lineage.
+- PR #224 fails closed if funding idempotency state cannot be read before an accrual is applied. These changes do not modify r2 entry thresholds, risk limits, cadence, funding economics, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
 - One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
 - Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.
