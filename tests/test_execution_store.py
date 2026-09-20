@@ -317,6 +317,50 @@ def test_position_event_tamper_makes_restart_unhealthy(tmp_path: Path) -> None:
     assert "POSITION_EVENT_MISMATCH" in result.reason_codes
 
 
+def test_missing_opening_plan_lineage_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "DELETE FROM paper_order_plans WHERE plan_id = ?",
+            (order.plan_id,),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "OPENING_PLAN_LINEAGE_MISSING" in result.reason_codes
+
+
+def test_unreadable_opening_plan_lineage_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_order_plans SET payload_json = ? WHERE plan_id = ?",
+            ("{", order.plan_id),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "OPENING_PLAN_LINEAGE_UNREADABLE" in result.reason_codes
+
+
 def test_database_enforces_one_active_position_per_market(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     store = PaperExecutionStore(path)
