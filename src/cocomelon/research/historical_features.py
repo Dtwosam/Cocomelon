@@ -462,11 +462,17 @@ def build_historical_feature_rows(
     rows: list[HistoricalFeatureRow] = []
     for anchor in ordered_5m:
         anchor_ms = anchor.end_ms
+        used_candles: dict[tuple[str, int], Candle] = {
+            (anchor.interval, anchor.end_ms): anchor
+        }
         return_5m = _exact_return(
             by_5m_end,
             latest_end_ms=anchor_ms,
             lookback_ms=INTERVAL_MS["5m"],
         )
+        previous_5m = by_5m_end.get(anchor_ms - INTERVAL_MS["5m"])
+        if previous_5m is not None:
+            used_candles[(previous_5m.interval, previous_5m.end_ms)] = previous_5m
 
         latest_15m: Candle | None = None
         candle_15m_age_ms: int | None = None
@@ -481,6 +487,7 @@ def build_historical_feature_rows(
         if fifteen_position >= 0:
             latest_15m = ordered_15m[fifteen_position]
             latest_15m_end = latest_15m.end_ms
+            used_candles[(latest_15m.interval, latest_15m.end_ms)] = latest_15m
             candle_15m_age_ms = anchor_ms - latest_15m_end
             return_15m = _exact_return(
                 by_15m_end,
@@ -497,6 +504,14 @@ def build_historical_feature_rows(
                 latest_end_ms=latest_15m_end,
                 lookback_ms=INTERVAL_MS["4h"],
             )
+            for lookback_ms in (
+                INTERVAL_MS["15m"],
+                INTERVAL_MS["1h"],
+                INTERVAL_MS["4h"],
+            ):
+                previous = by_15m_end.get(latest_15m_end - lookback_ms)
+                if previous is not None:
+                    used_candles[(previous.interval, previous.end_ms)] = previous
             sample = _contiguous_15m_sample(
                 by_15m_end,
                 latest_end_ms=latest_15m_end,
@@ -506,6 +521,8 @@ def build_historical_feature_rows(
                 realized_vol_15m = _realized_volatility(sample)
                 range_expansion_15m = _range_expansion(sample)
                 relative_volume_15m = _relative_volume(sample)
+                for candle in sample:
+                    used_candles[(candle.interval, candle.end_ms)] = candle
 
         current_funding: FundingRate | None = None
         previous_funding: FundingRate | None = None
@@ -551,11 +568,10 @@ def build_historical_feature_rows(
         }
         available_features, unavailable_features = _availability(values)
 
-        used_sources = {anchor.source}
-        retrieved_at = anchor.received_at_ms
-        if latest_15m is not None:
-            used_sources.add(latest_15m.source)
-            retrieved_at = max(retrieved_at, latest_15m.received_at_ms)
+        used_sources = {candle.source for candle in used_candles.values()}
+        retrieved_at = max(
+            candle.received_at_ms for candle in used_candles.values()
+        )
         if current_funding is not None:
             used_sources.add(current_funding.source)
             retrieved_at = max(retrieved_at, current_funding.received_at_ms)
