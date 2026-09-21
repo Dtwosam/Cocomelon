@@ -315,6 +315,29 @@ def test_materialized_position_tamper_makes_restart_unhealthy(tmp_path: Path) ->
     assert "MATERIALIZED_POSITION_MISMATCH" in result.reason_codes
 
 
+def test_missing_account_state_with_execution_history_makes_restart_unhealthy(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute("DELETE FROM paper_account_state")
+        conn.execute("DELETE FROM paper_positions")
+        conn.execute("DELETE FROM paper_rolling_peak_candidates")
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "EXECUTION_HISTORY_MISMATCH" in result.reason_codes
+
+
 def test_missing_execution_attempt_for_persisted_fill_makes_restart_unhealthy(
     tmp_path: Path,
 ) -> None:
