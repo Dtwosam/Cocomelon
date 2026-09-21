@@ -13,10 +13,12 @@ from cocomelon.research.historical_baselines import (
     DecisionPolicy,
     DirectionalPrediction,
     ExecutionCostAssumptions,
+    PolicyBreakdownEntry,
     PolicyEvaluation,
     ThresholdCalibration,
     calibrate_no_trade_threshold,
     evaluate_policy,
+    evaluate_policy_breakdowns,
     walk_forward_splits,
 )
 from cocomelon.research.historical_features import HistoricalFeatureRow, HistoricalTrainingRow
@@ -360,6 +362,8 @@ class RidgeWalkForwardFold:
     market_test: PolicyEvaluation
     shared_validation: tuple[RidgeAlphaValidation, ...]
     market_validation: tuple[RidgeAlphaValidation, ...]
+    shared_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
+    market_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
 
     def __post_init__(self) -> None:
         if self.fold_index <= 0:
@@ -518,6 +522,7 @@ def run_walk_forward_ridge(
 
         if selected_shared is None:
             shared_test = _abstained_evaluation(fold.test)
+            shared_test_breakdowns = ()
             shared_alpha = None
             shared_threshold = None
         else:
@@ -525,19 +530,28 @@ def run_walk_forward_ridge(
             shared_threshold = selected_shared.calibration.selected_threshold
             if shared_threshold is None:
                 raise HistoricalRidgeError("selected shared ridge candidate must have threshold")
+            shared_policy = DecisionPolicy(
+                min_expected_net_edge=shared_threshold,
+                min_sample_count=min_sample_count,
+            )
             shared_test = evaluate_policy(
                 models[shared_alpha],
                 fold.test,
-                policy=DecisionPolicy(
-                    min_expected_net_edge=shared_threshold,
-                    min_sample_count=min_sample_count,
-                ),
+                policy=shared_policy,
+                costs=costs,
+                allow_coin_calibration=False,
+            )
+            shared_test_breakdowns = evaluate_policy_breakdowns(
+                models[shared_alpha],
+                fold.test,
+                policy=shared_policy,
                 costs=costs,
                 allow_coin_calibration=False,
             )
 
         if selected_market is None:
             market_test = _abstained_evaluation(fold.test)
+            market_test_breakdowns = ()
             market_alpha = None
             market_threshold = None
         else:
@@ -545,13 +559,21 @@ def run_walk_forward_ridge(
             market_threshold = selected_market.calibration.selected_threshold
             if market_threshold is None:
                 raise HistoricalRidgeError("selected market ridge candidate must have threshold")
+            market_policy = DecisionPolicy(
+                min_expected_net_edge=market_threshold,
+                min_sample_count=min_sample_count,
+            )
             market_test = evaluate_policy(
                 models[market_alpha],
                 fold.test,
-                policy=DecisionPolicy(
-                    min_expected_net_edge=market_threshold,
-                    min_sample_count=min_sample_count,
-                ),
+                policy=market_policy,
+                costs=costs,
+                allow_coin_calibration=True,
+            )
+            market_test_breakdowns = evaluate_policy_breakdowns(
+                models[market_alpha],
+                fold.test,
+                policy=market_policy,
                 costs=costs,
                 allow_coin_calibration=True,
             )
@@ -570,6 +592,8 @@ def run_walk_forward_ridge(
                 market_test=market_test,
                 shared_validation=tuple(shared_candidates),
                 market_validation=tuple(market_candidates),
+                shared_test_breakdowns=shared_test_breakdowns,
+                market_test_breakdowns=market_test_breakdowns,
             )
         )
 
