@@ -519,6 +519,8 @@ def run_walk_forward_ridge(
 
         selected_shared = _choose_alpha(shared_candidates)
         selected_market = _choose_alpha(market_candidates)
+        shared_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
+        market_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
 
         if selected_shared is None:
             shared_test = _abstained_evaluation(fold.test)
