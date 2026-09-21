@@ -15,7 +15,6 @@ from cocomelon.research.historical_baselines import (
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
-    HistoricalRidgeError,
     PreparedRidgeWalkForward,
     RidgeDirectionalModel,
     prepare_ridge_walk_forward,
