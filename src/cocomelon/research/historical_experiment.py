@@ -142,8 +142,12 @@ def _fold_payload(value: WalkForwardFoldResult) -> dict[str, object]:
         "train_anchor_count": value.train_anchor_count,
         "validation_anchor_count": value.validation_anchor_count,
         "test_anchor_count": value.test_anchor_count,
-        "shared_threshold": str(value.shared_threshold),
-        "coin_threshold": str(value.coin_threshold),
+        "shared_threshold": (
+            None if value.shared_threshold is None else str(value.shared_threshold)
+        ),
+        "coin_threshold": (
+            None if value.coin_threshold is None else str(value.coin_threshold)
+        ),
         "shared_test": _evaluation_payload(value.shared_test),
         "coin_test": _evaluation_payload(value.coin_test),
     }
