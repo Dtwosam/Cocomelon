@@ -7,6 +7,7 @@ import pytest
 pytest.importorskip("numpy")
 
 from cocomelon.domain.features import TrendRegime
+from cocomelon.historical_model_comparison_cli import build_parser
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 from cocomelon.research.historical_dataset import HistoricalDatasetManifest
@@ -263,3 +264,53 @@ def test_comparison_rejects_dataset_anchor_interval_mismatch() -> None:
             dataset_manifest=manifest,
             config=config,
         )
+
+
+
+def test_model_comparison_parser_accepts_1h_anchor_interval() -> None:
+    args = build_parser().parse_args(
+        [
+            "--source-root",
+            "sources",
+            "--output-root",
+            "comparison",
+            "--market",
+            "ETH",
+            "--horizon-ms",
+            "3600000",
+            "--anchor-interval",
+            "1h",
+            "--round-trip-fee-fraction",
+            "0.0007",
+            "--round-trip-slippage-fraction",
+            "0.0005",
+            "--funding-reserve-fraction-per-hour",
+            "0.0001",
+            "--candidate-threshold",
+            "0",
+            "--candidate-ridge-alpha",
+            "0.1",
+            "--min-train-anchors",
+            "10",
+            "--validation-anchors",
+            "4",
+            "--test-anchors",
+            "4",
+            "--step-anchors",
+            "4",
+            "--embargo-anchors",
+            "4",
+            "--baseline-min-state-samples",
+            "1",
+            "--baseline-min-coin-samples",
+            "1",
+            "--ridge-min-market-samples",
+            "1",
+            "--min-sample-count",
+            "1",
+            "--min-validation-trades",
+            "1",
+        ]
+    )
+
+    assert args.anchor_interval == "1h"
