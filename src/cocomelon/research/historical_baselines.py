@@ -219,6 +219,16 @@ class DirectionalPrediction(Protocol):
     def estimate_source(self) -> str: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PredictedTrainingRow:
+    row: HistoricalTrainingRow
+    estimate: DirectionalPrediction
+
+    def __post_init__(self) -> None:
+        if self.row.horizon_ms != self.estimate.horizon_ms:
+            raise ValueError("prediction horizon must match training row horizon")
+
+
 class HistoricalDirectionalModel(Protocol):
     def predict(
         self,
@@ -608,7 +618,11 @@ def calibrate_no_trade_threshold(
     if any(not value.is_finite() or value < ZERO for value in thresholds):
         raise ValueError("candidate_thresholds must be non-negative finite Decimals")
 
-    ordered = tuple(sorted(validation_rows, key=_row_order))
+    predicted = predict_training_rows(
+        model,
+        validation_rows,
+        allow_coin_calibration=allow_coin_calibration,
+    )
     results: list[ThresholdCandidateResult] = []
     for threshold in thresholds:
         policy = DecisionPolicy(
@@ -616,14 +630,9 @@ def calibrate_no_trade_threshold(
             min_sample_count=min_sample_count,
         )
         realized: list[Decimal] = []
-        for row in ordered:
-            estimate = model.predict(
-                row.feature,
-                horizon_ms=row.horizon_ms,
-                allow_coin_calibration=allow_coin_calibration,
-            )
-            decision = policy.decide(estimate, costs=costs)
-            net_return = _realized_net_return(row, decision)
+        for predicted_row in predicted:
+            decision = policy.decide(predicted_row.estimate, costs=costs)
+            net_return = _realized_net_return(predicted_row.row, decision)
             if net_return is not None:
                 realized.append(net_return)
 
@@ -765,21 +774,35 @@ class BaselineVariantComparison:
     coin_calibrated: PolicyEvaluation
 
 
-def _policy_observations(
+def predict_training_rows(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
+    allow_coin_calibration: bool,
+) -> tuple[PredictedTrainingRow, ...]:
+    return tuple(
+        PredictedTrainingRow(
+            row=row,
+            estimate=model.predict(
+                row.feature,
+                horizon_ms=row.horizon_ms,
+                allow_coin_calibration=allow_coin_calibration,
+            ),
+        )
+        for row in sorted(rows, key=_row_order)
+    )
+
+
+def _policy_observations_from_predictions(
+    predicted_rows: Sequence[PredictedTrainingRow],
+    *,
     policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
-    allow_coin_calibration: bool,
 ) -> tuple[_PolicyObservation, ...]:
     observations: list[_PolicyObservation] = []
-    for row in sorted(rows, key=_row_order):
-        estimate = model.predict(
-            row.feature,
-            horizon_ms=row.horizon_ms,
-            allow_coin_calibration=allow_coin_calibration,
-        )
+    for predicted_row in predicted_rows:
+        row = predicted_row.row
+        estimate = predicted_row.estimate
         decision = policy.decide(estimate, costs=costs)
         observations.append(
             _PolicyObservation(
@@ -792,6 +815,55 @@ def _policy_observations(
             )
         )
     return tuple(observations)
+
+
+def evaluate_predicted_policy(
+    predicted_rows: Sequence[PredictedTrainingRow],
+    *,
+    policy: HistoricalDecisionPolicy,
+    costs: ExecutionCostAssumptions,
+) -> PolicyEvaluation:
+    return _summarize_observations(
+        _policy_observations_from_predictions(
+            predicted_rows,
+            policy=policy,
+            costs=costs,
+        )
+    )
+
+
+def evaluate_predicted_policy_breakdowns(
+    predicted_rows: Sequence[PredictedTrainingRow],
+    *,
+    policy: HistoricalDecisionPolicy,
+    costs: ExecutionCostAssumptions,
+) -> tuple[PolicyBreakdownEntry, ...]:
+    return _breakdown_observations(
+        _policy_observations_from_predictions(
+            predicted_rows,
+            policy=policy,
+            costs=costs,
+        )
+    )
+
+
+def _policy_observations(
+    model: HistoricalDirectionalModel,
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    policy: HistoricalDecisionPolicy,
+    costs: ExecutionCostAssumptions,
+    allow_coin_calibration: bool,
+) -> tuple[_PolicyObservation, ...]:
+    return _policy_observations_from_predictions(
+        predict_training_rows(
+            model,
+            rows,
+            allow_coin_calibration=allow_coin_calibration,
+        ),
+        policy=policy,
+        costs=costs,
+    )
 
 
 def _abstained_observations(
