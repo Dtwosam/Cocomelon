@@ -13,6 +13,7 @@ from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.hyperliquid.normalize import SOURCE, normalize_candles, normalize_funding_history
 from cocomelon.research.historical_learning import (
     FUNDING_INTERVAL_MS,
+    is_expected_funding_successor,
     plan_candle_windows,
     plan_funding_windows,
 )
@@ -613,7 +614,11 @@ def _funding_gap_ranges(
         raise ValueError("expected_interval_ms must be positive")
     gaps: list[tuple[int, int]] = []
     for previous, current in zip(funding_rates, funding_rates[1:], strict=False):
-        if current.time_ms - previous.time_ms > expected_interval_ms:
+        if not is_expected_funding_successor(
+            previous.time_ms,
+            current.time_ms,
+            expected_interval_ms=expected_interval_ms,
+        ):
             gaps.append((previous.time_ms, current.time_ms))
     return tuple(gaps)
 
