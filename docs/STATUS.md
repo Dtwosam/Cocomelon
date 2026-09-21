@@ -141,14 +141,15 @@ Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and res
 1. Keep live trading disabled and all hard risk limits unchanged.
 2. Treat `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary development plan.
 3. Preserve V4, r1, and r2 artifacts/results as touched historical research; do not rewrite or relabel them.
-4. Build an offline historical candle/funding backfill command on top of the existing mainnet-only `InfoClient`.
-5. Persist source manifests/checksums and coverage metadata; detect page overlap, duplicate candles, missing ranges, and source inconsistencies.
-6. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
-7. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned training datasets.
-8. Establish simple direction-neutral baselines before adding more complex supervised models.
-9. Train/evaluate chronologically with embargo and walk-forward splits; select LONG, SHORT, or NO_TRADE from cost-adjusted evidence.
-10. Freeze any promising model/config before future untouched validation; historical development data remains touched.
-11. Require every existing clean-validation, >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gate before capital is exposed.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any future registered economic research; use actual authority state, not nominal scheduler timing.
+5. Build an offline historical candle/funding backfill command on top of the existing mainnet-only `InfoClient`.
+6. Persist source manifests/checksums and coverage metadata; detect page overlap, duplicate candles, missing ranges, and source inconsistencies.
+7. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
+8. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned training datasets.
+9. Establish simple direction-neutral baselines before adding more complex supervised models.
+10. Train/evaluate chronologically with embargo and walk-forward splits; select LONG, SHORT, or NO_TRADE from cost-adjusted evidence.
+11. Freeze any promising model/config before future untouched validation; historical development data remains touched.
+12. Require every existing clean-validation, >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gate before capital is exposed.
 
 ## Hard prohibitions
 
