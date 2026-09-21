@@ -1,9 +1,10 @@
 # R2 Natural Research Validation Plan
 
-**Status:** active  
+**Status:** superseded for primary development; retained as the immutable r2 audit/validation plan  
 **Created:** 2026-09-20  
 **Updated:** 2026-09-21  
-**Supersedes for active execution:** `2026-09-14-research-natural-rollout-validation.md`  
+**Supersedes historically:** `2026-09-14-research-natural-rollout-validation.md`  
+**Superseded for primary development by:** `2026-09-21-historical-directional-learning.md`  
 **Scope:** touched research validation of `research-r2-short-trend-quality-v1`; paper/shadow only.
 
 ## Goal
@@ -11,6 +12,8 @@
 Evaluate the immutable r2 short-trend quality challenger on naturally acquired, provenance-validated public Hyperliquid mainnet research cohorts without retuning it from the same disclosed V4 development sample and without weakening risk, overlap, daily-cap, replay-integrity, promotion, or live-order guards.
 
 The failed V4 baseline is permanently TOUCHED / DEVELOPMENT-ONLY under D-024. R2 is a hypothesis generated from that touched sample, not evidence of edge. Its next information must come from new natural research cohorts.
+
+Under D-025, r2 is no longer the primary product architecture or a prerequisite for offline Phase 10 learning engineering. It remains immutable and auditable. If future r2 evidence is acquired under this plan, it is secondary touched research and cannot redefine the two-sided historical-learning objective.
 
 ## Locked candidate
 
