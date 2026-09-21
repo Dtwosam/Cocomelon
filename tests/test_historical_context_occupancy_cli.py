@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from cocomelon.research.historical_baselines import DecisionAction
 from cocomelon.historical_context_occupancy_cli import build_parser
+from cocomelon.research.historical_baselines import DecisionAction
 
 DISCOVERY_REPORT_ID = "f3b38a6625ad2ea2d1b2df7e736f5dbded6f2b415c53c80db35514e4f3589481"
 DISCOVERY_DATASET_ID = "268aa965584316f35a9db520b13848fd030123eadc99482a89cd7bc68ffc091f"
@@ -56,16 +56,9 @@ def test_context_occupancy_parser_defaults_to_strict_contract() -> None:
 
 
 def test_context_occupancy_parser_accepts_short_direction() -> None:
-    args = build_parser().parse_args(
-        [
-            *[
-                value
-                for index, value in enumerate(_required_args())
-                if index not in {22, 23}
-            ],
-            "--direction",
-            "short",
-        ]
-    )
+    argv = _required_args()
+    direction_index = argv.index("--direction") + 1
+    argv[direction_index] = "short"
+    args = build_parser().parse_args(argv)
 
     assert args.direction is DecisionAction.SHORT
