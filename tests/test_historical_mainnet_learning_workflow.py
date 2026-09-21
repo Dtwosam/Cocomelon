@@ -37,6 +37,8 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--candidate-ridge-alpha 1" in source
     assert "--candidate-ridge-alpha 10" in source
     assert "--ridge-min-market-samples 100" in source
+    assert "--stable-validation-segments 2" in source
+    assert "--stable-min-segment-validation-trades 10" in source
     assert "historical-mainnet-learning-2026-09-07-to-2026-09-20" in source
 
 
@@ -51,6 +53,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "baseline_folds" in source
     assert "ridge_folds" in source
     assert "horizon_ridge_folds" in source
+    assert "stable_ridge_folds" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
     assert "shared_validation_candidates" in source
