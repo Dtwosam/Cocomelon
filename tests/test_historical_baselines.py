@@ -484,10 +484,19 @@ def test_walk_forward_baseline_fits_calibrates_then_scores_future_test_blocks() 
 
     assert len(report.folds) == 3
     assert [fold.train_anchor_count for fold in report.folds] == [4, 6, 8]
-    assert all(fold.shared_threshold == Decimal("0") for fold in report.folds)
-    assert all(fold.coin_threshold == Decimal("0") for fold in report.folds)
-    assert report.folds[-1].shared_test.trade_count == 2
-    assert report.folds[-1].shared_test.mean_realized_net_return == Decimal("-0.02")
+    assert [fold.shared_threshold for fold in report.folds] == [
+        Decimal("0"),
+        Decimal("0"),
+        None,
+    ]
+    assert [fold.coin_threshold for fold in report.folds] == [
+        Decimal("0"),
+        Decimal("0"),
+        None,
+    ]
+    assert report.folds[-1].shared_test.trade_count == 0
+    assert report.folds[-1].shared_test.no_trade_count == 2
+    assert report.folds[-1].shared_test.mean_realized_net_return is None
 
 
 
@@ -631,3 +640,65 @@ def test_walk_forward_report_preserves_validation_candidates_and_test_breakdowns
         shared_breakdowns[("action", "long")].mean_realized_net_return
         == Decimal("-0.02")
     )
+
+
+
+def test_threshold_calibration_abstains_when_every_trade_candidate_loses() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    validation = (
+        _row(anchor_end_ms=3 * FIVE, long_return="-0.01", short_return="0.01"),
+        _row(anchor_end_ms=4 * FIVE, long_return="-0.01", short_return="0.01"),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=99)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    calibration = calibrate_no_trade_threshold(
+        model,
+        validation,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"), Decimal("0.005")),
+        min_sample_count=2,
+        min_validation_trades=1,
+    )
+
+    assert calibration.selected_threshold is None
+    assert calibration.abstained is True
+    assert calibration.candidates[0].trade_count == 2
+    assert calibration.candidates[0].mean_realized_net_return == Decimal("-0.01")
+
+
+def test_validation_floor_requires_candidate_to_clear_configured_mean_return() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    validation = (
+        _row(anchor_end_ms=3 * FIVE, long_return="0.002", short_return="-0.002"),
+        _row(anchor_end_ms=4 * FIVE, long_return="0.002", short_return="-0.002"),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=99)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    calibration = calibrate_no_trade_threshold(
+        model,
+        validation,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"),),
+        min_sample_count=2,
+        min_validation_trades=1,
+        min_validation_mean_net_return=Decimal("0.003"),
+    )
+
+    assert calibration.selected_threshold is None
+    assert calibration.min_validation_mean_net_return == Decimal("0.003")

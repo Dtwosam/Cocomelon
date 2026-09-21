@@ -24,7 +24,7 @@ from cocomelon.research.historical_dataset import (
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 
-EXPERIMENT_VERSION = "historical-conditional-baseline-v2"
+EXPERIMENT_VERSION = "historical-conditional-baseline-v3"
 EVIDENCE_CLASS = "touched_development"
 
 
@@ -74,6 +74,7 @@ class HistoricalExperimentConfig:
     min_coin_samples: int
     min_sample_count: int
     min_validation_trades: int
+    min_validation_mean_net_return: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
         thresholds = tuple(sorted(set(self.candidate_thresholds)))
@@ -97,6 +98,8 @@ class HistoricalExperimentConfig:
                 raise ValueError(f"{field} must be positive")
         if self.embargo_anchors < 0:
             raise ValueError("embargo_anchors must be non-negative")
+        if not self.min_validation_mean_net_return.is_finite():
+            raise ValueError("min_validation_mean_net_return must be finite")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -119,6 +122,9 @@ class HistoricalExperimentConfig:
             "min_coin_samples": self.min_coin_samples,
             "min_sample_count": self.min_sample_count,
             "min_validation_trades": self.min_validation_trades,
+            "min_validation_mean_net_return": str(
+                self.min_validation_mean_net_return
+            ),
         }
 
 
@@ -206,7 +212,7 @@ class HistoricalExperimentReport:
     folds: tuple[WalkForwardFoldResult, ...]
     evidence_class: str = EVIDENCE_CLASS
     experiment_version: str = EXPERIMENT_VERSION
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
         for field in ("dataset_id", "dataset_logical_sha256"):
@@ -316,6 +322,7 @@ def build_historical_experiment_report(
         min_coin_samples=config.min_coin_samples,
         min_sample_count=config.min_sample_count,
         min_validation_trades=config.min_validation_trades,
+        min_validation_mean_net_return=config.min_validation_mean_net_return,
     )
     return HistoricalExperimentReport(
         dataset_id=dataset_manifest.dataset_id,

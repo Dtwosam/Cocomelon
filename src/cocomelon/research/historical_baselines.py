@@ -486,13 +486,35 @@ class ThresholdCalibration:
     candidates: tuple[ThresholdCandidateResult, ...]
     min_sample_count: int
     min_validation_trades: int
+    min_validation_mean_net_return: Decimal = ZERO
 
     def __post_init__(self) -> None:
+        if not self.min_validation_mean_net_return.is_finite():
+            raise ValueError("min_validation_mean_net_return must be finite")
+        qualifying = tuple(
+            item
+            for item in self.candidates
+            if item.trade_count >= self.min_validation_trades
+            and item.mean_realized_net_return is not None
+            and item.mean_realized_net_return > self.min_validation_mean_net_return
+        )
         if self.selected_threshold is not None:
-            if self.selected_threshold not in {item.threshold for item in self.candidates}:
-                raise ValueError("selected_threshold must come from candidates")
-        elif any(item.trade_count > 0 for item in self.candidates):
-            raise ValueError("abstention is only valid when every candidate has zero trades")
+            selected = next(
+                (
+                    item
+                    for item in qualifying
+                    if item.threshold == self.selected_threshold
+                ),
+                None,
+            )
+            if selected is None:
+                raise ValueError(
+                    "selected_threshold must be a qualifying validation candidate"
+                )
+        elif qualifying:
+            raise ValueError(
+                "abstention is invalid when a validation candidate clears the floor"
+            )
         if self.min_sample_count <= 0:
             raise ValueError("min_sample_count must be positive")
         if self.min_validation_trades <= 0:
@@ -523,6 +545,7 @@ def calibrate_no_trade_threshold(
     min_sample_count: int,
     min_validation_trades: int,
     allow_coin_calibration: bool = True,
+    min_validation_mean_net_return: Decimal = ZERO,
 ) -> ThresholdCalibration:
     if not validation_rows:
         raise HistoricalBaselineError("validation_rows must not be empty")
@@ -530,6 +553,8 @@ def calibrate_no_trade_threshold(
         raise ValueError("min_sample_count must be positive")
     if min_validation_trades <= 0:
         raise ValueError("min_validation_trades must be positive")
+    if not min_validation_mean_net_return.is_finite():
+        raise ValueError("min_validation_mean_net_return must be finite")
 
     thresholds = tuple(sorted(set(candidate_thresholds)))
     if not thresholds:
@@ -567,19 +592,26 @@ def calibrate_no_trade_threshold(
             )
         )
 
-    eligible = tuple(
-        result
-        for result in results
-        if result.trade_count >= min_validation_trades
-        and result.mean_realized_net_return is not None
-    )
+    trade_count_eligible_list: list[ThresholdCandidateResult] = []
+    eligible_list: list[ThresholdCandidateResult] = []
+    for result in results:
+        mean_return = result.mean_realized_net_return
+        if result.trade_count < min_validation_trades or mean_return is None:
+            continue
+        trade_count_eligible_list.append(result)
+        if mean_return > min_validation_mean_net_return:
+            eligible_list.append(result)
+
+    trade_count_eligible = tuple(trade_count_eligible_list)
+    eligible = tuple(eligible_list)
     if not eligible:
-        if all(result.trade_count == 0 for result in results):
+        if trade_count_eligible or all(result.trade_count == 0 for result in results):
             return ThresholdCalibration(
                 selected_threshold=None,
                 candidates=tuple(results),
                 min_sample_count=min_sample_count,
                 min_validation_trades=min_validation_trades,
+                min_validation_mean_net_return=min_validation_mean_net_return,
             )
         raise HistoricalBaselineError(
             "no threshold met the minimum validation trade count"
@@ -599,6 +631,7 @@ def calibrate_no_trade_threshold(
         candidates=tuple(results),
         min_sample_count=min_sample_count,
         min_validation_trades=min_validation_trades,
+        min_validation_mean_net_return=min_validation_mean_net_return,
     )
 
 
@@ -915,6 +948,7 @@ def run_walk_forward_baseline(
     min_coin_samples: int,
     min_sample_count: int,
     min_validation_trades: int,
+    min_validation_mean_net_return: Decimal = ZERO,
 ) -> WalkForwardBaselineReport:
     folds = walk_forward_splits(
         rows,
@@ -942,6 +976,7 @@ def run_walk_forward_baseline(
             min_sample_count=min_sample_count,
             min_validation_trades=min_validation_trades,
             allow_coin_calibration=False,
+            min_validation_mean_net_return=min_validation_mean_net_return,
         )
         coin_calibration = calibrate_no_trade_threshold(
             model,
@@ -951,6 +986,7 @@ def run_walk_forward_baseline(
             min_sample_count=min_sample_count,
             min_validation_trades=min_validation_trades,
             allow_coin_calibration=True,
+            min_validation_mean_net_return=min_validation_mean_net_return,
         )
 
         if shared_calibration.abstained:
