@@ -283,3 +283,63 @@ def test_historical_features_compute_funding_change_across_small_timestamp_jitte
     assert anchor.funding_rate == Decimal("0.0003")
     assert anchor.funding_change == Decimal("0.0002")
     assert anchor.funding_premium_change == Decimal("0.0003")
+
+
+def test_historical_feature_lineage_includes_all_candles_used_by_derived_features() -> None:
+    candles_5m = tuple(
+        _candle(
+            interval="5m",
+            start_ms=index * FIVE,
+            close=str(100 + index),
+            received_at_ms=1_000_000,
+        )
+        for index in range(63)
+    )
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+            volume=str(100 + index),
+            open_px=str(99 + index),
+            received_at_ms=(9_000_000 if index == 3 else 2_000_000),
+        )
+        for index in range(21)
+    )
+
+    rows = build_historical_feature_rows(
+        candles_5m=candles_5m,
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("5m-manifest", "15m-manifest"),
+    )
+
+    latest = rows[-1]
+    assert latest.realized_vol_15m is not None
+    assert latest.source_retrieved_at_ms == 9_000_000
+    assert latest.retrieved_after_anchor == (
+        latest.source_retrieved_at_ms > latest.anchor_end_ms
+    )
+
+
+def test_historical_feature_lineage_includes_exact_lookback_candle_retrieval() -> None:
+    candles_5m = tuple(
+        _candle(
+            interval="5m",
+            start_ms=index * FIVE,
+            close=str(100 + index),
+            received_at_ms=(8_000_000 if index == 61 else 1_000_000),
+        )
+        for index in range(63)
+    )
+
+    rows = build_historical_feature_rows(
+        candles_5m=candles_5m,
+        candles_15m=(),
+        funding_rates=(),
+        source_manifest_ids=("5m-manifest",),
+    )
+
+    latest = rows[-1]
+    assert latest.return_5m is not None
+    assert latest.source_retrieved_at_ms == 8_000_000
