@@ -20,13 +20,14 @@ jobs:
   touched-historical-learning:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       SOURCE_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/sources
       EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/experiment
+      COMPARISON_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/model-comparison
       WINDOW_START_ISO: "2026-09-07T00:00:00+00:00"
       WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
 
@@ -144,6 +145,58 @@ jobs:
               }
             ]
           }' "$EXPERIMENT_ROOT/experiment.json"
+
+      - name: Run baseline versus ridge comparison
+        run: |
+          set -euo pipefail
+          cocomelon-historical-model-comparison \
+            --source-root "$SOURCE_ROOT" \
+            --output-root "$COMPARISON_ROOT" \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --horizon-ms 900000 \
+            --horizon-ms 3600000 \
+            --horizon-ms 14400000 \
+            --round-trip-fee-fraction 0.0007 \
+            --round-trip-slippage-fraction 0.0005 \
+            --funding-reserve-fraction-per-hour 0.0001 \
+            --candidate-threshold 0 \
+            --candidate-threshold 0.0005 \
+            --candidate-threshold 0.001 \
+            --candidate-threshold 0.002 \
+            --candidate-threshold 0.004 \
+            --candidate-ridge-alpha 0.01 \
+            --candidate-ridge-alpha 0.1 \
+            --candidate-ridge-alpha 1 \
+            --candidate-ridge-alpha 10 \
+            --min-train-anchors 1400 \
+            --validation-anchors 500 \
+            --test-anchors 500 \
+            --step-anchors 500 \
+            --embargo-anchors 48 \
+            --baseline-min-state-samples 50 \
+            --baseline-min-coin-samples 100 \
+            --ridge-min-market-samples 100 \
+            --min-sample-count 50 \
+            --min-validation-trades 20 \
+            --min-validation-mean-net-return 0
+
+      - name: Render model comparison summary
+        run: |
+          set -euo pipefail
+          jq '{
+            report_id,
+            evidence_class,
+            dataset_id,
+            dataset_row_count,
+            markets,
+            horizons_ms,
+            config,
+            baseline_folds,
+            ridge_folds
+          }' "$COMPARISON_ROOT/comparison.json"
 
       - name: Upload authenticated touched research bundle
         if: ${{ always() }}
