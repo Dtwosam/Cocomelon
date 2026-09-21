@@ -5,7 +5,7 @@ import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 from urllib.parse import quote
 
 from cocomelon.domain.market import MarketId
@@ -15,7 +15,12 @@ from cocomelon.research.historical_archive_acquisition import (
     ARCHIVE_PREFIX,
     plan_archive_shards,
 )
+from cocomelon.research.historical_archive_overlap import (
+    ArchiveNativeOverlapReport,
+    validate_archive_native_overlap,
+)
 from cocomelon.research.historical_backfill import (
+    HistoricalCandleClient,
     HistoricalFundingClient,
     backfill_funding,
 )
@@ -27,6 +32,14 @@ from cocomelon.research.historical_model_comparison import (
 
 
 class HistoricalArchiveExperimentError(RuntimeError):
+    pass
+
+
+class HistoricalArchiveExperimentClient(
+    HistoricalCandleClient,
+    HistoricalFundingClient,
+    Protocol,
+):
     pass
 
 
@@ -91,6 +104,7 @@ class VerifiedArchiveCache:
 class ArchiveHistoricalExperimentResult:
     archive: VerifiedArchiveCache
     source_summary: Mapping[str, object]
+    overlap: ArchiveNativeOverlapReport
     comparison: HistoricalModelComparisonReport
 
     @property
@@ -282,7 +296,7 @@ def backfill_archive_experiment_funding(
 
 
 def run_archive_historical_experiment(
-    funding_client: HistoricalFundingClient,
+    client: HistoricalArchiveExperimentClient,
     *,
     archive_root: Path,
     source_root: Path,
@@ -295,6 +309,7 @@ def run_archive_historical_experiment(
     clock_ms: Callable[[], int],
     config: HistoricalModelComparisonConfig,
     max_funding_items: int = 500,
+    overlap_candles: int = 96,
 ) -> ArchiveHistoricalExperimentResult:
     archive = verify_downloaded_archive_cache(
         archive_root,
@@ -302,7 +317,7 @@ def run_archive_historical_experiment(
         end_ms=end_ms,
     )
     backfill_archive_experiment_funding(
-        funding_client,
+        client,
         source_root=source_root,
         markets=markets,
         start_ms=start_ms,
@@ -319,6 +334,14 @@ def run_archive_historical_experiment(
         end_ms=end_ms,
         received_at_ms=clock_ms(),
     )
+    overlap = validate_archive_native_overlap(
+        client,
+        source_root=source_root,
+        markets=markets,
+        intervals=intervals,
+        overlap_candles=overlap_candles,
+        clock_ms=clock_ms,
+    )
     comparison = run_historical_model_comparison_from_sources(
         source_root=source_root,
         output_root=output_root,
@@ -329,5 +352,6 @@ def run_archive_historical_experiment(
     return ArchiveHistoricalExperimentResult(
         archive=archive,
         source_summary=source_summary,
+        overlap=overlap,
         comparison=comparison,
     )

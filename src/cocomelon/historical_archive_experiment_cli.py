@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start-ms", required=True, type=int)
     parser.add_argument("--end-ms", required=True, type=int)
     parser.add_argument("--max-funding-items", type=int, default=500)
+    parser.add_argument("--overlap-candles", type=int, default=96)
     parser.add_argument("--received-at-ms", type=int)
     parser.add_argument("--round-trip-fee-fraction", required=True, type=_decimal)
     parser.add_argument("--round-trip-slippage-fraction", required=True, type=_decimal)
@@ -164,6 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             clock_ms=_clock(args.received_at_ms),
             config=config,
             max_funding_items=args.max_funding_items,
+            overlap_candles=args.overlap_candles,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
@@ -180,6 +182,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "archive_shard_count": result.archive.shard_count,
             "archive_total_byte_count": result.archive.total_byte_count,
             "dataset_id": result.dataset_id,
+            "overlap_report_id": result.overlap.report_id,
+            "overlap_compared_count": result.overlap.compared_count,
+            "overlap_exact": result.overlap.exact,
             "report_id": result.report_id,
             "row_count": result.comparison.dataset_row_count,
             "fold_count": len(result.comparison.baseline_folds),
