@@ -337,6 +337,8 @@ def run_walk_forward_horizon_calibrated_ridge(
 
         shared_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
         market_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
+        shared_horizon_thresholds: tuple[tuple[int, Decimal | None], ...]
+        market_horizon_thresholds: tuple[tuple[int, Decimal | None], ...]
 
         if selected_shared is None:
             shared_alpha = None
