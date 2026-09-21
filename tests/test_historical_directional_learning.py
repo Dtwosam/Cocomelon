@@ -3,13 +3,13 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+
+from cocomelon.domain.market import Candle, MarketId
 from cocomelon.research.historical_learning import (
     HistoricalLearningError,
     build_directional_outcomes,
     plan_candle_windows,
 )
-
-from cocomelon.domain.market import Candle, MarketId
 
 MARKET = MarketId(dex="", coin="ETH")
 FIVE_MINUTES_MS = 300_000
