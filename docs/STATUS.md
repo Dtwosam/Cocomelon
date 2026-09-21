@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`  
-**Latest verified baseline CI:** run `35576633597` — success  
+**Verified implementation baseline:** `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`  
+**Latest verified baseline CI:** run `35586218697` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -93,7 +93,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#228 establish the current frontier:
+PRs #205–#230 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -112,9 +112,10 @@ PRs #205–#228 establish the current frontier:
 - #223 validates active-position opening-plan lineage on restart and runtime exit planning, failing closed on missing, unreadable, or tampered lineage;
 - #224 makes funding-idempotency read errors degrade execution health before funding accounting can mutate state;
 - #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated;
-- #228 scopes research replay-run uniqueness to `(candidate_id, replay_run_id)` and transactionally migrates the legacy global-unique registry, allowing root+r2 to share one deterministic capture replay identity while preserving per-candidate duplicate protection.
+- #228 scopes research replay-run uniqueness to `(candidate_id, replay_run_id)` and transactionally migrates the legacy global-unique registry, allowing root+r2 to share one deterministic capture replay identity while preserving per-candidate duplicate protection;
+- #230 attributes raw candidate-local terminal runner errors to the `evaluate-research` stage in the trusted dashboard while preserving upstream `WorkflowFailure` stage parsing and NOT COUNTED accounting.
 
-Post-#228 main CI `35576633597` passed compile, Ruff, mypy, full pytest, and research smoke.
+Post-#230 main CI `35586218697` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` also passed and now renders the historical failed r2 attempt with failure stage `evaluate-research` while leaving it failed / NOT COUNTED.
 
 ## Exact next action
 
