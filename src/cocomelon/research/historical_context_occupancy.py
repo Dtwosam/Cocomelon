@@ -17,7 +17,6 @@ from cocomelon.research.historical_baselines import (
     relative_strength_1h_bucket,
 )
 from cocomelon.research.historical_dataset import (
-    HistoricalDatasetManifest,
     build_training_rows_from_source_root,
     export_training_dataset,
 )
