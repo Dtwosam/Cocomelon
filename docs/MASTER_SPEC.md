@@ -81,6 +81,8 @@ Use official endpoints/subscriptions where appropriate:
 
 At the time this spec was written, Hyperliquid documents only the most recent 5,000 candles per interval through `candleSnapshot`. That limitation must be treated as real. The system must begin recording its own mainnet history rather than pretending a deeper free history exists.
 
+Historical learning is allowed and encouraged within those real source limits. Offline backfill must split requested history into deterministic bounded windows, preserve retrieval provenance, detect gaps/duplicates, and never infer that data exists merely because a requested time range is older. Public funding history may also be backfilled where available. Rich historical L2/order-flow/open-interest features may be used only when genuinely sourced; otherwise the learner must mark them unavailable and rely on trustworthy candle/funding features plus the project’s own forward-recorded microstructure archive.
+
 ### 3.4 Data tiers
 
 Use three tiers to avoid unnecessary storage and computation:
@@ -326,26 +328,63 @@ A strategy is not considered proven because one backtest period is profitable.
 
 ## 13. Learning system
 
-Machine learning is introduced only after baseline data and evaluation are trustworthy.
+The primary research architecture is a historical, direction-neutral learning system. It studies trustworthy point-in-time market states and learns conditional forward opportunity for **LONG**, **SHORT**, and **NO_TRADE**.
 
-### 13.1 Champion/challenger model
+Phase 10 offline learning engineering may begin once Phase 9 has either demonstrated a repeatable baseline edge **or honestly established that the evaluated baseline failed to demonstrate edge**. Beginning Phase 10 engineering does not promote a model, authorize live orders, or weaken any validation/risk gate.
+
+### 13.1 Historical learning dataset
+
+For each historical anchor timestamp:
+
+- features contain only information available at or before the anchor;
+- future data appears only in explicit outcome labels;
+- LONG and SHORT forward outcomes are both recorded at predeclared horizons;
+- exact future target observations are required; gaps are excluded rather than silently bridged;
+- source identity, market, interval, timestamps, schema version, and transformation version remain reproducible;
+- modeled fees, funding, and slippage are applied through versioned cost assumptions before any net-edge claim.
+
+The learning dataset may combine broad public candle/funding history with the project’s own authenticated forward-recorded microstructure. Missing historical microstructure must remain missing rather than being synthesized.
+
+### 13.2 Two-sided decision target
+
+The model must not be permanently LONG-only or SHORT-only.
+
+Candidate models may estimate:
+
+- expected net return or net R for LONG;
+- expected net return or net R for SHORT;
+- probability/distribution of favorable and adverse outcomes for each side;
+- opportunity ranking or regime-dependent strategy value.
+
+The decision layer chooses LONG only when the long-side estimate clears the frozen cost/uncertainty threshold, SHORT only when the short-side estimate clears it, and otherwise NO_TRADE. Eligibility and the independent risk engine remain hard veto authorities.
+
+### 13.3 Cross-market learning
+
+Prefer shared learning across the dynamically eligible market universe when it improves sample efficiency, with market/regime identity and coin-specific calibration where enough chronological evidence exists.
+
+Do not force isolated per-coin models when a coin lacks enough history. Do not assume one coin’s learned calibration transfers unchanged to another.
+
+### 13.4 Time-aware validation
+
+- train, validation, and test partitions are chronological;
+- embargo boundaries are applied where required;
+- rolling/walk-forward evaluation is mandatory;
+- feature normalization/selection/hyperparameter fitting may use training/validation only;
+- untouched test data may not be used to tune thresholds or features;
+- random temporal shuffling must not be presented as OOS evidence;
+- results are reported by market, regime, direction, horizon, and time period;
+- historical development/backtest evidence remains touched unless the candidate was frozen before the untouched interval.
+
+### 13.5 Champion/challenger model
 
 - The **champion** is the currently approved decision/ranking model.
 - A **challenger** trains offline from versioned datasets.
-- Challenger data splits must be time aware.
-- Hyperparameters and feature sets are recorded.
+- Hyperparameters, feature registry, data manifest, targets, costs, and decision thresholds are recorded.
 - Challenger results must be reproducible.
 - A challenger may not touch live capital merely because training metrics improved.
+- Model output cannot alter locked hard risk limits or directly call execution APIs.
 
-Potential initial ML tasks:
-
-- estimate expected net R conditional on setup features;
-- rank opportunities;
-- identify regime-dependent strategy weights;
-- estimate stop/exit failure risk;
-- calibrate score buckets.
-
-Do not start with unconstrained reinforcement learning or a model that directly controls leverage/order placement.
+Start with transparent statistical/supervised baselines and make additional complexity earn its place. Tree/boosted or sequence/deep models may be evaluated only when simpler baselines are measured first. Do not start with unconstrained reinforcement learning or a model that directly controls leverage/order placement.
 
 ## 14. Live trading promotion
 
