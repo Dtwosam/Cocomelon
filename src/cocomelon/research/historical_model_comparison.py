@@ -336,8 +336,8 @@ class HistoricalModelComparisonConfig:
     ridge_min_market_samples: int
     min_sample_count: int
     min_validation_trades: int
-    stable_validation_segments: int
-    stable_min_segment_validation_trades: int
+    stable_validation_segments: int = 2
+    stable_min_segment_validation_trades: int = 10
     min_validation_mean_net_return: Decimal = Decimal("0")
 
     def __post_init__(self) -> None:
