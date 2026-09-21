@@ -7,7 +7,6 @@ from decimal import Decimal
 from enum import StrEnum
 
 from cocomelon.domain.features import TrendRegime
-from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_features import (
     HistoricalFeatureRow,
     HistoricalTrainingRow,
