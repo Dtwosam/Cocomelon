@@ -12,6 +12,7 @@ from typing import Any, TextIO
 from urllib.parse import quote
 
 from cocomelon.domain.market import Candle, MarketId
+from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.research.historical_backfill import (
     HistoricalFundingManifest,
     build_coverage_report,
@@ -130,12 +131,20 @@ def ingest_archive_candles(
 
         for market in unique_markets:
             for interval in unique_intervals:
+                interval_ms = INTERVAL_MS[interval]
+                if start_ms % interval_ms != 0:
+                    raise HistoricalTradeArchiveError(
+                        "REQUEST_START_GRID_MISALIGNED"
+                    )
+                interval_end_ms = end_ms - (end_ms % interval_ms)
+                if interval_end_ms < start_ms:
+                    continue
                 candles = aggregate_trades_to_candles(
                     trades,
                     market=market,
                     interval=interval,
                     start_ms=start_ms,
-                    end_ms=end_ms,
+                    end_ms=interval_end_ms,
                     received_at_ms=received_at_ms,
                 )
                 target = candles_by_key[(market.canonical, interval)]
@@ -153,13 +162,21 @@ def ingest_archive_candles(
         for interval in unique_intervals:
             candle_map = candles_by_key[(market.canonical, interval)]
             candles = tuple(candle_map[key] for key in sorted(candle_map))
+            interval_ms = INTERVAL_MS[interval]
+            if start_ms % interval_ms != 0:
+                raise HistoricalTradeArchiveError(
+                    "REQUEST_START_GRID_MISALIGNED"
+                )
+            interval_end_ms = end_ms - (end_ms % interval_ms)
+            if interval_end_ms < start_ms:
+                continue
             manifest = write_archive_candle_source(
                 market_root / "candles" / interval,
                 candles=candles,
                 market=market,
                 interval=interval,
                 start_ms=start_ms,
-                end_ms=end_ms,
+                end_ms=interval_end_ms,
                 raw_archive_digests=digests,
             )
             candle_manifests.append(manifest)
