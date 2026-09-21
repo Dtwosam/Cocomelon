@@ -13,14 +13,12 @@ from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.market import MarketId
 from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_experiment import (
-    HistoricalArchiveExperimentError,
     run_archive_historical_experiment,
 )
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 from cocomelon.research.historical_model_comparison import (
     HistoricalModelComparisonConfig,
 )
-from cocomelon.research.historical_trade_archive import HistoricalTradeArchiveError
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -167,13 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             config=config,
             max_funding_items=args.max_funding_items,
         )
-    except (
-        OSError,
-        RuntimeError,
-        ValueError,
-        HistoricalArchiveExperimentError,
-        HistoricalTradeArchiveError,
-    ) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
             stream=sys.stderr,
