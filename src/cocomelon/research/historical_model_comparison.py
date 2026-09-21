@@ -613,6 +613,10 @@ def build_historical_model_comparison_report(
     dataset_manifest: HistoricalDatasetManifest,
     config: HistoricalModelComparisonConfig,
 ) -> HistoricalModelComparisonReport:
+    row_anchor_intervals = {row.outcome.interval for row in rows}
+    if row_anchor_intervals != {dataset_manifest.anchor_interval}:
+        raise ValueError("training rows must match dataset anchor_interval")
+
     baseline = run_walk_forward_baseline(
         rows,
         costs=config.costs,
