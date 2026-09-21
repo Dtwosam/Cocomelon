@@ -693,3 +693,138 @@ def compare_shared_and_coin_calibration(
             allow_coin_calibration=True,
         ),
     )
+
+
+
+@dataclass(frozen=True, slots=True)
+class WalkForwardFoldResult:
+    fold_index: int
+    train_anchor_count: int
+    validation_anchor_count: int
+    test_anchor_count: int
+    shared_threshold: Decimal
+    coin_threshold: Decimal
+    shared_test: PolicyEvaluation
+    coin_test: PolicyEvaluation
+
+    def __post_init__(self) -> None:
+        if self.fold_index <= 0:
+            raise ValueError("fold_index must be positive")
+        for field in (
+            "train_anchor_count",
+            "validation_anchor_count",
+            "test_anchor_count",
+        ):
+            if getattr(self, field) <= 0:
+                raise ValueError(f"{field} must be positive")
+        if self.shared_threshold < ZERO or not self.shared_threshold.is_finite():
+            raise ValueError("shared_threshold must be a non-negative finite Decimal")
+        if self.coin_threshold < ZERO or not self.coin_threshold.is_finite():
+            raise ValueError("coin_threshold must be a non-negative finite Decimal")
+
+
+@dataclass(frozen=True, slots=True)
+class WalkForwardBaselineReport:
+    folds: tuple[WalkForwardFoldResult, ...]
+
+    def __post_init__(self) -> None:
+        if not self.folds:
+            raise ValueError("folds must not be empty")
+        expected = tuple(range(1, len(self.folds) + 1))
+        actual = tuple(item.fold_index for item in self.folds)
+        if actual != expected:
+            raise ValueError("fold indices must be contiguous and one-based")
+
+
+def _anchor_count(rows: Sequence[HistoricalTrainingRow]) -> int:
+    return len({row.anchor_end_ms for row in rows})
+
+
+def run_walk_forward_baseline(
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    costs: ExecutionCostAssumptions,
+    candidate_thresholds: Sequence[Decimal],
+    min_train_anchors: int,
+    validation_anchors: int,
+    test_anchors: int,
+    step_anchors: int,
+    embargo_anchors: int,
+    min_state_samples: int,
+    min_coin_samples: int,
+    min_sample_count: int,
+    min_validation_trades: int,
+) -> WalkForwardBaselineReport:
+    folds = walk_forward_splits(
+        rows,
+        min_train_anchors=min_train_anchors,
+        validation_anchors=validation_anchors,
+        test_anchors=test_anchors,
+        step_anchors=step_anchors,
+        embargo_anchors=embargo_anchors,
+    )
+    if not folds:
+        raise HistoricalBaselineError("walk-forward configuration produced no folds")
+
+    results: list[WalkForwardFoldResult] = []
+    for fold_index, fold in enumerate(folds, start=1):
+        model = fit_conditional_baseline(
+            fold.train,
+            min_state_samples=min_state_samples,
+            min_coin_samples=min_coin_samples,
+        )
+        shared_calibration = calibrate_no_trade_threshold(
+            model,
+            fold.validation,
+            costs=costs,
+            candidate_thresholds=candidate_thresholds,
+            min_sample_count=min_sample_count,
+            min_validation_trades=min_validation_trades,
+            allow_coin_calibration=False,
+        )
+        coin_calibration = calibrate_no_trade_threshold(
+            model,
+            fold.validation,
+            costs=costs,
+            candidate_thresholds=candidate_thresholds,
+            min_sample_count=min_sample_count,
+            min_validation_trades=min_validation_trades,
+            allow_coin_calibration=True,
+        )
+
+        shared_policy = DecisionPolicy(
+            min_expected_net_edge=shared_calibration.selected_threshold,
+            min_sample_count=min_sample_count,
+        )
+        coin_policy = DecisionPolicy(
+            min_expected_net_edge=coin_calibration.selected_threshold,
+            min_sample_count=min_sample_count,
+        )
+        shared_test = evaluate_policy(
+            model,
+            fold.test,
+            policy=shared_policy,
+            costs=costs,
+            allow_coin_calibration=False,
+        )
+        coin_test = evaluate_policy(
+            model,
+            fold.test,
+            policy=coin_policy,
+            costs=costs,
+            allow_coin_calibration=True,
+        )
+        results.append(
+            WalkForwardFoldResult(
+                fold_index=fold_index,
+                train_anchor_count=_anchor_count(fold.train),
+                validation_anchor_count=_anchor_count(fold.validation),
+                test_anchor_count=_anchor_count(fold.test),
+                shared_threshold=shared_calibration.selected_threshold,
+                coin_threshold=coin_calibration.selected_threshold,
+                shared_test=shared_test,
+                coin_test=coin_test,
+            )
+        )
+
+    return WalkForwardBaselineReport(folds=tuple(results))
