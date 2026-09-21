@@ -12,13 +12,14 @@ from cocomelon.research.historical_baselines import (
     PolicyEvaluation,
     evaluate_policy,
     evaluate_policy_breakdowns,
-    walk_forward_splits,
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
     HistoricalRidgeError,
+    PreparedRidgeWalkForward,
     RidgeDirectionalModel,
-    fit_ridge_directional_model,
+    prepare_ridge_walk_forward,
+    validate_prepared_ridge_walk_forward,
 )
 from cocomelon.research.historical_ridge_horizon import HorizonDecisionPolicy
 
@@ -426,41 +427,47 @@ def run_walk_forward_stable_horizon_ridge(
     stability_blocks: int,
     min_block_trades: int,
     min_validation_mean_net_return: Decimal = ZERO,
+    prepared: PreparedRidgeWalkForward | None = None,
 ) -> StableRidgeWalkForwardReport:
-    alphas = tuple(sorted(set(candidate_alphas)))
-    if not alphas:
-        raise ValueError("candidate_alphas must not be empty")
-    if any(not alpha.is_finite() or alpha <= ZERO for alpha in alphas):
-        raise ValueError("candidate_alphas must be positive finite Decimals")
     if stability_blocks <= 1:
         raise ValueError("stability_blocks must be greater than one")
     if min_block_trades <= 0:
         raise ValueError("min_block_trades must be positive")
 
-    folds = walk_forward_splits(
-        rows,
-        min_train_anchors=min_train_anchors,
-        validation_anchors=validation_anchors,
-        test_anchors=test_anchors,
-        step_anchors=step_anchors,
-        embargo_anchors=embargo_anchors,
-    )
-    if not folds:
-        raise HistoricalRidgeError("walk-forward configuration produced no folds")
+    resolved = prepared
+    if resolved is None:
+        resolved = prepare_ridge_walk_forward(
+            rows,
+            candidate_alphas=candidate_alphas,
+            min_train_anchors=min_train_anchors,
+            validation_anchors=validation_anchors,
+            test_anchors=test_anchors,
+            step_anchors=step_anchors,
+            embargo_anchors=embargo_anchors,
+            min_market_samples=min_market_samples,
+        )
+    else:
+        validate_prepared_ridge_walk_forward(
+            resolved,
+            candidate_alphas=candidate_alphas,
+            min_train_anchors=min_train_anchors,
+            validation_anchors=validation_anchors,
+            test_anchors=test_anchors,
+            step_anchors=step_anchors,
+            embargo_anchors=embargo_anchors,
+            min_market_samples=min_market_samples,
+        )
 
     results: list[StableRidgeWalkForwardFold] = []
-    for fold_index, fold in enumerate(folds, start=1):
-        models: dict[Decimal, RidgeDirectionalModel] = {}
+    for prepared_fold in resolved.folds:
+        fold_index = prepared_fold.fold_index
+        fold = prepared_fold.split
+        models = dict(prepared_fold.models)
         shared_candidates: list[StableRidgeAlphaValidation] = []
         market_candidates: list[StableRidgeAlphaValidation] = []
 
-        for alpha in alphas:
-            model = fit_ridge_directional_model(
-                fold.train,
-                alpha=alpha,
-                min_market_samples=min_market_samples,
-            )
-            models[alpha] = model
+        for alpha in resolved.candidate_alphas:
+            model = models[alpha]
 
             shared_horizons, shared_validation = _calibrate_stable_horizons(
                 model,
