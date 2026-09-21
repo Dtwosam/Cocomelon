@@ -33,7 +33,7 @@ STATIC_UNAVAILABLE_FEATURES = (
     "spread_bps",
 )
 
-BASKET_CONTEXT_FEATURE_NAMES = (
+BASKET_BASE_CONTEXT_FEATURE_NAMES = (
     "btc_return_5m",
     "btc_return_15m",
     "btc_return_1h",
@@ -58,6 +58,22 @@ BASKET_CONTEXT_FEATURE_NAMES = (
     "basket_return_count_15m",
     "basket_return_count_1h",
     "basket_return_count_4h",
+)
+
+BASKET_DISPERSION_FEATURE_NAMES = (
+    "basket_return_dispersion_5m",
+    "basket_return_dispersion_15m",
+    "basket_return_dispersion_1h",
+    "basket_return_dispersion_4h",
+    "relative_return_zscore_5m_vs_basket",
+    "relative_return_zscore_15m_vs_basket",
+    "relative_return_zscore_1h_vs_basket",
+    "relative_return_zscore_4h_vs_basket",
+)
+
+BASKET_CONTEXT_FEATURE_NAMES = (
+    *BASKET_BASE_CONTEXT_FEATURE_NAMES,
+    *BASKET_DISPERSION_FEATURE_NAMES,
 )
 
 OPTIONAL_FEATURE_NAMES = (
@@ -149,6 +165,14 @@ class HistoricalFeatureRow:
     basket_return_count_15m: Decimal | None = None
     basket_return_count_1h: Decimal | None = None
     basket_return_count_4h: Decimal | None = None
+    basket_return_dispersion_5m: Decimal | None = None
+    basket_return_dispersion_15m: Decimal | None = None
+    basket_return_dispersion_1h: Decimal | None = None
+    basket_return_dispersion_4h: Decimal | None = None
+    relative_return_zscore_5m_vs_basket: Decimal | None = None
+    relative_return_zscore_15m_vs_basket: Decimal | None = None
+    relative_return_zscore_1h_vs_basket: Decimal | None = None
+    relative_return_zscore_4h_vs_basket: Decimal | None = None
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -173,6 +197,17 @@ class HistoricalFeatureRow:
 
         for field in OPTIONAL_FEATURE_NAMES:
             _finite_optional(getattr(self, field), field)
+
+        if self.schema_version < 2 and any(
+            getattr(self, name) is not None
+            for name in BASKET_BASE_CONTEXT_FEATURE_NAMES
+        ):
+            raise ValueError("basket base context requires schema_version >= 2")
+        if self.schema_version < 3 and any(
+            getattr(self, name) is not None
+            for name in BASKET_DISPERSION_FEATURE_NAMES
+        ):
+            raise ValueError("basket dispersion context requires schema_version >= 3")
 
         available = tuple(sorted(set(self.available_features)))
         unavailable = tuple(sorted(set(self.unavailable_features)))
@@ -224,7 +259,14 @@ class HistoricalFeatureRow:
             payload.update(
                 {
                     name: _decimal(getattr(self, name))
-                    for name in BASKET_CONTEXT_FEATURE_NAMES
+                    for name in BASKET_BASE_CONTEXT_FEATURE_NAMES
+                }
+            )
+        if self.schema_version >= 3:
+            payload.update(
+                {
+                    name: _decimal(getattr(self, name))
+                    for name in BASKET_DISPERSION_FEATURE_NAMES
                 }
             )
         return payload

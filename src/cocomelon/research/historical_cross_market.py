@@ -46,15 +46,25 @@ def _context_for_window(
     count = Decimal(len(observed))
     basket_median: Decimal | None = None
     basket_breadth: Decimal | None = None
+    dispersion: Decimal | None = None
     relative: Decimal | None = None
+    relative_zscore: Decimal | None = None
     if len(observed) >= 2:
         basket_median = quantile(observed, MEDIAN)
         basket_breadth = Decimal(
             sum(1 for value in observed if value > ZERO)
         ) / count
+        mean = sum(observed, ZERO) / count
+        variance = sum(
+            ((value - mean) * (value - mean) for value in observed),
+            ZERO,
+        ) / count
+        dispersion = variance.sqrt()
         target_return = getattr(target, return_field)
         if target_return is not None:
             relative = target_return - basket_median
+            if dispersion > ZERO:
+                relative_zscore = relative / dispersion
 
     return {
         f"btc_return_{window}": btc_return,
@@ -63,6 +73,8 @@ def _context_for_window(
         f"basket_breadth_positive_{window}": basket_breadth,
         f"relative_return_{window}_vs_basket": relative,
         f"basket_return_count_{window}": count,
+        f"basket_return_dispersion_{window}": dispersion,
+        f"relative_return_zscore_{window}_vs_basket": relative_zscore,
     }
 
 
@@ -182,13 +194,37 @@ def enrich_training_rows_with_basket_context(
                 basket_return_count_15m=context["basket_return_count_15m"],
                 basket_return_count_1h=context["basket_return_count_1h"],
                 basket_return_count_4h=context["basket_return_count_4h"],
+                basket_return_dispersion_5m=context[
+                    "basket_return_dispersion_5m"
+                ],
+                basket_return_dispersion_15m=context[
+                    "basket_return_dispersion_15m"
+                ],
+                basket_return_dispersion_1h=context[
+                    "basket_return_dispersion_1h"
+                ],
+                basket_return_dispersion_4h=context[
+                    "basket_return_dispersion_4h"
+                ],
+                relative_return_zscore_5m_vs_basket=context[
+                    "relative_return_zscore_5m_vs_basket"
+                ],
+                relative_return_zscore_15m_vs_basket=context[
+                    "relative_return_zscore_15m_vs_basket"
+                ],
+                relative_return_zscore_1h_vs_basket=context[
+                    "relative_return_zscore_1h_vs_basket"
+                ],
+                relative_return_zscore_4h_vs_basket=context[
+                    "relative_return_zscore_4h_vs_basket"
+                ],
                 source_retrieved_at_ms=retrieved_at_ms,
                 retrieved_after_anchor=retrieved_at_ms > anchor_end_ms,
                 available_features=tuple(sorted(available)),
                 unavailable_features=tuple(sorted(unavailable)),
                 provenance=provenance,
                 source_manifest_ids=manifest_ids,
-                schema_version=max(2, target.schema_version),
+                schema_version=max(3, target.schema_version),
             )
             enriched_features[_feature_key(target)] = enriched
 
@@ -196,7 +232,7 @@ def enrich_training_rows_with_basket_context(
         replace(
             row,
             feature=enriched_features[_feature_key(row.feature)],
-            schema_version=max(2, row.schema_version),
+            schema_version=max(3, row.schema_version),
         )
         for row in rows
     )

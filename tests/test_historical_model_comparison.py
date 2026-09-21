@@ -170,6 +170,8 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert "btc_return_5m" in registry
     assert "basket_median_return_1h" in registry
     assert "relative_return_4h_vs_basket" in registry
+    assert "basket_return_dispersion_1h" in registry
+    assert "relative_return_zscore_4h_vs_basket" in registry
     assert len(report.report_id) == 64
 
 
