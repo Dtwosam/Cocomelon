@@ -25,6 +25,7 @@ from cocomelon.research.historical_features import (
     BASKET_CONTEXT_FEATURE_NAMES,
     HistoricalTrainingRow,
     build_historical_feature_rows,
+    build_historical_feature_rows_1h,
     build_historical_feature_rows_15m,
     join_features_to_outcomes,
 )
@@ -356,8 +357,8 @@ def build_training_rows_from_source_root(
         raise ValueError("at least one market is required")
     if not horizons_ms:
         raise ValueError("at least one horizon is required")
-    if anchor_interval not in {"5m", "15m"}:
-        raise ValueError("anchor_interval must be 5m or 15m")
+    if anchor_interval not in {"5m", "15m", "1h"}:
+        raise ValueError("anchor_interval must be 5m, 15m, or 1h")
     base_interval_ms = INTERVAL_MS[anchor_interval]
     if any(value <= 0 or value % base_interval_ms != 0 for value in horizons_ms):
         raise ValueError(
@@ -402,7 +403,7 @@ def build_training_rows_from_source_root(
                 source_manifest_ids=source_manifest_ids,
             )
             outcome_candles = candles_5m
-        else:
+        elif anchor_interval == "15m":
             candle_15m_manifest, candles_15m = load_candle_source(candle_15m_path)
             if candle_15m_manifest.market != market.canonical:
                 raise HistoricalDatasetIntegrityError("15m source market mismatch")
@@ -420,6 +421,26 @@ def build_training_rows_from_source_root(
                 source_manifest_ids=source_manifest_ids,
             )
             outcome_candles = candles_15m
+        else:
+            candle_1h_manifest, candles_1h = load_candle_source(
+                root / "candles" / "1h"
+            )
+            if candle_1h_manifest.market != market.canonical:
+                raise HistoricalDatasetIntegrityError("1h source market mismatch")
+            source_manifest_ids = [candle_1h_manifest.manifest_id]
+
+            if (funding_path / "manifest.json").is_file():
+                funding_manifest, funding_rates = load_funding_source(funding_path)
+                if funding_manifest.market != market.canonical:
+                    raise HistoricalDatasetIntegrityError("funding source market mismatch")
+                source_manifest_ids.append(funding_manifest.manifest_id)
+
+            features = build_historical_feature_rows_1h(
+                candles_1h=candles_1h,
+                funding_rates=funding_rates,
+                source_manifest_ids=source_manifest_ids,
+            )
+            outcome_candles = candles_1h
 
         outcomes = build_directional_outcomes(
             outcome_candles,
@@ -551,8 +572,8 @@ class HistoricalDatasetManifest:
             raise ValueError("source_manifest_ids must contain non-empty identities")
         if not self.writer_library_version.strip():
             raise ValueError("writer_library_version must not be empty")
-        if self.anchor_interval not in {"5m", "15m"}:
-            raise ValueError("anchor_interval must be 5m or 15m")
+        if self.anchor_interval not in {"5m", "15m", "1h"}:
+            raise ValueError("anchor_interval must be 5m, 15m, or 1h")
         if tuple(self.columns) != TRAINING_COLUMNS:
             raise ValueError("columns must match the historical training schema")
         if not self.converter_version.strip():
@@ -622,7 +643,7 @@ def export_training_dataset(
     if len(set(identities)) != len(identities):
         raise HistoricalDatasetIntegrityError("duplicate training row identity")
     anchor_intervals = tuple(sorted({row.outcome.interval for row in ordered}))
-    if len(anchor_intervals) != 1 or anchor_intervals[0] not in {"5m", "15m"}:
+    if len(anchor_intervals) != 1 or anchor_intervals[0] not in {"5m", "15m", "1h"}:
         raise HistoricalDatasetIntegrityError(
             "training rows must contain exactly one supported anchor interval"
         )
