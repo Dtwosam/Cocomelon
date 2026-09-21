@@ -587,3 +587,110 @@ def calibrate_no_trade_threshold(
         min_sample_count=min_sample_count,
         min_validation_trades=min_validation_trades,
     )
+
+
+
+@dataclass(frozen=True, slots=True)
+class PolicyEvaluation:
+    row_count: int
+    trade_count: int
+    long_count: int
+    short_count: int
+    no_trade_count: int
+    total_realized_net_return: Decimal
+    mean_realized_net_return: Decimal | None
+
+    def __post_init__(self) -> None:
+        if self.row_count < 0:
+            raise ValueError("row_count must be non-negative")
+        for field in ("trade_count", "long_count", "short_count", "no_trade_count"):
+            if getattr(self, field) < 0:
+                raise ValueError(f"{field} must be non-negative")
+        if self.long_count + self.short_count != self.trade_count:
+            raise ValueError("long_count + short_count must equal trade_count")
+        if self.trade_count + self.no_trade_count != self.row_count:
+            raise ValueError("trade_count + no_trade_count must equal row_count")
+        if not self.total_realized_net_return.is_finite():
+            raise ValueError("total_realized_net_return must be finite")
+        if self.mean_realized_net_return is None:
+            if self.trade_count != 0:
+                raise ValueError("mean_realized_net_return is required when trades exist")
+        elif not self.mean_realized_net_return.is_finite():
+            raise ValueError("mean_realized_net_return must be finite")
+
+
+@dataclass(frozen=True, slots=True)
+class BaselineVariantComparison:
+    shared_only: PolicyEvaluation
+    coin_calibrated: PolicyEvaluation
+
+
+def evaluate_policy(
+    model: ConditionalBaselineModel,
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    policy: DecisionPolicy,
+    costs: ExecutionCostAssumptions,
+    allow_coin_calibration: bool,
+) -> PolicyEvaluation:
+    ordered = tuple(sorted(rows, key=_row_order))
+    long_count = 0
+    short_count = 0
+    no_trade_count = 0
+    realized: list[Decimal] = []
+
+    for row in ordered:
+        estimate = model.predict(
+            row.feature,
+            horizon_ms=row.horizon_ms,
+            allow_coin_calibration=allow_coin_calibration,
+        )
+        decision = policy.decide(estimate, costs=costs)
+        if decision.action is DecisionAction.NO_TRADE:
+            no_trade_count += 1
+            continue
+        if decision.action is DecisionAction.LONG:
+            long_count += 1
+        else:
+            short_count += 1
+        net_return = _realized_net_return(row, decision)
+        if net_return is None:
+            raise HistoricalBaselineError("trade decision must produce realized net return")
+        realized.append(net_return)
+
+    total = sum(realized, ZERO)
+    mean = None if not realized else total / Decimal(len(realized))
+    return PolicyEvaluation(
+        row_count=len(ordered),
+        trade_count=len(realized),
+        long_count=long_count,
+        short_count=short_count,
+        no_trade_count=no_trade_count,
+        total_realized_net_return=total,
+        mean_realized_net_return=mean,
+    )
+
+
+def compare_shared_and_coin_calibration(
+    model: ConditionalBaselineModel,
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    policy: DecisionPolicy,
+    costs: ExecutionCostAssumptions,
+) -> BaselineVariantComparison:
+    return BaselineVariantComparison(
+        shared_only=evaluate_policy(
+            model,
+            rows,
+            policy=policy,
+            costs=costs,
+            allow_coin_calibration=False,
+        ),
+        coin_calibrated=evaluate_policy(
+            model,
+            rows,
+            policy=policy,
+            costs=costs,
+            allow_coin_calibration=True,
+        ),
+    )
