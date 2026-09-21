@@ -315,6 +315,74 @@ def test_materialized_position_tamper_makes_restart_unhealthy(tmp_path: Path) ->
     assert "MATERIALIZED_POSITION_MISMATCH" in result.reason_codes
 
 
+def test_missing_execution_attempt_for_persisted_fill_makes_restart_unhealthy(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "DELETE FROM paper_execution_attempts WHERE attempt_id = ?",
+            (execution.attempt_id,),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "EXECUTION_HISTORY_MISMATCH" in result.reason_codes
+
+
+def test_fill_lineage_tamper_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_fills SET attempt_id = ? WHERE fill_id = ?",
+            ("tampered-attempt", paper_fill.fill_id),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "EXECUTION_HISTORY_MISMATCH" in result.reason_codes
+
+
+def test_execution_attempt_payload_tamper_makes_restart_unhealthy(tmp_path: Path) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    account = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), account)
+
+    with store.raw_connection() as conn:
+        conn.execute(
+            "UPDATE paper_execution_attempts SET payload_json = '{}' WHERE attempt_id = ?",
+            (execution.attempt_id,),
+        )
+
+    result = store.load_and_reconcile()
+    store.close()
+    assert result.healthy is False
+    assert "EXECUTION_HISTORY_UNREADABLE" in result.reason_codes
+
+
 def test_position_event_tamper_makes_restart_unhealthy(tmp_path: Path) -> None:
     path = tmp_path / "paper.sqlite3"
     order = plan()
