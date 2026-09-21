@@ -836,6 +836,10 @@ def _attempt_error_summary(attempt: dict[str, object]) -> str | None:
 
 def _attempt_failure_stage(attempt: dict[str, object]) -> str | None:
     if attempt.get("error_type") != "WorkflowFailure":
+        if attempt.get("status") in {"failed", "contaminated"} and (
+            attempt.get("error_type") is not None or attempt.get("error_message") is not None
+        ):
+            return "evaluate-research"
         return None
     error_message = attempt.get("error_message")
     if error_message is None:
