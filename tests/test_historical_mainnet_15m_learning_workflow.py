@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/historical-mainnet-15m-learning.yml")
@@ -21,6 +22,11 @@ def test_15m_historical_workflow_is_bounded_free_and_paper_only() -> None:
     assert "--interval 5m" not in source
     assert "--max-candles 5000" in source
     assert "--anchor-interval 15m" in source
+
+    start = datetime.fromisoformat("2026-08-01T00:00:00+00:00")
+    end = datetime.fromisoformat("2026-09-20T00:00:00+00:00")
+    expected_candle_count = int((end - start).total_seconds() // (15 * 60)) + 1
+    assert expected_candle_count <= 5000
 
     for market in ("BTC", "ETH", "SOL", "HYPE"):
         assert f"--market {market}" in source
