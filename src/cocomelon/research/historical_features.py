@@ -150,6 +150,13 @@ class HistoricalFeatureRow:
 
         for field in OPTIONAL_FEATURE_NAMES:
             _finite_optional(getattr(self, field), field)
+        for field in (
+            "market_breadth_positive_5m",
+            "market_breadth_positive_1h",
+        ):
+            breadth = getattr(self, field)
+            if breadth is not None and not ZERO <= breadth <= ONE:
+                raise ValueError(f"{field} must be between 0 and 1")
 
         available = tuple(sorted(set(self.available_features)))
         unavailable = tuple(sorted(set(self.unavailable_features)))
