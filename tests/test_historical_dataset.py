@@ -188,8 +188,10 @@ def test_training_rows_include_authenticated_same_anchor_basket_context(
     assert eth.feature.basket_return_count_5m == Decimal("2")
     assert eth.feature.basket_median_return_5m == eth.feature.return_5m
     assert eth.feature.relative_return_5m_vs_basket == Decimal("0")
-    assert eth.feature.schema_version == 2
-    assert eth.schema_version == 2
+    assert eth.feature.basket_return_dispersion_5m == Decimal("0")
+    assert eth.feature.relative_return_zscore_5m_vs_basket is None
+    assert eth.feature.schema_version == 3
+    assert eth.schema_version == 3
     assert len(eth.feature.source_manifest_ids) >= 4
 
 
@@ -223,6 +225,8 @@ def test_export_training_dataset_writes_versioned_parquet_and_manifest(tmp_path:
     assert "short_gross_return" in table.column_names
     assert "unavailable_features_json" in table.column_names
     assert "basket_median_return_5m" in table.column_names
+    assert "basket_return_dispersion_5m" in table.column_names
+    assert "relative_return_zscore_1h_vs_basket" in table.column_names
     assert "btc_return_1h" in table.column_names
 
 
@@ -261,9 +265,10 @@ def test_build_training_rows_supports_15m_anchor_with_basket_context(
         for row in rows
         if row.market == MARKET and row.feature.return_15m is not None
     )
-    assert enriched.feature.schema_version == 2
+    assert enriched.feature.schema_version == 3
     assert enriched.feature.btc_return_15m is not None
     assert enriched.feature.basket_return_count_15m == Decimal("2")
+    assert enriched.feature.basket_return_dispersion_15m == Decimal("0")
 
 
 def test_training_rows_reject_horizon_off_15m_grid(tmp_path: Path) -> None:
@@ -292,8 +297,8 @@ def test_export_training_dataset_records_anchor_interval(tmp_path: Path) -> None
     table = parquet.read_table(tmp_path / "dataset-15m" / "training.parquet")
 
     assert manifest.anchor_interval == "15m"
-    assert manifest.schema_version == 3
-    assert manifest.converter_version == "historical-directional-training-v3-anchor-interval"
+    assert manifest.schema_version == 4
+    assert manifest.converter_version == "historical-directional-training-v4-dispersion"
     assert set(table.column("anchor_interval").to_pylist()) == {"15m"}
 
 
