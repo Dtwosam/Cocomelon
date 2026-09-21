@@ -36,7 +36,7 @@ def _raw_candle(
     start_ms: int,
     close: int,
 ) -> dict[str, object]:
-    width = FIVE if interval == "5m" else FIFTEEN
+    width = {"5m": FIVE, "15m": FIFTEEN, "1h": HOUR}[interval]
     return {
         "t": start_ms,
         "T": start_ms + width - 1,
@@ -64,7 +64,7 @@ class FakeClient:
         end_ms: int,
     ) -> object:
         assert market == self.market
-        width = FIVE if interval == "5m" else FIFTEEN
+        width = {"5m": FIVE, "15m": FIFTEEN, "1h": HOUR}[interval]
         return [
             _raw_candle(
                 market,
@@ -115,6 +115,15 @@ def _build_source_root(tmp_path: Path, market: MarketId = MARKET) -> Path:
         start_ms=0,
         end_ms=8 * FIFTEEN,
         root=market_root / "candles" / "15m",
+        clock_ms=lambda: 99_000_001,
+    )
+    backfill_candles(
+        client,
+        market=market,
+        interval="1h",
+        start_ms=0,
+        end_ms=8 * HOUR,
+        root=market_root / "candles" / "1h",
         clock_ms=lambda: 99_000_001,
     )
     backfill_funding(
@@ -327,3 +336,66 @@ def test_export_training_dataset_rejects_mixed_anchor_intervals(
             (rows_5m[0], rows_15m[0]),
             tmp_path / "dataset-mixed",
         )
+
+
+
+def test_build_training_rows_supports_1h_anchor_with_basket_context(
+    tmp_path: Path,
+) -> None:
+    root = _build_source_root(tmp_path, MARKET)
+    _build_source_root(tmp_path, BTC)
+
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET, BTC),
+        horizons_ms=(HOUR, 4 * HOUR),
+        anchor_interval="1h",
+    )
+
+    assert rows
+    assert {row.outcome.interval for row in rows} == {"1h"}
+    assert {row.horizon_ms for row in rows} == {HOUR, 4 * HOUR}
+    assert all(row.feature.return_5m is None for row in rows)
+    assert all(row.feature.return_15m is None for row in rows)
+    assert all(row.feature.realized_vol_15m is None for row in rows)
+    enriched = next(
+        row
+        for row in rows
+        if row.market == MARKET and row.feature.return_1h is not None
+    )
+    assert enriched.feature.btc_return_1h is not None
+    assert enriched.feature.eth_return_1h is not None
+    assert enriched.feature.basket_return_count_1h == Decimal("2")
+    assert enriched.feature.basket_return_dispersion_1h == Decimal("0")
+    assert enriched.feature.trend_regime.value == "unknown"
+
+
+def test_training_rows_reject_horizon_off_1h_grid(tmp_path: Path) -> None:
+    root = _build_source_root(tmp_path)
+
+    with pytest.raises(ValueError, match="1h base interval"):
+        build_training_rows_from_source_root(
+            root,
+            markets=(MARKET,),
+            horizons_ms=(FIFTEEN,),
+            anchor_interval="1h",
+        )
+
+
+def test_export_training_dataset_records_1h_anchor_interval(tmp_path: Path) -> None:
+    parquet = pytest.importorskip("pyarrow.parquet")
+    root = _build_source_root(tmp_path)
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET,),
+        horizons_ms=(HOUR,),
+        anchor_interval="1h",
+    )
+
+    manifest = export_training_dataset(rows, tmp_path / "dataset-1h")
+    table = parquet.read_table(tmp_path / "dataset-1h" / "training.parquet")
+
+    assert manifest.anchor_interval == "1h"
+    assert manifest.schema_version == 4
+    assert manifest.converter_version == "historical-directional-training-v4-dispersion"
+    assert set(table.column("anchor_interval").to_pylist()) == {"1h"}

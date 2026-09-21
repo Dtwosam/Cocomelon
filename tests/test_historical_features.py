@@ -9,6 +9,7 @@ from cocomelon.domain.market import Candle, FundingRate, MarketId
 from cocomelon.research.historical_features import (
     HistoricalFeatureError,
     build_historical_feature_rows,
+    build_historical_feature_rows_1h,
     build_historical_feature_rows_15m,
     join_features_to_outcomes,
 )
@@ -30,7 +31,7 @@ def _candle(
     received_at_ms: int = 99_000_000,
     market: MarketId = MARKET,
 ) -> Candle:
-    width = FIVE if interval == "5m" else FIFTEEN
+    width = {"5m": FIVE, "15m": FIFTEEN, "1h": HOUR}[interval]
     resolved_open = Decimal(open_px) if open_px is not None else Decimal(close) - Decimal("1")
     close_px = Decimal(close)
     return Candle(
@@ -365,3 +366,82 @@ def test_15m_anchor_features_do_not_bridge_missing_gap() -> None:
     assert latest.realized_vol_15m is None
     assert latest.range_expansion_15m is None
     assert latest.relative_volume_15m is None
+
+
+
+def test_1h_anchor_features_preserve_only_honest_coarse_state() -> None:
+    candles_1h = tuple(
+        _candle(
+            interval="1h",
+            start_ms=index * HOUR,
+            close=str(100 + index),
+            volume=str(100 + index),
+        )
+        for index in range(6)
+    )
+    funding = (
+        _funding(0, rate="0.0001", premium="0.0002"),
+        _funding(HOUR, rate="0.0003", premium="0.0005"),
+        _funding(2 * HOUR, rate="0.0004", premium="0.0006"),
+    )
+
+    rows = build_historical_feature_rows_1h(
+        candles_1h=candles_1h,
+        funding_rates=funding,
+        source_manifest_ids=("1h-manifest", "funding-manifest"),
+    )
+
+    latest = rows[-1]
+    assert latest.return_5m is None
+    assert latest.return_15m is None
+    assert latest.return_1h == Decimal("105") / Decimal("104") - Decimal("1")
+    assert latest.return_4h == Decimal("105") / Decimal("101") - Decimal("1")
+    assert latest.realized_vol_15m is None
+    assert latest.range_expansion_15m is None
+    assert latest.relative_volume_15m is None
+    assert latest.candle_15m_age_ms is None
+    assert latest.trend_regime is TrendRegime.UNKNOWN
+    assert latest.funding_rate == Decimal("0.0004")
+    assert "return_5m" in latest.unavailable_features
+    assert "return_15m" in latest.unavailable_features
+    assert "realized_vol_15m" in latest.unavailable_features
+
+
+def test_1h_anchor_features_do_not_bridge_missing_4h_lookback() -> None:
+    candles_1h = tuple(
+        _candle(interval="1h", start_ms=index * HOUR, close=str(100 + index))
+        for index in (0, 2, 3, 4, 5)
+    )
+
+    latest = build_historical_feature_rows_1h(
+        candles_1h=candles_1h,
+        funding_rates=(),
+        source_manifest_ids=("1h-manifest",),
+    )[-1]
+
+    assert latest.return_1h == Decimal("105") / Decimal("104") - Decimal("1")
+    assert latest.return_4h is None
+    assert latest.trend_regime is TrendRegime.UNKNOWN
+
+
+def test_1h_anchor_features_keep_late_retrieval_as_provenance_not_availability() -> None:
+    candles_1h = (
+        _candle(interval="1h", start_ms=0, close="100", received_at_ms=99_000_000),
+        _candle(
+            interval="1h",
+            start_ms=HOUR,
+            close="101",
+            received_at_ms=123_000_000,
+        ),
+    )
+
+    latest = build_historical_feature_rows_1h(
+        candles_1h=candles_1h,
+        funding_rates=(),
+        source_manifest_ids=("1h-manifest",),
+    )[-1]
+
+    assert latest.return_1h == Decimal("0.01")
+    assert latest.source_retrieved_at_ms == 123_000_000
+    assert latest.retrieved_after_anchor is True
+    assert latest.availability_basis == "exchange_timestamp"
