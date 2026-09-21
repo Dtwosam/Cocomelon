@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`  
-**Latest verified baseline CI:** run `35586218697` — success  
+**Verified implementation baseline:** `09e5c93db64ede19ec6ad02ac642defc96176c27`  
+**Latest verified baseline CI:** run `35596674099` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -27,7 +27,7 @@ The pre-retirement protected V4 acquisition `35524316366` finished successfully 
 
 ## Trusted V4 dashboard state
 
-Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-21 04:57 UTC**:
+Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-21 10:41 UTC**:
 
 - **69 accepted V4 cohorts**;
 - **121 closed paper trades**;
@@ -63,7 +63,7 @@ The legacy r1 15-minute challenger remains historical research state and is no l
 
 ### Current root reference
 
-Trusted Research Dashboard snapshot, refreshed **2026-09-21 06:28 UTC**:
+Trusted Research Dashboard snapshot, refreshed **2026-09-21 09:58 UTC**:
 
 - `scheduled-research-root`: **13 authenticated checkpoints**, **10 closed trades**, **7 closed-trade days**, cumulative touched net PnL about `-37.2371`, mean net R about `-0.14895`;
 - legacy `research-r1-exit-15m-v1`: **7 checkpoints**, **6 trades**, **4 days**, cumulative touched net PnL about `-36.9098`, mean net R about `-0.24607`;
@@ -93,7 +93,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#230 establish the current frontier:
+PRs #205–#232 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -113,9 +113,10 @@ PRs #205–#230 establish the current frontier:
 - #224 makes funding-idempotency read errors degrade execution health before funding accounting can mutate state;
 - #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated;
 - #228 scopes research replay-run uniqueness to `(candidate_id, replay_run_id)` and transactionally migrates the legacy global-unique registry, allowing root+r2 to share one deterministic capture replay identity while preserving per-candidate duplicate protection;
-- #230 attributes raw candidate-local terminal runner errors to the `evaluate-research` stage in the trusted dashboard while preserving upstream `WorkflowFailure` stage parsing and NOT COUNTED accounting.
+- #230 attributes raw candidate-local terminal runner errors to the `evaluate-research` stage in the trusted dashboard while preserving upstream `WorkflowFailure` stage parsing and NOT COUNTED accounting;
+- #232 makes paper restart reconciliation authenticate persisted execution attempts and fills, verify deterministic IDs/canonical payloads/plan ownership/fill lineage and aggregate fill accounting, fail closed when execution history exists without account state, and reject new fill writes whose `attempt_id` does not match the deterministic execution attempt.
 
-Post-#230 main CI `35586218697` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` also passed and now renders the historical failed r2 attempt with failure stage `evaluate-research` while leaving it failed / NOT COUNTED.
+Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` remains the latest trusted research snapshot and renders the historical failed r2 attempt with failure stage `evaluate-research` while leaving it failed / NOT COUNTED.
 
 ## Exact next action
 
