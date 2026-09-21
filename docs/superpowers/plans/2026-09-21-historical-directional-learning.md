@@ -147,10 +147,12 @@ Verified implementation evidence: PR #235 implementation head `0b463d515b2f0914a
 
 ### Slice C — point-in-time feature reconstruction
 
-- [ ] Reconstruct candle/funding-derived feature states using only data available at each anchor.
-- [ ] Separate features unavailable historically from genuinely sourced fields.
-- [ ] Join immutable feature rows to directional outcome labels.
-- [ ] Export versioned columnar training datasets.
+- [x] Reconstruct candle/funding-derived feature states using only data available at each anchor.
+- [x] Separate features unavailable historically from genuinely sourced fields.
+- [x] Join immutable feature rows to directional outcome labels.
+- [x] Export versioned columnar training datasets.
+
+Verified implementation evidence: PR #236 implementation head `4c04600d5835197209c5405c9a05d992db38f78a`; CI run `35613448712` passed compile, Ruff, strict mypy, full pytest, and the research job with real PyArrow historical-dataset export.
 
 ### Slice D — baseline learners
 
