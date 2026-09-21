@@ -39,6 +39,7 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--candidate-ridge-alpha 1" in source
     assert "--candidate-ridge-alpha 10" in source
     assert "--ridge-min-market-samples 100" in source
+    assert "--portfolio-max-concurrent-positions 2" in source
     assert "--tree-min-market-samples 100" in source
     assert "--tree-max-leaf-nodes 7" in source
     assert "--tree-min-samples-leaf 100" in source
@@ -61,6 +62,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "horizon_ridge_folds" in source
     assert "stable_horizon_ridge_folds" in source
     assert "occupancy_stable_ridge_folds" in source
+    assert "portfolio_capacity_stable_ridge_folds" in source
     assert "stable_tree_folds" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
