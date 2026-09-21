@@ -115,12 +115,21 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert len(report.baseline_folds) == len(report.ridge_folds) == 3
     assert len(report.horizon_ridge_folds) == 3
     assert len(report.stable_horizon_ridge_folds) == 3
+    assert len(report.occupancy_stable_ridge_folds) == 3
     assert len(report.stable_tree_folds) == 3
-    for baseline, ridge, horizon_ridge, stable_horizon_ridge, tree in zip(
+    for (
+        baseline,
+        ridge,
+        horizon_ridge,
+        stable_horizon_ridge,
+        occupancy_ridge,
+        tree,
+    ) in zip(
         report.baseline_folds,
         report.ridge_folds,
         report.horizon_ridge_folds,
         report.stable_horizon_ridge_folds,
+        report.occupancy_stable_ridge_folds,
         report.stable_tree_folds,
         strict=True,
     ):
@@ -141,6 +150,10 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
             stable_horizon_ridge.validation_anchor_count,
             stable_horizon_ridge.test_anchor_count,
         ) == (
+            occupancy_ridge.train_anchor_count,
+            occupancy_ridge.validation_anchor_count,
+            occupancy_ridge.test_anchor_count,
+        ) == (
             tree.train_anchor_count,
             tree.validation_anchor_count,
             tree.test_anchor_count,
@@ -152,6 +165,7 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert report.config.stability_blocks == 2
     assert report.config.min_validation_block_trades == 1
     assert report.config.tree_config.to_dict()["early_stopping"] is False
+    assert report.to_dict()["occupancy_stable_ridge_folds"]
     registry = report.to_dict()["supervised_numeric_feature_registry"]
     assert "btc_return_5m" in registry
     assert "basket_median_return_1h" in registry
