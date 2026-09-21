@@ -97,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-coin-samples", required=True, type=int)
     parser.add_argument("--min-sample-count", required=True, type=int)
     parser.add_argument("--min-validation-trades", required=True, type=int)
+    parser.add_argument(
+        "--min-validation-mean-net-return",
+        type=_parse_decimal,
+        default=Decimal("0"),
+    )
     return parser
 
 
@@ -117,6 +122,7 @@ def run_experiment(
     min_coin_samples: int,
     min_sample_count: int,
     min_validation_trades: int,
+    min_validation_mean_net_return: Decimal = Decimal("0"),
 ) -> dict[str, object]:
     config = HistoricalExperimentConfig(
         costs=costs,
@@ -130,6 +136,7 @@ def run_experiment(
         min_coin_samples=min_coin_samples,
         min_sample_count=min_sample_count,
         min_validation_trades=min_validation_trades,
+        min_validation_mean_net_return=min_validation_mean_net_return,
     )
     report = run_historical_experiment_from_sources(
         source_root=source_root,
@@ -176,6 +183,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_coin_samples=args.min_coin_samples,
             min_sample_count=args.min_sample_count,
             min_validation_trades=args.min_validation_trades,
+            min_validation_mean_net_return=args.min_validation_mean_net_return,
         )
     except (
         OSError,
