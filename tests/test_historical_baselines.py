@@ -10,6 +10,7 @@ from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
     DecisionAction,
     DecisionPolicy,
+    DirectionalPrediction,
     ExecutionCostAssumptions,
     HistoricalBaselineError,
     calibrate_no_trade_threshold,
@@ -765,3 +766,60 @@ def test_threshold_calibration_can_abstain_on_sparse_validation_when_requested()
     assert calibration.selected_threshold is None
     assert calibration.candidates[0].trade_count == 2
     assert calibration.candidates[0].mean_realized_net_return == Decimal("0.02")
+
+
+
+def test_threshold_calibration_predicts_each_validation_row_once() -> None:
+    rows = tuple(
+        _row(
+            anchor_end_ms=index * FIVE,
+            long_return="0.02",
+            short_return="-0.02",
+        )
+        for index in range(1, 5)
+    )
+    base = fit_conditional_baseline(
+        rows,
+        min_state_samples=1,
+        min_coin_samples=99,
+    )
+
+    class CountingModel:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def predict(
+            self,
+            feature: HistoricalFeatureRow,
+            *,
+            horizon_ms: int,
+            allow_coin_calibration: bool = True,
+        ) -> DirectionalPrediction:
+            self.calls += 1
+            return base.predict(
+                feature,
+                horizon_ms=horizon_ms,
+                allow_coin_calibration=allow_coin_calibration,
+            )
+
+    model = CountingModel()
+    calibration = calibrate_no_trade_threshold(
+        model,
+        rows,
+        costs=ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        candidate_thresholds=(
+            Decimal("0"),
+            Decimal("0.001"),
+            Decimal("0.005"),
+        ),
+        min_sample_count=1,
+        min_validation_trades=1,
+        allow_coin_calibration=False,
+    )
+
+    assert calibration.selected_threshold == Decimal("0")
+    assert model.calls == len(rows)
