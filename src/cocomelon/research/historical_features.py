@@ -547,14 +547,14 @@ def join_features_to_outcomes(
     outcomes: Sequence[DirectionalOutcome],
 ) -> tuple[HistoricalTrainingRow, ...]:
     feature_by_key: dict[tuple[MarketId, int], HistoricalFeatureRow] = {}
-    for feature in features:
-        key = (feature.market, feature.anchor_end_ms)
-        if key in feature_by_key:
+    for source_feature in features:
+        feature_key = (source_feature.market, source_feature.anchor_end_ms)
+        if feature_key in feature_by_key:
             raise HistoricalFeatureError("DUPLICATE_FEATURE_ANCHOR")
-        feature_by_key[key] = feature
+        feature_by_key[feature_key] = source_feature
 
     rows: list[HistoricalTrainingRow] = []
-    seen: set[tuple[str, str]] = set()
+    seen_training_keys: set[tuple[str, str]] = set()
     for outcome in sorted(
         outcomes,
         key=lambda item: (
@@ -564,12 +564,12 @@ def join_features_to_outcomes(
             item.outcome_id,
         ),
     ):
-        feature = feature_by_key.get((outcome.market, outcome.anchor_end_ms))
-        if feature is None:
+        matched_feature = feature_by_key.get((outcome.market, outcome.anchor_end_ms))
+        if matched_feature is None:
             continue
-        key = (feature.row_id, outcome.outcome_id)
-        if key in seen:
+        training_key = (matched_feature.row_id, outcome.outcome_id)
+        if training_key in seen_training_keys:
             raise HistoricalFeatureError("DUPLICATE_TRAINING_ROW")
-        seen.add(key)
-        rows.append(HistoricalTrainingRow(feature=feature, outcome=outcome))
+        seen_training_keys.add(training_key)
+        rows.append(HistoricalTrainingRow(feature=matched_feature, outcome=outcome))
     return tuple(rows)
