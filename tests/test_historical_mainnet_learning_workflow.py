@@ -32,7 +32,7 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--step-anchors 500" in source
     assert "--embargo-anchors 48" in source
     assert "--min-validation-trades 20" in source
-    assert "historical-mainnet-learning-2026-08" in source
+    assert "historical-mainnet-learning-2026-09" in source
 
 
 def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifacts() -> None:
@@ -43,6 +43,10 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "experiment.json" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
+    assert "shared_validation_candidates" in source
+    assert "coin_validation_candidates" in source
+    assert "shared_test_breakdowns" in source
+    assert "coin_test_breakdowns" in source
     assert "jq '.' \"$SOURCE_ROOT/coverage.json\"" in source
     assert "if: ${{ always() }}" in source
     assert "actions/upload-artifact@v7" in source
