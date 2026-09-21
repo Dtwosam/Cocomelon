@@ -91,7 +91,7 @@ def test_historical_features_use_exchange_availability_not_late_retrieval_time()
 def test_historical_features_match_live_candle_math_when_history_is_contiguous() -> None:
     candles_5m = tuple(
         _candle(interval="5m", start_ms=index * FIVE, close=str(100 + index))
-        for index in range(6)
+        for index in range(63)
     )
     candles_15m = tuple(
         _candle(
@@ -112,7 +112,7 @@ def test_historical_features_match_live_candle_math_when_history_is_contiguous()
     )
 
     latest = rows[-1]
-    assert latest.return_5m == Decimal("105") / Decimal("104") - Decimal("1")
+    assert latest.return_5m == Decimal("162") / Decimal("161") - Decimal("1")
     assert latest.return_15m == Decimal("106") / Decimal("105") - Decimal("1")
     assert latest.return_1h == Decimal("106") / Decimal("102") - Decimal("1")
     assert latest.return_4h is None
