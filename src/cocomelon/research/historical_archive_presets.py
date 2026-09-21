@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -169,7 +170,7 @@ def run_archive_experiment_preset(
     archive_root: Path,
     source_root: Path,
     output_root: Path,
-    clock_ms,
+    clock_ms: Callable[[], int],
 ) -> ArchiveHistoricalExperimentResult:
     return run_archive_historical_experiment(
         client,
