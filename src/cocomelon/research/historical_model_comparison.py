@@ -28,6 +28,9 @@ from cocomelon.research.historical_occupancy import (
     HistoricalOccupancyEvaluation,
     HistoricalOccupancyTradeSummary,
 )
+from cocomelon.research.historical_portfolio_capacity import (
+    HistoricalPortfolioCapacityEvaluation,
+)
 from cocomelon.research.historical_ridge import (
     NUMERIC_FEATURES,
     RidgeAlphaValidation,
@@ -46,6 +49,12 @@ from cocomelon.research.historical_ridge_occupancy import (
     OccupancyStableThresholdCandidate,
     run_walk_forward_occupancy_stable_ridge,
 )
+from cocomelon.research.historical_ridge_portfolio_capacity import (
+    PortfolioCapacityRidgeAlphaValidation,
+    PortfolioCapacityRidgeWalkForwardFold,
+    PortfolioCapacityStableThresholdCandidate,
+    run_walk_forward_portfolio_capacity_stable_ridge,
+)
 from cocomelon.research.historical_ridge_stability import (
     StableRidgeAlphaValidation,
     StableRidgeWalkForwardFold,
@@ -60,7 +69,7 @@ from cocomelon.research.historical_tree import (
 )
 
 EVIDENCE_CLASS = "touched_development"
-COMPARISON_VERSION = "historical-directional-model-comparison-v7-occupancy"
+COMPARISON_VERSION = "historical-directional-model-comparison-v8-portfolio-capacity"
 
 
 def _canonical_json(value: object) -> str:
@@ -483,6 +492,121 @@ def _occupancy_ridge_fold(
     }
 
 
+def _portfolio_capacity_evaluation(
+    value: HistoricalPortfolioCapacityEvaluation,
+) -> dict[str, object]:
+    return {
+        "prediction_row_count": value.prediction_row_count,
+        "opportunity_count": value.opportunity_count,
+        "trade_count": value.trade_count,
+        "long_count": value.long_count,
+        "short_count": value.short_count,
+        "no_trade_count": value.no_trade_count,
+        "occupied_skip_count": value.occupied_skip_count,
+        "capacity_skip_count": value.capacity_skip_count,
+        "max_concurrent_positions": value.max_concurrent_positions,
+        "total_realized_net_return": str(value.total_realized_net_return),
+        "mean_realized_net_return": (
+            None
+            if value.mean_realized_net_return is None
+            else str(value.mean_realized_net_return)
+        ),
+    }
+
+
+def _portfolio_capacity_threshold_candidate(
+    value: PortfolioCapacityStableThresholdCandidate,
+) -> dict[str, object]:
+    return {
+        "threshold": str(value.threshold),
+        "qualifies": value.qualifies,
+        "overall": _portfolio_capacity_evaluation(value.overall),
+        "blocks": tuple(_occupancy_trade_summary(block) for block in value.blocks),
+        "worst_block_mean": (
+            None if value.worst_block_mean is None else str(value.worst_block_mean)
+        ),
+    }
+
+
+def _portfolio_capacity_validation(
+    value: PortfolioCapacityRidgeAlphaValidation,
+) -> dict[str, object]:
+    return {
+        "alpha": str(value.alpha),
+        "validation": _portfolio_capacity_evaluation(value.evaluation),
+        "horizons": tuple(
+            {
+                "horizon_ms": item.horizon_ms,
+                "selected_threshold": (
+                    None
+                    if item.calibration.selected_threshold is None
+                    else str(item.calibration.selected_threshold)
+                ),
+                "stability_blocks": item.calibration.stability_blocks,
+                "min_block_trades": item.calibration.min_block_trades,
+                "max_concurrent_positions": (
+                    item.calibration.max_concurrent_positions
+                ),
+                "threshold_candidates": tuple(
+                    _portfolio_capacity_threshold_candidate(candidate)
+                    for candidate in item.calibration.candidates
+                ),
+            }
+            for item in value.horizons
+        ),
+    }
+
+
+def _portfolio_capacity_ridge_fold(
+    value: PortfolioCapacityRidgeWalkForwardFold,
+) -> dict[str, object]:
+    return {
+        "fold_index": value.fold_index,
+        "train_anchor_count": value.train_anchor_count,
+        "validation_anchor_count": value.validation_anchor_count,
+        "test_anchor_count": value.test_anchor_count,
+        "stability_blocks": value.stability_blocks,
+        "min_block_trades": value.min_block_trades,
+        "max_concurrent_positions": value.max_concurrent_positions,
+        "shared_alpha": (
+            None if value.shared_alpha is None else str(value.shared_alpha)
+        ),
+        "market_alpha": (
+            None if value.market_alpha is None else str(value.market_alpha)
+        ),
+        "shared_horizon_thresholds": tuple(
+            {
+                "horizon_ms": horizon_ms,
+                "threshold": None if threshold is None else str(threshold),
+            }
+            for horizon_ms, threshold in value.shared_horizon_thresholds
+        ),
+        "market_horizon_thresholds": tuple(
+            {
+                "horizon_ms": horizon_ms,
+                "threshold": None if threshold is None else str(threshold),
+            }
+            for horizon_ms, threshold in value.market_horizon_thresholds
+        ),
+        "shared_validation": tuple(
+            _portfolio_capacity_validation(item)
+            for item in value.shared_validation
+        ),
+        "market_validation": tuple(
+            _portfolio_capacity_validation(item)
+            for item in value.market_validation
+        ),
+        "shared_test": _portfolio_capacity_evaluation(value.shared_test),
+        "market_test": _portfolio_capacity_evaluation(value.market_test),
+        "shared_test_breakdowns": tuple(
+            _occupancy_breakdown(item) for item in value.shared_test_breakdowns
+        ),
+        "market_test_breakdowns": tuple(
+            _occupancy_breakdown(item) for item in value.market_test_breakdowns
+        ),
+    }
+
+
 def _tree_validation(value: StableTreeValidation) -> dict[str, object]:
     return {
         "validation": _evaluation(value.evaluation),
@@ -560,6 +684,7 @@ class HistoricalModelComparisonConfig:
     stability_blocks: int = 2
     min_validation_block_trades: int = 1
     tree_min_market_samples: int = 100
+    portfolio_max_concurrent_positions: int = 2
     tree_config: TreeModelConfig = TreeModelConfig()
 
     def __post_init__(self) -> None:
@@ -592,6 +717,7 @@ class HistoricalModelComparisonConfig:
             "min_sample_count",
             "min_validation_trades",
             "tree_min_market_samples",
+            "portfolio_max_concurrent_positions",
         ):
             if getattr(self, field) <= 0:
                 raise ValueError(f"{field} must be positive")
@@ -629,6 +755,9 @@ class HistoricalModelComparisonConfig:
             "stability_blocks": self.stability_blocks,
             "min_validation_block_trades": self.min_validation_block_trades,
             "tree_min_market_samples": self.tree_min_market_samples,
+            "portfolio_max_concurrent_positions": (
+                self.portfolio_max_concurrent_positions
+            ),
             "tree_model": self.tree_config.to_dict(),
         }
 
@@ -648,10 +777,13 @@ class HistoricalModelComparisonReport:
     horizon_ridge_folds: tuple[RidgeHorizonWalkForwardFold, ...]
     stable_horizon_ridge_folds: tuple[StableRidgeWalkForwardFold, ...]
     occupancy_stable_ridge_folds: tuple[OccupancyRidgeWalkForwardFold, ...]
+    portfolio_capacity_stable_ridge_folds: tuple[
+        PortfolioCapacityRidgeWalkForwardFold, ...
+    ]
     stable_tree_folds: tuple[StableTreeWalkForwardFold, ...]
     evidence_class: str = EVIDENCE_CLASS
     comparison_version: str = COMPARISON_VERSION
-    schema_version: int = 6
+    schema_version: int = 7
 
     def __post_init__(self) -> None:
         fold_count = len(self.baseline_folds)
@@ -663,6 +795,8 @@ class HistoricalModelComparisonReport:
             raise ValueError("all model fold counts must match")
         if fold_count != len(self.occupancy_stable_ridge_folds):
             raise ValueError("all model fold counts must match")
+        if fold_count != len(self.portfolio_capacity_stable_ridge_folds):
+            raise ValueError("all model fold counts must match")
         if fold_count != len(self.stable_tree_folds):
             raise ValueError("all model fold counts must match")
         for (
@@ -671,6 +805,7 @@ class HistoricalModelComparisonReport:
             horizon_ridge,
             stable_horizon_ridge,
             occupancy_ridge,
+            portfolio_capacity_ridge,
             tree,
         ) in zip(
             self.baseline_folds,
@@ -678,6 +813,7 @@ class HistoricalModelComparisonReport:
             self.horizon_ridge_folds,
             self.stable_horizon_ridge_folds,
             self.occupancy_stable_ridge_folds,
+            self.portfolio_capacity_stable_ridge_folds,
             self.stable_tree_folds,
             strict=True,
         ):
@@ -711,6 +847,12 @@ class HistoricalModelComparisonReport:
                 occupancy_ridge.validation_anchor_count,
                 occupancy_ridge.test_anchor_count,
             )
+            portfolio_capacity_shape = (
+                portfolio_capacity_ridge.fold_index,
+                portfolio_capacity_ridge.train_anchor_count,
+                portfolio_capacity_ridge.validation_anchor_count,
+                portfolio_capacity_ridge.test_anchor_count,
+            )
             tree_shape = (
                 tree.fold_index,
                 tree.train_anchor_count,
@@ -722,6 +864,7 @@ class HistoricalModelComparisonReport:
                 or baseline_shape != horizon_shape
                 or baseline_shape != stable_shape
                 or baseline_shape != occupancy_shape
+                or baseline_shape != portfolio_capacity_shape
                 or baseline_shape != tree_shape
             ):
                 raise ValueError("all model folds must use identical chronology")
@@ -754,6 +897,10 @@ class HistoricalModelComparisonReport:
             "occupancy_stable_ridge_folds": tuple(
                 _occupancy_ridge_fold(item)
                 for item in self.occupancy_stable_ridge_folds
+            ),
+            "portfolio_capacity_stable_ridge_folds": tuple(
+                _portfolio_capacity_ridge_fold(item)
+                for item in self.portfolio_capacity_stable_ridge_folds
             ),
             "stable_tree_folds": tuple(
                 _tree_fold(item) for item in self.stable_tree_folds
@@ -876,6 +1023,29 @@ def build_historical_model_comparison_report(
         min_validation_mean_net_return=config.min_validation_mean_net_return,
         prepared=prepared_ridge,
     )
+    portfolio_capacity_stable_ridge = (
+        run_walk_forward_portfolio_capacity_stable_ridge(
+            rows,
+            costs=config.costs,
+            candidate_alphas=config.candidate_ridge_alphas,
+            candidate_thresholds=config.candidate_thresholds,
+            min_train_anchors=config.min_train_anchors,
+            validation_anchors=config.validation_anchors,
+            test_anchors=config.test_anchors,
+            step_anchors=config.step_anchors,
+            embargo_anchors=config.embargo_anchors,
+            min_market_samples=config.ridge_min_market_samples,
+            min_sample_count=config.min_sample_count,
+            min_validation_trades=config.min_validation_trades,
+            stability_blocks=config.stability_blocks,
+            min_block_trades=config.min_validation_block_trades,
+            max_concurrent_positions=config.portfolio_max_concurrent_positions,
+            min_validation_mean_net_return=(
+                config.min_validation_mean_net_return
+            ),
+            prepared=prepared_ridge,
+        )
+    )
     stable_tree = run_walk_forward_stable_tree(
         rows,
         config=config.tree_config,
@@ -907,6 +1077,9 @@ def build_historical_model_comparison_report(
         horizon_ridge_folds=horizon_ridge.folds,
         stable_horizon_ridge_folds=stable_horizon_ridge.folds,
         occupancy_stable_ridge_folds=occupancy_stable_ridge.folds,
+        portfolio_capacity_stable_ridge_folds=(
+            portfolio_capacity_stable_ridge.folds
+        ),
         stable_tree_folds=stable_tree.folds,
     )
 
