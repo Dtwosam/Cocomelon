@@ -137,11 +137,13 @@ This does **not** authorize:
 
 ### Slice B — historical source acquisition
 
-- [ ] Build an offline historical candle/funding backfill command using `InfoClient`.
-- [ ] Persist raw responses and normalized records with manifests and checksums.
-- [ ] Deduplicate page boundaries and detect coverage gaps.
-- [ ] Add rate-budget-aware resumability.
-- [ ] Produce coverage reports by market/interval/source.
+- [x] Build an offline historical candle/funding backfill command using `InfoClient`.
+- [x] Persist raw responses and normalized records with manifests and checksums.
+- [x] Deduplicate page boundaries and detect coverage gaps.
+- [x] Add rate-budget-aware resumability.
+- [x] Produce coverage reports by market/interval/source.
+
+Verified implementation evidence: PR #235 implementation head `0b463d515b2f0914a1ff7aae5ddc8682a12b931d`; CI run `35609936635` passed compile, Ruff, strict mypy, full pytest, and research smoke.
 
 ### Slice C — point-in-time feature reconstruction
 
