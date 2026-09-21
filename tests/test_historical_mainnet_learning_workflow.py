@@ -45,7 +45,8 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--tree-learning-rate 0.05" in source
     assert "--tree-max-iter 100" in source
     assert "--tree-l2-regularization 1" in source
-    assert "historical-mainnet-learning-2026-09-07-to-2026-09-20" in source
+    assert "FEATURE_SET: historical-market-context-v2" in source
+    assert "historical-mainnet-learning-context-v2-2026-09-07-to-2026-09-20" in source
 
 
 def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifacts() -> None:
