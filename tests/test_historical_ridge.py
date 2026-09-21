@@ -6,6 +6,7 @@ import pytest
 
 pytest.importorskip("numpy")
 
+import cocomelon.research.historical_ridge as ridge_module
 from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
@@ -13,7 +14,14 @@ from cocomelon.research.historical_features import HistoricalFeatureRow, Histori
 from cocomelon.research.historical_learning import DirectionalOutcome
 from cocomelon.research.historical_ridge import (
     fit_ridge_directional_model,
+    prepare_ridge_walk_forward,
     run_walk_forward_ridge,
+)
+from cocomelon.research.historical_ridge_horizon import (
+    run_walk_forward_horizon_calibrated_ridge,
+)
+from cocomelon.research.historical_ridge_stability import (
+    run_walk_forward_stable_horizon_ridge,
 )
 
 ETH = MarketId(dex="", coin="ETH")
@@ -290,3 +298,86 @@ def test_walk_forward_ridge_abstains_when_validation_edge_is_negative() -> None:
     assert fold.shared_threshold is None
     assert fold.shared_test.trade_count == 0
     assert fold.shared_test.no_trade_count == 2
+
+
+def test_prepared_ridge_fits_are_reused_without_changing_reports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = tuple(
+        _row(
+            anchor_end_ms=index * FIVE,
+            return_5m=str(Decimal(index - 7) / Decimal("100")),
+            long_return=str(Decimal(index - 7) / Decimal("200")),
+        )
+        for index in range(1, 13)
+    )
+    shared = {
+        "costs": ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        "candidate_alphas": (Decimal("0.01"), Decimal("0.1")),
+        "candidate_thresholds": (Decimal("0"), Decimal("0.001")),
+        "min_train_anchors": 4,
+        "validation_anchors": 2,
+        "test_anchors": 2,
+        "step_anchors": 2,
+        "embargo_anchors": 0,
+        "min_market_samples": 99,
+        "min_sample_count": 1,
+        "min_validation_trades": 1,
+    }
+
+    expected_pooled = run_walk_forward_ridge(rows, **shared)
+    expected_horizon = run_walk_forward_horizon_calibrated_ridge(rows, **shared)
+    expected_stable = run_walk_forward_stable_horizon_ridge(
+        rows,
+        **shared,
+        stability_blocks=2,
+        min_block_trades=1,
+    )
+
+    original_fit = ridge_module.fit_ridge_directional_model
+    fit_calls = 0
+
+    def counted_fit(*args: object, **kwargs: object) -> object:
+        nonlocal fit_calls
+        fit_calls += 1
+        return original_fit(*args, **kwargs)
+
+    monkeypatch.setattr(ridge_module, "fit_ridge_directional_model", counted_fit)
+    prepared = prepare_ridge_walk_forward(
+        rows,
+        candidate_alphas=shared["candidate_alphas"],
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        min_market_samples=99,
+    )
+    assert fit_calls == len(prepared.folds) * len(prepared.candidate_alphas)
+
+    def forbidden_fit(*args: object, **kwargs: object) -> object:
+        raise AssertionError("prepared ridge evaluation must not refit models")
+
+    monkeypatch.setattr(ridge_module, "fit_ridge_directional_model", forbidden_fit)
+
+    actual_pooled = run_walk_forward_ridge(rows, **shared, prepared=prepared)
+    actual_horizon = run_walk_forward_horizon_calibrated_ridge(
+        rows,
+        **shared,
+        prepared=prepared,
+    )
+    actual_stable = run_walk_forward_stable_horizon_ridge(
+        rows,
+        **shared,
+        stability_blocks=2,
+        min_block_trades=1,
+        prepared=prepared,
+    )
+
+    assert actual_pooled == expected_pooled
+    assert actual_horizon == expected_horizon
+    assert actual_stable == expected_stable
