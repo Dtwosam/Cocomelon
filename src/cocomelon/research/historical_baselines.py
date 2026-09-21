@@ -633,9 +633,150 @@ class PolicyEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyBreakdownEntry:
+    dimension: str
+    value: str
+    evaluation: PolicyEvaluation
+
+    def __post_init__(self) -> None:
+        if self.dimension not in {
+            "market",
+            "horizon_ms",
+            "action",
+            "trend_regime",
+            "estimate_source",
+        }:
+            raise ValueError("unsupported policy breakdown dimension")
+        if not self.value.strip():
+            raise ValueError("policy breakdown value must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class _PolicyObservation:
+    market: str
+    horizon_ms: int
+    trend_regime: TrendRegime
+    action: DecisionAction
+    estimate_source: str
+    realized_net_return: Decimal | None
+
+    def __post_init__(self) -> None:
+        if not self.market.strip():
+            raise ValueError("market must not be empty")
+        if self.horizon_ms <= 0:
+            raise ValueError("horizon_ms must be positive")
+        if not self.estimate_source.strip():
+            raise ValueError("estimate_source must not be empty")
+        if self.realized_net_return is not None:
+            if not self.realized_net_return.is_finite():
+                raise ValueError("realized_net_return must be finite")
+            if self.action is DecisionAction.NO_TRADE:
+                raise ValueError("NO_TRADE cannot have realized return")
+        elif self.action is not DecisionAction.NO_TRADE:
+            raise ValueError("trades require realized return")
+
+
+@dataclass(frozen=True, slots=True)
 class BaselineVariantComparison:
     shared_only: PolicyEvaluation
     coin_calibrated: PolicyEvaluation
+
+
+def _policy_observations(
+    model: ConditionalBaselineModel,
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    policy: DecisionPolicy,
+    costs: ExecutionCostAssumptions,
+    allow_coin_calibration: bool,
+) -> tuple[_PolicyObservation, ...]:
+    observations: list[_PolicyObservation] = []
+    for row in sorted(rows, key=_row_order):
+        estimate = model.predict(
+            row.feature,
+            horizon_ms=row.horizon_ms,
+            allow_coin_calibration=allow_coin_calibration,
+        )
+        decision = policy.decide(estimate, costs=costs)
+        observations.append(
+            _PolicyObservation(
+                market=row.market.canonical,
+                horizon_ms=row.horizon_ms,
+                trend_regime=row.feature.trend_regime,
+                action=decision.action,
+                estimate_source=estimate.source,
+                realized_net_return=_realized_net_return(row, decision),
+            )
+        )
+    return tuple(observations)
+
+
+def _abstained_observations(
+    rows: Sequence[HistoricalTrainingRow],
+) -> tuple[_PolicyObservation, ...]:
+    return tuple(
+        _PolicyObservation(
+            market=row.market.canonical,
+            horizon_ms=row.horizon_ms,
+            trend_regime=row.feature.trend_regime,
+            action=DecisionAction.NO_TRADE,
+            estimate_source="abstained",
+            realized_net_return=None,
+        )
+        for row in sorted(rows, key=_row_order)
+    )
+
+
+def _summarize_observations(
+    observations: Sequence[_PolicyObservation],
+) -> PolicyEvaluation:
+    realized = tuple(
+        item.realized_net_return
+        for item in observations
+        if item.realized_net_return is not None
+    )
+    long_count = sum(1 for item in observations if item.action is DecisionAction.LONG)
+    short_count = sum(1 for item in observations if item.action is DecisionAction.SHORT)
+    no_trade_count = sum(
+        1 for item in observations if item.action is DecisionAction.NO_TRADE
+    )
+    total = sum(realized, ZERO)
+    mean = None if not realized else total / Decimal(len(realized))
+    return PolicyEvaluation(
+        row_count=len(observations),
+        trade_count=len(realized),
+        long_count=long_count,
+        short_count=short_count,
+        no_trade_count=no_trade_count,
+        total_realized_net_return=total,
+        mean_realized_net_return=mean,
+    )
+
+
+def _breakdown_observations(
+    observations: Sequence[_PolicyObservation],
+) -> tuple[PolicyBreakdownEntry, ...]:
+    dimensions = (
+        ("market", lambda item: item.market),
+        ("horizon_ms", lambda item: str(item.horizon_ms)),
+        ("action", lambda item: item.action.value),
+        ("trend_regime", lambda item: item.trend_regime.value),
+        ("estimate_source", lambda item: item.estimate_source),
+    )
+    result: list[PolicyBreakdownEntry] = []
+    for dimension, resolver in dimensions:
+        grouped: dict[str, list[_PolicyObservation]] = defaultdict(list)
+        for observation in observations:
+            grouped[resolver(observation)].append(observation)
+        for value in sorted(grouped):
+            result.append(
+                PolicyBreakdownEntry(
+                    dimension=dimension,
+                    value=value,
+                    evaluation=_summarize_observations(grouped[value]),
+                )
+            )
+    return tuple(result)
 
 
 def evaluate_policy(
@@ -646,41 +787,33 @@ def evaluate_policy(
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> PolicyEvaluation:
-    ordered = tuple(sorted(rows, key=_row_order))
-    long_count = 0
-    short_count = 0
-    no_trade_count = 0
-    realized: list[Decimal] = []
-
-    for row in ordered:
-        estimate = model.predict(
-            row.feature,
-            horizon_ms=row.horizon_ms,
+    return _summarize_observations(
+        _policy_observations(
+            model,
+            rows,
+            policy=policy,
+            costs=costs,
             allow_coin_calibration=allow_coin_calibration,
         )
-        decision = policy.decide(estimate, costs=costs)
-        if decision.action is DecisionAction.NO_TRADE:
-            no_trade_count += 1
-            continue
-        if decision.action is DecisionAction.LONG:
-            long_count += 1
-        else:
-            short_count += 1
-        net_return = _realized_net_return(row, decision)
-        if net_return is None:
-            raise HistoricalBaselineError("trade decision must produce realized net return")
-        realized.append(net_return)
+    )
 
-    total = sum(realized, ZERO)
-    mean = None if not realized else total / Decimal(len(realized))
-    return PolicyEvaluation(
-        row_count=len(ordered),
-        trade_count=len(realized),
-        long_count=long_count,
-        short_count=short_count,
-        no_trade_count=no_trade_count,
-        total_realized_net_return=total,
-        mean_realized_net_return=mean,
+
+def evaluate_policy_breakdowns(
+    model: ConditionalBaselineModel,
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    policy: DecisionPolicy,
+    costs: ExecutionCostAssumptions,
+    allow_coin_calibration: bool,
+) -> tuple[PolicyBreakdownEntry, ...]:
+    return _breakdown_observations(
+        _policy_observations(
+            model,
+            rows,
+            policy=policy,
+            costs=costs,
+            allow_coin_calibration=allow_coin_calibration,
+        )
     )
 
 
@@ -720,6 +853,10 @@ class WalkForwardFoldResult:
     coin_threshold: Decimal | None
     shared_test: PolicyEvaluation
     coin_test: PolicyEvaluation
+    shared_validation_candidates: tuple[ThresholdCandidateResult, ...]
+    coin_validation_candidates: tuple[ThresholdCandidateResult, ...]
+    shared_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
+    coin_test_breakdowns: tuple[PolicyBreakdownEntry, ...]
 
     def __post_init__(self) -> None:
         if self.fold_index <= 0:
@@ -737,6 +874,14 @@ class WalkForwardFoldResult:
         if self.coin_threshold is not None:
             if self.coin_threshold < ZERO or not self.coin_threshold.is_finite():
                 raise ValueError("coin_threshold must be a non-negative finite Decimal")
+        if not self.shared_validation_candidates:
+            raise ValueError("shared_validation_candidates must not be empty")
+        if not self.coin_validation_candidates:
+            raise ValueError("coin_validation_candidates must not be empty")
+        if not self.shared_test_breakdowns:
+            raise ValueError("shared_test_breakdowns must not be empty")
+        if not self.coin_test_breakdowns:
+            raise ValueError("coin_test_breakdowns must not be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -809,15 +954,7 @@ def run_walk_forward_baseline(
         )
 
         if shared_calibration.abstained:
-            shared_test = PolicyEvaluation(
-                row_count=len(fold.test),
-                trade_count=0,
-                long_count=0,
-                short_count=0,
-                no_trade_count=len(fold.test),
-                total_realized_net_return=ZERO,
-                mean_realized_net_return=None,
-            )
+            shared_observations = _abstained_observations(fold.test)
         else:
             shared_threshold = shared_calibration.selected_threshold
             if shared_threshold is None:
@@ -826,24 +963,18 @@ def run_walk_forward_baseline(
                 min_expected_net_edge=shared_threshold,
                 min_sample_count=min_sample_count,
             )
-            shared_test = evaluate_policy(
+            shared_observations = _policy_observations(
                 model,
                 fold.test,
                 policy=shared_policy,
                 costs=costs,
                 allow_coin_calibration=False,
             )
+        shared_test = _summarize_observations(shared_observations)
+        shared_test_breakdowns = _breakdown_observations(shared_observations)
 
         if coin_calibration.abstained:
-            coin_test = PolicyEvaluation(
-                row_count=len(fold.test),
-                trade_count=0,
-                long_count=0,
-                short_count=0,
-                no_trade_count=len(fold.test),
-                total_realized_net_return=ZERO,
-                mean_realized_net_return=None,
-            )
+            coin_observations = _abstained_observations(fold.test)
         else:
             coin_threshold = coin_calibration.selected_threshold
             if coin_threshold is None:
@@ -852,13 +983,15 @@ def run_walk_forward_baseline(
                 min_expected_net_edge=coin_threshold,
                 min_sample_count=min_sample_count,
             )
-            coin_test = evaluate_policy(
+            coin_observations = _policy_observations(
                 model,
                 fold.test,
                 policy=coin_policy,
                 costs=costs,
                 allow_coin_calibration=True,
             )
+        coin_test = _summarize_observations(coin_observations)
+        coin_test_breakdowns = _breakdown_observations(coin_observations)
         results.append(
             WalkForwardFoldResult(
                 fold_index=fold_index,
@@ -869,6 +1002,10 @@ def run_walk_forward_baseline(
                 coin_threshold=coin_calibration.selected_threshold,
                 shared_test=shared_test,
                 coin_test=coin_test,
+                shared_validation_candidates=shared_calibration.candidates,
+                coin_validation_candidates=coin_calibration.candidates,
+                shared_test_breakdowns=shared_test_breakdowns,
+                coin_test_breakdowns=coin_test_breakdowns,
             )
         )
 

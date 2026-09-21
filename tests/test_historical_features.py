@@ -259,3 +259,27 @@ def test_feature_outcome_join_requires_exact_market_anchor_and_preserves_both_si
     assert first.short_gross_return == Decimal("-0.1")
     assert first.horizon_ms == FIVE
     assert len(first.training_row_id) == 24
+
+
+
+def test_historical_features_compute_funding_change_across_small_timestamp_jitter() -> None:
+    candles_5m = tuple(
+        _candle(interval="5m", start_ms=index * FIVE, close=str(100 + index))
+        for index in range(14)
+    )
+    funding = (
+        _funding(41, rate="0.0001", premium="0.0002"),
+        _funding(HOUR + 73, rate="0.0003", premium="0.0005"),
+    )
+
+    rows = build_historical_feature_rows(
+        candles_5m=candles_5m,
+        candles_15m=(),
+        funding_rates=funding,
+        source_manifest_ids=("funding-manifest",),
+    )
+
+    anchor = next(row for row in rows if row.anchor_end_ms > HOUR + 73)
+    assert anchor.funding_rate == Decimal("0.0003")
+    assert anchor.funding_change == Decimal("0.0002")
+    assert anchor.funding_premium_change == Decimal("0.0003")

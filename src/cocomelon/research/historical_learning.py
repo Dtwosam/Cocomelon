@@ -10,6 +10,22 @@ from cocomelon.domain.market import Candle, MarketId
 from cocomelon.hyperliquid.client import INTERVAL_MS
 
 FUNDING_INTERVAL_MS = 3_600_000
+FUNDING_INTERVAL_TOLERANCE_MS = 60_000
+
+
+def is_expected_funding_successor(
+    previous_time_ms: int,
+    current_time_ms: int,
+    *,
+    expected_interval_ms: int = FUNDING_INTERVAL_MS,
+    tolerance_ms: int = FUNDING_INTERVAL_TOLERANCE_MS,
+) -> bool:
+    if expected_interval_ms <= 0:
+        raise ValueError("expected_interval_ms must be positive")
+    if tolerance_ms < 0:
+        raise ValueError("tolerance_ms must be non-negative")
+    delta_ms = current_time_ms - previous_time_ms
+    return abs(delta_ms - expected_interval_ms) <= tolerance_ms
 
 
 class HistoricalLearningError(RuntimeError):

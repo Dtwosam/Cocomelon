@@ -450,3 +450,29 @@ def test_coverage_report_includes_candle_and_funding_provenance(
     assert isinstance(sources, list)
     assert [item["kind"] for item in sources] == ["candles", "funding"]
     assert all(item["source"] == "hyperliquid-mainnet-info" for item in sources)
+
+
+
+def test_backfill_funding_treats_small_settlement_timestamp_jitter_as_contiguous(
+    tmp_path: Path,
+) -> None:
+    result = backfill_funding(
+        FakeFundingClient(
+            {
+                (0, 2 * FUNDING_STEP): [
+                    _raw_funding(41),
+                    _raw_funding(FUNDING_STEP + 73),
+                    _raw_funding(2 * FUNDING_STEP - 19),
+                ]
+            }
+        ),
+        market=MARKET,
+        start_ms=0,
+        end_ms=2 * FUNDING_STEP,
+        root=tmp_path,
+        clock_ms=lambda: 20_000_000,
+        max_items=500,
+    )
+
+    assert result.manifest.gap_ranges == ()
+    assert result.manifest.continuous_observed_grid is True

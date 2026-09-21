@@ -571,3 +571,63 @@ def test_threshold_calibration_can_abstain_when_validation_has_no_qualifying_tra
     assert calibration.selected_threshold is None
     assert calibration.abstained is True
     assert all(item.trade_count == 0 for item in calibration.candidates)
+
+
+
+def test_walk_forward_report_preserves_validation_candidates_and_test_breakdowns() -> None:
+    rows = tuple(
+        _row(
+            market=ETH if index % 2 else BTC,
+            anchor_end_ms=index * FIVE,
+            trend=TrendRegime.UP if index <= 6 else TrendRegime.DOWN,
+            return_5m="0.01" if index <= 6 else "-0.01",
+            long_return="0.03" if index <= 6 else "-0.02",
+            short_return="-0.03" if index <= 6 else "0.02",
+        )
+        for index in range(1, 9)
+    )
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    report = run_walk_forward_baseline(
+        rows,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"), Decimal("0.01")),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        min_state_samples=1,
+        min_coin_samples=99,
+        min_sample_count=1,
+        min_validation_trades=1,
+    )
+
+    fold = report.folds[0]
+    assert [item.threshold for item in fold.shared_validation_candidates] == [
+        Decimal("0"),
+        Decimal("0.01"),
+    ]
+    assert [item.threshold for item in fold.coin_validation_candidates] == [
+        Decimal("0"),
+        Decimal("0.01"),
+    ]
+
+    shared_breakdowns = {
+        (item.dimension, item.value): item.evaluation
+        for item in fold.shared_test_breakdowns
+    }
+    assert ("market", "BTC") in shared_breakdowns
+    assert ("market", "ETH") in shared_breakdowns
+    assert ("horizon_ms", str(FIVE)) in shared_breakdowns
+    assert ("trend_regime", TrendRegime.DOWN.value) in shared_breakdowns
+    assert ("action", "long") in shared_breakdowns
+    assert shared_breakdowns[("action", "long")].trade_count == 2
+    assert (
+        shared_breakdowns[("action", "long")].mean_realized_net_return
+        == Decimal("-0.02")
+    )

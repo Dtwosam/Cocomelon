@@ -11,7 +11,9 @@ from pathlib import Path
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
     ExecutionCostAssumptions,
+    PolicyBreakdownEntry,
     PolicyEvaluation,
+    ThresholdCandidateResult,
     WalkForwardFoldResult,
     run_walk_forward_baseline,
 )
@@ -22,7 +24,7 @@ from cocomelon.research.historical_dataset import (
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 
-EXPERIMENT_VERSION = "historical-conditional-baseline-v1"
+EXPERIMENT_VERSION = "historical-conditional-baseline-v2"
 EVIDENCE_CLASS = "touched_development"
 
 
@@ -136,6 +138,29 @@ def _evaluation_payload(value: PolicyEvaluation) -> dict[str, object]:
     }
 
 
+def _threshold_candidate_payload(
+    value: ThresholdCandidateResult,
+) -> dict[str, object]:
+    return {
+        "threshold": str(value.threshold),
+        "trade_count": value.trade_count,
+        "total_realized_net_return": str(value.total_realized_net_return),
+        "mean_realized_net_return": (
+            None
+            if value.mean_realized_net_return is None
+            else str(value.mean_realized_net_return)
+        ),
+    }
+
+
+def _breakdown_payload(value: PolicyBreakdownEntry) -> dict[str, object]:
+    return {
+        "dimension": value.dimension,
+        "value": value.value,
+        "evaluation": _evaluation_payload(value.evaluation),
+    }
+
+
 def _fold_payload(value: WalkForwardFoldResult) -> dict[str, object]:
     return {
         "fold_index": value.fold_index,
@@ -150,6 +175,22 @@ def _fold_payload(value: WalkForwardFoldResult) -> dict[str, object]:
         ),
         "shared_test": _evaluation_payload(value.shared_test),
         "coin_test": _evaluation_payload(value.coin_test),
+        "shared_validation_candidates": tuple(
+            _threshold_candidate_payload(item)
+            for item in value.shared_validation_candidates
+        ),
+        "coin_validation_candidates": tuple(
+            _threshold_candidate_payload(item)
+            for item in value.coin_validation_candidates
+        ),
+        "shared_test_breakdowns": tuple(
+            _breakdown_payload(item)
+            for item in value.shared_test_breakdowns
+        ),
+        "coin_test_breakdowns": tuple(
+            _breakdown_payload(item)
+            for item in value.coin_test_breakdowns
+        ),
     }
 
 
@@ -165,7 +206,7 @@ class HistoricalExperimentReport:
     folds: tuple[WalkForwardFoldResult, ...]
     evidence_class: str = EVIDENCE_CLASS
     experiment_version: str = EXPERIMENT_VERSION
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
         for field in ("dataset_id", "dataset_logical_sha256"):
