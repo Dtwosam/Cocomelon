@@ -9,6 +9,8 @@ from decimal import Decimal
 from cocomelon.domain.market import Candle, MarketId
 from cocomelon.hyperliquid.client import INTERVAL_MS
 
+FUNDING_INTERVAL_MS = 3_600_000
+
 
 class HistoricalLearningError(RuntimeError):
     pass
@@ -34,6 +36,25 @@ class CandleBackfillWindow:
     @property
     def candle_capacity(self) -> int:
         return ((self.end_ms - self.start_ms) // self.interval_ms) + 1
+
+
+@dataclass(frozen=True, slots=True)
+class FundingBackfillWindow:
+    start_ms: int
+    end_ms: int
+    expected_interval_ms: int = FUNDING_INTERVAL_MS
+
+    def __post_init__(self) -> None:
+        if self.start_ms < 0:
+            raise ValueError("start_ms must be non-negative")
+        if self.end_ms < self.start_ms:
+            raise ValueError("end_ms must be >= start_ms")
+        if self.expected_interval_ms <= 0:
+            raise ValueError("expected_interval_ms must be positive")
+
+    @property
+    def item_capacity(self) -> int:
+        return ((self.end_ms - self.start_ms) // self.expected_interval_ms) + 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +157,42 @@ def plan_candle_windows(
             )
         )
         cursor = window_end + interval_ms
+    return tuple(windows)
+
+
+def plan_funding_windows(
+    *,
+    start_ms: int,
+    end_ms: int,
+    max_items: int = 500,
+    expected_interval_ms: int = FUNDING_INTERVAL_MS,
+) -> tuple[FundingBackfillWindow, ...]:
+    if start_ms < 0:
+        raise ValueError("start_ms must be non-negative")
+    if end_ms < start_ms:
+        raise ValueError("end_ms must be >= start_ms")
+    if max_items <= 0:
+        raise ValueError("max_items must be positive")
+    if max_items == 1 and end_ms > start_ms:
+        raise ValueError("max_items must be at least 2 for a ranged funding backfill")
+    if expected_interval_ms <= 0:
+        raise ValueError("expected_interval_ms must be positive")
+
+    max_span_ms = (max_items - 1) * expected_interval_ms
+    windows: list[FundingBackfillWindow] = []
+    cursor = start_ms
+    while cursor <= end_ms:
+        window_end = min(end_ms, cursor + max_span_ms)
+        windows.append(
+            FundingBackfillWindow(
+                start_ms=cursor,
+                end_ms=window_end,
+                expected_interval_ms=expected_interval_ms,
+            )
+        )
+        if window_end == end_ms:
+            break
+        cursor = window_end
     return tuple(windows)
 
 
