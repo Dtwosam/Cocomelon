@@ -18,7 +18,6 @@ from cocomelon.research.historical_baselines import (
     TemporalSplit,
     ThresholdCalibration,
     calibrate_no_trade_threshold,
-    evaluate_policy,
     evaluate_predicted_policy,
     evaluate_predicted_policy_breakdowns,
     predict_training_rows,
