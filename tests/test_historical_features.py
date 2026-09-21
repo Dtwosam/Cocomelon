@@ -115,14 +115,14 @@ def test_historical_features_match_live_candle_math_when_history_is_contiguous()
     assert latest.return_5m == Decimal("162") / Decimal("161") - Decimal("1")
     assert latest.return_15m == Decimal("106") / Decimal("105") - Decimal("1")
     assert latest.return_1h == Decimal("106") / Decimal("102") - Decimal("1")
-    assert latest.return_4h is None
+    assert latest.return_4h == Decimal("120") / Decimal("104") - Decimal("1")
     assert latest.trend_regime is TrendRegime.UP
 
 
 def test_historical_features_do_not_bridge_missing_candle_gaps() -> None:
-    candles_5m = (
-        _candle(interval="5m", start_ms=0, close="100"),
-        _candle(interval="5m", start_ms=2 * FIVE, close="120"),
+    candles_5m = tuple(
+        _candle(interval="5m", start_ms=index * FIVE, close=str(100 + index))
+        for index in range(63)
     )
     candles_15m = tuple(
         _candle(interval="15m", start_ms=index * FIFTEEN, close=str(100 + index))
