@@ -25,9 +25,10 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-      SOURCE_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/sources
-      EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/experiment
-      COMPARISON_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/model-comparison
+      FEATURE_SET: historical-market-context-v2
+      SOURCE_ROOT: artifacts/historical-mainnet-context-v2-2026-09-07-to-2026-09-20/sources
+      EXPERIMENT_ROOT: artifacts/historical-mainnet-context-v2-2026-09-07-to-2026-09-20/experiment
+      COMPARISON_ROOT: artifacts/historical-mainnet-context-v2-2026-09-07-to-2026-09-20/model-comparison
       WINDOW_START_ISO: "2026-09-07T00:00:00+00:00"
       WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
 
@@ -213,8 +214,8 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: historical-mainnet-learning-2026-09-07-to-2026-09-20
-          path: artifacts/historical-mainnet-2026-09-07-to-2026-09-20
+          name: historical-mainnet-learning-context-v2-2026-09-07-to-2026-09-20
+          path: artifacts/historical-mainnet-context-v2-2026-09-07-to-2026-09-20
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
