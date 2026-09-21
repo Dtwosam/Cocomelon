@@ -90,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ridge-min-market-samples", required=True, type=int)
     parser.add_argument("--min-sample-count", required=True, type=int)
     parser.add_argument("--min-validation-trades", required=True, type=int)
+    parser.add_argument("--stable-validation-segments", required=True, type=int)
+    parser.add_argument(
+        "--stable-min-segment-validation-trades",
+        required=True,
+        type=int,
+    )
     parser.add_argument(
         "--min-validation-mean-net-return",
         type=_decimal,
@@ -120,6 +126,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             ridge_min_market_samples=args.ridge_min_market_samples,
             min_sample_count=args.min_sample_count,
             min_validation_trades=args.min_validation_trades,
+            stable_validation_segments=args.stable_validation_segments,
+            stable_min_segment_validation_trades=(
+                args.stable_min_segment_validation_trades
+            ),
             min_validation_mean_net_return=args.min_validation_mean_net_return,
         )
         report = run_historical_model_comparison_from_sources(
