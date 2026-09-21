@@ -625,5 +625,9 @@ def test_walk_forward_report_preserves_validation_candidates_and_test_breakdowns
     assert ("market", "ETH") in shared_breakdowns
     assert ("horizon_ms", str(FIVE)) in shared_breakdowns
     assert ("trend_regime", TrendRegime.DOWN.value) in shared_breakdowns
-    assert ("action", "short") in shared_breakdowns
-    assert shared_breakdowns[("action", "short")].trade_count == 2
+    assert ("action", "long") in shared_breakdowns
+    assert shared_breakdowns[("action", "long")].trade_count == 2
+    assert (
+        shared_breakdowns[("action", "long")].mean_realized_net_return
+        == Decimal("-0.02")
+    )
