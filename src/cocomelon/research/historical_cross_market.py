@@ -142,7 +142,46 @@ def enrich_training_rows_with_basket_context(
 
             enriched = replace(
                 target,
-                **context,
+                btc_return_5m=context["btc_return_5m"],
+                btc_return_15m=context["btc_return_15m"],
+                btc_return_1h=context["btc_return_1h"],
+                btc_return_4h=context["btc_return_4h"],
+                eth_return_5m=context["eth_return_5m"],
+                eth_return_15m=context["eth_return_15m"],
+                eth_return_1h=context["eth_return_1h"],
+                eth_return_4h=context["eth_return_4h"],
+                basket_median_return_5m=context["basket_median_return_5m"],
+                basket_median_return_15m=context["basket_median_return_15m"],
+                basket_median_return_1h=context["basket_median_return_1h"],
+                basket_median_return_4h=context["basket_median_return_4h"],
+                basket_breadth_positive_5m=context[
+                    "basket_breadth_positive_5m"
+                ],
+                basket_breadth_positive_15m=context[
+                    "basket_breadth_positive_15m"
+                ],
+                basket_breadth_positive_1h=context[
+                    "basket_breadth_positive_1h"
+                ],
+                basket_breadth_positive_4h=context[
+                    "basket_breadth_positive_4h"
+                ],
+                relative_return_5m_vs_basket=context[
+                    "relative_return_5m_vs_basket"
+                ],
+                relative_return_15m_vs_basket=context[
+                    "relative_return_15m_vs_basket"
+                ],
+                relative_return_1h_vs_basket=context[
+                    "relative_return_1h_vs_basket"
+                ],
+                relative_return_4h_vs_basket=context[
+                    "relative_return_4h_vs_basket"
+                ],
+                basket_return_count_5m=context["basket_return_count_5m"],
+                basket_return_count_15m=context["basket_return_count_15m"],
+                basket_return_count_1h=context["basket_return_count_1h"],
+                basket_return_count_4h=context["basket_return_count_4h"],
                 source_retrieved_at_ms=retrieved_at_ms,
                 retrieved_after_anchor=retrieved_at_ms > anchor_end_ms,
                 available_features=tuple(sorted(available)),
