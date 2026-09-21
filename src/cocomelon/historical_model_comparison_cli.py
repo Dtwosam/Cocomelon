@@ -95,6 +95,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baseline-min-coin-samples", required=True, type=int)
     parser.add_argument("--ridge-min-market-samples", required=True, type=int)
     parser.add_argument("--tree-min-market-samples", type=int, default=100)
+    parser.add_argument(
+        "--portfolio-max-concurrent-positions",
+        type=int,
+        default=2,
+    )
     parser.add_argument("--tree-max-leaf-nodes", type=int, default=7)
     parser.add_argument("--tree-min-samples-leaf", type=int, default=100)
     parser.add_argument("--tree-learning-rate", type=_decimal, default=Decimal("0.05"))
@@ -142,6 +147,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             stability_blocks=args.stability_blocks,
             min_validation_block_trades=args.min_validation_block_trades,
             tree_min_market_samples=args.tree_min_market_samples,
+            portfolio_max_concurrent_positions=(
+                args.portfolio_max_concurrent_positions
+            ),
             tree_config=TreeModelConfig(
                 max_leaf_nodes=args.tree_max_leaf_nodes,
                 min_samples_leaf=args.tree_min_samples_leaf,
