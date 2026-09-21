@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-lz4 = pytest.importorskip("lz4.frame")
-
 from cocomelon.domain.market import MarketId
-from cocomelon.research.historical_dataset import load_candle_source
 from cocomelon.historical_archive_candles_cli import ingest_archive_candles
+from cocomelon.research.historical_dataset import load_candle_source
+
+lz4 = pytest.importorskip("lz4.frame")
 
 BTC = MarketId(dex="", coin="BTC")
 FIVE = 300_000
