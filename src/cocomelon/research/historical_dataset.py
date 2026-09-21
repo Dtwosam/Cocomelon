@@ -346,6 +346,9 @@ def build_training_rows_from_source_root(
         raise ValueError("at least one market is required")
     if not horizons_ms:
         raise ValueError("at least one horizon is required")
+    base_interval_ms = 300_000
+    if any(value <= 0 or value % base_interval_ms != 0 for value in horizons_ms):
+        raise ValueError("horizons must be positive multiples of the 5m base interval")
 
     combined: list[HistoricalTrainingRow] = []
     seen_training_ids: set[str] = set()
@@ -587,7 +590,8 @@ def export_training_dataset(
             version="2.6",
             use_dictionary=True,
         )
-        with temporary.open("rb") as handle:
+        with temporary.open("rb+") as handle:
+            handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, output_path)
         directory_fd = os.open(output_root, os.O_RDONLY)
