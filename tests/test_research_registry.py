@@ -176,6 +176,106 @@ def test_registry_rejects_cross_family_or_inexact_parent_lineage(tmp_path: Path)
     registry.close()
 
 
+def test_shared_replay_run_id_is_candidate_scoped_for_fanout(tmp_path: Path) -> None:
+    registry = ResearchRegistry(tmp_path / "research.sqlite3")
+    registry.create_candidate(_candidate("root", digest_char="a"))
+    registry.create_candidate(_candidate("challenger", digest_char="b"))
+    registry.mark_v4_registry_complete_through(
+        through_ms=2_000,
+        source_id=V4_TEST_SOURCE,
+    )
+
+    for candidate_id in ("root", "challenger"):
+        registry.record_batch(
+            candidate_id=candidate_id,
+            batch_id=f"batch-{candidate_id}",
+            source_id="shared-source",
+            replay_run_id="shared-replay",
+            interval=TimeInterval(1_000, 2_000),
+        )
+
+    rows = registry.connection.execute(
+        "SELECT candidate_id, replay_run_id FROM research_batches ORDER BY candidate_id"
+    ).fetchall()
+    assert [(str(row["candidate_id"]), str(row["replay_run_id"])) for row in rows] == [
+        ("challenger", "shared-replay"),
+        ("root", "shared-replay"),
+    ]
+
+    with raises(ResearchRegistryError, match="replay run already belongs"):
+        registry.record_batch(
+            candidate_id="challenger",
+            batch_id="batch-challenger-duplicate",
+            source_id="shared-source",
+            replay_run_id="shared-replay",
+            interval=TimeInterval(1_000, 2_000),
+        )
+    registry.close()
+
+
+def test_registry_migrates_legacy_global_replay_uniqueness(tmp_path: Path) -> None:
+    path = tmp_path / "research.sqlite3"
+    registry = ResearchRegistry(path)
+    registry.create_candidate(_candidate("root", digest_char="a"))
+    registry.create_candidate(_candidate("challenger", digest_char="b"))
+    registry.mark_v4_registry_complete_through(
+        through_ms=2_000,
+        source_id=V4_TEST_SOURCE,
+    )
+    registry.record_batch(
+        candidate_id="root",
+        batch_id="batch-root",
+        source_id="shared-source",
+        replay_run_id="shared-replay",
+        interval=TimeInterval(1_000, 2_000),
+    )
+    registry.close()
+
+    with sqlite3.connect(path) as connection:
+        connection.execute("PRAGMA foreign_keys = OFF")
+        connection.executescript(
+            """
+            CREATE TABLE research_batches_legacy (
+                batch_id TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                replay_run_id TEXT NOT NULL UNIQUE,
+                start_ms INTEGER NOT NULL,
+                end_ms INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'admitted',
+                contamination_v4_run_id TEXT,
+                FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
+            );
+            INSERT INTO research_batches_legacy (
+                batch_id, candidate_id, source_id, replay_run_id,
+                start_ms, end_ms, status, contamination_v4_run_id
+            )
+            SELECT batch_id, candidate_id, source_id, replay_run_id,
+                   start_ms, end_ms, status, contamination_v4_run_id
+            FROM research_batches;
+            DROP TABLE research_batches;
+            ALTER TABLE research_batches_legacy RENAME TO research_batches;
+            """
+        )
+
+    migrated = ResearchRegistry(path)
+    migrated.record_batch(
+        candidate_id="challenger",
+        batch_id="batch-challenger",
+        source_id="shared-source",
+        replay_run_id="shared-replay",
+        interval=TimeInterval(1_000, 2_000),
+    )
+    rows = migrated.connection.execute(
+        "SELECT batch_id, candidate_id FROM research_batches ORDER BY batch_id"
+    ).fetchall()
+    assert [(str(row["batch_id"]), str(row["candidate_id"])) for row in rows] == [
+        ("batch-challenger", "challenger"),
+        ("batch-root", "root"),
+    ]
+    migrated.close()
+
+
 def test_any_registered_v4_interval_blocks_overlapping_research_source(tmp_path: Path) -> None:
     registry = ResearchRegistry(tmp_path / "research.sqlite3")
     registry.record_v4_interval(
