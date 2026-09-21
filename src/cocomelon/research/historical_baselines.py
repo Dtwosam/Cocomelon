@@ -451,6 +451,15 @@ class DirectionalDecision:
             raise ValueError("estimate_source must not be empty")
 
 
+class HistoricalDecisionPolicy(Protocol):
+    def decide(
+        self,
+        estimate: DirectionalPrediction,
+        *,
+        costs: ExecutionCostAssumptions,
+    ) -> DirectionalDecision: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionPolicy:
     min_expected_net_edge: Decimal
@@ -755,7 +764,7 @@ def _policy_observations(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> tuple[_PolicyObservation, ...]:
@@ -852,7 +861,7 @@ def evaluate_policy(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> PolicyEvaluation:
@@ -871,7 +880,7 @@ def evaluate_policy_breakdowns(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> tuple[PolicyBreakdownEntry, ...]:
@@ -890,7 +899,7 @@ def compare_shared_and_coin_calibration(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
 ) -> BaselineVariantComparison:
     return BaselineVariantComparison(
