@@ -462,7 +462,7 @@ def test_backfill_funding_treats_small_settlement_timestamp_jitter_as_contiguous
                 (0, 2 * FUNDING_STEP): [
                     _raw_funding(41),
                     _raw_funding(FUNDING_STEP + 73),
-                    _raw_funding(2 * FUNDING_STEP + 19),
+                    _raw_funding(2 * FUNDING_STEP - 19),
                 ]
             }
         ),
