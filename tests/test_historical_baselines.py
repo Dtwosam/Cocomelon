@@ -540,3 +540,34 @@ def test_walk_forward_threshold_is_independent_of_future_test_outcomes() -> None
     assert positive_report.folds[0].coin_threshold == negative_report.folds[0].coin_threshold
     assert positive_report.folds[0].shared_test.mean_realized_net_return == Decimal("0.05")
     assert negative_report.folds[0].shared_test.mean_realized_net_return == Decimal("-0.05")
+
+
+
+def test_threshold_calibration_can_abstain_when_validation_has_no_qualifying_trades() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.001", short_return="-0.001"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.001", short_return="-0.001"),
+    )
+    validation = (
+        _row(anchor_end_ms=3 * FIVE, long_return="0.001", short_return="-0.001"),
+        _row(anchor_end_ms=4 * FIVE, long_return="0.001", short_return="-0.001"),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=99)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0.002"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    calibration = calibrate_no_trade_threshold(
+        model,
+        validation,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"), Decimal("0.001")),
+        min_sample_count=2,
+        min_validation_trades=1,
+    )
+
+    assert calibration.selected_threshold is None
+    assert calibration.abstained is True
+    assert all(item.trade_count == 0 for item in calibration.candidates)
