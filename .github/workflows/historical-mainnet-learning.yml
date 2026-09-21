@@ -25,8 +25,8 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-      SOURCE_ROOT: artifacts/historical-mainnet-2026-08/sources
-      EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-08/experiment
+      SOURCE_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/sources
+      EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-09-07-to-2026-09-20/experiment
       WINDOW_START_ISO: "2026-09-07T00:00:00+00:00"
       WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
 
@@ -67,7 +67,18 @@ jobs:
       - name: Acquire authenticated public-mainnet history
         run: |
           set -euo pipefail
-          cocomelon-historical-backfill             --root "$SOURCE_ROOT"             --market BTC             --market ETH             --market SOL             --market HYPE             --interval 5m             --interval 15m             --start-ms "$WINDOW_START_MS"             --end-ms "$WINDOW_END_MS"             --max-candles 5000             --max-funding-items 500
+          cocomelon-historical-backfill \
+            --root "$SOURCE_ROOT" \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --interval 5m \
+            --interval 15m \
+            --start-ms "$WINDOW_START_MS" \
+            --end-ms "$WINDOW_END_MS" \
+            --max-candles 5000 \
+            --max-funding-items 500
 
       - name: Render authenticated source coverage
         run: |
@@ -77,7 +88,33 @@ jobs:
       - name: Run touched walk-forward learning experiment
         run: |
           set -euo pipefail
-          cocomelon-historical-experiment             --source-root "$SOURCE_ROOT"             --output-root "$EXPERIMENT_ROOT"             --market BTC             --market ETH             --market SOL             --market HYPE             --horizon-ms 900000             --horizon-ms 3600000             --horizon-ms 14400000             --round-trip-fee-fraction 0.0007             --round-trip-slippage-fraction 0.0005             --funding-reserve-fraction-per-hour 0.0001             --candidate-threshold 0             --candidate-threshold 0.0005             --candidate-threshold 0.001             --candidate-threshold 0.002             --candidate-threshold 0.004             --min-train-anchors 1400             --validation-anchors 500             --test-anchors 500             --step-anchors 500             --embargo-anchors 48             --min-state-samples 50             --min-coin-samples 100             --min-sample-count 50             --min-validation-trades 20
+          cocomelon-historical-experiment \
+            --source-root "$SOURCE_ROOT" \
+            --output-root "$EXPERIMENT_ROOT" \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --horizon-ms 900000 \
+            --horizon-ms 3600000 \
+            --horizon-ms 14400000 \
+            --round-trip-fee-fraction 0.0007 \
+            --round-trip-slippage-fraction 0.0005 \
+            --funding-reserve-fraction-per-hour 0.0001 \
+            --candidate-threshold 0 \
+            --candidate-threshold 0.0005 \
+            --candidate-threshold 0.001 \
+            --candidate-threshold 0.002 \
+            --candidate-threshold 0.004 \
+            --min-train-anchors 1400 \
+            --validation-anchors 500 \
+            --test-anchors 500 \
+            --step-anchors 500 \
+            --embargo-anchors 48 \
+            --min-state-samples 50 \
+            --min-coin-samples 100 \
+            --min-sample-count 50 \
+            --min-validation-trades 20
 
       - name: Render touched report summary
         run: |
@@ -99,7 +136,11 @@ jobs:
                 shared_threshold,
                 coin_threshold,
                 shared_test,
-                coin_test
+                coin_test,
+                shared_validation_candidates,
+                coin_validation_candidates,
+                shared_test_breakdowns,
+                coin_test_breakdowns
               }
             ]
           }' "$EXPERIMENT_ROOT/experiment.json"
@@ -108,8 +149,8 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: historical-mainnet-learning-2026-08
-          path: artifacts/historical-mainnet-2026-08
+          name: historical-mainnet-learning-2026-09-07-to-2026-09-20
+          path: artifacts/historical-mainnet-2026-09-07-to-2026-09-20
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
