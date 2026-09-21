@@ -144,3 +144,7 @@ def test_experiment_report_serializes_costs_thresholds_and_fold_results(tmp_path
     assert payload["config"]["candidate_thresholds"] == ["0", "0.005", "0.01"]
     assert payload["folds"][0]["shared_threshold"] in {"0", "0.005", "0.01"}
     assert payload["folds"][0]["shared_test"]["trade_count"] == 2
+    assert payload["folds"][0]["shared_validation_candidates"]
+    assert payload["folds"][0]["coin_validation_candidates"]
+    assert payload["folds"][0]["shared_test_breakdowns"]
+    assert payload["folds"][0]["coin_test_breakdowns"]
