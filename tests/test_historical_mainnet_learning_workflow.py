@@ -81,3 +81,17 @@ def test_historical_mainnet_workflow_renders_dataset_feature_registry() -> None:
     assert "$COMPARISON_ROOT/dataset/manifest.json" in source
     assert "converter_version" in source
     assert "columns" in source
+
+
+
+def test_historical_mainnet_workflow_reruns_on_core_feature_changes() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    for path in (
+        "src/cocomelon/research/historical_cross_market.py",
+        "src/cocomelon/research/historical_dataset.py",
+        "src/cocomelon/research/historical_features.py",
+        "src/cocomelon/research/historical_model_comparison.py",
+        "src/cocomelon/historical_model_comparison_cli.py",
+    ):
+        assert f'- "{path}"' in source
