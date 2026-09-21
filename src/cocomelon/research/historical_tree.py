@@ -95,9 +95,16 @@ class TreeModelConfig:
 
 @dataclass(frozen=True, slots=True)
 class TreeFeatureEncoder:
+    numeric_feature_names: tuple[str, ...]
     market_names: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        if not self.numeric_feature_names:
+            raise ValueError("numeric_feature_names must not be empty")
+        if tuple(dict.fromkeys(self.numeric_feature_names)) != self.numeric_feature_names:
+            raise ValueError("numeric_feature_names must be unique and ordered")
+        if any(name not in NUMERIC_FEATURES for name in self.numeric_feature_names):
+            raise ValueError("numeric_feature_names must come from the registry")
         if tuple(sorted(set(self.market_names))) != self.market_names:
             raise ValueError("market_names must be sorted and unique")
 
@@ -107,7 +114,10 @@ class TreeFeatureEncoder:
         *,
         include_market: bool,
     ) -> tuple[float, ...]:
-        values = [_numeric_value(feature, name) for name in NUMERIC_FEATURES]
+        values = [
+            _numeric_value(feature, name)
+            for name in self.numeric_feature_names
+        ]
         values.extend(
             1.0 if feature.trend_regime is regime else 0.0
             for regime in TREND_REGIMES
@@ -263,7 +273,17 @@ def fit_tree_directional_model(
                 if count >= min_market_samples
             )
         )
-        encoder = TreeFeatureEncoder(market_names=market_names)
+        numeric_feature_names = tuple(
+            name
+            for name in NUMERIC_FEATURES
+            if any(getattr(row.feature, name) is not None for row in horizon_rows)
+        )
+        if not numeric_feature_names:
+            raise HistoricalTreeError("tree horizon has no observed numeric features")
+        encoder = TreeFeatureEncoder(
+            numeric_feature_names=numeric_feature_names,
+            market_names=market_names,
+        )
         targets = tuple(float(row.long_gross_return) for row in horizon_rows)
         shared_vectors = tuple(
             encoder.vector(row.feature, include_market=False)
