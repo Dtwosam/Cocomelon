@@ -25,8 +25,8 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
-      SOURCE_ROOT: artifacts/historical-mainnet-2026-08/sources
-      EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-08/experiment
+      SOURCE_ROOT: artifacts/historical-mainnet-2026-09/sources
+      EXPERIMENT_ROOT: artifacts/historical-mainnet-2026-09/experiment
       WINDOW_START_ISO: "2026-09-07T00:00:00+00:00"
       WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
 
@@ -99,7 +99,11 @@ jobs:
                 shared_threshold,
                 coin_threshold,
                 shared_test,
-                coin_test
+                coin_test,
+                shared_validation_candidates,
+                coin_validation_candidates,
+                shared_test_breakdowns,
+                coin_test_breakdowns
               }
             ]
           }' "$EXPERIMENT_ROOT/experiment.json"
@@ -109,7 +113,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: historical-mainnet-learning-2026-08
-          path: artifacts/historical-mainnet-2026-08
+          path: artifacts/historical-mainnet-2026-09
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
