@@ -77,45 +77,73 @@ Later V4 cohorts are historical/touched only and may not be used to retune the l
 
 ---
 
-## 4. Active research frontier — r2
+## 4. Active research frontier — historical two-sided learning
 
-Active plan: `docs/superpowers/plans/2026-09-20-r2-natural-research-validation.md`.
+Primary plan: `docs/superpowers/plans/2026-09-21-historical-directional-learning.md`.
 
-Active challenger:
+D-025 changes the primary architecture from a hand-filtered short-only challenger to a historical, direction-neutral learner.
 
-- candidate: `research-r2-short-trend-quality-v1`;
+Target behavior:
+
+- study trustworthy historical market states across the dynamically eligible coin universe;
+- reconstruct only features that were known at each historical timestamp;
+- label future LONG and SHORT outcomes at predeclared horizons;
+- learn side-specific expected net opportunity;
+- choose LONG, SHORT, or NO_TRADE from evidence;
+- keep eligibility and the independent risk engine as hard veto authorities;
+- use chronological train/validation/test partitions plus embargo/walk-forward validation;
+- never fabricate missing historical microstructure or leak future information into features.
+
+Phase 9 satisfied its exit condition by honestly demonstrating that the retired V4 baseline did not show edge. **Phase 10 offline learning engineering is active.** Live trading and promotion remain blocked.
+
+Current implementation slice:
+
+- `src/cocomelon/research/historical_learning.py` provides deterministic bounded historical candle request windows;
+- the planner respects the 5,000-candle request ceiling;
+- historical outcome construction records exact-timestamp LONG and SHORT gross returns;
+- missing exact target candles are omitted rather than bridged;
+- mixed markets/intervals, duplicate timestamps, empty provenance, and invalid prices fail closed;
+- labels carry deterministic identity/provenance;
+- no model family or decision threshold is selected yet.
+
+### Preserved r2 experiment
+
+`research-r2-short-trend-quality-v1` remains immutable and auditable as a secondary touched short-side hypothesis:
+
 - parent: `scheduled-research-root`;
 - strategy revision: `2ce088d69df01f044b0650b811b51015a5edda51`;
 - execution max position age: 20 minutes;
-- starting paper cash: 10,000;
-- only trend-led SHORT decisions with baseline score 72–81 inclusive remain tradable;
-- LONG, non-trend, and out-of-band decisions are vetoed to NO_TRADE;
-- risk limits are unchanged;
-- live orders remain disabled.
+- frozen r2-only rule: trend-led SHORT, baseline score 72–81 inclusive;
+- trusted state: draft, 0 authenticated checkpoints, 0 closed trades.
 
-R2 was generated from touched V4 development evidence. It is a hypothesis, not proof of edge. Its thresholds are immutable while it gathers new natural research evidence.
+The failed r2 attempt from natural campaign `35551385941` remains failed / NOT COUNTED and is never retried or backfilled. PR #228 fixed the shared replay-identity defect for future research, but r2 is no longer the product architecture or the sole gate to learning development.
 
-Trusted research state at the 2026-09-21 09:58 UTC snapshot:
+Trusted research reference at the 2026-09-21 09:58 UTC snapshot:
 
 - `scheduled-research-root`: 13 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
 - legacy `research-r1-exit-15m-v1`: 7 checkpoints, 6 trades, 4 days, touched net PnL about `-36.9098`;
-- r2: draft, 0 authenticated checkpoints, 0 closed trades.
+- r2: 0 authenticated checkpoints.
 
 None of these results establishes verified edge.
 
-First natural post-V4 root+r2 campaign `35551385941` used one authenticated public-mainnet capture over `[1789954950690, 1789956755426]`. V4 authority/disjointness plus both rollout verifiers passed. Root succeeded and was COUNTED. R2 failed NOT COUNTED with `ResearchRegistryError: research replay run already belongs to batch research-batch-35551385941-1-scheduled-research-root`. PR #228 fixes future fanout by changing registry replay uniqueness from global to candidate-scoped while preserving the deterministic shared replay ID. Do not retry or backfill the failed r2 attempt.
-
 ---
 
-## 5. Locked research gates
+## 5. Locked research and promotion gates
 
-- Candidates may fail fast; candidates may not succeed fast.
-- No futility rejection before 20 closed research trades.
-- At >=20 closed r2 trades, reject for futility only if `P(mu > 0) < 0.05`.
-- `RESEARCH_PROMISING` requires >=40 closed trades, >=7 distinct closed-trade UTC days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-- `RESEARCH_PROMISING` remains TOUCHED / NON-PROMOTIONAL.
-- Any future clean validation begins only after candidate freeze, inherited touched-period handling, and the documented six-hour embargo.
-- Live promotion still requires every gate in `MASTER_SPEC.md`, including >=500 closed mainnet paper trades and >=45 calendar days of shadow operation.
+For registered touched economic candidates, D-023 fast-failure/promising rules remain intact.
+
+For historical-learning candidates under D-025:
+
+- historical backtests and training results are touched development evidence;
+- feature rows may use only information available at the anchor timestamp;
+- future observations appear only in explicit labels;
+- train/validation/test order is chronological;
+- test data cannot tune features, hyperparameters, costs, or decision thresholds;
+- walk-forward evaluation is mandatory;
+- LONG and SHORT are both available; NO_TRADE remains first-class;
+- model output cannot weaken or bypass hard risk limits;
+- a promising model must be frozen before any clean future validation begins;
+- live promotion still requires all `MASTER_SPEC.md` gates, including >=500 closed mainnet paper trades, >=45 calendar days shadow, positive cost-complete untouched OOS/walk-forward evidence, acceptable drawdown/concentration, clean integrity, and explicit user authorization.
 
 ---
 
@@ -152,18 +180,17 @@ PR #232 merged as `09e5c93db64ede19ec6ad02ac642defc96176c27`. Post-merge main CI
 
 ## 7. Exact handoff / next action
 
-1. Keep Phase 10 and live trading blocked.
-2. Keep the retired V4 scheduler and automatic one-shot disabled. Protected run `35524316366` is complete and must not be retried or backfilled.
-3. Preserve failed r2 attempt `research-35551385941-1-research-r2-short-trend-quality-v1` as historical/auditable NOT COUNTED evidence; do not rerun its interval.
-4. Let the next naturally eligible safe-gap campaign launch through the dispatcher with root + r2 under the #228 registry fix. Do not manually dispatch economics merely to accelerate evidence.
-5. Require the same shared-capture, actual V4 completeness/disjointness, pre-publication rollout verifier, and independent final rollout verifier controls.
-6. Count only authenticated successful r2 checkpoints; r2 currently remains draft with 0 authenticated checkpoints.
-7. Keep r2 immutable. Do not retune its 72–81 SHORT/trend filter from later observations.
-8. At 20 closed r2 trades, apply only the locked futility rule.
-9. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, posterior >=0.80, complete costs, and clean integrity/risk state.
-10. Do not create r3 merely in reaction to a few r2 outcomes; require a documented new hypothesis and inherited touched lineage.
-11. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and start a new clean validation sample.
-12. Advance toward Phase 10 or live trading only after every locked validation/promotion gate passes.
+1. Keep live trading disabled and risk limits unchanged.
+2. Use `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary plan.
+3. Preserve retired V4, r1, and r2 evidence as touched/auditable history.
+4. Continue from the green historical outcome substrate by implementing rate-budget-aware offline mainnet candle/funding backfill.
+5. Persist immutable source manifests, checksums, requested/observed coverage, deduplication state, and explicit gaps.
+6. Reconstruct point-in-time historical features without synthesizing unavailable L2/order-flow/OI data.
+7. Join features to exact multi-horizon LONG/SHORT outcomes and export versioned analytical training datasets.
+8. Establish simple direction-neutral baselines, then compare more complex supervised models only if justified.
+9. Use chronological validation/embargo/walk-forward evaluation and cost-aware NO_TRADE calibration.
+10. Freeze any promising model/config before new clean validation; never relabel historical development data as untouched.
+11. Advance toward live trading only after every locked promotion gate and explicit user authorization.
 
 ---
 
