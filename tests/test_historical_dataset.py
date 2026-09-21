@@ -17,6 +17,7 @@ from cocomelon.research.historical_dataset import (
 )
 
 MARKET = MarketId(dex="", coin="ETH")
+BTC = MarketId(dex="", coin="BTC")
 FIVE = 300_000
 FIFTEEN = 900_000
 HOUR = 3_600_000
@@ -205,3 +206,59 @@ def test_training_rows_reject_horizon_off_the_5m_grid(tmp_path: Path) -> None:
             markets=(MARKET,),
             horizons_ms=(420_000,),
         )
+
+
+def test_multi_market_dataset_enriches_exact_anchor_market_context(
+    tmp_path: Path,
+) -> None:
+    root = _build_source_root(tmp_path, BTC)
+    _build_source_root(tmp_path, MARKET)
+
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(BTC, MARKET),
+        horizons_ms=(FIVE,),
+    )
+
+    eth_rows = tuple(
+        row
+        for row in rows
+        if row.market == MARKET and row.feature.return_5m is not None
+    )
+    assert eth_rows
+    feature = eth_rows[0].feature
+    assert feature.schema_version == 2
+    assert feature.btc_return_5m == feature.return_5m
+    assert feature.eth_return_5m == feature.return_5m
+    assert feature.market_median_return_5m == feature.return_5m
+    assert feature.market_breadth_positive_5m == Decimal("1")
+    assert feature.market_relative_return_5m == Decimal("0")
+    assert "btc_return_5m" in feature.available_features
+    assert len(feature.source_manifest_ids) >= 2
+
+
+def test_export_training_dataset_persists_market_context_columns(
+    tmp_path: Path,
+) -> None:
+    parquet = pytest.importorskip("pyarrow.parquet")
+    root = _build_source_root(tmp_path, BTC)
+    _build_source_root(tmp_path, MARKET)
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(BTC, MARKET),
+        horizons_ms=(FIVE,),
+    )
+
+    manifest = export_training_dataset(rows, tmp_path / "dataset-context")
+    table = parquet.read_table(tmp_path / "dataset-context" / "training.parquet")
+
+    assert manifest.schema_version == 2
+    assert manifest.converter_version == "historical-directional-training-v2-market-context"
+    for column in (
+        "btc_return_5m",
+        "eth_return_5m",
+        "market_median_return_5m",
+        "market_breadth_positive_5m",
+        "market_relative_return_5m",
+    ):
+        assert column in table.column_names
