@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 
 from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
@@ -271,11 +272,16 @@ class ConditionalBaselineModel:
         feature: HistoricalFeatureRow,
         *,
         horizon_ms: int,
+        allow_coin_calibration: bool = True,
     ) -> DirectionalEstimate:
         state = _shared_state(feature, horizon_ms)
         coin_key = CoinStateKey(market=feature.market.canonical, shared=state)
         coin_stats = self.coin_states.get(coin_key)
-        if coin_stats is not None and coin_stats.sample_count >= self.min_coin_samples:
+        if (
+            allow_coin_calibration
+            and coin_stats is not None
+            and coin_stats.sample_count >= self.min_coin_samples
+        ):
             return DirectionalEstimate(
                 sample_count=coin_stats.sample_count,
                 expected_long_return=coin_stats.expected_long_return,
@@ -343,4 +349,241 @@ def fit_conditional_baseline(
         shared_states={key: _stats(value) for key, value in shared_groups.items()},
         coin_states={key: _stats(value) for key, value in coin_groups.items()},
         shared_horizons={key: _stats(value) for key, value in horizon_groups.items()},
+    )
+
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionCostAssumptions:
+    round_trip_fee_fraction: Decimal
+    round_trip_slippage_fraction: Decimal
+    funding_reserve_fraction_per_hour: Decimal
+
+    def __post_init__(self) -> None:
+        for field in (
+            "round_trip_fee_fraction",
+            "round_trip_slippage_fraction",
+            "funding_reserve_fraction_per_hour",
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, Decimal) or not value.is_finite() or value < ZERO:
+                raise ValueError(f"{field} must be a non-negative finite Decimal")
+
+    def total_cost_fraction(self, horizon_ms: int) -> Decimal:
+        if horizon_ms <= 0:
+            raise ValueError("horizon_ms must be positive")
+        hours = Decimal(horizon_ms) / Decimal(3_600_000)
+        return (
+            self.round_trip_fee_fraction
+            + self.round_trip_slippage_fraction
+            + self.funding_reserve_fraction_per_hour * hours
+        )
+
+
+class DecisionAction(StrEnum):
+    LONG = "long"
+    SHORT = "short"
+    NO_TRADE = "no_trade"
+
+
+@dataclass(frozen=True, slots=True)
+class DirectionalDecision:
+    action: DecisionAction
+    expected_long_net_return: Decimal
+    expected_short_net_return: Decimal
+    cost_fraction: Decimal
+    min_expected_net_edge: Decimal
+    sample_count: int
+    estimate_source: str
+
+    def __post_init__(self) -> None:
+        if self.sample_count <= 0:
+            raise ValueError("sample_count must be positive")
+        for field in (
+            "expected_long_net_return",
+            "expected_short_net_return",
+            "cost_fraction",
+            "min_expected_net_edge",
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, Decimal) or not value.is_finite():
+                raise ValueError(f"{field} must be a finite Decimal")
+        if self.cost_fraction < ZERO:
+            raise ValueError("cost_fraction must be non-negative")
+        if self.min_expected_net_edge < ZERO:
+            raise ValueError("min_expected_net_edge must be non-negative")
+        if not self.estimate_source.strip():
+            raise ValueError("estimate_source must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionPolicy:
+    min_expected_net_edge: Decimal
+    min_sample_count: int
+
+    def __post_init__(self) -> None:
+        if (
+            not self.min_expected_net_edge.is_finite()
+            or self.min_expected_net_edge < ZERO
+        ):
+            raise ValueError("min_expected_net_edge must be a non-negative finite Decimal")
+        if self.min_sample_count <= 0:
+            raise ValueError("min_sample_count must be positive")
+
+    def decide(
+        self,
+        estimate: DirectionalEstimate,
+        *,
+        costs: ExecutionCostAssumptions,
+    ) -> DirectionalDecision:
+        cost_fraction = costs.total_cost_fraction(estimate.state_key.horizon_ms)
+        long_net = estimate.expected_long_return - cost_fraction
+        short_net = estimate.expected_short_return - cost_fraction
+
+        action = DecisionAction.NO_TRADE
+        if estimate.sample_count >= self.min_sample_count:
+            best_edge = max(long_net, short_net)
+            if best_edge > self.min_expected_net_edge:
+                if long_net > short_net:
+                    action = DecisionAction.LONG
+                elif short_net > long_net:
+                    action = DecisionAction.SHORT
+
+        return DirectionalDecision(
+            action=action,
+            expected_long_net_return=long_net,
+            expected_short_net_return=short_net,
+            cost_fraction=cost_fraction,
+            min_expected_net_edge=self.min_expected_net_edge,
+            sample_count=estimate.sample_count,
+            estimate_source=estimate.source,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ThresholdCandidateResult:
+    threshold: Decimal
+    trade_count: int
+    total_realized_net_return: Decimal
+    mean_realized_net_return: Decimal | None
+
+    def __post_init__(self) -> None:
+        if not self.threshold.is_finite() or self.threshold < ZERO:
+            raise ValueError("threshold must be a non-negative finite Decimal")
+        if self.trade_count < 0:
+            raise ValueError("trade_count must be non-negative")
+        if not self.total_realized_net_return.is_finite():
+            raise ValueError("total_realized_net_return must be finite")
+        if self.mean_realized_net_return is not None:
+            if not self.mean_realized_net_return.is_finite():
+                raise ValueError("mean_realized_net_return must be finite")
+            if self.trade_count == 0:
+                raise ValueError("mean_realized_net_return requires trades")
+
+
+@dataclass(frozen=True, slots=True)
+class ThresholdCalibration:
+    selected_threshold: Decimal
+    candidates: tuple[ThresholdCandidateResult, ...]
+    min_sample_count: int
+    min_validation_trades: int
+
+    def __post_init__(self) -> None:
+        if self.selected_threshold not in {item.threshold for item in self.candidates}:
+            raise ValueError("selected_threshold must come from candidates")
+        if self.min_sample_count <= 0:
+            raise ValueError("min_sample_count must be positive")
+        if self.min_validation_trades <= 0:
+            raise ValueError("min_validation_trades must be positive")
+
+
+def _realized_net_return(
+    row: HistoricalTrainingRow,
+    decision: DirectionalDecision,
+) -> Decimal | None:
+    if decision.action is DecisionAction.NO_TRADE:
+        return None
+    if decision.action is DecisionAction.LONG:
+        return row.long_gross_return - decision.cost_fraction
+    return row.short_gross_return - decision.cost_fraction
+
+
+def calibrate_no_trade_threshold(
+    model: ConditionalBaselineModel,
+    validation_rows: Sequence[HistoricalTrainingRow],
+    *,
+    costs: ExecutionCostAssumptions,
+    candidate_thresholds: Sequence[Decimal],
+    min_sample_count: int,
+    min_validation_trades: int,
+    allow_coin_calibration: bool = True,
+) -> ThresholdCalibration:
+    if not validation_rows:
+        raise HistoricalBaselineError("validation_rows must not be empty")
+    if min_sample_count <= 0:
+        raise ValueError("min_sample_count must be positive")
+    if min_validation_trades <= 0:
+        raise ValueError("min_validation_trades must be positive")
+
+    thresholds = tuple(sorted(set(candidate_thresholds)))
+    if not thresholds:
+        raise ValueError("candidate_thresholds must not be empty")
+    if any(not value.is_finite() or value < ZERO for value in thresholds):
+        raise ValueError("candidate_thresholds must be non-negative finite Decimals")
+
+    ordered = tuple(sorted(validation_rows, key=_row_order))
+    results: list[ThresholdCandidateResult] = []
+    for threshold in thresholds:
+        policy = DecisionPolicy(
+            min_expected_net_edge=threshold,
+            min_sample_count=min_sample_count,
+        )
+        realized: list[Decimal] = []
+        for row in ordered:
+            estimate = model.predict(
+                row.feature,
+                horizon_ms=row.horizon_ms,
+                allow_coin_calibration=allow_coin_calibration,
+            )
+            decision = policy.decide(estimate, costs=costs)
+            net_return = _realized_net_return(row, decision)
+            if net_return is not None:
+                realized.append(net_return)
+
+        total = sum(realized, ZERO)
+        mean = None if not realized else total / Decimal(len(realized))
+        results.append(
+            ThresholdCandidateResult(
+                threshold=threshold,
+                trade_count=len(realized),
+                total_realized_net_return=total,
+                mean_realized_net_return=mean,
+            )
+        )
+
+    eligible = tuple(
+        result
+        for result in results
+        if result.trade_count >= min_validation_trades
+        and result.mean_realized_net_return is not None
+    )
+    if not eligible:
+        raise HistoricalBaselineError(
+            "no threshold met the minimum validation trade count"
+        )
+
+    selected = max(
+        eligible,
+        key=lambda item: (
+            item.mean_realized_net_return,
+            item.total_realized_net_return,
+            item.trade_count,
+            -item.threshold,
+        ),
+    )
+    return ThresholdCalibration(
+        selected_threshold=selected.threshold,
+        candidates=tuple(results),
+        min_sample_count=min_sample_count,
+        min_validation_trades=min_validation_trades,
     )
