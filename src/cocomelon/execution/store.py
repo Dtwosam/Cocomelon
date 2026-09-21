@@ -684,8 +684,8 @@ class PaperExecutionStore:
                 or _canonical_json(_fill_payload(paper_fill)) != payload_json
             ):
                 return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
-            attempt = attempts.get(paper_fill.attempt_id)
-            if attempt is None or attempt.plan_id != paper_fill.plan_id:
+            linked_attempt = attempts.get(paper_fill.attempt_id)
+            if linked_attempt is None or linked_attempt.plan_id != paper_fill.plan_id:
                 return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
             fills_by_attempt[paper_fill.attempt_id].append(paper_fill)
 
