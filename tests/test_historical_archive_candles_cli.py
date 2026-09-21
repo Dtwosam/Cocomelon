@@ -8,6 +8,7 @@ import pytest
 from cocomelon.domain.market import MarketId
 from cocomelon.historical_archive_candles_cli import ingest_archive_candles
 from cocomelon.research.historical_dataset import load_candle_source
+from cocomelon.research.historical_trade_archive import HistoricalTradeArchiveError
 
 lz4 = pytest.importorskip("lz4.frame")
 
@@ -210,7 +211,7 @@ def test_archive_cli_rejects_start_not_aligned_to_requested_interval(
     )
 
     with pytest.raises(
-        ValueError,
+        HistoricalTradeArchiveError,
         match="REQUEST_START_GRID_MISALIGNED",
     ):
         ingest_archive_candles(
