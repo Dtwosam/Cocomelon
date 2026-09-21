@@ -398,3 +398,27 @@ def test_15m_anchor_features_join_exact_15m_outcomes() -> None:
     assert rows[0].outcome.interval == "15m"
     assert rows[0].long_gross_return == Decimal("0.1")
     assert rows[0].short_gross_return == Decimal("-0.1")
+
+
+def test_15m_anchor_lineage_includes_older_sample_retrieval() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+            volume=str(100 + index),
+            open_px=str(99 + index),
+            received_at_ms=(9_000_000 if index == 3 else 2_000_000),
+        )
+        for index in range(21)
+    )
+
+    rows = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )
+
+    latest = rows[-1]
+    assert latest.realized_vol_15m is not None
+    assert latest.source_retrieved_at_ms == 9_000_000
