@@ -118,7 +118,9 @@ def test_experiment_report_is_deterministic_and_permanently_touched() -> None:
     assert first.dataset_logical_sha256 == manifest.logical_sha256
     assert first.source_manifest_ids == ("source-manifest-a",)
     assert len(first.folds) == 3
-    assert first.folds[-1].shared_test.mean_realized_net_return == Decimal("-0.02200833333333333333333333333")
+    assert first.folds[-1].shared_test.mean_realized_net_return == Decimal(
+        "-0.02200833333333333333333333333"
+    )
 
 
 def test_experiment_report_serializes_costs_thresholds_and_fold_results(tmp_path: Path) -> None:
