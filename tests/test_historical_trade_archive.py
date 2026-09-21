@@ -15,6 +15,7 @@ from cocomelon.research.historical_trade_archive import (
     aggregate_trades_to_candles,
     merge_archived_trades,
     parse_node_fills_by_block_jsonl,
+    reconcile_archive_candles_with_api,
     write_archive_candle_source,
 )
 
@@ -372,3 +373,164 @@ def test_archive_candle_source_preserves_real_empty_interval_as_gap(
     assert manifest.complete_requested_grid is False
     assert manifest.gap_ranges == ((FIVE, FIVE),)
     assert len(candles) == 1
+
+
+
+def test_archive_parser_keeps_same_tid_on_different_markets_distinct() -> None:
+    data = _archive_bytes(
+        [
+            [
+                "0xbtc",
+                _fill(
+                    coin="BTC",
+                    tid=42,
+                    time=1000,
+                    px="100",
+                    sz="1",
+                    crossed=True,
+                    side="B",
+                ),
+            ],
+            [
+                "0xeth",
+                _fill(
+                    coin="ETH",
+                    tid=42,
+                    time=1000,
+                    px="200",
+                    sz="2",
+                    crossed=True,
+                    side="A",
+                ),
+            ],
+        ]
+    )
+
+    trades = parse_node_fills_by_block_jsonl(data, markets=(BTC, ETH))
+
+    assert len(trades) == 2
+    assert {(trade.market.canonical, trade.tid) for trade in trades} == {
+        ("BTC", 42),
+        ("ETH", 42),
+    }
+
+
+def test_archive_candle_overlap_reconciliation_accepts_exact_market_data() -> None:
+    trades = parse_node_fills_by_block_jsonl(
+        _archive_bytes(
+            [
+                [
+                    "0xa",
+                    _fill(
+                        coin="BTC",
+                        tid=1,
+                        time=1000,
+                        px="100",
+                        sz="1",
+                        crossed=True,
+                        side="B",
+                    ),
+                ],
+                [
+                    "0xb",
+                    _fill(
+                        coin="BTC",
+                        tid=2,
+                        time=FIVE + 1000,
+                        px="101",
+                        sz="2",
+                        crossed=True,
+                        side="B",
+                    ),
+                ],
+            ]
+        ),
+        markets=(BTC,),
+    )
+    archive = aggregate_trades_to_candles(
+        trades,
+        market=BTC,
+        interval="5m",
+        start_ms=0,
+        end_ms=FIVE,
+        received_at_ms=20_000_000,
+    )
+    api = tuple(
+        type(candle)(
+            market=candle.market,
+            interval=candle.interval,
+            start_ms=candle.start_ms,
+            end_ms=candle.end_ms,
+            open_px=candle.open_px,
+            high_px=candle.high_px,
+            low_px=candle.low_px,
+            close_px=candle.close_px,
+            volume=candle.volume,
+            trade_count=candle.trade_count,
+            source="hyperliquid-mainnet-info",
+            received_at_ms=21_000_000,
+            schema_version=1,
+        )
+        for candle in archive
+    )
+
+    result = reconcile_archive_candles_with_api(archive, api)
+
+    assert result.exact is True
+    assert result.compared_count == 2
+    assert result.exact_match_count == 2
+    assert result.mismatches == ()
+
+
+def test_archive_candle_overlap_reconciliation_surfaces_field_mismatch() -> None:
+    trades = parse_node_fills_by_block_jsonl(
+        _archive_bytes(
+            [[
+                "0xa",
+                _fill(
+                    coin="BTC",
+                    tid=1,
+                    time=1000,
+                    px="100",
+                    sz="1",
+                    crossed=True,
+                    side="B",
+                ),
+            ]]
+        ),
+        markets=(BTC,),
+    )
+    archive = aggregate_trades_to_candles(
+        trades,
+        market=BTC,
+        interval="5m",
+        start_ms=0,
+        end_ms=0,
+        received_at_ms=20_000_000,
+    )
+    original = archive[0]
+    api = (
+        type(original)(
+            market=original.market,
+            interval=original.interval,
+            start_ms=original.start_ms,
+            end_ms=original.end_ms,
+            open_px=original.open_px,
+            high_px=original.high_px,
+            low_px=original.low_px,
+            close_px=Decimal("101"),
+            volume=original.volume,
+            trade_count=original.trade_count,
+            source="hyperliquid-mainnet-info",
+            received_at_ms=21_000_000,
+            schema_version=1,
+        ),
+    )
+
+    result = reconcile_archive_candles_with_api(archive, api)
+
+    assert result.exact is False
+    assert result.exact_match_count == 0
+    assert len(result.mismatches) == 1
+    assert result.mismatches[0].start_ms == 0
+    assert result.mismatches[0].fields == ("close_px",)
