@@ -488,3 +488,55 @@ def test_walk_forward_baseline_fits_calibrates_then_scores_future_test_blocks() 
     assert all(fold.coin_threshold == Decimal("0") for fold in report.folds)
     assert report.folds[-1].shared_test.trade_count == 2
     assert report.folds[-1].shared_test.mean_realized_net_return == Decimal("-0.02")
+
+
+
+def test_walk_forward_threshold_is_independent_of_future_test_outcomes() -> None:
+    prefix = tuple(
+        _row(
+            anchor_end_ms=index * FIVE,
+            long_return="0.03",
+            short_return="-0.03",
+        )
+        for index in range(1, 7)
+    )
+    positive_test = (
+        *prefix,
+        _row(anchor_end_ms=7 * FIVE, long_return="0.05", short_return="-0.05"),
+        _row(anchor_end_ms=8 * FIVE, long_return="0.05", short_return="-0.05"),
+    )
+    negative_test = (
+        *prefix,
+        _row(anchor_end_ms=7 * FIVE, long_return="-0.05", short_return="0.05"),
+        _row(anchor_end_ms=8 * FIVE, long_return="-0.05", short_return="0.05"),
+    )
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+    kwargs = {
+        "costs": costs,
+        "candidate_thresholds": (
+            Decimal("0"),
+            Decimal("0.01"),
+            Decimal("0.02"),
+        ),
+        "min_train_anchors": 4,
+        "validation_anchors": 2,
+        "test_anchors": 2,
+        "step_anchors": 2,
+        "embargo_anchors": 0,
+        "min_state_samples": 2,
+        "min_coin_samples": 99,
+        "min_sample_count": 2,
+        "min_validation_trades": 1,
+    }
+
+    positive_report = run_walk_forward_baseline(positive_test, **kwargs)
+    negative_report = run_walk_forward_baseline(negative_test, **kwargs)
+
+    assert positive_report.folds[0].shared_threshold == negative_report.folds[0].shared_threshold
+    assert positive_report.folds[0].coin_threshold == negative_report.folds[0].coin_threshold
+    assert positive_report.folds[0].shared_test.mean_realized_net_return == Decimal("0.05")
+    assert negative_report.folds[0].shared_test.mean_realized_net_return == Decimal("-0.05")
