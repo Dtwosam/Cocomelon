@@ -5,12 +5,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-
-from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_backfill import (
     HistoricalBackfillError,
     backfill_candles,
 )
+
+from cocomelon.domain.market import MarketId
 
 MARKET = MarketId(dex="", coin="ETH")
 STEP = 300_000
