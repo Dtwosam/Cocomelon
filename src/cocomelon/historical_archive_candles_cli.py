@@ -104,6 +104,11 @@ def ingest_archive_candles(
         raise ValueError("at least one market is required")
     if not unique_intervals:
         raise ValueError("at least one interval is required")
+    unsupported = tuple(
+        interval for interval in unique_intervals if interval not in INTERVAL_MS
+    )
+    if unsupported:
+        raise ValueError(f"unsupported intervals: {unsupported}")
     if end_ms < start_ms:
         raise ValueError("end_ms must be >= start_ms")
     if received_at_ms < 0:
