@@ -47,7 +47,7 @@ def plan() -> PaperOrderPlan:
 def fill(order: PaperOrderPlan) -> PaperFill:
     return PaperFill(
         plan_id=order.plan_id,
-        attempt_id="attempt-store-1",
+        attempt_id=attempt(order).attempt_id,
         market=MARKET,
         side=OrderSide.BUY,
         price=Decimal("100"),
