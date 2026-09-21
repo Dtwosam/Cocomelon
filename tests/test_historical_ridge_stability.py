@@ -209,3 +209,49 @@ def test_stable_walk_forward_selection_ignores_future_test_outcomes() -> None:
     assert positive.market_horizon_thresholds == negative.market_horizon_thresholds
     assert positive.shared_test.mean_realized_net_return > 0
     assert negative.shared_test.mean_realized_net_return < 0
+
+
+
+def test_stability_calibration_predicts_each_validation_row_once() -> None:
+    rows = tuple(
+        _row(anchor_index=index, long_return="0.02")
+        for index in range(1, 9)
+    )
+
+    class CountingFixedLongModel(FixedLongModel):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def predict(
+            self,
+            feature: HistoricalFeatureRow,
+            *,
+            horizon_ms: int,
+            allow_coin_calibration: bool = True,
+        ) -> RidgeDirectionalEstimate:
+            self.calls += 1
+            return super().predict(
+                feature,
+                horizon_ms=horizon_ms,
+                allow_coin_calibration=allow_coin_calibration,
+            )
+
+    model = CountingFixedLongModel()
+    calibration = calibrate_stable_no_trade_threshold(
+        model,
+        rows,
+        costs=_costs(),
+        candidate_thresholds=(
+            Decimal("0"),
+            Decimal("0.005"),
+            Decimal("0.01"),
+        ),
+        min_sample_count=1,
+        min_validation_trades=4,
+        stability_blocks=4,
+        min_block_trades=2,
+        allow_coin_calibration=False,
+    )
+
+    assert calibration.selected_threshold == Decimal("0")
+    assert model.calls == len(rows)
