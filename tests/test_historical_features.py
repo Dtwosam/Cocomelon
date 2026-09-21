@@ -119,6 +119,39 @@ def test_historical_features_match_live_candle_math_when_history_is_contiguous()
     assert latest.trend_regime is TrendRegime.UP
 
 
+def test_historical_feature_provenance_covers_all_lookback_inputs() -> None:
+    candles_5m = tuple(
+        _candle(interval="5m", start_ms=index * FIVE, close=str(100 + index))
+        for index in range(63)
+    )
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+            volume=str(100 + index),
+            received_at_ms=(
+                123_000_000
+                if index == 5
+                else 99_000_000
+            ),
+        )
+        for index in range(21)
+    )
+
+    rows = build_historical_feature_rows(
+        candles_5m=candles_5m,
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("5m-manifest", "15m-manifest"),
+    )
+
+    latest = rows[-1]
+    assert latest.realized_vol_15m is not None
+    assert latest.source_retrieved_at_ms == 123_000_000
+    assert latest.retrieved_after_anchor is True
+
+
 def test_historical_features_do_not_bridge_missing_candle_gaps() -> None:
     candles_5m = tuple(
         _candle(interval="5m", start_ms=index * FIVE, close=str(100 + index))
