@@ -176,3 +176,34 @@ Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and res
 - Do not use nominal cron timing as a substitute for actual V4 run/job/session interval authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+## Historical-learning frontier sync — 2026-09-21
+
+Plain-English operating method:
+
+1. Reconstruct only market information that genuinely existed at each historical timestamp.
+2. Learn separate forward LONG and SHORT opportunity from many coins and horizons instead of hard-coding one direction.
+3. Evaluate in chronological train -> validation -> test order with embargo; never random-shuffle time-series evidence or use test outcomes to tune the learner.
+4. Subtract explicit fee, slippage, and conservative funding costs before treating any setup as edge.
+5. Make NO_TRADE the economic baseline: if a validation policy is not positive after costs, doing nothing wins.
+6. Require candidate edge to survive multiple chronological validation blocks; unstable aggregate performance is rejected even when its average looks attractive.
+7. Prefer shared cross-coin learning first, with market-specific calibration only after enough chronological samples exist.
+8. Keep historical results touched/development-only. A promising candidate must be frozen before future clean paper/shadow evidence begins.
+
+Merged implementation frontier after PR #237:
+
+- #239–#242 added the first bounded BTC/ETH/SOL/HYPE public-mainnet historical experiment, funding-cadence tolerance, truthful lineage labels, full loss diagnostics, and corrected same-corpus reruns.
+- #243 made zero-return NO_TRADE dominate validation policies with non-positive realized net mean.
+- #244 added a continuous regularized per-horizon ridge learner with train-only normalization and sample-gated market effects.
+- #245 compared the transparent conditional baseline and ridge learner on identical authenticated data, folds, costs, and thresholds.
+- #246 added horizon-specific validation abstention; it reduced some loss but remained net-negative and was not promoted.
+- #248 added multi-block chronological validation stability gating. The stable ridge selected NO_TRADE in all tested folds, avoiding prior losses but demonstrating no repeatable edge.
+- #251 reconstructed deterministic historical candles from the official Hyperliquid node fill archive without inventing missing microstructure.
+- #252 added offline archive planning plus acknowledgement-gated requester-pays inspection/download with a hard byte budget and resumable integrity checks; no paid request is automatic.
+- #253 composes a verified archive cache, public funding history, reconstructed candles, authenticated training data, and the existing model comparison into one paper-only archive experiment.
+- #254 requires exact overlap reconciliation between archive-reconstructed and native Hyperliquid candles before archive-based model comparison may proceed.
+
+Active development frontier: PR #256 adds one fixed shallow nonlinear tree challenger behind the same four-block stability gate. It remains touched research and is not a promotion candidate unless the verified exact-head evidence justifies that status.
+
+Current economic conclusion: the system is correctly rejecting attractive-looking but unstable historical patterns. No merged historical learner has yet demonstrated repeatable cost-adjusted edge sufficient for promotion. The next priority is broader trustworthy history and reproducible challenger comparison, not weakening NO_TRADE or validation gates.
