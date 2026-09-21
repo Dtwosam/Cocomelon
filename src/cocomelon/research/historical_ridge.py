@@ -40,6 +40,18 @@ NUMERIC_FEATURES = (
     "funding_premium_change",
     "funding_age_ms",
     "candle_15m_age_ms",
+    "btc_return_5m",
+    "btc_return_1h",
+    "btc_return_4h",
+    "eth_return_5m",
+    "eth_return_1h",
+    "eth_return_4h",
+    "market_median_return_5m",
+    "market_median_return_1h",
+    "market_breadth_positive_5m",
+    "market_breadth_positive_1h",
+    "market_relative_return_5m",
+    "market_relative_return_1h",
 )
 
 TREND_REGIMES = tuple(TrendRegime)
