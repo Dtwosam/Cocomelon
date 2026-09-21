@@ -28,13 +28,13 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #230: `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`.
-- Post-merge main CI `35586218697` passed compile, Ruff, mypy, full pytest, and research smoke.
+- Main implementation through PR #232: `09e5c93db64ede19ec6ad02ac642defc96176c27`.
+- Post-merge main CI `35596674099` passed compile, Ruff, mypy, full pytest, and research smoke.
 - PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state.
 - PR #215 reconciles each current materialized paper position against its deterministic immutable `paper_position_events` record and fails closed on missing/corrupted event evidence.
 - PR #217 regression-locks LONG/SHORT tightened-stop restart durability plus durable-write failure behavior.
 - PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata.
-- PR #222 fails closed on durable order-plan write errors; #223 validates active-position opening-plan lineage; #224 fails closed on funding-idempotency read errors; #226 rejects structurally incomplete supported-version paper/journal stores before migration DDL can conceal table loss; #228 fixes shared root+r2 replay identity ownership in the research registry; #230 makes candidate-local runner failures explicitly attributable to `evaluate-research`. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
+- PR #222 fails closed on durable order-plan write errors; #223 validates active-position opening-plan lineage; #224 fails closed on funding-idempotency read errors; #226 rejects structurally incomplete supported-version paper/journal stores before migration DDL can conceal table loss; #228 fixes shared root+r2 replay identity ownership in the research registry; #230 makes candidate-local runner failures explicitly attributable to `evaluate-research`; #232 authenticates persisted paper execution/fill history on restart and enforces deterministic fill-attempt lineage on writes. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
 - Protected pre-retirement V4 acquisition `35524316366` finished naturally; authoritative sync/curation accepted it into the retired touched corpus, now 69 accepted cohorts / 121 closed paper trades / 21 closed-trade days.
 - Natural root+r2 campaign `35551385941` passed shared-capture, V4 completeness/disjointness, pre-publication rollout verification, and independent final rollout verification. Root succeeded and became checkpoint 13; r2 failed NOT COUNTED because the registry incorrectly made shared deterministic `replay_run_id` globally unique.
