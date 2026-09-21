@@ -181,7 +181,9 @@ jobs:
             --ridge-min-market-samples 100 \
             --min-sample-count 50 \
             --min-validation-trades 20 \
-            --min-validation-mean-net-return 0
+            --min-validation-mean-net-return 0 \
+            --stability-blocks 4 \
+            --min-validation-block-trades 5
 
       - name: Render model comparison summary
         run: |
@@ -196,7 +198,8 @@ jobs:
             config,
             baseline_folds,
             ridge_folds,
-            horizon_ridge_folds
+            horizon_ridge_folds,
+            stable_horizon_ridge_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
       - name: Upload authenticated touched research bundle
