@@ -156,11 +156,13 @@ Verified implementation evidence: PR #236 implementation head `4c04600d583519720
 
 ### Slice D — baseline learners
 
-- [ ] Establish simple direction-neutral statistical baselines.
-- [ ] Add time-aware training and walk-forward evaluation.
-- [ ] Estimate separate LONG and SHORT conditional edge.
-- [ ] Calibrate NO_TRADE thresholds after costs using validation data only.
-- [ ] Compare shared cross-coin versus coin-calibrated variants.
+- [x] Establish simple direction-neutral statistical baselines.
+- [x] Add time-aware training and walk-forward evaluation.
+- [x] Estimate separate LONG and SHORT conditional edge.
+- [x] Calibrate NO_TRADE thresholds after costs using validation data only.
+- [x] Compare shared cross-coin versus coin-calibrated variants.
+
+Verified implementation evidence: PR #237 implementation head `2e61ea9966e02475059e54b9c670d681ae4ae449`; CI run `35614793455` passed compile, Ruff, strict mypy, full pytest, and research smoke. The baseline is transparent and direction-neutral, preserves same-anchor temporal grouping, enforces embargo/walk-forward ordering, uses explicit fee/slippage plus a conservative funding reserve, calibrates NO_TRADE thresholds on validation only, regression-locks test-set isolation, and reports shared-only versus coin-calibrated performance separately.
 
 ### Slice E — challenger integration
 
