@@ -15,6 +15,7 @@ from cocomelon.research.historical_baselines import (
     ExecutionCostAssumptions,
     PolicyBreakdownEntry,
     PolicyEvaluation,
+    TemporalSplit,
     ThresholdCalibration,
     calibrate_no_trade_threshold,
     evaluate_policy,
@@ -339,6 +340,153 @@ def fit_ridge_directional_model(
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedRidgeFold:
+    fold_index: int
+    split: TemporalSplit
+    models: tuple[tuple[Decimal, RidgeDirectionalModel], ...]
+
+    def __post_init__(self) -> None:
+        if self.fold_index <= 0:
+            raise ValueError("fold_index must be positive")
+        alphas = tuple(alpha for alpha, _model in self.models)
+        if not alphas or alphas != tuple(sorted(set(alphas))):
+            raise ValueError("prepared ridge models must use sorted unique alphas")
+
+    def model(self, alpha: Decimal) -> RidgeDirectionalModel:
+        for candidate, model in self.models:
+            if candidate == alpha:
+                return model
+        raise HistoricalRidgeError(f"prepared ridge alpha missing: {alpha}")
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedRidgeWalkForward:
+    candidate_alphas: tuple[Decimal, ...]
+    min_market_samples: int
+    min_train_anchors: int
+    validation_anchors: int
+    test_anchors: int
+    step_anchors: int
+    embargo_anchors: int
+    folds: tuple[PreparedRidgeFold, ...]
+
+    def __post_init__(self) -> None:
+        if not self.candidate_alphas:
+            raise ValueError("candidate_alphas must not be empty")
+        if self.candidate_alphas != tuple(sorted(set(self.candidate_alphas))):
+            raise ValueError("candidate_alphas must be sorted and unique")
+        if any(not alpha.is_finite() or alpha <= ZERO for alpha in self.candidate_alphas):
+            raise ValueError("candidate_alphas must be positive finite Decimals")
+        if self.min_market_samples <= 0:
+            raise ValueError("min_market_samples must be positive")
+        for field in (
+            "min_train_anchors",
+            "validation_anchors",
+            "test_anchors",
+            "step_anchors",
+        ):
+            if getattr(self, field) <= 0:
+                raise ValueError(f"{field} must be positive")
+        if self.embargo_anchors < 0:
+            raise ValueError("embargo_anchors must be non-negative")
+        if not self.folds:
+            raise ValueError("folds must not be empty")
+
+
+def prepare_ridge_walk_forward(
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    candidate_alphas: Sequence[Decimal],
+    min_train_anchors: int,
+    validation_anchors: int,
+    test_anchors: int,
+    step_anchors: int,
+    embargo_anchors: int,
+    min_market_samples: int,
+) -> PreparedRidgeWalkForward:
+    alphas = tuple(sorted(set(candidate_alphas)))
+    if not alphas:
+        raise ValueError("candidate_alphas must not be empty")
+    if any(not alpha.is_finite() or alpha <= ZERO for alpha in alphas):
+        raise ValueError("candidate_alphas must be positive finite Decimals")
+    if min_market_samples <= 0:
+        raise ValueError("min_market_samples must be positive")
+
+    splits = walk_forward_splits(
+        rows,
+        min_train_anchors=min_train_anchors,
+        validation_anchors=validation_anchors,
+        test_anchors=test_anchors,
+        step_anchors=step_anchors,
+        embargo_anchors=embargo_anchors,
+    )
+    if not splits:
+        raise HistoricalRidgeError("walk-forward configuration produced no folds")
+
+    folds = tuple(
+        PreparedRidgeFold(
+            fold_index=fold_index,
+            split=split,
+            models=tuple(
+                (
+                    alpha,
+                    fit_ridge_directional_model(
+                        split.train,
+                        alpha=alpha,
+                        min_market_samples=min_market_samples,
+                    ),
+                )
+                for alpha in alphas
+            ),
+        )
+        for fold_index, split in enumerate(splits, start=1)
+    )
+    return PreparedRidgeWalkForward(
+        candidate_alphas=alphas,
+        min_market_samples=min_market_samples,
+        min_train_anchors=min_train_anchors,
+        validation_anchors=validation_anchors,
+        test_anchors=test_anchors,
+        step_anchors=step_anchors,
+        embargo_anchors=embargo_anchors,
+        folds=folds,
+    )
+
+
+def validate_prepared_ridge_walk_forward(
+    prepared: PreparedRidgeWalkForward,
+    *,
+    candidate_alphas: Sequence[Decimal],
+    min_train_anchors: int,
+    validation_anchors: int,
+    test_anchors: int,
+    step_anchors: int,
+    embargo_anchors: int,
+    min_market_samples: int,
+) -> None:
+    expected = (
+        tuple(sorted(set(candidate_alphas))),
+        min_market_samples,
+        min_train_anchors,
+        validation_anchors,
+        test_anchors,
+        step_anchors,
+        embargo_anchors,
+    )
+    actual = (
+        prepared.candidate_alphas,
+        prepared.min_market_samples,
+        prepared.min_train_anchors,
+        prepared.validation_anchors,
+        prepared.test_anchors,
+        prepared.step_anchors,
+        prepared.embargo_anchors,
+    )
+    if actual != expected:
+        raise HistoricalRidgeError("prepared ridge walk-forward configuration mismatch")
+
+
+@dataclass(frozen=True, slots=True)
 class RidgeAlphaValidation:
     alpha: Decimal
     calibration: ThresholdCalibration
@@ -456,36 +604,41 @@ def run_walk_forward_ridge(
     min_sample_count: int,
     min_validation_trades: int,
     min_validation_mean_net_return: Decimal = ZERO,
+    prepared: PreparedRidgeWalkForward | None = None,
 ) -> RidgeWalkForwardReport:
-    alphas = tuple(sorted(set(candidate_alphas)))
-    if not alphas:
-        raise ValueError("candidate_alphas must not be empty")
-    if any(not alpha.is_finite() or alpha <= ZERO for alpha in alphas):
-        raise ValueError("candidate_alphas must be positive finite Decimals")
-
-    folds = walk_forward_splits(
-        rows,
-        min_train_anchors=min_train_anchors,
-        validation_anchors=validation_anchors,
-        test_anchors=test_anchors,
-        step_anchors=step_anchors,
-        embargo_anchors=embargo_anchors,
-    )
-    if not folds:
-        raise HistoricalRidgeError("walk-forward configuration produced no folds")
+    resolved = prepared
+    if resolved is None:
+        resolved = prepare_ridge_walk_forward(
+            rows,
+            candidate_alphas=candidate_alphas,
+            min_train_anchors=min_train_anchors,
+            validation_anchors=validation_anchors,
+            test_anchors=test_anchors,
+            step_anchors=step_anchors,
+            embargo_anchors=embargo_anchors,
+            min_market_samples=min_market_samples,
+        )
+    else:
+        validate_prepared_ridge_walk_forward(
+            resolved,
+            candidate_alphas=candidate_alphas,
+            min_train_anchors=min_train_anchors,
+            validation_anchors=validation_anchors,
+            test_anchors=test_anchors,
+            step_anchors=step_anchors,
+            embargo_anchors=embargo_anchors,
+            min_market_samples=min_market_samples,
+        )
 
     results: list[RidgeWalkForwardFold] = []
-    for fold_index, fold in enumerate(folds, start=1):
-        models: dict[Decimal, RidgeDirectionalModel] = {}
+    for prepared_fold in resolved.folds:
+        fold_index = prepared_fold.fold_index
+        fold = prepared_fold.split
+        models = dict(prepared_fold.models)
         shared_candidates: list[RidgeAlphaValidation] = []
         market_candidates: list[RidgeAlphaValidation] = []
-        for alpha in alphas:
-            model = fit_ridge_directional_model(
-                fold.train,
-                alpha=alpha,
-                min_market_samples=min_market_samples,
-            )
-            models[alpha] = model
+        for alpha in resolved.candidate_alphas:
+            model = models[alpha]
             shared_candidates.append(
                 RidgeAlphaValidation(
                     alpha=alpha,
