@@ -26,6 +26,7 @@ from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
     RidgeAlphaValidation,
     RidgeWalkForwardFold,
+    prepare_ridge_walk_forward,
     run_walk_forward_ridge,
 )
 from cocomelon.research.historical_ridge_horizon import (
@@ -621,6 +622,16 @@ def build_historical_model_comparison_report(
         min_validation_trades=config.min_validation_trades,
         min_validation_mean_net_return=config.min_validation_mean_net_return,
     )
+    prepared_ridge = prepare_ridge_walk_forward(
+        rows,
+        candidate_alphas=config.candidate_ridge_alphas,
+        min_train_anchors=config.min_train_anchors,
+        validation_anchors=config.validation_anchors,
+        test_anchors=config.test_anchors,
+        step_anchors=config.step_anchors,
+        embargo_anchors=config.embargo_anchors,
+        min_market_samples=config.ridge_min_market_samples,
+    )
     ridge = run_walk_forward_ridge(
         rows,
         costs=config.costs,
@@ -635,6 +646,7 @@ def build_historical_model_comparison_report(
         min_sample_count=config.min_sample_count,
         min_validation_trades=config.min_validation_trades,
         min_validation_mean_net_return=config.min_validation_mean_net_return,
+        prepared=prepared_ridge,
     )
     horizon_ridge = run_walk_forward_horizon_calibrated_ridge(
         rows,
@@ -650,6 +662,7 @@ def build_historical_model_comparison_report(
         min_sample_count=config.min_sample_count,
         min_validation_trades=config.min_validation_trades,
         min_validation_mean_net_return=config.min_validation_mean_net_return,
+        prepared=prepared_ridge,
     )
     stable_horizon_ridge = run_walk_forward_stable_horizon_ridge(
         rows,
@@ -667,6 +680,7 @@ def build_historical_model_comparison_report(
         stability_blocks=config.stability_blocks,
         min_block_trades=config.min_validation_block_trades,
         min_validation_mean_net_return=config.min_validation_mean_net_return,
+        prepared=prepared_ridge,
     )
     stable_tree = run_walk_forward_stable_tree(
         rows,
