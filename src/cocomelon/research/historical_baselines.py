@@ -482,18 +482,25 @@ class ThresholdCandidateResult:
 
 @dataclass(frozen=True, slots=True)
 class ThresholdCalibration:
-    selected_threshold: Decimal
+    selected_threshold: Decimal | None
     candidates: tuple[ThresholdCandidateResult, ...]
     min_sample_count: int
     min_validation_trades: int
 
     def __post_init__(self) -> None:
-        if self.selected_threshold not in {item.threshold for item in self.candidates}:
-            raise ValueError("selected_threshold must come from candidates")
+        if self.selected_threshold is not None:
+            if self.selected_threshold not in {item.threshold for item in self.candidates}:
+                raise ValueError("selected_threshold must come from candidates")
+        elif any(item.trade_count > 0 for item in self.candidates):
+            raise ValueError("abstention is only valid when every candidate has zero trades")
         if self.min_sample_count <= 0:
             raise ValueError("min_sample_count must be positive")
         if self.min_validation_trades <= 0:
             raise ValueError("min_validation_trades must be positive")
+
+    @property
+    def abstained(self) -> bool:
+        return self.selected_threshold is None
 
 
 def _realized_net_return(
@@ -567,6 +574,13 @@ def calibrate_no_trade_threshold(
         and result.mean_realized_net_return is not None
     )
     if not eligible:
+        if all(result.trade_count == 0 for result in results):
+            return ThresholdCalibration(
+                selected_threshold=None,
+                candidates=tuple(results),
+                min_sample_count=min_sample_count,
+                min_validation_trades=min_validation_trades,
+            )
         raise HistoricalBaselineError(
             "no threshold met the minimum validation trade count"
         )
@@ -702,8 +716,8 @@ class WalkForwardFoldResult:
     train_anchor_count: int
     validation_anchor_count: int
     test_anchor_count: int
-    shared_threshold: Decimal
-    coin_threshold: Decimal
+    shared_threshold: Decimal | None
+    coin_threshold: Decimal | None
     shared_test: PolicyEvaluation
     coin_test: PolicyEvaluation
 
@@ -717,10 +731,12 @@ class WalkForwardFoldResult:
         ):
             if getattr(self, field) <= 0:
                 raise ValueError(f"{field} must be positive")
-        if self.shared_threshold < ZERO or not self.shared_threshold.is_finite():
-            raise ValueError("shared_threshold must be a non-negative finite Decimal")
-        if self.coin_threshold < ZERO or not self.coin_threshold.is_finite():
-            raise ValueError("coin_threshold must be a non-negative finite Decimal")
+        if self.shared_threshold is not None:
+            if self.shared_threshold < ZERO or not self.shared_threshold.is_finite():
+                raise ValueError("shared_threshold must be a non-negative finite Decimal")
+        if self.coin_threshold is not None:
+            if self.coin_threshold < ZERO or not self.coin_threshold.is_finite():
+                raise ValueError("coin_threshold must be a non-negative finite Decimal")
 
 
 @dataclass(frozen=True, slots=True)
@@ -792,28 +808,57 @@ def run_walk_forward_baseline(
             allow_coin_calibration=True,
         )
 
-        shared_policy = DecisionPolicy(
-            min_expected_net_edge=shared_calibration.selected_threshold,
-            min_sample_count=min_sample_count,
-        )
-        coin_policy = DecisionPolicy(
-            min_expected_net_edge=coin_calibration.selected_threshold,
-            min_sample_count=min_sample_count,
-        )
-        shared_test = evaluate_policy(
-            model,
-            fold.test,
-            policy=shared_policy,
-            costs=costs,
-            allow_coin_calibration=False,
-        )
-        coin_test = evaluate_policy(
-            model,
-            fold.test,
-            policy=coin_policy,
-            costs=costs,
-            allow_coin_calibration=True,
-        )
+        if shared_calibration.abstained:
+            shared_test = PolicyEvaluation(
+                row_count=len(fold.test),
+                trade_count=0,
+                long_count=0,
+                short_count=0,
+                no_trade_count=len(fold.test),
+                total_realized_net_return=ZERO,
+                mean_realized_net_return=None,
+            )
+        else:
+            shared_threshold = shared_calibration.selected_threshold
+            if shared_threshold is None:
+                raise HistoricalBaselineError("non-abstained shared calibration needs threshold")
+            shared_policy = DecisionPolicy(
+                min_expected_net_edge=shared_threshold,
+                min_sample_count=min_sample_count,
+            )
+            shared_test = evaluate_policy(
+                model,
+                fold.test,
+                policy=shared_policy,
+                costs=costs,
+                allow_coin_calibration=False,
+            )
+
+        if coin_calibration.abstained:
+            coin_test = PolicyEvaluation(
+                row_count=len(fold.test),
+                trade_count=0,
+                long_count=0,
+                short_count=0,
+                no_trade_count=len(fold.test),
+                total_realized_net_return=ZERO,
+                mean_realized_net_return=None,
+            )
+        else:
+            coin_threshold = coin_calibration.selected_threshold
+            if coin_threshold is None:
+                raise HistoricalBaselineError("non-abstained coin calibration needs threshold")
+            coin_policy = DecisionPolicy(
+                min_expected_net_edge=coin_threshold,
+                min_sample_count=min_sample_count,
+            )
+            coin_test = evaluate_policy(
+                model,
+                fold.test,
+                policy=coin_policy,
+                costs=costs,
+                allow_coin_calibration=True,
+            )
         results.append(
             WalkForwardFoldResult(
                 fold_index=fold_index,
