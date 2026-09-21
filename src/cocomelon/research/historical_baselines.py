@@ -203,9 +203,14 @@ class DirectionalStats:
 
 
 class DirectionalPrediction(Protocol):
-    sample_count: int
-    expected_long_return: Decimal
-    expected_short_return: Decimal
+    @property
+    def sample_count(self) -> int: ...
+
+    @property
+    def expected_long_return(self) -> Decimal: ...
+
+    @property
+    def expected_short_return(self) -> Decimal: ...
 
     @property
     def horizon_ms(self) -> int: ...
