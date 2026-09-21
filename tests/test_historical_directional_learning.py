@@ -3,7 +3,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-
 from cocomelon.research.historical_learning import (
     HistoricalLearningError,
     build_directional_outcomes,
