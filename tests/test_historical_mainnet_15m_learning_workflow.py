@@ -46,6 +46,7 @@ def test_15m_workflow_keeps_distinct_artifact_and_dataset_identity() -> None:
     assert "anchor_interval" in source
     assert "supervised_numeric_feature_registry" in source
     assert "stable_horizon_ridge_folds" in source
+    assert "occupancy_stable_ridge_folds" in source
     assert "stable_tree_folds" in source
     assert "actions/upload-artifact@v7" in source
     assert "if-no-files-found: error" in source
