@@ -118,9 +118,9 @@ def test_experiment_report_is_deterministic_and_permanently_touched() -> None:
     assert first.dataset_logical_sha256 == manifest.logical_sha256
     assert first.source_manifest_ids == ("source-manifest-a",)
     assert len(first.folds) == 3
-    assert first.folds[-1].shared_test.mean_realized_net_return == Decimal(
-        "-0.02200833333333333333333333333"
-    )
+    assert first.folds[-1].shared_threshold is None
+    assert first.folds[-1].shared_test.trade_count == 0
+    assert first.folds[-1].shared_test.mean_realized_net_return is None
 
 
 def test_experiment_report_serializes_costs_thresholds_and_fold_results(tmp_path: Path) -> None:
@@ -142,6 +142,7 @@ def test_experiment_report_serializes_costs_thresholds_and_fold_results(tmp_path
     assert payload["evidence_class"] == "touched_development"
     assert payload["config"]["costs"]["round_trip_fee_fraction"] == "0.001"
     assert payload["config"]["candidate_thresholds"] == ["0", "0.005", "0.01"]
+    assert payload["config"]["min_validation_mean_net_return"] == "0"
     assert payload["folds"][0]["shared_threshold"] in {"0", "0.005", "0.01"}
     assert payload["folds"][0]["shared_test"]["trade_count"] == 2
     assert payload["folds"][0]["shared_validation_candidates"]
