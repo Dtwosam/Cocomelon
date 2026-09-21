@@ -142,15 +142,11 @@ def evaluate_predicted_portfolio_capacity_policy(
         raise ValueError("max_concurrent_positions must be positive")
 
     ordered = _validated_predictions(predicted_rows)
-    by_anchor_market: dict[
-        tuple[int, str],
-        list[PredictedTrainingRow],
-    ] = defaultdict(list)
-    anchors: set[int] = set()
+    by_anchor: dict[int, dict[str, list[PredictedTrainingRow]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for item in ordered:
-        key = (item.row.anchor_end_ms, item.row.market.canonical)
-        by_anchor_market[key].append(item)
-        anchors.add(item.row.anchor_end_ms)
+        by_anchor[item.row.anchor_end_ms][item.row.market.canonical].append(item)
 
     occupied_until_by_market: dict[str, int] = {}
     trades: list[HistoricalExecutedTrade] = []
@@ -158,7 +154,7 @@ def evaluate_predicted_portfolio_capacity_policy(
     occupied_skip_count = 0
     capacity_skip_count = 0
 
-    for anchor_end_ms in sorted(anchors):
+    for anchor_end_ms in sorted(by_anchor):
         occupied_until_by_market = {
             market: target_end_ms
             for market, target_end_ms in occupied_until_by_market.items()
@@ -178,15 +174,9 @@ def evaluate_predicted_portfolio_capacity_policy(
                 DirectionalDecision,
             ]
         ] = []
-        markets_at_anchor = tuple(
-            sorted(
-                market
-                for (candidate_anchor, market) in by_anchor_market
-                if candidate_anchor == anchor_end_ms
-            )
-        )
-        for market in markets_at_anchor:
-            group = by_anchor_market[(anchor_end_ms, market)]
+        markets_at_anchor = by_anchor[anchor_end_ms]
+        for market in sorted(markets_at_anchor):
+            group = markets_at_anchor[market]
             if market in occupied_until_by_market:
                 occupied_skip_count += 1
                 continue
