@@ -90,6 +90,18 @@ jobs:
           set -euo pipefail
           jq '.' "$SOURCE_ROOT/coverage.json"
 
+      - name: Require complete six-month 1h candle grids
+        run: |
+          set -euo pipefail
+          jq -e '
+            ([.sources[] | select(.kind == "candles" and .interval == "1h")] | length) == 4
+            and all(
+              .sources[]
+              | select(.kind == "candles" and .interval == "1h");
+              .complete_requested_grid == true and .record_count == 4873
+            )
+          ' "$SOURCE_ROOT/coverage.json" >/dev/null
+
       - name: Run touched 1h-anchor long-window model comparison
         run: |
           set -euo pipefail
