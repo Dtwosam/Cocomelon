@@ -95,11 +95,12 @@ class ResearchRegistry:
                 batch_id TEXT PRIMARY KEY,
                 candidate_id TEXT NOT NULL,
                 source_id TEXT NOT NULL,
-                replay_run_id TEXT NOT NULL UNIQUE,
+                replay_run_id TEXT NOT NULL,
                 start_ms INTEGER NOT NULL,
                 end_ms INTEGER NOT NULL,
                 status TEXT NOT NULL DEFAULT 'admitted',
                 contamination_v4_run_id TEXT,
+                UNIQUE(candidate_id, replay_run_id),
                 FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
             );
             CREATE TABLE IF NOT EXISTS research_performance_reports (
@@ -119,6 +120,7 @@ class ResearchRegistry:
         )
         self._ensure_research_candidate_columns()
         self._ensure_research_batch_columns()
+        self._ensure_research_batch_replay_scope()
         self.connection.commit()
 
     def _ensure_research_candidate_columns(self) -> None:
@@ -147,6 +149,87 @@ class ResearchRegistry:
         if "contamination_v4_run_id" not in columns:
             self.connection.execute(
                 "ALTER TABLE research_batches ADD COLUMN contamination_v4_run_id TEXT"
+            )
+
+    def _research_batch_unique_columns(self) -> set[tuple[str, ...]]:
+        unique_columns: set[tuple[str, ...]] = set()
+        for row in self.connection.execute("PRAGMA index_list(research_batches)").fetchall():
+            if int(row["unique"]) != 1:
+                continue
+            index_name = str(row["name"])
+            columns = tuple(
+                str(item["name"])
+                for item in self.connection.execute(
+                    f'PRAGMA index_info("{index_name}")'
+                ).fetchall()
+            )
+            unique_columns.add(columns)
+        return unique_columns
+
+    def _ensure_research_batch_replay_scope(self) -> None:
+        unique_columns = self._research_batch_unique_columns()
+        candidate_scoped = ("candidate_id", "replay_run_id")
+        if candidate_scoped in unique_columns:
+            return
+        if ("replay_run_id",) not in unique_columns:
+            raise ResearchRegistryError(
+                "research batch replay uniqueness invariant is missing"
+            )
+        if self.connection.in_transaction:
+            self.connection.commit()
+        self.connection.execute("PRAGMA foreign_keys = OFF")
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            self.connection.execute("DROP TABLE IF EXISTS research_batches_candidate_replay_v2")
+            self.connection.execute(
+                """
+                CREATE TABLE research_batches_candidate_replay_v2 (
+                    batch_id TEXT PRIMARY KEY,
+                    candidate_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    replay_run_id TEXT NOT NULL,
+                    start_ms INTEGER NOT NULL,
+                    end_ms INTEGER NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'admitted',
+                    contamination_v4_run_id TEXT,
+                    UNIQUE(candidate_id, replay_run_id),
+                    FOREIGN KEY(candidate_id) REFERENCES research_candidates(candidate_id)
+                )
+                """
+            )
+            self.connection.execute(
+                """
+                INSERT INTO research_batches_candidate_replay_v2 (
+                    batch_id, candidate_id, source_id, replay_run_id,
+                    start_ms, end_ms, status, contamination_v4_run_id
+                )
+                SELECT batch_id, candidate_id, source_id, replay_run_id,
+                       start_ms, end_ms, status, contamination_v4_run_id
+                FROM research_batches
+                """
+            )
+            self.connection.execute("DROP TABLE research_batches")
+            self.connection.execute(
+                "ALTER TABLE research_batches_candidate_replay_v2 RENAME TO research_batches"
+            )
+            violations = self.connection.execute("PRAGMA foreign_key_check").fetchall()
+            if violations:
+                raise ResearchRegistryError(
+                    "research batch replay-scope migration violates foreign keys"
+                )
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+        finally:
+            self.connection.execute("PRAGMA foreign_keys = ON")
+        if int(self.connection.execute("PRAGMA foreign_keys").fetchone()[0]) != 1:
+            raise ResearchRegistryError(
+                "research registry foreign key enforcement was not restored"
+            )
+        if candidate_scoped not in self._research_batch_unique_columns():
+            raise ResearchRegistryError(
+                "research batch candidate-scoped replay uniqueness migration failed"
             )
 
     @staticmethod
@@ -537,8 +620,9 @@ class ResearchRegistry:
                 return
 
             replay_existing = self.connection.execute(
-                "SELECT batch_id FROM research_batches WHERE replay_run_id = ?",
-                (replay_run_id,),
+                "SELECT batch_id FROM research_batches "
+                "WHERE candidate_id = ? AND replay_run_id = ?",
+                (candidate_id, replay_run_id),
             ).fetchone()
             if replay_existing is not None:
                 raise ResearchRegistryError(
