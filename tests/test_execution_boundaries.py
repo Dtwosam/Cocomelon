@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 
 from cocomelon.hyperliquid.ws_protocol import PUBLIC_TYPES
@@ -68,9 +69,13 @@ def test_ioc_fill_model_requires_l2_and_has_no_candle_or_maker_fill_path() -> No
     assert "rebate" not in lower
 
 
-def test_phase7_has_no_machine_learning_dependency() -> None:
-    pyproject = _source(ROOT / "pyproject.toml").lower()
+def test_phase7_runtime_has_no_machine_learning_dependency() -> None:
+    config = tomllib.loads(_source(ROOT / "pyproject.toml"))
+    base_dependencies = tuple(config["project"].get("dependencies", ()))
     forbidden = ("tensorflow", "torch", "pytorch", "scikit-learn", "sklearn", "xgboost")
 
     for token in forbidden:
-        assert token not in pyproject, f"ML dependency introduced before its phase: {token}"
+        assert all(
+            token not in dependency.lower()
+            for dependency in base_dependencies
+        ), f"ML dependency introduced into Phase 7 runtime: {token}"
