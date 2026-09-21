@@ -9,6 +9,7 @@ from cocomelon.research.historical_learning import (
     build_directional_outcomes,
     plan_candle_windows,
 )
+
 from cocomelon.domain.market import Candle, MarketId
 
 MARKET = MarketId(dex="", coin="ETH")
