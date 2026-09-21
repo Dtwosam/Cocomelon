@@ -256,7 +256,11 @@ def test_build_training_rows_supports_15m_anchor_with_basket_context(
     assert {row.outcome.interval for row in rows} == {"15m"}
     assert {row.horizon_ms for row in rows} == {FIFTEEN, HOUR}
     assert all(row.feature.return_5m is None for row in rows)
-    enriched = next(row for row in rows if row.market == MARKET)
+    enriched = next(
+        row
+        for row in rows
+        if row.market == MARKET and row.feature.return_15m is not None
+    )
     assert enriched.feature.schema_version == 2
     assert enriched.feature.btc_return_15m is not None
     assert enriched.feature.basket_return_count_15m == Decimal("2")
