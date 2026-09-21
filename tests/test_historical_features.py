@@ -400,11 +400,50 @@ def test_1h_anchor_features_preserve_only_honest_coarse_state() -> None:
     assert latest.range_expansion_15m is None
     assert latest.relative_volume_15m is None
     assert latest.candle_15m_age_ms is None
-    assert latest.trend_regime is TrendRegime.UNKNOWN
+    assert latest.trend_regime is TrendRegime.UP
+    assert latest.schema_version == 4
     assert latest.funding_rate == Decimal("0.0004")
     assert "return_5m" in latest.unavailable_features
     assert "return_15m" in latest.unavailable_features
     assert "realized_vol_15m" in latest.unavailable_features
+
+
+def test_1h_anchor_features_classify_down_and_mixed_coarse_regimes() -> None:
+    down = build_historical_feature_rows_1h(
+        candles_1h=tuple(
+            _candle(
+                interval="1h",
+                start_ms=index * HOUR,
+                close=str(105 - index),
+            )
+            for index in range(6)
+        ),
+        funding_rates=(),
+        source_manifest_ids=("1h-manifest",),
+    )[-1]
+    mixed_closes = ("100", "110", "105", "100", "95", "96")
+    mixed = build_historical_feature_rows_1h(
+        candles_1h=tuple(
+            _candle(
+                interval="1h",
+                start_ms=index * HOUR,
+                close=close,
+            )
+            for index, close in enumerate(mixed_closes)
+        ),
+        funding_rates=(),
+        source_manifest_ids=("1h-manifest",),
+    )[-1]
+
+    assert down.return_1h is not None and down.return_1h < 0
+    assert down.return_4h is not None and down.return_4h < 0
+    assert down.trend_regime is TrendRegime.DOWN
+    assert down.schema_version == 4
+
+    assert mixed.return_1h is not None and mixed.return_1h > 0
+    assert mixed.return_4h is not None and mixed.return_4h < 0
+    assert mixed.trend_regime is TrendRegime.MIXED
+    assert mixed.schema_version == 4
 
 
 def test_1h_anchor_features_do_not_bridge_missing_4h_lookback() -> None:
@@ -422,6 +461,7 @@ def test_1h_anchor_features_do_not_bridge_missing_4h_lookback() -> None:
     assert latest.return_1h == Decimal("105") / Decimal("104") - Decimal("1")
     assert latest.return_4h is None
     assert latest.trend_regime is TrendRegime.UNKNOWN
+    assert latest.schema_version == 4
 
 
 def test_1h_anchor_features_keep_late_retrieval_as_provenance_not_availability() -> None:
