@@ -198,6 +198,17 @@ class HistoricalFeatureRow:
         for field in OPTIONAL_FEATURE_NAMES:
             _finite_optional(getattr(self, field), field)
 
+        if self.schema_version < 2 and any(
+            getattr(self, name) is not None
+            for name in BASKET_BASE_CONTEXT_FEATURE_NAMES
+        ):
+            raise ValueError("basket base context requires schema_version >= 2")
+        if self.schema_version < 3 and any(
+            getattr(self, name) is not None
+            for name in BASKET_DISPERSION_FEATURE_NAMES
+        ):
+            raise ValueError("basket dispersion context requires schema_version >= 3")
+
         available = tuple(sorted(set(self.available_features)))
         unavailable = tuple(sorted(set(self.unavailable_features)))
         if set(available) & set(unavailable):
