@@ -1,19 +1,57 @@
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 
+from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
     ExecutionCostAssumptions,
     basket_breadth_1h_bucket,
     basket_direction_1h_bucket,
     relative_strength_1h_bucket,
 )
+from cocomelon.research.historical_dataset import (
+    HistoricalDatasetManifest,
+    build_training_rows_from_source_root,
+    export_training_dataset,
+)
 from cocomelon.research.historical_features import HistoricalTrainingRow
 
 ZERO = Decimal("0")
+EVIDENCE_CLASS = "touched_development"
+REPORT_VERSION = "historical-context-opportunity-v1"
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +217,175 @@ def _means(
         Decimal(sum(1 for value in long_returns if value > ZERO)) / denominator,
         Decimal(sum(1 for value in short_returns if value > ZERO)) / denominator,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalContextOpportunityReport:
+    dataset_id: str
+    dataset_logical_sha256: str
+    dataset_row_count: int
+    anchor_interval: str
+    markets: tuple[str, ...]
+    horizons_ms: tuple[int, ...]
+    source_manifest_ids: tuple[str, ...]
+    costs: ExecutionCostAssumptions
+    opportunity_map: ContextOpportunityMap
+    evidence_class: str = EVIDENCE_CLASS
+    report_version: str = REPORT_VERSION
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        if len(self.dataset_id) != 64:
+            raise ValueError("dataset_id must be a SHA-256 identity")
+        if len(self.dataset_logical_sha256) != 64:
+            raise ValueError("dataset_logical_sha256 must be a SHA-256 digest")
+        if self.dataset_row_count <= 0:
+            raise ValueError("dataset_row_count must be positive")
+        if self.anchor_interval not in {"5m", "15m", "1h"}:
+            raise ValueError("unsupported anchor_interval")
+        if not self.markets or not self.horizons_ms or not self.source_manifest_ids:
+            raise ValueError("dataset provenance fields must not be empty")
+        if self.evidence_class != EVIDENCE_CLASS:
+            raise ValueError("opportunity evidence must remain touched_development")
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "dataset_id": self.dataset_id,
+            "dataset_logical_sha256": self.dataset_logical_sha256,
+            "dataset_row_count": self.dataset_row_count,
+            "anchor_interval": self.anchor_interval,
+            "markets": self.markets,
+            "horizons_ms": self.horizons_ms,
+            "source_manifest_ids": self.source_manifest_ids,
+            "costs": {
+                "round_trip_fee_fraction": str(self.costs.round_trip_fee_fraction),
+                "round_trip_slippage_fraction": str(
+                    self.costs.round_trip_slippage_fraction
+                ),
+                "funding_reserve_fraction_per_hour": str(
+                    self.costs.funding_reserve_fraction_per_hour
+                ),
+            },
+            "opportunity_map": {
+                "stability_blocks": self.opportunity_map.stability_blocks,
+                "min_block_rows": self.opportunity_map.min_block_rows,
+                "min_block_mean_net_return": str(
+                    self.opportunity_map.min_block_mean_net_return
+                ),
+                "entries": tuple(
+                    {
+                        "dimension": entry.dimension,
+                        "value": entry.value,
+                        "horizon_ms": entry.horizon_ms,
+                        "row_count": entry.row_count,
+                        "mean_long_net_return": str(entry.mean_long_net_return),
+                        "mean_short_net_return": str(entry.mean_short_net_return),
+                        "long_positive_rate": str(entry.long_positive_rate),
+                        "short_positive_rate": str(entry.short_positive_rate),
+                        "stable_long": entry.stable_long,
+                        "stable_short": entry.stable_short,
+                        "min_block_rows": entry.min_block_rows,
+                        "min_block_mean_net_return": str(
+                            entry.min_block_mean_net_return
+                        ),
+                        "blocks": tuple(
+                            {
+                                "block_index": block.block_index,
+                                "anchor_count": block.anchor_count,
+                                "row_count": block.row_count,
+                                "mean_long_net_return": (
+                                    None
+                                    if block.mean_long_net_return is None
+                                    else str(block.mean_long_net_return)
+                                ),
+                                "mean_short_net_return": (
+                                    None
+                                    if block.mean_short_net_return is None
+                                    else str(block.mean_short_net_return)
+                                ),
+                            }
+                            for block in entry.blocks
+                        ),
+                    }
+                    for entry in self.opportunity_map.entries
+                ),
+            },
+            "evidence_class": self.evidence_class,
+            "report_version": self.report_version,
+            "schema_version": self.schema_version,
+        }
+
+    @property
+    def report_id(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self.identity_payload(), "report_id": self.report_id}
+
+
+def build_context_opportunity_report(
+    rows: Sequence[HistoricalTrainingRow],
+    *,
+    dataset_manifest: HistoricalDatasetManifest,
+    costs: ExecutionCostAssumptions,
+    stability_blocks: int,
+    min_block_rows: int,
+    min_block_mean_net_return: Decimal = ZERO,
+) -> HistoricalContextOpportunityReport:
+    opportunity_map = build_context_opportunity_map(
+        rows,
+        costs=costs,
+        stability_blocks=stability_blocks,
+        min_block_rows=min_block_rows,
+        min_block_mean_net_return=min_block_mean_net_return,
+    )
+    return HistoricalContextOpportunityReport(
+        dataset_id=dataset_manifest.dataset_id,
+        dataset_logical_sha256=dataset_manifest.logical_sha256,
+        dataset_row_count=dataset_manifest.row_count,
+        anchor_interval=dataset_manifest.anchor_interval,
+        markets=dataset_manifest.markets,
+        horizons_ms=dataset_manifest.horizons_ms,
+        source_manifest_ids=dataset_manifest.source_manifest_ids,
+        costs=costs,
+        opportunity_map=opportunity_map,
+    )
+
+
+def run_context_opportunity_from_sources(
+    *,
+    source_root: Path,
+    output_root: Path,
+    markets: Sequence[MarketId],
+    horizons_ms: Sequence[int],
+    anchor_interval: str,
+    costs: ExecutionCostAssumptions,
+    stability_blocks: int,
+    min_block_rows: int,
+    min_block_mean_net_return: Decimal = ZERO,
+) -> HistoricalContextOpportunityReport:
+    rows = build_training_rows_from_source_root(
+        source_root,
+        markets=markets,
+        horizons_ms=horizons_ms,
+        anchor_interval=anchor_interval,
+    )
+    manifest = export_training_dataset(rows, output_root / "dataset")
+    report = build_context_opportunity_report(
+        rows,
+        dataset_manifest=manifest,
+        costs=costs,
+        stability_blocks=stability_blocks,
+        min_block_rows=min_block_rows,
+        min_block_mean_net_return=min_block_mean_net_return,
+    )
+    _atomic_write(
+        output_root / "opportunity.json",
+        (_canonical_json(report.to_dict()) + "\n").encode("utf-8"),
+    )
+    return report
 
 
 def build_context_opportunity_map(
