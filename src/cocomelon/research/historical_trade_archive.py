@@ -140,8 +140,8 @@ def _prefer_trade(first: ArchivedTrade, second: ArchivedTrade) -> ArchivedTrade:
     return first if first.crossed else second
 
 
-def parse_node_fills_by_block_jsonl(
-    data: bytes,
+def parse_node_fills_by_block_lines(
+    lines: Iterable[str],
     *,
     markets: Sequence[MarketId],
 ) -> tuple[ArchivedTrade, ...]:
@@ -149,13 +149,8 @@ def parse_node_fills_by_block_jsonl(
     if not requested:
         raise ValueError("markets must not be empty")
 
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise HistoricalTradeArchiveError("ARCHIVE_NOT_UTF8") from exc
-
     by_tid: dict[int, ArchivedTrade] = {}
-    for line_number, line in enumerate(text.splitlines(), start=1):
+    for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
         try:
@@ -202,6 +197,18 @@ def parse_node_fills_by_block_jsonl(
             ),
         )
     )
+
+
+def parse_node_fills_by_block_jsonl(
+    data: bytes,
+    *,
+    markets: Sequence[MarketId],
+) -> tuple[ArchivedTrade, ...]:
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HistoricalTradeArchiveError("ARCHIVE_NOT_UTF8") from exc
+    return parse_node_fills_by_block_lines(text.splitlines(), markets=markets)
 
 
 def merge_archived_trades(
