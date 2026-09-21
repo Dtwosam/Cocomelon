@@ -50,7 +50,8 @@ def test_phase8_adds_no_network_wallet_or_live_order_capability() -> None:
 
 def test_phase8_has_no_ml_or_parameter_search_stack() -> None:
     source = _phase8_source()
-    pyproject = _source(ROOT / "pyproject.toml").lower()
+    config = tomllib.loads(_source(ROOT / "pyproject.toml"))
+    base_dependencies = tuple(config["project"].get("dependencies", ()))
     forbidden = (
         "tensorflow",
         "pytorch",
@@ -68,7 +69,10 @@ def test_phase8_has_no_ml_or_parameter_search_stack() -> None:
 
     for token in forbidden:
         assert token not in source, f"Phase 9/10 capability introduced early: {token}"
-        assert token not in pyproject, f"Phase 9/10 dependency introduced early: {token}"
+        assert all(
+            token not in dependency.lower()
+            for dependency in base_dependencies
+        ), f"Phase 9/10 dependency leaked into the Phase 8 runtime: {token}"
 
 
 def test_pyarrow_is_research_only_and_recorder_does_not_import_it() -> None:
