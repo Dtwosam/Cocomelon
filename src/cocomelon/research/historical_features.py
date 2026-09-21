@@ -612,6 +612,155 @@ def build_historical_feature_rows(
     return tuple(rows)
 
 
+def build_historical_feature_rows_15m(
+    *,
+    candles_15m: Sequence[Candle],
+    funding_rates: Sequence[FundingRate],
+    source_manifest_ids: Sequence[str],
+) -> tuple[HistoricalFeatureRow, ...]:
+    ordered_15m = _validate_candles(candles_15m, interval="15m")
+    if not ordered_15m:
+        return ()
+    market = ordered_15m[0].market
+    ordered_funding = _validate_funding(funding_rates, expected_market=market)
+
+    manifests = tuple(sorted(set(source_manifest_ids)))
+    if not manifests or any(not item.strip() for item in manifests):
+        raise HistoricalFeatureError("EMPTY_SOURCE_MANIFEST")
+
+    by_15m_end = {candle.end_ms: candle for candle in ordered_15m}
+    funding_times = tuple(rate.time_ms for rate in ordered_funding)
+    rows: list[HistoricalFeatureRow] = []
+
+    for anchor in ordered_15m:
+        anchor_ms = anchor.end_ms
+        used_candles: dict[tuple[str, int], Candle] = {
+            (anchor.interval, anchor.end_ms): anchor
+        }
+        return_15m = _exact_return(
+            by_15m_end,
+            latest_end_ms=anchor_ms,
+            lookback_ms=INTERVAL_MS["15m"],
+        )
+        return_1h = _exact_return(
+            by_15m_end,
+            latest_end_ms=anchor_ms,
+            lookback_ms=INTERVAL_MS["1h"],
+        )
+        return_4h = _exact_return(
+            by_15m_end,
+            latest_end_ms=anchor_ms,
+            lookback_ms=INTERVAL_MS["4h"],
+        )
+        for lookback_ms in (
+            INTERVAL_MS["15m"],
+            INTERVAL_MS["1h"],
+            INTERVAL_MS["4h"],
+        ):
+            previous = by_15m_end.get(anchor_ms - lookback_ms)
+            if previous is not None:
+                used_candles[(previous.interval, previous.end_ms)] = previous
+        sample = _contiguous_15m_sample(
+            by_15m_end,
+            latest_end_ms=anchor_ms,
+            bars=21,
+        )
+        realized_vol_15m: Decimal | None = None
+        range_expansion_15m: Decimal | None = None
+        relative_volume_15m: Decimal | None = None
+        if sample is not None:
+            realized_vol_15m = _realized_volatility(sample)
+            range_expansion_15m = _range_expansion(sample)
+            relative_volume_15m = _relative_volume(sample)
+            for candle in sample:
+                used_candles[(candle.interval, candle.end_ms)] = candle
+
+        current_funding: FundingRate | None = None
+        previous_funding: FundingRate | None = None
+        funding_position = bisect_right(funding_times, anchor_ms) - 1
+        if funding_position >= 0:
+            current_funding = ordered_funding[funding_position]
+            if funding_position > 0:
+                candidate = ordered_funding[funding_position - 1]
+                if is_expected_funding_successor(
+                    candidate.time_ms,
+                    current_funding.time_ms,
+                ):
+                    previous_funding = candidate
+
+        funding_rate = None if current_funding is None else current_funding.funding_rate
+        funding_premium = None if current_funding is None else current_funding.premium
+        funding_age_ms = (
+            None if current_funding is None else anchor_ms - current_funding.time_ms
+        )
+        funding_change = (
+            None
+            if current_funding is None or previous_funding is None
+            else current_funding.funding_rate - previous_funding.funding_rate
+        )
+        funding_premium_change = (
+            None
+            if current_funding is None or previous_funding is None
+            else current_funding.premium - previous_funding.premium
+        )
+
+        values = {
+            "return_5m": None,
+            "return_15m": return_15m,
+            "return_1h": return_1h,
+            "return_4h": return_4h,
+            "realized_vol_15m": realized_vol_15m,
+            "range_expansion_15m": range_expansion_15m,
+            "relative_volume_15m": relative_volume_15m,
+            "funding_rate": funding_rate,
+            "funding_change": funding_change,
+            "funding_premium": funding_premium,
+            "funding_premium_change": funding_premium_change,
+        }
+        available_features, unavailable_features = _availability(values)
+
+        used_sources = {candle.source for candle in used_candles.values()}
+        retrieved_at = max(
+            candle.received_at_ms for candle in used_candles.values()
+        )
+        if current_funding is not None:
+            used_sources.add(current_funding.source)
+            retrieved_at = max(retrieved_at, current_funding.received_at_ms)
+        if previous_funding is not None:
+            used_sources.add(previous_funding.source)
+            retrieved_at = max(retrieved_at, previous_funding.received_at_ms)
+
+        rows.append(
+            HistoricalFeatureRow(
+                market=market,
+                anchor_end_ms=anchor_ms,
+                anchor_close_px=anchor.close_px,
+                return_5m=None,
+                return_15m=return_15m,
+                return_1h=return_1h,
+                return_4h=return_4h,
+                realized_vol_15m=realized_vol_15m,
+                range_expansion_15m=range_expansion_15m,
+                relative_volume_15m=relative_volume_15m,
+                funding_rate=funding_rate,
+                funding_change=funding_change,
+                funding_premium=funding_premium,
+                funding_premium_change=funding_premium_change,
+                funding_age_ms=funding_age_ms,
+                candle_15m_age_ms=0,
+                trend_regime=_trend_regime(return_15m, return_1h, return_4h),
+                availability_basis=AVAILABILITY_BASIS,
+                source_retrieved_at_ms=retrieved_at,
+                retrieved_after_anchor=retrieved_at > anchor_ms,
+                available_features=available_features,
+                unavailable_features=unavailable_features,
+                provenance=tuple(sorted(used_sources)),
+                source_manifest_ids=manifests,
+            )
+        )
+
+    return tuple(rows)
+
 def join_features_to_outcomes(
     features: Sequence[HistoricalFeatureRow],
     outcomes: Sequence[DirectionalOutcome],
