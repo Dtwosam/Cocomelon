@@ -392,7 +392,6 @@ def write_archive_candle_source(
     return manifest
 
 
-
 @dataclass(frozen=True, slots=True)
 class CandleOverlapMismatch:
     start_ms: int
