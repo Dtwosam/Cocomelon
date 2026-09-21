@@ -199,7 +199,8 @@ def _verify_normalized(path: Path, expected_sha256: str) -> bytes:
     actual = _sha256_bytes(data)
     if actual != expected_sha256:
         raise HistoricalDatasetIntegrityError(
-            f"normalized source sha256 mismatch for {path}: expected {expected_sha256}, got {actual}"
+            "normalized source sha256 mismatch for "
+            f"{path}: expected {expected_sha256}, got {actual}"
         )
     return data
 
@@ -617,7 +618,10 @@ def export_training_dataset(
         markets=tuple(row.market.canonical for row in ordered),
         horizons_ms=tuple(row.horizon_ms for row in ordered),
         source_manifest_ids=source_manifest_ids,
-        writer_library_version=_string(getattr(pyarrow, "__version__", None), "pyarrow.__version__"),
+        writer_library_version=_string(
+            getattr(pyarrow, "__version__", None),
+            "pyarrow.__version__",
+        ),
     )
     _atomic_write(
         output_root / "manifest.json",
