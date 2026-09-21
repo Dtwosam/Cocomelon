@@ -4,14 +4,14 @@
 
 **Snapshot updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `09e5c93db64ede19ec6ad02ac642defc96176c27`  
-**Latest verified main CI:** `35596674099` — success  
+**Current verified `main` at snapshot:** `31a977ab2fd5fb6398314adf8c7b365e16b303f0`  
+**Latest verified development CI:** `35609936635` on PR #235 implementation head — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
 **Hyperliquid testnet:** forbidden  
 **Live trading:** **DISABLED**  
-**Phase 10:** **BLOCKED**
+**Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
 ---
 
@@ -96,15 +96,18 @@ Target behavior:
 
 Phase 9 satisfied its exit condition by honestly demonstrating that the retired V4 baseline did not show edge. **Phase 10 offline learning engineering is active.** Live trading and promotion remain blocked.
 
-Current implementation slice:
+Current implementation frontier:
 
-- `src/cocomelon/research/historical_learning.py` provides deterministic bounded historical candle request windows;
-- the planner respects the 5,000-candle request ceiling;
-- historical outcome construction records exact-timestamp LONG and SHORT gross returns;
-- missing exact target candles are omitted rather than bridged;
-- mixed markets/intervals, duplicate timestamps, empty provenance, and invalid prices fail closed;
-- labels carry deterministic identity/provenance;
+- deterministic bounded candle request windows respect the 5,000-candle ceiling;
+- exact-timestamp outcomes record both LONG and SHORT gross returns and omit missing exact targets;
+- resumable public-mainnet candle/funding backfill persists raw page envelopes and normalized records;
+- source manifests preserve deterministic checksums, request/observed coverage, and gaps;
+- funding page boundaries intentionally overlap for authenticated deduplication; conflicting duplicates fail closed;
+- `cocomelon-historical-backfill` orchestrates multiple canonical markets/intervals through the existing rate-budgeted `InfoClient`;
+- deterministic combined coverage reports preserve source/market/interval provenance;
 - no model family or decision threshold is selected yet.
+
+PR #235 implementation head `0b463d515b2f0914a1ff7aae5ddc8682a12b931d` passed CI run `35609936635` with compile, Ruff, strict mypy, full pytest, and research smoke.
 
 ### Preserved r2 experiment
 
@@ -183,9 +186,9 @@ PR #232 merged as `09e5c93db64ede19ec6ad02ac642defc96176c27`. Post-merge main CI
 1. Keep live trading disabled and risk limits unchanged.
 2. Use `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary plan.
 3. Preserve retired V4, r1, and r2 evidence as touched/auditable history.
-4. Continue from the green historical outcome substrate by implementing rate-budget-aware offline mainnet candle/funding backfill.
-5. Persist immutable source manifests, checksums, requested/observed coverage, deduplication state, and explicit gaps.
-6. Reconstruct point-in-time historical features without synthesizing unavailable L2/order-flow/OI data.
+4. Treat the verified Slice B source-acquisition contracts as the immutable input boundary for historical learning.
+5. Reconstruct point-in-time candle/funding feature states without synthesizing unavailable L2/order-flow/OI data.
+6. Represent historically unavailable fields explicitly and preserve feature provenance.
 7. Join features to exact multi-horizon LONG/SHORT outcomes and export versioned analytical training datasets.
 8. Establish simple direction-neutral baselines, then compare more complex supervised models only if justified.
 9. Use chronological validation/embargo/walk-forward evaluation and cost-aware NO_TRADE calibration.

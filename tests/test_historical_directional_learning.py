@@ -6,9 +6,11 @@ import pytest
 
 from cocomelon.domain.market import Candle, MarketId
 from cocomelon.research.historical_learning import (
+    FUNDING_INTERVAL_MS,
     HistoricalLearningError,
     build_directional_outcomes,
     plan_candle_windows,
+    plan_funding_windows,
 )
 
 MARKET = MarketId(dex="", coin="ETH")
@@ -57,6 +59,30 @@ def test_plan_candle_windows_rejects_unknown_interval_and_invalid_bounds() -> No
         plan_candle_windows(interval="5m", start_ms=2_000, end_ms=1_000)
     with pytest.raises(ValueError, match="max_candles must be positive"):
         plan_candle_windows(interval="5m", start_ms=0, end_ms=1_000, max_candles=0)
+
+
+def test_plan_funding_windows_overlap_boundaries_for_deduplication() -> None:
+    windows = plan_funding_windows(
+        start_ms=0,
+        end_ms=3 * FUNDING_INTERVAL_MS,
+        max_items=2,
+    )
+
+    assert [(item.start_ms, item.end_ms) for item in windows] == [
+        (0, FUNDING_INTERVAL_MS),
+        (FUNDING_INTERVAL_MS, 2 * FUNDING_INTERVAL_MS),
+        (2 * FUNDING_INTERVAL_MS, 3 * FUNDING_INTERVAL_MS),
+    ]
+    assert all(item.item_capacity <= 2 for item in windows)
+
+
+def test_plan_funding_windows_rejects_nonprogressing_page_size() -> None:
+    with pytest.raises(ValueError, match="at least 2"):
+        plan_funding_windows(
+            start_ms=0,
+            end_ms=FUNDING_INTERVAL_MS,
+            max_items=1,
+        )
 
 
 def test_directional_outcomes_label_both_long_and_short_from_future_close() -> None:
