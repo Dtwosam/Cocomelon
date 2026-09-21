@@ -14,6 +14,7 @@ from cocomelon.research.historical_baselines import (
     HistoricalBaselineError,
     calibrate_no_trade_threshold,
     chronological_split,
+    compare_shared_and_coin_calibration,
     fit_conditional_baseline,
     walk_forward_splits,
 )
@@ -390,3 +391,60 @@ def test_validation_only_threshold_calibration_filters_low_quality_state() -> No
     )
     assert selected.trade_count == 1
     assert selected.mean_realized_net_return == Decimal("0.015")
+
+
+
+def test_shared_vs_coin_comparison_reports_both_variants_without_retraining() -> None:
+    train = (
+        _row(market=ETH, anchor_end_ms=1 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(market=ETH, anchor_end_ms=2 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(
+            market=BTC,
+            anchor_end_ms=3 * FIVE,
+            long_return="-0.03",
+            short_return="0.03",
+        ),
+        _row(
+            market=BTC,
+            anchor_end_ms=4 * FIVE,
+            long_return="-0.03",
+            short_return="0.03",
+        ),
+    )
+    evaluation_rows = (
+        _row(market=ETH, anchor_end_ms=5 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(
+            market=BTC,
+            anchor_end_ms=6 * FIVE,
+            long_return="-0.02",
+            short_return="0.02",
+        ),
+    )
+    model = fit_conditional_baseline(
+        train,
+        min_state_samples=2,
+        min_coin_samples=2,
+    )
+    policy = DecisionPolicy(
+        min_expected_net_edge=Decimal("0.005"),
+        min_sample_count=2,
+    )
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    comparison = compare_shared_and_coin_calibration(
+        model,
+        evaluation_rows,
+        policy=policy,
+        costs=costs,
+    )
+
+    assert comparison.shared_only.trade_count == 0
+    assert comparison.shared_only.no_trade_count == 2
+    assert comparison.coin_calibrated.trade_count == 2
+    assert comparison.coin_calibrated.long_count == 1
+    assert comparison.coin_calibrated.short_count == 1
+    assert comparison.coin_calibrated.mean_realized_net_return == Decimal("0.02")
