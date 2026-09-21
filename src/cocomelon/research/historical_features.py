@@ -4,7 +4,7 @@ import hashlib
 import json
 from bisect import bisect_right
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from cocomelon.domain.features import TrendRegime
@@ -21,6 +21,21 @@ ONE = Decimal("1")
 MEDIAN = Decimal("0.5")
 AVAILABILITY_BASIS = "exchange_timestamp"
 
+CONTEXT_FEATURE_NAMES = (
+    "btc_return_5m",
+    "btc_return_1h",
+    "btc_return_4h",
+    "eth_return_5m",
+    "eth_return_1h",
+    "eth_return_4h",
+    "market_median_return_5m",
+    "market_median_return_1h",
+    "market_breadth_positive_5m",
+    "market_breadth_positive_1h",
+    "market_relative_return_5m",
+    "market_relative_return_1h",
+)
+
 STATIC_UNAVAILABLE_FEATURES = (
     "ask_depth_25bps",
     "bid_depth_25bps",
@@ -31,6 +46,7 @@ STATIC_UNAVAILABLE_FEATURES = (
     "order_flow",
     "oi_change_fraction",
     "spread_bps",
+    *CONTEXT_FEATURE_NAMES,
 )
 
 OPTIONAL_FEATURE_NAMES = (
@@ -45,6 +61,7 @@ OPTIONAL_FEATURE_NAMES = (
     "funding_change",
     "funding_premium",
     "funding_premium_change",
+    *CONTEXT_FEATURE_NAMES,
 )
 
 
@@ -97,6 +114,18 @@ class HistoricalFeatureRow:
     unavailable_features: tuple[str, ...]
     provenance: tuple[str, ...]
     source_manifest_ids: tuple[str, ...]
+    btc_return_5m: Decimal | None = None
+    btc_return_1h: Decimal | None = None
+    btc_return_4h: Decimal | None = None
+    eth_return_5m: Decimal | None = None
+    eth_return_1h: Decimal | None = None
+    eth_return_4h: Decimal | None = None
+    market_median_return_5m: Decimal | None = None
+    market_median_return_1h: Decimal | None = None
+    market_breadth_positive_5m: Decimal | None = None
+    market_breadth_positive_1h: Decimal | None = None
+    market_relative_return_5m: Decimal | None = None
+    market_relative_return_1h: Decimal | None = None
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -166,6 +195,22 @@ class HistoricalFeatureRow:
             "unavailable_features": self.unavailable_features,
             "provenance": self.provenance,
             "source_manifest_ids": self.source_manifest_ids,
+            "btc_return_5m": _decimal(self.btc_return_5m),
+            "btc_return_1h": _decimal(self.btc_return_1h),
+            "btc_return_4h": _decimal(self.btc_return_4h),
+            "eth_return_5m": _decimal(self.eth_return_5m),
+            "eth_return_1h": _decimal(self.eth_return_1h),
+            "eth_return_4h": _decimal(self.eth_return_4h),
+            "market_median_return_5m": _decimal(self.market_median_return_5m),
+            "market_median_return_1h": _decimal(self.market_median_return_1h),
+            "market_breadth_positive_5m": _decimal(
+                self.market_breadth_positive_5m
+            ),
+            "market_breadth_positive_1h": _decimal(
+                self.market_breadth_positive_1h
+            ),
+            "market_relative_return_5m": _decimal(self.market_relative_return_5m),
+            "market_relative_return_1h": _decimal(self.market_relative_return_1h),
             "schema_version": self.schema_version,
         }
 
@@ -540,6 +585,144 @@ def build_historical_feature_rows(
             )
         )
     return tuple(rows)
+
+
+def _native_reference(
+    rows: Sequence[HistoricalFeatureRow],
+    coin: str,
+) -> HistoricalFeatureRow | None:
+    return next(
+        (
+            row
+            for row in rows
+            if row.market.dex == "" and row.market.coin == coin
+        ),
+        None,
+    )
+
+
+def _cross_section(
+    rows: Sequence[HistoricalFeatureRow],
+    field: str,
+) -> tuple[Decimal | None, Decimal | None]:
+    values = tuple(
+        value
+        for row in rows
+        if (value := getattr(row, field)) is not None
+    )
+    if len(values) < 2:
+        return None, None
+    median = quantile(values, MEDIAN)
+    breadth = Decimal(sum(value > ZERO for value in values)) / Decimal(len(values))
+    return median, breadth
+
+
+def enrich_historical_market_context(
+    features: Sequence[HistoricalFeatureRow],
+) -> tuple[HistoricalFeatureRow, ...]:
+    by_anchor: dict[int, list[HistoricalFeatureRow]] = {}
+    seen: set[tuple[MarketId, int]] = set()
+    for feature in features:
+        key = (feature.market, feature.anchor_end_ms)
+        if key in seen:
+            raise HistoricalFeatureError("DUPLICATE_FEATURE_ANCHOR")
+        seen.add(key)
+        by_anchor.setdefault(feature.anchor_end_ms, []).append(feature)
+
+    enriched: list[HistoricalFeatureRow] = []
+    for anchor_ms in sorted(by_anchor):
+        anchor_rows = tuple(
+            sorted(by_anchor[anchor_ms], key=lambda row: row.market.canonical)
+        )
+        btc = _native_reference(anchor_rows, "BTC")
+        eth = _native_reference(anchor_rows, "ETH")
+        median_5m, breadth_5m = _cross_section(anchor_rows, "return_5m")
+        median_1h, breadth_1h = _cross_section(anchor_rows, "return_1h")
+
+        for feature in anchor_rows:
+            context = {
+                "btc_return_5m": None if btc is None else btc.return_5m,
+                "btc_return_1h": None if btc is None else btc.return_1h,
+                "btc_return_4h": None if btc is None else btc.return_4h,
+                "eth_return_5m": None if eth is None else eth.return_5m,
+                "eth_return_1h": None if eth is None else eth.return_1h,
+                "eth_return_4h": None if eth is None else eth.return_4h,
+                "market_median_return_5m": median_5m,
+                "market_median_return_1h": median_1h,
+                "market_breadth_positive_5m": breadth_5m,
+                "market_breadth_positive_1h": breadth_1h,
+                "market_relative_return_5m": (
+                    None
+                    if feature.return_5m is None or median_5m is None
+                    else feature.return_5m - median_5m
+                ),
+                "market_relative_return_1h": (
+                    None
+                    if feature.return_1h is None or median_1h is None
+                    else feature.return_1h - median_1h
+                ),
+            }
+
+            available = set(feature.available_features) - set(CONTEXT_FEATURE_NAMES)
+            unavailable = set(feature.unavailable_features) - set(CONTEXT_FEATURE_NAMES)
+            available.update(
+                name for name, value in context.items() if value is not None
+            )
+            unavailable.update(
+                name for name, value in context.items() if value is None
+            )
+
+            contributors = {feature}
+            if btc is not None and any(
+                value is not None
+                for value in (btc.return_5m, btc.return_1h, btc.return_4h)
+            ):
+                contributors.add(btc)
+            if eth is not None and any(
+                value is not None
+                for value in (eth.return_5m, eth.return_1h, eth.return_4h)
+            ):
+                contributors.add(eth)
+            if median_5m is not None or median_1h is not None:
+                contributors.update(
+                    row
+                    for row in anchor_rows
+                    if row.return_5m is not None or row.return_1h is not None
+                )
+
+            enriched.append(
+                replace(
+                    feature,
+                    **context,
+                    source_retrieved_at_ms=max(
+                        row.source_retrieved_at_ms for row in contributors
+                    ),
+                    retrieved_after_anchor=(
+                        max(row.source_retrieved_at_ms for row in contributors)
+                        > anchor_ms
+                    ),
+                    available_features=tuple(available),
+                    unavailable_features=tuple(unavailable),
+                    provenance=tuple(
+                        source
+                        for row in contributors
+                        for source in row.provenance
+                    ),
+                    source_manifest_ids=tuple(
+                        manifest_id
+                        for row in contributors
+                        for manifest_id in row.source_manifest_ids
+                    ),
+                    schema_version=2,
+                )
+            )
+
+    return tuple(
+        sorted(
+            enriched,
+            key=lambda row: (row.market.canonical, row.anchor_end_ms, row.row_id),
+        )
+    )
 
 
 def join_features_to_outcomes(
