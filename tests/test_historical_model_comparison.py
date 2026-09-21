@@ -111,6 +111,7 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert report.evidence_class == "touched_development"
     assert report.dataset_id == manifest.dataset_id
     assert report.dataset_logical_sha256 == manifest.logical_sha256
+    assert report.anchor_interval == "5m"
     assert len(report.baseline_folds) == len(report.ridge_folds) == 3
     assert len(report.horizon_ridge_folds) == 3
     assert len(report.stable_horizon_ridge_folds) == 3
@@ -194,3 +195,46 @@ def test_comparison_report_is_deterministic() -> None:
 
     assert first == second
     assert first.report_id == second.report_id
+
+
+
+def test_comparison_rejects_dataset_anchor_interval_mismatch() -> None:
+    rows = tuple(_row(index) for index in range(1, 9))
+    config = HistoricalModelComparisonConfig(
+        costs=ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        candidate_thresholds=(Decimal("0"),),
+        candidate_ridge_alphas=(Decimal("0.1"),),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        baseline_min_state_samples=1,
+        baseline_min_coin_samples=99,
+        ridge_min_market_samples=99,
+        min_sample_count=1,
+        min_validation_trades=1,
+    )
+    manifest = HistoricalDatasetManifest(
+        output_relative_path="training.parquet",
+        output_sha256="a" * 64,
+        output_byte_count=100,
+        row_count=len(rows),
+        logical_sha256="b" * 64,
+        markets=("ETH",),
+        horizons_ms=(FIVE,),
+        source_manifest_ids=("source-a",),
+        writer_library_version="test",
+        anchor_interval="15m",
+    )
+
+    with pytest.raises(ValueError, match="anchor_interval"):
+        build_historical_model_comparison_report(
+            rows,
+            dataset_manifest=manifest,
+            config=config,
+        )
