@@ -2,7 +2,7 @@
 
 **Status:** active  
 **Created:** 2026-09-20  
-**Updated:** 2026-09-20  
+**Updated:** 2026-09-21  
 **Supersedes for active execution:** `2026-09-14-research-natural-rollout-validation.md`  
 **Scope:** touched research validation of `research-r2-short-trend-quality-v1`; paper/shadow only.
 
@@ -28,15 +28,17 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Current verified state
 
-- Main implementation through PR #226: `58e88327188c6bea0374948ac228de15ff64ed4c`.
-- Post-merge main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
+- Main implementation through PR #228: `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`.
+- Post-merge main CI `35576633597` passed compile, Ruff, mypy, full pytest, and research smoke.
 - PR #211 made existing `TIGHTEN_STOP` paper-execution actions durable across restart by atomically persisting the tightened materialized account state.
 - PR #215 reconciles each current materialized paper position against its deterministic immutable `paper_position_events` record and fails closed on missing/corrupted event evidence.
 - PR #217 regression-locks LONG/SHORT tightened-stop restart durability plus durable-write failure behavior.
 - PRs #219/#220 reject missing or unsupported persisted schema versions for paper execution and journal/replay SQLite stores instead of silently rewriting metadata.
-- PR #222 fails closed on durable order-plan write errors; #223 validates active-position opening-plan lineage; #224 fails closed on funding-idempotency read errors; #226 rejects structurally incomplete supported-version paper/journal stores before migration DDL can conceal table loss. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
+- PR #222 fails closed on durable order-plan write errors; #223 validates active-position opening-plan lineage; #224 fails closed on funding-idempotency read errors; #226 rejects structurally incomplete supported-version paper/journal stores before migration DDL can conceal table loss; #228 fixes shared root+r2 replay identity ownership in the research registry. These changes do not modify r2 entry thresholds, risk limits, cadence, or live-order controls.
 - The revealed V4 baseline is retired from future scheduled acquisition and automatic one-shot evaluation.
-- One pre-retirement V4 acquisition `35524316366` remains protected until it finishes naturally.
+- Protected pre-retirement V4 acquisition `35524316366` finished naturally; authoritative sync/curation accepted it into the retired touched corpus, now 69 accepted cohorts / 121 closed paper trades / 21 closed-trade days.
+- Natural root+r2 campaign `35551385941` passed shared-capture, V4 completeness/disjointness, pre-publication rollout verification, and independent final rollout verification. Root succeeded and became checkpoint 13; r2 failed NOT COUNTED because the registry incorrectly made shared deterministic `replay_run_id` globally unique.
+- PR #228 fixes that operational fanout defect for future natural cohorts via candidate-scoped replay uniqueness plus legacy-registry migration. The failed r2 attempt is not retried or backfilled.
 - Trusted evidence dashboard reports the V4 baseline as RETIRED / TOUCHED — NO EDGE DEMONSTRATED.
 - Trusted research dashboard lists r2 as draft with zero authenticated checkpoints.
 - PR #208 restored both authoritative rollout-verifier gates for the active root+r2 pair.
@@ -44,23 +46,23 @@ These thresholds are immutable for r2. Later V4 cohorts and future r2 outcomes m
 
 ## Task 1 — Let the final protected V4 interval resolve naturally
 
-- [ ] Let run `35524316366` reach terminal state without cancellation, retry, extension, or outcome conditioning.
-- [ ] Preserve its actual run/job/session interval in V4 authority.
-- [ ] Require authoritative completeness/disjointness before any subsequent research economics are admitted.
-- [ ] Do not create any replacement V4 promotion sample for the retired baseline.
+- [x] Let run `35524316366` reach terminal state without cancellation, retry, extension, or outcome conditioning.
+- [x] Preserve its actual run/job/session interval in V4 authority.
+- [x] Require authoritative completeness/disjointness before any subsequent research economics are admitted.
+- [x] Do not create any replacement V4 promotion sample for the retired baseline.
 
 ## Task 2 — Validate the first natural root+r2 cohort
 
-On the next naturally eligible safe gap:
+Natural campaign `35551385941` exercised this contract. Root succeeded; r2 failed operationally before checkpoint commit because of the replay-identity registry defect fixed by PR #228. The failed r2 attempt remains auditable and NOT COUNTED; it is not retried or backfilled.
 
-- [ ] Require bot-controlled safe-gap dispatch; do not manually dispatch the economic campaign for proof.
-- [ ] Require exactly one authenticated public-mainnet capture shared by root and r2.
-- [ ] Require exact source ID, capture interval, recording-session digest, and source-set digest agreement.
-- [ ] Require root success; challenger failure remains auditable and nonfatal only where the locked verifier contract permits it.
-- [ ] Require `Verify root+challenger rollout contract before authoritative publish` to pass before an r2 checkpoint can become authoritative.
-- [ ] Require the independent final rollout verifier to pass.
-- [ ] Require actual V4 interval disjointness and completeness, not nominal cron assumptions.
-- [ ] Count only authenticated successful checkpoints.
+- [x] Require bot-controlled safe-gap dispatch; do not manually dispatch the economic campaign for proof.
+- [x] Require exactly one authenticated public-mainnet capture shared by root and r2.
+- [x] Require exact source ID, capture interval, recording-session digest, and source-set digest agreement.
+- [x] Require root success; challenger failure remains auditable and nonfatal only where the locked verifier contract permits it.
+- [x] Require `Verify root+challenger rollout contract before authoritative publish` to pass before an r2 checkpoint can become authoritative.
+- [x] Require the independent final rollout verifier to pass.
+- [x] Require actual V4 interval disjointness and completeness, not nominal cron assumptions.
+- [x] Count only authenticated successful checkpoints.
 
 ## Task 3 — Evaluate r2 without moving the goalposts
 
