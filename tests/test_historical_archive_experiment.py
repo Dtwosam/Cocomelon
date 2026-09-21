@@ -237,6 +237,12 @@ def test_archive_experiment_funding_backfill_writes_market_local_sources(
     assert (tmp_path / "ETH" / "funding" / "manifest.json").is_file()
 
 
+class FakeOverlap:
+    report_id = "overlap-report"
+    compared_count = 8
+    exact = True
+
+
 class FakeComparison:
     evidence_class = "touched_development"
     report_id = "report-id"
@@ -279,6 +285,11 @@ def test_archive_experiment_orders_verification_funding_ingest_then_comparison(
     )
     monkeypatch.setattr(
         experiment,
+        "validate_archive_native_overlap",
+        lambda *args, **kwargs: calls.append("overlap") or FakeOverlap(),
+    )
+    monkeypatch.setattr(
+        experiment,
         "run_historical_model_comparison_from_sources",
         lambda **kwargs: calls.append("comparison") or FakeComparison(),
     )
@@ -297,8 +308,9 @@ def test_archive_experiment_orders_verification_funding_ingest_then_comparison(
         config=_config(),
     )
 
-    assert calls == ["verify", "funding", "candles", "comparison"]
+    assert calls == ["verify", "funding", "candles", "overlap", "comparison"]
     assert result.archive.manifest_id == "manifest"
     assert result.source_summary["coverage_report_id"] == "coverage"
+    assert result.overlap.report_id == "overlap-report"
     assert result.report_id == "report-id"
     assert result.dataset_id == "dataset-id"
