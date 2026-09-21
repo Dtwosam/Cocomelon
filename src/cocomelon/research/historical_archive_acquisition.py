@@ -3,9 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
@@ -169,7 +168,7 @@ def plan_archive_shards(
     shards: list[ArchiveShard] = []
     cursor = first_hour
     while cursor <= last_hour:
-        instant = datetime.fromtimestamp(cursor / 1000, tz=timezone.utc)
+        instant = datetime.fromtimestamp(cursor / 1000, tz=UTC)
         day = instant.strftime("%Y%m%d")
         hour = instant.hour
         key = f"{ARCHIVE_PREFIX}/{day}/{hour}.lz4"
