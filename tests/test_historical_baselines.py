@@ -187,7 +187,7 @@ def test_shared_baseline_estimates_long_and_short_independently() -> None:
         _row(anchor_end_ms=3 * FIVE, long_return="-0.01", short_return="0.01"),
     )
 
-    model = fit_conditional_baseline(rows, min_state_samples=2, min_coin_samples=3)
+    model = fit_conditional_baseline(rows, min_state_samples=2, min_coin_samples=4)
     estimate = model.predict(rows[0].feature, horizon_ms=FIVE)
 
     assert estimate.sample_count == 3
