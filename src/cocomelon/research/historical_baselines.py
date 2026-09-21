@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
+from typing import Protocol
 
 from cocomelon.domain.features import TrendRegime
 from cocomelon.research.historical_features import (
@@ -201,6 +202,28 @@ class DirectionalStats:
             raise ValueError("short_positive_rate must be between 0 and 1")
 
 
+class DirectionalPrediction(Protocol):
+    sample_count: int
+    expected_long_return: Decimal
+    expected_short_return: Decimal
+
+    @property
+    def horizon_ms(self) -> int: ...
+
+    @property
+    def estimate_source(self) -> str: ...
+
+
+class HistoricalDirectionalModel(Protocol):
+    def predict(
+        self,
+        feature: HistoricalFeatureRow,
+        *,
+        horizon_ms: int,
+        allow_coin_calibration: bool = True,
+    ) -> DirectionalPrediction: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DirectionalEstimate:
     sample_count: int
@@ -221,6 +244,14 @@ class DirectionalEstimate:
             long_positive_rate=self.long_positive_rate,
             short_positive_rate=self.short_positive_rate,
         )
+
+    @property
+    def horizon_ms(self) -> int:
+        return self.state_key.horizon_ms
+
+    @property
+    def estimate_source(self) -> str:
+        return self.source
 
 
 def _shared_state(feature: HistoricalFeatureRow, horizon_ms: int) -> SharedStateKey:
@@ -431,11 +462,11 @@ class DecisionPolicy:
 
     def decide(
         self,
-        estimate: DirectionalEstimate,
+        estimate: DirectionalPrediction,
         *,
         costs: ExecutionCostAssumptions,
     ) -> DirectionalDecision:
-        cost_fraction = costs.total_cost_fraction(estimate.state_key.horizon_ms)
+        cost_fraction = costs.total_cost_fraction(estimate.horizon_ms)
         long_net = estimate.expected_long_return - cost_fraction
         short_net = estimate.expected_short_return - cost_fraction
 
@@ -455,7 +486,7 @@ class DecisionPolicy:
             cost_fraction=cost_fraction,
             min_expected_net_edge=self.min_expected_net_edge,
             sample_count=estimate.sample_count,
-            estimate_source=estimate.source,
+            estimate_source=estimate.estimate_source,
         )
 
 
@@ -537,7 +568,7 @@ def _realized_net_return(
 
 
 def calibrate_no_trade_threshold(
-    model: ConditionalBaselineModel,
+    model: HistoricalDirectionalModel,
     validation_rows: Sequence[HistoricalTrainingRow],
     *,
     costs: ExecutionCostAssumptions,
@@ -716,7 +747,7 @@ class BaselineVariantComparison:
 
 
 def _policy_observations(
-    model: ConditionalBaselineModel,
+    model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
     policy: DecisionPolicy,
@@ -737,7 +768,7 @@ def _policy_observations(
                 horizon_ms=row.horizon_ms,
                 trend_regime=row.feature.trend_regime,
                 action=decision.action,
-                estimate_source=estimate.source,
+                estimate_source=estimate.estimate_source,
                 realized_net_return=_realized_net_return(row, decision),
             )
         )
@@ -813,7 +844,7 @@ def _breakdown_observations(
 
 
 def evaluate_policy(
-    model: ConditionalBaselineModel,
+    model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
     policy: DecisionPolicy,
@@ -832,7 +863,7 @@ def evaluate_policy(
 
 
 def evaluate_policy_breakdowns(
-    model: ConditionalBaselineModel,
+    model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
     policy: DecisionPolicy,
@@ -851,7 +882,7 @@ def evaluate_policy_breakdowns(
 
 
 def compare_shared_and_coin_calibration(
-    model: ConditionalBaselineModel,
+    model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
     policy: DecisionPolicy,
