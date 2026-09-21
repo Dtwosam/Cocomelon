@@ -592,17 +592,18 @@ def calibrate_no_trade_threshold(
             )
         )
 
-    trade_count_eligible = tuple(
-        result
-        for result in results
-        if result.trade_count >= min_validation_trades
-        and result.mean_realized_net_return is not None
-    )
-    eligible = tuple(
-        result
-        for result in trade_count_eligible
-        if result.mean_realized_net_return > min_validation_mean_net_return
-    )
+    trade_count_eligible_list: list[ThresholdCandidateResult] = []
+    eligible_list: list[ThresholdCandidateResult] = []
+    for result in results:
+        mean_return = result.mean_realized_net_return
+        if result.trade_count < min_validation_trades or mean_return is None:
+            continue
+        trade_count_eligible_list.append(result)
+        if mean_return > min_validation_mean_net_return:
+            eligible_list.append(result)
+
+    trade_count_eligible = tuple(trade_count_eligible_list)
+    eligible = tuple(eligible_list)
     if not eligible:
         if trade_count_eligible or all(result.trade_count == 0 for result in results):
             return ThresholdCalibration(
