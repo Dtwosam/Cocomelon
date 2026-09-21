@@ -128,6 +128,11 @@ def test_tree_learns_simple_nonlinear_directional_pattern() -> None:
         allow_coin_calibration=False,
     )
 
+    fitted = model.horizons[FIVE]
+    assert "return_5m" in fitted.encoder.numeric_features
+    assert "btc_return_5m" not in fitted.encoder.numeric_features
+    assert "basket_median_return_5m" not in fitted.encoder.numeric_features
+
     assert outer.expected_long_return > 0
     assert inner.expected_long_return < 0
     assert outer.expected_short_return == -outer.expected_long_return
