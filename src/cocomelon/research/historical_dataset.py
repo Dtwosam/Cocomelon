@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 from urllib.parse import quote
 
 from cocomelon.domain.market import Candle, FundingRate, MarketId
