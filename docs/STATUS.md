@@ -121,15 +121,16 @@ Post-#228 main CI `35576633597` passed compile, Ruff, mypy, full pytest, and res
 1. Keep Phase 10 and live trading blocked.
 2. Keep the retired V4 scheduler and automatic one-shot disabled; run `35524316366` is complete and must not be retried, extended, or backfilled.
 3. Preserve the failed r2 attempt from natural campaign `35551385941` as historical/auditable NOT COUNTED evidence; do not rerun or backfill that interval.
-4. Let the next naturally eligible safe-gap research cohort launch through the dispatcher with root + `research-r2-short-trend-quality-v1`; do not manually dispatch economics merely to accelerate evidence.
-5. On that future cohort, require one shared authenticated public-mainnet capture, actual V4 completeness/disjointness, exact source/digest agreement, the pre-publication root+r2 rollout verifier, and the independent final rollout verifier.
-6. Count only authenticated successful r2 checkpoints. Until one succeeds, r2 remains draft with zero authenticated checkpoints and no economic inference is permitted.
-7. Keep r2 immutable while it gathers new research evidence; do not retune 72–81 or the SHORT/trend filters from later observations.
-8. At 20 closed r2 research trades, apply only the precommitted futility rule.
-9. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-10. Do not create or activate r3 merely to react to a handful of r2 outcomes. A future challenger requires a documented new hypothesis and inherited touched lineage.
-11. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and begin a new clean validation sample. The disclosed V4 corpus can never become untouched again.
-12. Advance toward Phase 10 or live trading only after every locked clean-validation and promotion gate passes.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path before each subsequent research admission; use actual authority state, not nominal scheduler timing.
+5. Let the next naturally eligible safe-gap research cohort launch through the dispatcher with root + `research-r2-short-trend-quality-v1`; do not manually dispatch economics merely to accelerate evidence.
+6. On that future cohort, require one shared authenticated public-mainnet capture, actual V4 completeness/disjointness, exact source/digest agreement, the pre-publication root+r2 rollout verifier, and the independent final rollout verifier.
+7. Count only authenticated successful r2 checkpoints. Until one succeeds, r2 remains draft with zero authenticated checkpoints and no economic inference is permitted.
+8. Keep r2 immutable while it gathers new research evidence; do not retune 72–81 or the SHORT/trend filters from later observations.
+9. At 20 closed r2 research trades, apply only the precommitted futility rule.
+10. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
+11. Do not create or activate r3 merely to react to a handful of r2 outcomes. A future challenger requires a documented new hypothesis and inherited touched lineage.
+12. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and begin a new clean validation sample. The disclosed V4 corpus can never become untouched again.
+13. Advance toward Phase 10 or live trading only after every locked clean-validation and promotion gate passes.
 
 ## Hard prohibitions
 
