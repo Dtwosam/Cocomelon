@@ -275,16 +275,22 @@ def calibrate_stable_no_trade_threshold(
     if not eligible:
         selected_threshold = None
     else:
-        selected = max(
-            eligible,
-            key=lambda candidate: (
-                candidate.worst_block_mean,
-                candidate.overall.mean_realized_net_return,
+        def score(
+            candidate: StableThresholdCandidate,
+        ) -> tuple[Decimal, Decimal, Decimal, int, Decimal]:
+            worst = candidate.worst_block_mean
+            overall_mean = candidate.overall.mean_realized_net_return
+            if worst is None or overall_mean is None:
+                raise ValueError("qualifying stable candidate must have realized means")
+            return (
+                worst,
+                overall_mean,
                 candidate.overall.total_realized_net_return,
                 candidate.overall.trade_count,
                 -candidate.threshold,
-            ),
-        )
+            )
+
+        selected = max(eligible, key=score)
         selected_threshold = selected.threshold
 
     return StableThresholdCalibration(
