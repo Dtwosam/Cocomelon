@@ -263,3 +263,65 @@ def test_comparison_rejects_dataset_anchor_interval_mismatch() -> None:
             dataset_manifest=manifest,
             config=config,
         )
+
+
+
+def test_comparison_report_accepts_1h_anchor_interval() -> None:
+    rows = tuple(_row(index) for index in range(1, 9))
+    config = HistoricalModelComparisonConfig(
+        costs=ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        candidate_thresholds=(Decimal("0"),),
+        candidate_ridge_alphas=(Decimal("0.1"),),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        baseline_min_state_samples=1,
+        baseline_min_coin_samples=99,
+        ridge_min_market_samples=99,
+        min_sample_count=1,
+        min_validation_trades=1,
+    )
+    one_hour_rows = tuple(
+        HistoricalTrainingRow(
+            feature=row.feature,
+            outcome=DirectionalOutcome(
+                market=row.market,
+                interval="1h",
+                anchor_end_ms=row.anchor_end_ms,
+                target_end_ms=row.anchor_end_ms + 3_600_000,
+                horizon_ms=3_600_000,
+                entry_px=row.outcome.entry_px,
+                exit_px=row.outcome.exit_px,
+                long_gross_return=row.long_gross_return,
+                short_gross_return=row.short_gross_return,
+                provenance=row.outcome.provenance,
+            ),
+        )
+        for row in rows
+    )
+    manifest = HistoricalDatasetManifest(
+        output_relative_path="training.parquet",
+        output_sha256="a" * 64,
+        output_byte_count=100,
+        row_count=len(one_hour_rows),
+        logical_sha256="b" * 64,
+        markets=("ETH",),
+        horizons_ms=(3_600_000,),
+        source_manifest_ids=("source-a",),
+        writer_library_version="test",
+        anchor_interval="1h",
+    )
+
+    report = build_historical_model_comparison_report(
+        one_hour_rows,
+        dataset_manifest=manifest,
+        config=config,
+    )
+
+    assert report.anchor_interval == "1h"
