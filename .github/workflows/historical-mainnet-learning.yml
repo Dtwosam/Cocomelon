@@ -195,7 +195,8 @@ jobs:
             horizons_ms,
             config,
             baseline_folds,
-            ridge_folds
+            ridge_folds,
+            horizon_ridge_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
       - name: Upload authenticated touched research bundle
