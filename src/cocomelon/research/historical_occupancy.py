@@ -12,7 +12,10 @@ from cocomelon.research.historical_baselines import (
     HistoricalDecisionPolicy,
     HistoricalDirectionalModel,
     PredictedTrainingRow,
+    basket_breadth_1h_bucket,
+    basket_direction_1h_bucket,
     predict_training_rows,
+    relative_strength_1h_bucket,
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 
@@ -91,6 +94,9 @@ class HistoricalOccupancyBreakdownEntry:
             "action",
             "trend_regime",
             "estimate_source",
+            "basket_direction_1h",
+            "basket_breadth_1h",
+            "relative_strength_1h",
         }:
             raise ValueError("unsupported occupancy breakdown dimension")
         if not self.value.strip():
@@ -329,6 +335,24 @@ def occupancy_trade_breakdowns(
         (
             "trend_regime",
             lambda item: item.row.feature.trend_regime.value,
+        ),
+        (
+            "basket_direction_1h",
+            lambda item: basket_direction_1h_bucket(
+                item.row.feature.basket_median_return_1h
+            ),
+        ),
+        (
+            "basket_breadth_1h",
+            lambda item: basket_breadth_1h_bucket(
+                item.row.feature.basket_breadth_positive_1h
+            ),
+        ),
+        (
+            "relative_strength_1h",
+            lambda item: relative_strength_1h_bucket(
+                item.row.feature.relative_return_zscore_1h_vs_basket
+            ),
         ),
         (
             "estimate_source",

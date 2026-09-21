@@ -823,3 +823,89 @@ def test_threshold_calibration_predicts_each_validation_row_once() -> None:
 
     assert calibration.selected_threshold == Decimal("0")
     assert model.calls == len(rows)
+
+
+
+def _with_1h_context(
+    row: HistoricalTrainingRow,
+    *,
+    basket_median: str,
+    basket_breadth: str,
+    relative_zscore: str,
+) -> HistoricalTrainingRow:
+    feature = replace(
+        row.feature,
+        basket_median_return_1h=Decimal(basket_median),
+        basket_breadth_positive_1h=Decimal(basket_breadth),
+        relative_return_zscore_1h_vs_basket=Decimal(relative_zscore),
+        schema_version=3,
+    )
+    return replace(row, feature=feature)
+
+
+def test_policy_breakdowns_include_fixed_1h_market_context_buckets() -> None:
+    base_rows = tuple(
+        _row(
+            anchor_end_ms=index * FIVE,
+            long_return="0.02",
+            short_return="-0.02",
+        )
+        for index in range(1, 10)
+    )
+    rows = (
+        *base_rows[:6],
+        _with_1h_context(
+            base_rows[6],
+            basket_median="0.01",
+            basket_breadth="0.75",
+            relative_zscore="1.2",
+        ),
+        _with_1h_context(
+            base_rows[7],
+            basket_median="-0.01",
+            basket_breadth="0.25",
+            relative_zscore="-1.1",
+        ),
+        _with_1h_context(
+            base_rows[8],
+            basket_median="0",
+            basket_breadth="0.50",
+            relative_zscore="0.2",
+        ),
+    )
+    report = run_walk_forward_baseline(
+        rows,
+        costs=ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        candidate_thresholds=(Decimal("0"),),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=3,
+        step_anchors=3,
+        embargo_anchors=0,
+        min_state_samples=1,
+        min_coin_samples=99,
+        min_sample_count=1,
+        min_validation_trades=1,
+    )
+
+    breakdowns = {
+        (item.dimension, item.value): item.evaluation
+        for item in report.folds[0].shared_test_breakdowns
+    }
+    for key in (
+        ("basket_direction_1h", "up"),
+        ("basket_direction_1h", "down"),
+        ("basket_direction_1h", "flat"),
+        ("basket_breadth_1h", "bullish"),
+        ("basket_breadth_1h", "bearish"),
+        ("basket_breadth_1h", "mixed"),
+        ("relative_strength_1h", "leading_1sd"),
+        ("relative_strength_1h", "lagging_1sd"),
+        ("relative_strength_1h", "near_basket"),
+    ):
+        assert breakdowns[key].row_count == 1
+        assert breakdowns[key].trade_count == 1

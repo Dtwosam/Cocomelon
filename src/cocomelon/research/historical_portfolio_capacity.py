@@ -12,7 +12,10 @@ from cocomelon.research.historical_baselines import (
     HistoricalDecisionPolicy,
     HistoricalDirectionalModel,
     PredictedTrainingRow,
+    basket_breadth_1h_bucket,
+    basket_direction_1h_bucket,
     predict_training_rows,
+    relative_strength_1h_bucket,
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_occupancy import (
@@ -304,6 +307,24 @@ def portfolio_capacity_trade_breakdowns(
         ("horizon_ms", lambda item: str(item.horizon_ms)),
         ("action", lambda item: item.decision.action.value),
         ("trend_regime", lambda item: item.row.feature.trend_regime.value),
+        (
+            "basket_direction_1h",
+            lambda item: basket_direction_1h_bucket(
+                item.row.feature.basket_median_return_1h
+            ),
+        ),
+        (
+            "basket_breadth_1h",
+            lambda item: basket_breadth_1h_bucket(
+                item.row.feature.basket_breadth_positive_1h
+            ),
+        ),
+        (
+            "relative_strength_1h",
+            lambda item: relative_strength_1h_bucket(
+                item.row.feature.relative_return_zscore_1h_vs_basket
+            ),
+        ),
         ("estimate_source", lambda item: item.decision.estimate_source),
     )
     entries: list[HistoricalOccupancyBreakdownEntry] = []

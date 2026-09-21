@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -16,6 +17,7 @@ from cocomelon.research.historical_learning import DirectionalOutcome
 from cocomelon.research.historical_occupancy import (
     HistoricalOccupancyError,
     evaluate_predicted_occupancy_policy,
+    occupancy_trade_breakdowns,
 )
 from cocomelon.research.historical_ridge import RidgeDirectionalEstimate
 
@@ -262,3 +264,41 @@ def test_occupancy_rejects_duplicate_market_anchor_horizon() -> None:
             policy=_policy(),
             costs=_costs(),
         )
+
+
+
+def test_occupancy_breakdowns_include_fixed_1h_market_context() -> None:
+    predicted = _predicted(
+        market=BTC,
+        anchor_end_ms=0,
+        horizon_ms=FIFTEEN,
+        expected_long="0.02",
+        long_return="0.01",
+    )
+    feature = replace(
+        predicted.row.feature,
+        basket_median_return_1h=Decimal("0.01"),
+        basket_breadth_positive_1h=Decimal("0.75"),
+        relative_return_zscore_1h_vs_basket=Decimal("1.2"),
+        schema_version=3,
+    )
+    contextual = replace(
+        predicted,
+        row=replace(predicted.row, feature=feature),
+    )
+    result = evaluate_predicted_occupancy_policy(
+        (contextual,),
+        policy=_policy(),
+        costs=_costs(),
+    )
+
+    breakdowns = {
+        (item.dimension, item.value): item.summary
+        for item in occupancy_trade_breakdowns(result)
+    }
+    for key in (
+        ("basket_direction_1h", "up"),
+        ("basket_breadth_1h", "bullish"),
+        ("relative_strength_1h", "leading_1sd"),
+    ):
+        assert breakdowns[key].trade_count == 1

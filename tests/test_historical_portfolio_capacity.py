@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -16,6 +17,7 @@ from cocomelon.research.historical_learning import DirectionalOutcome
 from cocomelon.research.historical_portfolio_capacity import (
     HistoricalPortfolioCapacityError,
     evaluate_predicted_portfolio_capacity_policy,
+    portfolio_capacity_trade_breakdowns,
 )
 from cocomelon.research.historical_ridge import RidgeDirectionalEstimate
 
@@ -290,3 +292,42 @@ def test_default_crypto_risk_limits_imply_two_full_risk_slots() -> None:
         settings.correlation_bucket_risk_limit / settings.risk_per_trade
         == Decimal("2")
     )
+
+
+
+def test_portfolio_capacity_breakdowns_include_fixed_1h_market_context() -> None:
+    predicted = _predicted(
+        market=BTC,
+        anchor_end_ms=0,
+        horizon_ms=FIFTEEN,
+        expected_long="0.02",
+        long_return="0.01",
+    )
+    feature = replace(
+        predicted.row.feature,
+        basket_median_return_1h=Decimal("-0.01"),
+        basket_breadth_positive_1h=Decimal("0.25"),
+        relative_return_zscore_1h_vs_basket=Decimal("-1.2"),
+        schema_version=3,
+    )
+    contextual = replace(
+        predicted,
+        row=replace(predicted.row, feature=feature),
+    )
+    result = evaluate_predicted_portfolio_capacity_policy(
+        (contextual,),
+        policy=_policy(),
+        costs=_costs(),
+        max_concurrent_positions=2,
+    )
+
+    breakdowns = {
+        (item.dimension, item.value): item.summary
+        for item in portfolio_capacity_trade_breakdowns(result)
+    }
+    for key in (
+        ("basket_direction_1h", "down"),
+        ("basket_breadth_1h", "bearish"),
+        ("relative_strength_1h", "lagging_1sd"),
+    ):
+        assert breakdowns[key].trade_count == 1

@@ -737,6 +737,9 @@ class PolicyBreakdownEntry:
             "action",
             "trend_regime",
             "estimate_source",
+            "basket_direction_1h",
+            "basket_breadth_1h",
+            "relative_strength_1h",
         }:
             raise ValueError("unsupported policy breakdown dimension")
         if not self.value.strip():
@@ -748,6 +751,9 @@ class _PolicyObservation:
     market: str
     horizon_ms: int
     trend_regime: TrendRegime
+    basket_direction_1h: str
+    basket_breadth_1h: str
+    relative_strength_1h: str
     action: DecisionAction
     estimate_source: str
     realized_net_return: Decimal | None
@@ -766,6 +772,36 @@ class _PolicyObservation:
                 raise ValueError("NO_TRADE cannot have realized return")
         elif self.action is not DecisionAction.NO_TRADE:
             raise ValueError("trades require realized return")
+
+
+def basket_direction_1h_bucket(value: Decimal | None) -> str:
+    if value is None:
+        return "missing"
+    if value > ZERO:
+        return "up"
+    if value < ZERO:
+        return "down"
+    return "flat"
+
+
+def basket_breadth_1h_bucket(value: Decimal | None) -> str:
+    if value is None:
+        return "missing"
+    if value <= Decimal("0.25"):
+        return "bearish"
+    if value >= Decimal("0.75"):
+        return "bullish"
+    return "mixed"
+
+
+def relative_strength_1h_bucket(value: Decimal | None) -> str:
+    if value is None:
+        return "missing"
+    if value <= Decimal("-1"):
+        return "lagging_1sd"
+    if value >= Decimal("1"):
+        return "leading_1sd"
+    return "near_basket"
 
 
 @dataclass(frozen=True, slots=True)
@@ -809,6 +845,15 @@ def _policy_observations_from_predictions(
                 market=row.market.canonical,
                 horizon_ms=row.horizon_ms,
                 trend_regime=row.feature.trend_regime,
+                basket_direction_1h=basket_direction_1h_bucket(
+                    row.feature.basket_median_return_1h
+                ),
+                basket_breadth_1h=basket_breadth_1h_bucket(
+                    row.feature.basket_breadth_positive_1h
+                ),
+                relative_strength_1h=relative_strength_1h_bucket(
+                    row.feature.relative_return_zscore_1h_vs_basket
+                ),
                 action=decision.action,
                 estimate_source=estimate.estimate_source,
                 realized_net_return=_realized_net_return(row, decision),
@@ -874,6 +919,15 @@ def _abstained_observations(
             market=row.market.canonical,
             horizon_ms=row.horizon_ms,
             trend_regime=row.feature.trend_regime,
+            basket_direction_1h=basket_direction_1h_bucket(
+                row.feature.basket_median_return_1h
+            ),
+            basket_breadth_1h=basket_breadth_1h_bucket(
+                row.feature.basket_breadth_positive_1h
+            ),
+            relative_strength_1h=relative_strength_1h_bucket(
+                row.feature.relative_return_zscore_1h_vs_basket
+            ),
             action=DecisionAction.NO_TRADE,
             estimate_source="abstained",
             realized_net_return=None,
@@ -916,6 +970,9 @@ def _breakdown_observations(
         ("horizon_ms", lambda item: str(item.horizon_ms)),
         ("action", lambda item: item.action.value),
         ("trend_regime", lambda item: item.trend_regime.value),
+        ("basket_direction_1h", lambda item: item.basket_direction_1h),
+        ("basket_breadth_1h", lambda item: item.basket_breadth_1h),
+        ("relative_strength_1h", lambda item: item.relative_strength_1h),
         ("estimate_source", lambda item: item.estimate_source),
     )
     result: list[PolicyBreakdownEntry] = []
