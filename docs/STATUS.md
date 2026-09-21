@@ -7,7 +7,7 @@
 **Latest verified baseline CI:** run `35596674099` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
-**Phase 10:** **BLOCKED**
+**Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
 
 ## Current production state
 
@@ -42,26 +42,46 @@ The additional cohorts after the 100-trade reveal are historical/touched observa
 
 ## Active research frontier
 
-Development now proceeds through D-023/D-024 touched research. Research remains **TOUCHED / NON-PROMOTIONAL**.
+Development now proceeds under D-023/D-024/D-025. Research remains **TOUCHED / NON-PROMOTIONAL** until a future candidate is frozen and earns clean validation.
 
-Active challenger:
+Primary development plan:
 
-### `research-r2-short-trend-quality-v1`
+### Historical two-sided directional learning
 
-- registry state on the trusted dashboard: **draft**;
+Active plan: `docs/superpowers/plans/2026-09-21-historical-directional-learning.md`.
+
+The product target is now explicit: study trustworthy historical behavior across eligible coins and estimate side-specific forward opportunity, then choose **LONG**, **SHORT**, or **NO_TRADE**. No permanent LONG-only or SHORT-only product rule is allowed.
+
+Phase 9 has satisfied its exit criterion in the honest-failure sense: the retired V4 baseline failed to demonstrate edge. Therefore Phase 10 **offline learning engineering is active**. This opens historical dataset, feature, model-training, and challenger-evaluation work only; live trading and promotion remain blocked.
+
+Current historical-learning implementation slice on the development branch:
+
+- deterministic bounded candle backfill windows respect the existing 5,000-candle request ceiling;
+- exact future-return labels record both LONG and SHORT gross outcomes;
+- missing exact future target candles are excluded rather than approximated across gaps;
+- mixed markets, mixed intervals, duplicate timestamps, empty source identity, and non-positive close prices fail closed;
+- outcome identity/provenance is deterministic and model-agnostic;
+- no model family or trading threshold has been prematurely selected.
+
+Next implementation work is offline source acquisition: rate-budget-aware historical candle/funding backfill, immutable manifests/checksums, page-boundary deduplication, gap/coverage reporting, then point-in-time feature reconstruction.
+
+### Preserved r2 experiment
+
+`research-r2-short-trend-quality-v1` remains immutable and auditable as a bounded touched short-side hypothesis, but D-025 removes it as the product architecture and as the sole gate to Phase 10 engineering.
+
+Its last trusted dashboard state remains:
+
+- registry state: **draft**;
 - authenticated checkpoints: **0**;
 - closed research trades: **0**;
 - parent: `scheduled-research-root`;
 - pinned strategy code revision: `2ce088d69df01f044b0650b811b51015a5edda51`;
 - execution max position age: **20 minutes**;
-- strategy filter: only trend-led SHORT decisions with baseline score **72–81 inclusive** remain tradable;
-- all LONG, non-trend, and out-of-band decisions are vetoed to NO_TRADE.
+- frozen research-only filter: trend-led SHORT with baseline score **72–81 inclusive**.
 
-R2 was generated from the deliberately touched 100-trade V4 development sample. Its apparent in-sample subset economics are hypothesis-generation only. R2 must earn its own economics on new natural research cohorts.
+The failed natural r2 attempt from campaign `35551385941` remains historical/auditable and **NOT COUNTED**. PR #228 fixed the replay-identity fanout defect for future research, but the failed interval is not retried or backfilled.
 
-The legacy r1 15-minute challenger remains historical research state and is no longer the active campaign default.
-
-### Current root reference
+### Current root/reference research state
 
 Trusted Research Dashboard snapshot, refreshed **2026-09-21 09:58 UTC**:
 
@@ -71,13 +91,11 @@ Trusted Research Dashboard snapshot, refreshed **2026-09-21 09:58 UTC**:
 
 None of these research results establishes verified edge.
 
-### First natural root+r2 cohort
-
-The first naturally dispatched post-V4 campaign, run `35551385941`, used one authenticated public-mainnet capture for root + r2 over `[1789954950690, 1789956755426]`. Authoritative V4 completeness/disjointness, the pre-publication rollout verifier, and the independent final rollout verifier all passed. The root attempt succeeded and became checkpoint 13.
-
-The r2 attempt failed and is **NOT COUNTED** because the research registry incorrectly enforced global `replay_run_id` uniqueness even though root and challenger intentionally share the deterministic replay identity of one capture. Its exact failure was `ResearchRegistryError: research replay run already belongs to batch research-batch-35551385941-1-scheduled-research-root`. PR #228 fixes future fanout by scoping replay identity uniqueness to `(candidate_id, replay_run_id)` and safely migrating legacy registries. The failed r2 attempt is not retried or backfilled.
-
 ## Research gates
+
+Locked D-023 rules remain for registered touched economic candidates such as r2:
+
+D-025 additionally requires historical-learning candidates to use point-in-time features, explicit future-only labels, chronological train/validation/test splits, and walk-forward evaluation. Historical development/backtest results are touched research and cannot become promotion evidence retroactively.
 
 Locked D-023 rules remain:
 
@@ -120,19 +138,17 @@ Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and res
 
 ## Exact next action
 
-1. Keep Phase 10 and live trading blocked.
-2. Keep the retired V4 scheduler and automatic one-shot disabled; run `35524316366` is complete and must not be retried, extended, or backfilled.
-3. Preserve the failed r2 attempt from natural campaign `35551385941` as historical/auditable NOT COUNTED evidence; do not rerun or backfill that interval.
-4. Observe the implemented authoritative V4 interval/completeness synchronization path before each subsequent research admission; use actual authority state, not nominal scheduler timing.
-5. Let the next naturally eligible safe-gap research cohort launch through the dispatcher with root + `research-r2-short-trend-quality-v1`; do not manually dispatch economics merely to accelerate evidence.
-6. On that future cohort, require one shared authenticated public-mainnet capture, actual V4 completeness/disjointness, exact source/digest agreement, the pre-publication root+r2 rollout verifier, and the independent final rollout verifier.
-7. Count only authenticated successful r2 checkpoints. Until one succeeds, r2 remains draft with zero authenticated checkpoints and no economic inference is permitted.
-8. Keep r2 immutable while it gathers new research evidence; do not retune 72–81 or the SHORT/trend filters from later observations.
-9. At 20 closed r2 research trades, apply only the precommitted futility rule.
-10. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-11. Do not create or activate r3 merely to react to a handful of r2 outcomes. A future challenger requires a documented new hypothesis and inherited touched lineage.
-12. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and begin a new clean validation sample. The disclosed V4 corpus can never become untouched again.
-13. Advance toward Phase 10 or live trading only after every locked clean-validation and promotion gate passes.
+1. Keep live trading disabled and all hard risk limits unchanged.
+2. Treat `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary development plan.
+3. Preserve V4, r1, and r2 artifacts/results as touched historical research; do not rewrite or relabel them.
+4. Build an offline historical candle/funding backfill command on top of the existing mainnet-only `InfoClient`.
+5. Persist source manifests/checksums and coverage metadata; detect page overlap, duplicate candles, missing ranges, and source inconsistencies.
+6. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
+7. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned training datasets.
+8. Establish simple direction-neutral baselines before adding more complex supervised models.
+9. Train/evaluate chronologically with embargo and walk-forward splits; select LONG, SHORT, or NO_TRADE from cost-adjusted evidence.
+10. Freeze any promising model/config before future untouched validation; historical development data remains touched.
+11. Require every existing clean-validation, >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gate before capital is exposed.
 
 ## Hard prohibitions
 
