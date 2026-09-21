@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import quote
 
-from cocomelon.domain.market import MarketId
+from cocomelon.domain.market import Candle, MarketId
 from cocomelon.research.historical_backfill import (
     HistoricalFundingManifest,
     build_coverage_report,
@@ -114,7 +114,7 @@ def ingest_archive_candles(
 
     frame = _lz4_frame()
     digests: list[str] = []
-    candles_by_key: dict[tuple[str, str], dict[int, object]] = {
+    candles_by_key: dict[tuple[str, str], dict[int, Candle]] = {
         (market.canonical, interval): {}
         for market in unique_markets
         for interval in unique_intervals
@@ -174,7 +174,6 @@ def ingest_archive_candles(
     archive_manifest = {
         "kind": "hyperliquid-node-fills-by-block",
         "source": "s3://hl-mainnet-node-data/node_fills_by_block",
-        "archive_root": str(archive_root),
         "requested_start_ms": start_ms,
         "requested_end_ms": end_ms,
         "received_at_ms": received_at_ms,
