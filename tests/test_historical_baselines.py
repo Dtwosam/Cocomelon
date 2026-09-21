@@ -10,6 +10,7 @@ from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
     DecisionAction,
     DecisionPolicy,
+    DirectionalPrediction,
     ExecutionCostAssumptions,
     HistoricalBaselineError,
     calibrate_no_trade_threshold,
@@ -793,7 +794,7 @@ def test_threshold_calibration_predicts_each_validation_row_once() -> None:
             *,
             horizon_ms: int,
             allow_coin_calibration: bool = True,
-        ) -> object:
+        ) -> DirectionalPrediction:
             self.calls += 1
             return base.predict(
                 feature,
@@ -803,7 +804,7 @@ def test_threshold_calibration_predicts_each_validation_row_once() -> None:
 
     model = CountingModel()
     calibration = calibrate_no_trade_threshold(
-        model,  # type: ignore[arg-type]
+        model,
         rows,
         costs=ExecutionCostAssumptions(
             round_trip_fee_fraction=Decimal("0"),
