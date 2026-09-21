@@ -12,8 +12,8 @@ from cocomelon.domain.market import Candle, FundingRate, MarketId
 from cocomelon.features.math import quantile
 from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.research.historical_learning import (
-    FUNDING_INTERVAL_MS,
     DirectionalOutcome,
+    is_expected_funding_successor,
 )
 
 ZERO = Decimal("0")
@@ -462,9 +462,9 @@ def build_historical_feature_rows(
             current_funding = ordered_funding[funding_position]
             if funding_position > 0:
                 candidate = ordered_funding[funding_position - 1]
-                if (
-                    current_funding.time_ms - candidate.time_ms
-                    == FUNDING_INTERVAL_MS
+                if is_expected_funding_successor(
+                    candidate.time_ms,
+                    current_funding.time_ms,
                 ):
                     previous_funding = candidate
 
