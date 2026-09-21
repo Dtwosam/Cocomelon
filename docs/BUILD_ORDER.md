@@ -237,27 +237,36 @@ Exit criteria:
 - at least one baseline candidate either shows repeatable net expectancy or the project honestly records that no edge has been demonstrated;
 - no strategy is promoted because of one lucky market/window.
 
-## Phase 10 — Learning engine and champion/challenger
+## Phase 10 — Historical learning engine and champion/challenger
 
-**Goal:** Let data improve ranking/decision quality without uncontrolled self-modification.
+**Goal:** Learn how eligible coins behave from trustworthy historical market states, then choose LONG, SHORT, or NO_TRADE from side-specific expected opportunity without uncontrolled self-modification.
+
+Phase 10 offline engineering may begin when Phase 9 either demonstrates a repeatable baseline edge or honestly records that the evaluated baseline failed to demonstrate edge. This does not bypass later promotion evidence.
 
 Deliverables:
 
-- versioned training datasets;
+- deterministic historical candle/funding backfill with source manifests, bounded paging, gap detection, and resumability;
+- exact point-in-time historical feature reconstruction with explicit unavailable fields;
+- versioned training datasets pairing anchor-state features with predeclared LONG/SHORT forward outcomes;
 - feature registry;
+- simple direction-neutral statistical baselines before more complex models;
 - first supervised challenger models;
-- time-aware model training;
-- expected-net-R/ranking target experiments;
+- shared cross-coin learning plus coin/regime calibration experiments where sample size supports them;
+- chronological train/validation/test splits with embargo and walk-forward evaluation;
+- expected-net-R / expected-return / probability-distribution target experiments for both LONG and SHORT;
+- cost-aware NO_TRADE calibration using validation data only;
 - model registry/metadata;
 - deterministic evaluation pipeline;
 - champion/challenger comparison and promotion rules.
 
 Exit criteria:
 
-- challenger beats champion on required out-of-sample/walk-forward criteria;
+- at least one frozen challenger demonstrates required cost-complete out-of-sample/walk-forward performance without future leakage;
+- both LONG and SHORT are available to the decision policy when evidence supports them; neither direction is permanently forced;
 - promotion is reproducible;
 - training cannot alter live hard risk limits;
-- model cannot directly call execution APIs.
+- model cannot directly call execution APIs;
+- untouched promotion evidence still begins only after candidate freeze and applicable embargo/touched-lineage controls.
 
 ## Phase 11 — Long-running mainnet shadow operation
 
