@@ -17,12 +17,16 @@ from cocomelon.research.historical_backfill import (
     HistoricalFundingManifest,
 )
 from cocomelon.research.historical_features import (
+    HistoricalFeatureRow,
     HistoricalTrainingRow,
     build_historical_feature_rows,
     enrich_historical_market_context,
     join_features_to_outcomes,
 )
-from cocomelon.research.historical_learning import build_directional_outcomes
+from cocomelon.research.historical_learning import (
+    DirectionalOutcome,
+    build_directional_outcomes,
+)
 
 DATASET_SCHEMA_VERSION = 2
 DATASET_CONVERTER_VERSION = "historical-directional-training-v2-market-context"
@@ -363,8 +367,8 @@ def build_training_rows_from_source_root(
     if any(value <= 0 or value % base_interval_ms != 0 for value in horizons_ms):
         raise ValueError("horizons must be positive multiples of the 5m base interval")
 
-    all_features = []
-    all_outcomes = []
+    all_features: list[HistoricalFeatureRow] = []
+    all_outcomes: list[DirectionalOutcome] = []
     for market in unique_markets:
         root = _market_root(source_root, market)
         candle_5m_manifest, candles_5m = load_candle_source(root / "candles" / "5m")
