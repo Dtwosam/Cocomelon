@@ -273,11 +273,11 @@ def _mean(values: Sequence[Decimal]) -> Decimal:
 
 
 def _anchor_blocks(
-    observations: Sequence[CrossSectionalSpreadObservation],
+    anchors: Sequence[int],
     *,
     block_count: int,
 ) -> tuple[tuple[int, ...], ...]:
-    anchors = tuple(sorted({item.anchor_end_ms for item in observations}))
+    anchors = tuple(sorted(set(anchors)))
     if len(anchors) < block_count:
         raise ValueError("observations have fewer anchors than stability blocks")
     quotient, remainder = divmod(len(anchors), block_count)
@@ -299,12 +299,13 @@ def _observations_for_horizon(
     horizon_ms: int,
     costs: ExecutionCostAssumptions,
     min_markets_per_anchor: int,
-) -> tuple[tuple[CrossSectionalSpreadObservation, ...], int, int]:
+) -> tuple[tuple[CrossSectionalSpreadObservation, ...], tuple[int, ...], int, int]:
     grouped: dict[int, list[HistoricalTrainingRow]] = defaultdict(list)
     for row in rows:
         if row.horizon_ms == horizon_ms:
             grouped[row.anchor_end_ms].append(row)
 
+    all_anchors = tuple(sorted(grouped))
     observations: list[CrossSectionalSpreadObservation] = []
     skipped_incomplete = 0
     skipped_tied = 0
@@ -317,6 +318,8 @@ def _observations_for_horizon(
             if row.feature.relative_return_zscore_1h_vs_basket is not None
         )
         markets = {row.market.canonical for row in scored}
+        if len(markets) != len(scored):
+            raise ValueError("duplicate market row at anchor/horizon")
         if len(scored) < min_markets_per_anchor or len(markets) < min_markets_per_anchor:
             skipped_incomplete += 1
             continue
@@ -369,7 +372,7 @@ def _observations_for_horizon(
             )
         )
 
-    return tuple(observations), skipped_incomplete, skipped_tied
+    return tuple(observations), all_anchors, skipped_incomplete, skipped_tied
 
 
 def build_cross_sectional_spread_entries(
@@ -394,7 +397,12 @@ def build_cross_sectional_spread_entries(
 
     entries: list[CrossSectionalSpreadEntry] = []
     for horizon_ms in sorted({row.horizon_ms for row in rows}):
-        observations, skipped_incomplete, skipped_tied = _observations_for_horizon(
+        (
+            observations,
+            all_anchors,
+            skipped_incomplete,
+            skipped_tied,
+        ) = _observations_for_horizon(
             rows,
             horizon_ms=horizon_ms,
             costs=costs,
@@ -406,7 +414,7 @@ def build_cross_sectional_spread_entries(
         momentum = tuple(item.momentum_net_return for item in observations)
         reversal = tuple(item.reversal_net_return for item in observations)
         blocks_by_anchor = _anchor_blocks(
-            observations,
+            all_anchors,
             block_count=stability_blocks,
         )
         observation_by_anchor = {
