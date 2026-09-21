@@ -149,7 +149,7 @@ def parse_node_fills_by_block_lines(
     if not requested:
         raise ValueError("markets must not be empty")
 
-    by_tid: dict[int, ArchivedTrade] = {}
+    by_tid: dict[tuple[str, int], ArchivedTrade] = {}
     for line_number, line in enumerate(lines, start=1):
         if not line.strip():
             continue
@@ -184,8 +184,9 @@ def parse_node_fills_by_block_lines(
                 side=_string(fill.get("side"), "fill.side"),
                 crossed=_boolean(fill.get("crossed"), "fill.crossed"),
             )
-            existing = by_tid.get(trade.tid)
-            by_tid[trade.tid] = trade if existing is None else _prefer_trade(existing, trade)
+            key = (trade.market.canonical, trade.tid)
+            existing = by_tid.get(key)
+            by_tid[key] = trade if existing is None else _prefer_trade(existing, trade)
 
     return tuple(
         sorted(
@@ -214,11 +215,12 @@ def parse_node_fills_by_block_jsonl(
 def merge_archived_trades(
     groups: Iterable[Sequence[ArchivedTrade]],
 ) -> tuple[ArchivedTrade, ...]:
-    by_tid: dict[int, ArchivedTrade] = {}
+    by_tid: dict[tuple[str, int], ArchivedTrade] = {}
     for group in groups:
         for trade in group:
-            existing = by_tid.get(trade.tid)
-            by_tid[trade.tid] = trade if existing is None else _prefer_trade(existing, trade)
+            key = (trade.market.canonical, trade.tid)
+            existing = by_tid.get(key)
+            by_tid[key] = trade if existing is None else _prefer_trade(existing, trade)
     return tuple(
         sorted(
             by_tid.values(),
@@ -388,3 +390,114 @@ def write_archive_candle_source(
         (_canonical_json(manifest.to_dict()) + "\n").encode("utf-8"),
     )
     return manifest
+
+
+
+@dataclass(frozen=True, slots=True)
+class CandleOverlapMismatch:
+    start_ms: int
+    fields: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if self.start_ms < 0:
+            raise ValueError("start_ms must be non-negative")
+        normalized = tuple(sorted(set(self.fields)))
+        if not normalized or any(not field.strip() for field in normalized):
+            raise ValueError("fields must contain non-empty values")
+        object.__setattr__(self, "fields", normalized)
+
+
+@dataclass(frozen=True, slots=True)
+class CandleOverlapReconciliation:
+    compared_count: int
+    exact_match_count: int
+    missing_archive_starts: tuple[int, ...]
+    missing_api_starts: tuple[int, ...]
+    mismatches: tuple[CandleOverlapMismatch, ...]
+
+    def __post_init__(self) -> None:
+        if self.compared_count < 0 or self.exact_match_count < 0:
+            raise ValueError("overlap counts must be non-negative")
+        if self.exact_match_count > self.compared_count:
+            raise ValueError("exact_match_count cannot exceed compared_count")
+
+    @property
+    def exact(self) -> bool:
+        return (
+            self.compared_count > 0
+            and self.exact_match_count == self.compared_count
+            and not self.missing_archive_starts
+            and not self.missing_api_starts
+            and not self.mismatches
+        )
+
+
+def reconcile_archive_candles_with_api(
+    archive_candles: Sequence[Candle],
+    api_candles: Sequence[Candle],
+) -> CandleOverlapReconciliation:
+    if not archive_candles or not api_candles:
+        raise ValueError("archive_candles and api_candles must not be empty")
+
+    archive_market = archive_candles[0].market
+    archive_interval = archive_candles[0].interval
+    api_market = api_candles[0].market
+    api_interval = api_candles[0].interval
+    if archive_market != api_market:
+        raise HistoricalTradeArchiveError("OVERLAP_MARKET_MISMATCH")
+    if archive_interval != api_interval:
+        raise HistoricalTradeArchiveError("OVERLAP_INTERVAL_MISMATCH")
+    if any(
+        candle.market != archive_market or candle.interval != archive_interval
+        for candle in archive_candles
+    ):
+        raise HistoricalTradeArchiveError("ARCHIVE_OVERLAP_MIXED_SERIES")
+    if any(
+        candle.market != api_market or candle.interval != api_interval
+        for candle in api_candles
+    ):
+        raise HistoricalTradeArchiveError("API_OVERLAP_MIXED_SERIES")
+
+    archive_by_start = {candle.start_ms: candle for candle in archive_candles}
+    api_by_start = {candle.start_ms: candle for candle in api_candles}
+    shared = tuple(sorted(set(archive_by_start) & set(api_by_start)))
+    missing_archive = tuple(sorted(set(api_by_start) - set(archive_by_start)))
+    missing_api = tuple(sorted(set(archive_by_start) - set(api_by_start)))
+
+    mismatches: list[CandleOverlapMismatch] = []
+    exact = 0
+    fields = (
+        "start_ms",
+        "end_ms",
+        "open_px",
+        "high_px",
+        "low_px",
+        "close_px",
+        "volume",
+        "trade_count",
+    )
+    for start_ms in shared:
+        archive = archive_by_start[start_ms]
+        api = api_by_start[start_ms]
+        differing = tuple(
+            field
+            for field in fields
+            if getattr(archive, field) != getattr(api, field)
+        )
+        if differing:
+            mismatches.append(
+                CandleOverlapMismatch(
+                    start_ms=start_ms,
+                    fields=differing,
+                )
+            )
+        else:
+            exact += 1
+
+    return CandleOverlapReconciliation(
+        compared_count=len(shared),
+        exact_match_count=exact,
+        missing_archive_starts=missing_archive,
+        missing_api_starts=missing_api,
+        mismatches=tuple(mismatches),
+    )
