@@ -1,0 +1,148 @@
+name: Historical Mainnet 1h Context Opportunity
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/historical-mainnet-1h-opportunity.yml"
+      - "tests/test_historical_mainnet_1h_opportunity_workflow.py"
+      - "src/cocomelon/research/historical_context_opportunity.py"
+      - "src/cocomelon/historical_context_opportunity_cli.py"
+      - "src/cocomelon/research/historical_cross_market.py"
+      - "src/cocomelon/research/historical_dataset.py"
+      - "src/cocomelon/research/historical_features.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: historical-mainnet-1h-opportunity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  touched-historical-1h-opportunity:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      SOURCE_ROOT: artifacts/historical-mainnet-1h-opportunity-2026-03-01-to-2026-09-20/sources
+      OPPORTUNITY_ROOT: artifacts/historical-mainnet-1h-opportunity-2026-03-01-to-2026-09-20/opportunity
+      WINDOW_START_ISO: "2026-03-01T00:00:00+00:00"
+      WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
+
+    steps:
+      - name: Checkout experiment revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install research runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Resolve immutable UTC window
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_ENV"
+          from datetime import datetime
+
+          for env_name, value in (
+              ("WINDOW_START_MS", "2026-03-01T00:00:00+00:00"),
+              ("WINDOW_END_MS", "2026-09-20T00:00:00+00:00"),
+          ):
+              resolved = datetime.fromisoformat(value)
+              print(f"{env_name}={int(resolved.timestamp() * 1000)}")
+          PY
+
+      - name: Acquire authenticated public-mainnet 1h history
+        run: |
+          set -euo pipefail
+          cocomelon-historical-backfill \
+            --root "$SOURCE_ROOT" \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --interval 1h \
+            --start-ms "$WINDOW_START_MS" \
+            --end-ms "$WINDOW_END_MS" \
+            --max-candles 5000 \
+            --max-funding-items 500
+
+      - name: Require complete six-month 1h candle grids
+        run: |
+          set -euo pipefail
+          jq -e '
+            ([.sources[] | select(.kind == "candles" and .interval == "1h")] | length) == 4
+            and all(
+              .sources[]
+              | select(.kind == "candles" and .interval == "1h");
+              .complete_requested_grid == true and .record_count == 4873
+            )
+          ' "$SOURCE_ROOT/coverage.json" >/dev/null
+
+      - name: Build chronological context opportunity map
+        run: |
+          set -euo pipefail
+          cocomelon-historical-context-opportunity \
+            --source-root "$SOURCE_ROOT" \
+            --output-root "$OPPORTUNITY_ROOT" \
+            --anchor-interval 1h \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --horizon-ms 3600000 \
+            --horizon-ms 14400000 \
+            --round-trip-fee-fraction 0.0007 \
+            --round-trip-slippage-fraction 0.0005 \
+            --funding-reserve-fraction-per-hour 0.0001 \
+            --stability-blocks 4 \
+            --min-block-rows 50 \
+            --min-block-mean-net-return 0
+
+      - name: Render stable context opportunities
+        run: |
+          set -euo pipefail
+          jq '{
+            report_id,
+            evidence_class,
+            dataset_id,
+            dataset_row_count,
+            anchor_interval,
+            markets,
+            horizons_ms,
+            stable_long: [
+              .opportunity_map.entries[]
+              | select(.stable_long == true)
+            ],
+            stable_short: [
+              .opportunity_map.entries[]
+              | select(.stable_short == true)
+            ]
+          }' "$OPPORTUNITY_ROOT/opportunity.json"
+
+      - name: Upload touched opportunity bundle
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-mainnet-1h-opportunity-2026-03-01-to-2026-09-20
+          path: artifacts/historical-mainnet-1h-opportunity-2026-03-01-to-2026-09-20
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
