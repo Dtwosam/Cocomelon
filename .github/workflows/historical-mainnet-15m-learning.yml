@@ -123,6 +123,7 @@ jobs:
             --baseline-min-state-samples 50 \
             --baseline-min-coin-samples 100 \
             --ridge-min-market-samples 100 \
+            --portfolio-max-concurrent-positions 2 \
             --tree-min-market-samples 100 \
             --tree-max-leaf-nodes 7 \
             --tree-min-samples-leaf 100 \
@@ -153,6 +154,7 @@ jobs:
             horizon_ridge_folds,
             stable_horizon_ridge_folds,
             occupancy_stable_ridge_folds,
+            portfolio_capacity_stable_ridge_folds,
             stable_tree_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
