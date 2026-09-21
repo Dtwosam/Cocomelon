@@ -181,3 +181,27 @@ Verified implementation evidence: PR #237 implementation head `2e61ea9966e024750
 - No model authority over hard risk limits.
 - No manual economic retry/backfill merely to make performance look better.
 - No promotion claim from touched historical research alone.
+
+
+### Slice E1 — empirical challenger hardening
+
+- [x] Make zero-return NO_TRADE dominate non-positive validation policies (#243).
+- [x] Add a continuous regularized ridge challenger with train-only preprocessing (#244).
+- [x] Compare challenger and transparent baseline on identical chronological folds/data/costs (#245).
+- [x] Calibrate NO_TRADE independently by horizon (#246).
+- [x] Require multi-block chronological validation stability before a horizon may trade (#248).
+- [x] Preserve the observed result that stable ridge selected NO_TRADE across the tested September folds; this avoided losses but did not demonstrate edge.
+
+### Slice E2 — deeper trustworthy history
+
+- [x] Reconstruct deterministic candles from official Hyperliquid node fill archives (#251).
+- [x] Gate requester-pays archive inspection/download behind exact acknowledgement, hard byte budgets, and integrity checks (#252).
+- [x] Compose verified archive cache -> funding -> reconstructed candles -> authenticated dataset -> model comparison (#253).
+- [x] Require archive/native candle overlap equality before archive-based learning may proceed (#254).
+- [ ] Run broader multi-regime archive experiments only after the archive source is verified and any requester-pays transfer is explicitly authorized.
+
+### Slice E3 — nonlinear challenger
+
+- [ ] Evaluate the fixed shallow tree challenger in PR #256 under the same chronological folds, costs, NO_TRADE floor, and four-block validation stability rule.
+- [ ] Do not tune the tree from test outcomes; reject it if stable validation does not justify trading.
+- [ ] Freeze a candidate only after a model demonstrates reproducible touched-development edge strong enough to justify future clean validation.
