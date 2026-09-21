@@ -11,7 +11,9 @@ from cocomelon.research.historical_baselines import (
     PolicyBreakdownEntry,
     PolicyEvaluation,
     evaluate_policy,
-    evaluate_policy_breakdowns,
+    evaluate_predicted_policy,
+    evaluate_predicted_policy_breakdowns,
+    predict_training_rows,
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
@@ -225,6 +227,23 @@ def calibrate_stable_no_trade_threshold(
         )
     )
     blocks = _validation_blocks(ordered, block_count=stability_blocks)
+    predicted = predict_training_rows(
+        model,
+        ordered,
+        allow_coin_calibration=allow_coin_calibration,
+    )
+    block_anchor_sets = tuple(
+        {row.anchor_end_ms for row in block}
+        for block in blocks
+    )
+    predicted_blocks = tuple(
+        tuple(
+            item
+            for item in predicted
+            if item.row.anchor_end_ms in anchors
+        )
+        for anchors in block_anchor_sets
+    )
     candidates: list[StableThresholdCandidate] = []
 
     for threshold in thresholds:
@@ -232,22 +251,18 @@ def calibrate_stable_no_trade_threshold(
             min_expected_net_edge=threshold,
             min_sample_count=min_sample_count,
         )
-        overall = evaluate_policy(
-            model,
-            ordered,
+        overall = evaluate_predicted_policy(
+            predicted,
             policy=policy,
             costs=costs,
-            allow_coin_calibration=allow_coin_calibration,
         )
         block_evaluations = tuple(
-            evaluate_policy(
-                model,
+            evaluate_predicted_policy(
                 block,
                 policy=policy,
                 costs=costs,
-                allow_coin_calibration=allow_coin_calibration,
             )
-            for block in blocks
+            for block in predicted_blocks
         )
         overall_mean = overall.mean_realized_net_return
         block_stable = all(
@@ -534,19 +549,20 @@ def run_walk_forward_stable_horizon_ridge(
                 thresholds=dict(shared_horizon_thresholds),
                 min_sample_count=min_sample_count,
             )
-            shared_test = evaluate_policy(
+            shared_predictions = predict_training_rows(
                 models[shared_alpha],
                 fold.test,
-                policy=shared_policy,
-                costs=costs,
                 allow_coin_calibration=False,
             )
-            shared_test_breakdowns = evaluate_policy_breakdowns(
-                models[shared_alpha],
-                fold.test,
+            shared_test = evaluate_predicted_policy(
+                shared_predictions,
                 policy=shared_policy,
                 costs=costs,
-                allow_coin_calibration=False,
+            )
+            shared_test_breakdowns = evaluate_predicted_policy_breakdowns(
+                shared_predictions,
+                policy=shared_policy,
+                costs=costs,
             )
 
         if selected_market is None:
@@ -561,19 +577,20 @@ def run_walk_forward_stable_horizon_ridge(
                 thresholds=dict(market_horizon_thresholds),
                 min_sample_count=min_sample_count,
             )
-            market_test = evaluate_policy(
+            market_predictions = predict_training_rows(
                 models[market_alpha],
                 fold.test,
-                policy=market_policy,
-                costs=costs,
                 allow_coin_calibration=True,
             )
-            market_test_breakdowns = evaluate_policy_breakdowns(
-                models[market_alpha],
-                fold.test,
+            market_test = evaluate_predicted_policy(
+                market_predictions,
                 policy=market_policy,
                 costs=costs,
-                allow_coin_calibration=True,
+            )
+            market_test_breakdowns = evaluate_predicted_policy_breakdowns(
+                market_predictions,
+                policy=market_policy,
+                costs=costs,
             )
 
         results.append(
