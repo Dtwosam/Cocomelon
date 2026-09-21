@@ -125,6 +125,8 @@ def test_archive_cli_streams_lz4_into_existing_historical_source_contract(
         source_root / "BTC" / "candles" / "15m"
     )
     assert fifteen_manifest.interval == "15m"
+    assert fifteen_manifest.requested_start_ms == 0
+    assert fifteen_manifest.requested_end_ms == 0
     assert len(fifteen) == 1
     assert fifteen[0].open_px == 100
     assert fifteen[0].close_px == 101
@@ -185,3 +187,38 @@ def test_archive_manifest_identity_does_not_depend_on_local_root(
     )
     assert first_manifest == second_manifest
     assert "archive_root" not in first_manifest
+
+
+
+def test_archive_cli_rejects_start_not_aligned_to_requested_interval(
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    _write_archive(
+        archive_root / "hourly" / "20260907" / "0.lz4",
+        [[
+            "0xtaker",
+            _fill(
+                tid=1,
+                time=FIVE + 1_000,
+                px="100",
+                sz="1",
+                crossed=True,
+                side="B",
+            ),
+        ]],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="REQUEST_START_GRID_MISALIGNED",
+    ):
+        ingest_archive_candles(
+            archive_root=archive_root,
+            source_root=tmp_path / "sources",
+            markets=(BTC,),
+            intervals=("15m",),
+            start_ms=FIVE,
+            end_ms=3 * FIVE,
+            received_at_ms=20_000_000,
+        )
