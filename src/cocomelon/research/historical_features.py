@@ -662,7 +662,6 @@ def build_historical_feature_rows(
                 unavailable_features=unavailable_features,
                 provenance=tuple(sorted(used_sources)),
                 source_manifest_ids=manifests,
-                schema_version=4,
             )
         )
     return tuple(rows)
@@ -938,6 +937,7 @@ def build_historical_feature_rows_1h(
                 unavailable_features=unavailable_features,
                 provenance=tuple(sorted(used_sources)),
                 source_manifest_ids=manifests,
+                schema_version=4,
             )
         )
     return tuple(rows)
