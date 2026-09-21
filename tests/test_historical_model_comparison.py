@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -20,6 +21,7 @@ from cocomelon.research.historical_model_comparison import (
 
 MARKET = MarketId(dex="", coin="ETH")
 FIVE = 300_000
+HOUR = 3_600_000
 
 
 def _row(index: int) -> HistoricalTrainingRow:
@@ -314,3 +316,92 @@ def test_model_comparison_parser_accepts_1h_anchor_interval() -> None:
     )
 
     assert args.anchor_interval == "1h"
+
+
+
+def test_full_comparison_supports_honest_1h_anchor_rows() -> None:
+    rows: list[HistoricalTrainingRow] = []
+    for index in range(1, 13):
+        momentum = Decimal(index - 7) / Decimal("100")
+        anchor_end_ms = index * HOUR
+        feature = HistoricalFeatureRow(
+            market=MARKET,
+            anchor_end_ms=anchor_end_ms,
+            anchor_close_px=Decimal("100"),
+            return_5m=None,
+            return_15m=None,
+            return_1h=momentum,
+            return_4h=momentum * Decimal("2"),
+            realized_vol_15m=None,
+            range_expansion_15m=None,
+            relative_volume_15m=None,
+            funding_rate=Decimal("0.0001"),
+            funding_change=Decimal("0.00001"),
+            funding_premium=Decimal("0.0002"),
+            funding_premium_change=Decimal("0.00001"),
+            funding_age_ms=0,
+            candle_15m_age_ms=None,
+            trend_regime=TrendRegime.UNKNOWN,
+            availability_basis="exchange_timestamp",
+            source_retrieved_at_ms=99_000_000,
+            retrieved_after_anchor=True,
+            available_features=(),
+            unavailable_features=(),
+            provenance=("hyperliquid-mainnet-info",),
+            source_manifest_ids=("source-a",),
+        )
+        long_return = momentum / Decimal("2")
+        rows.append(
+            HistoricalTrainingRow(
+                feature=feature,
+                outcome=DirectionalOutcome(
+                    market=MARKET,
+                    interval="1h",
+                    anchor_end_ms=anchor_end_ms,
+                    target_end_ms=anchor_end_ms + HOUR,
+                    horizon_ms=HOUR,
+                    entry_px=Decimal("100"),
+                    exit_px=Decimal("100") * (Decimal("1") + long_return),
+                    long_gross_return=long_return,
+                    short_gross_return=-long_return,
+                    provenance=("hyperliquid-mainnet-info",),
+                ),
+            )
+        )
+
+    manifest = replace(
+        _manifest(len(rows)),
+        horizons_ms=(HOUR,),
+        anchor_interval="1h",
+    )
+    config = HistoricalModelComparisonConfig(
+        costs=ExecutionCostAssumptions(
+            round_trip_fee_fraction=Decimal("0"),
+            round_trip_slippage_fraction=Decimal("0"),
+            funding_reserve_fraction_per_hour=Decimal("0"),
+        ),
+        candidate_thresholds=(Decimal("0"),),
+        candidate_ridge_alphas=(Decimal("0.1"),),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        baseline_min_state_samples=1,
+        baseline_min_coin_samples=99,
+        ridge_min_market_samples=99,
+        min_sample_count=1,
+        min_validation_trades=1,
+    )
+
+    report = build_historical_model_comparison_report(
+        tuple(rows),
+        dataset_manifest=manifest,
+        config=config,
+    )
+
+    assert report.anchor_interval == "1h"
+    assert report.horizons_ms == (HOUR,)
+    assert len(report.baseline_folds) == 3
+    assert len(report.portfolio_capacity_stable_ridge_folds) == 3
+    assert len(report.stable_tree_folds) == 3
