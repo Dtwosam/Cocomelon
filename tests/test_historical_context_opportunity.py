@@ -147,6 +147,20 @@ def test_context_opportunity_map_requires_positive_edge_in_every_time_block() ->
             HOUR,
         )
     ]
+    btc_context = entries[
+        (
+            "market_context_state_1h",
+            "BTC/up/bullish/leading_1sd",
+            HOUR,
+        )
+    ]
+    eth_context = entries[
+        (
+            "market_context_state_1h",
+            "ETH/down/bearish/lagging_1sd",
+            HOUR,
+        )
+    ]
 
     assert leader.mean_long_net_return == Decimal("0.02")
     assert leader.stable_long is True
@@ -157,6 +171,11 @@ def test_context_opportunity_map_requires_positive_edge_in_every_time_block() ->
     assert lagger.mean_long_net_return > 0
     assert lagger.blocks[2].mean_long_net_return == Decimal("-0.10")
     assert lagger.stable_long is False
+
+    assert btc_context.mean_long_net_return == Decimal("0.02")
+    assert btc_context.stable_long is True
+    assert eth_context.mean_long_net_return == Decimal("0.0125")
+    assert eth_context.stable_long is False
 
 
 def test_context_opportunity_map_is_cost_aware() -> None:
