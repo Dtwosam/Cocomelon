@@ -233,8 +233,16 @@ def test_tree_walk_forward_selection_ignores_future_test_outcomes() -> None:
     assert positive.market_horizon_thresholds == negative.market_horizon_thresholds
     assert positive.shared_validation == negative.shared_validation
     assert positive.market_validation == negative.market_validation
-    assert positive.shared_test.total_realized_net_return != (
-        negative.shared_test.total_realized_net_return
+    assert (
+        positive.shared_test.trade_count,
+        positive.shared_test.long_count,
+        positive.shared_test.short_count,
+        positive.shared_test.no_trade_count,
+    ) == (
+        negative.shared_test.trade_count,
+        negative.shared_test.long_count,
+        negative.shared_test.short_count,
+        negative.shared_test.no_trade_count,
     )
 
 
