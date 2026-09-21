@@ -43,3 +43,25 @@ def test_dataset_parser_accepts_15m_anchor_interval() -> None:
     )
 
     assert args.anchor_interval == "15m"
+
+
+
+def test_dataset_parser_accepts_1h_anchor_interval() -> None:
+    from cocomelon.historical_dataset_cli import build_parser
+
+    args = build_parser().parse_args(
+        [
+            "--source-root",
+            "sources",
+            "--output-root",
+            "dataset",
+            "--market",
+            "ETH",
+            "--horizon-ms",
+            "3600000",
+            "--anchor-interval",
+            "1h",
+        ]
+    )
+
+    assert args.anchor_interval == "1h"
