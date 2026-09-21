@@ -16,8 +16,8 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "pull_request:" in source
     assert "schedule:" not in source
 
-    assert 'WINDOW_START_ISO: "2026-08-01T00:00:00+00:00"' in source
-    assert 'WINDOW_END_ISO: "2026-09-01T00:00:00+00:00"' in source
+    assert 'WINDOW_START_ISO: "2026-09-07T00:00:00+00:00"' in source
+    assert 'WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"' in source
     for market in ("BTC", "ETH", "SOL", "HYPE"):
         assert f"--market {market}" in source
 
@@ -26,6 +26,10 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--horizon-ms 900000" in source
     assert "--horizon-ms 3600000" in source
     assert "--horizon-ms 14400000" in source
+    assert "--min-train-anchors 1400" in source
+    assert "--validation-anchors 500" in source
+    assert "--test-anchors 500" in source
+    assert "--step-anchors 500" in source
     assert "--embargo-anchors 48" in source
     assert "--min-validation-trades 20" in source
     assert "historical-mainnet-learning-2026-08" in source
@@ -39,5 +43,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "experiment.json" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
+    assert 'jq '.' "$SOURCE_ROOT/coverage.json"' in source
+    assert "if: ${{ always() }}" in source
     assert "actions/upload-artifact@v7" in source
     assert "if-no-files-found: error" in source
