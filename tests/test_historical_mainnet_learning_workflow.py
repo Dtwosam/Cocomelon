@@ -32,6 +32,8 @@ def test_historical_mainnet_learning_workflow_is_bounded_and_paper_only() -> Non
     assert "--step-anchors 500" in source
     assert "--embargo-anchors 48" in source
     assert "--min-validation-trades 20" in source
+    assert "--stability-blocks 4" in source
+    assert "--min-validation-block-trades 5" in source
     assert "--candidate-ridge-alpha 0.01" in source
     assert "--candidate-ridge-alpha 0.1" in source
     assert "--candidate-ridge-alpha 1" in source
@@ -51,6 +53,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "baseline_folds" in source
     assert "ridge_folds" in source
     assert "horizon_ridge_folds" in source
+    assert "stable_horizon_ridge_folds" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
     assert "shared_validation_candidates" in source
