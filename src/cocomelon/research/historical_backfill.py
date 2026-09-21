@@ -720,7 +720,7 @@ def build_coverage_report(
     funding_manifests: Sequence[HistoricalFundingManifest],
 ) -> dict[str, object]:
     sources: list[dict[str, object]] = []
-    for manifest in sorted(
+    for candle_manifest in sorted(
         candle_manifests,
         key=lambda item: (
             item.market,
@@ -733,18 +733,18 @@ def build_coverage_report(
             {
                 "kind": "candles",
                 "source": SOURCE,
-                "market": manifest.market,
-                "interval": manifest.interval,
-                "requested_start_ms": manifest.requested_start_ms,
-                "requested_end_ms": manifest.requested_end_ms,
-                "record_count": manifest.candle_count,
-                "gap_ranges": manifest.gap_ranges,
-                "complete_requested_grid": manifest.complete_requested_grid,
-                "manifest_id": manifest.manifest_id,
-                "normalized_sha256": manifest.normalized_sha256,
+                "market": candle_manifest.market,
+                "interval": candle_manifest.interval,
+                "requested_start_ms": candle_manifest.requested_start_ms,
+                "requested_end_ms": candle_manifest.requested_end_ms,
+                "record_count": candle_manifest.candle_count,
+                "gap_ranges": candle_manifest.gap_ranges,
+                "complete_requested_grid": candle_manifest.complete_requested_grid,
+                "manifest_id": candle_manifest.manifest_id,
+                "normalized_sha256": candle_manifest.normalized_sha256,
             }
         )
-    for manifest in sorted(
+    for funding_manifest in sorted(
         funding_manifests,
         key=lambda item: (
             item.market,
@@ -756,17 +756,17 @@ def build_coverage_report(
             {
                 "kind": "funding",
                 "source": SOURCE,
-                "market": manifest.market,
-                "expected_interval_ms": manifest.expected_interval_ms,
-                "requested_start_ms": manifest.requested_start_ms,
-                "requested_end_ms": manifest.requested_end_ms,
-                "observed_start_ms": manifest.observed_start_ms,
-                "observed_end_ms": manifest.observed_end_ms,
-                "record_count": manifest.funding_count,
-                "gap_ranges": manifest.gap_ranges,
-                "continuous_observed_grid": manifest.continuous_observed_grid,
-                "manifest_id": manifest.manifest_id,
-                "normalized_sha256": manifest.normalized_sha256,
+                "market": funding_manifest.market,
+                "expected_interval_ms": funding_manifest.expected_interval_ms,
+                "requested_start_ms": funding_manifest.requested_start_ms,
+                "requested_end_ms": funding_manifest.requested_end_ms,
+                "observed_start_ms": funding_manifest.observed_start_ms,
+                "observed_end_ms": funding_manifest.observed_end_ms,
+                "record_count": funding_manifest.funding_count,
+                "gap_ranges": funding_manifest.gap_ranges,
+                "continuous_observed_grid": funding_manifest.continuous_observed_grid,
+                "manifest_id": funding_manifest.manifest_id,
+                "normalized_sha256": funding_manifest.normalized_sha256,
             }
         )
     payload: dict[str, object] = {
