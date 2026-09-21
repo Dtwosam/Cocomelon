@@ -112,7 +112,13 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert report.dataset_id == manifest.dataset_id
     assert report.dataset_logical_sha256 == manifest.logical_sha256
     assert len(report.baseline_folds) == len(report.ridge_folds) == 3
-    for baseline, ridge in zip(report.baseline_folds, report.ridge_folds, strict=True):
+    assert len(report.horizon_ridge_folds) == 3
+    for baseline, ridge, horizon_ridge in zip(
+        report.baseline_folds,
+        report.ridge_folds,
+        report.horizon_ridge_folds,
+        strict=True,
+    ):
         assert (
             baseline.train_anchor_count,
             baseline.validation_anchor_count,
@@ -121,6 +127,10 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
             ridge.train_anchor_count,
             ridge.validation_anchor_count,
             ridge.test_anchor_count,
+        ) == (
+            horizon_ridge.train_anchor_count,
+            horizon_ridge.validation_anchor_count,
+            horizon_ridge.test_anchor_count,
         )
     assert {
         candidate.alpha

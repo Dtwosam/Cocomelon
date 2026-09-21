@@ -451,6 +451,15 @@ class DirectionalDecision:
             raise ValueError("estimate_source must not be empty")
 
 
+class HistoricalDecisionPolicy(Protocol):
+    def decide(
+        self,
+        estimate: DirectionalPrediction,
+        *,
+        costs: ExecutionCostAssumptions,
+    ) -> DirectionalDecision: ...
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionPolicy:
     min_expected_net_edge: Decimal
@@ -582,6 +591,7 @@ def calibrate_no_trade_threshold(
     min_validation_trades: int,
     allow_coin_calibration: bool = True,
     min_validation_mean_net_return: Decimal = ZERO,
+    abstain_on_insufficient_validation_trades: bool = False,
 ) -> ThresholdCalibration:
     if not validation_rows:
         raise HistoricalBaselineError("validation_rows must not be empty")
@@ -641,7 +651,11 @@ def calibrate_no_trade_threshold(
     trade_count_eligible = tuple(trade_count_eligible_list)
     eligible = tuple(eligible_list)
     if not eligible:
-        if trade_count_eligible or all(result.trade_count == 0 for result in results):
+        if (
+            trade_count_eligible
+            or all(result.trade_count == 0 for result in results)
+            or abstain_on_insufficient_validation_trades
+        ):
             return ThresholdCalibration(
                 selected_threshold=None,
                 candidates=tuple(results),
@@ -755,7 +769,7 @@ def _policy_observations(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> tuple[_PolicyObservation, ...]:
@@ -852,7 +866,7 @@ def evaluate_policy(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> PolicyEvaluation:
@@ -871,7 +885,7 @@ def evaluate_policy_breakdowns(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
     allow_coin_calibration: bool,
 ) -> tuple[PolicyBreakdownEntry, ...]:
@@ -890,7 +904,7 @@ def compare_shared_and_coin_calibration(
     model: HistoricalDirectionalModel,
     rows: Sequence[HistoricalTrainingRow],
     *,
-    policy: DecisionPolicy,
+    policy: HistoricalDecisionPolicy,
     costs: ExecutionCostAssumptions,
 ) -> BaselineVariantComparison:
     return BaselineVariantComparison(
