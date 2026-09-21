@@ -53,6 +53,35 @@ def test_show_is_offline_and_emits_frozen_preset(
     assert payload["evidence_class"] == "touched_development"
 
 
+def test_keys_is_offline_and_bound_to_frozen_preset(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("keys must not construct a Hyperliquid client")
+        ),
+    )
+
+    status = cli.main(["keys"])
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "keys"
+    assert payload["paid_request_performed"] is False
+    assert payload["preset"] == JUL_SEP_2026_V1.name
+    assert payload["preset_id"] == JUL_SEP_2026_V1.preset_id
+    assert payload["shard_count"] == 1_968
+    assert len(payload["keys"]) == 1_968
+    assert payload["keys"][0].endswith("/20260701/0.lz4")
+    assert payload["keys"][-1].endswith("/20260920/23.lz4")
+
+
 def test_show_rejects_unknown_preset_without_runtime_access(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
