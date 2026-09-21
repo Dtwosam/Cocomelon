@@ -30,8 +30,8 @@ from cocomelon.research.historical_features import (
 )
 from cocomelon.research.historical_learning import build_directional_outcomes
 
-DATASET_SCHEMA_VERSION = 3
-DATASET_CONVERTER_VERSION = "historical-directional-training-v3-anchor-interval"
+DATASET_SCHEMA_VERSION = 4
+DATASET_CONVERTER_VERSION = "historical-directional-training-v4-dispersion"
 OUTPUT_FILENAME = "training.parquet"
 
 TRAINING_COLUMNS = (
