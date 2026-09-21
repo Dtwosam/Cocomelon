@@ -31,9 +31,9 @@ jobs:
       COCOMELON_API_URL: https://api.hyperliquid.xyz
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       FEATURE_SET: historical-1h-anchor-context-v4
-      SOURCE_ROOT: artifacts/historical-mainnet-1h-2026-03-15-to-2026-09-20/sources
-      COMPARISON_ROOT: artifacts/historical-mainnet-1h-2026-03-15-to-2026-09-20/model-comparison
-      WINDOW_START_ISO: "2026-03-15T00:00:00+00:00"
+      SOURCE_ROOT: artifacts/historical-mainnet-1h-2026-04-01-to-2026-09-20/sources
+      COMPARISON_ROOT: artifacts/historical-mainnet-1h-2026-04-01-to-2026-09-20/model-comparison
+      WINDOW_START_ISO: "2026-04-01T00:00:00+00:00"
       WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
 
     steps:
@@ -63,7 +63,7 @@ jobs:
           from datetime import datetime
 
           for env_name, value in (
-              ("WINDOW_START_MS", "2026-03-15T00:00:00+00:00"),
+              ("WINDOW_START_MS", "2026-04-01T00:00:00+00:00"),
               ("WINDOW_END_MS", "2026-09-20T00:00:00+00:00"),
           ):
               resolved = datetime.fromisoformat(value)
@@ -115,10 +115,10 @@ jobs:
             --candidate-ridge-alpha 0.1 \
             --candidate-ridge-alpha 1 \
             --candidate-ridge-alpha 10 \
-            --min-train-anchors 1500 \
-            --validation-anchors 600 \
-            --test-anchors 600 \
-            --step-anchors 600 \
+            --min-train-anchors 1200 \
+            --validation-anchors 480 \
+            --test-anchors 480 \
+            --step-anchors 480 \
             --embargo-anchors 4 \
             --baseline-min-state-samples 50 \
             --baseline-min-coin-samples 100 \
@@ -176,8 +176,8 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: historical-mainnet-1h-learning-2026-03-15-to-2026-09-20
-          path: artifacts/historical-mainnet-1h-2026-03-15-to-2026-09-20
+          name: historical-mainnet-1h-learning-2026-04-01-to-2026-09-20
+          path: artifacts/historical-mainnet-1h-2026-04-01-to-2026-09-20
           if-no-files-found: error
           retention-days: 30
           compression-level: 6
