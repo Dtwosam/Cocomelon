@@ -774,7 +774,7 @@ class _PolicyObservation:
             raise ValueError("trades require realized return")
 
 
-def _basket_direction_bucket(value: Decimal | None) -> str:
+def basket_direction_1h_bucket(value: Decimal | None) -> str:
     if value is None:
         return "missing"
     if value > ZERO:
@@ -784,7 +784,7 @@ def _basket_direction_bucket(value: Decimal | None) -> str:
     return "flat"
 
 
-def _basket_breadth_bucket(value: Decimal | None) -> str:
+def basket_breadth_1h_bucket(value: Decimal | None) -> str:
     if value is None:
         return "missing"
     if value <= Decimal("0.25"):
@@ -794,7 +794,7 @@ def _basket_breadth_bucket(value: Decimal | None) -> str:
     return "mixed"
 
 
-def _relative_strength_bucket(value: Decimal | None) -> str:
+def relative_strength_1h_bucket(value: Decimal | None) -> str:
     if value is None:
         return "missing"
     if value <= Decimal("-1"):
@@ -845,13 +845,13 @@ def _policy_observations_from_predictions(
                 market=row.market.canonical,
                 horizon_ms=row.horizon_ms,
                 trend_regime=row.feature.trend_regime,
-                basket_direction_1h=_basket_direction_bucket(
+                basket_direction_1h=basket_direction_1h_bucket(
                     row.feature.basket_median_return_1h
                 ),
-                basket_breadth_1h=_basket_breadth_bucket(
+                basket_breadth_1h=basket_breadth_1h_bucket(
                     row.feature.basket_breadth_positive_1h
                 ),
-                relative_strength_1h=_relative_strength_bucket(
+                relative_strength_1h=relative_strength_1h_bucket(
                     row.feature.relative_return_zscore_1h_vs_basket
                 ),
                 action=decision.action,
@@ -919,13 +919,13 @@ def _abstained_observations(
             market=row.market.canonical,
             horizon_ms=row.horizon_ms,
             trend_regime=row.feature.trend_regime,
-            basket_direction_1h=_basket_direction_bucket(
+            basket_direction_1h=basket_direction_1h_bucket(
                 row.feature.basket_median_return_1h
             ),
-            basket_breadth_1h=_basket_breadth_bucket(
+            basket_breadth_1h=basket_breadth_1h_bucket(
                 row.feature.basket_breadth_positive_1h
             ),
-            relative_strength_1h=_relative_strength_bucket(
+            relative_strength_1h=relative_strength_1h_bucket(
                 row.feature.relative_return_zscore_1h_vs_basket
             ),
             action=DecisionAction.NO_TRADE,
