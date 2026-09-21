@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from cocomelon.domain.features import TrendRegime
 from cocomelon.research.historical_baselines import (
@@ -48,7 +49,7 @@ class HistoricalRidgeDependencyError(RuntimeError):
     pass
 
 
-def _np() -> object:
+def _np() -> Any:
     try:
         return importlib.import_module("numpy")
     except ModuleNotFoundError as exc:
