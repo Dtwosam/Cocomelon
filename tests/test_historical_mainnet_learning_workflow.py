@@ -50,6 +50,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "comparison.json" in source
     assert "baseline_folds" in source
     assert "ridge_folds" in source
+    assert "horizon_ridge_folds" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
     assert "shared_validation_candidates" in source
