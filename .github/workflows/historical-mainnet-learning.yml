@@ -179,6 +179,12 @@ jobs:
             --baseline-min-state-samples 50 \
             --baseline-min-coin-samples 100 \
             --ridge-min-market-samples 100 \
+            --tree-min-market-samples 100 \
+            --tree-max-leaf-nodes 7 \
+            --tree-min-samples-leaf 100 \
+            --tree-learning-rate 0.05 \
+            --tree-max-iter 100 \
+            --tree-l2-regularization 1 \
             --min-sample-count 50 \
             --min-validation-trades 20 \
             --min-validation-mean-net-return 0 \
@@ -199,7 +205,8 @@ jobs:
             baseline_folds,
             ridge_folds,
             horizon_ridge_folds,
-            stable_horizon_ridge_folds
+            stable_horizon_ridge_folds,
+            stable_tree_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
       - name: Upload authenticated touched research bundle

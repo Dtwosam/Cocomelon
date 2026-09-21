@@ -14,6 +14,7 @@ from cocomelon.research.historical_model_comparison import (
     HistoricalModelComparisonConfig,
     run_historical_model_comparison_from_sources,
 )
+from cocomelon.research.historical_tree import TreeModelConfig
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -55,7 +56,7 @@ def _decimal(value: str) -> Decimal:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cocomelon-historical-model-comparison",
-        description="Compare touched conditional and ridge historical learners",
+        description="Compare touched directional historical learners",
     )
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
@@ -88,6 +89,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--baseline-min-state-samples", required=True, type=int)
     parser.add_argument("--baseline-min-coin-samples", required=True, type=int)
     parser.add_argument("--ridge-min-market-samples", required=True, type=int)
+    parser.add_argument("--tree-min-market-samples", type=int, default=100)
+    parser.add_argument("--tree-max-leaf-nodes", type=int, default=7)
+    parser.add_argument("--tree-min-samples-leaf", type=int, default=100)
+    parser.add_argument("--tree-learning-rate", type=_decimal, default=Decimal("0.05"))
+    parser.add_argument("--tree-max-iter", type=int, default=100)
+    parser.add_argument(
+        "--tree-l2-regularization",
+        type=_decimal,
+        default=Decimal("1"),
+    )
     parser.add_argument("--min-sample-count", required=True, type=int)
     parser.add_argument("--min-validation-trades", required=True, type=int)
     parser.add_argument(
@@ -125,6 +136,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_validation_mean_net_return=args.min_validation_mean_net_return,
             stability_blocks=args.stability_blocks,
             min_validation_block_trades=args.min_validation_block_trades,
+            tree_min_market_samples=args.tree_min_market_samples,
+            tree_config=TreeModelConfig(
+                max_leaf_nodes=args.tree_max_leaf_nodes,
+                min_samples_leaf=args.tree_min_samples_leaf,
+                learning_rate=args.tree_learning_rate,
+                max_iter=args.tree_max_iter,
+                l2_regularization=args.tree_l2_regularization,
+            ),
         )
         report = run_historical_model_comparison_from_sources(
             source_root=args.source_root,
