@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`  
-**Latest verified main CI:** `35586218697` — success  
+**Current verified `main` at snapshot:** `09e5c93db64ede19ec6ad02ac642defc96176c27`  
+**Latest verified main CI:** `35596674099` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -95,7 +95,7 @@ Active challenger:
 
 R2 was generated from touched V4 development evidence. It is a hypothesis, not proof of edge. Its thresholds are immutable while it gathers new natural research evidence.
 
-Trusted research state at the 2026-09-21 06:28 UTC snapshot:
+Trusted research state at the 2026-09-21 09:58 UTC snapshot:
 
 - `scheduled-research-root`: 13 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
 - legacy `research-r1-exit-15m-v1`: 7 checkpoints, 6 trades, 4 days, touched net PnL about `-36.9098`;
@@ -143,9 +143,10 @@ Recent frontier PRs:
 - #224: fails paper execution closed on funding-idempotency read errors before accounting mutation;
 - #226: rejects structurally incomplete supported-version paper and journal/replay stores before migration DDL can silently recreate missing required tables;
 - #228: scopes research replay identity uniqueness by candidate and transactionally migrates the legacy global-unique registry so root+r2 can share one authenticated capture replay identity;
-- #230: attributes raw candidate-local terminal runner failures to the `evaluate-research` dashboard stage without changing checkpoint accounting.
+- #230: attributes raw candidate-local terminal runner failures to the `evaluate-research` dashboard stage without changing checkpoint accounting;
+- #232: authenticates persisted paper execution attempts/fills during restart, reconciles deterministic IDs and fill totals, rejects orphaned/inconsistent history, and enforces fill -> attempt identity at write time.
 
-PR #230 merged as `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`. Post-merge main CI `35586218697` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` passed and renders the failed r2 attempt as `evaluate-research` / NOT COUNTED.
+PR #232 merged as `09e5c93db64ede19ec6ad02ac642defc96176c27`. Post-merge main CI `35596674099` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` remains trusted and renders the failed r2 attempt as `evaluate-research` / NOT COUNTED.
 
 ---
 
