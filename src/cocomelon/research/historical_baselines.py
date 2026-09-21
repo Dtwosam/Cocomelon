@@ -819,8 +819,11 @@ def run_walk_forward_baseline(
                 mean_realized_net_return=None,
             )
         else:
+            shared_threshold = shared_calibration.selected_threshold
+            if shared_threshold is None:
+                raise HistoricalBaselineError("non-abstained shared calibration needs threshold")
             shared_policy = DecisionPolicy(
-                min_expected_net_edge=shared_calibration.selected_threshold,
+                min_expected_net_edge=shared_threshold,
                 min_sample_count=min_sample_count,
             )
             shared_test = evaluate_policy(
@@ -842,8 +845,11 @@ def run_walk_forward_baseline(
                 mean_realized_net_return=None,
             )
         else:
+            coin_threshold = coin_calibration.selected_threshold
+            if coin_threshold is None:
+                raise HistoricalBaselineError("non-abstained coin calibration needs threshold")
             coin_policy = DecisionPolicy(
-                min_expected_net_edge=coin_calibration.selected_threshold,
+                min_expected_net_edge=coin_threshold,
                 min_sample_count=min_sample_count,
             )
             coin_test = evaluate_policy(
