@@ -17,6 +17,7 @@ from cocomelon.research.historical_dataset import (
 )
 
 MARKET = MarketId(dex="", coin="ETH")
+BTC = MarketId(dex="", coin="BTC")
 FIVE = 300_000
 FIFTEEN = 900_000
 HOUR = 3_600_000
@@ -164,6 +165,33 @@ def test_build_training_rows_from_source_root_uses_exact_horizons(tmp_path: Path
     assert all(row.feature.source_manifest_ids for row in rows)
 
 
+def test_training_rows_include_authenticated_same_anchor_basket_context(
+    tmp_path: Path,
+) -> None:
+    root = _build_source_root(tmp_path, MARKET)
+    _build_source_root(tmp_path, BTC)
+
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET, BTC),
+        horizons_ms=(FIVE,),
+    )
+
+    eth = next(
+        row
+        for row in rows
+        if row.market == MARKET and row.feature.return_5m is not None
+    )
+    assert eth.feature.btc_return_5m == eth.feature.return_5m
+    assert eth.feature.eth_return_5m == eth.feature.return_5m
+    assert eth.feature.basket_return_count_5m == Decimal("2")
+    assert eth.feature.basket_median_return_5m == eth.feature.return_5m
+    assert eth.feature.relative_return_5m_vs_basket == Decimal("0")
+    assert eth.feature.schema_version == 2
+    assert eth.schema_version == 2
+    assert len(eth.feature.source_manifest_ids) >= 4
+
+
 def test_export_training_dataset_writes_versioned_parquet_and_manifest(tmp_path: Path) -> None:
     parquet = pytest.importorskip("pyarrow.parquet")
     root = _build_source_root(tmp_path)
@@ -193,6 +221,8 @@ def test_export_training_dataset_writes_versioned_parquet_and_manifest(tmp_path:
     assert "long_gross_return" in table.column_names
     assert "short_gross_return" in table.column_names
     assert "unavailable_features_json" in table.column_names
+    assert "basket_median_return_5m" in table.column_names
+    assert "btc_return_1h" in table.column_names
 
 
 
