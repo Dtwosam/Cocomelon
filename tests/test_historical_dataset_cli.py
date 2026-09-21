@@ -21,3 +21,25 @@ def test_build_historical_dataset_rejects_nonpositive_horizons(tmp_path: Path) -
             markets=(MarketId(dex="", coin="ETH"),),
             horizons_ms=(0,),
         )
+
+
+
+def test_dataset_parser_accepts_15m_anchor_interval() -> None:
+    from cocomelon.historical_dataset_cli import build_parser
+
+    args = build_parser().parse_args(
+        [
+            "--source-root",
+            "sources",
+            "--output-root",
+            "dataset",
+            "--market",
+            "ETH",
+            "--horizon-ms",
+            "900000",
+            "--anchor-interval",
+            "15m",
+        ]
+    )
+
+    assert args.anchor_interval == "15m"

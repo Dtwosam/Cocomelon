@@ -9,6 +9,7 @@ from cocomelon.domain.market import Candle, FundingRate, MarketId
 from cocomelon.research.historical_features import (
     HistoricalFeatureError,
     build_historical_feature_rows,
+    build_historical_feature_rows_15m,
     join_features_to_outcomes,
 )
 from cocomelon.research.historical_learning import build_directional_outcomes
@@ -316,3 +317,51 @@ def test_historical_features_compute_funding_change_across_small_timestamp_jitte
     assert anchor.funding_rate == Decimal("0.0003")
     assert anchor.funding_change == Decimal("0.0002")
     assert anchor.funding_premium_change == Decimal("0.0003")
+
+
+
+def test_15m_anchor_features_do_not_invent_5m_return() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+            volume=str(100 + index),
+            open_px=str(99 + index),
+        )
+        for index in range(21)
+    )
+
+    rows = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )
+
+    latest = rows[-1]
+    assert latest.return_5m is None
+    assert latest.return_15m == Decimal("120") / Decimal("119") - Decimal("1")
+    assert latest.return_1h == Decimal("120") / Decimal("116") - Decimal("1")
+    assert latest.return_4h == Decimal("120") / Decimal("104") - Decimal("1")
+    assert latest.candle_15m_age_ms == 0
+    assert latest.realized_vol_15m is not None
+    assert "return_5m" in latest.unavailable_features
+
+
+def test_15m_anchor_features_do_not_bridge_missing_gap() -> None:
+    candles_15m = tuple(
+        _candle(interval="15m", start_ms=index * FIFTEEN, close=str(100 + index))
+        for index in range(21)
+        if index != 19
+    )
+
+    latest = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )[-1]
+
+    assert latest.return_15m is None
+    assert latest.realized_vol_15m is None
+    assert latest.range_expansion_15m is None
+    assert latest.relative_volume_15m is None

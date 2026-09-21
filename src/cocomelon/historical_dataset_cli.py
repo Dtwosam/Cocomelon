@@ -51,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--market", required=True, action="append", type=_parse_market)
     parser.add_argument("--horizon-ms", required=True, action="append", type=int)
+    parser.add_argument(
+        "--anchor-interval",
+        choices=("5m", "15m"),
+        default="5m",
+    )
     return parser
 
 
@@ -60,6 +65,7 @@ def build_historical_dataset(
     output_root: Path,
     markets: Sequence[MarketId],
     horizons_ms: Sequence[int],
+    anchor_interval: str = "5m",
 ) -> dict[str, object]:
     if any(value <= 0 for value in horizons_ms):
         raise ValueError("horizon-ms values must be positive")
@@ -67,11 +73,13 @@ def build_historical_dataset(
         source_root,
         markets=markets,
         horizons_ms=horizons_ms,
+        anchor_interval=anchor_interval,
     )
     manifest = export_training_dataset(rows, output_root)
     return {
         "command": "build-historical-dataset",
         "dataset_id": manifest.dataset_id,
+        "anchor_interval": manifest.anchor_interval,
         "horizons_ms": manifest.horizons_ms,
         "markets": manifest.markets,
         "output_root": str(output_root),
@@ -89,6 +97,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_root=args.output_root,
             markets=args.market,
             horizons_ms=args.horizon_ms,
+            anchor_interval=args.anchor_interval,
         )
     except (
         OSError,

@@ -15,7 +15,9 @@ from cocomelon.research.historical_baselines import (
     ThresholdCalibration,
     calibrate_no_trade_threshold,
     evaluate_policy,
-    evaluate_policy_breakdowns,
+    evaluate_predicted_policy,
+    evaluate_predicted_policy_breakdowns,
+    predict_training_rows,
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
@@ -358,19 +360,20 @@ def run_walk_forward_horizon_calibrated_ridge(
                 thresholds=dict(shared_horizon_thresholds),
                 min_sample_count=min_sample_count,
             )
-            shared_test = evaluate_policy(
+            shared_predictions = predict_training_rows(
                 models[shared_alpha],
                 fold.test,
-                policy=shared_policy,
-                costs=costs,
                 allow_coin_calibration=False,
             )
-            shared_test_breakdowns = evaluate_policy_breakdowns(
-                models[shared_alpha],
-                fold.test,
+            shared_test = evaluate_predicted_policy(
+                shared_predictions,
                 policy=shared_policy,
                 costs=costs,
-                allow_coin_calibration=False,
+            )
+            shared_test_breakdowns = evaluate_predicted_policy_breakdowns(
+                shared_predictions,
+                policy=shared_policy,
+                costs=costs,
             )
 
         if selected_market is None:
@@ -385,19 +388,20 @@ def run_walk_forward_horizon_calibrated_ridge(
                 thresholds=dict(market_horizon_thresholds),
                 min_sample_count=min_sample_count,
             )
-            market_test = evaluate_policy(
+            market_predictions = predict_training_rows(
                 models[market_alpha],
                 fold.test,
-                policy=market_policy,
-                costs=costs,
                 allow_coin_calibration=True,
             )
-            market_test_breakdowns = evaluate_policy_breakdowns(
-                models[market_alpha],
-                fold.test,
+            market_test = evaluate_predicted_policy(
+                market_predictions,
                 policy=market_policy,
                 costs=costs,
-                allow_coin_calibration=True,
+            )
+            market_test_breakdowns = evaluate_predicted_policy_breakdowns(
+                market_predictions,
+                policy=market_policy,
+                costs=costs,
             )
 
         results.append(

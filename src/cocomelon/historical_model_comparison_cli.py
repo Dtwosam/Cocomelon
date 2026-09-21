@@ -62,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-root", required=True, type=Path)
     parser.add_argument("--market", required=True, action="append", type=_market)
     parser.add_argument("--horizon-ms", required=True, action="append", type=int)
+    parser.add_argument(
+        "--anchor-interval",
+        choices=("5m", "15m"),
+        default="5m",
+    )
     parser.add_argument("--round-trip-fee-fraction", required=True, type=_decimal)
     parser.add_argument("--round-trip-slippage-fraction", required=True, type=_decimal)
     parser.add_argument(
@@ -151,6 +156,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             markets=args.market,
             horizons_ms=args.horizon_ms,
             config=config,
+            anchor_interval=args.anchor_interval,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
@@ -164,6 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "command": "historical-model-comparison",
             "report_id": report.report_id,
             "dataset_id": report.dataset_id,
+            "anchor_interval": report.anchor_interval,
             "evidence_class": report.evidence_class,
             "row_count": report.dataset_row_count,
             "fold_count": len(report.baseline_folds),

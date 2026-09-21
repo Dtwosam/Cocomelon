@@ -49,7 +49,7 @@ from cocomelon.research.historical_tree import (
 )
 
 EVIDENCE_CLASS = "touched_development"
-COMPARISON_VERSION = "historical-directional-model-comparison-v5"
+COMPARISON_VERSION = "historical-directional-model-comparison-v6-anchor-interval"
 
 
 def _canonical_json(value: object) -> str:
@@ -496,6 +496,7 @@ class HistoricalModelComparisonReport:
     dataset_row_count: int
     markets: tuple[str, ...]
     horizons_ms: tuple[int, ...]
+    anchor_interval: str
     source_manifest_ids: tuple[str, ...]
     config: HistoricalModelComparisonConfig
     baseline_folds: tuple[WalkForwardFoldResult, ...]
@@ -562,6 +563,8 @@ class HistoricalModelComparisonReport:
                 or baseline_shape != tree_shape
             ):
                 raise ValueError("all model folds must use identical chronology")
+        if self.anchor_interval not in {"5m", "15m"}:
+            raise ValueError("anchor_interval must be 5m or 15m")
         if self.evidence_class != EVIDENCE_CLASS:
             raise ValueError("comparison evidence must remain touched_development")
 
@@ -572,6 +575,7 @@ class HistoricalModelComparisonReport:
             "dataset_row_count": self.dataset_row_count,
             "markets": self.markets,
             "horizons_ms": self.horizons_ms,
+            "anchor_interval": self.anchor_interval,
             "source_manifest_ids": self.source_manifest_ids,
             "config": self.config.to_dict(),
             "supervised_numeric_feature_registry": NUMERIC_FEATURES,
@@ -609,6 +613,10 @@ def build_historical_model_comparison_report(
     dataset_manifest: HistoricalDatasetManifest,
     config: HistoricalModelComparisonConfig,
 ) -> HistoricalModelComparisonReport:
+    row_anchor_intervals = {row.outcome.interval for row in rows}
+    if row_anchor_intervals != {dataset_manifest.anchor_interval}:
+        raise ValueError("training rows must match dataset anchor_interval")
+
     baseline = run_walk_forward_baseline(
         rows,
         costs=config.costs,
@@ -707,6 +715,7 @@ def build_historical_model_comparison_report(
         dataset_row_count=dataset_manifest.row_count,
         markets=dataset_manifest.markets,
         horizons_ms=dataset_manifest.horizons_ms,
+        anchor_interval=dataset_manifest.anchor_interval,
         source_manifest_ids=dataset_manifest.source_manifest_ids,
         config=config,
         baseline_folds=baseline.folds,
@@ -724,11 +733,13 @@ def run_historical_model_comparison_from_sources(
     markets: Sequence[MarketId],
     horizons_ms: Sequence[int],
     config: HistoricalModelComparisonConfig,
+    anchor_interval: str = "5m",
 ) -> HistoricalModelComparisonReport:
     rows = build_training_rows_from_source_root(
         source_root,
         markets=markets,
         horizons_ms=horizons_ms,
+        anchor_interval=anchor_interval,
     )
     manifest = export_training_dataset(rows, output_root / "dataset")
     report = build_historical_model_comparison_report(
