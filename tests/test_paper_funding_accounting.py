@@ -60,7 +60,7 @@ def _plan(side: OrderSide) -> PaperOrderPlan:
 def _fill(plan: PaperOrderPlan) -> PaperFill:
     return PaperFill(
         plan_id=plan.plan_id,
-        attempt_id=f"attempt-{plan.side.value}",
+        attempt_id=_attempt(plan).attempt_id,
         market=MARKET,
         side=plan.side,
         price=Decimal("100"),
