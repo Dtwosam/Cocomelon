@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`  
-**Latest verified main CI:** `35576633597` — success  
+**Current verified `main` at snapshot:** `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`  
+**Latest verified main CI:** `35586218697` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -142,9 +142,10 @@ Recent frontier PRs:
 - #223: validates active-position opening-plan lineage on restart and runtime exit planning;
 - #224: fails paper execution closed on funding-idempotency read errors before accounting mutation;
 - #226: rejects structurally incomplete supported-version paper and journal/replay stores before migration DDL can silently recreate missing required tables;
-- #228: scopes research replay identity uniqueness by candidate and transactionally migrates the legacy global-unique registry so root+r2 can share one authenticated capture replay identity.
+- #228: scopes research replay identity uniqueness by candidate and transactionally migrates the legacy global-unique registry so root+r2 can share one authenticated capture replay identity;
+- #230: attributes raw candidate-local terminal runner failures to the `evaluate-research` dashboard stage without changing checkpoint accounting.
 
-PR #228 merged as `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`. Post-merge main CI `35576633597` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #230 merged as `fd2e34912d5eeab503b7abb261a5bae7b0faa55d`. Post-merge main CI `35586218697` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` passed and renders the failed r2 attempt as `evaluate-research` / NOT COUNTED.
 
 ---
 
