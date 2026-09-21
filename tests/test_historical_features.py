@@ -113,8 +113,8 @@ def test_historical_features_match_live_candle_math_when_history_is_contiguous()
 
     latest = rows[-1]
     assert latest.return_5m == Decimal("162") / Decimal("161") - Decimal("1")
-    assert latest.return_15m == Decimal("106") / Decimal("105") - Decimal("1")
-    assert latest.return_1h == Decimal("106") / Decimal("102") - Decimal("1")
+    assert latest.return_15m == Decimal("120") / Decimal("119") - Decimal("1")
+    assert latest.return_1h == Decimal("120") / Decimal("116") - Decimal("1")
     assert latest.return_4h == Decimal("120") / Decimal("104") - Decimal("1")
     assert latest.trend_regime is TrendRegime.UP
 
@@ -138,7 +138,8 @@ def test_historical_features_do_not_bridge_missing_candle_gaps() -> None:
     )
 
     latest = rows[-1]
-    assert latest.return_5m is None
+    assert latest.return_5m == Decimal("162") / Decimal("161") - Decimal("1")
+    assert latest.return_15m is None
     assert latest.realized_vol_15m is None
     assert latest.range_expansion_15m is None
     assert latest.relative_volume_15m is None
