@@ -9,13 +9,13 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
     ExecutionCostAssumptions,
     basket_breadth_1h_bucket,
     basket_direction_1h_bucket,
     relative_strength_1h_bucket,
 )
-from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_dataset import (
     HistoricalDatasetManifest,
     build_training_rows_from_source_root,
