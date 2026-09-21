@@ -138,9 +138,19 @@ def test_basket_context_is_same_anchor_deterministic_and_direction_neutral() -> 
     assert sol.basket_breadth_positive_5m == Decimal("2") / Decimal("3")
     assert sol.relative_return_5m_vs_basket == Decimal("0.02")
     assert sol.basket_return_count_5m == Decimal("3")
+    observed = (Decimal("0.02"), Decimal("-0.01"), Decimal("0.04"))
+    mean = sum(observed, Decimal("0")) / Decimal("3")
+    expected_dispersion = (
+        sum(((value - mean) ** 2 for value in observed), Decimal("0"))
+        / Decimal("3")
+    ).sqrt()
+    assert sol.basket_return_dispersion_5m == expected_dispersion
+    assert sol.relative_return_zscore_5m_vs_basket == (
+        Decimal("0.02") / expected_dispersion
+    )
     assert sol.basket_median_return_1h == Decimal("0.04")
     assert sol.relative_return_4h_vs_basket == Decimal("0.05")
-    assert sol.schema_version == 2
+    assert sol.schema_version == 3
 
 
 def test_basket_context_never_uses_future_anchor_state() -> None:
@@ -219,9 +229,13 @@ def test_basket_context_marks_sparse_and_missing_reference_features_explicitly()
     assert enriched.basket_median_return_5m is None
     assert enriched.basket_breadth_positive_5m is None
     assert enriched.relative_return_5m_vs_basket is None
+    assert enriched.basket_return_dispersion_5m is None
+    assert enriched.relative_return_zscore_5m_vs_basket is None
     assert enriched.basket_return_count_5m == Decimal("1")
     assert "btc_return_5m" in enriched.unavailable_features
     assert "basket_median_return_5m" in enriched.unavailable_features
+    assert "basket_return_dispersion_5m" in enriched.unavailable_features
+    assert "relative_return_zscore_5m_vs_basket" in enriched.unavailable_features
     assert "basket_return_count_5m" in enriched.available_features
 
 
@@ -249,3 +263,43 @@ def test_basket_context_rejects_conflicting_feature_state_for_same_market_anchor
         match="CONFLICTING_FEATURE_STATE",
     ):
         enrich_training_rows_with_basket_context((first, conflicting))
+
+
+
+def test_zero_basket_dispersion_is_available_but_zscore_is_unavailable() -> None:
+    anchor = 10 * FIVE
+    rows = tuple(
+        _row(
+            _feature(
+                market=market,
+                anchor_end_ms=anchor,
+                return_5m="0.01",
+                return_15m="0.01",
+                return_1h="0.01",
+                return_4h="0.01",
+                source=f"{market.canonical.lower()}-source",
+                manifest=f"{market.canonical.lower()}-manifest",
+            )
+        )
+        for market in (BTC, ETH, SOL)
+    )
+
+    enriched = enrich_training_rows_with_basket_context(rows)
+    sol = next(row.feature for row in enriched if row.market == SOL)
+
+    assert sol.basket_return_dispersion_5m == Decimal("0")
+    assert sol.relative_return_zscore_5m_vs_basket is None
+    assert "basket_return_dispersion_5m" in sol.available_features
+    assert "relative_return_zscore_5m_vs_basket" in sol.unavailable_features
+
+
+
+def test_dispersion_fields_require_feature_schema_v3() -> None:
+    enriched = enrich_training_rows_with_basket_context(_context_rows())
+    sol = next(row.feature for row in enriched if row.market == SOL)
+
+    with pytest.raises(
+        ValueError,
+        match="basket dispersion context requires schema_version >= 3",
+    ):
+        replace(sol, schema_version=2)
