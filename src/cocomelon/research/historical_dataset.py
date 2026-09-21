@@ -19,12 +19,13 @@ from cocomelon.research.historical_backfill import (
 from cocomelon.research.historical_features import (
     HistoricalTrainingRow,
     build_historical_feature_rows,
+    enrich_historical_market_context,
     join_features_to_outcomes,
 )
 from cocomelon.research.historical_learning import build_directional_outcomes
 
-DATASET_SCHEMA_VERSION = 1
-DATASET_CONVERTER_VERSION = "historical-directional-training-v1"
+DATASET_SCHEMA_VERSION = 2
+DATASET_CONVERTER_VERSION = "historical-directional-training-v2-market-context"
 OUTPUT_FILENAME = "training.parquet"
 
 TRAINING_COLUMNS = (
@@ -49,6 +50,18 @@ TRAINING_COLUMNS = (
     "funding_premium_change",
     "funding_age_ms",
     "candle_15m_age_ms",
+    "btc_return_5m",
+    "btc_return_1h",
+    "btc_return_4h",
+    "eth_return_5m",
+    "eth_return_1h",
+    "eth_return_4h",
+    "market_median_return_5m",
+    "market_median_return_1h",
+    "market_breadth_positive_5m",
+    "market_breadth_positive_1h",
+    "market_relative_return_5m",
+    "market_relative_return_1h",
     "trend_regime",
     "availability_basis",
     "source_retrieved_at_ms",
@@ -350,8 +363,8 @@ def build_training_rows_from_source_root(
     if any(value <= 0 or value % base_interval_ms != 0 for value in horizons_ms):
         raise ValueError("horizons must be positive multiples of the 5m base interval")
 
-    combined: list[HistoricalTrainingRow] = []
-    seen_training_ids: set[str] = set()
+    all_features = []
+    all_outcomes = []
     for market in unique_markets:
         root = _market_root(source_root, market)
         candle_5m_manifest, candles_5m = load_candle_source(root / "candles" / "5m")
@@ -385,11 +398,16 @@ def build_training_rows_from_source_root(
             candles_5m,
             horizons_ms=horizons_ms,
         )
-        for row in join_features_to_outcomes(features, outcomes):
-            if row.training_row_id in seen_training_ids:
-                raise HistoricalDatasetIntegrityError("duplicate training row identity")
-            seen_training_ids.add(row.training_row_id)
-            combined.append(row)
+        all_features.extend(features)
+        all_outcomes.extend(outcomes)
+
+    enriched_features = enrich_historical_market_context(all_features)
+    combined = join_features_to_outcomes(enriched_features, all_outcomes)
+    seen_training_ids: set[str] = set()
+    for row in combined:
+        if row.training_row_id in seen_training_ids:
+            raise HistoricalDatasetIntegrityError("duplicate training row identity")
+        seen_training_ids.add(row.training_row_id)
 
     return tuple(
         sorted(
@@ -443,6 +461,54 @@ def _row_payload(row: HistoricalTrainingRow) -> dict[str, object]:
         ),
         "funding_age_ms": feature.funding_age_ms,
         "candle_15m_age_ms": feature.candle_15m_age_ms,
+        "btc_return_5m": (
+            None if feature.btc_return_5m is None else str(feature.btc_return_5m)
+        ),
+        "btc_return_1h": (
+            None if feature.btc_return_1h is None else str(feature.btc_return_1h)
+        ),
+        "btc_return_4h": (
+            None if feature.btc_return_4h is None else str(feature.btc_return_4h)
+        ),
+        "eth_return_5m": (
+            None if feature.eth_return_5m is None else str(feature.eth_return_5m)
+        ),
+        "eth_return_1h": (
+            None if feature.eth_return_1h is None else str(feature.eth_return_1h)
+        ),
+        "eth_return_4h": (
+            None if feature.eth_return_4h is None else str(feature.eth_return_4h)
+        ),
+        "market_median_return_5m": (
+            None
+            if feature.market_median_return_5m is None
+            else str(feature.market_median_return_5m)
+        ),
+        "market_median_return_1h": (
+            None
+            if feature.market_median_return_1h is None
+            else str(feature.market_median_return_1h)
+        ),
+        "market_breadth_positive_5m": (
+            None
+            if feature.market_breadth_positive_5m is None
+            else str(feature.market_breadth_positive_5m)
+        ),
+        "market_breadth_positive_1h": (
+            None
+            if feature.market_breadth_positive_1h is None
+            else str(feature.market_breadth_positive_1h)
+        ),
+        "market_relative_return_5m": (
+            None
+            if feature.market_relative_return_5m is None
+            else str(feature.market_relative_return_5m)
+        ),
+        "market_relative_return_1h": (
+            None
+            if feature.market_relative_return_1h is None
+            else str(feature.market_relative_return_1h)
+        ),
         "trend_regime": feature.trend_regime.value,
         "availability_basis": feature.availability_basis,
         "source_retrieved_at_ms": feature.source_retrieved_at_ms,
