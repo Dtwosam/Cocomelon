@@ -113,10 +113,12 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert report.dataset_logical_sha256 == manifest.logical_sha256
     assert len(report.baseline_folds) == len(report.ridge_folds) == 3
     assert len(report.horizon_ridge_folds) == 3
-    for baseline, ridge, horizon_ridge in zip(
+    assert len(report.stable_horizon_ridge_folds) == 3
+    for baseline, ridge, horizon_ridge, stable_horizon_ridge in zip(
         report.baseline_folds,
         report.ridge_folds,
         report.horizon_ridge_folds,
+        report.stable_horizon_ridge_folds,
         strict=True,
     ):
         assert (
@@ -131,11 +133,17 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
             horizon_ridge.train_anchor_count,
             horizon_ridge.validation_anchor_count,
             horizon_ridge.test_anchor_count,
+        ) == (
+            stable_horizon_ridge.train_anchor_count,
+            stable_horizon_ridge.validation_anchor_count,
+            stable_horizon_ridge.test_anchor_count,
         )
     assert {
         candidate.alpha
         for candidate in report.ridge_folds[0].shared_validation
     } == {Decimal("0.01"), Decimal("0.1")}
+    assert report.config.stability_blocks == 2
+    assert report.config.min_validation_block_trades == 1
     assert len(report.report_id) == 64
 
 

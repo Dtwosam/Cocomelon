@@ -33,9 +33,15 @@ from cocomelon.research.historical_ridge_horizon import (
     RidgeHorizonWalkForwardFold,
     run_walk_forward_horizon_calibrated_ridge,
 )
+from cocomelon.research.historical_ridge_stability import (
+    StableRidgeAlphaValidation,
+    StableRidgeWalkForwardFold,
+    StableThresholdCandidate,
+    run_walk_forward_stable_horizon_ridge,
+)
 
 EVIDENCE_CLASS = "touched_development"
-COMPARISON_VERSION = "historical-baseline-vs-ridge-v2"
+COMPARISON_VERSION = "historical-baseline-vs-ridge-v3"
 
 
 def _canonical_json(value: object) -> str:
@@ -238,6 +244,93 @@ def _horizon_ridge_fold(
     }
 
 
+def _stable_threshold_candidate(
+    value: StableThresholdCandidate,
+) -> dict[str, object]:
+    return {
+        "threshold": str(value.threshold),
+        "qualifies": value.qualifies,
+        "overall": _evaluation(value.overall),
+        "blocks": tuple(_evaluation(block) for block in value.blocks),
+        "worst_block_mean": (
+            None if value.worst_block_mean is None else str(value.worst_block_mean)
+        ),
+    }
+
+
+def _stable_validation(
+    value: StableRidgeAlphaValidation,
+) -> dict[str, object]:
+    return {
+        "alpha": str(value.alpha),
+        "validation": _evaluation(value.evaluation),
+        "horizons": tuple(
+            {
+                "horizon_ms": item.horizon_ms,
+                "selected_threshold": (
+                    None
+                    if item.calibration.selected_threshold is None
+                    else str(item.calibration.selected_threshold)
+                ),
+                "stability_blocks": item.calibration.stability_blocks,
+                "min_block_trades": item.calibration.min_block_trades,
+                "threshold_candidates": tuple(
+                    _stable_threshold_candidate(candidate)
+                    for candidate in item.calibration.candidates
+                ),
+            }
+            for item in value.horizons
+        ),
+    }
+
+
+def _stable_ridge_fold(
+    value: StableRidgeWalkForwardFold,
+) -> dict[str, object]:
+    return {
+        "fold_index": value.fold_index,
+        "train_anchor_count": value.train_anchor_count,
+        "validation_anchor_count": value.validation_anchor_count,
+        "test_anchor_count": value.test_anchor_count,
+        "stability_blocks": value.stability_blocks,
+        "min_block_trades": value.min_block_trades,
+        "shared_alpha": (
+            None if value.shared_alpha is None else str(value.shared_alpha)
+        ),
+        "market_alpha": (
+            None if value.market_alpha is None else str(value.market_alpha)
+        ),
+        "shared_horizon_thresholds": tuple(
+            {
+                "horizon_ms": horizon_ms,
+                "threshold": None if threshold is None else str(threshold),
+            }
+            for horizon_ms, threshold in value.shared_horizon_thresholds
+        ),
+        "market_horizon_thresholds": tuple(
+            {
+                "horizon_ms": horizon_ms,
+                "threshold": None if threshold is None else str(threshold),
+            }
+            for horizon_ms, threshold in value.market_horizon_thresholds
+        ),
+        "shared_test": _evaluation(value.shared_test),
+        "market_test": _evaluation(value.market_test),
+        "shared_validation": tuple(
+            _stable_validation(item) for item in value.shared_validation
+        ),
+        "market_validation": tuple(
+            _stable_validation(item) for item in value.market_validation
+        ),
+        "shared_test_breakdowns": tuple(
+            _breakdown(item) for item in value.shared_test_breakdowns
+        ),
+        "market_test_breakdowns": tuple(
+            _breakdown(item) for item in value.market_test_breakdowns
+        ),
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class HistoricalModelComparisonConfig:
     costs: ExecutionCostAssumptions
@@ -254,6 +347,8 @@ class HistoricalModelComparisonConfig:
     min_sample_count: int
     min_validation_trades: int
     min_validation_mean_net_return: Decimal = Decimal("0")
+    stability_blocks: int = 2
+    min_validation_block_trades: int = 1
 
     def __post_init__(self) -> None:
         thresholds = tuple(sorted(set(self.candidate_thresholds)))
@@ -268,6 +363,10 @@ class HistoricalModelComparisonConfig:
             raise ValueError("candidate_ridge_alphas must be positive finite Decimals")
         if not self.min_validation_mean_net_return.is_finite():
             raise ValueError("min_validation_mean_net_return must be finite")
+        if self.stability_blocks <= 1:
+            raise ValueError("stability_blocks must be greater than one")
+        if self.min_validation_block_trades <= 0:
+            raise ValueError("min_validation_block_trades must be positive")
         object.__setattr__(self, "candidate_thresholds", thresholds)
         object.__setattr__(self, "candidate_ridge_alphas", alphas)
         for field in (
@@ -314,6 +413,8 @@ class HistoricalModelComparisonConfig:
             "min_validation_mean_net_return": str(
                 self.min_validation_mean_net_return
             ),
+            "stability_blocks": self.stability_blocks,
+            "min_validation_block_trades": self.min_validation_block_trades,
         }
 
 
@@ -329,9 +430,10 @@ class HistoricalModelComparisonReport:
     baseline_folds: tuple[WalkForwardFoldResult, ...]
     ridge_folds: tuple[RidgeWalkForwardFold, ...]
     horizon_ridge_folds: tuple[RidgeHorizonWalkForwardFold, ...]
+    stable_horizon_ridge_folds: tuple[StableRidgeWalkForwardFold, ...]
     evidence_class: str = EVIDENCE_CLASS
     comparison_version: str = COMPARISON_VERSION
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
         fold_count = len(self.baseline_folds)
@@ -339,10 +441,13 @@ class HistoricalModelComparisonReport:
             raise ValueError("baseline and ridge fold counts must match")
         if fold_count != len(self.horizon_ridge_folds):
             raise ValueError("all model fold counts must match")
-        for baseline, ridge, horizon_ridge in zip(
+        if fold_count != len(self.stable_horizon_ridge_folds):
+            raise ValueError("all model fold counts must match")
+        for baseline, ridge, horizon_ridge, stable_horizon_ridge in zip(
             self.baseline_folds,
             self.ridge_folds,
             self.horizon_ridge_folds,
+            self.stable_horizon_ridge_folds,
             strict=True,
         ):
             baseline_shape = (
@@ -363,7 +468,17 @@ class HistoricalModelComparisonReport:
                 horizon_ridge.validation_anchor_count,
                 horizon_ridge.test_anchor_count,
             )
-            if baseline_shape != ridge_shape or baseline_shape != horizon_shape:
+            stable_shape = (
+                stable_horizon_ridge.fold_index,
+                stable_horizon_ridge.train_anchor_count,
+                stable_horizon_ridge.validation_anchor_count,
+                stable_horizon_ridge.test_anchor_count,
+            )
+            if (
+                baseline_shape != ridge_shape
+                or baseline_shape != horizon_shape
+                or baseline_shape != stable_shape
+            ):
                 raise ValueError("all model folds must use identical chronology")
         if self.evidence_class != EVIDENCE_CLASS:
             raise ValueError("comparison evidence must remain touched_development")
@@ -382,6 +497,10 @@ class HistoricalModelComparisonReport:
             "horizon_ridge_folds": tuple(
                 _horizon_ridge_fold(item)
                 for item in self.horizon_ridge_folds
+            ),
+            "stable_horizon_ridge_folds": tuple(
+                _stable_ridge_fold(item)
+                for item in self.stable_horizon_ridge_folds
             ),
             "evidence_class": self.evidence_class,
             "comparison_version": self.comparison_version,
@@ -449,6 +568,23 @@ def build_historical_model_comparison_report(
         min_validation_trades=config.min_validation_trades,
         min_validation_mean_net_return=config.min_validation_mean_net_return,
     )
+    stable_horizon_ridge = run_walk_forward_stable_horizon_ridge(
+        rows,
+        costs=config.costs,
+        candidate_alphas=config.candidate_ridge_alphas,
+        candidate_thresholds=config.candidate_thresholds,
+        min_train_anchors=config.min_train_anchors,
+        validation_anchors=config.validation_anchors,
+        test_anchors=config.test_anchors,
+        step_anchors=config.step_anchors,
+        embargo_anchors=config.embargo_anchors,
+        min_market_samples=config.ridge_min_market_samples,
+        min_sample_count=config.min_sample_count,
+        min_validation_trades=config.min_validation_trades,
+        stability_blocks=config.stability_blocks,
+        min_block_trades=config.min_validation_block_trades,
+        min_validation_mean_net_return=config.min_validation_mean_net_return,
+    )
     return HistoricalModelComparisonReport(
         dataset_id=dataset_manifest.dataset_id,
         dataset_logical_sha256=dataset_manifest.logical_sha256,
@@ -460,6 +596,7 @@ def build_historical_model_comparison_report(
         baseline_folds=baseline.folds,
         ridge_folds=ridge.folds,
         horizon_ridge_folds=horizon_ridge.folds,
+        stable_horizon_ridge_folds=stable_horizon_ridge.folds,
     )
 
 
