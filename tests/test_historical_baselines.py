@@ -16,6 +16,7 @@ from cocomelon.research.historical_baselines import (
     chronological_split,
     compare_shared_and_coin_calibration,
     fit_conditional_baseline,
+    run_walk_forward_baseline,
     walk_forward_splits,
 )
 from cocomelon.research.historical_features import (
@@ -448,3 +449,42 @@ def test_shared_vs_coin_comparison_reports_both_variants_without_retraining() ->
     assert comparison.coin_calibrated.long_count == 1
     assert comparison.coin_calibrated.short_count == 1
     assert comparison.coin_calibrated.mean_realized_net_return == Decimal("0.02")
+
+
+
+def test_walk_forward_baseline_fits_calibrates_then_scores_future_test_blocks() -> None:
+    rows = tuple(
+        _row(
+            anchor_end_ms=index * FIVE,
+            long_return="0.03" if index <= 8 else "-0.02",
+            short_return="-0.03" if index <= 8 else "0.02",
+        )
+        for index in range(1, 13)
+    )
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    report = run_walk_forward_baseline(
+        rows,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"),),
+        min_train_anchors=4,
+        validation_anchors=2,
+        test_anchors=2,
+        step_anchors=2,
+        embargo_anchors=0,
+        min_state_samples=2,
+        min_coin_samples=99,
+        min_sample_count=2,
+        min_validation_trades=1,
+    )
+
+    assert len(report.folds) == 3
+    assert [fold.train_anchor_count for fold in report.folds] == [4, 6, 8]
+    assert all(fold.shared_threshold == Decimal("0") for fold in report.folds)
+    assert all(fold.coin_threshold == Decimal("0") for fold in report.folds)
+    assert report.folds[-1].shared_test.trade_count == 2
+    assert report.folds[-1].shared_test.mean_realized_net_return == Decimal("-0.02")
