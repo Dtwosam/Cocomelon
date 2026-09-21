@@ -10,6 +10,7 @@ from typing import TextIO
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.hyperliquid.client import InfoClient
+from cocomelon.research.historical_archive_acquisition import plan_archive_shards
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
     get_archive_experiment_preset,
@@ -49,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
     show = subparsers.add_parser("show")
     show.add_argument("--preset", default=PRESET_NAME)
 
+    keys = subparsers.add_parser("keys")
+    keys.add_argument("--preset", default=PRESET_NAME)
+
     run = subparsers.add_parser("run")
     run.add_argument("--preset", default=PRESET_NAME)
     run.add_argument("--archive-root", required=True, type=Path)
@@ -69,6 +73,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "command": "show",
                     "paid_request_performed": False,
                     **preset.to_dict(),
+                }
+            )
+            return 0
+        if args.command == "keys":
+            shards = plan_archive_shards(
+                start_ms=preset.start_ms,
+                end_ms=preset.end_ms,
+            )
+            _emit(
+                {
+                    "command": "keys",
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "paid_request_performed": False,
+                    "shard_count": len(shards),
+                    "keys": tuple(item.key for item in shards),
                 }
             )
             return 0
