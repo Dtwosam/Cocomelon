@@ -470,11 +470,15 @@ def build_historical_feature_rows(
     rows: list[HistoricalFeatureRow] = []
     for anchor in ordered_5m:
         anchor_ms = anchor.end_ms
+        used_candles: set[Candle] = {anchor}
         return_5m = _exact_return(
             by_5m_end,
             latest_end_ms=anchor_ms,
             lookback_ms=INTERVAL_MS["5m"],
         )
+        if return_5m is not None:
+            previous_5m = by_5m_end[anchor_ms - INTERVAL_MS["5m"]]
+            used_candles.add(previous_5m)
 
         latest_15m: Candle | None = None
         candle_15m_age_ms: int | None = None
@@ -488,6 +492,7 @@ def build_historical_feature_rows(
         fifteen_position = bisect_right(ends_15m, anchor_ms) - 1
         if fifteen_position >= 0:
             latest_15m = ordered_15m[fifteen_position]
+            used_candles.add(latest_15m)
             latest_15m_end = latest_15m.end_ms
             candle_15m_age_ms = anchor_ms - latest_15m_end
             return_15m = _exact_return(
@@ -505,12 +510,20 @@ def build_historical_feature_rows(
                 latest_end_ms=latest_15m_end,
                 lookback_ms=INTERVAL_MS["4h"],
             )
+            for lookback_ms, value in (
+                (INTERVAL_MS["15m"], return_15m),
+                (INTERVAL_MS["1h"], return_1h),
+                (INTERVAL_MS["4h"], return_4h),
+            ):
+                if value is not None:
+                    used_candles.add(by_15m_end[latest_15m_end - lookback_ms])
             sample = _contiguous_15m_sample(
                 by_15m_end,
                 latest_end_ms=latest_15m_end,
                 bars=21,
             )
             if sample is not None:
+                used_candles.update(sample)
                 realized_vol_15m = _realized_volatility(sample)
                 range_expansion_15m = _range_expansion(sample)
                 relative_volume_15m = _relative_volume(sample)
@@ -559,11 +572,8 @@ def build_historical_feature_rows(
         }
         available_features, unavailable_features = _availability(values)
 
-        used_sources = {anchor.source}
-        retrieved_at = anchor.received_at_ms
-        if latest_15m is not None:
-            used_sources.add(latest_15m.source)
-            retrieved_at = max(retrieved_at, latest_15m.received_at_ms)
+        used_sources = {candle.source for candle in used_candles}
+        retrieved_at = max(candle.received_at_ms for candle in used_candles)
         if current_funding is not None:
             used_sources.add(current_funding.source)
             retrieved_at = max(retrieved_at, current_funding.received_at_ms)
