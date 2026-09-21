@@ -16,15 +16,20 @@ from cocomelon.research.historical_backfill import (
     HistoricalCandleManifest,
     HistoricalFundingManifest,
 )
+from cocomelon.research.historical_cross_market import (
+    HistoricalCrossMarketError,
+    enrich_training_rows_with_basket_context,
+)
 from cocomelon.research.historical_features import (
+    BASKET_CONTEXT_FEATURE_NAMES,
     HistoricalTrainingRow,
     build_historical_feature_rows,
     join_features_to_outcomes,
 )
 from cocomelon.research.historical_learning import build_directional_outcomes
 
-DATASET_SCHEMA_VERSION = 1
-DATASET_CONVERTER_VERSION = "historical-directional-training-v1"
+DATASET_SCHEMA_VERSION = 2
+DATASET_CONVERTER_VERSION = "historical-directional-training-v2"
 OUTPUT_FILENAME = "training.parquet"
 
 TRAINING_COLUMNS = (
@@ -49,6 +54,7 @@ TRAINING_COLUMNS = (
     "funding_premium_change",
     "funding_age_ms",
     "candle_15m_age_ms",
+    *BASKET_CONTEXT_FEATURE_NAMES,
     "trend_regime",
     "availability_basis",
     "source_retrieved_at_ms",
@@ -391,17 +397,12 @@ def build_training_rows_from_source_root(
             seen_training_ids.add(row.training_row_id)
             combined.append(row)
 
-    return tuple(
-        sorted(
-            combined,
-            key=lambda item: (
-                item.market.canonical,
-                item.anchor_end_ms,
-                item.horizon_ms,
-                item.training_row_id,
-            ),
-        )
-    )
+    try:
+        return enrich_training_rows_with_basket_context(combined)
+    except HistoricalCrossMarketError as exc:
+        raise HistoricalDatasetIntegrityError(
+            f"unable to enrich cross-market context: {exc}"
+        ) from exc
 
 
 def _row_payload(row: HistoricalTrainingRow) -> dict[str, object]:
@@ -443,6 +444,14 @@ def _row_payload(row: HistoricalTrainingRow) -> dict[str, object]:
         ),
         "funding_age_ms": feature.funding_age_ms,
         "candle_15m_age_ms": feature.candle_15m_age_ms,
+        **{
+            name: (
+                None
+                if getattr(feature, name) is None
+                else str(getattr(feature, name))
+            )
+            for name in BASKET_CONTEXT_FEATURE_NAMES
+        },
         "trend_regime": feature.trend_regime.value,
         "availability_basis": feature.availability_basis,
         "source_retrieved_at_ms": feature.source_retrieved_at_ms,
