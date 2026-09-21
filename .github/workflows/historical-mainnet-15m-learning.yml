@@ -152,6 +152,7 @@ jobs:
             ridge_folds,
             horizon_ridge_folds,
             stable_horizon_ridge_folds,
+            occupancy_stable_ridge_folds,
             stable_tree_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
