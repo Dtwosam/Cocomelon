@@ -17,6 +17,7 @@ from cocomelon.research.historical_archive_acquisition import (
     download_archive_inspection,
     inspect_archive_shards,
     plan_archive_shards,
+    require_requester_pays_ack,
 )
 
 
@@ -184,6 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
 
+        require_requester_pays_ack(args.ack_requester_pays)
         store = _build_store(args.aws_profile)
         inspection = inspect_archive_shards(
             store,
