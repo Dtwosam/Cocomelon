@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--horizon-ms", required=True, action="append", type=int)
     parser.add_argument(
         "--anchor-interval",
-        choices=("5m", "15m"),
+        choices=("5m", "15m", "1h"),
         default="5m",
     )
     parser.add_argument("--round-trip-fee-fraction", required=True, type=_decimal)
