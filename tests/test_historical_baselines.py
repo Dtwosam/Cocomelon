@@ -8,7 +8,11 @@ import pytest
 from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import (
+    DecisionAction,
+    DecisionPolicy,
+    ExecutionCostAssumptions,
     HistoricalBaselineError,
+    calibrate_no_trade_threshold,
     chronological_split,
     fit_conditional_baseline,
     walk_forward_splits,
@@ -262,3 +266,127 @@ def test_baseline_rejects_mixed_horizon_outcome_identity_errors() -> None:
 
     with pytest.raises(HistoricalBaselineError, match="rows must not be empty"):
         fit_conditional_baseline((), min_state_samples=1, min_coin_samples=1)
+
+
+
+def test_cost_assumptions_include_fee_slippage_and_conservative_funding_reserve() -> None:
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0.0007"),
+        round_trip_slippage_fraction=Decimal("0.0005"),
+        funding_reserve_fraction_per_hour=Decimal("0.0001"),
+    )
+
+    assert costs.total_cost_fraction(5 * FIVE) == (
+        Decimal("0.0012")
+        + Decimal("0.0001") * Decimal(25 * 60) / Decimal(3600)
+    )
+
+
+def test_decision_policy_is_symmetric_and_keeps_no_trade_first_class() -> None:
+    rows = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(
+            anchor_end_ms=3 * FIVE,
+            trend=TrendRegime.DOWN,
+            return_5m="-0.01",
+            long_return="-0.04",
+            short_return="0.04",
+        ),
+        _row(
+            anchor_end_ms=4 * FIVE,
+            trend=TrendRegime.DOWN,
+            return_5m="-0.01",
+            long_return="-0.04",
+            short_return="0.04",
+        ),
+    )
+    model = fit_conditional_baseline(rows, min_state_samples=2, min_coin_samples=10)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0.002"),
+        round_trip_slippage_fraction=Decimal("0.001"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+    policy = DecisionPolicy(
+        min_expected_net_edge=Decimal("0.01"),
+        min_sample_count=2,
+    )
+
+    long_decision = policy.decide(
+        model.predict(rows[0].feature, horizon_ms=FIVE),
+        costs=costs,
+    )
+    short_decision = policy.decide(
+        model.predict(rows[2].feature, horizon_ms=FIVE),
+        costs=costs,
+    )
+    no_trade = DecisionPolicy(
+        min_expected_net_edge=Decimal("0.05"),
+        min_sample_count=2,
+    ).decide(
+        model.predict(rows[0].feature, horizon_ms=FIVE),
+        costs=costs,
+    )
+
+    assert long_decision.action is DecisionAction.LONG
+    assert short_decision.action is DecisionAction.SHORT
+    assert no_trade.action is DecisionAction.NO_TRADE
+
+
+def test_validation_only_threshold_calibration_filters_low_quality_state() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.03", short_return="-0.03"),
+        _row(
+            anchor_end_ms=3 * FIVE,
+            trend=TrendRegime.DOWN,
+            return_5m="-0.01",
+            long_return="-0.01",
+            short_return="0.01",
+        ),
+        _row(
+            anchor_end_ms=4 * FIVE,
+            trend=TrendRegime.DOWN,
+            return_5m="-0.01",
+            long_return="-0.01",
+            short_return="0.01",
+        ),
+    )
+    validation = (
+        _row(anchor_end_ms=5 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(
+            anchor_end_ms=6 * FIVE,
+            trend=TrendRegime.DOWN,
+            return_5m="-0.01",
+            long_return="0.02",
+            short_return="-0.02",
+        ),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=10)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0.003"),
+        round_trip_slippage_fraction=Decimal("0.002"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    calibration = calibrate_no_trade_threshold(
+        model,
+        validation,
+        costs=costs,
+        candidate_thresholds=(
+            Decimal("0"),
+            Decimal("0.01"),
+            Decimal("0.02"),
+        ),
+        min_sample_count=2,
+        min_validation_trades=1,
+    )
+
+    assert calibration.selected_threshold == Decimal("0.01")
+    selected = next(
+        item
+        for item in calibration.candidates
+        if item.threshold == calibration.selected_threshold
+    )
+    assert selected.trade_count == 1
+    assert selected.mean_realized_net_return == Decimal("0.015")
