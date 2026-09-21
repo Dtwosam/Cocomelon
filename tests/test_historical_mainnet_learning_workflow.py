@@ -43,7 +43,7 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "experiment.json" in source
     assert "evidence_class" in source
     assert "source_manifest_ids" in source
-    assert 'jq '.' "$SOURCE_ROOT/coverage.json"' in source
+    assert "jq '.' \"$SOURCE_ROOT/coverage.json\"" in source
     assert "if: ${{ always() }}" in source
     assert "actions/upload-artifact@v7" in source
     assert "if-no-files-found: error" in source
