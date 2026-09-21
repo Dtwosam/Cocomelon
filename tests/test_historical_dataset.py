@@ -193,3 +193,15 @@ def test_export_training_dataset_writes_versioned_parquet_and_manifest(tmp_path:
     assert "long_gross_return" in table.column_names
     assert "short_gross_return" in table.column_names
     assert "unavailable_features_json" in table.column_names
+
+
+
+def test_training_rows_reject_horizon_off_the_5m_grid(tmp_path: Path) -> None:
+    root = _build_source_root(tmp_path)
+
+    with pytest.raises(ValueError, match="5m base interval"):
+        build_training_rows_from_source_root(
+            root,
+            markets=(MARKET,),
+            horizons_ms=(420_000,),
+        )
