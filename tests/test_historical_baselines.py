@@ -702,3 +702,66 @@ def test_validation_floor_requires_candidate_to_clear_configured_mean_return() -
 
     assert calibration.selected_threshold is None
     assert calibration.min_validation_mean_net_return == Decimal("0.003")
+
+
+
+def test_threshold_calibration_preserves_hard_failure_for_sparse_validation_by_default() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    validation = (
+        _row(anchor_end_ms=3 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=4 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=99)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    with pytest.raises(
+        HistoricalBaselineError,
+        match="no threshold met the minimum validation trade count",
+    ):
+        calibrate_no_trade_threshold(
+            model,
+            validation,
+            costs=costs,
+            candidate_thresholds=(Decimal("0"),),
+            min_sample_count=2,
+            min_validation_trades=3,
+        )
+
+
+def test_threshold_calibration_can_abstain_on_sparse_validation_when_requested() -> None:
+    train = (
+        _row(anchor_end_ms=1 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=2 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    validation = (
+        _row(anchor_end_ms=3 * FIVE, long_return="0.02", short_return="-0.02"),
+        _row(anchor_end_ms=4 * FIVE, long_return="0.02", short_return="-0.02"),
+    )
+    model = fit_conditional_baseline(train, min_state_samples=2, min_coin_samples=99)
+    costs = ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0"),
+        round_trip_slippage_fraction=Decimal("0"),
+        funding_reserve_fraction_per_hour=Decimal("0"),
+    )
+
+    calibration = calibrate_no_trade_threshold(
+        model,
+        validation,
+        costs=costs,
+        candidate_thresholds=(Decimal("0"),),
+        min_sample_count=2,
+        min_validation_trades=3,
+        abstain_on_insufficient_validation_trades=True,
+    )
+
+    assert calibration.abstained is True
+    assert calibration.selected_threshold is None
+    assert calibration.candidates[0].trade_count == 2
+    assert calibration.candidates[0].mean_realized_net_return == Decimal("0.02")
