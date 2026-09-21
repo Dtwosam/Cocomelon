@@ -279,8 +279,8 @@ def test_markdown_renders_attempt_audit_history_without_counting_failures() -> N
         "failed_jobs=prepare-control=failure,refresh-authority=cancelled |"
     ) in rendered
     assert (
-        "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | — | "
-        "RuntimeError: synthetic audit failure; failed_jobs=not-authoritative |"
+        "| attempt-failure | failed | NOT COUNTED | batch-failure | 200000 | 300000 | "
+        "evaluate-research | RuntimeError: synthetic audit failure; failed_jobs=not-authoritative |"
     ) in rendered
     assert (
         "| attempt-success | succeeded | COUNTED | batch-first | 1000 | 200000 | — | — |"
