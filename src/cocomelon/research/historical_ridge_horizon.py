@@ -180,6 +180,7 @@ def _calibrate_horizons(
             min_validation_trades=min_validation_trades,
             allow_coin_calibration=allow_coin_calibration,
             min_validation_mean_net_return=min_validation_mean_net_return,
+            abstain_on_insufficient_validation_trades=True,
         )
         horizons.append(
             HorizonThresholdCalibration(
