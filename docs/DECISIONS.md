@@ -168,3 +168,20 @@ This file records decisions that should not be casually re-litigated in later ch
 **Future validation consequence:** Any future promotion candidate requires a new clean validation sample collected only after that candidate is frozen and after all applicable touched-data/embargo rules are satisfied. The disclosed V4 corpus and any strategy decisions derived from it cannot be relabeled as untouched evidence.
 
 **Safety:** Risk limits are unchanged. Live orders remain disabled. Phase 10 remains blocked. Historical V4 artifacts, provenance, curator logic, and overlap authority remain available for audit; retirement only stops future automatic acquisition/evaluation for the failed touched baseline.
+
+## D-025 — Historical two-sided learning becomes the primary research architecture
+
+**Decision:** Cocomelon’s primary research architecture is a direction-neutral historical learning system that studies point-in-time market states and estimates conditional forward opportunity for LONG, SHORT, and NO_TRADE. `research-r2-short-trend-quality-v1` remains immutable and auditable as a bounded touched short-side experiment, but it is no longer the product architecture or the sole development gate.
+
+**Why:** The user clarified that the intended system must learn how each coin behaves and choose direction from evidence rather than begin from a permanent directional veto. The revealed V4 baseline failed to demonstrate edge, satisfying the Phase 9 exit condition in the explicit honest-failure sense already allowed by `BUILD_ORDER.md`. Continuing to make a hand-filtered short-only challenger the sole path would overfit the product architecture to one touched development subset.
+
+**Historical-data consequence:** Offline research may backfill trustworthy public Hyperliquid mainnet candle and funding history within real source limits and combine it with the project’s own authenticated recorded history. The pipeline must preserve provenance, respect request/source depth limits, detect gaps, and never fabricate historical L2/order-flow/OI fields that were not actually sourced.
+
+**Learning-target consequence:** Historical feature rows contain only information available at their anchor timestamp. Future observations may appear only in explicit outcome labels. The initial substrate records both LONG and SHORT forward returns at predeclared horizons; later cost models convert them into comparable net targets. NO_TRADE is selected when neither side demonstrates sufficient expected edge after costs and uncertainty.
+
+**Validation consequence:** Learning uses chronological train/validation/test partitions, embargo where required, and walk-forward evaluation. Random temporal shuffling, future-fitted normalization, test-set hyperparameter selection, or any other lookahead leakage is prohibited. Historical backtests are touched development evidence unless a candidate was frozen before the relevant untouched period.
+
+**Phase consequence:** Phase 10 offline learning engineering is now active. This opens dataset, feature, model-training, and challenger-evaluation work only. It does not authorize live trading or weaken promotion gates. Any model intended for promotion still requires a frozen candidate, clean future validation, cost-complete OOS/walk-forward evidence, the existing >=500 closed mainnet paper-trade and >=45-day shadow requirements, clean risk/integrity state, and explicit user authorization before live capital.
+
+**Risk consequence:** Models may rank or choose LONG/SHORT/NO_TRADE, but they may not alter hard risk limits, control leverage directly, bypass eligibility, or call live execution APIs.
+
