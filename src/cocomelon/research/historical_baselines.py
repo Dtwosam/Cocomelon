@@ -303,7 +303,7 @@ class ConditionalBaselineModel:
         *,
         horizon_ms: int,
         allow_coin_calibration: bool = True,
-    ) -> DirectionalEstimate:
+    ) -> DirectionalPrediction:
         state = _shared_state(feature, horizon_ms)
         coin_key = CoinStateKey(market=feature.market.canonical, shared=state)
         coin_stats = self.coin_states.get(coin_key)
