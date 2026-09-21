@@ -22,7 +22,11 @@ from cocomelon.research.historical_baselines import (
     evaluate_policy_breakdowns,
     walk_forward_splits,
 )
-from cocomelon.research.historical_features import HistoricalFeatureRow, HistoricalTrainingRow
+from cocomelon.research.historical_features import (
+    BASKET_CONTEXT_FEATURE_NAMES,
+    HistoricalFeatureRow,
+    HistoricalTrainingRow,
+)
 
 ZERO = Decimal("0")
 
@@ -40,6 +44,7 @@ NUMERIC_FEATURES = (
     "funding_premium_change",
     "funding_age_ms",
     "candle_15m_age_ms",
+    *BASKET_CONTEXT_FEATURE_NAMES,
 )
 
 TREND_REGIMES = tuple(TrendRegime)
