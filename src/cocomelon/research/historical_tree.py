@@ -96,10 +96,21 @@ class TreeModelConfig:
 @dataclass(frozen=True, slots=True)
 class TreeFeatureEncoder:
     market_names: tuple[str, ...]
+    numeric_features: tuple[str, ...]
 
     def __post_init__(self) -> None:
         if tuple(sorted(set(self.market_names))) != self.market_names:
             raise ValueError("market_names must be sorted and unique")
+        allowed = set(NUMERIC_FEATURES)
+        if len(set(self.numeric_features)) != len(self.numeric_features):
+            raise ValueError("numeric_features must be unique")
+        if any(name not in allowed for name in self.numeric_features):
+            raise ValueError("numeric_features must come from the supervised registry")
+        expected_order = tuple(
+            name for name in NUMERIC_FEATURES if name in set(self.numeric_features)
+        )
+        if self.numeric_features != expected_order:
+            raise ValueError("numeric_features must preserve supervised registry order")
 
     def vector(
         self,
@@ -107,7 +118,7 @@ class TreeFeatureEncoder:
         *,
         include_market: bool,
     ) -> tuple[float, ...]:
-        values = [_numeric_value(feature, name) for name in NUMERIC_FEATURES]
+        values = [_numeric_value(feature, name) for name in self.numeric_features]
         values.extend(
             1.0 if feature.trend_regime is regime else 0.0
             for regime in TREND_REGIMES
@@ -263,7 +274,18 @@ def fit_tree_directional_model(
                 if count >= min_market_samples
             )
         )
-        encoder = TreeFeatureEncoder(market_names=market_names)
+        numeric_features = tuple(
+            name
+            for name in NUMERIC_FEATURES
+            if any(
+                getattr(row.feature, name) is not None
+                for row in horizon_rows
+            )
+        )
+        encoder = TreeFeatureEncoder(
+            market_names=market_names,
+            numeric_features=numeric_features,
+        )
         targets = tuple(float(row.long_gross_return) for row in horizon_rows)
         shared_vectors = tuple(
             encoder.vector(row.feature, include_market=False)

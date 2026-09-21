@@ -24,6 +24,7 @@ from cocomelon.research.historical_dataset import (
 )
 from cocomelon.research.historical_features import HistoricalTrainingRow
 from cocomelon.research.historical_ridge import (
+    NUMERIC_FEATURES,
     RidgeAlphaValidation,
     RidgeWalkForwardFold,
     prepare_ridge_walk_forward,
@@ -48,7 +49,7 @@ from cocomelon.research.historical_tree import (
 )
 
 EVIDENCE_CLASS = "touched_development"
-COMPARISON_VERSION = "historical-directional-model-comparison-v4"
+COMPARISON_VERSION = "historical-directional-model-comparison-v5"
 
 
 def _canonical_json(value: object) -> str:
@@ -504,7 +505,7 @@ class HistoricalModelComparisonReport:
     stable_tree_folds: tuple[StableTreeWalkForwardFold, ...]
     evidence_class: str = EVIDENCE_CLASS
     comparison_version: str = COMPARISON_VERSION
-    schema_version: int = 4
+    schema_version: int = 5
 
     def __post_init__(self) -> None:
         fold_count = len(self.baseline_folds)
@@ -573,6 +574,7 @@ class HistoricalModelComparisonReport:
             "horizons_ms": self.horizons_ms,
             "source_manifest_ids": self.source_manifest_ids,
             "config": self.config.to_dict(),
+            "supervised_numeric_feature_registry": NUMERIC_FEATURES,
             "baseline_folds": tuple(_baseline_fold(item) for item in self.baseline_folds),
             "ridge_folds": tuple(_ridge_fold(item) for item in self.ridge_folds),
             "horizon_ridge_folds": tuple(

@@ -33,6 +33,33 @@ STATIC_UNAVAILABLE_FEATURES = (
     "spread_bps",
 )
 
+BASKET_CONTEXT_FEATURE_NAMES = (
+    "btc_return_5m",
+    "btc_return_15m",
+    "btc_return_1h",
+    "btc_return_4h",
+    "eth_return_5m",
+    "eth_return_15m",
+    "eth_return_1h",
+    "eth_return_4h",
+    "basket_median_return_5m",
+    "basket_median_return_15m",
+    "basket_median_return_1h",
+    "basket_median_return_4h",
+    "basket_breadth_positive_5m",
+    "basket_breadth_positive_15m",
+    "basket_breadth_positive_1h",
+    "basket_breadth_positive_4h",
+    "relative_return_5m_vs_basket",
+    "relative_return_15m_vs_basket",
+    "relative_return_1h_vs_basket",
+    "relative_return_4h_vs_basket",
+    "basket_return_count_5m",
+    "basket_return_count_15m",
+    "basket_return_count_1h",
+    "basket_return_count_4h",
+)
+
 OPTIONAL_FEATURE_NAMES = (
     "return_5m",
     "return_15m",
@@ -45,6 +72,7 @@ OPTIONAL_FEATURE_NAMES = (
     "funding_change",
     "funding_premium",
     "funding_premium_change",
+    *BASKET_CONTEXT_FEATURE_NAMES,
 )
 
 
@@ -97,6 +125,30 @@ class HistoricalFeatureRow:
     unavailable_features: tuple[str, ...]
     provenance: tuple[str, ...]
     source_manifest_ids: tuple[str, ...]
+    btc_return_5m: Decimal | None = None
+    btc_return_15m: Decimal | None = None
+    btc_return_1h: Decimal | None = None
+    btc_return_4h: Decimal | None = None
+    eth_return_5m: Decimal | None = None
+    eth_return_15m: Decimal | None = None
+    eth_return_1h: Decimal | None = None
+    eth_return_4h: Decimal | None = None
+    basket_median_return_5m: Decimal | None = None
+    basket_median_return_15m: Decimal | None = None
+    basket_median_return_1h: Decimal | None = None
+    basket_median_return_4h: Decimal | None = None
+    basket_breadth_positive_5m: Decimal | None = None
+    basket_breadth_positive_15m: Decimal | None = None
+    basket_breadth_positive_1h: Decimal | None = None
+    basket_breadth_positive_4h: Decimal | None = None
+    relative_return_5m_vs_basket: Decimal | None = None
+    relative_return_15m_vs_basket: Decimal | None = None
+    relative_return_1h_vs_basket: Decimal | None = None
+    relative_return_4h_vs_basket: Decimal | None = None
+    basket_return_count_5m: Decimal | None = None
+    basket_return_count_15m: Decimal | None = None
+    basket_return_count_1h: Decimal | None = None
+    basket_return_count_4h: Decimal | None = None
     schema_version: int = 1
 
     def __post_init__(self) -> None:
@@ -141,7 +193,7 @@ class HistoricalFeatureRow:
         object.__setattr__(self, "source_manifest_ids", manifest_ids)
 
     def identity_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "market": self.market.canonical,
             "anchor_end_ms": self.anchor_end_ms,
             "anchor_close_px": str(self.anchor_close_px),
@@ -168,6 +220,14 @@ class HistoricalFeatureRow:
             "source_manifest_ids": self.source_manifest_ids,
             "schema_version": self.schema_version,
         }
+        if self.schema_version >= 2:
+            payload.update(
+                {
+                    name: _decimal(getattr(self, name))
+                    for name in BASKET_CONTEXT_FEATURE_NAMES
+                }
+            )
+        return payload
 
     @property
     def row_id(self) -> str:
@@ -410,11 +470,15 @@ def build_historical_feature_rows(
     rows: list[HistoricalFeatureRow] = []
     for anchor in ordered_5m:
         anchor_ms = anchor.end_ms
+        used_candles: set[Candle] = {anchor}
         return_5m = _exact_return(
             by_5m_end,
             latest_end_ms=anchor_ms,
             lookback_ms=INTERVAL_MS["5m"],
         )
+        if return_5m is not None:
+            previous_5m = by_5m_end[anchor_ms - INTERVAL_MS["5m"]]
+            used_candles.add(previous_5m)
 
         latest_15m: Candle | None = None
         candle_15m_age_ms: int | None = None
@@ -428,6 +492,7 @@ def build_historical_feature_rows(
         fifteen_position = bisect_right(ends_15m, anchor_ms) - 1
         if fifteen_position >= 0:
             latest_15m = ordered_15m[fifteen_position]
+            used_candles.add(latest_15m)
             latest_15m_end = latest_15m.end_ms
             candle_15m_age_ms = anchor_ms - latest_15m_end
             return_15m = _exact_return(
@@ -445,12 +510,20 @@ def build_historical_feature_rows(
                 latest_end_ms=latest_15m_end,
                 lookback_ms=INTERVAL_MS["4h"],
             )
+            for lookback_ms, value in (
+                (INTERVAL_MS["15m"], return_15m),
+                (INTERVAL_MS["1h"], return_1h),
+                (INTERVAL_MS["4h"], return_4h),
+            ):
+                if value is not None:
+                    used_candles.add(by_15m_end[latest_15m_end - lookback_ms])
             sample = _contiguous_15m_sample(
                 by_15m_end,
                 latest_end_ms=latest_15m_end,
                 bars=21,
             )
             if sample is not None:
+                used_candles.update(sample)
                 realized_vol_15m = _realized_volatility(sample)
                 range_expansion_15m = _range_expansion(sample)
                 relative_volume_15m = _relative_volume(sample)
@@ -499,11 +572,8 @@ def build_historical_feature_rows(
         }
         available_features, unavailable_features = _availability(values)
 
-        used_sources = {anchor.source}
-        retrieved_at = anchor.received_at_ms
-        if latest_15m is not None:
-            used_sources.add(latest_15m.source)
-            retrieved_at = max(retrieved_at, latest_15m.received_at_ms)
+        used_sources = {candle.source for candle in used_candles}
+        retrieved_at = max(candle.received_at_ms for candle in used_candles)
         if current_funding is not None:
             used_sources.add(current_funding.source)
             retrieved_at = max(retrieved_at, current_funding.received_at_ms)

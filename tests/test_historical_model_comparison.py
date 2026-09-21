@@ -151,6 +151,10 @@ def test_comparison_uses_identical_folds_and_touched_dataset_identity() -> None:
     assert report.config.stability_blocks == 2
     assert report.config.min_validation_block_trades == 1
     assert report.config.tree_config.to_dict()["early_stopping"] is False
+    registry = report.to_dict()["supervised_numeric_feature_registry"]
+    assert "btc_return_5m" in registry
+    assert "basket_median_return_1h" in registry
+    assert "relative_return_4h_vs_basket" in registry
     assert len(report.report_id) == 64
 
 
