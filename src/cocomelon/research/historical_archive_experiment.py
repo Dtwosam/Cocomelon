@@ -141,6 +141,8 @@ def verify_downloaded_archive_cache(
         raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_SHARD_COUNT_MISMATCH")
 
     seen_keys: set[str] = set()
+    listed_relative_paths: set[str] = set()
+    identity_shards: list[dict[str, object]] = []
     total_byte_count = 0
     for index, raw in enumerate(raw_shards):
         item = _mapping(raw, f"download manifest shards[{index}]")
@@ -160,6 +162,11 @@ def verify_downloaded_archive_cache(
             raise HistoricalArchiveExperimentError(
                 "ARCHIVE_DOWNLOAD_RELATIVE_PATH_MISMATCH"
             )
+        if relative_path in listed_relative_paths:
+            raise HistoricalArchiveExperimentError(
+                "ARCHIVE_DOWNLOAD_DUPLICATE_RELATIVE_PATH"
+            )
+        listed_relative_paths.add(relative_path)
         if _integer(item.get("hour_start_ms"), f"shards[{index}].hour_start_ms") != (
             shard.hour_start_ms
         ):
@@ -168,9 +175,21 @@ def verify_downloaded_archive_cache(
         byte_count = _integer(item.get("byte_count"), f"shards[{index}].byte_count")
         if byte_count < 0:
             raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_SIZE_INVALID")
+        etag = _string(item.get("etag"), f"shards[{index}].etag")
         sha256 = _string(item.get("sha256"), f"shards[{index}].sha256")
         if len(sha256) != 64:
             raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_SHA256_INVALID")
+
+        identity_shards.append(
+            {
+                "key": key,
+                "hour_start_ms": shard.hour_start_ms,
+                "relative_path": relative_path,
+                "byte_count": byte_count,
+                "etag": etag,
+                "sha256": sha256,
+            }
+        )
 
         path = archive_root / relative_path
         if not path.is_file():
@@ -184,13 +203,46 @@ def verify_downloaded_archive_cache(
     if seen_keys != set(expected_by_key):
         raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_KEYS_INCOMPLETE")
 
+    actual_lz4_paths = {
+        str(path.relative_to(archive_root))
+        for path in archive_root.rglob("*.lz4")
+        if path.is_file()
+    }
+    if actual_lz4_paths != listed_relative_paths:
+        raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_LOCAL_FILE_SET_MISMATCH")
+
     plan_total = _integer(
         manifest.get("plan_total_byte_count"),
         "plan_total_byte_count",
     )
     if plan_total != total_byte_count:
         raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_TOTAL_SIZE_MISMATCH")
+    schema_version = _integer(manifest.get("schema_version"), "schema_version")
+    if schema_version != 1:
+        raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_SCHEMA_UNSUPPORTED")
+
+    identity_payload = {
+        "kind": "hyperliquid-node-fills-by-block-download",
+        "bucket": ARCHIVE_BUCKET,
+        "prefix": ARCHIVE_PREFIX,
+        "requested_start_ms": start_ms,
+        "requested_end_ms": end_ms,
+        "plan_total_byte_count": plan_total,
+        "shards": tuple(identity_shards),
+        "schema_version": 1,
+    }
+    expected_manifest_id = hashlib.sha256(
+        json.dumps(
+            identity_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()[:24]
     manifest_id = _string(manifest.get("manifest_id"), "manifest_id")
+    if manifest_id != expected_manifest_id:
+        raise HistoricalArchiveExperimentError("ARCHIVE_DOWNLOAD_MANIFEST_ID_MISMATCH")
 
     return VerifiedArchiveCache(
         manifest_id=manifest_id,
