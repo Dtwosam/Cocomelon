@@ -9,6 +9,7 @@ from typing import Any
 
 from cocomelon.domain.execution import (
     ExecutionAttempt,
+    ExecutionResult,
     OrderSide,
     OrderType,
     PaperFill,
@@ -259,6 +260,52 @@ def _fill_payload(fill: PaperFill) -> dict[str, object]:
         "source_event_key": fill.source_event_key,
         "timestamp_ms": fill.timestamp_ms,
     }
+
+
+def _attempt_from_payload(payload: dict[str, Any]) -> ExecutionAttempt:
+    average_fill_price = payload["average_fill_price"]
+    snapshot_exchange_ms = payload["snapshot_exchange_ms"]
+    reason_codes = payload["reason_codes"]
+    if not isinstance(reason_codes, list) or not all(
+        isinstance(reason, str) for reason in reason_codes
+    ):
+        raise ValueError("attempt reason_codes must be an array of strings")
+    return ExecutionAttempt(
+        plan_id=str(payload["plan_id"]),
+        source_event_key=str(payload["source_event_key"]),
+        requested_quantity=Decimal(str(payload["requested_quantity"])),
+        filled_quantity=Decimal(str(payload["filled_quantity"])),
+        average_fill_price=(
+            None
+            if average_fill_price is None
+            else Decimal(str(average_fill_price))
+        ),
+        gross_fill_notional=Decimal(str(payload["gross_fill_notional"])),
+        fee=Decimal(str(payload["fee"])),
+        unfilled_quantity=Decimal(str(payload["unfilled_quantity"])),
+        result=ExecutionResult(str(payload["result"])),
+        reason_codes=tuple(reason_codes),
+        snapshot_exchange_ms=(
+            None if snapshot_exchange_ms is None else int(snapshot_exchange_ms)
+        ),
+        snapshot_received_ms=int(payload["snapshot_received_ms"]),
+        attempt_timestamp_ms=int(payload["attempt_timestamp_ms"]),
+    )
+
+
+def _fill_from_payload(payload: dict[str, Any]) -> PaperFill:
+    return PaperFill(
+        plan_id=str(payload["plan_id"]),
+        attempt_id=str(payload["attempt_id"]),
+        market=_market_from_canonical(str(payload["market"])),
+        side=OrderSide(str(payload["side"])),
+        price=Decimal(str(payload["price"])),
+        quantity=Decimal(str(payload["quantity"])),
+        notional=Decimal(str(payload["notional"])),
+        taker_fee=Decimal(str(payload["taker_fee"])),
+        source_event_key=str(payload["source_event_key"]),
+        timestamp_ms=int(payload["timestamp_ms"]),
+    )
 
 
 def _funding_payload(accrual: FundingAccrual) -> dict[str, object]:
@@ -574,11 +621,108 @@ class PaperExecutionStore:
             self._conn.rollback()
             raise
 
+    def _reconcile_execution_history(self) -> tuple[str | None, int]:
+        attempt_rows = self._conn.execute(
+            """
+            SELECT attempt_id, plan_id, payload_json
+            FROM paper_execution_attempts
+            ORDER BY attempt_id
+            """
+        ).fetchall()
+        attempts: dict[str, ExecutionAttempt] = {}
+        for row in attempt_rows:
+            attempt_id = str(row[0])
+            stored_plan_id = str(row[1])
+            payload_json = str(row[2])
+            try:
+                payload = json.loads(payload_json)
+                if not isinstance(payload, dict):
+                    raise ValueError("attempt payload is not an object")
+                attempt = _attempt_from_payload(payload)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                return "EXECUTION_HISTORY_UNREADABLE", len(attempt_rows)
+            if (
+                attempt.attempt_id != attempt_id
+                or attempt.plan_id != stored_plan_id
+                or _canonical_json(_attempt_payload(attempt)) != payload_json
+            ):
+                return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+            try:
+                plan = self.load_plan(attempt.plan_id)
+            except ValueError:
+                return "EXECUTION_HISTORY_UNREADABLE", len(attempt_rows)
+            if plan is None:
+                return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+            attempts[attempt_id] = attempt
+
+        fills_by_attempt: dict[str, list[PaperFill]] = {
+            attempt_id: [] for attempt_id in attempts
+        }
+        fill_rows = self._conn.execute(
+            """
+            SELECT fill_id, attempt_id, plan_id, payload_json
+            FROM paper_fills
+            ORDER BY fill_id
+            """
+        ).fetchall()
+        for row in fill_rows:
+            fill_id = str(row[0])
+            stored_attempt_id = str(row[1])
+            stored_plan_id = str(row[2])
+            payload_json = str(row[3])
+            try:
+                payload = json.loads(payload_json)
+                if not isinstance(payload, dict):
+                    raise ValueError("fill payload is not an object")
+                paper_fill = _fill_from_payload(payload)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                return "EXECUTION_HISTORY_UNREADABLE", len(attempt_rows)
+            if (
+                paper_fill.fill_id != fill_id
+                or paper_fill.attempt_id != stored_attempt_id
+                or paper_fill.plan_id != stored_plan_id
+                or _canonical_json(_fill_payload(paper_fill)) != payload_json
+            ):
+                return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+            attempt = attempts.get(paper_fill.attempt_id)
+            if attempt is None or attempt.plan_id != paper_fill.plan_id:
+                return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+            fills_by_attempt[paper_fill.attempt_id].append(paper_fill)
+
+        zero = Decimal("0")
+        for attempt_id, attempt in attempts.items():
+            fills = fills_by_attempt[attempt_id]
+            filled_quantity = sum((item.quantity for item in fills), zero)
+            gross_fill_notional = sum((item.notional for item in fills), zero)
+            fee = sum((item.taker_fee for item in fills), zero)
+            if (
+                attempt.filled_quantity != filled_quantity
+                or attempt.gross_fill_notional != gross_fill_notional
+                or attempt.fee != fee
+            ):
+                return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+            if filled_quantity > zero:
+                average_fill_price = gross_fill_notional / filled_quantity
+                if attempt.average_fill_price != average_fill_price:
+                    return "EXECUTION_HISTORY_MISMATCH", len(attempt_rows)
+
+        return None, len(attempt_rows)
+
     def load_and_reconcile(self) -> ReconciledPaperState:
+        history_reason, attempt_count = self._reconcile_execution_history()
+        if history_reason is not None:
+            return ReconciledPaperState(None, False, (history_reason,))
+
         row = self._conn.execute(
             "SELECT state_id, payload_json FROM paper_account_state WHERE singleton_id = 1"
         ).fetchone()
         if row is None:
+            if attempt_count:
+                return ReconciledPaperState(
+                    None,
+                    False,
+                    ("EXECUTION_HISTORY_MISMATCH",),
+                )
             return ReconciledPaperState(None, True, ())
         try:
             payload = json.loads(row[1])
