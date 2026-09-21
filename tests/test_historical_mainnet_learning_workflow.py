@@ -71,3 +71,12 @@ def test_historical_mainnet_learning_workflow_preserves_touched_evidence_artifac
     assert "if: ${{ always() }}" in source
     assert "actions/upload-artifact@v7" in source
     assert "if-no-files-found: error" in source
+
+
+def test_historical_mainnet_workflow_renders_dataset_feature_registry() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Render training feature registry" in source
+    assert "$COMPARISON_ROOT/dataset/manifest.json" in source
+    assert "converter_version" in source
+    assert "columns" in source
