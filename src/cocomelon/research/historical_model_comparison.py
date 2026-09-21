@@ -868,8 +868,8 @@ class HistoricalModelComparisonReport:
                 or baseline_shape != tree_shape
             ):
                 raise ValueError("all model folds must use identical chronology")
-        if self.anchor_interval not in {"5m", "15m"}:
-            raise ValueError("anchor_interval must be 5m or 15m")
+        if self.anchor_interval not in {"5m", "15m", "1h"}:
+            raise ValueError("anchor_interval must be 5m, 15m, or 1h")
         if self.evidence_class != EVIDENCE_CLASS:
             raise ValueError("comparison evidence must remain touched_development")
 
