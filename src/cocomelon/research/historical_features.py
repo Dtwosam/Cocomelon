@@ -700,7 +700,22 @@ def enrich_historical_market_context(
             enriched.append(
                 replace(
                     feature,
-                    **context,
+                    btc_return_5m=context["btc_return_5m"],
+                    btc_return_1h=context["btc_return_1h"],
+                    btc_return_4h=context["btc_return_4h"],
+                    eth_return_5m=context["eth_return_5m"],
+                    eth_return_1h=context["eth_return_1h"],
+                    eth_return_4h=context["eth_return_4h"],
+                    market_median_return_5m=context["market_median_return_5m"],
+                    market_median_return_1h=context["market_median_return_1h"],
+                    market_breadth_positive_5m=context[
+                        "market_breadth_positive_5m"
+                    ],
+                    market_breadth_positive_1h=context[
+                        "market_breadth_positive_1h"
+                    ],
+                    market_relative_return_5m=context["market_relative_return_5m"],
+                    market_relative_return_1h=context["market_relative_return_1h"],
                     source_retrieved_at_ms=max(
                         row.source_retrieved_at_ms for row in contributors
                     ),
