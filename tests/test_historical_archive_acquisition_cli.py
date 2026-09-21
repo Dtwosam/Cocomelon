@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +67,7 @@ def _utc_ms(year: int, month: int, day: int, hour: int = 0) -> int:
             month,
             day,
             hour,
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         ).timestamp()
         * 1000
     )
