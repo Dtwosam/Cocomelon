@@ -560,6 +560,8 @@ class PaperExecutionStore:
     ) -> None:
         if any(fill.plan_id != attempt.plan_id for fill in fills):
             raise ValueError("fill plan does not match execution attempt")
+        if any(fill.attempt_id != attempt.attempt_id for fill in fills):
+            raise ValueError("fill attempt does not match execution attempt")
         attempt_json = _canonical_json(_attempt_payload(attempt))
         try:
             self._conn.execute("BEGIN IMMEDIATE")
@@ -709,14 +711,13 @@ class PaperExecutionStore:
         return None, len(attempt_rows)
 
     def load_and_reconcile(self) -> ReconciledPaperState:
-        history_reason, attempt_count = self._reconcile_execution_history()
-        if history_reason is not None:
-            return ReconciledPaperState(None, False, (history_reason,))
-
         row = self._conn.execute(
             "SELECT state_id, payload_json FROM paper_account_state WHERE singleton_id = 1"
         ).fetchone()
         if row is None:
+            history_reason, attempt_count = self._reconcile_execution_history()
+            if history_reason is not None:
+                return ReconciledPaperState(None, False, (history_reason,))
             if attempt_count:
                 return ReconciledPaperState(
                     None,
@@ -825,6 +826,14 @@ class PaperExecutionStore:
                 account,
                 False,
                 ("ROLLING_PEAK_STATE_MISMATCH",),
+            )
+
+        history_reason, _attempt_count = self._reconcile_execution_history()
+        if history_reason is not None:
+            return ReconciledPaperState(
+                account,
+                False,
+                (history_reason,),
             )
         return ReconciledPaperState(account, True, ())
 
