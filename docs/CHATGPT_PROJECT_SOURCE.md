@@ -2,10 +2,10 @@
 
 **Purpose:** Portable bootstrap context for continuing Cocomelon across ChatGPT chats. Live GitHub state and authoritative repository docs always outrank this summary.
 
-**Snapshot updated:** 2026-09-20  
+**Snapshot updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `58e88327188c6bea0374948ac228de15ff64ed4c`  
-**Latest verified main CI:** `35540772886` — success  
+**Current verified `main` at snapshot:** `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`  
+**Latest verified main CI:** `35576633597` — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -62,14 +62,14 @@ The 100-trade / 18-day development snapshot was negative:
 
 This evidence is permanently **TOUCHED / DEVELOPMENT-ONLY** and cannot become untouched OOS evidence.
 
-Future scheduled V4 acquisition and automatic V4 one-shot evaluation for the retired baseline are disabled. One acquisition that had already started before retirement, run `35524316366`, remains protected and must finish naturally without cancellation, retry, extension, backfill, or outcome conditioning.
+Future scheduled V4 acquisition and automatic V4 one-shot evaluation for the retired baseline are disabled. The one acquisition that had already started before retirement, run `35524316366`, finished successfully and naturally without cancellation, retry, extension, backfill, or outcome conditioning. Authority sync/curation accepted its actual interval into the retired touched corpus.
 
 Latest trusted dashboard snapshot recorded:
 
-- 68 accepted V4 cohorts;
-- 120 closed paper trades;
+- 69 accepted V4 cohorts;
+- 121 closed paper trades;
 - 21 closed-trade days;
-- 7,145 strategy decisions;
+- 7,250 strategy decisions;
 - economic edge: **RETIRED / TOUCHED — NO EDGE DEMONSTRATED**;
 - live orders: **DISABLED**.
 
@@ -95,13 +95,15 @@ Active challenger:
 
 R2 was generated from touched V4 development evidence. It is a hypothesis, not proof of edge. Its thresholds are immutable while it gathers new natural research evidence.
 
-Trusted research state at the 2026-09-20 21:06 UTC snapshot:
+Trusted research state at the 2026-09-21 06:28 UTC snapshot:
 
-- `scheduled-research-root`: 12 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
+- `scheduled-research-root`: 13 authenticated checkpoints, 10 closed trades, 7 closed-trade days, touched net PnL about `-37.2371`;
 - legacy `research-r1-exit-15m-v1`: 7 checkpoints, 6 trades, 4 days, touched net PnL about `-36.9098`;
 - r2: draft, 0 authenticated checkpoints, 0 closed trades.
 
 None of these results establishes verified edge.
+
+First natural post-V4 root+r2 campaign `35551385941` used one authenticated public-mainnet capture over `[1789954950690, 1789956755426]`. V4 authority/disjointness plus both rollout verifiers passed. Root succeeded and was COUNTED. R2 failed NOT COUNTED with `ResearchRegistryError: research replay run already belongs to batch research-batch-35551385941-1-scheduled-research-root`. PR #228 fixes future fanout by changing registry replay uniqueness from global to candidate-scoped while preserving the deterministic shared replay ID. Do not retry or backfill the failed r2 attempt.
 
 ---
 
@@ -139,22 +141,23 @@ Recent frontier PRs:
 - #222: fails paper execution closed when durable order-plan persistence fails;
 - #223: validates active-position opening-plan lineage on restart and runtime exit planning;
 - #224: fails paper execution closed on funding-idempotency read errors before accounting mutation;
-- #226: rejects structurally incomplete supported-version paper and journal/replay stores before migration DDL can silently recreate missing required tables.
+- #226: rejects structurally incomplete supported-version paper and journal/replay stores before migration DDL can silently recreate missing required tables;
+- #228: scopes research replay identity uniqueness by candidate and transactionally migrates the legacy global-unique registry so root+r2 can share one authenticated capture replay identity.
 
-PR #226 merged as `58e88327188c6bea0374948ac228de15ff64ed4c`. Post-merge main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
+PR #228 merged as `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`. Post-merge main CI `35576633597` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ---
 
 ## 7. Exact handoff / next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let protected pre-retirement V4 run `35524316366` finish naturally.
-3. Do not resume retired-baseline V4 acquisition and do not run its automatic one-shot.
-4. Observe authoritative V4 interval/completeness synchronization after the protected run resolves.
-5. Let the next naturally eligible safe-gap research cohort launch through the existing dispatcher with root + r2. Do not manually dispatch economics merely to accelerate evidence.
-6. Require the pre-publication root+r2 rollout verifier and the independent final rollout verifier to pass before an r2 checkpoint is authoritative.
-7. Keep r2 immutable. Do not retune its 72–81 SHORT/trend filter from later V4 or r2 outcomes.
-8. At 20 r2 trades, apply only the locked futility rule.
+2. Keep the retired V4 scheduler and automatic one-shot disabled. Protected run `35524316366` is complete and must not be retried or backfilled.
+3. Preserve failed r2 attempt `research-35551385941-1-research-r2-short-trend-quality-v1` as historical/auditable NOT COUNTED evidence; do not rerun its interval.
+4. Let the next naturally eligible safe-gap campaign launch through the dispatcher with root + r2 under the #228 registry fix. Do not manually dispatch economics merely to accelerate evidence.
+5. Require the same shared-capture, actual V4 completeness/disjointness, pre-publication rollout verifier, and independent final rollout verifier controls.
+6. Count only authenticated successful r2 checkpoints; r2 currently remains draft with 0 authenticated checkpoints.
+7. Keep r2 immutable. Do not retune its 72–81 SHORT/trend filter from later observations.
+8. At 20 closed r2 trades, apply only the locked futility rule.
 9. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, posterior >=0.80, complete costs, and clean integrity/risk state.
 10. Do not create r3 merely in reaction to a few r2 outcomes; require a documented new hypothesis and inherited touched lineage.
 11. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and start a new clean validation sample.

@@ -1,10 +1,10 @@
 # Cocomelon Project Status
 
-**Last updated:** 2026-09-20  
+**Last updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `58e88327188c6bea0374948ac228de15ff64ed4c`  
-**Latest verified baseline CI:** run `35540772886` — success  
+**Verified implementation baseline:** `9cdb68b5df8cdf1a21cde86d70a01dfc7d632600`  
+**Latest verified baseline CI:** run `35576633597` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **BLOCKED**
@@ -23,16 +23,16 @@ The disclosed snapshot is bound to corpus artifact `10497424756` at exactly 100 
 
 This is failure/development evidence, not untouched OOS evidence and not a promotion claim.
 
-One V4 acquisition that had already started before retirement, run `35524316366`, remains protected and must finish naturally. It is not cancelled, retried, extended, or outcome-conditioned. Its data remains historical/touched and cannot restore promotion eligibility for the retired baseline.
+The pre-retirement protected V4 acquisition `35524316366` finished successfully and naturally without cancellation, retry, extension, backfill, or outcome conditioning. The authoritative V4 synchronization/curation path accepted its actual interval into the retired touched corpus. Its data remains historical/touched and cannot restore promotion eligibility for the retired baseline.
 
 ## Trusted V4 dashboard state
 
-Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-20 21:44 UTC**:
+Latest trusted Evidence Dashboard snapshot, refreshed **2026-09-21 04:57 UTC**:
 
-- **68 accepted V4 cohorts**;
-- **120 closed paper trades**;
+- **69 accepted V4 cohorts**;
+- **121 closed paper trades**;
 - **21 closed-trade days**;
-- **7,145 strategy decisions**;
+- **7,250 strategy decisions**;
 - economic edge: **RETIRED / TOUCHED — NO EDGE DEMONSTRATED**;
 - V4 one-shot state: **retired / touched; automatic evaluation disabled**;
 - future V4 scheduler state: **retired**;
@@ -63,13 +63,19 @@ The legacy r1 15-minute challenger remains historical research state and is no l
 
 ### Current root reference
 
-Trusted Research Dashboard snapshot, refreshed **2026-09-20 21:06 UTC**:
+Trusted Research Dashboard snapshot, refreshed **2026-09-21 06:28 UTC**:
 
-- `scheduled-research-root`: **12 authenticated checkpoints**, **10 closed trades**, **7 closed-trade days**, cumulative touched net PnL about `-37.2371`, mean net R about `-0.14895`;
+- `scheduled-research-root`: **13 authenticated checkpoints**, **10 closed trades**, **7 closed-trade days**, cumulative touched net PnL about `-37.2371`, mean net R about `-0.14895`;
 - legacy `research-r1-exit-15m-v1`: **7 checkpoints**, **6 trades**, **4 days**, cumulative touched net PnL about `-36.9098`, mean net R about `-0.24607`;
 - r2: **0 authenticated checkpoints**.
 
 None of these research results establishes verified edge.
+
+### First natural root+r2 cohort
+
+The first naturally dispatched post-V4 campaign, run `35551385941`, used one authenticated public-mainnet capture for root + r2 over `[1789954950690, 1789956755426]`. Authoritative V4 completeness/disjointness, the pre-publication rollout verifier, and the independent final rollout verifier all passed. The root attempt succeeded and became checkpoint 13.
+
+The r2 attempt failed and is **NOT COUNTED** because the research registry incorrectly enforced global `replay_run_id` uniqueness even though root and challenger intentionally share the deterministic replay identity of one capture. Its exact failure was `ResearchRegistryError: research replay run already belongs to batch research-batch-35551385941-1-scheduled-research-root`. PR #228 fixes future fanout by scoping replay identity uniqueness to `(candidate_id, replay_run_id)` and safely migrating legacy registries. The failed r2 attempt is not retried or backfilled.
 
 ## Research gates
 
@@ -87,7 +93,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#226 establish the current frontier:
+PRs #205–#228 establish the current frontier:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -105,23 +111,24 @@ PRs #205–#226 establish the current frontier:
 - #222 made durable paper order-plan write failures degrade execution health and block subsequent new exposure;
 - #223 validates active-position opening-plan lineage on restart and runtime exit planning, failing closed on missing, unreadable, or tampered lineage;
 - #224 makes funding-idempotency read errors degrade execution health before funding accounting can mutate state;
-- #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated.
+- #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated;
+- #228 scopes research replay-run uniqueness to `(candidate_id, replay_run_id)` and transactionally migrates the legacy global-unique registry, allowing root+r2 to share one deterministic capture replay identity while preserving per-candidate duplicate protection.
 
-Post-#226 main CI `35540772886` passed compile, Ruff, mypy, full pytest, and research smoke.
+Post-#228 main CI `35576633597` passed compile, Ruff, mypy, full pytest, and research smoke.
 
 ## Exact next action
 
 1. Keep Phase 10 and live trading blocked.
-2. Let the already-running pre-retirement V4 acquisition `35524316366` finish naturally; do not cancel, retry, extend, dispatch, or backfill it.
-3. Do not resume scheduled V4 economic acquisition for the retired baseline and do not run its automatic Phase 9 one-shot.
-4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any subsequent research economics.
-5. Let the next naturally eligible safe-gap research cohort launch through the dispatcher with root + `research-r2-short-trend-quality-v1`; do not manually dispatch the economic campaign merely to accelerate evidence.
-6. Require `Verify root+challenger rollout contract before authoritative publish` to pass before an r2 checkpoint becomes authoritative.
-7. Require the independent final rollout verifier to pass; otherwise the challenger checkpoint is not accepted as validated rollout evidence.
-8. Keep r2 immutable while it gathers new research evidence; do not retune 72–81 or the SHORT/trend filters from later V4 outcomes.
+2. Keep the retired V4 scheduler and automatic one-shot disabled; run `35524316366` is complete and must not be retried, extended, or backfilled.
+3. Preserve the failed r2 attempt from natural campaign `35551385941` as historical/auditable NOT COUNTED evidence; do not rerun or backfill that interval.
+4. Observe the implemented authoritative V4 interval/completeness synchronization path before each subsequent research admission; use actual authority state, not nominal scheduler timing.
+5. Let the next naturally eligible safe-gap research cohort launch through the dispatcher with root + `research-r2-short-trend-quality-v1`; do not manually dispatch economics merely to accelerate evidence.
+6. On that future cohort, require one shared authenticated public-mainnet capture, actual V4 completeness/disjointness, exact source/digest agreement, the pre-publication root+r2 rollout verifier, and the independent final rollout verifier.
+7. Count only authenticated successful r2 checkpoints. Until one succeeds, r2 remains draft with zero authenticated checkpoints and no economic inference is permitted.
+8. Keep r2 immutable while it gathers new research evidence; do not retune 72–81 or the SHORT/trend filters from later observations.
 9. At 20 closed r2 research trades, apply only the precommitted futility rule.
 10. Do not label r2 `RESEARCH_PROMISING` before 40 trades, 7 days, `P(mu > 0) >= 0.80`, complete costs, and clean integrity/risk state.
-11. Do not create or activate an r3 challenger merely to react to a handful of r2 outcomes. A future challenger requires a documented new hypothesis and inherited touched lineage.
+11. Do not create or activate r3 merely to react to a handful of r2 outcomes. A future challenger requires a documented new hypothesis and inherited touched lineage.
 12. If r2 becomes `RESEARCH_PROMISING`, freeze it, apply the touched-data embargo, and begin a new clean validation sample. The disclosed V4 corpus can never become untouched again.
 13. Advance toward Phase 10 or live trading only after every locked clean-validation and promotion gate passes.
 
