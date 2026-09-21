@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `09e5c93db64ede19ec6ad02ac642defc96176c27`  
-**Latest verified baseline CI:** run `35596674099` — success  
+**Verified implementation baseline:** `31a977ab2fd5fb6398314adf8c7b365e16b303f0`  
+**Latest verified development CI:** run `35609936635` on PR #235 implementation head — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
@@ -54,16 +54,23 @@ The product target is now explicit: study trustworthy historical behavior across
 
 Phase 9 has satisfied its exit criterion in the honest-failure sense: the retired V4 baseline failed to demonstrate edge. Therefore Phase 10 **offline learning engineering is active**. This opens historical dataset, feature, model-training, and challenger-evaluation work only; live trading and promotion remain blocked.
 
-Current historical-learning implementation slice on the development branch:
+Current historical-learning implementation frontier:
 
 - deterministic bounded candle backfill windows respect the existing 5,000-candle request ceiling;
 - exact future-return labels record both LONG and SHORT gross outcomes;
 - missing exact future target candles are excluded rather than approximated across gaps;
 - mixed markets, mixed intervals, duplicate timestamps, empty source identity, and non-positive close prices fail closed;
-- outcome identity/provenance is deterministic and model-agnostic;
+- resumable public-mainnet candle and funding acquisition persists raw page envelopes plus normalized records;
+- source manifests carry deterministic checksums, request/observed coverage, and gap state;
+- overlapping funding page boundaries are authenticated/deduplicated and conflicting duplicates fail closed;
+- the offline acquisition command supports multiple canonical markets and candle intervals through the existing rate-budgeted `InfoClient`;
+- a deterministic combined coverage report records candle/funding provenance by market/interval/source;
+- outcome and source identity/provenance remain model-agnostic;
 - no model family or trading threshold has been prematurely selected.
 
-Next implementation work is offline source acquisition: rate-budget-aware historical candle/funding backfill, immutable manifests/checksums, page-boundary deduplication, gap/coverage reporting, then point-in-time feature reconstruction.
+PR #235 implementation head `0b463d515b2f0914a1ff7aae5ddc8682a12b931d` passed CI run `35609936635`: compile, Ruff, strict mypy, full pytest, and research smoke.
+
+Next implementation work is Slice C: reconstruct point-in-time candle/funding features, represent historically unavailable fields explicitly, join features to exact directional outcomes, and export versioned columnar training datasets.
 
 ### Preserved r2 experiment
 
@@ -111,7 +118,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#232 establish the current frontier:
+PRs #205–#234 establish the merged frontier; PR #235 is the verified historical-source-acquisition development slice:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -132,7 +139,9 @@ PRs #205–#232 establish the current frontier:
 - #226 requires supported-version paper and journal/replay stores to be structurally complete before migration DDL, preventing deleted required tables from being silently recreated;
 - #228 scopes research replay-run uniqueness to `(candidate_id, replay_run_id)` and transactionally migrates the legacy global-unique registry, allowing root+r2 to share one deterministic capture replay identity while preserving per-candidate duplicate protection;
 - #230 attributes raw candidate-local terminal runner errors to the `evaluate-research` stage in the trusted dashboard while preserving upstream `WorkflowFailure` stage parsing and NOT COUNTED accounting;
-- #232 makes paper restart reconciliation authenticate persisted execution attempts and fills, verify deterministic IDs/canonical payloads/plan ownership/fill lineage and aggregate fill accounting, fail closed when execution history exists without account state, and reject new fill writes whose `attempt_id` does not match the deterministic execution attempt.
+- #232 makes paper restart reconciliation authenticate persisted execution attempts and fills, verify deterministic IDs/canonical payloads/plan ownership/fill lineage and aggregate fill accounting, fail closed when execution history exists without account state, and reject new fill writes whose `attempt_id` does not match the deterministic execution attempt;
+- #234 makes historical LONG/SHORT/NO_TRADE learning the primary offline architecture and adds the first exact directional-outcome plus candle-backfill substrate;
+- #235 adds resumable funding acquisition, deterministic coverage reporting, and the multi-market historical backfill command; implementation CI `35609936635` passed before documentation closeout.
 
 Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` remains the latest trusted research snapshot and renders the historical failed r2 attempt with failure stage `evaluate-research` while leaving it failed / NOT COUNTED.
 
@@ -142,10 +151,10 @@ Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and res
 2. Treat `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary development plan.
 3. Preserve V4, r1, and r2 artifacts/results as touched historical research; do not rewrite or relabel them.
 4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any future registered economic research; use actual authority state, not nominal scheduler timing.
-5. Build an offline historical candle/funding backfill command on top of the existing mainnet-only `InfoClient`.
-6. Persist source manifests/checksums and coverage metadata; detect page overlap, duplicate candles, missing ranges, and source inconsistencies.
-7. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
-8. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned training datasets.
+5. Treat Slice B historical source acquisition as implemented and verified; preserve its raw-page/manifests/checksum contracts.
+6. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
+7. Represent unavailable historical microstructure/OI fields explicitly rather than synthesizing them.
+8. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned columnar training datasets.
 9. Establish simple direction-neutral baselines before adding more complex supervised models.
 10. Train/evaluate chronologically with embargo and walk-forward splits; select LONG, SHORT, or NO_TRADE from cost-adjusted evidence.
 11. Freeze any promising model/config before future untouched validation; historical development data remains touched.
