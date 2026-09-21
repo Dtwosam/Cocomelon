@@ -467,6 +467,19 @@ def _trend_regime(
     return TrendRegime.MIXED
 
 
+def _trend_regime_1h(
+    return_1h: Decimal | None,
+    return_4h: Decimal | None,
+) -> TrendRegime:
+    if return_1h is None or return_4h is None:
+        return TrendRegime.UNKNOWN
+    if return_1h > ZERO and return_4h > ZERO:
+        return TrendRegime.UP
+    if return_1h < ZERO and return_4h < ZERO:
+        return TrendRegime.DOWN
+    return TrendRegime.MIXED
+
+
 def _availability(
     values: dict[str, Decimal | None],
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -916,7 +929,7 @@ def build_historical_feature_rows_1h(
                 funding_premium_change=funding_premium_change,
                 funding_age_ms=funding_age_ms,
                 candle_15m_age_ms=None,
-                trend_regime=TrendRegime.UNKNOWN,
+                trend_regime=_trend_regime_1h(return_1h, return_4h),
                 availability_basis=AVAILABILITY_BASIS,
                 source_retrieved_at_ms=retrieved_at,
                 retrieved_after_anchor=retrieved_at > anchor_ms,
@@ -924,6 +937,7 @@ def build_historical_feature_rows_1h(
                 unavailable_features=unavailable_features,
                 provenance=tuple(sorted(used_sources)),
                 source_manifest_ids=manifests,
+                schema_version=4,
             )
         )
     return tuple(rows)
