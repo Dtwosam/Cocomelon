@@ -591,6 +591,7 @@ def calibrate_no_trade_threshold(
     min_validation_trades: int,
     allow_coin_calibration: bool = True,
     min_validation_mean_net_return: Decimal = ZERO,
+    abstain_on_insufficient_validation_trades: bool = False,
 ) -> ThresholdCalibration:
     if not validation_rows:
         raise HistoricalBaselineError("validation_rows must not be empty")
@@ -650,7 +651,11 @@ def calibrate_no_trade_threshold(
     trade_count_eligible = tuple(trade_count_eligible_list)
     eligible = tuple(eligible_list)
     if not eligible:
-        if trade_count_eligible or all(result.trade_count == 0 for result in results):
+        if (
+            trade_count_eligible
+            or all(result.trade_count == 0 for result in results)
+            or abstain_on_insufficient_validation_trades
+        ):
             return ThresholdCalibration(
                 selected_threshold=None,
                 candidates=tuple(results),
