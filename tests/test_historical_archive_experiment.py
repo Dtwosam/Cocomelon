@@ -4,6 +4,7 @@ import hashlib
 import json
 from decimal import Decimal
 from pathlib import Path
+
 import pytest
 
 import cocomelon.research.historical_archive_experiment as experiment
