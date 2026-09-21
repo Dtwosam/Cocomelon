@@ -34,4 +34,6 @@ jobs:
           python -m pytest
           tests/test_replay_compaction.py
           tests/test_parquet_replay_source.py
+          tests/test_historical_dataset.py
+          tests/test_historical_dataset_cli.py
           -q
