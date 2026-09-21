@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `31a977ab2fd5fb6398314adf8c7b365e16b303f0`  
-**Latest verified development CI:** `35609936635` on PR #235 implementation head — success  
+**Current verified `main` at snapshot:** `c3ba7ae41dbc106c88d7c3ba9ea7c9012765b95f`  
+**Latest verified development CI:** `35613448712` on PR #236 implementation head — success  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -109,6 +109,8 @@ Current implementation frontier:
 
 PR #235 implementation head `0b463d515b2f0914a1ff7aae5ddc8682a12b931d` passed CI run `35609936635` with compile, Ruff, strict mypy, full pytest, and research smoke.
 
+PR #236 implementation head `4c04600d5835197209c5405c9a05d992db38f78a` passed CI run `35613448712` with compile, Ruff, strict mypy, full pytest, and real PyArrow historical-dataset export. The historical pipeline now reconstructs point-in-time candle/funding features, distinguishes exchange-time availability from later retrieval, refuses to bridge gaps, preserves explicit unavailable-feature state, authenticates source checksums/manifests, joins exact multi-horizon LONG/SHORT outcomes, and exports versioned Parquet training corpora through `cocomelon-historical-dataset`.
+
 ### Preserved r2 experiment
 
 `research-r2-short-trend-quality-v1` remains immutable and auditable as a secondary touched short-side hypothesis:
@@ -186,12 +188,12 @@ PR #232 merged as `09e5c93db64ede19ec6ad02ac642defc96176c27`. Post-merge main CI
 1. Keep live trading disabled and risk limits unchanged.
 2. Use `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary plan.
 3. Preserve retired V4, r1, and r2 evidence as touched/auditable history.
-4. Treat the verified Slice B source-acquisition contracts as the immutable input boundary for historical learning.
-5. Reconstruct point-in-time candle/funding feature states without synthesizing unavailable L2/order-flow/OI data.
-6. Represent historically unavailable fields explicitly and preserve feature provenance.
-7. Join features to exact multi-horizon LONG/SHORT outcomes and export versioned analytical training datasets.
-8. Establish simple direction-neutral baselines, then compare more complex supervised models only if justified.
-9. Use chronological validation/embargo/walk-forward evaluation and cost-aware NO_TRADE calibration.
+4. Treat verified Slices B and C as the immutable source/dataset boundary for learning.
+5. Establish simple direction-neutral statistical baselines before more complex supervised models.
+6. Add chronological train/validation/test and walk-forward evaluation with embargo where required.
+7. Estimate LONG and SHORT conditional edge separately, with NO_TRADE as the default when cost-adjusted edge is weak.
+8. Compare shared cross-coin learning with coin-specific calibration only where the data supports it.
+9. Keep model selection, costs, and thresholds confined to train/validation; untouched test and future validation remain protected.
 10. Freeze any promising model/config before new clean validation; never relabel historical development data as untouched.
 11. Advance toward live trading only after every locked promotion gate and explicit user authorization.
 

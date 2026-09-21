@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-21  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `31a977ab2fd5fb6398314adf8c7b365e16b303f0`  
-**Latest verified development CI:** run `35609936635` on PR #235 implementation head — success  
+**Verified implementation baseline:** `c3ba7ae41dbc106c88d7c3ba9ea7c9012765b95f`  
+**Latest verified development CI:** run `35613448712` on PR #236 implementation head — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
@@ -70,7 +70,9 @@ Current historical-learning implementation frontier:
 
 PR #235 implementation head `0b463d515b2f0914a1ff7aae5ddc8682a12b931d` passed CI run `35609936635`: compile, Ruff, strict mypy, full pytest, and research smoke.
 
-Next implementation work is Slice C: reconstruct point-in-time candle/funding features, represent historically unavailable fields explicitly, join features to exact directional outcomes, and export versioned columnar training datasets.
+PR #236 implementation head `4c04600d5835197209c5405c9a05d992db38f78a` passed CI run `35613448712`: compile, Ruff, strict mypy, full pytest, and the research job with real PyArrow export. Slice C now reconstructs point-in-time candle/funding features from exchange timestamps, keeps later retrieval time explicit, refuses to bridge gaps, marks unavailable historical OI/L2/order-flow fields instead of fabricating values, authenticates normalized source files against manifests/checksums, joins exact LONG/SHORT outcomes, and exports versioned Parquet training datasets.
+
+Next implementation work is Slice D: direction-neutral baselines, chronological/walk-forward evaluation, side-specific expected edge, cost-aware NO_TRADE calibration, and shared cross-coin versus coin-calibrated comparison.
 
 ### Preserved r2 experiment
 
@@ -118,7 +120,7 @@ Locked D-023 rules remain:
 
 The authoritative V4 interval/completeness synchronization path is implemented in `.github/workflows/research-v4-registry-sync.yml`; research admission continues to rely on actual authoritative coverage/disjointness rather than nominal scheduler timing.
 
-PRs #205–#234 establish the merged frontier; PR #235 is the verified historical-source-acquisition development slice:
+PRs #205–#235 establish the merged frontier; PR #236 is the verified point-in-time historical dataset development slice:
 
 - #205 added the deterministic r2 short-trend quality strategy seam;
 - #206 registered and activated r2 as the research challenger default without dispatching economic evidence;
@@ -141,7 +143,8 @@ PRs #205–#234 establish the merged frontier; PR #235 is the verified historica
 - #230 attributes raw candidate-local terminal runner errors to the `evaluate-research` stage in the trusted dashboard while preserving upstream `WorkflowFailure` stage parsing and NOT COUNTED accounting;
 - #232 makes paper restart reconciliation authenticate persisted execution attempts and fills, verify deterministic IDs/canonical payloads/plan ownership/fill lineage and aggregate fill accounting, fail closed when execution history exists without account state, and reject new fill writes whose `attempt_id` does not match the deterministic execution attempt;
 - #234 makes historical LONG/SHORT/NO_TRADE learning the primary offline architecture and adds the first exact directional-outcome plus candle-backfill substrate;
-- #235 adds resumable funding acquisition, deterministic coverage reporting, and the multi-market historical backfill command; implementation CI `35609936635` passed before documentation closeout.
+- #235 adds resumable funding acquisition, deterministic coverage reporting, and the multi-market historical backfill command; implementation CI `35609936635` passed before documentation closeout;
+- #236 reconstructs point-in-time historical candle/funding features, authenticates source manifests/checksums, joins exact directional outcomes, and exports versioned Parquet training corpora; implementation CI `35613448712` passed before documentation closeout.
 
 Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and research smoke. Research Dashboard refresh `35586218717` remains the latest trusted research snapshot and renders the historical failed r2 attempt with failure stage `evaluate-research` while leaving it failed / NOT COUNTED.
 
@@ -151,12 +154,12 @@ Post-#232 main CI `35596674099` passed compile, Ruff, mypy, full pytest, and res
 2. Treat `docs/superpowers/plans/2026-09-21-historical-directional-learning.md` as the primary development plan.
 3. Preserve V4, r1, and r2 artifacts/results as touched historical research; do not rewrite or relabel them.
 4. Observe the implemented authoritative V4 interval/completeness synchronization path before admitting any future registered economic research; use actual authority state, not nominal scheduler timing.
-5. Treat Slice B historical source acquisition as implemented and verified; preserve its raw-page/manifests/checksum contracts.
-6. Reconstruct point-in-time historical feature rows using only data known at each anchor timestamp.
-7. Represent unavailable historical microstructure/OI fields explicitly rather than synthesizing them.
-8. Join those features to exact multi-horizon LONG/SHORT outcomes and export versioned columnar training datasets.
-9. Establish simple direction-neutral baselines before adding more complex supervised models.
-10. Train/evaluate chronologically with embargo and walk-forward splits; select LONG, SHORT, or NO_TRADE from cost-adjusted evidence.
+5. Treat Slices B and C as implemented and verified; preserve source/data manifests, point-in-time availability rules, and missing-feature semantics.
+6. Establish simple direction-neutral statistical baselines before adding more complex supervised models.
+7. Add chronological train/validation/test and walk-forward evaluation with embargo where needed.
+8. Estimate LONG and SHORT conditional edge separately and keep NO_TRADE first-class.
+9. Add versioned fee/funding/slippage assumptions and calibrate decision thresholds on validation data only.
+10. Compare shared cross-coin learning with coin-specific calibration only where sample size supports it.
 11. Freeze any promising model/config before future untouched validation; historical development data remains touched.
 12. Require every existing clean-validation, >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gate before capital is exposed.
 
