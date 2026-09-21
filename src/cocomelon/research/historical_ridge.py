@@ -11,6 +11,7 @@ from typing import Any
 from cocomelon.domain.features import TrendRegime
 from cocomelon.research.historical_baselines import (
     DecisionPolicy,
+    DirectionalPrediction,
     ExecutionCostAssumptions,
     PolicyEvaluation,
     ThresholdCalibration,
@@ -208,7 +209,7 @@ class RidgeDirectionalModel:
         *,
         horizon_ms: int,
         allow_coin_calibration: bool = True,
-    ) -> RidgeDirectionalEstimate:
+    ) -> DirectionalPrediction:
         fitted = self.horizons.get(horizon_ms)
         if fitted is None:
             raise HistoricalRidgeError(f"no fitted ridge model for horizon {horizon_ms}")
