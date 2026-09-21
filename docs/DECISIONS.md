@@ -185,3 +185,16 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **Risk consequence:** Models may rank or choose LONG/SHORT/NO_TRADE, but they may not alter hard risk limits, control leverage directly, bypass eligibility, or call live execution APIs.
 
+
+
+## D-026 — NO_TRADE and temporal stability are mandatory economic baselines
+
+**Decision:** A historical learning policy must not trade merely because it is the best available candidate. NO_TRADE has zero realized return before opportunity cost and therefore dominates any validation policy whose realized net mean is non-positive after modeled costs.
+
+**Stability consequence:** Aggregate validation profitability is insufficient. Before a horizon may trade, its selected threshold must also satisfy the configured chronological validation-stability rule across multiple contiguous validation blocks with the required minimum trade count. A candidate that looks profitable only because one subperiod overwhelms a losing subperiod is rejected.
+
+**Model consequence:** This rule applies uniformly to transparent conditional baselines, regularized ridge learners, horizon-specific variants, and later nonlinear challengers. A more complex model does not receive weaker validation standards.
+
+**Historical-data consequence:** Recent public candle/funding history remains valid for bounded touched research. Deeper history may use deterministic candles reconstructed from official Hyperliquid node fill archives only after provenance/integrity checks and exact overlap reconciliation against native recent candles. Requester-pays archive acquisition remains optional and acknowledgement-gated; no paid transfer is automatic.
+
+**Promotion consequence:** A model that abstains everywhere has demonstrated safety/selectivity, not trading edge. It must not be promoted until a frozen candidate later demonstrates positive cost-complete evidence under the required future clean validation and paper/shadow gates.
