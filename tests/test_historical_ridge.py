@@ -6,12 +6,12 @@ import pytest
 
 pytest.importorskip("numpy")
 
+import cocomelon.research.historical_ridge as ridge_module
 from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 from cocomelon.research.historical_features import HistoricalFeatureRow, HistoricalTrainingRow
 from cocomelon.research.historical_learning import DirectionalOutcome
-import cocomelon.research.historical_ridge as ridge_module
 from cocomelon.research.historical_ridge import (
     fit_ridge_directional_model,
     prepare_ridge_walk_forward,
