@@ -148,6 +148,10 @@ def _context_state_1h(row: HistoricalTrainingRow) -> str:
     )
 
 
+def _market_context_state_1h(row: HistoricalTrainingRow) -> str:
+    return f"{row.market.canonical}/{_context_state_1h(row)}"
+
+
 def _dimension_resolvers() -> tuple[
     tuple[str, Callable[[HistoricalTrainingRow], str]], ...
 ]:
@@ -173,6 +177,7 @@ def _dimension_resolvers() -> tuple[
             ),
         ),
         ("context_state_1h", _context_state_1h),
+        ("market_context_state_1h", _market_context_state_1h),
     )
 
 
