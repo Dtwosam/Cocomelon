@@ -95,6 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=_decimal,
         default=Decimal("0"),
     )
+    parser.add_argument("--stability-blocks", type=int, default=2)
+    parser.add_argument("--min-validation-block-trades", type=int, default=1)
     return parser
 
 
@@ -121,6 +123,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             min_sample_count=args.min_sample_count,
             min_validation_trades=args.min_validation_trades,
             min_validation_mean_net_return=args.min_validation_mean_net_return,
+            stability_blocks=args.stability_blocks,
+            min_validation_block_trades=args.min_validation_block_trades,
         )
         report = run_historical_model_comparison_from_sources(
             source_root=args.source_root,
