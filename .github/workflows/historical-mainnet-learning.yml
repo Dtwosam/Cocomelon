@@ -149,7 +149,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: historical-mainnet-learning-2026-08
+          name: historical-mainnet-learning-2026-09-07-to-2026-09-20
           path: artifacts/historical-mainnet-2026-09-07-to-2026-09-20
           if-no-files-found: error
           retention-days: 30
