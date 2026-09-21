@@ -364,6 +364,22 @@ def _selected_horizon_worst_mean(
     return min(worst) if worst else None
 
 
+def _alpha_score(
+    item: tuple[StableAlphaValidation, Decimal],
+) -> tuple[Decimal, Decimal, Decimal, int, Decimal]:
+    candidate, worst_mean = item
+    mean_return = candidate.combined.mean_realized_net_return
+    if mean_return is None:
+        raise HistoricalRidgeError("stable alpha score requires realized mean")
+    return (
+        worst_mean,
+        mean_return,
+        candidate.combined.total_realized_net_return,
+        candidate.combined.trade_count,
+        -candidate.alpha,
+    )
+
+
 def _choose_alpha(
     candidates: Sequence[StableAlphaValidation],
     *,
@@ -385,16 +401,7 @@ def _choose_alpha(
             eligible.append((candidate, worst_mean))
     if not eligible:
         return None
-    return max(
-        eligible,
-        key=lambda item: (
-            item[1],
-            item[0].combined.mean_realized_net_return,
-            item[0].combined.total_realized_net_return,
-            item[0].combined.trade_count,
-            -item[0].alpha,
-        ),
-    )[0]
+    return max(eligible, key=_alpha_score)[0]
 
 
 def _threshold_items(
