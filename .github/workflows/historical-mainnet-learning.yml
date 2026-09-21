@@ -209,6 +209,16 @@ jobs:
             stable_tree_folds
           }' "$COMPARISON_ROOT/comparison.json"
 
+      - name: Render training feature registry
+        run: |
+          set -euo pipefail
+          jq '{
+            dataset_id,
+            converter_version,
+            schema_version,
+            columns
+          }' "$COMPARISON_ROOT/dataset/manifest.json"
+
       - name: Upload authenticated touched research bundle
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
