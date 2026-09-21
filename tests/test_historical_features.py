@@ -9,6 +9,7 @@ from cocomelon.domain.market import Candle, FundingRate, MarketId
 from cocomelon.research.historical_features import (
     HistoricalFeatureError,
     build_historical_feature_rows,
+    build_historical_feature_rows_15m,
     join_features_to_outcomes,
 )
 from cocomelon.research.historical_learning import build_directional_outcomes
@@ -283,3 +284,117 @@ def test_historical_features_compute_funding_change_across_small_timestamp_jitte
     assert anchor.funding_rate == Decimal("0.0003")
     assert anchor.funding_change == Decimal("0.0002")
     assert anchor.funding_premium_change == Decimal("0.0003")
+
+
+def test_15m_anchor_features_use_15m_candles_without_inventing_5m_return() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+            volume=str(100 + index),
+            open_px=str(99 + index),
+        )
+        for index in range(21)
+    )
+
+    rows = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )
+
+    latest = rows[-1]
+    assert latest.anchor_end_ms == candles_15m[-1].end_ms
+    assert latest.anchor_close_px == Decimal("120")
+    assert latest.return_5m is None
+    assert latest.return_15m == Decimal("120") / Decimal("119") - Decimal("1")
+    assert latest.return_1h == Decimal("120") / Decimal("116") - Decimal("1")
+    assert latest.return_4h == Decimal("120") / Decimal("104") - Decimal("1")
+    assert latest.candle_15m_age_ms == 0
+    assert latest.realized_vol_15m is not None
+    assert latest.range_expansion_15m is not None
+    assert latest.relative_volume_15m is not None
+    assert "return_5m" in latest.unavailable_features
+    assert "return_15m" in latest.available_features
+
+
+def test_15m_anchor_features_do_not_bridge_missing_15m_gap() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+        )
+        for index in range(21)
+        if index != 19
+    )
+
+    rows = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )
+
+    latest = rows[-1]
+    assert latest.return_15m is None
+    assert latest.realized_vol_15m is None
+    assert latest.range_expansion_15m is None
+    assert latest.relative_volume_15m is None
+
+
+def test_15m_anchor_features_align_funding_without_future_lookahead() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=str(100 + index),
+        )
+        for index in range(6)
+    )
+    funding = (
+        _funding(0, rate="0.0001", premium="0.0002"),
+        _funding(HOUR, rate="0.0003", premium="0.0005"),
+        _funding(2 * HOUR, rate="0.0099", premium="0.0099"),
+    )
+
+    rows = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=funding,
+        source_manifest_ids=("funding-manifest",),
+    )
+
+    anchor = next(row for row in rows if row.anchor_end_ms > HOUR)
+    assert anchor.anchor_end_ms < 2 * HOUR
+    assert anchor.funding_rate == Decimal("0.0003")
+    assert anchor.funding_change == Decimal("0.0002")
+    assert anchor.funding_premium == Decimal("0.0005")
+    assert anchor.funding_premium_change == Decimal("0.0003")
+
+
+def test_15m_anchor_features_join_exact_15m_outcomes() -> None:
+    candles_15m = tuple(
+        _candle(
+            interval="15m",
+            start_ms=index * FIFTEEN,
+            close=close,
+        )
+        for index, close in enumerate(("100", "110", "99"))
+    )
+    features = build_historical_feature_rows_15m(
+        candles_15m=candles_15m,
+        funding_rates=(),
+        source_manifest_ids=("15m-manifest",),
+    )
+    outcomes = build_directional_outcomes(
+        candles_15m,
+        horizons_ms=(FIFTEEN,),
+    )
+
+    rows = join_features_to_outcomes(features, outcomes)
+
+    assert len(rows) == 2
+    assert rows[0].feature.return_5m is None
+    assert rows[0].outcome.interval == "15m"
+    assert rows[0].long_gross_return == Decimal("0.1")
+    assert rows[0].short_gross_return == Decimal("-0.1")
