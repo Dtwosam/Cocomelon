@@ -947,6 +947,7 @@ def run_walk_forward_baseline(
     min_coin_samples: int,
     min_sample_count: int,
     min_validation_trades: int,
+    min_validation_mean_net_return: Decimal = ZERO,
 ) -> WalkForwardBaselineReport:
     folds = walk_forward_splits(
         rows,
@@ -974,6 +975,7 @@ def run_walk_forward_baseline(
             min_sample_count=min_sample_count,
             min_validation_trades=min_validation_trades,
             allow_coin_calibration=False,
+            min_validation_mean_net_return=min_validation_mean_net_return,
         )
         coin_calibration = calibrate_no_trade_threshold(
             model,
@@ -983,6 +985,7 @@ def run_walk_forward_baseline(
             min_sample_count=min_sample_count,
             min_validation_trades=min_validation_trades,
             allow_coin_calibration=True,
+            min_validation_mean_net_return=min_validation_mean_net_return,
         )
 
         if shared_calibration.abstained:
