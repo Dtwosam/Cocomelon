@@ -366,14 +366,13 @@ def download_archive_inspection(
         resolved.append(downloaded)
         transferred += downloaded.byte_count
 
-    manifest_payload = {
+    identity_payload = {
         "kind": "hyperliquid-node-fills-by-block-download",
         "bucket": ARCHIVE_BUCKET,
         "prefix": ARCHIVE_PREFIX,
         "requested_start_ms": inspection.requested_start_ms,
         "requested_end_ms": inspection.requested_end_ms,
         "plan_total_byte_count": inspection.total_byte_count,
-        "transferred_byte_count": transferred,
         "shards": tuple(
             {
                 "key": item.shard.key,
@@ -382,14 +381,19 @@ def download_archive_inspection(
                 "byte_count": item.byte_count,
                 "etag": item.etag,
                 "sha256": item.sha256,
-                "reused_cache": item.reused_cache,
             }
             for item in resolved
         ),
         "schema_version": 1,
     }
+    manifest_payload = {
+        **identity_payload,
+        "transferred_byte_count": transferred,
+        "cache_reused_count": sum(1 for item in resolved if item.reused_cache),
+        "downloaded_count": sum(1 for item in resolved if not item.reused_cache),
+    }
     manifest_payload["manifest_id"] = hashlib.sha256(
-        _canonical_json(manifest_payload).encode("utf-8")
+        _canonical_json(identity_payload).encode("utf-8")
     ).hexdigest()[:24]
     manifest_path = destination_root / "download_manifest.json"
     _atomic_write(
