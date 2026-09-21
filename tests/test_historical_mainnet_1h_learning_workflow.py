@@ -28,6 +28,9 @@ def test_1h_long_window_workflow_is_free_bounded_and_paper_only() -> None:
     assert 'WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"' in source
     assert "--interval 1h" in source
     assert "--max-candles 5000" in source
+    assert "Require complete six-month 1h candle grids" in source
+    assert ".complete_requested_grid == true" in source
+    assert ".record_count == 4873" in source
     for market in ("BTC", "ETH", "SOL", "HYPE"):
         assert f"--market {market}" in source
 
