@@ -205,3 +205,83 @@ def test_training_rows_reject_horizon_off_the_5m_grid(tmp_path: Path) -> None:
             markets=(MARKET,),
             horizons_ms=(420_000,),
         )
+
+
+def test_build_training_rows_supports_15m_anchor_interval(tmp_path: Path) -> None:
+    root = _build_source_root(tmp_path)
+
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET,),
+        horizons_ms=(FIFTEEN, HOUR),
+        anchor_interval="15m",
+    )
+
+    assert rows
+    assert {row.outcome.interval for row in rows} == {"15m"}
+    assert {row.horizon_ms for row in rows} == {FIFTEEN, HOUR}
+    assert all(row.feature.return_5m is None for row in rows)
+    assert any(row.feature.return_15m is not None for row in rows)
+    assert all(row.feature.candle_15m_age_ms == 0 for row in rows)
+
+
+def test_training_rows_reject_horizon_off_the_15m_grid(tmp_path: Path) -> None:
+    root = _build_source_root(tmp_path)
+
+    with pytest.raises(ValueError, match="15m base interval"):
+        build_training_rows_from_source_root(
+            root,
+            markets=(MARKET,),
+            horizons_ms=(FIVE,),
+            anchor_interval="15m",
+        )
+
+
+def test_export_training_dataset_records_anchor_interval(tmp_path: Path) -> None:
+    parquet = pytest.importorskip("pyarrow.parquet")
+    root = _build_source_root(tmp_path)
+    rows = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET,),
+        horizons_ms=(FIFTEEN,),
+        anchor_interval="15m",
+    )
+
+    manifest = export_training_dataset(rows, tmp_path / "dataset-15m")
+    payload = json.loads(
+        (tmp_path / "dataset-15m" / "manifest.json").read_text(encoding="utf-8")
+    )
+    table = parquet.read_table(tmp_path / "dataset-15m" / "training.parquet")
+
+    assert manifest.anchor_interval == "15m"
+    assert manifest.schema_version == 2
+    assert manifest.converter_version == "historical-directional-training-v2-anchor-interval"
+    assert payload["anchor_interval"] == "15m"
+    assert set(table.column("anchor_interval").to_pylist()) == {"15m"}
+
+
+def test_export_training_dataset_rejects_mixed_anchor_intervals(
+    tmp_path: Path,
+) -> None:
+    root = _build_source_root(tmp_path)
+    rows_5m = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET,),
+        horizons_ms=(FIFTEEN,),
+        anchor_interval="5m",
+    )
+    rows_15m = build_training_rows_from_source_root(
+        root,
+        markets=(MARKET,),
+        horizons_ms=(FIFTEEN,),
+        anchor_interval="15m",
+    )
+
+    with pytest.raises(
+        HistoricalDatasetIntegrityError,
+        match="exactly one anchor interval",
+    ):
+        export_training_dataset(
+            (rows_5m[0], rows_15m[0]),
+            tmp_path / "dataset-mixed",
+        )
