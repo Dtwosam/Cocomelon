@@ -56,6 +56,48 @@ class HistoricalExecutedTrade:
 
 
 @dataclass(frozen=True, slots=True)
+class HistoricalOccupancyTradeSummary:
+    trade_count: int
+    long_count: int
+    short_count: int
+    total_realized_net_return: Decimal
+    mean_realized_net_return: Decimal | None
+
+    def __post_init__(self) -> None:
+        for field in ("trade_count", "long_count", "short_count"):
+            if getattr(self, field) < 0:
+                raise ValueError(f"{field} must be non-negative")
+        if self.long_count + self.short_count != self.trade_count:
+            raise ValueError("long_count + short_count must equal trade_count")
+        if not self.total_realized_net_return.is_finite():
+            raise ValueError("total_realized_net_return must be finite")
+        if self.mean_realized_net_return is None:
+            if self.trade_count != 0:
+                raise ValueError("mean return is required when trades exist")
+        elif not self.mean_realized_net_return.is_finite():
+            raise ValueError("mean_realized_net_return must be finite")
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalOccupancyBreakdownEntry:
+    dimension: str
+    value: str
+    summary: HistoricalOccupancyTradeSummary
+
+    def __post_init__(self) -> None:
+        if self.dimension not in {
+            "market",
+            "horizon_ms",
+            "action",
+            "trend_regime",
+            "estimate_source",
+        }:
+            raise ValueError("unsupported occupancy breakdown dimension")
+        if not self.value.strip():
+            raise ValueError("breakdown value must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class HistoricalOccupancyEvaluation:
     prediction_row_count: int
     opportunity_count: int
@@ -245,3 +287,65 @@ def evaluate_occupancy_policy(
         policy=policy,
         costs=costs,
     )
+
+
+def summarize_occupancy_trades(
+    trades: Sequence[HistoricalExecutedTrade],
+) -> HistoricalOccupancyTradeSummary:
+    realized = tuple(item.realized_net_return for item in trades)
+    total = sum(realized, ZERO)
+    mean = None if not realized else total / Decimal(len(realized))
+    long_count = sum(
+        1 for item in trades if item.decision.action is DecisionAction.LONG
+    )
+    short_count = sum(
+        1 for item in trades if item.decision.action is DecisionAction.SHORT
+    )
+    return HistoricalOccupancyTradeSummary(
+        trade_count=len(trades),
+        long_count=long_count,
+        short_count=short_count,
+        total_realized_net_return=total,
+        mean_realized_net_return=mean,
+    )
+
+
+def occupancy_trade_breakdowns(
+    evaluation: HistoricalOccupancyEvaluation,
+) -> tuple[HistoricalOccupancyBreakdownEntry, ...]:
+    dimensions = (
+        (
+            "market",
+            lambda item: item.market,
+        ),
+        (
+            "horizon_ms",
+            lambda item: str(item.horizon_ms),
+        ),
+        (
+            "action",
+            lambda item: item.decision.action.value,
+        ),
+        (
+            "trend_regime",
+            lambda item: item.row.feature.trend_regime.value,
+        ),
+        (
+            "estimate_source",
+            lambda item: item.decision.estimate_source,
+        ),
+    )
+    entries: list[HistoricalOccupancyBreakdownEntry] = []
+    for dimension, key_fn in dimensions:
+        grouped: dict[str, list[HistoricalExecutedTrade]] = defaultdict(list)
+        for trade in evaluation.trades:
+            grouped[key_fn(trade)].append(trade)
+        for value in sorted(grouped):
+            entries.append(
+                HistoricalOccupancyBreakdownEntry(
+                    dimension=dimension,
+                    value=value,
+                    summary=summarize_occupancy_trades(grouped[value]),
+                )
+            )
+    return tuple(entries)
