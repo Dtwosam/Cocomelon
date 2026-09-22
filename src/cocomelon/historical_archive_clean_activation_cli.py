@@ -77,6 +77,13 @@ def archive_clean_activation_payload(
             frozen_revision=frozen_revision,
             runtime_artifact_id=runtime_artifact_id,
         )
+        if (
+            authorization.authorization_source_revision
+            != authorization_source_revision
+        ):
+            raise RuntimeError(
+                "ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_MISMATCH"
+            )
         command = "historical-archive-clean-activation-verify"
     else:
         authorization = build_archive_clean_activation_authorization(
