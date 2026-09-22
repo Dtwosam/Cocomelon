@@ -10,8 +10,8 @@ from typing import Protocol, cast
 from urllib.parse import quote
 
 from cocomelon.domain.market import MarketId
-from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.historical_archive_candles_cli import ingest_archive_candles
+from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.research.historical_archive_acquisition import (
     ARCHIVE_BUCKET,
     ARCHIVE_PREFIX,
@@ -25,8 +25,8 @@ from cocomelon.research.historical_archive_overlap import (
 from cocomelon.research.historical_backfill import (
     HistoricalCandleClient,
     HistoricalFundingClient,
-    build_coverage_report,
     backfill_funding,
+    build_coverage_report,
 )
 from cocomelon.research.historical_dataset import (
     load_candle_source,
