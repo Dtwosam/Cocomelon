@@ -82,3 +82,17 @@ def test_activation_workflow_separates_auditor_from_frozen_scorer_revision() -> 
     assert '--authorization-source-revision "$AUTHORIZATION_SOURCE_REVISION"' in source
     assert "ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_MISMATCH" in source
     assert 'run.get("head_sha") != os.environ["FROZEN_REVISION"]' in source
+
+def test_activation_workflow_auto_runs_only_after_successful_main_bootstrap() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "workflow_run:" in source
+    assert "Historical Archive Clean Bootstrap" in source
+    assert "types:" in source
+    assert "- completed" in source
+    assert "github.event_name == 'workflow_run'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event_name == 'workflow_dispatch'" in source
+    assert "schedule:" not in source
+
