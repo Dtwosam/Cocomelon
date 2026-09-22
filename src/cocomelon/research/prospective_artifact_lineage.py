@@ -9,6 +9,12 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
+from cocomelon.research.prospective_capture_transport import (
+    ProspectiveCaptureTransportError,
+    build_legacy_prospective_hype_control_plane,
+    build_prospective_hype_control_plane,
+    verify_control_plane_supersession,
+)
 from cocomelon.research.prospective_context_evidence import (
     ProspectiveEvidenceStore,
     ProspectiveObservation,
@@ -274,13 +280,33 @@ class ProspectiveArtifactLineageReceipt:
 def _verify_fixed_identity(
     previous: ProspectiveStateReadiness,
     current: ProspectiveStateReadiness,
+    *,
+    current_root: str | Path,
 ) -> None:
     if previous.campaign_id != current.campaign_id:
         raise ProspectiveArtifactLineageError("CAMPAIGN_ID_DRIFT")
     if previous.runtime_attestation_id != current.runtime_attestation_id:
         raise ProspectiveArtifactLineageError("RUNTIME_ATTESTATION_DRIFT")
-    if previous.control_plane_id != current.control_plane_id:
+    if previous.control_plane_id == current.control_plane_id:
+        return
+
+    legacy = build_legacy_prospective_hype_control_plane()
+    replacement = build_prospective_hype_control_plane()
+    if (
+        previous.control_plane_id != legacy["control_plane_id"]
+        or current.control_plane_id != replacement["control_plane_id"]
+        or previous.observation_count != 0
+        or previous.outcome_count != 0
+    ):
         raise ProspectiveArtifactLineageError("CONTROL_PLANE_DRIFT")
+    try:
+        verify_control_plane_supersession(
+            Path(current_root) / "control-plane-supersession.json"
+        )
+    except ProspectiveCaptureTransportError as exc:
+        raise ProspectiveArtifactLineageError(
+            "CONTROL_PLANE_SUPERSESSION_INVALID"
+        ) from exc
 
 
 def verify_prospective_hype_artifact_lineage(
@@ -311,7 +337,11 @@ def verify_prospective_hype_artifact_lineage(
         artifact_id=current_id,
         audited_at_ms=current_audited_at_ms,
     )
-    _verify_fixed_identity(previous_readiness, current_readiness)
+    _verify_fixed_identity(
+        previous_readiness,
+        current_readiness,
+        current_root=current_root,
+    )
 
     spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
     previous_store = ProspectiveEvidenceStore(previous_root, spec=spec)
