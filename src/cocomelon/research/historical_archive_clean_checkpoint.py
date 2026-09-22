@@ -588,6 +588,7 @@ class ArchiveCleanCheckpointEvidenceStore:
             latest_observation_id=observation.observation_id,
             latest_state=observation.state_after,
             pending_observations=tuple(pending),
+            as_of_ms=max(self._checkpoint.as_of_ms, anchor_end_ms),
         )
         return observation
 
@@ -716,8 +717,7 @@ class ArchiveCleanCheckpointEvidenceStore:
         )
 
     @staticmethod
-    def _decimal_ratio(numerator: int, denominator: int):
-        
+    def _decimal_ratio(numerator: int, denominator: int) -> Decimal:
         return Decimal(numerator) / Decimal(denominator)
 
     def save(self, *, as_of_ms: int) -> ArchiveCleanOperationalCheckpoint:
