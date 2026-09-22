@@ -210,13 +210,13 @@ jobs:
           import os
           from pathlib import Path
 
-          runtime = json.loads(
-              Path("/tmp/archive-clean-runtime.json").read_text(
+          control_plane = json.loads(
+              Path("/tmp/archive-clean-control-plane.json").read_text(
                   encoding="utf-8"
               )
           )
           now_ms = int(os.environ["NOW_MS"])
-          validation_start_ms = int(runtime["validation_start_ms"])
+          validation_start_ms = int(control_plane["validation_start_ms"])
           if now_ms >= validation_start_ms:
               raise SystemExit(
                   "POST_CUTOVER_ARCHIVE_CLEAN_CHECKPOINT_REQUIRED"
@@ -253,8 +253,13 @@ jobs:
                   encoding="utf-8"
               )
           )
-          if payload["runtime_id"] != os.environ["RUNTIME_PIN_ID"] and False:
-              raise SystemExit("unreachable")
+          runtime = json.loads(
+              Path("/tmp/archive-clean-runtime.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload.get("runtime_id") != runtime.get("runtime_id"):
+              raise SystemExit("ARCHIVE_CLEAN_CYCLE_RUNTIME_ID_MISMATCH")
           expected = {
               "pin_id": os.environ["RUNTIME_PIN_ID"],
               "control_plane_id": os.environ["CONTROL_PLANE_ID"],
