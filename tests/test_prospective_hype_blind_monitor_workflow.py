@@ -91,15 +91,19 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "cocomelon-prospective-hype-blind-monitor-failure" in source
+    assert "ARTIFACT_DISCOVERY_UNEXPECTED_FAILURE" in source
     assert "ARTIFACT_DISCOVERY_REQUEST_FAILED" in source
     assert "HEALTH_ARTIFACT_MISSING" in source
     assert "LINEAGE_ARTIFACT_MISSING" in source
     assert "STATE_ARTIFACT_MATCH_INVALID" in source
     assert "HEALTH_ARTIFACT_DOWNLOAD_FAILED" in source
     assert "LINEAGE_ARTIFACT_DOWNLOAD_FAILED" in source
+    assert "SOURCE_ARTIFACT_DOWNLOAD_UNEXPECTED_FAILURE" in source
     assert "MONITOR_BUILD_FAILED" in source
     assert "failure.json" in source
     assert "if: ${{ always() }}" in source
+    assert "always() && steps.discover.outputs.status != 'ok'" in source
+    assert "always() && steps.discover.outputs.status == 'ok'" in source
     assert "Preserve discovery failure receipt" in source
     assert "Preserve download failure receipt" in source
     assert "Preserve monitor failure status" in source
