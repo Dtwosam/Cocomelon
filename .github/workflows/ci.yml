@@ -72,6 +72,9 @@ jobs:
           tests/test_prospective_readiness_failure_cli.py
           tests/test_prospective_hype_readiness_workflow.py
           tests/test_prospective_state_readiness.py
+          tests/test_prospective_state_readiness_failure.py
+          tests/test_prospective_state_readiness_failure_cli.py
+          tests/test_prospective_hype_state_readiness_workflow.py
           tests/test_prospective_lineage_failure.py
           tests/test_prospective_lineage_failure_cli.py
           tests/test_prospective_blind_monitor.py
