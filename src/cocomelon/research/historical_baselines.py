@@ -9,13 +9,9 @@ from typing import Protocol
 
 from cocomelon.domain.features import TrendRegime
 from cocomelon.features.cross_market import (
-    basket_breadth_bucket as basket_breadth_1h_bucket,
-)
-from cocomelon.features.cross_market import (
-    basket_direction_bucket as basket_direction_1h_bucket,
-)
-from cocomelon.features.cross_market import (
-    relative_strength_bucket as relative_strength_1h_bucket,
+    basket_breadth_bucket,
+    basket_direction_bucket,
+    relative_strength_bucket,
 )
 from cocomelon.research.historical_features import (
     HistoricalFeatureRow,
@@ -781,6 +777,18 @@ class _PolicyObservation:
                 raise ValueError("NO_TRADE cannot have realized return")
         elif self.action is not DecisionAction.NO_TRADE:
             raise ValueError("trades require realized return")
+
+
+def basket_direction_1h_bucket(value: Decimal | None) -> str:
+    return basket_direction_bucket(value)
+
+
+def basket_breadth_1h_bucket(value: Decimal | None) -> str:
+    return basket_breadth_bucket(value)
+
+
+def relative_strength_1h_bucket(value: Decimal | None) -> str:
+    return relative_strength_bucket(value)
 
 
 @dataclass(frozen=True, slots=True)
