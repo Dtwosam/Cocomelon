@@ -11,6 +11,7 @@ from cocomelon.research.historical_archive_clean_bootstrap import (
     HistoricalArchiveCleanBootstrapError,
     bootstrap_archive_clean_state,
     load_archive_clean_bootstrap_receipt,
+    verify_archive_clean_bootstrap_state,
 )
 from cocomelon.research.historical_archive_clean_checkpoint import (
     load_archive_clean_operational_checkpoint,
@@ -161,6 +162,38 @@ def test_bootstrap_rerun_is_idempotent_before_cutover(tmp_path: Path) -> None:
         if path.is_file()
     } == first_bytes
 
+
+
+def test_bootstrap_state_verifies_after_cutover_without_mutation(
+    tmp_path: Path,
+) -> None:
+    pinned = _pinned()
+    created = bootstrap_archive_clean_state(
+        pinned,  # type: ignore[arg-type]
+        state_root=tmp_path,
+        frozen_revision="f" * 40,
+        runtime_artifact_id="123",
+        as_of_ms=1_000,
+    )
+    before = {
+        path.name: path.read_bytes()
+        for path in tmp_path.iterdir()
+        if path.is_file()
+    }
+
+    verified = verify_archive_clean_bootstrap_state(
+        pinned,  # type: ignore[arg-type]
+        state_root=tmp_path,
+        frozen_revision="f" * 40,
+        runtime_artifact_id="123",
+    )
+
+    assert verified == created
+    assert {
+        path.name: path.read_bytes()
+        for path in tmp_path.iterdir()
+        if path.is_file()
+    } == before
 
 def test_bootstrap_rejects_post_cutover_creation(tmp_path: Path) -> None:
     pinned = _pinned()
