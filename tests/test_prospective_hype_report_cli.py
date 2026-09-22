@@ -18,6 +18,10 @@ def test_empty_campaign_report_is_collecting_and_promotion_ineligible(tmp_path) 
     assert payload["command"] == "prospective-hype-report"
     assert payload["status"] == ProspectiveValidationStatus.COLLECTING.value
     assert payload["observation_count"] == 0
+    assert payload["expected_anchor_count_to_date"] == 0
+    assert payload["observation_count_to_date"] == 0
+    assert payload["missed_anchor_count_to_date"] == 0
+    assert payload["capture_coverage_to_date"] is None
     assert payload["settled_trade_count"] == 0
     assert payload["capture_coverage"] == "0"
     assert payload["promotion_eligible"] is False

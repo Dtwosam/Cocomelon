@@ -124,6 +124,18 @@ class ProspectiveValidationPlan:
             (self.validation_end_ms - 1 - first) // self.anchor_interval_ms
         ) + 1
 
+    def expected_anchor_count_as_of(self, as_of_ms: int) -> int:
+        if as_of_ms < 0:
+            raise ValueError("as_of_ms must be non-negative")
+        first = self.first_expected_anchor_ms
+        if as_of_ms < first:
+            return 0
+        capped = min(as_of_ms, self.validation_end_ms - 1)
+        return min(
+            self.expected_anchor_count,
+            ((capped - first) // self.anchor_interval_ms) + 1,
+        )
+
     def identity_payload(self) -> dict[str, object]:
         return {
             "candidate_spec_id": self.candidate_spec_id,
@@ -213,8 +225,12 @@ class ProspectiveValidationReport:
     campaign_id: str
     evidence_digest: str
     expected_anchor_count: int
+    expected_anchor_count_to_date: int
     observation_count: int
+    observation_count_to_date: int
+    missed_anchor_count_to_date: int
     capture_coverage: Decimal
+    capture_coverage_to_date: Decimal | None
     raw_match_count: int
     effective_trade_count: int
     occupancy_blocked_count: int
@@ -228,7 +244,7 @@ class ProspectiveValidationReport:
     status: ProspectiveValidationStatus
     evidence_class: str = PROSPECTIVE_EVIDENCE_CLASS
     promotion_eligible: bool = False
-    schema_version: int = 1
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
         if self.as_of_ms < 0:
@@ -237,14 +253,46 @@ class ProspectiveValidationReport:
             raise ValueError("campaign_id and evidence_digest must be SHA-256 identities")
         if self.expected_anchor_count <= 0:
             raise ValueError("expected_anchor_count must be positive")
+        if self.expected_anchor_count_to_date < 0:
+            raise ValueError("expected_anchor_count_to_date must be non-negative")
+        if self.expected_anchor_count_to_date > self.expected_anchor_count:
+            raise ValueError("expected_anchor_count_to_date cannot exceed full window")
         if self.observation_count < 0 or self.observation_count > self.expected_anchor_count:
             raise ValueError("observation_count must fit expected anchors")
+        if (
+            self.observation_count_to_date < 0
+            or self.observation_count_to_date > self.expected_anchor_count_to_date
+        ):
+            raise ValueError("observation_count_to_date must fit expected anchors to date")
+        if self.missed_anchor_count_to_date != (
+            self.expected_anchor_count_to_date - self.observation_count_to_date
+        ):
+            raise ValueError("missed_anchor_count_to_date must reconcile")
         if (
             not self.capture_coverage.is_finite()
             or self.capture_coverage < ZERO
             or self.capture_coverage > Decimal("1")
         ):
             raise ValueError("capture_coverage must be within [0, 1]")
+        if self.expected_anchor_count_to_date == 0:
+            if self.capture_coverage_to_date is not None:
+                raise ValueError(
+                    "capture_coverage_to_date must be None before first expected anchor"
+                )
+        else:
+            if (
+                self.capture_coverage_to_date is None
+                or not self.capture_coverage_to_date.is_finite()
+                or self.capture_coverage_to_date < ZERO
+                or self.capture_coverage_to_date > Decimal("1")
+            ):
+                raise ValueError("capture_coverage_to_date must be within [0, 1]")
+            expected_to_date = (
+                Decimal(self.observation_count_to_date)
+                / Decimal(self.expected_anchor_count_to_date)
+            )
+            if self.capture_coverage_to_date != expected_to_date:
+                raise ValueError("capture_coverage_to_date must match to-date counts")
         for field in (
             "raw_match_count",
             "effective_trade_count",
@@ -274,7 +322,7 @@ class ProspectiveValidationReport:
             raise ValueError("prospective report evidence class is fixed")
         if self.promotion_eligible:
             raise ValueError("prospective report must remain promotion ineligible")
-        if self.schema_version != 1:
+        if self.schema_version != 2:
             raise ValueError("unsupported prospective report schema")
 
     def identity_payload(self) -> dict[str, object]:
@@ -285,8 +333,16 @@ class ProspectiveValidationReport:
             "campaign_id": self.campaign_id,
             "evidence_digest": self.evidence_digest,
             "expected_anchor_count": self.expected_anchor_count,
+            "expected_anchor_count_to_date": self.expected_anchor_count_to_date,
             "observation_count": self.observation_count,
+            "observation_count_to_date": self.observation_count_to_date,
+            "missed_anchor_count_to_date": self.missed_anchor_count_to_date,
             "capture_coverage": str(self.capture_coverage),
+            "capture_coverage_to_date": (
+                None
+                if self.capture_coverage_to_date is None
+                else str(self.capture_coverage_to_date)
+            ),
             "raw_match_count": self.raw_match_count,
             "effective_trade_count": self.effective_trade_count,
             "occupancy_blocked_count": self.occupancy_blocked_count,
@@ -451,7 +507,26 @@ def build_prospective_validation_report(
     )
 
     expected_anchor_count = plan.expected_anchor_count
+    expected_anchor_count_to_date = plan.expected_anchor_count_as_of(as_of_ms)
+    observation_count_to_date = sum(
+        1 for item in observations if item.anchor_end_ms <= as_of_ms
+    )
+    if observation_count_to_date > expected_anchor_count_to_date:
+        raise ProspectiveValidationError(
+            "prospective observations exceed expected anchors to date"
+        )
+    missed_anchor_count_to_date = (
+        expected_anchor_count_to_date - observation_count_to_date
+    )
     capture_coverage = Decimal(len(observations)) / Decimal(expected_anchor_count)
+    capture_coverage_to_date = (
+        None
+        if expected_anchor_count_to_date == 0
+        else (
+            Decimal(observation_count_to_date)
+            / Decimal(expected_anchor_count_to_date)
+        )
+    )
     raw_matches = tuple(
         item for item in observations if item.raw_direction is not Direction.NO_TRADE
     )
@@ -529,8 +604,12 @@ def build_prospective_validation_report(
         campaign_id=store.manifest.campaign_id,
         evidence_digest=evidence_digest,
         expected_anchor_count=expected_anchor_count,
+        expected_anchor_count_to_date=expected_anchor_count_to_date,
         observation_count=len(observations),
+        observation_count_to_date=observation_count_to_date,
+        missed_anchor_count_to_date=missed_anchor_count_to_date,
         capture_coverage=capture_coverage,
+        capture_coverage_to_date=capture_coverage_to_date,
         raw_match_count=len(raw_matches),
         effective_trade_count=len(effective),
         occupancy_blocked_count=len(occupancy_blocked),

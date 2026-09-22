@@ -140,6 +140,16 @@ def test_frozen_validation_plan_has_fixed_window_and_nonpromotion_semantics() ->
     assert PLAN.finalization_not_before_ms == PLAN.validation_end_ms + SPEC.horizon_ms
     assert PLAN.expected_anchor_count == 1080
     assert PLAN.first_expected_anchor_ms == PLAN.validation_start_ms + HOUR_MS - 1
+    assert PLAN.expected_anchor_count_as_of(PLAN.validation_start_ms) == 0
+    assert PLAN.expected_anchor_count_as_of(PLAN.first_expected_anchor_ms - 1) == 0
+    assert PLAN.expected_anchor_count_as_of(PLAN.first_expected_anchor_ms) == 1
+    assert (
+        PLAN.expected_anchor_count_as_of(
+            PLAN.first_expected_anchor_ms + 2 * HOUR_MS
+        )
+        == 3
+    )
+    assert PLAN.expected_anchor_count_as_of(PLAN.validation_end_ms) == 1080
     assert PLAN.min_capture_coverage == Decimal("0.90")
     assert PLAN.min_settled_trades == 80
     assert PLAN.stability_blocks == 4
@@ -158,7 +168,11 @@ def test_positive_complete_campaign_becomes_candidate_review_eligible_only() -> 
 
     assert report.status is ProspectiveValidationStatus.ELIGIBLE_FOR_CANDIDATE_REVIEW
     assert report.capture_coverage == Decimal("1")
+    assert report.capture_coverage_to_date == Decimal("1")
+    assert report.expected_anchor_count_to_date == 1080
     assert report.observation_count == 1080
+    assert report.observation_count_to_date == 1080
+    assert report.missed_anchor_count_to_date == 0
     assert report.effective_trade_count == 80
     assert report.settled_trade_count == 80
     assert report.overdue_unsettled_count == 0
@@ -289,3 +303,35 @@ def test_postvalidation_observation_fails_closed() -> None:
             store,
             as_of_ms=PLAN.finalization_not_before_ms,
         )
+
+
+
+def test_collecting_report_tracks_capture_health_to_date() -> None:
+    first = PLAN.first_expected_anchor_ms
+    observations = (
+        _observation(first, trade=False),
+        _observation(first + 2 * HOUR_MS, trade=False),
+    )
+    report = build_prospective_validation_report(
+        FakeStore(observations=observations, outcomes=()),
+        as_of_ms=first + 2 * HOUR_MS + 5 * 60_000,
+    )
+
+    assert report.status is ProspectiveValidationStatus.COLLECTING
+    assert report.expected_anchor_count_to_date == 3
+    assert report.observation_count_to_date == 2
+    assert report.missed_anchor_count_to_date == 1
+    assert report.capture_coverage_to_date == Decimal(2) / Decimal(3)
+    assert report.capture_coverage == Decimal(2) / Decimal(1080)
+
+
+def test_collecting_report_has_no_to_date_ratio_before_first_anchor() -> None:
+    report = build_prospective_validation_report(
+        FakeStore(observations=(), outcomes=()),
+        as_of_ms=PLAN.validation_start_ms,
+    )
+
+    assert report.expected_anchor_count_to_date == 0
+    assert report.observation_count_to_date == 0
+    assert report.missed_anchor_count_to_date == 0
+    assert report.capture_coverage_to_date is None
