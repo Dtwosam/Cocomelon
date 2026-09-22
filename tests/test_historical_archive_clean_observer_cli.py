@@ -38,8 +38,7 @@ def _runtime() -> SimpleNamespace:
 
 
 def _pinned_runtime() -> SimpleNamespace:
-    pinned = _pinned_runtime()
-    runtime = pinned.runtime
+    runtime = _runtime()
     return SimpleNamespace(
         runtime=runtime,
         bundle=SimpleNamespace(
@@ -103,7 +102,8 @@ def test_payload_validates_frozen_runtime_before_client_construction(
     with pytest.raises(RuntimeError, match="invalid pinned runtime"):
         cli.archive_clean_observer_payload(
             PaperSettings(),  # type: ignore[arg-type]
-            output_root=tmp_path / "output",
+            runtime_root=tmp_path / "runtime",
+            pin_id="7" * 64,
             root=tmp_path / "evidence",
         )
 
@@ -112,7 +112,8 @@ def test_payload_runs_paper_cycle_and_emits_non_executable_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    runtime = _runtime()
+    pinned = _pinned_runtime()
+    runtime = pinned.runtime
     reader = object()
     manifest = SimpleNamespace(campaign_id="e" * 64)
 
