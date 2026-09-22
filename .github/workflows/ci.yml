@@ -68,6 +68,7 @@ jobs:
           tests/test_prospective_state_continuity.py
           tests/test_prospective_runtime_attestation.py
           tests/test_prospective_campaign_readiness.py
+          tests/test_prospective_hype_readiness_workflow.py
           tests/test_prospective_state_readiness.py
           tests/test_prospective_blind_monitor.py
           tests/test_prospective_cutover_acceptance.py
