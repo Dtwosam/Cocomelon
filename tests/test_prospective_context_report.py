@@ -15,6 +15,10 @@ from cocomelon.research.prospective_context_evidence import (
     ProspectiveObservation,
     ProspectiveOutcome,
 )
+from cocomelon.research.prospective_campaign_health import (
+    ProspectiveCampaignHealthStatus,
+    build_prospective_campaign_health,
+)
 from cocomelon.research.prospective_context_report import (
     DAY_MS,
     HOUR_MS,
@@ -335,3 +339,124 @@ def test_collecting_report_has_no_to_date_ratio_before_first_anchor() -> None:
     assert report.observation_count_to_date == 0
     assert report.missed_anchor_count_to_date == 0
     assert report.capture_coverage_to_date is None
+
+
+
+def test_campaign_health_is_prevalidation_ready_before_first_counted_anchor() -> None:
+    report = build_prospective_validation_report(
+        FakeStore(observations=(), outcomes=()),
+        as_of_ms=PLAN.validation_start_ms,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    assert health.status is ProspectiveCampaignHealthStatus.PRE_VALIDATION
+    assert health.required_final_observation_count == 972
+    assert health.missed_anchor_budget == 108
+    assert health.remaining_missed_anchor_budget == 108
+    assert health.maximum_final_capture_coverage == Decimal("1")
+    assert health.irrecoverable is False
+    assert len(health.health_id) == 64
+
+
+def test_one_missed_anchor_degrades_but_remains_recoverable() -> None:
+    first = PLAN.first_expected_anchor_ms
+    observations = (
+        _observation(first, trade=False),
+        _observation(first + 2 * HOUR_MS, trade=False),
+    )
+    report = build_prospective_validation_report(
+        FakeStore(observations=observations, outcomes=()),
+        as_of_ms=first + 2 * HOUR_MS + 5 * 60_000,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    assert health.status is ProspectiveCampaignHealthStatus.DEGRADED
+    assert health.missed_anchor_count_to_date == 1
+    assert health.remaining_missed_anchor_budget == 107
+    assert health.maximum_final_capture_coverage == (
+        Decimal(1079) / Decimal(1080)
+    )
+    assert health.irrecoverable is False
+
+
+def test_capture_floor_becomes_irrecoverable_after_miss_budget_is_exceeded() -> None:
+    first = PLAN.first_expected_anchor_ms
+    report = build_prospective_validation_report(
+        FakeStore(observations=(), outcomes=()),
+        as_of_ms=first + 108 * HOUR_MS,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    assert health.expected_anchor_count_to_date == 109
+    assert health.missed_anchor_count_to_date == 109
+    assert health.maximum_final_observation_count == 971
+    assert health.maximum_final_capture_coverage == Decimal(971) / Decimal(1080)
+    assert health.status is ProspectiveCampaignHealthStatus.IRRECOVERABLE
+    assert "capture_floor_unreachable" in health.irrecoverable_reasons
+
+
+def test_minimum_trade_count_can_become_irrecoverable_even_with_full_capture() -> None:
+    observations = tuple(
+        _observation(
+            PLAN.first_expected_anchor_ms + index * HOUR_MS,
+            trade=False,
+        )
+        for index in range(PLAN.expected_anchor_count)
+    )
+    report = build_prospective_validation_report(
+        FakeStore(observations=observations, outcomes=()),
+        as_of_ms=PLAN.validation_end_ms - 1,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    assert health.maximum_final_capture_coverage == Decimal("1")
+    assert health.maximum_possible_settled_trades == 0
+    assert health.status is ProspectiveCampaignHealthStatus.IRRECOVERABLE
+    assert "minimum_settled_trade_count_unreachable" in health.irrecoverable_reasons
+
+
+def test_completed_block_without_enough_trades_is_irrecoverable() -> None:
+    anchors_per_block = PLAN.expected_anchor_count // PLAN.stability_blocks
+    observations = tuple(
+        _observation(
+            PLAN.first_expected_anchor_ms + index * HOUR_MS,
+            trade=index >= anchors_per_block,
+        )
+        for index in range(PLAN.expected_anchor_count)
+    )
+    report = build_prospective_validation_report(
+        FakeStore(observations=observations, outcomes=()),
+        as_of_ms=PLAN.validation_end_ms - 1,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    first_block = health.block_recoverability[0]
+    assert first_block.remaining_expected_anchors == 0
+    assert first_block.maximum_possible_settled_trades == 0
+    assert first_block.recoverable is False
+    assert health.status is ProspectiveCampaignHealthStatus.IRRECOVERABLE
+    assert (
+        "block_1_minimum_trade_count_unreachable"
+        in health.irrecoverable_reasons
+    )
+
+
+def test_overdue_settlement_degrades_health_but_is_not_irrecoverable() -> None:
+    first = PLAN.first_expected_anchor_ms
+    observation = _observation(first, trade=True)
+    report = build_prospective_validation_report(
+        FakeStore(observations=(observation,), outcomes=()),
+        as_of_ms=observation.target_end_ms + 1,
+    )
+
+    health = build_prospective_campaign_health(report)
+
+    assert report.overdue_unsettled_count == 1
+    assert health.overdue_unsettled_count == 1
+    assert health.status is ProspectiveCampaignHealthStatus.DEGRADED
+    assert health.irrecoverable is False
