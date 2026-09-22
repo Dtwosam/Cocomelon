@@ -485,6 +485,64 @@ def build_archive_candidate_training_plan(
     )
 
 
+def materialize_archive_candidate_training_rows(
+    preset: HistoricalArchiveExperimentPreset,
+    *,
+    source_root: Path,
+    plan: HistoricalArchiveCandidateTrainingPlan,
+) -> tuple[
+    tuple[HistoricalTrainingRow, ...],
+    tuple[HistoricalTrainingRow, ...],
+    tuple[HistoricalTrainingRow, ...],
+]:
+    rows = canonical_training_rows(
+        build_training_rows_from_source_root(
+            source_root,
+            markets=preset.markets,
+            horizons_ms=preset.horizons_ms,
+            anchor_interval=plan.anchor_interval,
+        )
+    )
+    if len(rows) != plan.dataset_row_count:
+        raise HistoricalArchiveTrainingPlanError(
+            "ARCHIVE_TRAINING_MATERIALIZED_ROW_COUNT_MISMATCH"
+        )
+    if training_rows_logical_sha256(rows) != plan.dataset_logical_sha256:
+        raise HistoricalArchiveTrainingPlanError(
+            "ARCHIVE_TRAINING_MATERIALIZED_LOGICAL_SHA256_MISMATCH"
+        )
+
+    fit = tuple(row for row in rows if row.anchor_end_ms <= plan.fit_end_ms)
+    embargo = tuple(
+        row
+        for row in rows
+        if plan.embargo_start_ms <= row.anchor_end_ms <= plan.embargo_end_ms
+    )
+    calibration = tuple(
+        row
+        for row in rows
+        if (
+            plan.calibration_start_ms
+            <= row.anchor_end_ms
+            <= plan.calibration_end_ms
+        )
+    )
+    if (
+        len(fit) != plan.fit_row_count
+        or len(embargo) != plan.embargo_row_count
+        or len(calibration) != plan.calibration_row_count
+    ):
+        raise HistoricalArchiveTrainingPlanError(
+            "ARCHIVE_TRAINING_MATERIALIZED_PARTITION_MISMATCH"
+        )
+    covered = len(fit) + len(embargo) + len(calibration)
+    if covered != len(rows):
+        raise HistoricalArchiveTrainingPlanError(
+            "ARCHIVE_TRAINING_MATERIALIZED_ROWS_NOT_COVERED"
+        )
+    return fit, embargo, calibration
+
+
 def write_archive_candidate_training_plan(
     output_root: Path,
     plan: HistoricalArchiveCandidateTrainingPlan,

@@ -459,6 +459,42 @@ def _has_eligible_horizon(validation: StableTreeValidation) -> bool:
     )
 
 
+def calibrate_final_stable_tree(
+    fit_rows: Sequence[HistoricalTrainingRow],
+    calibration_rows: Sequence[HistoricalTrainingRow],
+    *,
+    config: TreeModelConfig,
+    costs: ExecutionCostAssumptions,
+    candidate_thresholds: Sequence[Decimal],
+    min_market_samples: int,
+    min_sample_count: int,
+    min_validation_trades: int,
+    stability_blocks: int,
+    min_block_trades: int,
+    allow_coin_calibration: bool,
+    min_validation_mean_net_return: Decimal = ZERO,
+) -> StableTreeValidation:
+    if not fit_rows or not calibration_rows:
+        raise ValueError("fit_rows and calibration_rows must not be empty")
+    model = fit_tree_directional_model(
+        fit_rows,
+        config=config,
+        min_market_samples=min_market_samples,
+    )
+    return _calibrate_horizons(
+        model,
+        calibration_rows,
+        costs=costs,
+        candidate_thresholds=candidate_thresholds,
+        min_sample_count=min_sample_count,
+        min_validation_trades=min_validation_trades,
+        stability_blocks=stability_blocks,
+        min_block_trades=min_block_trades,
+        allow_coin_calibration=allow_coin_calibration,
+        min_validation_mean_net_return=min_validation_mean_net_return,
+    )
+
+
 def run_walk_forward_stable_tree(
     rows: Sequence[HistoricalTrainingRow],
     *,

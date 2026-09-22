@@ -313,6 +313,134 @@ def test_verify_candidate_freeze_is_offline(
     )
 
 
+
+def test_calibrate_candidate_is_offline_and_non_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("calibrate-candidate must not construct a client")
+        ),
+    )
+    calibration = SimpleNamespace(
+        candidate_id="a" * 64,
+        training_plan_id="f" * 64,
+        calibration_id="c" * 64,
+        model_family="stable_horizon_ridge",
+        calibration_variant="shared",
+        selected_alpha=Decimal("0.1"),
+        selected_horizon_thresholds=(
+            (900_000, Decimal("0.001")),
+            (3_600_000, None),
+        ),
+        calibration_trade_count=42,
+        calibration_mean_realized_net_return=Decimal("0.003"),
+        validation_not_before_ms=123456,
+        prospective_only=True,
+        promotion_eligible=False,
+        trained_model_persisted=False,
+        execution_ready=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_final_calibration",
+        lambda *args, **kwargs: calibration,
+    )
+    calibration_path = (
+        tmp_path / "output" / "candidate-final-calibration.json"
+    )
+    monkeypatch.setattr(
+        cli,
+        "write_archive_final_calibration",
+        lambda *args, **kwargs: calibration_path,
+    )
+
+    status = cli.main(
+        [
+            "calibrate-candidate",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "calibrate-candidate"
+    assert payload["paid_request_performed"] is False
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["training_plan_id"] == "f" * 64
+    assert payload["calibration_id"] == "c" * 64
+    assert payload["selected_alpha"] == "0.1"
+    assert payload["selected_horizon_thresholds"] == [
+        {"horizon_ms": 900_000, "threshold": "0.001"},
+        {"horizon_ms": 3_600_000, "threshold": None},
+    ]
+    assert payload["prospective_only"] is True
+    assert payload["promotion_eligible"] is False
+    assert payload["trained_model_persisted"] is False
+    assert payload["execution_ready"] is False
+    assert payload["final_calibration"] == str(calibration_path)
+
+
+def test_verify_final_calibration_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify-final-calibration must not construct a client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_final_calibration",
+        lambda *args, **kwargs: SimpleNamespace(
+            candidate_id="a" * 64,
+            calibration_id="c" * 64,
+        ),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "verify-final-calibration",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-final-calibration"
+    assert payload["paid_request_performed"] is False
+    assert payload["valid"] is True
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["calibration_id"] == "c" * 64
+    assert payload["final_calibration"] == str(
+        output_root / "candidate-final-calibration.json"
+    )
+
 def test_plan_candidate_training_is_offline_and_emits_partition(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

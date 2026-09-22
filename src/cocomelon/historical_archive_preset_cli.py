@@ -16,6 +16,11 @@ from cocomelon.research.historical_archive_candidate_freeze import (
     verify_archive_candidate_freeze,
     write_archive_candidate_freeze,
 )
+from cocomelon.research.historical_archive_final_calibration import (
+    build_archive_final_calibration,
+    verify_archive_final_calibration,
+    write_archive_final_calibration,
+)
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
     build_archive_preset_preflight,
@@ -95,6 +100,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify_candidate.add_argument("--archive-root", required=True, type=Path)
     verify_candidate.add_argument("--source-root", required=True, type=Path)
     verify_candidate.add_argument("--output-root", required=True, type=Path)
+
+    calibrate_candidate = subparsers.add_parser("calibrate-candidate")
+    calibrate_candidate.add_argument("--preset", default=PRESET_NAME)
+    calibrate_candidate.add_argument("--archive-root", required=True, type=Path)
+    calibrate_candidate.add_argument("--source-root", required=True, type=Path)
+    calibrate_candidate.add_argument("--output-root", required=True, type=Path)
+
+    verify_calibration = subparsers.add_parser("verify-final-calibration")
+    verify_calibration.add_argument("--preset", default=PRESET_NAME)
+    verify_calibration.add_argument("--archive-root", required=True, type=Path)
+    verify_calibration.add_argument("--source-root", required=True, type=Path)
+    verify_calibration.add_argument("--output-root", required=True, type=Path)
 
     plan_training = subparsers.add_parser("plan-candidate-training")
     plan_training.add_argument("--preset", default=PRESET_NAME)
@@ -254,6 +271,88 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "candidate_id": freeze.candidate_id,
                     "valid": True,
                     "candidate_freeze": str(freeze_path),
+                }
+            )
+            return 0
+        if args.command == "calibrate-candidate":
+            calibration = build_archive_final_calibration(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            calibration_path = write_archive_final_calibration(
+                args.output_root,
+                calibration,
+            )
+            _emit(
+                {
+                    "command": "calibrate-candidate",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": calibration.candidate_id,
+                    "training_plan_id": calibration.training_plan_id,
+                    "calibration_id": calibration.calibration_id,
+                    "model_family": calibration.model_family,
+                    "calibration_variant": calibration.calibration_variant,
+                    "selected_alpha": (
+                        None
+                        if calibration.selected_alpha is None
+                        else str(calibration.selected_alpha)
+                    ),
+                    "selected_horizon_thresholds": tuple(
+                        {
+                            "horizon_ms": horizon_ms,
+                            "threshold": (
+                                None
+                                if threshold is None
+                                else str(threshold)
+                            ),
+                        }
+                        for horizon_ms, threshold
+                        in calibration.selected_horizon_thresholds
+                    ),
+                    "calibration_trade_count": (
+                        calibration.calibration_trade_count
+                    ),
+                    "calibration_mean_realized_net_return": str(
+                        calibration.calibration_mean_realized_net_return
+                    ),
+                    "validation_not_before_ms": (
+                        calibration.validation_not_before_ms
+                    ),
+                    "prospective_only": calibration.prospective_only,
+                    "promotion_eligible": calibration.promotion_eligible,
+                    "trained_model_persisted": (
+                        calibration.trained_model_persisted
+                    ),
+                    "execution_ready": calibration.execution_ready,
+                    "final_calibration": str(calibration_path),
+                }
+            )
+            return 0
+        if args.command == "verify-final-calibration":
+            calibration_path = (
+                args.output_root / "candidate-final-calibration.json"
+            )
+            calibration = verify_archive_final_calibration(
+                calibration_path,
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "verify-final-calibration",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": calibration.candidate_id,
+                    "calibration_id": calibration.calibration_id,
+                    "valid": True,
+                    "final_calibration": str(calibration_path),
                 }
             )
             return 0
