@@ -23,6 +23,7 @@ _ALLOWED_STAGES = {
     "readiness",
     "state",
     "build",
+    "upload",
 }
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
