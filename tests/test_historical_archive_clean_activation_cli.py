@@ -11,6 +11,7 @@ import cocomelon.historical_archive_clean_activation_cli as cli
 
 def _receipt() -> SimpleNamespace:
     return SimpleNamespace(
+        authorization_source_revision="8" * 40,
         to_dict=lambda: {
             "runtime_id": "1" * 64,
             "pin_id": "2" * 64,
@@ -24,6 +25,7 @@ def _receipt() -> SimpleNamespace:
             "bootstrap_checkpoint_id": "4" * 64,
             "control_plane_id": "5" * 64,
             "frozen_revision": "6" * 40,
+            "authorization_source_revision": "8" * 40,
             "runtime_artifact_id": "123",
             "authorized_at_ms": 999,
             "validation_start_ms": 1000,
@@ -55,10 +57,11 @@ def test_activation_cli_authorizes_offline(
     monkeypatch.setattr(
         cli,
         "load_pinned_archive_clean_runtime",
-        lambda root, *, expected_pin_id: (
+        lambda root, *, expected_pin_id, require_current_source_match: (
             captured.update(
                 runtime_root=root,
                 pin_id=expected_pin_id,
+                require_current_source_match=require_current_source_match,
             )
             or pinned
         ),
@@ -86,6 +89,7 @@ def test_activation_cli_authorizes_offline(
         state_root=tmp_path / "state",
         authorization_root=tmp_path / "authorization",
         frozen_revision="6" * 40,
+        authorization_source_revision="8" * 40,
         runtime_artifact_id="123",
         clock_ms=lambda: 999,
     )
@@ -93,6 +97,8 @@ def test_activation_cli_authorizes_offline(
     assert captured["runtime"] is pinned
     assert captured["state_root"] == tmp_path / "state"
     assert captured["frozen_revision"] == "6" * 40
+    assert captured["authorization_source_revision"] == "8" * 40
+    assert captured["require_current_source_match"] is False
     assert captured["runtime_artifact_id"] == "123"
     assert captured["as_of_ms"] == 999
     assert captured["authorization"] is receipt
@@ -134,6 +140,7 @@ def test_activation_cli_verify_only_does_not_reauthorize(
         state_root=tmp_path / "state",
         authorization_root=tmp_path / "authorization",
         frozen_revision="6" * 40,
+        authorization_source_revision="8" * 40,
         runtime_artifact_id="123",
         verify_only=True,
         clock_ms=lambda: 9_999_999,
@@ -169,6 +176,8 @@ def test_activation_cli_main_emits_structured_error(
             str(tmp_path / "authorization"),
             "--frozen-revision",
             "6" * 40,
+            "--authorization-source-revision",
+            "8" * 40,
             "--runtime-artifact-id",
             "123",
         ]

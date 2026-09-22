@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--state-root", required=True, type=Path)
     parser.add_argument("--authorization-root", required=True, type=Path)
     parser.add_argument("--frozen-revision", required=True)
+    parser.add_argument("--authorization-source-revision", required=True)
     parser.add_argument("--runtime-artifact-id", required=True)
     parser.add_argument("--verify-only", action="store_true")
     return parser
@@ -57,6 +58,7 @@ def archive_clean_activation_payload(
     state_root: Path,
     authorization_root: Path,
     frozen_revision: str,
+    authorization_source_revision: str,
     runtime_artifact_id: str,
     verify_only: bool = False,
     clock_ms: Callable[[], int] = utc_now_ms,
@@ -64,6 +66,7 @@ def archive_clean_activation_payload(
     pinned = load_pinned_archive_clean_runtime(
         runtime_root,
         expected_pin_id=pin_id,
+        require_current_source_match=False,
     )
     path = authorization_root / "activation.json"
     if verify_only:
@@ -74,12 +77,20 @@ def archive_clean_activation_payload(
             frozen_revision=frozen_revision,
             runtime_artifact_id=runtime_artifact_id,
         )
+        if (
+            authorization.authorization_source_revision
+            != authorization_source_revision
+        ):
+            raise RuntimeError(
+                "ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_MISMATCH"
+            )
         command = "historical-archive-clean-activation-verify"
     else:
         authorization = build_archive_clean_activation_authorization(
             pinned,
             state_root=state_root,
             frozen_revision=frozen_revision,
+            authorization_source_revision=authorization_source_revision,
             runtime_artifact_id=runtime_artifact_id,
             as_of_ms=clock_ms(),
         )
@@ -104,6 +115,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_root=args.state_root,
             authorization_root=args.authorization_root,
             frozen_revision=args.frozen_revision,
+            authorization_source_revision=args.authorization_source_revision,
             runtime_artifact_id=args.runtime_artifact_id,
             verify_only=args.verify_only,
         )

@@ -19,6 +19,7 @@ jobs:
     env:
       CAMPAIGN_ENABLED: ${{ vars.ARCHIVE_CLEAN_CAMPAIGN_ENABLED }}
       FROZEN_REVISION: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+      AUTHORIZATION_SOURCE_REVISION: ${{ github.sha }}
       RUNTIME_ARTIFACT_ID: ${{ vars.ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID }}
       PIN_ID: ${{ vars.ARCHIVE_CLEAN_PIN_ID }}
       RUNTIME_ROOT: artifacts/historical-archive-clean-runtime
@@ -38,17 +39,17 @@ jobs:
           [[ "$RUNTIME_ARTIFACT_ID" =~ ^[0-9]+$ ]]
           [[ "$PIN_ID" =~ ^[0-9a-f]{64}$ ]]
 
-      - name: Checkout frozen observer revision
+      - name: Checkout activation auditor revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           persist-credentials: false
 
-      - name: Verify frozen observer revision
+      - name: Verify activation auditor revision
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$FROZEN_REVISION"
+          test "$(git rev-parse HEAD)" = "$AUTHORIZATION_SOURCE_REVISION"
 
       - uses: actions/setup-python@v7
         with:
@@ -126,24 +127,25 @@ jobs:
           gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip"             > /tmp/archive-clean-activation-runtime.zip
           unzip -q /tmp/archive-clean-activation-runtime.zip -d "$RUNTIME_ROOT"
 
-      - name: Verify pinned package-bound runtime
+      - name: Verify pinned package-bound runtime for external audit
         run: |
           set -euo pipefail
-          cocomelon-historical-archive-clean-runtime verify             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             > /tmp/archive-clean-activation-runtime.json
           python - <<'PY'
-          import json
+          import os
           from pathlib import Path
 
-          payload = json.loads(
-              Path("/tmp/archive-clean-activation-runtime.json").read_text(
-                  encoding="utf-8"
-              )
+          from cocomelon.research.historical_archive_clean_runtime import (
+              load_pinned_archive_clean_runtime,
           )
-          if payload["valid"] is not True:
-              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_RUNTIME_INVALID")
-          if payload["portable_package_bound"] is not True:
+
+          pinned = load_pinned_archive_clean_runtime(
+              Path(os.environ["RUNTIME_ROOT"]),
+              expected_pin_id=os.environ["PIN_ID"],
+              require_current_source_match=False,
+          )
+          if not pinned.bundle.portable_package_bound:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PACKAGE_BINDING_REQUIRED")
-          if payload["execution_ready"] is not False:
+          if pinned.bundle.execution_ready:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_EXECUTION_READY_FORBIDDEN")
           PY
 
@@ -218,13 +220,12 @@ jobs:
           bootstrap_artifact_id="$(cat /tmp/archive-clean-activation-bootstrap-artifact-id)"
           gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$bootstrap_artifact_id/zip"             > /tmp/archive-clean-activation-bootstrap.zip
           unzip -q /tmp/archive-clean-activation-bootstrap.zip -d "$STATE_ROOT"
-          cocomelon-historical-archive-clean-bootstrap             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --frozen-revision "$FROZEN_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             --verify-only             > /tmp/archive-clean-activation-bootstrap-verify.json
 
       - name: Create pre-cutover activation authorization
         id: authorize
         run: |
           set -euo pipefail
-          cocomelon-historical-archive-clean-activation             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --authorization-root "$AUTHORIZATION_ROOT"             --frozen-revision "$FROZEN_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-activation.json
+          cocomelon-historical-archive-clean-activation             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --authorization-root "$AUTHORIZATION_ROOT"             --frozen-revision "$FROZEN_REVISION"             --authorization-source-revision "$AUTHORIZATION_SOURCE_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-activation.json
           python - <<'PY'
           import json
           import os
@@ -233,6 +234,8 @@ jobs:
           payload = json.loads(
               Path("/tmp/archive-clean-activation.json").read_text(encoding="utf-8")
           )
+          if payload["authorization_source_revision"] != os.environ["AUTHORIZATION_SOURCE_REVISION"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_MISMATCH")
           if payload["campaign_enabled_at_authorization"] is not False:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_CAMPAIGN_ENABLED_FORBIDDEN")
           if payload["activation_authorized"] is not True:
@@ -283,6 +286,7 @@ jobs:
             echo "- pin: \`$PIN_ID\`"
             echo "- authorization: \`${{ steps.authorize.outputs.authorization_id }}\`"
             echo "- control plane: \`${{ steps.authorize.outputs.control_plane_id }}\`"
+            echo "- authorization source: \`$AUTHORIZATION_SOURCE_REVISION\`"
             echo "- bootstrap: \`${{ steps.authorize.outputs.bootstrap_id }}\`"
             echo "- activation artifact: \`${{ steps.upload.outputs.artifact-id }}\`"
             echo "- campaign enabled at authorization: false"

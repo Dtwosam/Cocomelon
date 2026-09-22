@@ -110,6 +110,7 @@ def test_activation_authorization_binds_green_bootstrap_readiness(
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
+        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=2_000,
     )
@@ -119,6 +120,8 @@ def test_activation_authorization_binds_green_bootstrap_readiness(
     assert authorization.candidate_id == pinned.bundle.candidate_id
     assert authorization.validation_spec_id == pinned.bundle.validation_spec_id
     assert authorization.model_artifact_id == pinned.bundle.model_artifact_id
+    assert authorization.frozen_revision == "f" * 40
+    assert authorization.authorization_source_revision == "a" * 40
     assert authorization.candidate_package_id == pinned.bundle.candidate_package_id
     assert authorization.bootstrap_checkpoint_id
     assert authorization.control_plane_id
@@ -146,6 +149,7 @@ def test_activation_authorization_is_pre_cutover_only(tmp_path: Path) -> None:
             pinned,  # type: ignore[arg-type]
             state_root=state_root,
             frozen_revision="f" * 40,
+            authorization_source_revision="a" * 40,
             runtime_artifact_id="123",
             as_of_ms=pinned.runtime.spec.validation_start_ms,
         )
@@ -159,6 +163,7 @@ def test_activation_authorization_requires_valid_bootstrap(tmp_path: Path) -> No
             pinned,  # type: ignore[arg-type]
             state_root=tmp_path / "missing-state",
             frozen_revision="f" * 40,
+            authorization_source_revision="a" * 40,
             runtime_artifact_id="123",
             as_of_ms=2_000,
         )
@@ -172,6 +177,7 @@ def test_activation_authorization_write_is_idempotent_and_conflict_safe(
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
+        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=2_000,
     )
@@ -198,6 +204,7 @@ def test_activation_authorization_verifies_after_cutover_without_bootstrap_repla
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
+        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=2_000,
     )
@@ -225,6 +232,7 @@ def test_activation_authorization_rejects_runtime_artifact_drift(
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
+        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=2_000,
     )
@@ -254,6 +262,7 @@ def test_activation_authorization_loader_detects_tampering(
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
+        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=2_000,
     )

@@ -92,10 +92,12 @@ def test_readiness_summary_redacts_interim_economics() -> None:
 def test_readiness_requires_activation_authorization_when_campaign_enabled() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    activation = source.index("Verify activation authorization when enabled")
+    restore = source.index("Restore authenticated activation authorization when enabled")
+    checkout = source.index("Checkout activation auditor revision when enabled")
+    verify = source.index("Verify activation authorization when enabled")
     readiness = source.index("Build offline activation readiness report")
 
-    assert activation < readiness
+    assert restore < checkout < verify < readiness
     assert "env.CAMPAIGN_ENABLED == 'true'" in source
     assert "ACTIVATION_ARTIFACT_NAME" in source
     assert "historical-archive-clean-activation-" in source
@@ -108,6 +110,10 @@ def test_readiness_requires_activation_authorization_when_campaign_enabled() -> 
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS" in source
-    assert "cocomelon-historical-archive-clean-activation" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_PRE_CUTOVER" in source
+    assert "authorization_source_revision" in source
+    assert "steps.activation_restore.outputs.source_revision" in source
+    assert "path: activation-auditor" in source
+    assert "PYTHONPATH: ${{ github.workspace }}/activation-auditor/src" in source
+    assert "historical_archive_clean_activation_cli" in source
     assert "--verify-only" in source
-
