@@ -256,13 +256,108 @@ def test_checkpoint_settlement_removes_only_exact_pending_signals(
     saved = restarted.save(as_of_ms=target + 100)
     assert saved.pending_observations == ()
     assert saved.settled_outcome_count == 2
+    assert saved.total_gross_return_sum == Decimal("0.00")
+    assert saved.total_modeled_cost_sum == Decimal("0.002450")
+    assert saved.total_net_return_sum == Decimal("-0.002450")
+    assert saved.mean_net_return == Decimal("-0.001225")
+    assert saved.block_economics[0].settled_trade_count == 2
+    assert saved.block_economics[0].long_trade_count == 1
+    assert saved.block_economics[0].short_trade_count == 1
+    assert saved.block_economics[0].net_return_sum == Decimal("-0.002450")
+    assert all(
+        item.settled_trade_count == 0
+        for item in saved.block_economics[1:]
+    )
     assert restarted.due_unsettled_signals(as_of_ms=target + 100) == ()
     assert len(tuple((tmp_path / "cycle-2" / "outcomes").glob("*/*.json"))) == 2
 
     reloaded = _store(tmp_path, spec=spec, cycle_name="cycle-3")
     assert reloaded.checkpoint.settled_outcome_count == 2
     assert reloaded.checkpoint.pending_observations == ()
+    assert reloaded.checkpoint.block_economics == saved.block_economics
+    assert reloaded.checkpoint.total_net_return_sum == saved.total_net_return_sum
 
+
+
+def test_checkpoint_assigns_settlements_to_exact_stability_blocks(
+    tmp_path: Path,
+) -> None:
+    spec = _spec()
+    store = _store(tmp_path, spec=spec, cycle_name="cycle")
+    anchors = (
+        spec.first_expected_anchor_ms,
+        spec.first_expected_anchor_ms
+        + spec.anchors_per_stability_block * spec.anchor_interval_ms,
+    )
+
+    for anchor in anchors:
+        store.record_anchor_result(
+            features=(_feature(BTC, anchor), _feature(ETH, anchor)),
+            state_before=ArchivePaperState(),
+            result=_result(spec, anchor),
+        )
+        target = anchor + FIFTEEN
+        for observation, signal in store.due_unsettled_signals(as_of_ms=target):
+            if observation.anchor_end_ms != anchor:
+                continue
+            market = BTC if signal.market == "BTC" else ETH
+            outcome = build_archive_clean_outcome(
+                spec,
+                observation=observation,
+                signal=signal,
+                exit_candle=Candle(
+                    market=market,
+                    interval="15m",
+                    start_ms=target - FIFTEEN + 1,
+                    end_ms=target,
+                    open_px=Decimal("100"),
+                    high_px=Decimal("103"),
+                    low_px=Decimal("98"),
+                    close_px=Decimal("102"),
+                    volume=Decimal("1"),
+                    trade_count=1,
+                    source="hyperliquid-mainnet-info",
+                    received_at_ms=target + 100,
+                    schema_version=1,
+                ),
+                as_of_ms=target + 100,
+            )
+            store.record_outcome(outcome)
+
+    checkpoint = store.save(as_of_ms=anchors[-1] + FIFTEEN + 100)
+
+    assert checkpoint.settled_outcome_count == 4
+    assert checkpoint.block_economics[0].settled_trade_count == 2
+    assert checkpoint.block_economics[1].settled_trade_count == 2
+    assert checkpoint.block_economics[2].settled_trade_count == 0
+    assert checkpoint.block_economics[3].settled_trade_count == 0
+    assert checkpoint.total_gross_return_sum == Decimal("0.00")
+    assert checkpoint.total_modeled_cost_sum == Decimal("0.004900")
+    assert checkpoint.total_net_return_sum == Decimal("-0.004900")
+    assert checkpoint.mean_net_return == Decimal("-0.001225")
+
+
+def test_checkpoint_detects_derived_economics_tampering(
+    tmp_path: Path,
+) -> None:
+    spec = _spec()
+    store = _store(tmp_path, spec=spec, cycle_name="cycle")
+    saved = store.save(as_of_ms=0)
+    path = tmp_path / "checkpoint.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["total_net_return_sum"] = "1"
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        HistoricalArchiveCleanCheckpointError,
+        match="ARCHIVE_CLEAN_CHECKPOINT_NET_SUM_MISMATCH",
+    ):
+        load_archive_clean_operational_checkpoint(path)
+
+    assert saved.total_net_return_sum == Decimal("0")
 
 def test_checkpoint_capture_summary_preserves_missed_anchor_accounting(
     tmp_path: Path,
@@ -365,7 +460,7 @@ def test_checkpoint_detects_file_tampering(tmp_path: Path) -> None:
     store = _store(tmp_path, spec=spec, cycle_name="cycle")
     saved = store.save(as_of_ms=0)
     payload = json.loads((tmp_path / "checkpoint.json").read_text(encoding="utf-8"))
-    payload["settled_outcome_count"] = 1
+    payload["as_of_ms"] = 1
     (tmp_path / "checkpoint.json").write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
@@ -377,8 +472,8 @@ def test_checkpoint_detects_file_tampering(tmp_path: Path) -> None:
     ):
         load_archive_clean_operational_checkpoint(tmp_path / "checkpoint.json")
 
-    assert payload["settled_outcome_count"] == 1
-    assert saved.settled_outcome_count == 0
+    assert payload["as_of_ms"] == 1
+    assert saved.as_of_ms == 0
 
 
 def test_checkpoint_rejects_as_of_regression(tmp_path: Path) -> None:

@@ -5,10 +5,11 @@ import json
 import os
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast
 
+from cocomelon.domain.strategy import Direction
 from cocomelon.research.historical_archive_clean_evidence import (
     ArchiveCleanAnchorObservation,
     ArchiveCleanCampaignManifest,
@@ -31,7 +32,7 @@ from cocomelon.research.historical_archive_validation_spec import (
 from cocomelon.research.historical_features import HistoricalFeatureRow
 
 ZERO = 0
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 
 class HistoricalArchiveCleanCheckpointError(RuntimeError):
@@ -81,6 +82,22 @@ def _integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise HistoricalArchiveCleanCheckpointError(f"{field} must be an integer")
     return value
+
+
+def _decimal(value: object, field: str) -> Decimal:
+    if not isinstance(value, str):
+        raise HistoricalArchiveCleanCheckpointError(
+            f"{field} must be a decimal string"
+        )
+    try:
+        resolved = Decimal(value)
+    except InvalidOperation as exc:
+        raise HistoricalArchiveCleanCheckpointError(
+            f"{field} must be a decimal string"
+        ) from exc
+    if not resolved.is_finite():
+        raise HistoricalArchiveCleanCheckpointError(f"{field} must be finite")
+    return resolved
 
 
 def _optional_integer(value: object, field: str) -> int | None:
@@ -135,6 +152,63 @@ class ArchiveCleanPendingObservation:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchiveCleanBlockEconomics:
+    block_index: int
+    settled_trade_count: int = 0
+    long_trade_count: int = 0
+    short_trade_count: int = 0
+    gross_return_sum: Decimal = Decimal("0")
+    modeled_cost_sum: Decimal = Decimal("0")
+    net_return_sum: Decimal = Decimal("0")
+
+    def __post_init__(self) -> None:
+        if self.block_index < 0:
+            raise ValueError("block_index must be non-negative")
+        for field in (
+            "settled_trade_count",
+            "long_trade_count",
+            "short_trade_count",
+        ):
+            if getattr(self, field) < 0:
+                raise ValueError(f"{field} must be non-negative")
+        if self.long_trade_count + self.short_trade_count != self.settled_trade_count:
+            raise ValueError("block direction counts must equal settled_trade_count")
+        for field in (
+            "gross_return_sum",
+            "modeled_cost_sum",
+            "net_return_sum",
+        ):
+            if not getattr(self, field).is_finite():
+                raise ValueError(f"{field} must be finite")
+        if self.modeled_cost_sum < Decimal("0"):
+            raise ValueError("modeled_cost_sum must be non-negative")
+        if self.net_return_sum != self.gross_return_sum - self.modeled_cost_sum:
+            raise ValueError(
+                "net_return_sum must equal gross_return_sum minus modeled_cost_sum"
+            )
+
+    @property
+    def mean_net_return(self) -> Decimal | None:
+        if self.settled_trade_count == 0:
+            return None
+        return self.net_return_sum / Decimal(self.settled_trade_count)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "block_index": self.block_index,
+            "settled_trade_count": self.settled_trade_count,
+            "long_trade_count": self.long_trade_count,
+            "short_trade_count": self.short_trade_count,
+            "gross_return_sum": str(self.gross_return_sum),
+            "modeled_cost_sum": str(self.modeled_cost_sum),
+            "net_return_sum": str(self.net_return_sum),
+            "mean_net_return": (
+                None if self.mean_net_return is None else str(self.mean_net_return)
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ArchiveCleanOperationalCheckpoint:
     validation_spec_id: str
     candidate_id: str
@@ -145,12 +219,15 @@ class ArchiveCleanOperationalCheckpoint:
     first_expected_anchor_ms: int
     anchor_interval_ms: int
     expected_anchor_count: int
+    stability_blocks: int
+    anchors_per_stability_block: int
     captured_bitmap_hex: str
     latest_anchor_end_ms: int | None
     latest_observation_id: str | None
     latest_state: ArchivePaperState
     pending_observations: tuple[ArchiveCleanPendingObservation, ...]
     settled_outcome_count: int
+    block_economics: tuple[ArchiveCleanBlockEconomics, ...]
     as_of_ms: int
     schema_version: int = CHECKPOINT_SCHEMA_VERSION
 
@@ -170,6 +247,28 @@ class ArchiveCleanOperationalCheckpoint:
             raise ValueError("anchor_interval_ms must be positive")
         if self.expected_anchor_count <= 0:
             raise ValueError("expected_anchor_count must be positive")
+        if self.stability_blocks <= 0:
+            raise ValueError("stability_blocks must be positive")
+        if self.anchors_per_stability_block <= 0:
+            raise ValueError("anchors_per_stability_block must be positive")
+        if (
+            self.stability_blocks * self.anchors_per_stability_block
+            != self.expected_anchor_count
+        ):
+            raise ValueError(
+                "stability geometry must exactly cover expected anchors"
+            )
+        if tuple(item.block_index for item in self.block_economics) != tuple(
+            range(self.stability_blocks)
+        ):
+            raise ValueError("block_economics must cover every block in order")
+        if (
+            sum(item.settled_trade_count for item in self.block_economics)
+            != self.settled_outcome_count
+        ):
+            raise ValueError(
+                "block_economics settled counts must equal settled_outcome_count"
+            )
         bitmap = _bitmap_value(self.captured_bitmap_hex)
         if bitmap >> self.expected_anchor_count:
             raise ValueError("captured bitmap contains out-of-range anchors")
@@ -226,6 +325,36 @@ class ArchiveCleanOperationalCheckpoint:
     def captured_anchor_count(self) -> int:
         return _bitmap_value(self.captured_bitmap_hex).bit_count()
 
+    @property
+    def total_gross_return_sum(self) -> Decimal:
+        return sum(
+            (item.gross_return_sum for item in self.block_economics),
+            Decimal("0"),
+        )
+
+    @property
+    def total_modeled_cost_sum(self) -> Decimal:
+        return sum(
+            (item.modeled_cost_sum for item in self.block_economics),
+            Decimal("0"),
+        )
+
+    @property
+    def total_net_return_sum(self) -> Decimal:
+        return sum(
+            (item.net_return_sum for item in self.block_economics),
+            Decimal("0"),
+        )
+
+    @property
+    def mean_net_return(self) -> Decimal | None:
+        if self.settled_outcome_count == 0:
+            return None
+        return self.total_net_return_sum / Decimal(self.settled_outcome_count)
+
+    def stability_block_index(self, anchor_end_ms: int) -> int:
+        return self.anchor_index(anchor_end_ms) // self.anchors_per_stability_block
+
     def anchor_index(self, anchor_end_ms: int) -> int:
         delta = anchor_end_ms - self.first_expected_anchor_ms
         if delta < 0 or delta % self.anchor_interval_ms != 0:
@@ -250,6 +379,8 @@ class ArchiveCleanOperationalCheckpoint:
             "first_expected_anchor_ms": self.first_expected_anchor_ms,
             "anchor_interval_ms": self.anchor_interval_ms,
             "expected_anchor_count": self.expected_anchor_count,
+            "stability_blocks": self.stability_blocks,
+            "anchors_per_stability_block": self.anchors_per_stability_block,
             "captured_bitmap_hex": self.captured_bitmap_hex,
             "latest_anchor_end_ms": self.latest_anchor_end_ms,
             "latest_observation_id": self.latest_observation_id,
@@ -258,6 +389,15 @@ class ArchiveCleanOperationalCheckpoint:
                 item.to_dict() for item in self.pending_observations
             ),
             "settled_outcome_count": self.settled_outcome_count,
+            "block_economics": tuple(
+                item.to_dict() for item in self.block_economics
+            ),
+            "total_gross_return_sum": str(self.total_gross_return_sum),
+            "total_modeled_cost_sum": str(self.total_modeled_cost_sum),
+            "total_net_return_sum": str(self.total_net_return_sum),
+            "mean_net_return": (
+                None if self.mean_net_return is None else str(self.mean_net_return)
+            ),
             "as_of_ms": self.as_of_ms,
             "schema_version": self.schema_version,
         }
@@ -268,6 +408,47 @@ class ArchiveCleanOperationalCheckpoint:
 
     def to_dict(self) -> dict[str, object]:
         return {**self.identity_payload(), "checkpoint_id": self.checkpoint_id}
+
+
+def _block_economics_from_payload(
+    value: object,
+) -> ArchiveCleanBlockEconomics:
+    raw = _mapping(value, "block economics")
+    block = ArchiveCleanBlockEconomics(
+        block_index=_integer(raw.get("block_index"), "block_index"),
+        settled_trade_count=_integer(
+            raw.get("settled_trade_count"),
+            "settled_trade_count",
+        ),
+        long_trade_count=_integer(
+            raw.get("long_trade_count"),
+            "long_trade_count",
+        ),
+        short_trade_count=_integer(
+            raw.get("short_trade_count"),
+            "short_trade_count",
+        ),
+        gross_return_sum=_decimal(
+            raw.get("gross_return_sum"),
+            "gross_return_sum",
+        ),
+        modeled_cost_sum=_decimal(
+            raw.get("modeled_cost_sum"),
+            "modeled_cost_sum",
+        ),
+        net_return_sum=_decimal(
+            raw.get("net_return_sum"),
+            "net_return_sum",
+        ),
+    )
+    expected_mean = (
+        None if block.mean_net_return is None else str(block.mean_net_return)
+    )
+    if raw.get("mean_net_return") != expected_mean:
+        raise HistoricalArchiveCleanCheckpointError(
+            "ARCHIVE_CLEAN_BLOCK_MEAN_MISMATCH"
+        )
+    return block
 
 
 def _pending_from_payload(value: object) -> ArchiveCleanPendingObservation:
@@ -319,6 +500,14 @@ def load_archive_clean_operational_checkpoint(
                 raw.get("expected_anchor_count"),
                 "expected_anchor_count",
             ),
+            stability_blocks=_integer(
+                raw.get("stability_blocks"),
+                "stability_blocks",
+            ),
+            anchors_per_stability_block=_integer(
+                raw.get("anchors_per_stability_block"),
+                "anchors_per_stability_block",
+            ),
             captured_bitmap_hex=_string(
                 raw.get("captured_bitmap_hex"),
                 "captured_bitmap_hex",
@@ -346,6 +535,13 @@ def load_archive_clean_operational_checkpoint(
                 raw.get("settled_outcome_count"),
                 "settled_outcome_count",
             ),
+            block_economics=tuple(
+                _block_economics_from_payload(item)
+                for item in _sequence(
+                    raw.get("block_economics"),
+                    "block_economics",
+                )
+            ),
             as_of_ms=_integer(raw.get("as_of_ms"), "as_of_ms"),
             schema_version=_integer(
                 raw.get("schema_version"),
@@ -356,6 +552,29 @@ def load_archive_clean_operational_checkpoint(
         raise HistoricalArchiveCleanCheckpointError(
             "ARCHIVE_CLEAN_CHECKPOINT_INVALID"
         ) from exc
+    if raw.get("total_gross_return_sum") != str(
+        checkpoint.total_gross_return_sum
+    ):
+        raise HistoricalArchiveCleanCheckpointError(
+            "ARCHIVE_CLEAN_CHECKPOINT_GROSS_SUM_MISMATCH"
+        )
+    if raw.get("total_modeled_cost_sum") != str(
+        checkpoint.total_modeled_cost_sum
+    ):
+        raise HistoricalArchiveCleanCheckpointError(
+            "ARCHIVE_CLEAN_CHECKPOINT_COST_SUM_MISMATCH"
+        )
+    if raw.get("total_net_return_sum") != str(checkpoint.total_net_return_sum):
+        raise HistoricalArchiveCleanCheckpointError(
+            "ARCHIVE_CLEAN_CHECKPOINT_NET_SUM_MISMATCH"
+        )
+    expected_mean = (
+        None if checkpoint.mean_net_return is None else str(checkpoint.mean_net_return)
+    )
+    if raw.get("mean_net_return") != expected_mean:
+        raise HistoricalArchiveCleanCheckpointError(
+            "ARCHIVE_CLEAN_CHECKPOINT_MEAN_MISMATCH"
+        )
     if raw.get("checkpoint_id") != checkpoint.checkpoint_id:
         raise HistoricalArchiveCleanCheckpointError(
             "ARCHIVE_CLEAN_CHECKPOINT_ID_MISMATCH"
@@ -435,12 +654,18 @@ class ArchiveCleanCheckpointEvidenceStore:
                 first_expected_anchor_ms=spec.first_expected_anchor_ms,
                 anchor_interval_ms=spec.anchor_interval_ms,
                 expected_anchor_count=spec.expected_anchor_count,
+                stability_blocks=spec.stability_blocks,
+                anchors_per_stability_block=spec.anchors_per_stability_block,
                 captured_bitmap_hex="0",
                 latest_anchor_end_ms=None,
                 latest_observation_id=None,
                 latest_state=ArchivePaperState(),
                 pending_observations=(),
                 settled_outcome_count=0,
+                block_economics=tuple(
+                    ArchiveCleanBlockEconomics(block_index=index)
+                    for index in range(spec.stability_blocks)
+                ),
                 as_of_ms=0,
             )
 
@@ -462,6 +687,8 @@ class ArchiveCleanCheckpointEvidenceStore:
             self.spec.first_expected_anchor_ms,
             self.spec.anchor_interval_ms,
             self.spec.expected_anchor_count,
+            self.spec.stability_blocks,
+            self.spec.anchors_per_stability_block,
         )
         actual = (
             checkpoint.validation_spec_id,
@@ -473,6 +700,8 @@ class ArchiveCleanCheckpointEvidenceStore:
             checkpoint.first_expected_anchor_ms,
             checkpoint.anchor_interval_ms,
             checkpoint.expected_anchor_count,
+            checkpoint.stability_blocks,
+            checkpoint.anchors_per_stability_block,
         )
         if actual != expected:
             raise HistoricalArchiveCleanCheckpointError(
@@ -676,10 +905,28 @@ class ArchiveCleanCheckpointEvidenceStore:
             self._outcome_path(outcome),
             outcome.to_dict(),
         )
+        block_index = self._checkpoint.stability_block_index(
+            outcome.anchor_end_ms
+        )
+        blocks = list(self._checkpoint.block_economics)
+        current = blocks[block_index]
+        blocks[block_index] = ArchiveCleanBlockEconomics(
+            block_index=block_index,
+            settled_trade_count=current.settled_trade_count + 1,
+            long_trade_count=current.long_trade_count
+            + (1 if outcome.direction is Direction.LONG else 0),
+            short_trade_count=current.short_trade_count
+            + (1 if outcome.direction is Direction.SHORT else 0),
+            gross_return_sum=current.gross_return_sum + outcome.gross_return,
+            modeled_cost_sum=current.modeled_cost_sum
+            + outcome.modeled_cost_fraction,
+            net_return_sum=current.net_return_sum + outcome.net_return,
+        )
         self._checkpoint = replace(
             self._checkpoint,
             pending_observations=tuple(pending_values),
             settled_outcome_count=self._checkpoint.settled_outcome_count + 1,
+            block_economics=tuple(blocks),
         )
         return path
 
