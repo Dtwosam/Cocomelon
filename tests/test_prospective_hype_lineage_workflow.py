@@ -75,3 +75,14 @@ def test_lineage_bootstrap_receipt_is_only_for_pre_control_plane_predecessor() -
     assert '"current_state_digest": current["state_digest"]' in source
     assert '"runtime_attestation_id": current["runtime_attestation_id"]' in source
     assert '"control_plane_id": current["control_plane_id"]' in source
+
+
+
+def test_lineage_audit_runs_hourly_after_frozen_capture_attempts() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'cron: "20 * * * *"' in source
+    assert "group: prospective-hype-lineage-audit" in source
+    assert "cancel-in-progress: false" in source
+    assert 'cron: "3,8,13 * * * *"' not in source
+    assert "cocomelon-prospective-hype-observer" not in source

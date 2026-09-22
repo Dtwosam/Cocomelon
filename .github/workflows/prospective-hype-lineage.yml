@@ -1,6 +1,8 @@
 name: Prospective HYPE Artifact Lineage Audit
 
 on:
+  schedule:
+    - cron: "20 * * * *"
   push:
     branches:
       - main
@@ -24,6 +26,10 @@ on:
 permissions:
   contents: read
   actions: read
+
+concurrency:
+  group: prospective-hype-lineage-audit
+  cancel-in-progress: false
 
 jobs:
   audit:
