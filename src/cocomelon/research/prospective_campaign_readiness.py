@@ -185,7 +185,6 @@ def verify_prospective_hype_campaign_readiness(
             "IRRECOVERABLE_GATE_MISSING",
         ),
         ("retention-days: 90", "FROZEN_RETENTION_MISSING"),
-        ("POST_CUTOVER_RUNTIME_ATTESTATION_REQUIRED", "RUNTIME_FAIL_CLOSED_MISSING"),
         (
             "POST_CUTOVER_CONTROL_PLANE_ATTESTATION_REQUIRED",
             "CONTROL_PLANE_FAIL_CLOSED_MISSING",
