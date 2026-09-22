@@ -413,9 +413,10 @@ def score_archive_candidate_anchor(
     spec: HistoricalArchiveCleanValidationSpec,
     features: tuple[HistoricalFeatureRow, ...],
     *,
-    state: ArchivePaperState = ArchivePaperState(),
+    state: ArchivePaperState | None = None,
 ) -> ArchivePaperAnchorResult:
     _validate_lineage(artifact, spec)
+    resolved_state = ArchivePaperState() if state is None else state
     if not features:
         raise HistoricalArchivePaperScorerError(
             "PAPER_SCORER_FEATURES_EMPTY"
@@ -431,7 +432,7 @@ def score_archive_candidate_anchor(
             "PAPER_SCORER_FEATURE_MARKETS_NOT_SORTED_UNIQUE"
         )
     anchor_end_ms = features[0].anchor_end_ms
-    active_state = state.active_at(anchor_end_ms)
+    active_state = resolved_state.active_at(anchor_end_ms)
 
     raw_signals = tuple(
         score_archive_candidate_feature(
