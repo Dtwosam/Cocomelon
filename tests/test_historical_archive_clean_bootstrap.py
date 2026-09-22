@@ -50,6 +50,7 @@ def _spec() -> HistoricalArchiveCleanValidationSpec:
         horizon_thresholds=((900_000, Decimal("0.001")),),
         allow_coin_calibration=False,
         min_sample_count=20,
+        decision_policy="cost_adjusted_directional_threshold_v1",
         execution_policy="independent_horizon",
         max_concurrent_positions=None,
         costs={
