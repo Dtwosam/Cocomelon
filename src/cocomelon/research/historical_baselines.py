@@ -8,6 +8,11 @@ from enum import StrEnum
 from typing import Protocol
 
 from cocomelon.domain.features import TrendRegime
+from cocomelon.features.cross_market import (
+    basket_breadth_bucket,
+    basket_direction_bucket,
+    relative_strength_bucket,
+)
 from cocomelon.research.historical_features import (
     HistoricalFeatureRow,
     HistoricalTrainingRow,
@@ -775,33 +780,15 @@ class _PolicyObservation:
 
 
 def basket_direction_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value > ZERO:
-        return "up"
-    if value < ZERO:
-        return "down"
-    return "flat"
+    return basket_direction_bucket(value)
 
 
 def basket_breadth_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value <= Decimal("0.25"):
-        return "bearish"
-    if value >= Decimal("0.75"):
-        return "bullish"
-    return "mixed"
+    return basket_breadth_bucket(value)
 
 
 def relative_strength_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value <= Decimal("-1"):
-        return "lagging_1sd"
-    if value >= Decimal("1"):
-        return "leading_1sd"
-    return "near_basket"
+    return relative_strength_bucket(value)
 
 
 @dataclass(frozen=True, slots=True)
