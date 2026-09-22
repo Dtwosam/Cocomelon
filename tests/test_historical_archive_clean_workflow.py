@@ -117,11 +117,13 @@ def test_archive_clean_observer_requires_authenticated_activation_before_continu
     source = WORKFLOW.read_text(encoding="utf-8")
 
     bootstrap = source.index("Restore pre-cutover bootstrap fallback")
-    activation = source.index("Restore and verify activation authorization")
+    activation_restore = source.index("Restore authenticated activation authorization")
+    auditor_checkout = source.index("Checkout activation auditor revision")
+    activation_verify = source.index("Verify activation authorization")
     continuity = source.index("Verify state continuity and canonical finalization")
     cycle = source.index("Run pinned paper-only clean cycle")
 
-    assert bootstrap < activation < continuity < cycle
+    assert bootstrap < activation_restore < auditor_checkout < activation_verify < continuity < cycle
     assert "ACTIVATION_ARTIFACT_NAME" in source
     assert "historical-archive-clean-activation-" in source
     assert "ACTIVATION_WORKFLOW_PATH" in source
@@ -133,7 +135,12 @@ def test_archive_clean_observer_requires_authenticated_activation_before_continu
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS" in source
-    assert "cocomelon-historical-archive-clean-activation" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_PRE_CUTOVER" in source
+    assert "authorization_source_revision" in source
+    assert "steps.activation_restore.outputs.source_revision" in source
+    assert "path: activation-auditor" in source
+    assert "PYTHONPATH: ${{ github.workspace }}/activation-auditor/src" in source
+    assert "historical_archive_clean_activation_cli" in source
     assert "--verify-only" in source
 
 def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> None:
