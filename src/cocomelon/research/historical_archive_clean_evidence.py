@@ -681,6 +681,36 @@ def _signal_evidence(
     )
 
 
+def _expected_next_state(
+    spec: HistoricalArchiveCleanValidationSpec,
+    *,
+    state_before: ArchivePaperState,
+    result: ArchivePaperAnchorResult,
+) -> ArchivePaperState:
+    active = state_before.active_at(result.anchor_end_ms)
+    if spec.execution_policy == "independent_horizon":
+        return active
+    positions = tuple(
+        ArchivePaperPosition(
+            market=item.market,
+            opened_at_ms=item.anchor_end_ms,
+            hold_until_ms=item.target_end_ms,
+            horizon_ms=item.horizon_ms,
+            direction=item.direction,
+            expected_net_edge=item.expected_net_edge,
+        )
+        for item in result.accepted_signals
+    )
+    return ArchivePaperState(
+        positions=tuple(
+            sorted(
+                (*active.positions, *positions),
+                key=lambda item: item.market,
+            )
+        )
+    )
+
+
 def build_archive_clean_anchor_observation(
     spec: HistoricalArchiveCleanValidationSpec,
     *,
@@ -774,6 +804,16 @@ def build_archive_clean_anchor_observation(
     }:
         raise HistoricalArchiveCleanEvidenceError(
             "CLEAN_EVIDENCE_NO_TRADE_MARKETS_MISMATCH"
+        )
+
+    expected_next_state = _expected_next_state(
+        spec,
+        state_before=state_before,
+        result=result,
+    )
+    if result.next_state != expected_next_state:
+        raise HistoricalArchiveCleanEvidenceError(
+            "CLEAN_EVIDENCE_STATE_TRANSITION_MISMATCH"
         )
 
     decision_as_of_ms = max(item.source_retrieved_at_ms for item in feature_refs)
