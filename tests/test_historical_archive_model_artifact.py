@@ -19,6 +19,7 @@ from cocomelon.research.historical_archive_model_artifact import (
     HistoricalArchiveCandidateModelArtifact,
     HistoricalArchiveModelArtifactError,
     build_archive_candidate_model_artifact,
+    load_archive_candidate_model_artifact,
     predict_archive_candidate_model,
     verify_archive_candidate_model_artifact,
     write_archive_candidate_model_artifact,
@@ -360,6 +361,69 @@ def test_build_model_artifact_binds_calibration_and_family_policy(
     assert result.promotion_eligible is False
     assert len(result.artifact_id) == 64
 
+
+
+def test_model_artifact_runtime_loader_does_not_rebuild_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    expected = _artifact(
+        model_family="stable_horizon_ridge",
+        model_format=RIDGE_MODEL_FORMAT,
+        model_payload={
+            "format": RIDGE_MODEL_FORMAT,
+            "alpha": "0.1",
+            "min_market_samples": 3,
+            "numeric_features": (),
+            "trend_regimes": (),
+            "horizons": ({"horizon_ms": FIVE},),
+        },
+        selected_alpha=Decimal("0.1"),
+    )
+    path = write_archive_candidate_model_artifact(tmp_path, expected)
+    monkeypatch.setattr(
+        artifact,
+        "build_archive_candidate_model_artifact",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("runtime loader must not rebuild historical model")
+        ),
+    )
+
+    loaded = load_archive_candidate_model_artifact(path)
+
+    assert loaded == expected
+    assert loaded.artifact_id == expected.artifact_id
+
+
+def test_model_artifact_runtime_loader_rejects_internal_tampering(
+    tmp_path: Path,
+) -> None:
+    expected = _artifact(
+        model_family="stable_horizon_ridge",
+        model_format=RIDGE_MODEL_FORMAT,
+        model_payload={
+            "format": RIDGE_MODEL_FORMAT,
+            "alpha": "0.1",
+            "min_market_samples": 3,
+            "numeric_features": (),
+            "trend_regimes": (),
+            "horizons": ({"horizon_ms": FIVE},),
+        },
+        selected_alpha=Decimal("0.1"),
+    )
+    path = write_archive_candidate_model_artifact(tmp_path, expected)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["execution_policy"] = "tampered"
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        HistoricalArchiveModelArtifactError,
+        match="ARCHIVE_MODEL_ARTIFACT_INVALID",
+    ):
+        load_archive_candidate_model_artifact(path)
 
 def test_model_artifact_round_trips_and_detects_tampering(
     monkeypatch: pytest.MonkeyPatch,
