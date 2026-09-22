@@ -23,6 +23,7 @@ PROSPECTIVE_EVIDENCE_CLASS = "prospective_clean"
 CAMPAIGN_SCHEMA_VERSION = 1
 RECORD_SCHEMA_VERSION = 1
 MAX_ENTRY_CANDLE_AGE_MS = 15 * 60 * 1_000
+FROZEN_CONTEXT_BASKET = ("BTC", "ETH", "HYPE", "SOL")
 
 
 class ProspectiveEvidenceConsistencyError(RuntimeError):
@@ -120,6 +121,7 @@ class ProspectiveCampaignManifest:
     candidate_spec_id: str
     candidate_id: str
     validation_not_before_ms: int
+    basket_markets: tuple[str, ...] = FROZEN_CONTEXT_BASKET
     evidence_class: str = PROSPECTIVE_EVIDENCE_CLASS
     promotion_eligible: bool = False
     schema_version: int = CAMPAIGN_SCHEMA_VERSION
@@ -129,6 +131,8 @@ class ProspectiveCampaignManifest:
         _require_nonempty(self.candidate_id, "candidate_id")
         if self.validation_not_before_ms < 0:
             raise ValueError("validation_not_before_ms must be non-negative")
+        if self.basket_markets != FROZEN_CONTEXT_BASKET:
+            raise ValueError("prospective campaign basket must match frozen discovery")
         if self.evidence_class != PROSPECTIVE_EVIDENCE_CLASS:
             raise ValueError("prospective campaign evidence_class is fixed")
         if self.promotion_eligible:
@@ -141,6 +145,7 @@ class ProspectiveCampaignManifest:
             "candidate_spec_id": self.candidate_spec_id,
             "candidate_id": self.candidate_id,
             "validation_not_before_ms": self.validation_not_before_ms,
+            "basket_markets": self.basket_markets,
             "evidence_class": self.evidence_class,
             "promotion_eligible": self.promotion_eligible,
             "schema_version": self.schema_version,
@@ -340,6 +345,8 @@ def build_prospective_observation(
 ) -> ProspectiveObservation:
     if raw_decision.candidate_spec_id != spec.spec_id:
         raise ValueError("raw decision candidate spec does not match frozen spec")
+    if entry_candle.end_ms < spec.validation_not_before_ms:
+        raise ValueError("entry candle anchor predates prospective cutover")
     if raw_decision.market != spec.market:
         raise ValueError("raw decision market does not match frozen spec")
     _validate_entry_candle(spec, raw_decision, entry_candle)
