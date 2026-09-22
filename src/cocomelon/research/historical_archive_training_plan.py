@@ -29,6 +29,14 @@ from cocomelon.research.historical_dataset import (
 
 TRAINING_PLAN_POLICY = "chronological-final-fit-calibration-v1"
 TRAINING_PLAN_SCHEMA_VERSION = 1
+SELECTION_ALGORITHMS = {
+    "stable_horizon_ridge": "stable_horizon_ridge_final_calibration_v1",
+    "occupancy_stable_ridge": "occupancy_stable_ridge_final_calibration_v1",
+    "portfolio_capacity_stable_ridge": (
+        "portfolio_capacity_stable_ridge_final_calibration_v1"
+    ),
+    "stable_tree": "stable_tree_final_calibration_v1",
+}
 
 
 class HistoricalArchiveTrainingPlanError(RuntimeError):
@@ -102,6 +110,7 @@ class HistoricalArchiveCandidateTrainingPlan:
     fit_start_ms: int
     fit_end_ms: int
     embargo_anchor_count: int
+    embargo_row_count: int
     embargo_start_ms: int
     embargo_end_ms: int
     calibration_anchor_count: int
@@ -157,6 +166,7 @@ class HistoricalArchiveCandidateTrainingPlan:
             "fit_anchor_count",
             "fit_row_count",
             "embargo_anchor_count",
+            "embargo_row_count",
             "calibration_anchor_count",
             "calibration_row_count",
             "maximum_horizon_ms",
@@ -170,6 +180,13 @@ class HistoricalArchiveCandidateTrainingPlan:
             != self.total_anchor_count
         ):
             raise ValueError("fit/embargo/calibration anchors must cover dataset")
+        if (
+            self.fit_row_count
+            + self.embargo_row_count
+            + self.calibration_row_count
+            != self.dataset_row_count
+        ):
+            raise ValueError("fit/embargo/calibration rows must cover dataset")
         if not (
             self.fit_start_ms <= self.fit_end_ms
             < self.embargo_start_ms
@@ -185,6 +202,9 @@ class HistoricalArchiveCandidateTrainingPlan:
             raise ValueError("training plan embargo must cover maximum horizon")
         if not isinstance(self.comparison_config, dict) or not self.comparison_config:
             raise ValueError("comparison_config must not be empty")
+        expected_algorithm = SELECTION_ALGORITHMS.get(self.model_family)
+        if expected_algorithm is None or self.selection_algorithm != expected_algorithm:
+            raise ValueError("selection_algorithm must match model_family")
         expected_config_sha256 = hashlib.sha256(
             _canonical_json(self.comparison_config).encode("utf-8")
         ).hexdigest()
@@ -221,6 +241,7 @@ class HistoricalArchiveCandidateTrainingPlan:
             "fit_start_ms": self.fit_start_ms,
             "fit_end_ms": self.fit_end_ms,
             "embargo_anchor_count": self.embargo_anchor_count,
+            "embargo_row_count": self.embargo_row_count,
             "embargo_start_ms": self.embargo_start_ms,
             "embargo_end_ms": self.embargo_end_ms,
             "calibration_anchor_count": self.calibration_anchor_count,
@@ -261,16 +282,8 @@ def _dataset_manifest(output_root: Path) -> dict[str, object]:
 
 
 def _selection_algorithm(freeze: HistoricalArchiveCandidateFreeze) -> str:
-    algorithms = {
-        "stable_horizon_ridge": "stable_horizon_ridge_final_calibration_v1",
-        "occupancy_stable_ridge": "occupancy_stable_ridge_final_calibration_v1",
-        "portfolio_capacity_stable_ridge": (
-            "portfolio_capacity_stable_ridge_final_calibration_v1"
-        ),
-        "stable_tree": "stable_tree_final_calibration_v1",
-    }
     try:
-        return algorithms[freeze.model_family]
+        return SELECTION_ALGORITHMS[freeze.model_family]
     except KeyError as exc:
         raise HistoricalArchiveTrainingPlanError(
             "ARCHIVE_TRAINING_MODEL_FAMILY_UNSUPPORTED"
@@ -429,7 +442,10 @@ def build_archive_candidate_training_plan(
         min_train_anchors=config.min_train_anchors,
     )
 
-    comparison_config = config.to_dict()
+    comparison_config = cast(
+        dict[str, object],
+        json.loads(_canonical_json(config.to_dict())),
+    )
     comparison_config_sha256 = hashlib.sha256(
         _canonical_json(comparison_config).encode("utf-8")
     ).hexdigest()
@@ -454,6 +470,7 @@ def build_archive_candidate_training_plan(
         fit_start_ms=fit_anchors[0],
         fit_end_ms=fit_anchors[-1],
         embargo_anchor_count=len(embargo_anchors),
+        embargo_row_count=len(_embargo_rows),
         embargo_start_ms=embargo_anchors[0],
         embargo_end_ms=embargo_anchors[-1],
         calibration_anchor_count=len(calibration_anchors),
