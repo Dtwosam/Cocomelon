@@ -31,6 +31,7 @@ jobs:
       SOURCE_ROOT: artifacts/historical-archive-clean-sources
       STATE_ARTIFACT_NAME: historical-archive-clean-state-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
       WORKFLOW_PATH: .github/workflows/historical-archive-clean.yml
+      RUNTIME_PUBLISHER_WORKFLOW_PATH: .github/workflows/historical-archive-clean-runtime-publish.yml
       SCHEDULE_CRON: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
       ARTIFACT_RETENTION_DAYS: "90"
 
@@ -89,11 +90,58 @@ jobs:
           )
           if payload.get("expired") is not False:
               raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_EXPIRED")
-          run = payload.get("workflow_run")
-          if not isinstance(run, dict) or run.get("head_branch") != "main":
-              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN")
           if str(payload.get("id")) != os.environ["RUNTIME_ARTIFACT_ID"]:
               raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID_MISMATCH")
+          expected_name = (
+              "historical-archive-clean-runtime-" + os.environ["PIN_ID"]
+          )
+          if payload.get("name") != expected_name:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NAME_MISMATCH")
+          run = payload.get("workflow_run")
+          if (
+              not isinstance(run, dict)
+              or run.get("head_branch") != "main"
+              or not isinstance(run.get("id"), int)
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN")
+          Path("/tmp/archive-clean-runtime-run-id").write_text(
+              str(run["id"]),
+              encoding="utf-8",
+          )
+          PY
+          runtime_run_id="$(cat /tmp/archive-clean-runtime-run-id)"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$runtime_run_id" \
+            > /tmp/archive-clean-runtime-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-runtime-run.json").read_text(encoding="utf-8")
+          )
+          if run.get("path") != os.environ["RUNTIME_PUBLISHER_WORKFLOW_PATH"]:
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_WORKFLOW_MISMATCH"
+              )
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_REPOSITORY_MISMATCH"
+              )
+          if run.get("head_branch") != "main":
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_BRANCH_MISMATCH"
+              )
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH"
+              )
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_NOT_SUCCESS"
+              )
           PY
           gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip"             > /tmp/archive-clean-runtime.zip
           unzip -q /tmp/archive-clean-runtime.zip -d "$RUNTIME_ROOT"
