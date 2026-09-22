@@ -12,6 +12,7 @@ from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
 from cocomelon.research.prospective_blind_monitor import (
+    MAX_OPERATIONAL_SOURCE_AGE_MS,
     BlindBlockHealth,
     ProspectiveBlindMonitor,
 )
@@ -291,3 +292,26 @@ def test_tampered_cutover_receipt_fails_identity_check(
         match="CUTOVER_RECEIPT_ID_MISMATCH",
     ):
         verify_prospective_hype_cutover_receipt(receipt_path)
+
+
+
+def test_cutover_acceptance_rejects_stale_blind_monitor(
+    tmp_path: Path,
+) -> None:
+    monitor_path = tmp_path / "monitor.json"
+    monitor = _monitor()
+    _write(monitor_path, monitor.to_dict())
+
+    with pytest.raises(
+        ProspectiveCutoverAcceptanceError,
+        match="BLIND_MONITOR_STALE",
+    ):
+        build_prospective_hype_cutover_acceptance(
+            monitor_path,
+            tmp_path / "state",
+            state_artifact_id=STATE_ID,
+            state_audited_at_ms=monitor.as_of_ms,
+            audited_at_ms=(
+                monitor.as_of_ms + MAX_OPERATIONAL_SOURCE_AGE_MS + 1
+            ),
+        )
