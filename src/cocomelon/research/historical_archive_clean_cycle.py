@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import cast
 
 from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanOperationalCheckpoint,
@@ -33,6 +35,65 @@ def _canonical_json(value: object) -> str:
 def _require_sha256(value: str, field: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError(f"{field} must be lowercase SHA-256")
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise HistoricalArchiveCleanCycleError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _sequence(value: object, field: str) -> tuple[object, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise HistoricalArchiveCleanCycleError(f"{field} must be a sequence")
+    return tuple(value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise HistoricalArchiveCleanCycleError(
+            f"{field} must be a non-empty string"
+        )
+    return value
+
+
+def _optional_string(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    return _string(value, field)
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HistoricalArchiveCleanCycleError(f"{field} must be an integer")
+    return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise HistoricalArchiveCleanCycleError(f"{field} must be boolean")
+    return value
+
+
+def _optional_integer(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, field)
+
+
+def _validate_capture_coverage(value: str | None) -> None:
+    if value is None:
+        return
+    try:
+        resolved = Decimal(value)
+    except InvalidOperation as exc:
+        raise ValueError("capture_coverage must be a decimal string") from exc
+    if (
+        not resolved.is_finite()
+        or resolved < Decimal("0")
+        or resolved > Decimal("1")
+    ):
+        raise ValueError("capture_coverage must be between zero and one")
 
 
 def _file_manifest(
@@ -143,6 +204,21 @@ class ArchiveCleanOperationalCycleReceipt:
             > self.expected_elapsed_anchor_count
         ):
             raise ValueError("captured anchor count is invalid")
+        _validate_capture_coverage(self.capture_coverage)
+        if self.expected_elapsed_anchor_count == 0:
+            if self.capture_coverage is not None:
+                raise ValueError(
+                    "capture_coverage must be null before expected anchors"
+                )
+        else:
+            expected_coverage = (
+                Decimal(self.captured_elapsed_anchor_count)
+                / Decimal(self.expected_elapsed_anchor_count)
+            )
+            if self.capture_coverage != str(expected_coverage):
+                raise ValueError(
+                    "capture_coverage must match elapsed anchor counts"
+                )
         if self.cumulative_settled_outcome_count < 0:
             raise ValueError("cumulative settled count must be non-negative")
         if self.pending_signal_count < 0:
@@ -252,6 +328,130 @@ def build_archive_clean_operational_cycle_receipt(
         source_digest=_manifest_digest(source_files),
         source_file_count=len(source_files),
     )
+
+
+def load_archive_clean_operational_cycle_receipt(
+    path: Path,
+) -> ArchiveCleanOperationalCycleReceipt:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "archive clean operational cycle receipt",
+        )
+        receipt = ArchiveCleanOperationalCycleReceipt(
+            runtime_id=_string(raw.get("runtime_id"), "runtime_id"),
+            pin_id=_string(raw.get("pin_id"), "pin_id"),
+            campaign_id=_string(raw.get("campaign_id"), "campaign_id"),
+            validation_spec_id=_string(
+                raw.get("validation_spec_id"),
+                "validation_spec_id",
+            ),
+            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+            restored_checkpoint_id=_string(
+                raw.get("restored_checkpoint_id"),
+                "restored_checkpoint_id",
+            ),
+            current_checkpoint_id=_string(
+                raw.get("current_checkpoint_id"),
+                "current_checkpoint_id",
+            ),
+            cycle_started_ms=_integer(
+                raw.get("cycle_started_ms"),
+                "cycle_started_ms",
+            ),
+            completed_at_ms=_integer(
+                raw.get("completed_at_ms"),
+                "completed_at_ms",
+            ),
+            status=_string(raw.get("status"), "status"),
+            anchor_end_ms=_optional_integer(
+                raw.get("anchor_end_ms"),
+                "anchor_end_ms",
+            ),
+            observation_id=_optional_string(
+                raw.get("observation_id"),
+                "observation_id",
+            ),
+            settled_outcome_ids=tuple(
+                _string(item, "settled_outcome_id")
+                for item in _sequence(
+                    raw.get("settled_outcome_ids"),
+                    "settled_outcome_ids",
+                )
+            ),
+            missing_settlement_signal_ids=tuple(
+                _string(item, "missing_settlement_signal_id")
+                for item in _sequence(
+                    raw.get("missing_settlement_signal_ids"),
+                    "missing_settlement_signal_ids",
+                )
+            ),
+            capture_coverage=_optional_string(
+                raw.get("capture_coverage"),
+                "capture_coverage",
+            ),
+            expected_elapsed_anchor_count=_integer(
+                raw.get("expected_elapsed_anchor_count"),
+                "expected_elapsed_anchor_count",
+            ),
+            captured_elapsed_anchor_count=_integer(
+                raw.get("captured_elapsed_anchor_count"),
+                "captured_elapsed_anchor_count",
+            ),
+            cumulative_settled_outcome_count=_integer(
+                raw.get("cumulative_settled_outcome_count"),
+                "cumulative_settled_outcome_count",
+            ),
+            pending_signal_count=_integer(
+                raw.get("pending_signal_count"),
+                "pending_signal_count",
+            ),
+            cycle_evidence_digest=_string(
+                raw.get("cycle_evidence_digest"),
+                "cycle_evidence_digest",
+            ),
+            cycle_evidence_file_count=_integer(
+                raw.get("cycle_evidence_file_count"),
+                "cycle_evidence_file_count",
+            ),
+            source_digest=_string(raw.get("source_digest"), "source_digest"),
+            source_file_count=_integer(
+                raw.get("source_file_count"),
+                "source_file_count",
+            ),
+            paper_only=_boolean(raw.get("paper_only"), "paper_only"),
+            prospective_only=_boolean(
+                raw.get("prospective_only"),
+                "prospective_only",
+            ),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            schema_version=_integer(
+                raw.get("schema_version"),
+                "schema_version",
+            ),
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise HistoricalArchiveCleanCycleError(
+            "ARCHIVE_CLEAN_CYCLE_RECEIPT_INVALID"
+        ) from exc
+    if raw.get("receipt_id") != receipt.receipt_id:
+        raise HistoricalArchiveCleanCycleError(
+            "ARCHIVE_CLEAN_CYCLE_RECEIPT_ID_MISMATCH"
+        )
+    if path.read_text(encoding="utf-8") != _canonical_json(
+        receipt.to_dict()
+    ) + "\n":
+        raise HistoricalArchiveCleanCycleError(
+            "ARCHIVE_CLEAN_CYCLE_RECEIPT_NON_CANONICAL"
+        )
+    return receipt
 
 
 def write_archive_clean_operational_cycle_receipt(

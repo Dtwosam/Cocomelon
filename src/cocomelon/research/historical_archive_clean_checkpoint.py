@@ -610,6 +610,50 @@ def _date_path(timestamp_ms: int) -> str:
     return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).date().isoformat()
 
 
+def build_archive_clean_initial_checkpoint(
+    spec: HistoricalArchiveCleanValidationSpec,
+    *,
+    runtime_id: str,
+    pin_id: str,
+) -> ArchiveCleanOperationalCheckpoint:
+    manifest = ArchiveCleanCampaignManifest(
+        validation_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        model_artifact_id=spec.model_artifact_id,
+        model_payload_sha256=spec.model_payload_sha256,
+        markets=spec.markets,
+        active_horizons=spec.active_horizons,
+        validation_start_ms=spec.validation_start_ms,
+        validation_end_ms=spec.validation_end_ms,
+        finalization_not_before_ms=spec.finalization_not_before_ms,
+        expected_anchor_count=spec.expected_anchor_count,
+    )
+    return ArchiveCleanOperationalCheckpoint(
+        validation_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        model_artifact_id=spec.model_artifact_id,
+        campaign_id=manifest.campaign_id,
+        runtime_id=runtime_id,
+        pin_id=pin_id,
+        first_expected_anchor_ms=spec.first_expected_anchor_ms,
+        anchor_interval_ms=spec.anchor_interval_ms,
+        expected_anchor_count=spec.expected_anchor_count,
+        stability_blocks=spec.stability_blocks,
+        anchors_per_stability_block=spec.anchors_per_stability_block,
+        captured_bitmap_hex="0",
+        latest_anchor_end_ms=None,
+        latest_observation_id=None,
+        latest_state=ArchivePaperState(),
+        pending_observations=(),
+        settled_outcome_count=0,
+        block_economics=tuple(
+            ArchiveCleanBlockEconomics(block_index=index)
+            for index in range(spec.stability_blocks)
+        ),
+        as_of_ms=0,
+    )
+
+
 class ArchiveCleanCheckpointEvidenceStore:
     def __init__(
         self,
@@ -624,19 +668,12 @@ class ArchiveCleanCheckpointEvidenceStore:
         self.cycle_evidence_root = cycle_evidence_root
         self.cycle_evidence_root.mkdir(parents=True, exist_ok=True)
         self.spec = spec
-        manifest = ArchiveCleanCampaignManifest(
-            validation_spec_id=spec.spec_id,
-            candidate_id=spec.candidate_id,
-            model_artifact_id=spec.model_artifact_id,
-            model_payload_sha256=spec.model_payload_sha256,
-            markets=spec.markets,
-            active_horizons=spec.active_horizons,
-            validation_start_ms=spec.validation_start_ms,
-            validation_end_ms=spec.validation_end_ms,
-            finalization_not_before_ms=spec.finalization_not_before_ms,
-            expected_anchor_count=spec.expected_anchor_count,
+        initial = build_archive_clean_initial_checkpoint(
+            spec,
+            runtime_id=runtime_id,
+            pin_id=pin_id,
         )
-        self.campaign_id = manifest.campaign_id
+        self.campaign_id = initial.campaign_id
         self.runtime_id = runtime_id
         self.pin_id = pin_id
         if checkpoint_path.exists():
@@ -644,30 +681,7 @@ class ArchiveCleanCheckpointEvidenceStore:
             self._verify_lineage(checkpoint)
             self._checkpoint = checkpoint
         else:
-            self._checkpoint = ArchiveCleanOperationalCheckpoint(
-                validation_spec_id=spec.spec_id,
-                candidate_id=spec.candidate_id,
-                model_artifact_id=spec.model_artifact_id,
-                campaign_id=self.campaign_id,
-                runtime_id=runtime_id,
-                pin_id=pin_id,
-                first_expected_anchor_ms=spec.first_expected_anchor_ms,
-                anchor_interval_ms=spec.anchor_interval_ms,
-                expected_anchor_count=spec.expected_anchor_count,
-                stability_blocks=spec.stability_blocks,
-                anchors_per_stability_block=spec.anchors_per_stability_block,
-                captured_bitmap_hex="0",
-                latest_anchor_end_ms=None,
-                latest_observation_id=None,
-                latest_state=ArchivePaperState(),
-                pending_observations=(),
-                settled_outcome_count=0,
-                block_economics=tuple(
-                    ArchiveCleanBlockEconomics(block_index=index)
-                    for index in range(spec.stability_blocks)
-                ),
-                as_of_ms=0,
-            )
+            self._checkpoint = initial
 
     @property
     def checkpoint(self) -> ArchiveCleanOperationalCheckpoint:
