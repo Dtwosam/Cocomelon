@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -390,13 +390,14 @@ def _tree_result(
         evaluation=validation.evaluation,
         minimum_required_trades=minimum_required_trades,
         minimum_required_mean_net_return=minimum_required_mean_net_return,
-        selected=True,
+        selected=False,
     )
     if not item.qualifies:
         raise HistoricalArchiveFinalCalibrationError(
             "ARCHIVE_FINAL_CALIBRATION_NO_ELIGIBLE_RECIPE"
         )
-    return item, (item,)
+    selected_item = replace(item, selected=True)
+    return selected_item, (selected_item,)
 
 
 def build_archive_final_calibration(
@@ -424,7 +425,8 @@ def build_archive_final_calibration(
     allow_coin_calibration = plan.calibration_variant == "market"
 
     if plan.model_family == "stable_horizon_ridge":
-        selected_raw, raw_candidates = select_final_stable_horizon_ridge(
+        stable_selected_raw, stable_raw_candidates = (
+            select_final_stable_horizon_ridge(
             fit_rows,
             calibration_rows,
             costs=config.costs,
@@ -440,16 +442,18 @@ def build_archive_final_calibration(
                 config.min_validation_mean_net_return
             ),
         )
+        )
         selected, candidates = _ridge_result(
-            selected_raw,
-            raw_candidates,
+            stable_selected_raw,
+            stable_raw_candidates,
             minimum_required_trades=config.min_validation_trades,
             minimum_required_mean_net_return=(
                 config.min_validation_mean_net_return
             ),
         )
     elif plan.model_family == "occupancy_stable_ridge":
-        selected_raw, raw_candidates = select_final_occupancy_stable_ridge(
+        occupancy_selected_raw, occupancy_raw_candidates = (
+            select_final_occupancy_stable_ridge(
             fit_rows,
             calibration_rows,
             costs=config.costs,
@@ -465,16 +469,17 @@ def build_archive_final_calibration(
                 config.min_validation_mean_net_return
             ),
         )
+        )
         selected, candidates = _ridge_result(
-            selected_raw,
-            raw_candidates,
+            occupancy_selected_raw,
+            occupancy_raw_candidates,
             minimum_required_trades=config.min_validation_trades,
             minimum_required_mean_net_return=(
                 config.min_validation_mean_net_return
             ),
         )
     elif plan.model_family == "portfolio_capacity_stable_ridge":
-        selected_raw, raw_candidates = (
+        portfolio_selected_raw, portfolio_raw_candidates = (
             select_final_portfolio_capacity_stable_ridge(
                 fit_rows,
                 calibration_rows,
@@ -496,8 +501,8 @@ def build_archive_final_calibration(
             )
         )
         selected, candidates = _ridge_result(
-            selected_raw,
-            raw_candidates,
+            portfolio_selected_raw,
+            portfolio_raw_candidates,
             minimum_required_trades=config.min_validation_trades,
             minimum_required_mean_net_return=(
                 config.min_validation_mean_net_return
