@@ -13,6 +13,7 @@ from cocomelon.research.historical_archive_presets import (
     build_archive_preset_run_receipt,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
+    verify_archive_preset_run_receipt,
     write_archive_preset_run_receipt,
 )
 from cocomelon.research.historical_discovery_freeze import (
@@ -153,6 +154,7 @@ def test_preset_runner_forwards_only_frozen_values(
     assert len(payload["preset_identity_sha256"]) == 64
     assert len(payload["receipt_id"]) == 64
 
+
 def test_preset_run_receipt_is_deterministic_and_binds_outputs() -> None:
     result = _fake_experiment_result()
 
@@ -212,4 +214,37 @@ def test_preset_run_receipt_refuses_conflicting_overwrite(
         match="ARCHIVE_PRESET_RUN_RECEIPT_CONFLICT",
     ):
         write_archive_preset_run_receipt(tmp_path, receipt)
+
+def test_preset_run_receipt_verifies_round_trip_and_detects_tampering(
+    tmp_path: Path,
+) -> None:
+    result = _fake_experiment_result()
+    receipt = build_archive_preset_run_receipt(
+        JUL_SEP_2026_V2,
+        result,  # type: ignore[arg-type]
+    )
+    path = write_archive_preset_run_receipt(tmp_path, receipt)
+
+    verified = verify_archive_preset_run_receipt(
+        path,
+        preset=JUL_SEP_2026_V2,
+    )
+
+    assert verified == receipt
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["dataset_id"] = "tampered-dataset"
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_RUN_RECEIPT_ID_MISMATCH",
+    ):
+        verify_archive_preset_run_receipt(
+            path,
+            preset=JUL_SEP_2026_V2,
+        )
 
