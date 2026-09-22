@@ -139,7 +139,7 @@ def _artifact(
         selected_horizon_thresholds=((FIVE, Decimal("0.001")),),
         allow_coin_calibration=calibration_variant == "market",
         min_sample_count=20,
-        min_market_samples=3,
+        min_market_samples=int(model_payload["min_market_samples"]),
         execution_policy=policy,
         max_concurrent_positions=(
             2 if model_family == "portfolio_capacity_stable_ridge" else None
@@ -331,7 +331,7 @@ def test_build_model_artifact_binds_calibration_and_family_policy(
             "min_market_samples": 100,
             "numeric_features": (),
             "trend_regimes": (),
-            "horizons": (),
+            "horizons": ({"horizon_ms": FIVE},),
         },
     )
     monkeypatch.setattr(
@@ -374,7 +374,7 @@ def test_model_artifact_round_trips_and_detects_tampering(
             "min_market_samples": 3,
             "numeric_features": (),
             "trend_regimes": (),
-            "horizons": (),
+            "horizons": ({"horizon_ms": FIVE},),
         },
         selected_alpha=Decimal("0.1"),
     )
@@ -427,7 +427,7 @@ def test_model_artifact_write_refuses_conflicting_overwrite(
             "min_market_samples": 3,
             "numeric_features": (),
             "trend_regimes": (),
-            "horizons": (),
+            "horizons": ({"horizon_ms": FIVE},),
         },
         selected_alpha=Decimal("0.1"),
     )
