@@ -16,13 +16,16 @@ def test_lineage_audit_is_read_only_and_separate_from_frozen_observer() -> None:
     assert "cocomelon-prospective-hype-observer" not in source
 
 
-def test_lineage_audit_compares_latest_two_main_state_artifacts() -> None:
+def test_lineage_audit_compares_latest_two_distinct_observer_runs() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "prospective-hype-clean-state" in source
     assert "actions/artifacts?name=$STATE_ARTIFACT_NAME" in source
-    assert 'item["workflow_run"]["head_branch"] == "main"' in source
-    assert "previous, current = artifacts[-2:]" in source
+    assert "select_lineage_state_pair" in source
+    assert "ProspectiveArtifactSelectionError" in source
+    assert '"src/cocomelon/research/prospective_artifact_selection.py"' in source
+    assert '"tests/test_prospective_artifact_selection.py"' in source
+    assert "previous, current = artifacts[-2:]" not in source
     assert "/artifacts/$PREVIOUS_ID/zip" in source
     assert "/artifacts/$CURRENT_ID/zip" in source
     assert "Verify selected state artifact producers" in source
@@ -67,7 +70,7 @@ def test_lineage_audit_never_skips_an_invalid_latest_frozen_state() -> None:
     assert '--root "$LINEAGE_ROOT/previous"' in source
     assert '[[ -f "$LINEAGE_ROOT/previous/control-plane.json" ]]' in source
     assert "for candidate" not in source
-    assert "previous, current = artifacts[-2:]" in source
+    assert "select_lineage_state_pair" in source
 
 
 def test_lineage_bootstrap_receipt_is_only_for_pre_control_plane_predecessor() -> None:
@@ -107,6 +110,14 @@ def test_lineage_audit_preserves_redacted_failure_receipt_before_failing() -> No
     assert "Preserve lineage failure status" in source
     assert "continue-on-error: true" in source
     assert "if-no-files-found: error" in source
+
+
+def test_lineage_provenance_failure_is_terminal() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    terminal_index = source.index("Preserve lineage failure status")
+    terminal_tail = source[terminal_index:]
+    assert "steps.provenance.outcome == 'failure'" in terminal_tail
 
 
 def test_lineage_failure_artifact_cannot_match_success_prefix() -> None:
