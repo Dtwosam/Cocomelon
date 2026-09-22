@@ -259,3 +259,18 @@ def test_orphan_outcome_inside_fixed_window_fails_closed() -> None:
             store,
             as_of_ms=PLAN.finalization_not_before_ms,
         )
+
+
+
+def test_prevalidation_observation_fails_closed() -> None:
+    early = _observation(
+        PLAN.first_expected_anchor_ms - HOUR_MS,
+        trade=False,
+    )
+    store = FakeStore(observations=(early,), outcomes=())
+
+    with pytest.raises(ProspectiveValidationError, match="pre-validation observation"):
+        build_prospective_validation_report(
+            store,
+            as_of_ms=PLAN.validation_start_ms,
+        )
