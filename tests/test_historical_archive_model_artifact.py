@@ -14,10 +14,10 @@ import cocomelon.research.historical_archive_model_artifact as artifact
 from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_archive_model_artifact import (
-    HistoricalArchiveCandidateModelArtifact,
-    HistoricalArchiveModelArtifactError,
     RIDGE_MODEL_FORMAT,
     TREE_MODEL_FORMAT,
+    HistoricalArchiveCandidateModelArtifact,
+    HistoricalArchiveModelArtifactError,
     build_archive_candidate_model_artifact,
     predict_archive_candidate_model,
     verify_archive_candidate_model_artifact,
