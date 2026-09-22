@@ -168,9 +168,41 @@ def test_readiness_is_ready_after_valid_pre_cutover_bootstrap(
     assert result.activation_ready is True
     assert result.operationally_valid is True
     assert result.control_plane_id == control.control_plane_id
+    assert control.candidate_package_id == pinned.bundle.candidate_package_id
+    assert (
+        control.candidate_package_sha256
+        == pinned.bundle.candidate_package_sha256
+    )
+    assert (
+        control.runtime_publisher_workflow_path
+        == ".github/workflows/historical-archive-clean-runtime-publish.yml"
+    )
     assert result.checkpoint_id is not None
     assert result.reasons == ()
 
+
+
+def test_control_plane_rejects_legacy_runtime_without_portable_package(
+    tmp_path: Path,
+) -> None:
+    pinned = _pinned()
+    pinned.bundle.portable_package_bound = False
+    pinned.bundle.candidate_package_id = None
+    pinned.bundle.candidate_package_sha256 = None
+    pinned.pin.portable_package_bound = False
+    pinned.pin.candidate_package_id = None
+
+    with pytest.raises(
+        HistoricalArchiveCleanControlPlaneError,
+        match="ARCHIVE_CLEAN_CONTROL_PLANE_PORTABLE_PACKAGE_REQUIRED",
+    ):
+        ensure_archive_clean_control_plane(
+            tmp_path,
+            pinned=pinned,  # type: ignore[arg-type]
+            frozen_revision="f" * 40,
+            runtime_artifact_id="123",
+            as_of_ms=1_000,
+        )
 
 def test_control_plane_loader_detects_tampering(tmp_path: Path) -> None:
     pinned = _pinned()
