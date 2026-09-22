@@ -13,6 +13,7 @@ from cocomelon.research.historical_archive_presets import (
     HistoricalArchiveExperimentPreset,
 )
 from cocomelon.research.historical_archive_review import (
+    FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1,
     HistoricalArchiveDevelopmentReview,
     HistoricalDevelopmentVariantReview,
     build_archive_development_review,
@@ -131,7 +132,22 @@ class HistoricalArchiveCandidateFreeze:
             value = getattr(self, field)
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{field} must not be empty")
-        _require_sha256(self.qualified_variant_sha256, "qualified_variant_sha256")
+        for field in (
+            "bundle_id",
+            "review_id",
+            "review_policy_id",
+            "comparison_report_id",
+            "qualified_variant_sha256",
+        ):
+            _require_sha256(getattr(self, field), field)
+        if self.model_family not in (
+            FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1.eligible_families
+        ):
+            raise ValueError("model_family must come from frozen review policy")
+        if self.calibration_variant not in (
+            FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1.calibration_variants
+        ):
+            raise ValueError("calibration_variant must come from frozen review policy")
         if self.evidence_class != EVIDENCE_CLASS:
             raise ValueError("archive candidate freeze evidence must remain touched")
         if self.selection_policy != SELECTION_POLICY:
