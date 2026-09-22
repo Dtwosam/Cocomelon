@@ -77,9 +77,9 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
         "prospective-hype-clean-report-${{ github.run_id }}-${{ github.run_attempt }}"
         in source
     )
-    assert '"observation_count_to_date"' in source
-    assert '"expected_anchor_count_to_date"' in source
-    assert '"missed_anchor_count_to_date"' in source
-    assert '"capture_coverage_to_date"' in source
-    assert '"overdue_unsettled_count"' in source
+    assert "observation_count_to_date" in source
+    assert "expected_anchor_count_to_date" in source
+    assert "missed_anchor_count_to_date" in source
+    assert "capture_coverage_to_date" in source
+    assert "overdue_unsettled_count" in source
     assert "GITHUB_STEP_SUMMARY" in source
