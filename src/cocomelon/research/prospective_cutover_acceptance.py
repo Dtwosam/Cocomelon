@@ -9,6 +9,9 @@ from typing import cast
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
+from cocomelon.research.prospective_blind_monitor import (
+    verify_prospective_hype_blind_monitor_receipt,
+)
 from cocomelon.research.prospective_context_evidence import (
     ProspectiveCampaignManifest,
     ProspectiveEvidenceStore,
@@ -341,59 +344,31 @@ def build_prospective_hype_cutover_acceptance(
     if not state_artifact_id.isdigit():
         raise ValueError("state_artifact_id must be numeric")
 
-    monitor = _object(monitor_path, "BLIND_MONITOR")
-    _verify_identity(
-        monitor,
-        identity_field="monitor_id",
-        error_code="BLIND_MONITOR_ID_MISMATCH",
-    )
-    if not _boolean(
-        monitor.get("interim_economics_redacted"),
-        "INTERIM_ECONOMICS_REDACTED",
-    ):
-        raise ProspectiveCutoverAcceptanceError("INTERIM_ECONOMICS_NOT_REDACTED")
+    monitor = verify_prospective_hype_blind_monitor_receipt(monitor_path)
 
     plan = HYPE_PROSPECTIVE_VALIDATION_V1
     campaign_id = _expected_campaign_id()
-    monitor_campaign_id = _string(monitor.get("campaign_id"), "CAMPAIGN_ID")
-    if monitor_campaign_id != campaign_id:
+    if monitor.campaign_id != campaign_id:
         raise ProspectiveCutoverAcceptanceError("CAMPAIGN_ID_MISMATCH")
-
-    monitor_as_of_ms = _integer(monitor.get("as_of_ms"), "MONITOR_AS_OF_MS")
-    if monitor_as_of_ms < plan.first_expected_anchor_ms:
+    if monitor.as_of_ms < plan.first_expected_anchor_ms:
         raise ProspectiveCutoverAcceptanceError("FIRST_EXPECTED_ANCHOR_NOT_REACHED")
 
-    expected_to_date = _integer(
-        monitor.get("expected_anchor_count_to_date"),
-        "EXPECTED_ANCHOR_COUNT_TO_DATE",
-    )
-    observed_to_date = _integer(
-        monitor.get("observation_count_to_date"),
-        "OBSERVATION_COUNT_TO_DATE",
-    )
-    missed_to_date = _integer(
-        monitor.get("missed_anchor_count_to_date"),
-        "MISSED_ANCHOR_COUNT_TO_DATE",
-    )
+    expected_to_date = monitor.expected_anchor_count_to_date
+    observed_to_date = monitor.observation_count_to_date
+    missed_to_date = monitor.missed_anchor_count_to_date
     if expected_to_date < 1:
         raise ProspectiveCutoverAcceptanceError("EXPECTED_ANCHOR_COUNT_NOT_STARTED")
     if missed_to_date != expected_to_date - observed_to_date:
         raise ProspectiveCutoverAcceptanceError("CAPTURE_COUNT_RECONCILIATION_FAILED")
 
-    campaign_health_status = _string(
-        monitor.get("campaign_health_status"),
-        "CAMPAIGN_HEALTH_STATUS",
-    )
+    campaign_health_status = monitor.campaign_health_status
     if campaign_health_status not in {"healthy", "degraded"}:
         raise ProspectiveCutoverAcceptanceError("CUTOVER_CAMPAIGN_HEALTH_INVALID")
-    lineage_status = _string(monitor.get("lineage_status"), "LINEAGE_STATUS")
+    lineage_status = monitor.lineage_status
     if lineage_status != "append_only_valid":
         raise ProspectiveCutoverAcceptanceError("CUTOVER_LINEAGE_NOT_READY")
 
-    monitor_state_id = _string(
-        monitor.get("state_artifact_id"),
-        "STATE_ARTIFACT_ID",
-    )
+    monitor_state_id = monitor.state_artifact_id
     if monitor_state_id != state_artifact_id:
         raise ProspectiveCutoverAcceptanceError("STATE_ARTIFACT_ID_MISMATCH")
 
@@ -406,7 +381,7 @@ def build_prospective_hype_cutover_acceptance(
         raise ProspectiveCutoverAcceptanceError("STATE_NOT_POST_CUTOVER")
     if readiness.campaign_id != campaign_id:
         raise ProspectiveCutoverAcceptanceError("STATE_CAMPAIGN_ID_MISMATCH")
-    monitor_state_digest = _string(monitor.get("current_state_digest"), "STATE_DIGEST")
+    monitor_state_digest = monitor.current_state_digest
     if readiness.state_digest != monitor_state_digest:
         raise ProspectiveCutoverAcceptanceError("STATE_DIGEST_MISMATCH")
     if readiness.observation_count != observed_to_date:
@@ -452,7 +427,7 @@ def build_prospective_hype_cutover_acceptance(
         state_audited_at_ms=state_audited_at_ms,
         campaign_id=campaign_id,
         validation_plan_id=plan.plan_id,
-        monitor_id=_string(monitor.get("monitor_id"), "MONITOR_ID"),
+        monitor_id=monitor.monitor_id,
         state_artifact_id=state_artifact_id,
         state_digest=readiness.state_digest,
         first_expected_anchor_ms=plan.first_expected_anchor_ms,
