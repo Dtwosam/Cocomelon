@@ -99,6 +99,10 @@ class HistoricalDevelopmentReviewPolicy:
             raise ValueError("review policy calibration variants are frozen")
         if self.min_test_folds < 2:
             raise ValueError("min_test_folds must preserve multi-fold evidence")
+        if not self.require_every_test_fold_above_floor:
+            raise ValueError("review policy must require every test fold above floor")
+        if not self.require_overall_test_mean_above_floor:
+            raise ValueError("review policy must require overall test mean above floor")
         if self.evidence_class != EVIDENCE_CLASS:
             raise ValueError("historical review evidence must remain touched")
         if self.schema_version != REVIEW_SCHEMA_VERSION:
@@ -434,6 +438,8 @@ def build_archive_development_review(
         FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1
     ),
 ) -> HistoricalArchiveDevelopmentReview:
+    if policy.policy_id != FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1.policy_id:
+        raise HistoricalArchiveReviewError("REVIEW_POLICY_MISMATCH")
     bundle = verify_archive_preset_bundle_receipt(
         output_root / "preset-bundle.json",
         preset=preset,
