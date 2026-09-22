@@ -112,6 +112,12 @@ jobs:
           cocomelon-prospective-hype-report --root "$EVIDENCE_ROOT" \
             | tee /tmp/prospective-hype-report.json
 
+      - name: Build campaign recoverability health
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-health --root "$EVIDENCE_ROOT" \
+            | tee /tmp/prospective-hype-health.json
+
       - name: Verify research-only receipt
         run: |
           set -euo pipefail
@@ -125,6 +131,9 @@ jobs:
           report = json.loads(
               Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
           )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
           assert payload["execution_mode"] == "paper"
           assert payload["evidence_class"] == "prospective_clean"
           assert payload["promotion_eligible"] is False
@@ -135,6 +144,21 @@ jobs:
           assert report["state_digest"] == payload["state_digest"]
           assert report["plan_id"] == payload["validation_plan_id"]
           assert report["expected_anchor_count"] == 1080
+          assert health["evidence_class"] == "prospective_clean"
+          assert health["promotion_eligible"] is False
+          assert health["campaign_id"] == payload["campaign_id"]
+          assert health["state_digest"] == payload["state_digest"]
+          assert health["validation_report_id"] == report["report_id"]
+          assert health["plan_id"] == report["plan_id"]
+          assert health["expected_anchor_count"] == 1080
+          assert health["required_final_observation_count"] == 972
+          assert health["missed_anchor_budget"] == 108
+          assert health["status"] in {
+              "pre_validation",
+              "healthy",
+              "degraded",
+              "irrecoverable",
+          }
           assert report["status"] in {
               "collecting",
               "data_incomplete",
@@ -178,6 +202,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           prior_campaign = continuity["campaign_id"]
           if prior_campaign is not None:
               assert prior_campaign == cycle["campaign_id"]
@@ -201,6 +230,7 @@ jobs:
               "promotion_eligible": cycle["promotion_eligible"],
               "cycle": cycle,
               "validation_report": report,
+              "campaign_health": health,
           }
           payload["receipt_id"] = hashlib.sha256(
               canonical(payload).encode("utf-8")
@@ -227,6 +257,9 @@ jobs:
           report = json.loads(
               Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
           )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
           observation = payload["observation"]
           print("## Prospective HYPE clean observer")
           print()
@@ -246,6 +279,23 @@ jobs:
           print(f"- observations: {payload['observation_count']}")
           print(f"- outcomes: {payload['outcome_count']}")
           print(f"- validation status: {report['status']}")
+          print(f"- campaign health: {health['status']}")
+          print(
+              "- remaining miss budget: "
+              f"{health['remaining_missed_anchor_budget']}"
+          )
+          print(
+              "- maximum final capture coverage: "
+              f"{health['maximum_final_capture_coverage']}"
+          )
+          print(
+              "- maximum possible settled trades: "
+              f"{health['maximum_possible_settled_trades']}"
+          )
+          print(
+              "- irrecoverable reasons: "
+              f"{health['irrecoverable_reasons']}"
+          )
           print(
               "- anchors captured to date: "
               f"{report['observation_count_to_date']}/"
@@ -296,3 +346,29 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Upload immutable campaign health
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/prospective-hype-health.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Fail closed if frozen campaign is irrecoverable
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
+          if health["status"] == "irrecoverable":
+              reasons = ", ".join(health["irrecoverable_reasons"])
+              raise SystemExit(
+                  "PROSPECTIVE_CAMPAIGN_IRRECOVERABLE: " + reasons
+              )
+          PY
