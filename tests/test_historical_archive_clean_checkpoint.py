@@ -12,8 +12,8 @@ from cocomelon.domain.market import Candle, MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanCheckpointEvidenceStore,
-    build_archive_clean_initial_checkpoint,
     HistoricalArchiveCleanCheckpointError,
+    build_archive_clean_initial_checkpoint,
     load_archive_clean_operational_checkpoint,
 )
 from cocomelon.research.historical_archive_clean_evidence import (
