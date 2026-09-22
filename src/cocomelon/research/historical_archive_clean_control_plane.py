@@ -16,7 +16,7 @@ from cocomelon.research.prospective_context_evidence import (
 )
 
 CONTROL_PLANE_KIND = "historical-archive-clean-control-plane"
-CONTROL_PLANE_SCHEMA_VERSION = 1
+CONTROL_PLANE_SCHEMA_VERSION = 2
 CAPTURE_SCHEDULE_CRON = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
 CAPTURE_ATTEMPT_MINUTES_UTC = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)
 WORKFLOW_PATH = ".github/workflows/historical-archive-clean.yml"
@@ -95,6 +95,8 @@ class ArchiveCleanControlPlaneAttestation:
     candidate_id: str
     validation_spec_id: str
     model_artifact_id: str
+    candidate_package_id: str
+    candidate_package_sha256: str
     frozen_revision: str
     runtime_artifact_id: str
     workflow_path: str
@@ -121,6 +123,8 @@ class ArchiveCleanControlPlaneAttestation:
             "candidate_id",
             "validation_spec_id",
             "model_artifact_id",
+            "candidate_package_id",
+            "candidate_package_sha256",
         ):
             _require_sha256(getattr(self, field), field)
         if not re.fullmatch(r"[0-9a-f]{40}", self.frozen_revision):
@@ -174,6 +178,8 @@ class ArchiveCleanControlPlaneAttestation:
             "candidate_id": self.candidate_id,
             "validation_spec_id": self.validation_spec_id,
             "model_artifact_id": self.model_artifact_id,
+            "candidate_package_id": self.candidate_package_id,
+            "candidate_package_sha256": self.candidate_package_sha256,
             "frozen_revision": self.frozen_revision,
             "runtime_artifact_id": self.runtime_artifact_id,
             "workflow_path": self.workflow_path,
@@ -212,6 +218,17 @@ def build_archive_clean_control_plane(
     frozen_revision: str,
     runtime_artifact_id: str,
 ) -> ArchiveCleanControlPlaneAttestation:
+    if (
+        not pinned.bundle.portable_package_bound
+        or pinned.bundle.candidate_package_id is None
+        or pinned.bundle.candidate_package_sha256 is None
+        or pinned.pin.candidate_package_id
+        != pinned.bundle.candidate_package_id
+        or not pinned.pin.portable_package_bound
+    ):
+        raise HistoricalArchiveCleanControlPlaneError(
+            "ARCHIVE_CLEAN_CONTROL_PLANE_PORTABLE_PACKAGE_REQUIRED"
+        )
     pin_id = pinned.pin.pin_id
     return ArchiveCleanControlPlaneAttestation(
         runtime_id=pinned.bundle.runtime_id,
@@ -219,6 +236,8 @@ def build_archive_clean_control_plane(
         candidate_id=pinned.bundle.candidate_id,
         validation_spec_id=pinned.bundle.validation_spec_id,
         model_artifact_id=pinned.bundle.model_artifact_id,
+        candidate_package_id=pinned.bundle.candidate_package_id,
+        candidate_package_sha256=pinned.bundle.candidate_package_sha256,
         frozen_revision=frozen_revision,
         runtime_artifact_id=runtime_artifact_id,
         workflow_path=WORKFLOW_PATH,
@@ -257,6 +276,14 @@ def load_archive_clean_control_plane(
             model_artifact_id=_string(
                 raw.get("model_artifact_id"),
                 "model_artifact_id",
+            ),
+            candidate_package_id=_string(
+                raw.get("candidate_package_id"),
+                "candidate_package_id",
+            ),
+            candidate_package_sha256=_string(
+                raw.get("candidate_package_sha256"),
+                "candidate_package_sha256",
             ),
             frozen_revision=_string(
                 raw.get("frozen_revision"),
