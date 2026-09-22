@@ -18,6 +18,7 @@ from cocomelon.research.prospective_context_report import (
 )
 
 BLIND_MONITOR_SCHEMA_VERSION = 1
+MAX_OPERATIONAL_SOURCE_AGE_MS = 90 * 60 * 1_000
 
 
 class ProspectiveBlindMonitorError(RuntimeError):
@@ -633,11 +634,44 @@ def _validate_lineage(
             raise ProspectiveBlindMonitorError(f"{field.upper()}_INVALID")
 
 
+def _validate_operational_source_freshness(
+    health: dict[str, object],
+    lineage: dict[str, object],
+    *,
+    audited_at_ms: int,
+    max_source_age_ms: int,
+) -> None:
+    if audited_at_ms < 0:
+        raise ValueError("audited_at_ms must be non-negative")
+    if max_source_age_ms <= 0:
+        raise ValueError("max_source_age_ms must be positive")
+
+    health_as_of_ms = _integer(health.get("as_of_ms"), "HEALTH_AS_OF_MS")
+    lineage_as_of_ms = _integer(
+        lineage.get("current_audited_at_ms"),
+        "LINEAGE_AUDITED_AT_MS",
+    )
+    for source_name, source_time_ms in (
+        ("HEALTH", health_as_of_ms),
+        ("LINEAGE", lineage_as_of_ms),
+    ):
+        if source_time_ms > audited_at_ms:
+            raise ProspectiveBlindMonitorError(
+                f"{source_name}_SOURCE_TIME_AFTER_AUDIT"
+            )
+        if audited_at_ms - source_time_ms > max_source_age_ms:
+            raise ProspectiveBlindMonitorError(
+                f"{source_name}_ARTIFACT_STALE"
+            )
+
+
 def build_prospective_hype_blind_monitor(
     health_path: str | Path,
     lineage_path: str | Path,
     *,
     expected_state_artifact_id: str,
+    audited_at_ms: int | None = None,
+    max_source_age_ms: int = MAX_OPERATIONAL_SOURCE_AGE_MS,
 ) -> ProspectiveBlindMonitor:
     if not expected_state_artifact_id.isdigit():
         raise ValueError("expected_state_artifact_id must be numeric")
@@ -649,6 +683,13 @@ def build_prospective_hype_blind_monitor(
         lineage,
         expected_state_artifact_id=expected_state_artifact_id,
     )
+    if audited_at_ms is not None:
+        _validate_operational_source_freshness(
+            health,
+            lineage,
+            audited_at_ms=audited_at_ms,
+            max_source_age_ms=max_source_age_ms,
+        )
 
     expected_to_date = _integer(
         health.get("expected_anchor_count_to_date"),
