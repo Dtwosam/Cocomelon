@@ -100,6 +100,7 @@ def _expected_campaign_id() -> str:
 @dataclass(frozen=True, slots=True)
 class ProspectiveCutoverAcceptance:
     audited_at_ms: int
+    state_audited_at_ms: int
     campaign_id: str
     validation_plan_id: str
     monitor_id: str
@@ -123,6 +124,10 @@ class ProspectiveCutoverAcceptance:
     def __post_init__(self) -> None:
         if self.audited_at_ms < 0:
             raise ValueError("audited_at_ms must be non-negative")
+        if self.state_audited_at_ms < 0:
+            raise ValueError("state_audited_at_ms must be non-negative")
+        if self.audited_at_ms < self.state_audited_at_ms:
+            raise ValueError("cutover audit cannot predate state artifact")
         for field in (
             "campaign_id",
             "validation_plan_id",
@@ -136,8 +141,8 @@ class ProspectiveCutoverAcceptance:
             raise ValueError("state_artifact_id must be numeric")
         if self.first_expected_anchor_ms < 0:
             raise ValueError("first_expected_anchor_ms must be non-negative")
-        if self.audited_at_ms < self.first_expected_anchor_ms:
-            raise ValueError("cutover acceptance cannot predate first expected anchor")
+        if self.state_audited_at_ms < self.first_expected_anchor_ms:
+            raise ValueError("cutover state cannot predate first expected anchor")
         for field in (
             "expected_anchor_count_to_date",
             "observation_count_to_date",
@@ -190,6 +195,7 @@ class ProspectiveCutoverAcceptance:
     def identity_payload(self) -> dict[str, object]:
         return {
             "audited_at_ms": self.audited_at_ms,
+            "state_audited_at_ms": self.state_audited_at_ms,
             "campaign_id": self.campaign_id,
             "validation_plan_id": self.validation_plan_id,
             "monitor_id": self.monitor_id,
@@ -245,6 +251,10 @@ def verify_prospective_hype_cutover_receipt(
     try:
         return ProspectiveCutoverAcceptance(
             audited_at_ms=_integer(payload.get("audited_at_ms"), "AUDITED_AT_MS"),
+            state_audited_at_ms=_integer(
+                payload.get("state_audited_at_ms"),
+                "STATE_AUDITED_AT_MS",
+            ),
             campaign_id=_string(payload.get("campaign_id"), "CAMPAIGN_ID"),
             validation_plan_id=_string(
                 payload.get("validation_plan_id"),
@@ -439,6 +449,7 @@ def build_prospective_hype_cutover_acceptance(
     )
     return ProspectiveCutoverAcceptance(
         audited_at_ms=audited_at_ms,
+        state_audited_at_ms=state_audited_at_ms,
         campaign_id=campaign_id,
         validation_plan_id=plan.plan_id,
         monitor_id=_string(monitor.get("monitor_id"), "MONITOR_ID"),
