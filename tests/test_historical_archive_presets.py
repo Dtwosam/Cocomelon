@@ -11,6 +11,7 @@ import cocomelon.research.historical_archive_presets as presets
 from cocomelon.research.historical_archive_presets import (
     JUL_SEP_2026_V2,
     build_archive_preset_bundle_receipt,
+    build_archive_preset_preflight,
     build_archive_preset_run_receipt,
     ensure_archive_preset_output_root_clean,
     get_archive_experiment_preset,
@@ -348,6 +349,142 @@ def test_preset_run_receipt_verifies_round_trip_and_detects_tampering(
         verify_archive_preset_run_receipt(
             path,
             preset=JUL_SEP_2026_V2,
+        )
+
+
+def test_archive_preset_preflight_binds_verified_cache_and_source_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    output_root = tmp_path / "output"
+    source_root.mkdir()
+    (source_root / "resume.json").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        presets,
+        "verify_downloaded_archive_cache",
+        lambda *args, **kwargs: SimpleNamespace(
+            manifest_id="verified-archive-manifest",
+            shard_count=JUL_SEP_2026_V2.archive_shard_count,
+            total_byte_count=987654321,
+        ),
+    )
+    implementation = _fake_source_attestation()
+    monkeypatch.setattr(
+        presets,
+        "build_archive_preset_source_attestation",
+        lambda _preset: implementation,
+    )
+
+    preflight = build_archive_preset_preflight(
+        JUL_SEP_2026_V2,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+
+    assert preflight.preset_id == JUL_SEP_2026_V2.preset_id
+    assert preflight.archive_manifest_id == "verified-archive-manifest"
+    assert preflight.archive_shard_count == 1968
+    assert preflight.expected_archive_shard_count == 1968
+    assert preflight.archive_total_byte_count == 987654321
+    assert preflight.implementation_attestation_id == implementation.attestation_id
+    assert preflight.source_tree_sha256 == implementation.source_tree_sha256
+    assert preflight.source_file_count == 1
+    assert preflight.source_cache_file_count == 1
+    assert preflight.output_root_clean is True
+    assert preflight.paid_request_performed is False
+    assert len(preflight.preflight_id) == 64
+    assert not output_root.exists()
+
+
+def test_archive_preset_preflight_allows_missing_source_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        presets,
+        "verify_downloaded_archive_cache",
+        lambda *args, **kwargs: SimpleNamespace(
+            manifest_id="verified-archive-manifest",
+            shard_count=JUL_SEP_2026_V2.archive_shard_count,
+            total_byte_count=1,
+        ),
+    )
+    monkeypatch.setattr(
+        presets,
+        "build_archive_preset_source_attestation",
+        lambda _preset: _fake_source_attestation(),
+    )
+
+    preflight = build_archive_preset_preflight(
+        JUL_SEP_2026_V2,
+        archive_root=tmp_path / "archive",
+        source_root=tmp_path / "missing-sources",
+        output_root=tmp_path / "output",
+    )
+
+    assert preflight.source_cache_file_count == 0
+
+
+def test_archive_preset_preflight_rejects_source_root_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "sources"
+    source_root.write_text("not a directory\n", encoding="utf-8")
+    called = False
+
+    def forbidden_verify(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("archive verification must not run after bad source root")
+
+    monkeypatch.setattr(
+        presets,
+        "verify_downloaded_archive_cache",
+        forbidden_verify,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_SOURCE_ROOT_NOT_DIRECTORY",
+    ):
+        build_archive_preset_preflight(
+            JUL_SEP_2026_V2,
+            archive_root=tmp_path / "archive",
+            source_root=source_root,
+            output_root=tmp_path / "output",
+        )
+
+    assert called is False
+
+
+def test_archive_preset_preflight_rejects_wrong_verified_shard_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        presets,
+        "verify_downloaded_archive_cache",
+        lambda *args, **kwargs: SimpleNamespace(
+            manifest_id="verified-archive-manifest",
+            shard_count=JUL_SEP_2026_V2.archive_shard_count - 1,
+            total_byte_count=123,
+        ),
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_PREFLIGHT_SHARD_COUNT_MISMATCH",
+    ):
+        build_archive_preset_preflight(
+            JUL_SEP_2026_V2,
+            archive_root=tmp_path / "archive",
+            source_root=tmp_path / "sources",
+            output_root=tmp_path / "output",
         )
 
 def test_preset_output_preflight_allows_missing_or_empty_directory(
