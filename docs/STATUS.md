@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-22  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `8b6bda6c5dfabc6c77acec9811e3ee16bb3862c2`  
-**Latest verified development CI:** post-merge CI run `35740726772` on `8b6bda6c5dfabc6c77acec9811e3ee16bb3862c2` — success  
+**Verified implementation baseline:** `a54c7ed8dc773b056135c51983a7f4351bb82057`  
+**Latest verified development CI:** post-merge CI run `35750670396` on `a54c7ed8dc773b056135c51983a7f4351bb82057` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
@@ -204,10 +204,39 @@ Merged implementation frontier after PR #237:
 - #253 composes a verified archive cache, public funding history, reconstructed candles, authenticated training data, and the existing model comparison into one paper-only archive experiment.
 - #254 requires exact overlap reconciliation between archive-reconstructed and native Hyperliquid candles before archive-based model comparison may proceed.
 
-Active development frontier: PR #256 adds one fixed shallow nonlinear tree challenger behind the same four-block stability gate. It remains touched research and is not a promotion candidate unless the verified exact-head evidence justifies that status.
+The fixed shallow nonlinear tree challenger from #256 is merged behind the same four-block stability gate. It remains touched research and is not a promotion candidate unless a reproducible historical run demonstrates qualifying development-only edge.
 
 Current economic conclusion: the system is correctly rejecting attractive-looking but unstable historical patterns. No merged historical learner has yet demonstrated repeatable cost-adjusted edge sufficient for promotion. The next priority is broader trustworthy history and reproducible challenger comparison, not weakening NO_TRADE or validation gates.
 
+
+
+## Archive execution frontier — 2026-09-22
+
+The deeper-history implementation is now ready for an **offline preflight + explicitly authorized local-cache run**. This section supersedes older archive-development text above where they conflict.
+
+Merged execution/reproducibility hardening:
+
+- #327 froze current-main preset `archive-jul-sep-2026-v2`: 2026-07-01 through 2026-09-20 23:55 UTC, 1,968 hourly fill-archive shards, BTC/ETH/HYPE/SOL, 5m+15m sources, 15m/1h/4h outcomes, fixed costs/thresholds/folds/tree geometry, four-block stability, and `touched_development` evidence only.
+- #328 writes deterministic `preset-run.json`, binding the frozen preset to verified archive/source/overlap/dataset/comparison identities.
+- #329 rejects reused or non-empty experiment output roots before the long run begins.
+- #330 writes and verifies `preset-bundle.json`, digest-attesting canonical archive/source/dataset/comparison/receipt bytes.
+- #332 writes `implementation.json`, hashing the exact installed `cocomelon` Python source tree before and after execution; a mid-run source change fails closed, and bundle schema v2 binds the implementation digest.
+- #333 adds offline `cocomelon-historical-archive-preset preflight`, which verifies every local archive shard against the authenticated download manifest, requires the frozen 1,968-shard geometry, confirms a clean output root, fingerprints the exact implementation, and performs **no network/AWS/requester-pays action**.
+- post-merge #333 CI run `35750670396` passed both the full test job and the research job on `a54c7ed8dc773b056135c51983a7f4351bb82057`.
+
+Current archive execution rule:
+
+1. Do **not** perform requester-pays inspection/download automatically. Archive acquisition remains acknowledgement-gated, byte-budgeted, and subject to separate explicit authorization.
+2. When a complete authorized local cache exists, run the offline frozen-preset preflight first.
+3. Proceed only if preflight verifies the archive manifest/shards, output-root cleanliness, and implementation identity.
+4. Run the frozen preset in PAPER mode into that clean output root.
+5. Verify `preset-run.json`, `implementation.json`, and `preset-bundle.json` before reading economic results.
+6. Treat all resulting archive economics as TOUCHED / DEVELOPMENT-ONLY. Compare the transparent baselines, ridge family, portfolio-capacity variants, and the fixed shallow tree under the same chronological folds/costs/NO_TRADE/stability rules.
+7. Do not tune from test outcomes. Freeze a new candidate only if reproducible touched evidence is strong enough to justify a separate future clean validation campaign.
+
+The implementation blocker is closed. The remaining blocker for the multi-month archive experiment is an **explicitly authorized and verified local archive cache**; no paid transfer has been initiated by this development work.
+
+**LIVE TRADING: DISABLED.**
 
 
 ## Prospective clean validation frontier — 2026-09-22
