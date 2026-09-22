@@ -49,6 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
             "readiness",
             "state",
             "build",
+            "upload",
         ),
     )
     parser.add_argument("--reason-code", required=True)
