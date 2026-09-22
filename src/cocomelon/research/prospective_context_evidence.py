@@ -23,6 +23,7 @@ PROSPECTIVE_EVIDENCE_CLASS = "prospective_clean"
 CAMPAIGN_SCHEMA_VERSION = 1
 RECORD_SCHEMA_VERSION = 1
 MAX_ENTRY_CANDLE_AGE_MS = 15 * 60 * 1_000
+FROZEN_CONTEXT_BASKET = ("BTC", "ETH", "HYPE", "SOL")
 
 
 class ProspectiveEvidenceConsistencyError(RuntimeError):
@@ -120,6 +121,7 @@ class ProspectiveCampaignManifest:
     candidate_spec_id: str
     candidate_id: str
     validation_not_before_ms: int
+    basket_markets: tuple[str, ...] = FROZEN_CONTEXT_BASKET
     evidence_class: str = PROSPECTIVE_EVIDENCE_CLASS
     promotion_eligible: bool = False
     schema_version: int = CAMPAIGN_SCHEMA_VERSION
@@ -129,6 +131,8 @@ class ProspectiveCampaignManifest:
         _require_nonempty(self.candidate_id, "candidate_id")
         if self.validation_not_before_ms < 0:
             raise ValueError("validation_not_before_ms must be non-negative")
+        if self.basket_markets != FROZEN_CONTEXT_BASKET:
+            raise ValueError("prospective campaign basket must match frozen discovery")
         if self.evidence_class != PROSPECTIVE_EVIDENCE_CLASS:
             raise ValueError("prospective campaign evidence_class is fixed")
         if self.promotion_eligible:
@@ -141,6 +145,7 @@ class ProspectiveCampaignManifest:
             "candidate_spec_id": self.candidate_spec_id,
             "candidate_id": self.candidate_id,
             "validation_not_before_ms": self.validation_not_before_ms,
+            "basket_markets": self.basket_markets,
             "evidence_class": self.evidence_class,
             "promotion_eligible": self.promotion_eligible,
             "schema_version": self.schema_version,
@@ -340,6 +345,8 @@ def build_prospective_observation(
 ) -> ProspectiveObservation:
     if raw_decision.candidate_spec_id != spec.spec_id:
         raise ValueError("raw decision candidate spec does not match frozen spec")
+    if entry_candle.end_ms < spec.validation_not_before_ms:
+        raise ValueError("entry candle anchor predates prospective cutover")
     if raw_decision.market != spec.market:
         raise ValueError("raw decision market does not match frozen spec")
     _validate_entry_candle(spec, raw_decision, entry_candle)
@@ -507,6 +514,22 @@ class ProspectiveEvidenceStore:
     def record_observation(self, observation: ProspectiveObservation) -> Path:
         if observation.candidate_spec_id != self.spec.spec_id:
             raise ValueError("observation does not belong to this campaign")
+        try:
+            existing = self.observation_for_anchor(observation.anchor_end_ms)
+        except ProspectiveEvidenceConsistencyError as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "conflicting prospective observation evidence"
+            ) from exc
+        if existing is not None and existing != observation:
+            raise ProspectiveEvidenceConsistencyError(
+                "conflicting prospective observation for anchor"
+            )
+        if existing is not None:
+            return self._record_path(
+                "observations",
+                existing.anchor_end_ms,
+                existing.observation_id,
+            )
         path = self._record_path(
             "observations",
             observation.anchor_end_ms,
@@ -534,18 +557,33 @@ class ProspectiveEvidenceStore:
         path = self._record_path("outcomes", outcome.target_end_ms, outcome.outcome_id)
         return self._write_consistent(path, outcome.identity_payload())
 
+    def observation_for_anchor(
+        self,
+        anchor_end_ms: int,
+    ) -> ProspectiveObservation | None:
+        matches = tuple(
+            item
+            for item in self.iter_observations()
+            if item.anchor_end_ms == anchor_end_ms
+        )
+        if len(matches) > 1:
+            raise ProspectiveEvidenceConsistencyError(
+                "multiple prospective observations for one anchor"
+            )
+        return None if not matches else matches[0]
+
     def load_observation(self, observation_id: str) -> ProspectiveObservation | None:
         for path in sorted((self.root / "observations").glob("*/*.json")):
             if path.stem != observation_id:
                 continue
-            return self._observation_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            return self._load_observation_path(path)
         return None
 
     def load_outcome(self, outcome_id: str) -> ProspectiveOutcome | None:
         for path in sorted((self.root / "outcomes").glob("*/*.json")):
             if path.stem != outcome_id:
                 continue
-            return self._outcome_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            return self._load_outcome_path(path)
         return None
 
     def iter_observations(self) -> tuple[ProspectiveObservation, ...]:
@@ -553,7 +591,7 @@ class ProspectiveEvidenceStore:
         if not root.exists():
             return ()
         values = tuple(
-            self._observation_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            self._load_observation_path(path)
             for path in sorted(root.glob("*/*.json"))
         )
         return tuple(sorted(values, key=lambda item: (item.anchor_end_ms, item.observation_id)))
@@ -563,10 +601,25 @@ class ProspectiveEvidenceStore:
         if not root.exists():
             return ()
         values = tuple(
-            self._outcome_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            self._load_outcome_path(path)
             for path in sorted(root.glob("*/*.json"))
         )
         return tuple(sorted(values, key=lambda item: (item.target_end_ms, item.outcome_id)))
+
+    @property
+    def state_digest(self) -> str:
+        payload = {
+            "campaign_id": self.manifest.campaign_id,
+            "observations": tuple(
+                item.identity_payload() for item in self.iter_observations()
+            ),
+            "outcomes": tuple(
+                item.identity_payload() for item in self.iter_outcomes()
+            ),
+        }
+        return hashlib.sha256(
+            _canonical_json(payload).encode("utf-8")
+        ).hexdigest()
 
     def due_unsettled_observations(
         self,
@@ -583,6 +636,42 @@ class ProspectiveEvidenceStore:
             and observation.target_end_ms <= as_of_ms
             and observation.observation_id not in settled
         )
+
+    def _load_observation_path(self, path: Path) -> ProspectiveObservation:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "invalid prospective observation record"
+            ) from exc
+        observation = self._observation_from_payload(raw)
+        if observation.candidate_spec_id != self.spec.spec_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective observation candidate spec mismatch"
+            )
+        if path.stem != observation.observation_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective observation identity mismatch"
+            )
+        return observation
+
+    def _load_outcome_path(self, path: Path) -> ProspectiveOutcome:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "invalid prospective outcome record"
+            ) from exc
+        outcome = self._outcome_from_payload(raw)
+        if outcome.candidate_spec_id != self.spec.spec_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective outcome candidate spec mismatch"
+            )
+        if path.stem != outcome.outcome_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective outcome identity mismatch"
+            )
+        return outcome
 
     @staticmethod
     def _observation_from_payload(raw: object) -> ProspectiveObservation:

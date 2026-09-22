@@ -265,6 +265,7 @@ def test_store_is_idempotent_and_tracks_due_unsettled_observations(tmp_path) -> 
     ) == ()
     manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["candidate_spec_id"] == spec.spec_id
+    assert manifest["basket_markets"] == ["BTC", "ETH", "HYPE", "SOL"]
     assert manifest["evidence_class"] == "prospective_clean"
     assert manifest["promotion_eligible"] is False
 
@@ -288,3 +289,49 @@ def test_store_rejects_conflicting_existing_record_and_wrong_spec(tmp_path) -> N
     changed = replace(spec, context_state_1h="down/mixed/near_basket")
     with pytest.raises(ProspectiveEvidenceConsistencyError, match="campaign manifest"):
         ProspectiveEvidenceStore(tmp_path, spec=changed)
+
+
+
+def test_directional_clean_entry_anchor_cannot_predate_cutover() -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    anchor_end = CUTOVER - 1
+    decision = _decision(as_of_ms=CUTOVER + 5_000)
+
+    with pytest.raises(ValueError, match="predates prospective cutover"):
+        build_prospective_observation(
+            spec,
+            raw_decision=decision,
+            entry_candle=_candle(end_ms=anchor_end, close="50"),
+            prior_observations=(),
+        )
+
+
+
+def test_state_digest_is_deterministic_and_changes_with_clean_evidence(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+    empty_digest = store.state_digest
+    assert len(empty_digest) == 64
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == empty_digest
+
+    anchor_end = CUTOVER + HOUR
+    observation = build_prospective_observation(
+        spec,
+        raw_decision=_decision(as_of_ms=anchor_end + 5_000),
+        entry_candle=_candle(end_ms=anchor_end, close="50"),
+        prior_observations=(),
+    )
+    store.record_observation(observation)
+    observation_digest = store.state_digest
+    assert observation_digest != empty_digest
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == observation_digest
+
+    outcome = build_prospective_outcome(
+        spec,
+        observation=observation,
+        exit_candle=_candle(end_ms=observation.target_end_ms, close="55"),
+    )
+    store.record_outcome(outcome)
+    outcome_digest = store.state_digest
+    assert outcome_digest != observation_digest
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == outcome_digest
