@@ -589,5 +589,21 @@ jobs:
           compression-level: 9
 
       - name: Preserve monitor failure status
-        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.provenance.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.monitor.outputs.status != 'success') }}
-        run: exit 1
+        if: ${{ always() }}
+        env:
+          DISCOVERY_STATUS: ${{ steps.discover.outputs.status }}
+          PROVENANCE_STATUS: ${{ steps.provenance.outputs.status }}
+          DOWNLOAD_STATUS: ${{ steps.download.outputs.status }}
+        run: |
+          set -euo pipefail
+          if [[ "$DISCOVERY_STATUS" != "ok" ]]; then
+            exit 1
+          fi
+          if [[ "$PROVENANCE_STATUS" != "ok" ]]; then
+            exit 1
+          fi
+          if [[ "$DOWNLOAD_STATUS" != "ok" ]]; then
+            exit 1
+          fi
+          test -f "$MONITOR_ROOT/monitor.json"
+          test ! -f "$MONITOR_ROOT/failure.json"
