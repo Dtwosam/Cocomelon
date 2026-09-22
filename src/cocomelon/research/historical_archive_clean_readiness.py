@@ -283,6 +283,7 @@ def build_archive_clean_activation_readiness(
         )
 
     if finalization is not None:
+        assert checkpoint is not None
         return ArchiveCleanActivationReadiness(
             status=STATUS_FINALIZED,
             enabled=enabled,
