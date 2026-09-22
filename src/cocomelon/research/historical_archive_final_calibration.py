@@ -427,21 +427,21 @@ def build_archive_final_calibration(
     if plan.model_family == "stable_horizon_ridge":
         stable_selected_raw, stable_raw_candidates = (
             select_final_stable_horizon_ridge(
-            fit_rows,
-            calibration_rows,
-            costs=config.costs,
-            candidate_alphas=config.candidate_ridge_alphas,
-            candidate_thresholds=config.candidate_thresholds,
-            min_market_samples=config.ridge_min_market_samples,
-            min_sample_count=config.min_sample_count,
-            min_validation_trades=config.min_validation_trades,
-            stability_blocks=config.stability_blocks,
-            min_block_trades=config.min_validation_block_trades,
-            allow_coin_calibration=allow_coin_calibration,
-            min_validation_mean_net_return=(
-                config.min_validation_mean_net_return
-            ),
-        )
+                fit_rows,
+                calibration_rows,
+                costs=config.costs,
+                candidate_alphas=config.candidate_ridge_alphas,
+                candidate_thresholds=config.candidate_thresholds,
+                min_market_samples=config.ridge_min_market_samples,
+                min_sample_count=config.min_sample_count,
+                min_validation_trades=config.min_validation_trades,
+                stability_blocks=config.stability_blocks,
+                min_block_trades=config.min_validation_block_trades,
+                allow_coin_calibration=allow_coin_calibration,
+                min_validation_mean_net_return=(
+                    config.min_validation_mean_net_return
+                ),
+            )
         )
         selected, candidates = _ridge_result(
             stable_selected_raw,
@@ -454,21 +454,21 @@ def build_archive_final_calibration(
     elif plan.model_family == "occupancy_stable_ridge":
         occupancy_selected_raw, occupancy_raw_candidates = (
             select_final_occupancy_stable_ridge(
-            fit_rows,
-            calibration_rows,
-            costs=config.costs,
-            candidate_alphas=config.candidate_ridge_alphas,
-            candidate_thresholds=config.candidate_thresholds,
-            min_market_samples=config.ridge_min_market_samples,
-            min_sample_count=config.min_sample_count,
-            min_validation_trades=config.min_validation_trades,
-            stability_blocks=config.stability_blocks,
-            min_block_trades=config.min_validation_block_trades,
-            allow_coin_calibration=allow_coin_calibration,
-            min_validation_mean_net_return=(
-                config.min_validation_mean_net_return
-            ),
-        )
+                fit_rows,
+                calibration_rows,
+                costs=config.costs,
+                candidate_alphas=config.candidate_ridge_alphas,
+                candidate_thresholds=config.candidate_thresholds,
+                min_market_samples=config.ridge_min_market_samples,
+                min_sample_count=config.min_sample_count,
+                min_validation_trades=config.min_validation_trades,
+                stability_blocks=config.stability_blocks,
+                min_block_trades=config.min_validation_block_trades,
+                allow_coin_calibration=allow_coin_calibration,
+                min_validation_mean_net_return=(
+                    config.min_validation_mean_net_return
+                ),
+            )
         )
         selected, candidates = _ridge_result(
             occupancy_selected_raw,
