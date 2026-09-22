@@ -377,7 +377,8 @@ def test_checkpoint_detects_file_tampering(tmp_path: Path) -> None:
     ):
         load_archive_clean_operational_checkpoint(tmp_path / "checkpoint.json")
 
-    assert saved.checkpoint_id != payload["checkpoint_id"]
+    assert payload["settled_outcome_count"] == 1
+    assert saved.settled_outcome_count == 0
 
 
 def test_checkpoint_rejects_as_of_regression(tmp_path: Path) -> None:
@@ -398,7 +399,11 @@ def test_checkpoint_lineage_is_bound_to_campaign_geometry(
     spec = _spec()
     store = _store(tmp_path, spec=spec, cycle_name="cycle-1")
     store.save(as_of_ms=0)
-    changed = replace(spec, validation_end_ms=spec.validation_end_ms + FIFTEEN)
+    changed = replace(
+        spec,
+        validation_start_ms=spec.validation_start_ms + FIFTEEN,
+        validation_end_ms=spec.validation_end_ms + FIFTEEN,
+    )
 
     with pytest.raises(
         HistoricalArchiveCleanCheckpointError,
