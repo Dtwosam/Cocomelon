@@ -60,7 +60,7 @@ def test_same_contract_remains_auditable_after_cutover() -> None:
     ("old", "new", "code"),
     (
         (
-            'cron: "3,8,13 * * * *"',
+            'cron: "47 * * * *"',
             'cron: "4,9,14 * * * *"',
             "FROZEN_CRON_MISSING",
         ),
