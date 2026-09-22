@@ -364,6 +364,8 @@ jobs:
           PY
 
       - name: Upload one canonical cutover receipt
+        id: success_upload
+        continue-on-error: true
         if: >-
           steps.build.outcome == 'success' &&
           steps.ready.outputs.ready == 'true'
@@ -386,7 +388,8 @@ jobs:
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||
             steps.state.outcome == 'failure' ||
-            steps.build.outcome == 'failure'
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
           )
         env:
           AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
@@ -396,6 +399,7 @@ jobs:
           READY_OUTCOME: ${{ steps.ready.outcome }}
           STATE_OUTCOME: ${{ steps.state.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.success_upload.outcome }}
           MONITOR_ID: ${{ steps.discover.outputs.monitor_artifact_id }}
           STATE_ID: ${{ steps.ready.outputs.state_artifact_id }}
           RECEIPT_ID: ${{ steps.discover.outputs.receipt_artifact_id }}
@@ -421,6 +425,9 @@ jobs:
           elif [[ "$BUILD_OUTCOME" == "failure" ]]; then
             stage="build"
             reason_code="CUTOVER_BUILD_FAILED"
+          elif [[ "$UPLOAD_OUTCOME" == "failure" ]]; then
+            stage="upload"
+            reason_code="CUTOVER_RECEIPT_UPLOAD_FAILED"
           else
             echo "cutover failure stage could not be resolved" >&2
             exit 2
@@ -446,7 +453,8 @@ jobs:
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||
             steps.state.outcome == 'failure' ||
-            steps.build.outcome == 'failure'
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
           )
         uses: actions/upload-artifact@v7
         with:
@@ -466,6 +474,7 @@ jobs:
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||
             steps.state.outcome == 'failure' ||
-            steps.build.outcome == 'failure'
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
           )
         run: exit 1
