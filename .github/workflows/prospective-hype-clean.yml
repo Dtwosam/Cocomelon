@@ -138,6 +138,81 @@ jobs:
           )
           PY
 
+      - name: Verify prospective control-plane attestation
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/prospective-hype-control-plane.json
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.prospective_context_evidence import (
+              MAX_ENTRY_CANDLE_AGE_MS,
+          )
+          from cocomelon.research.prospective_context_report import (
+              HYPE_PROSPECTIVE_VALIDATION_V1,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          runtime = json.loads(
+              Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
+          )
+          expected = {
+              "kind": "prospective-hype-clean-control-plane",
+              "candidate_spec_id": runtime["candidate_spec_id"],
+              "validation_plan_id": runtime["validation_plan_id"],
+              "observer_source_revision": runtime["observer_source_revision"],
+              "schedule_cron": "3,8,13 * * * *",
+              "attempt_minutes_utc": [3, 8, 13],
+              "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
+              "state_artifact_name": os.environ["STATE_ARTIFACT_NAME"],
+              "concurrency_group": "prospective-hype-clean-observer",
+              "cancel_in_progress": False,
+              "execution_mode": os.environ["COCOMELON_EXECUTION_MODE"],
+              "api_url": os.environ["COCOMELON_API_URL"],
+              "contents_permission": "read",
+              "actions_permission": "read",
+              "artifact_retention_days": 90,
+              "schema_version": 1,
+          }
+          expected["control_plane_id"] = hashlib.sha256(
+              canonical(expected).encode("utf-8")
+          ).hexdigest()
+
+          root = Path(os.environ["EVIDENCE_ROOT"])
+          path = root / "control-plane.json"
+          encoded = canonical(expected) + "\n"
+          if path.exists():
+              existing = json.loads(path.read_text(encoding="utf-8"))
+              if existing != expected:
+                  raise SystemExit("CONFLICTING_PROSPECTIVE_CONTROL_PLANE_ATTESTATION")
+              if path.read_text(encoding="utf-8") != encoded:
+                  raise SystemExit("NON_CANONICAL_PROSPECTIVE_CONTROL_PLANE_ATTESTATION")
+          else:
+              if utc_now_ms() >= HYPE_PROSPECTIVE_VALIDATION_V1.validation_start_ms:
+                  raise SystemExit(
+                      "POST_CUTOVER_CONTROL_PLANE_ATTESTATION_REQUIRED"
+                  )
+              temporary = path.with_name("control-plane.json.tmp")
+              with temporary.open("x", encoding="utf-8") as handle:
+                  handle.write(encoded)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temporary, path)
+
+          print(canonical(expected))
+          PY
+
       - name: Run prospective clean observer
         run: |
           set -euo pipefail
@@ -307,6 +382,11 @@ jobs:
           runtime = json.loads(
               Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
           )
+          control_plane = json.loads(
+              Path("/tmp/prospective-hype-control-plane.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           plan = report["plan"]
           boundary = int(plan["finalization_not_before_ms"])
           as_of_ms = int(report["as_of_ms"])
@@ -335,6 +415,7 @@ jobs:
               "campaign_id": cycle["campaign_id"],
               "runtime_attestation_id": runtime["attestation_id"],
               "observer_source_revision": runtime["observer_source_revision"],
+              "control_plane_attestation_id": control_plane["control_plane_id"],
               "finalization_not_before_ms": boundary,
               "promotion_eligible": False,
               "schema_version": 1,
@@ -474,6 +555,11 @@ jobs:
           runtime = json.loads(
               Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
           )
+          control_plane = json.loads(
+              Path("/tmp/prospective-hype-control-plane.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           health = json.loads(
               Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
           )
@@ -495,6 +581,16 @@ jobs:
           assert runtime["validation_plan_id"] == payload["validation_plan_id"]
           assert len(runtime["observer_source_revision"]) == 40
           assert len(runtime["attestation_id"]) == 64
+          assert control_plane["candidate_spec_id"] == runtime["candidate_spec_id"]
+          assert control_plane["validation_plan_id"] == runtime["validation_plan_id"]
+          assert (
+              control_plane["observer_source_revision"]
+              == runtime["observer_source_revision"]
+          )
+          assert control_plane["schedule_cron"] == "3,8,13 * * * *"
+          assert control_plane["attempt_minutes_utc"] == [3, 8, 13]
+          assert control_plane["max_entry_candle_age_ms"] == 900000
+          assert len(control_plane["control_plane_id"]) == 64
           assert report["expected_anchor_count"] == 1080
           assert health["validation_report_id"] == report["report_id"]
           assert health["plan_id"] == report["plan_id"]
@@ -554,6 +650,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          control_plane = json.loads(
+              Path("/tmp/prospective-hype-control-plane.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           cycle = json.loads(
               Path("/tmp/prospective-hype-cycle.json").read_text(
                   encoding="utf-8"
@@ -600,6 +701,7 @@ jobs:
               "campaign_health": health,
               "finalization": finalization,
               "runtime_attestation": runtime,
+              "control_plane_attestation": control_plane,
           }
           payload["receipt_id"] = hashlib.sha256(
               canonical(payload).encode("utf-8")
@@ -629,6 +731,11 @@ jobs:
           runtime = json.loads(
               Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
           )
+          control_plane = json.loads(
+              Path("/tmp/prospective-hype-control-plane.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           health = json.loads(
               Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
           )
@@ -652,6 +759,8 @@ jobs:
           print(f"- prior state digest: {continuity['prior_state_digest']}")
           print(f"- runtime attestation: {runtime['attestation_id']}")
           print(f"- observer source revision: {runtime['observer_source_revision']}")
+          print(f"- control plane: {control_plane['control_plane_id']}")
+          print(f"- capture cron: {control_plane['schedule_cron']}")
           print(f"- status: {observation['status']}")
           print(f"- raw direction: {observation['raw_direction']}")
           print(f"- effective direction: {observation['effective_direction']}")
