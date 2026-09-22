@@ -135,3 +135,57 @@ def test_prospective_hype_summary_loads_frozen_runtime_before_rendering() -> Non
     )
     runtime_use = summary.index("runtime['attestation_id']")
     assert runtime_load < runtime_use
+
+
+
+def test_prospective_hype_workflow_predeclares_one_canonical_finalization() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Build or verify canonical campaign finalization" in source
+    assert 'root / "finalization.json"' in source
+    assert '"kind": "prospective-hype-clean-finalization"' in source
+    assert '"finalization_not_before_ms"' in source
+    assert '"finalized_at_ms"' in source
+    assert '"state_digest": cycle["state_digest"]' in source
+    assert '"economic_payload": economic_payload' in source
+    assert '"runtime_attestation_id": runtime["attestation_id"]' in source
+    assert '"observer_source_revision": runtime["observer_source_revision"]' in source
+    assert '"promotion_eligible": False' in source
+    assert "waiting_for_exact_settlements" in source
+    assert "economic_payload_changed_after_finalization" in source
+    assert "state_digest_changed_after_finalization" in source
+    assert "invalid_finalization_receipt" in source
+    assert "PROSPECTIVE_FINALIZATION_CONFLICT" in source
+
+
+def test_finalization_is_preserved_before_any_terminal_failure() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    finalization_step = source.index("Build or verify canonical campaign finalization")
+    state_upload = source.index("Upload cumulative clean evidence state")
+    status_upload = source.index("Upload immutable finalization status")
+    canonical_upload = source.index("Upload canonical finalization receipt")
+    conflict_gate = source.index("Fail closed on finalization conflict")
+    health_gate = source.index("Fail closed if frozen campaign is irrecoverable")
+
+    assert finalization_step < state_upload
+    assert state_upload < status_upload < conflict_gate
+    assert canonical_upload < conflict_gate
+    assert status_upload < health_gate
+    assert "steps.finalization.outputs.finalized == 'true'" in source
+    assert "prospective-hype-clean-finalization-" in source
+    assert "steps.finalization.outputs.finalization_id" in source
+
+
+def test_finalization_status_is_bound_into_lineage_and_summary() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "/tmp/prospective-hype-finalization-status.json" in source
+    assert '"finalization": finalization' in source
+    assert "finalization['status']" in source
+    assert "finalization['finalization_id']" in source
+    assert 'finalization["status"] in {' in source
+    assert '"pending"' in source
+    assert '"waiting_for_exact_settlements"' in source
+    assert '"finalized"' in source
+    assert '"conflict"' in source
