@@ -12,6 +12,7 @@ from cocomelon.domain.market import Candle, MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanCheckpointEvidenceStore,
+    build_archive_clean_initial_checkpoint,
     HistoricalArchiveCleanCheckpointError,
     load_archive_clean_operational_checkpoint,
 )
@@ -184,6 +185,24 @@ def _store(
         pin_id=PIN_ID,
     )
 
+
+
+def test_initial_checkpoint_helper_matches_fresh_store_state(
+    tmp_path: Path,
+) -> None:
+    spec = _spec()
+    expected = build_archive_clean_initial_checkpoint(
+        spec,
+        runtime_id=RUNTIME_ID,
+        pin_id=PIN_ID,
+    )
+    store = _store(tmp_path, spec=spec, cycle_name="cycle")
+
+    assert store.checkpoint == expected
+    assert expected.captured_anchor_count == 0
+    assert expected.settled_outcome_count == 0
+    assert expected.pending_observations == ()
+    assert expected.total_net_return_sum == Decimal("0")
 
 def test_checkpoint_survives_restart_with_pending_signals(
     tmp_path: Path,
