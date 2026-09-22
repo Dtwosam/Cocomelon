@@ -138,6 +138,66 @@ def test_verify_is_offline_and_emits_receipt_identity(
     assert payload["preset"] == JUL_SEP_2026_V2.name
     assert payload["receipt_id"] == "v" * 64
 
+
+def test_preflight_is_offline_and_emits_readiness(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("preflight must not construct a Hyperliquid client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_preset_preflight",
+        lambda *args, **kwargs: SimpleNamespace(
+            to_dict=lambda: {
+                "preset_name": JUL_SEP_2026_V2.name,
+                "preset_id": JUL_SEP_2026_V2.preset_id,
+                "evidence_class": "touched_development",
+                "archive_manifest_id": "archive-manifest",
+                "archive_shard_count": 1968,
+                "archive_total_byte_count": 123456,
+                "expected_archive_shard_count": 1968,
+                "implementation_attestation_id": "i" * 64,
+                "source_tree_sha256": "s" * 64,
+                "source_file_count": 200,
+                "source_cache_file_count": 0,
+                "output_root_clean": True,
+                "paid_request_performed": False,
+                "schema_version": 1,
+                "preflight_id": "p" * 64,
+            }
+        ),
+    )
+
+    status = cli.main(
+        [
+            "preflight",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "preflight"
+    assert payload["ready"] is True
+    assert payload["paid_request_performed"] is False
+    assert payload["archive_shard_count"] == 1968
+    assert payload["preflight_id"] == "p" * 64
+
 def test_verify_bundle_is_offline_and_emits_bundle_identity(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

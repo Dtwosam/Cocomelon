@@ -14,6 +14,7 @@ from cocomelon.research.historical_archive_experiment import (
     ArchiveHistoricalExperimentResult,
     HistoricalArchiveExperimentClient,
     run_archive_historical_experiment,
+    verify_downloaded_archive_cache,
 )
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 from cocomelon.research.historical_model_comparison import (
@@ -117,6 +118,85 @@ class HistoricalArchiveExperimentPreset:
 
     def to_dict(self) -> dict[str, object]:
         return {**self.identity_payload(), "preset_id": self.preset_id}
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalArchivePresetPreflight:
+    preset_name: str
+    preset_id: str
+    evidence_class: str
+    archive_manifest_id: str
+    archive_shard_count: int
+    archive_total_byte_count: int
+    expected_archive_shard_count: int
+    implementation_attestation_id: str
+    source_tree_sha256: str
+    source_file_count: int
+    source_cache_file_count: int
+    output_root_clean: bool
+    paid_request_performed: bool = False
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        for field in (
+            "preset_name",
+            "preset_id",
+            "archive_manifest_id",
+            "implementation_attestation_id",
+            "source_tree_sha256",
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field} must not be empty")
+        if self.evidence_class != EVIDENCE_CLASS:
+            raise ValueError("preflight evidence must remain touched_development")
+        if self.archive_shard_count <= 0:
+            raise ValueError("archive_shard_count must be positive")
+        if self.archive_shard_count != self.expected_archive_shard_count:
+            raise ValueError("archive shard count must match frozen preset")
+        if self.archive_total_byte_count < 0:
+            raise ValueError("archive_total_byte_count must be non-negative")
+        if len(self.implementation_attestation_id) != 64:
+            raise ValueError("implementation_attestation_id must be SHA-256")
+        if len(self.source_tree_sha256) != 64:
+            raise ValueError("source_tree_sha256 must be SHA-256")
+        if self.source_file_count <= 0:
+            raise ValueError("source_file_count must be positive")
+        if self.source_cache_file_count < 0:
+            raise ValueError("source_cache_file_count must be non-negative")
+        if not self.output_root_clean:
+            raise ValueError("preflight requires a clean output root")
+        if self.paid_request_performed:
+            raise ValueError("archive preset preflight must remain offline")
+        if self.schema_version != 1:
+            raise ValueError("unsupported archive preset preflight schema")
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "preset_name": self.preset_name,
+            "preset_id": self.preset_id,
+            "evidence_class": self.evidence_class,
+            "archive_manifest_id": self.archive_manifest_id,
+            "archive_shard_count": self.archive_shard_count,
+            "archive_total_byte_count": self.archive_total_byte_count,
+            "expected_archive_shard_count": self.expected_archive_shard_count,
+            "implementation_attestation_id": self.implementation_attestation_id,
+            "source_tree_sha256": self.source_tree_sha256,
+            "source_file_count": self.source_file_count,
+            "source_cache_file_count": self.source_cache_file_count,
+            "output_root_clean": self.output_root_clean,
+            "paid_request_performed": self.paid_request_performed,
+            "schema_version": self.schema_version,
+        }
+
+    @property
+    def preflight_id(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self.identity_payload(), "preflight_id": self.preflight_id}
 
 
 @dataclass(frozen=True, slots=True)
@@ -722,6 +802,48 @@ def get_archive_experiment_preset(name: str) -> HistoricalArchiveExperimentPrese
         return PRESETS[name]
     except KeyError as exc:
         raise ValueError(f"unknown archive experiment preset: {name}") from exc
+
+
+def _source_cache_file_count(source_root: Path) -> int:
+    if not source_root.exists():
+        return 0
+    if not source_root.is_dir():
+        raise RuntimeError("ARCHIVE_PRESET_SOURCE_ROOT_NOT_DIRECTORY")
+    return sum(1 for path in source_root.rglob("*") if path.is_file())
+
+
+def build_archive_preset_preflight(
+    preset: HistoricalArchiveExperimentPreset,
+    *,
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> HistoricalArchivePresetPreflight:
+    ensure_archive_preset_output_root_clean(output_root)
+    source_cache_file_count = _source_cache_file_count(source_root)
+    archive = verify_downloaded_archive_cache(
+        archive_root,
+        start_ms=preset.start_ms,
+        end_ms=preset.end_ms,
+    )
+    if archive.shard_count != preset.archive_shard_count:
+        raise RuntimeError("ARCHIVE_PRESET_PREFLIGHT_SHARD_COUNT_MISMATCH")
+
+    implementation = build_archive_preset_source_attestation(preset)
+    return HistoricalArchivePresetPreflight(
+        preset_name=preset.name,
+        preset_id=preset.preset_id,
+        evidence_class=preset.evidence_class,
+        archive_manifest_id=archive.manifest_id,
+        archive_shard_count=archive.shard_count,
+        archive_total_byte_count=archive.total_byte_count,
+        expected_archive_shard_count=preset.archive_shard_count,
+        implementation_attestation_id=implementation.attestation_id,
+        source_tree_sha256=implementation.source_tree_sha256,
+        source_file_count=len(implementation.files),
+        source_cache_file_count=source_cache_file_count,
+        output_root_clean=True,
+    )
 
 
 def ensure_archive_preset_output_root_clean(output_root: Path) -> None:
