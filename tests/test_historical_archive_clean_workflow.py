@@ -119,7 +119,7 @@ def test_archive_clean_observer_requires_authenticated_activation_before_continu
     bootstrap = source.index("Restore pre-cutover bootstrap fallback")
     activation = source.index("Restore and verify activation authorization")
     continuity = source.index("Verify state continuity and canonical finalization")
-    cycle = source.index("Run clean observer cycle")
+    cycle = source.index("Run pinned paper-only clean cycle")
 
     assert bootstrap < activation < continuity < cycle
     assert "ACTIVATION_ARTIFACT_NAME" in source
