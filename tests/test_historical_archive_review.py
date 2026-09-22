@@ -11,6 +11,7 @@ from cocomelon.research.historical_archive_presets import JUL_SEP_2026_V2
 from cocomelon.research.historical_archive_review import (
     FROZEN_ARCHIVE_DEVELOPMENT_REVIEW_V1,
     HistoricalArchiveReviewError,
+    HistoricalDevelopmentReviewPolicy,
     build_archive_development_review,
     write_archive_development_review,
 )
@@ -124,6 +125,32 @@ def test_frozen_review_policy_identity_is_deterministic() -> None:
     )
     assert len(first.policy_id) == 64
 
+
+
+def test_review_rejects_non_frozen_policy_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_root = _prepare(
+        monkeypatch,
+        tmp_path,
+        comparison=_comparison_payload(
+            qualifying_family="stable_horizon_ridge",
+        ),
+    )
+    drifted = HistoricalDevelopmentReviewPolicy(min_test_folds=3)
+
+    with pytest.raises(
+        HistoricalArchiveReviewError,
+        match="REVIEW_POLICY_MISMATCH",
+    ):
+        build_archive_development_review(
+            JUL_SEP_2026_V2,
+            archive_root=tmp_path / "archive",
+            source_root=tmp_path / "sources",
+            output_root=output_root,
+            policy=drifted,
+        )
 
 def test_review_only_qualifies_every_fold_positive_stable_variant(
     monkeypatch: pytest.MonkeyPatch,
