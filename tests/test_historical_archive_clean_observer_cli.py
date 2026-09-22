@@ -37,15 +37,28 @@ def _runtime() -> SimpleNamespace:
     )
 
 
+def _pinned_runtime() -> SimpleNamespace:
+    pinned = _pinned_runtime()
+    runtime = pinned.runtime
+    return SimpleNamespace(
+        runtime=runtime,
+        bundle=SimpleNamespace(
+            runtime_id="9" * 64,
+            observer_source_tree_sha256="8" * 64,
+        ),
+        pin=SimpleNamespace(pin_id="7" * 64),
+    )
+
+
 def test_payload_rejects_live_mode_before_runtime_or_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "load_archive_clean_frozen_runtime",
-        lambda _root: (_ for _ in ()).throw(
-            AssertionError("live mode must fail before runtime loading")
+        "load_pinned_archive_clean_runtime",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("live mode must fail before pinned runtime loading")
         ),
     )
     monkeypatch.setattr(
@@ -62,7 +75,8 @@ def test_payload_rejects_live_mode_before_runtime_or_client(
     ):
         cli.archive_clean_observer_payload(
             LiveSettings(),  # type: ignore[arg-type]
-            output_root=tmp_path / "output",
+            runtime_root=tmp_path / "runtime",
+            pin_id="7" * 64,
             root=tmp_path / "evidence",
         )
 
@@ -73,9 +87,9 @@ def test_payload_validates_frozen_runtime_before_client_construction(
 ) -> None:
     monkeypatch.setattr(
         cli,
-        "load_archive_clean_frozen_runtime",
-        lambda _root: (_ for _ in ()).throw(
-            RuntimeError("invalid frozen runtime")
+        "load_pinned_archive_clean_runtime",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            RuntimeError("invalid pinned runtime")
         ),
     )
     monkeypatch.setattr(
@@ -86,7 +100,7 @@ def test_payload_validates_frozen_runtime_before_client_construction(
         ),
     )
 
-    with pytest.raises(RuntimeError, match="invalid frozen runtime"):
+    with pytest.raises(RuntimeError, match="invalid pinned runtime"):
         cli.archive_clean_observer_payload(
             PaperSettings(),  # type: ignore[arg-type]
             output_root=tmp_path / "output",
@@ -120,8 +134,8 @@ def test_payload_runs_paper_cycle_and_emits_non_executable_receipt(
 
     monkeypatch.setattr(
         cli,
-        "load_archive_clean_frozen_runtime",
-        lambda _root: runtime,
+        "load_pinned_archive_clean_runtime",
+        lambda *args, **kwargs: pinned,
     )
     monkeypatch.setattr(cli, "ArchiveCleanEvidenceStore", FakeEvidenceStore)
     monkeypatch.setattr(cli, "ArchiveCleanSourceCaptureStore", FakeSourceStore)
@@ -143,7 +157,8 @@ def test_payload_runs_paper_cycle_and_emits_non_executable_receipt(
 
     payload = cli.archive_clean_observer_payload(
         PaperSettings(),  # type: ignore[arg-type]
-        output_root=tmp_path / "output",
+        runtime_root=tmp_path / "runtime",
+        pin_id="7" * 64,
         root=tmp_path / "evidence",
         reader=reader,  # type: ignore[arg-type]
         clock_ms=lambda: 123,
@@ -158,6 +173,10 @@ def test_payload_runs_paper_cycle_and_emits_non_executable_receipt(
     assert payload["candidate_id"] == "a" * 64
     assert payload["validation_spec_id"] == "d" * 64
     assert payload["campaign_id"] == "e" * 64
+    assert payload["runtime_id"] == "9" * 64
+    assert payload["pin_id"] == "7" * 64
+    assert payload["observer_source_tree_sha256"] == "8" * 64
+    assert payload["runtime_root"] == str(tmp_path / "runtime")
     assert payload["anchor_observation_count"] == 2
     assert payload["settled_outcome_count"] == 1
     cycle = payload["cycle"]
@@ -180,8 +199,10 @@ def test_main_emits_json_error_for_live_mode(
 
     status = cli.main(
         [
-            "--output-root",
-            str(tmp_path / "output"),
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--pin-id",
+            "7" * 64,
             "--root",
             str(tmp_path / "evidence"),
         ]
