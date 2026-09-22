@@ -99,6 +99,46 @@ def test_show_rejects_unknown_preset_without_runtime_access(
     assert "unknown archive experiment preset" in payload["error"]
 
 
+
+def test_verify_is_offline_and_emits_receipt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify must not construct a Hyperliquid client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_run_receipt",
+        lambda *args, **kwargs: SimpleNamespace(receipt_id="v" * 64),
+    )
+    receipt_path = tmp_path / "preset-run.json"
+    receipt_path.write_text("{}\n", encoding="utf-8")
+
+    status = cli.main(
+        [
+            "verify",
+            "--receipt",
+            str(receipt_path),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify"
+    assert payload["valid"] is True
+    assert payload["paid_request_performed"] is False
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["receipt_id"] == "v" * 64
+
 def test_run_rejects_live_mode_before_client_or_experiment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
