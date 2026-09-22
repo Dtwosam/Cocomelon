@@ -71,3 +71,12 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
     ) in source
     assert "retention-days: 90" in source
     assert "if-no-files-found: error" in source
+
+
+
+def test_blind_monitor_runs_on_relevant_pull_requests() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "pull_request:" in source
+    assert 'branches:\n      - main' in source
+    assert '"src/cocomelon/research/prospective_blind_monitor.py"' in source
