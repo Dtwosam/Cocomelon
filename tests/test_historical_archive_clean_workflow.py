@@ -34,7 +34,11 @@ def test_archive_clean_workflow_retries_inside_fifteen_minute_freshness() -> Non
     assert f'cron: "{cron}"' in source
     assert f'SCHEDULE_CRON: "{cron}"' in source
     control_plane = CONTROL_PLANE.read_text(encoding="utf-8")
-    assert "CAPTURE_ATTEMPT_MINUTES_UTC = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)" in control_plane
+    assert (
+        "CAPTURE_ATTEMPT_MINUTES_UTC = "
+        "(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)"
+        in control_plane
+    )
     assert "MAX_ENTRY_CANDLE_AGE_MS" in control_plane
     assert "workflow_dispatch:" in source
     assert "cancel-in-progress: false" in source
