@@ -219,11 +219,6 @@ jobs:
                   encoding="utf-8"
               )
           )
-          runtime = json.loads(
-              Path("/tmp/prospective-hype-runtime.json").read_text(
-                  encoding="utf-8"
-              )
-          )
           prior_campaign = continuity["campaign_id"]
           if prior_campaign is not None:
               assert prior_campaign == cycle["campaign_id"]
