@@ -12,6 +12,15 @@ on:
       - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
       - "tests/test_prospective_blind_monitor.py"
       - "tests/test_prospective_hype_blind_monitor_workflow.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-blind-monitor.yml"
+      - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
+      - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_hype_blind_monitor_workflow.py"
   workflow_dispatch:
 
 permissions:
@@ -23,7 +32,39 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install validation runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Validate freshness and workflow contracts
+        run: |
+          set -euo pipefail
+          python -m pytest \
+            tests/test_prospective_blind_monitor.py \
+            tests/test_prospective_cutover_acceptance.py \
+            tests/test_prospective_hype_blind_monitor_workflow.py \
+            -q
+
   monitor:
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -142,10 +183,16 @@ jobs:
           STATE_ID: ${{ steps.discover.outputs.state_id }}
         run: |
           set -euo pipefail
+          audit_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
           cocomelon-prospective-hype-blind-monitor \
             --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
             --lineage "$MONITOR_ROOT/lineage/lineage.json" \
             --state-artifact-id "$STATE_ID" \
+            --audited-at-ms "$audit_ms" \
             > "$MONITOR_ROOT/monitor.json"
           python - <<'PY'
           import json

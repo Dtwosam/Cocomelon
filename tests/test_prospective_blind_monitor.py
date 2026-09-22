@@ -10,6 +10,7 @@ from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
 from cocomelon.research.prospective_blind_monitor import (
+    MAX_OPERATIONAL_SOURCE_AGE_MS,
     ProspectiveBlindMonitorError,
     build_prospective_hype_blind_monitor,
     verify_prospective_hype_blind_monitor_receipt,
@@ -266,3 +267,77 @@ def test_self_hashed_structurally_false_blind_monitor_is_rejected(
         match="FINAL_OBSERVATION_FLOOR_MISMATCH",
     ):
         verify_prospective_hype_blind_monitor_receipt(receipt)
+
+
+
+def test_blind_monitor_accepts_sources_at_exact_freshness_ceiling(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.json"
+    lineage = tmp_path / "lineage.json"
+    health_payload = _health_payload()
+    lineage_payload = _lineage_payload()
+    _write(health, health_payload)
+    _write(lineage, lineage_payload)
+    source_as_of = int(health_payload["as_of_ms"])
+
+    monitor = build_prospective_hype_blind_monitor(
+        health,
+        lineage,
+        expected_state_artifact_id="101",
+        audited_at_ms=source_as_of + MAX_OPERATIONAL_SOURCE_AGE_MS,
+    )
+
+    assert monitor.as_of_ms == source_as_of
+
+
+def test_blind_monitor_rejects_health_one_millisecond_stale(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.json"
+    lineage = tmp_path / "lineage.json"
+    health_payload = _health_payload()
+    _write(health, health_payload)
+    _write(lineage, _lineage_payload())
+    source_as_of = int(health_payload["as_of_ms"])
+
+    with pytest.raises(
+        ProspectiveBlindMonitorError,
+        match="HEALTH_ARTIFACT_STALE",
+    ):
+        build_prospective_hype_blind_monitor(
+            health,
+            lineage,
+            expected_state_artifact_id="101",
+            audited_at_ms=(
+                source_as_of + MAX_OPERATIONAL_SOURCE_AGE_MS + 1
+            ),
+        )
+
+
+def test_blind_monitor_rejects_stale_lineage_even_when_health_is_fresh(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.json"
+    lineage = tmp_path / "lineage.json"
+    health_payload = _health_payload()
+    audit_ms = int(health_payload["as_of_ms"]) + 1_000
+    lineage_payload = _lineage_payload()
+    lineage_payload.pop("receipt_id")
+    lineage_payload["current_audited_at_ms"] = (
+        audit_ms - MAX_OPERATIONAL_SOURCE_AGE_MS - 1
+    )
+    lineage_payload = _with_identity(lineage_payload, "receipt_id")
+    _write(health, health_payload)
+    _write(lineage, lineage_payload)
+
+    with pytest.raises(
+        ProspectiveBlindMonitorError,
+        match="LINEAGE_ARTIFACT_STALE",
+    ):
+        build_prospective_hype_blind_monitor(
+            health,
+            lineage,
+            expected_state_artifact_id="101",
+            audited_at_ms=audit_ms,
+        )

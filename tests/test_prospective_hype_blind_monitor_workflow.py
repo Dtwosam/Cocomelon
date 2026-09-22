@@ -61,6 +61,8 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
 
     assert "cocomelon-prospective-hype-blind-monitor" in source
     assert "--state-artifact-id" in source
+    assert "--audited-at-ms" in source
+    assert "time.time_ns() // 1_000_000" in source
     assert 'payload["interim_economics_redacted"] is True' in source
     assert "actions/upload-artifact@v7" in source
     assert (
@@ -69,3 +71,18 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
     ) in source
     assert "retention-days: 90" in source
     assert "if-no-files-found: error" in source
+
+
+
+def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "pull_request:" in source
+    assert 'branches:\n      - main' in source
+    assert '"src/cocomelon/research/prospective_blind_monitor.py"' in source
+    assert "github.event_name == 'pull_request'" in source
+    assert "github.event_name != 'pull_request'" in source
+    assert "Validate freshness and workflow contracts" in source
+    assert "tests/test_prospective_blind_monitor.py" in source
+    assert "tests/test_prospective_cutover_acceptance.py" in source
+    assert "tests/test_prospective_hype_blind_monitor_workflow.py" in source

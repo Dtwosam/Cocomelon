@@ -10,6 +10,7 @@ from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
 from cocomelon.research.prospective_blind_monitor import (
+    MAX_OPERATIONAL_SOURCE_AGE_MS,
     verify_prospective_hype_blind_monitor_receipt,
 )
 from cocomelon.research.prospective_context_evidence import (
@@ -352,6 +353,10 @@ def build_prospective_hype_cutover_acceptance(
         raise ProspectiveCutoverAcceptanceError("CAMPAIGN_ID_MISMATCH")
     if monitor.as_of_ms < plan.first_expected_anchor_ms:
         raise ProspectiveCutoverAcceptanceError("FIRST_EXPECTED_ANCHOR_NOT_REACHED")
+    if monitor.as_of_ms > audited_at_ms:
+        raise ProspectiveCutoverAcceptanceError("MONITOR_TIME_AFTER_CUTOVER_AUDIT")
+    if audited_at_ms - monitor.as_of_ms > MAX_OPERATIONAL_SOURCE_AGE_MS:
+        raise ProspectiveCutoverAcceptanceError("BLIND_MONITOR_STALE")
 
     expected_to_date = monitor.expected_anchor_count_to_date
     observed_to_date = monitor.observation_count_to_date
