@@ -57,7 +57,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"             > /tmp/prospective-state-artifacts.json
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100" \
+            > /tmp/prospective-state-artifacts.json
           python - <<'PY'
           import json
           import os
@@ -107,15 +110,112 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$LINEAGE_ROOT/previous" "$LINEAGE_ROOT/current"
-          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_ID/zip"             > /tmp/prospective-previous.zip
-          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$CURRENT_ID/zip"             > /tmp/prospective-current.zip
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_ID/zip" \
+            > /tmp/prospective-previous.zip
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$CURRENT_ID/zip" \
+            > /tmp/prospective-current.zip
           unzip -q /tmp/prospective-previous.zip -d "$LINEAGE_ROOT/previous"
           unzip -q /tmp/prospective-current.zip -d "$LINEAGE_ROOT/current"
 
-      - name: Build immutable append-only lineage receipt
+      - name: Verify latest frozen-format state and classify predecessor
+        id: compatibility
+        env:
+          PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
+          CURRENT_ID: ${{ steps.discover.outputs.current_id }}
+          PREVIOUS_AUDITED_AT_MS: ${{ steps.discover.outputs.previous_audited_at_ms }}
+          CURRENT_AUDITED_AT_MS: ${{ steps.discover.outputs.current_audited_at_ms }}
         run: |
           set -euo pipefail
-          cocomelon-prospective-hype-lineage             --previous-root "$LINEAGE_ROOT/previous"             --current-root "$LINEAGE_ROOT/current"             --previous-artifact-id "${{ steps.discover.outputs.previous_id }}"             --current-artifact-id "${{ steps.discover.outputs.current_id }}"             --previous-audited-at-ms "${{ steps.discover.outputs.previous_audited_at_ms }}"             --current-audited-at-ms "${{ steps.discover.outputs.current_audited_at_ms }}"             > "$LINEAGE_ROOT/lineage.json"
+          cocomelon-prospective-hype-state-readiness \
+            --root "$LINEAGE_ROOT/current" \
+            --artifact-id "$CURRENT_ID" \
+            --as-of-ms "$CURRENT_AUDITED_AT_MS" \
+            > /tmp/current-state-readiness.json
+
+          if [[ -f "$LINEAGE_ROOT/previous/control-plane.json" ]]; then
+            cocomelon-prospective-hype-state-readiness \
+              --root "$LINEAGE_ROOT/previous" \
+              --artifact-id "$PREVIOUS_ID" \
+              --as-of-ms "$PREVIOUS_AUDITED_AT_MS" \
+              > /tmp/previous-state-readiness.json
+            echo "has_frozen_pair=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_frozen_pair=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build immutable append-only lineage receipt
+        env:
+          PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
+          CURRENT_ID: ${{ steps.discover.outputs.current_id }}
+          PREVIOUS_AUDITED_AT_MS: ${{ steps.discover.outputs.previous_audited_at_ms }}
+          CURRENT_AUDITED_AT_MS: ${{ steps.discover.outputs.current_audited_at_ms }}
+          HAS_FROZEN_PAIR: ${{ steps.compatibility.outputs.has_frozen_pair }}
+        run: |
+          set -euo pipefail
+          if [[ "$HAS_FROZEN_PAIR" == "true" ]]; then
+            cocomelon-prospective-hype-lineage \
+              --previous-root "$LINEAGE_ROOT/previous" \
+              --current-root "$LINEAGE_ROOT/current" \
+              --previous-artifact-id "$PREVIOUS_ID" \
+              --current-artifact-id "$CURRENT_ID" \
+              --previous-audited-at-ms "$PREVIOUS_AUDITED_AT_MS" \
+              --current-audited-at-ms "$CURRENT_AUDITED_AT_MS" \
+              > "$LINEAGE_ROOT/lineage.json"
+          else
+            python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          current = json.loads(
+              Path("/tmp/current-state-readiness.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          payload = {
+              "previous_artifact_id": os.environ["PREVIOUS_ID"],
+              "current_artifact_id": os.environ["CURRENT_ID"],
+              "current_audited_at_ms": int(os.environ["CURRENT_AUDITED_AT_MS"]),
+              "lineage_status": "waiting_for_second_frozen_format_state",
+              "reason_code": "previous_artifact_predates_control_plane_freeze",
+              "campaign_id": current["campaign_id"],
+              "runtime_attestation_id": current["runtime_attestation_id"],
+              "control_plane_id": current["control_plane_id"],
+              "current_state_digest": current["state_digest"],
+              "current_observation_count": current["observation_count"],
+              "current_outcome_count": current["outcome_count"],
+              "schema_version": 1,
+          }
+          canonical = json.dumps(
+              payload,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          )
+          payload["receipt_id"] = hashlib.sha256(
+              canonical.encode("utf-8")
+          ).hexdigest()
+          Path(
+              "artifacts/prospective-hype-lineage/lineage.json"
+          ).write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          fi
+
           python - <<'PY'
           import json
           from pathlib import Path
@@ -125,15 +225,25 @@ jobs:
                   "artifacts/prospective-hype-lineage/lineage.json"
               ).read_text(encoding="utf-8")
           )
-          assert payload["lineage_status"] == "append_only_valid"
+          assert payload["lineage_status"] in {
+              "append_only_valid",
+              "waiting_for_second_frozen_format_state",
+          }
           assert len(payload["campaign_id"]) == 64
           assert len(payload["runtime_attestation_id"]) == 64
           assert len(payload["control_plane_id"]) == 64
-          assert len(payload["previous_state_digest"]) == 64
           assert len(payload["current_state_digest"]) == 64
           assert len(payload["receipt_id"]) == 64
-          assert payload["current_observation_count"] >= payload["previous_observation_count"]
-          assert payload["current_outcome_count"] >= payload["previous_outcome_count"]
+          if payload["lineage_status"] == "append_only_valid":
+              assert len(payload["previous_state_digest"]) == 64
+              assert (
+                  payload["current_observation_count"]
+                  >= payload["previous_observation_count"]
+              )
+              assert (
+                  payload["current_outcome_count"]
+                  >= payload["previous_outcome_count"]
+              )
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
 
