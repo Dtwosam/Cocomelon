@@ -128,10 +128,89 @@ jobs:
                   handle.write(f"{key}={value}\n")
           PY
 
+      - name: Verify selected state artifact producers
+        id: provenance
+        continue-on-error: true
+        if: steps.discover.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
+          CURRENT_ID: ${{ steps.discover.outputs.current_id }}
+        run: |
+          set -euo pipefail
+          for label in previous current; do
+            if [[ "$label" == "previous" ]]; then
+              artifact_id="$PREVIOUS_ID"
+            else
+              artifact_id="$CURRENT_ID"
+            fi
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" \
+              > "/tmp/prospective-$label-artifact.json"
+            run_id="$(
+              python - "$label" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          label = sys.argv[1]
+          payload = json.loads(
+              Path(f"/tmp/prospective-{label}-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+            )"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+              > "/tmp/prospective-$label-run.json"
+          done
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          expected_path = ".github/workflows/prospective-hype-clean.yml"
+          for label, expected_id in (
+              ("previous", os.environ["PREVIOUS_ID"]),
+              ("current", os.environ["CURRENT_ID"]),
+          ):
+              artifact = json.loads(
+                  Path(f"/tmp/prospective-{label}-artifact.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              run = json.loads(
+                  Path(f"/tmp/prospective-{label}-run.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              workflow_run = artifact.get("workflow_run")
+              if (
+                  str(artifact.get("id")) != expected_id
+                  or artifact.get("name") != "prospective-hype-clean-state"
+                  or artifact.get("expired") is not False
+                  or not isinstance(workflow_run, dict)
+                  or workflow_run.get("head_branch") != "main"
+                  or run.get("id") != workflow_run.get("id")
+                  or run.get("head_branch") != "main"
+                  or run.get("path") != expected_path
+                  or run.get("repository", {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  raise SystemExit(
+                      f"{label.upper()}_STATE_ARTIFACT_PROVENANCE_INVALID"
+                  )
+          PY
+
       - name: Download previous and current cumulative states
         id: download
         continue-on-error: true
-        if: steps.discover.outcome == 'success'
+        if: steps.provenance.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
@@ -299,6 +378,7 @@ jobs:
           always() &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.download.outcome == 'failure' ||
             steps.compatibility.outcome == 'failure' ||
             steps.build.outcome == 'failure' ||
@@ -307,6 +387,7 @@ jobs:
         env:
           AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           DISCOVER_OUTCOME: ${{ steps.discover.outcome }}
+          PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
           DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
           COMPATIBILITY_OUTCOME: ${{ steps.compatibility.outcome }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
@@ -320,6 +401,9 @@ jobs:
           if [[ "$DISCOVER_OUTCOME" == "failure" ]]; then
             stage="discovery"
             reason_code="LINEAGE_ARTIFACT_DISCOVERY_FAILED"
+          elif [[ "$PROVENANCE_OUTCOME" == "failure" ]]; then
+            stage="discovery"
+            reason_code="LINEAGE_ARTIFACT_PROVENANCE_FAILED"
           elif [[ "$DOWNLOAD_OUTCOME" == "failure" ]]; then
             stage="download"
             reason_code="LINEAGE_STATE_DOWNLOAD_FAILED"
@@ -351,6 +435,7 @@ jobs:
           always() &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.download.outcome == 'failure' ||
             steps.compatibility.outcome == 'failure' ||
             steps.build.outcome == 'failure' ||
