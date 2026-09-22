@@ -501,6 +501,42 @@ def test_pinned_runtime_rejects_model_byte_tampering(
         )
 
 
+
+def test_pinned_runtime_external_audit_allows_current_source_drift_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime()
+    published_attestation = _attestation(runtime.spec.spec_id)
+    _install_publication_fakes(
+        monkeypatch,
+        runtime=runtime,
+        attestation=published_attestation,
+    )
+    output_root = tmp_path / "output"
+    publish_root = tmp_path / "published"
+    _write_mutable_runtime(output_root)
+    _bundle, pin = publish_archive_clean_runtime(
+        output_root=output_root,
+        publish_root=publish_root,
+        pinned_at_ms=999,
+    )
+    _install_runtime_load_fakes(
+        monkeypatch,
+        runtime=runtime,
+        attestation=_attestation(runtime.spec.spec_id, sha256="4" * 64),
+    )
+
+    loaded = load_pinned_archive_clean_runtime(
+        publish_root,
+        expected_pin_id=pin.pin_id,
+        require_current_source_match=False,
+    )
+
+    assert loaded.runtime.artifact is runtime.artifact
+    assert loaded.runtime.spec is runtime.spec
+    assert loaded.source_attestation == published_attestation
+
 def test_pinned_runtime_rejects_observer_source_tree_drift(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
