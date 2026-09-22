@@ -141,6 +141,7 @@ def test_archive_clean_observer_requires_authenticated_activation_before_continu
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH" in source
+    assert 'run.get("event") not in {"workflow_dispatch", "workflow_run"}' in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS" in source
     assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_PRE_CUTOVER" in source
     assert "authorization_source_revision" in source
