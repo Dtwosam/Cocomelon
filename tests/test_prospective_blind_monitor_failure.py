@@ -31,6 +31,8 @@ def test_failure_receipt_is_redacted_deterministic_and_self_hashed(tmp_path: Pat
 
     assert first == second
     assert first.interim_economics_redacted is True
+    assert len(first.campaign_id) == 64
+    assert len(first.validation_plan_id) == 64
     assert len(first.failure_id) == 64
     payload = first.to_dict()
     for forbidden in (
@@ -100,5 +102,27 @@ def test_failure_receipt_tampering_fails_identity_check(tmp_path: Path) -> None:
     with pytest.raises(
         ProspectiveBlindMonitorFailureError,
         match="FAILURE_RECEIPT_ID_MISMATCH",
+    ):
+        verify_prospective_blind_monitor_failure(path)
+
+
+
+def test_failure_receipt_rejects_cross_campaign_tampering(tmp_path: Path) -> None:
+    receipt = build_prospective_blind_monitor_failure(
+        audited_at_ms=100,
+        stage="build",
+        reason_code="HEALTH_ARTIFACT_STALE",
+    )
+    path = tmp_path / "failure.json"
+    receipt.write(path)
+    payload = path.read_text(encoding="utf-8")
+    path.write_text(
+        payload.replace(receipt.campaign_id, "0" * 64),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ProspectiveBlindMonitorFailureError,
+        match="FAILURE_RECEIPT_INVALID",
     ):
         verify_prospective_blind_monitor_failure(path)
