@@ -313,3 +313,20 @@ def test_due_outcome_uses_exact_target_close_and_missing_target_stays_pending(
     assert store.due_unsettled_observations(
         as_of_ms=observation.target_end_ms + 60_000
     ) == ()
+
+
+
+def test_late_hourly_capture_is_skipped_instead_of_reconstructed(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+    anchor = CUTOVER + HOUR
+    data = _data(
+        anchor_end_ms=anchor,
+        as_of_ms=anchor + 16 * 60_000,
+    )
+
+    result = observe_current_anchor(data, store=store, spec=spec)
+
+    assert result.status == "missed_anchor_window"
+    assert result.created is False
+    assert store.iter_observations() == ()
