@@ -205,3 +205,47 @@ Verified implementation evidence: PR #237 implementation head `2e61ea9966e024750
 - [ ] Evaluate the fixed shallow tree challenger in PR #256 under the same chronological folds, costs, NO_TRADE floor, and four-block validation stability rule.
 - [ ] Do not tune the tree from test outcomes; reject it if stable validation does not justify trading.
 - [ ] Freeze a candidate only after a model demonstrates reproducible touched-development edge strong enough to justify future clean validation.
+
+
+
+## Slice F — frozen prospective clean validation
+
+A touched historical discovery has earned prospective-only observation, not promotion.
+
+- [x] Freeze `hype-down-bearish-near-basket-long-4h-v1` before prospective evidence (#289).
+- [x] Build append-only prospective observation/outcome evidence with exact 4h settlement (#290–#291).
+- [x] Run redundant hourly paper-only public-mainnet observer attempts (#292–#293).
+- [x] Freeze a 45-day prospective validation window and economic/data-quality gates (#294).
+- [x] Require cumulative state continuity after cutover (#296).
+- [x] Stop new observations at the frozen validation end while preserving due settlement (#297).
+- [x] Publish immutable per-cycle validation/capture-health evidence (#298).
+- [x] Attest the candidate/plan/source runtime before cutover (#299).
+- [x] Pin every campaign observer checkout to source revision `0131fccdb09a2b9ba959dd5785ea213a6297f719` (#300).
+- [x] Monitor mathematical campaign recoverability without changing the frozen runtime (#302).
+- [x] Predeclare one canonical terminal finalization and reject later state/economic drift (#303).
+- [x] Freeze the capture-critical workflow control plane before cutover (#304).
+- [ ] Collect the frozen 1,080-anchor prospective window from 2026-09-23 through 2026-11-07 without retuning.
+- [ ] Settle every due exact 4h outcome under the frozen cost assumptions.
+- [ ] Accept the canonical finalization verdict without changing rules from emerging results.
+- [ ] If the final status is `eligible_for_candidate_review`, perform candidate review only; do not call the result promoted or live-ready.
+- [ ] If the campaign is data-incomplete, not-qualified, or becomes irrecoverable, preserve that result and do not backfill/retry it into success.
+
+### Frozen prospective gates
+
+- 1,080 expected hourly anchors.
+- >=90% capture = >=972 observations; 108-anchor maximum miss budget.
+- >=80 settled executable trades.
+- Four chronological stability blocks.
+- >=15 settled executable trades per block.
+- Overall modeled mean net return > 0.
+- Every block modeled mean net return > 0.
+- One-position-per-market occupancy.
+- Frozen 4h LONG candidate only when the exact `down/bearish/near_basket` context matches.
+- Frozen modeled costs: fee 0.0007 round trip, slippage 0.0005 round trip, funding reserve 0.0001/hour.
+- Passing the prospective plan means candidate-review eligibility only.
+- Historical discovery and all pre-freeze experimentation remain touched.
+- No campaign output can bypass >=500 closed mainnet paper trades, >=45 calendar days shadow, hard risk/integrity gates, or explicit live authorization.
+
+### Freeze rule during Slice F
+
+After the first clean anchor, this campaign is observational. Do not change its candidate specification, context calculation, direction, horizon, costs, occupancy semantics, validation thresholds, observer/report/evidence Python runtime, or capture control-plane identity. Any materially different hypothesis must become a new candidate and a new future campaign; it may not inherit this campaign's evidence.
