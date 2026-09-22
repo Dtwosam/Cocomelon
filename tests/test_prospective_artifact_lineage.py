@@ -71,8 +71,6 @@ def _write_valid_state(root: Path) -> ProspectiveEvidenceStore:
 
 
 
-def _observation
-
 
 def _observation(anchor_end_ms: int) -> ProspectiveObservation:
     target_end_ms = anchor_end_ms + SPEC.horizon_ms
