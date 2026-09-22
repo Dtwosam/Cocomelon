@@ -115,6 +115,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          {
+            echo "status=failure"
+            echo "reason_code=ARTIFACT_DISCOVERY_UNEXPECTED_FAILURE"
+            echo "health_id=none"
+            echo "lineage_id=none"
+            echo "state_id=none"
+          } >> "$GITHUB_OUTPUT"
+
           if ! gh api \
             -H "Accept: application/vnd.github+json" \
             "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
@@ -244,7 +252,7 @@ jobs:
           PY
 
       - name: Preserve discovery failure receipt
-        if: ${{ steps.discover.outputs.status != 'ok' }}
+        if: ${{ always() && steps.discover.outputs.status != 'ok' }}
         env:
           AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           REASON_CODE: ${{ steps.discover.outputs.reason_code }}
@@ -271,6 +279,10 @@ jobs:
           LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
         run: |
           set -euo pipefail
+          {
+            echo "status=failure"
+            echo "reason_code=SOURCE_ARTIFACT_DOWNLOAD_UNEXPECTED_FAILURE"
+          } >> "$GITHUB_OUTPUT"
           mkdir -p "$MONITOR_ROOT/health" "$MONITOR_ROOT/lineage"
           status="ok"
           reason_code="none"
@@ -313,7 +325,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Preserve download failure receipt
-        if: ${{ steps.discover.outputs.status == 'ok' && steps.download.outputs.status != 'ok' }}
+        if: ${{ always() && steps.discover.outputs.status == 'ok' && steps.download.outputs.status != 'ok' }}
         env:
           AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           REASON_CODE: ${{ steps.download.outputs.reason_code }}
