@@ -79,6 +79,53 @@ def test_bootstrap_cli_is_offline_and_emits_receipt(
     assert capsys.readouterr().out == ""
 
 
+
+def test_bootstrap_cli_verify_only_uses_post_cutover_safe_verifier(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pinned = object()
+    receipt = SimpleNamespace(
+        to_dict=lambda: {
+            "bootstrap_id": "5" * 64,
+            "campaign_enabled": False,
+            "execution_ready": False,
+        }
+    )
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        cli,
+        "load_pinned_archive_clean_runtime",
+        lambda *args, **kwargs: pinned,
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_clean_bootstrap_state",
+        lambda *args, **kwargs: calls.append("verify") or receipt,
+    )
+    monkeypatch.setattr(
+        cli,
+        "bootstrap_archive_clean_state",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("verify-only must not bootstrap state")
+        ),
+    )
+
+    payload = cli.archive_clean_bootstrap_payload(
+        runtime_root=tmp_path / "runtime",
+        pin_id="2" * 64,
+        state_root=tmp_path / "state",
+        frozen_revision="4" * 40,
+        runtime_artifact_id="123",
+        verify_only=True,
+        clock_ms=lambda: 99_999_999,
+    )
+
+    assert calls == ["verify"]
+    assert payload["command"] == "historical-archive-clean-bootstrap-verify"
+    assert payload["bootstrap_id"] == "5" * 64
+
 def test_bootstrap_cli_main_emits_structured_error(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
