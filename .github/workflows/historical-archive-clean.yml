@@ -134,6 +134,10 @@ jobs:
               raise SystemExit(
                   "ARCHIVE_CLEAN_RUNTIME_PRODUCER_BRANCH_MISMATCH"
               )
+          if run.get("head_sha") != os.environ["FROZEN_REVISION"]:
+              raise SystemExit(
+                  "ARCHIVE_CLEAN_RUNTIME_PRODUCER_REVISION_MISMATCH"
+              )
           if run.get("event") != "workflow_dispatch":
               raise SystemExit(
                   "ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH"

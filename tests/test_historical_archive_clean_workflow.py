@@ -68,6 +68,8 @@ def test_archive_clean_workflow_uses_frozen_revision_runtime_and_pin() -> None:
     assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_WORKFLOW_MISMATCH" in source
     assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_REPOSITORY_MISMATCH" in source
     assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_REVISION_MISMATCH" in source
+    assert 'run.get("head_sha") != os.environ["FROZEN_REVISION"]' in source
     assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH" in source
     assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_NOT_SUCCESS" in source
 
