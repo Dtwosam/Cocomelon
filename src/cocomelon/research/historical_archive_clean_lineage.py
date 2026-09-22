@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
