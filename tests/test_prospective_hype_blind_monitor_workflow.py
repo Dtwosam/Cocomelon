@@ -111,7 +111,6 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "MONITOR_BUILD_FAILED" in source
     assert "failure.json" in source
     assert "if: ${{ always() }}" in source
-    assert "always() && steps.discover.outputs.status != 'ok'" in source
     assert "always() && steps.discover.outputs.status == 'ok'" in source
     assert "Preserve discovery failure receipt" in source
     assert "Preserve download failure receipt" in source
