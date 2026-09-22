@@ -944,36 +944,17 @@ def run_archive_historical_experiment(
     max_funding_items: int = 500,
     overlap_candles: int = 96,
 ) -> ArchiveHistoricalExperimentResult:
-    archive = verify_downloaded_archive_cache(
-        archive_root,
-        start_ms=start_ms,
-        end_ms=end_ms,
-    )
-    backfill_archive_experiment_funding(
+    preparation = prepare_archive_historical_sources(
         client,
-        source_root=source_root,
-        markets=markets,
-        start_ms=start_ms,
-        end_ms=end_ms,
-        clock_ms=clock_ms,
-        max_funding_items=max_funding_items,
-    )
-    source_summary = ingest_archive_candles(
         archive_root=archive_root,
         source_root=source_root,
         markets=markets,
         intervals=intervals,
         start_ms=start_ms,
         end_ms=end_ms,
-        received_at_ms=clock_ms(),
-    )
-    overlap = validate_archive_native_overlap(
-        client,
-        source_root=source_root,
-        markets=markets,
-        intervals=intervals,
-        overlap_candles=overlap_candles,
         clock_ms=clock_ms,
+        max_funding_items=max_funding_items,
+        overlap_candles=overlap_candles,
     )
     comparison = run_historical_model_comparison_from_sources(
         source_root=source_root,
@@ -983,8 +964,8 @@ def run_archive_historical_experiment(
         config=config,
     )
     return ArchiveHistoricalExperimentResult(
-        archive=archive,
-        source_summary=source_summary,
-        overlap=overlap,
+        archive=preparation.archive,
+        source_summary=preparation.source_summary(source_root),
+        overlap=preparation.overlap,
         comparison=comparison,
     )
