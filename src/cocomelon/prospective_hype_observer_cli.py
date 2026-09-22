@@ -102,6 +102,7 @@ def prospective_hype_observer_payload(
         ),
         "observation_count": len(store.iter_observations()),
         "outcome_count": len(store.iter_outcomes()),
+        "state_digest": store.state_digest,
         "root": str(root),
     }
 
