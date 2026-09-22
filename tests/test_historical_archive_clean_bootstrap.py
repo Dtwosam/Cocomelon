@@ -211,7 +211,7 @@ def test_bootstrap_rejects_post_cutover_creation(tmp_path: Path) -> None:
             as_of_ms=pinned.runtime.spec.validation_start_ms,
         )
 
-    assert not tmp_path.exists()
+    assert tuple(tmp_path.iterdir()) == ()
 
 
 def test_bootstrap_rejects_legacy_runtime_without_writing_state(
@@ -231,12 +231,11 @@ def test_bootstrap_rejects_legacy_runtime_without_writing_state(
             as_of_ms=1_000,
         )
 
-    assert not tmp_path.exists()
+    assert tuple(tmp_path.iterdir()) == ()
 
 
 def test_bootstrap_rejects_unattested_existing_state(tmp_path: Path) -> None:
     pinned = _pinned()
-    tmp_path.mkdir()
     (tmp_path / "checkpoint.json").write_text(
         '{"unattested":true}\n',
         encoding="utf-8",
