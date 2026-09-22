@@ -31,7 +31,7 @@ from cocomelon.research.historical_archive_validation_spec import (
 from cocomelon.research.historical_features import HistoricalFeatureRow
 
 ZERO = 0
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 
 class HistoricalArchiveCleanCheckpointError(RuntimeError):
@@ -142,6 +142,7 @@ class ArchiveCleanOperationalCheckpoint:
     campaign_id: str
     runtime_id: str
     pin_id: str
+    control_plane_id: str
     first_expected_anchor_ms: int
     anchor_interval_ms: int
     expected_anchor_count: int
@@ -162,6 +163,7 @@ class ArchiveCleanOperationalCheckpoint:
             "campaign_id",
             "runtime_id",
             "pin_id",
+            "control_plane_id",
         ):
             _require_sha256(getattr(self, field), field)
         if self.first_expected_anchor_ms < 0:
@@ -247,6 +249,7 @@ class ArchiveCleanOperationalCheckpoint:
             "campaign_id": self.campaign_id,
             "runtime_id": self.runtime_id,
             "pin_id": self.pin_id,
+            "control_plane_id": self.control_plane_id,
             "first_expected_anchor_ms": self.first_expected_anchor_ms,
             "anchor_interval_ms": self.anchor_interval_ms,
             "expected_anchor_count": self.expected_anchor_count,
@@ -307,6 +310,10 @@ def load_archive_clean_operational_checkpoint(
             campaign_id=_string(raw.get("campaign_id"), "campaign_id"),
             runtime_id=_string(raw.get("runtime_id"), "runtime_id"),
             pin_id=_string(raw.get("pin_id"), "pin_id"),
+            control_plane_id=_string(
+                raw.get("control_plane_id"),
+                "control_plane_id",
+            ),
             first_expected_anchor_ms=_integer(
                 raw.get("first_expected_anchor_ms"),
                 "first_expected_anchor_ms",
@@ -400,6 +407,7 @@ class ArchiveCleanCheckpointEvidenceStore:
         spec: HistoricalArchiveCleanValidationSpec,
         runtime_id: str,
         pin_id: str,
+        control_plane_id: str,
     ) -> None:
         self.checkpoint_path = checkpoint_path
         self.cycle_evidence_root = cycle_evidence_root
@@ -420,6 +428,7 @@ class ArchiveCleanCheckpointEvidenceStore:
         self.campaign_id = manifest.campaign_id
         self.runtime_id = runtime_id
         self.pin_id = pin_id
+        self.control_plane_id = control_plane_id
         if checkpoint_path.exists():
             checkpoint = load_archive_clean_operational_checkpoint(checkpoint_path)
             self._verify_lineage(checkpoint)
@@ -432,6 +441,7 @@ class ArchiveCleanCheckpointEvidenceStore:
                 campaign_id=self.campaign_id,
                 runtime_id=runtime_id,
                 pin_id=pin_id,
+                control_plane_id=control_plane_id,
                 first_expected_anchor_ms=spec.first_expected_anchor_ms,
                 anchor_interval_ms=spec.anchor_interval_ms,
                 expected_anchor_count=spec.expected_anchor_count,
@@ -459,6 +469,7 @@ class ArchiveCleanCheckpointEvidenceStore:
             self.campaign_id,
             self.runtime_id,
             self.pin_id,
+            self.control_plane_id,
             self.spec.first_expected_anchor_ms,
             self.spec.anchor_interval_ms,
             self.spec.expected_anchor_count,
@@ -470,6 +481,7 @@ class ArchiveCleanCheckpointEvidenceStore:
             checkpoint.campaign_id,
             checkpoint.runtime_id,
             checkpoint.pin_id,
+            checkpoint.control_plane_id,
             checkpoint.first_expected_anchor_ms,
             checkpoint.anchor_interval_ms,
             checkpoint.expected_anchor_count,
