@@ -23,6 +23,7 @@ from cocomelon.research.historical_archive_presets import (
     write_archive_preset_run_receipt,
 )
 from cocomelon.research.python_source_attestation import (
+    PythonSourceAttestationError,
     PythonSourceFileAttestation,
     PythonSourceTreeAttestation,
     write_python_source_tree_attestation,
@@ -88,6 +89,8 @@ def _write_fake_bundle_files(
     archive_root: Path,
     source_root: Path,
     output_root: Path,
+    *,
+    include_implementation: bool = True,
 ) -> None:
     archive_root.mkdir(parents=True, exist_ok=True)
     source_root.mkdir(parents=True, exist_ok=True)
@@ -120,10 +123,11 @@ def _write_fake_bundle_files(
         '{"comparison":"report"}\n',
         encoding="utf-8",
     )
-    write_python_source_tree_attestation(
-        output_root / "implementation.json",
-        _fake_source_attestation(),
-    )
+    if include_implementation:
+        write_python_source_tree_attestation(
+            output_root / "implementation.json",
+            _fake_source_attestation(),
+        )
 
 
 def test_jul_sep_2026_v2_locks_current_multimonth_geometry() -> None:
@@ -192,7 +196,12 @@ def test_preset_runner_forwards_only_frozen_values(
         assert isinstance(archive_root, Path)
         assert isinstance(source_root, Path)
         assert isinstance(output_root, Path)
-        _write_fake_bundle_files(archive_root, source_root, output_root)
+        _write_fake_bundle_files(
+            archive_root,
+            source_root,
+            output_root,
+            include_implementation=False,
+        )
         return experiment_result
 
     monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
@@ -520,7 +529,12 @@ def test_preset_runner_fails_if_source_tree_changes_during_run(
         assert isinstance(archive_root, Path)
         assert isinstance(source_root, Path)
         assert isinstance(output_root, Path)
-        _write_fake_bundle_files(archive_root, source_root, output_root)
+        _write_fake_bundle_files(
+            archive_root,
+            source_root,
+            output_root,
+            include_implementation=False,
+        )
         return _fake_experiment_result()
 
     monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
@@ -575,7 +589,10 @@ def test_preset_bundle_detects_implementation_attestation_tampering(
         encoding="utf-8",
     )
 
-    with pytest.raises(Exception):
+    with pytest.raises(
+        PythonSourceAttestationError,
+        match="SOURCE_ATTESTATION_INVALID",
+    ):
         verify_archive_preset_bundle_receipt(
             path,
             preset=JUL_SEP_2026_V2,
