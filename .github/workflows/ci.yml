@@ -72,6 +72,8 @@ jobs:
           tests/test_prospective_state_readiness.py
           tests/test_prospective_blind_monitor.py
           tests/test_prospective_cutover_acceptance.py
+          tests/test_prospective_cutover_failure.py
+          tests/test_prospective_cutover_failure_cli.py
           tests/test_prospective_hype_blind_monitor_workflow.py
           tests/test_prospective_hype_cutover_workflow.py
           tests/test_prospective_hype_workflow.py
