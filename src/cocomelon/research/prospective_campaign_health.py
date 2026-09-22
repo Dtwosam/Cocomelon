@@ -301,7 +301,7 @@ def build_prospective_campaign_health(
 
     if reasons:
         status = ProspectiveCampaignHealthStatus.IRRECOVERABLE
-    elif report.as_of_ms < plan.validation_start_ms:
+    elif report.as_of_ms < plan.first_expected_anchor_ms:
         status = ProspectiveCampaignHealthStatus.PRE_VALIDATION
     elif report.missed_anchor_count_to_date > 0 or report.overdue_unsettled_count > 0:
         status = ProspectiveCampaignHealthStatus.DEGRADED
