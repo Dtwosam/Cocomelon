@@ -38,16 +38,22 @@ def test_blind_monitor_matches_state_to_latest_health_run() -> None:
     assert '"state_id": state["id"]' in source
 
 
-def test_blind_monitor_never_downloads_interim_economic_report() -> None:
+def test_blind_monitor_never_downloads_or_names_interim_economics() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "prospective-hype-clean-report-" not in source
     assert "prospective-hype-report.json" not in source
     assert "prospective-hype-health.json" in source
     assert "lineage.json" in source
-    assert "mean_net_return" in source
-    assert "total_net_return" in source
-    assert "forbidden.isdisjoint(payload)" in source
+    for token in (
+        "mean_net_return",
+        "total_net_return",
+        "positive_net_count",
+        "non_positive_net_count",
+        "gross_return",
+        "net_return",
+    ):
+        assert token not in source
 
 
 def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
