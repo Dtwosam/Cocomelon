@@ -10,7 +10,11 @@ from typing import Protocol
 from cocomelon.domain.features import TrendRegime
 from cocomelon.features.cross_market import (
     basket_breadth_bucket as basket_breadth_1h_bucket,
+)
+from cocomelon.features.cross_market import (
     basket_direction_bucket as basket_direction_1h_bucket,
+)
+from cocomelon.features.cross_market import (
     relative_strength_bucket as relative_strength_1h_bucket,
 )
 from cocomelon.research.historical_features import (
