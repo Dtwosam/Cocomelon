@@ -71,7 +71,7 @@ class HistoricalArchiveExperimentPreset:
     overlap_candles: int
     max_funding_items: int
     evidence_class: str = EVIDENCE_CLASS
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -295,6 +295,7 @@ class HistoricalArchivePresetBundleReceipt:
     archive_ingest_sha256: str
     coverage_sha256: str
     overlap_sha256: str
+    source_preparation_sha256: str
     dataset_manifest_sha256: str
     training_parquet_sha256: str
     comparison_sha256: str
@@ -314,6 +315,7 @@ class HistoricalArchivePresetBundleReceipt:
             "archive_ingest_sha256",
             "coverage_sha256",
             "overlap_sha256",
+            "source_preparation_sha256",
             "dataset_manifest_sha256",
             "training_parquet_sha256",
             "comparison_sha256",
@@ -323,7 +325,7 @@ class HistoricalArchivePresetBundleReceipt:
             value = getattr(self, field)
             if not isinstance(value, str) or len(value) != 64:
                 raise ValueError(f"{field} must be SHA-256")
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError("unsupported preset bundle receipt schema")
 
     def identity_payload(self) -> dict[str, object]:
@@ -338,6 +340,7 @@ class HistoricalArchivePresetBundleReceipt:
             "archive_ingest_sha256": self.archive_ingest_sha256,
             "coverage_sha256": self.coverage_sha256,
             "overlap_sha256": self.overlap_sha256,
+            "source_preparation_sha256": self.source_preparation_sha256,
             "dataset_manifest_sha256": self.dataset_manifest_sha256,
             "training_parquet_sha256": self.training_parquet_sha256,
             "comparison_sha256": self.comparison_sha256,
@@ -367,6 +370,7 @@ def _archive_preset_bundle_paths(
         "archive_ingest": source_root / "archive_ingest.json",
         "coverage": source_root / "coverage.json",
         "overlap": source_root / "archive_native_overlap.json",
+        "source_preparation": source_root / "source-preparation.json",
         "dataset_manifest": output_root / "dataset" / "manifest.json",
         "training_parquet": output_root / "dataset" / "training.parquet",
         "comparison": output_root / "comparison.json",
@@ -588,6 +592,10 @@ def build_archive_preset_bundle_receipt(
         ),
         coverage_sha256=_sha256_path(paths["coverage"], "COVERAGE"),
         overlap_sha256=_sha256_path(paths["overlap"], "OVERLAP"),
+        source_preparation_sha256=_sha256_path(
+            paths["source_preparation"],
+            "SOURCE_PREPARATION",
+        ),
         dataset_manifest_sha256=_sha256_path(
             paths["dataset_manifest"],
             "DATASET_MANIFEST",
@@ -652,6 +660,7 @@ def verify_archive_preset_bundle_receipt(
         "archive_ingest_sha256",
         "coverage_sha256",
         "overlap_sha256",
+        "source_preparation_sha256",
         "dataset_manifest_sha256",
         "training_parquet_sha256",
         "comparison_sha256",
@@ -682,6 +691,7 @@ def verify_archive_preset_bundle_receipt(
             archive_ingest_sha256=values["archive_ingest_sha256"],
             coverage_sha256=values["coverage_sha256"],
             overlap_sha256=values["overlap_sha256"],
+            source_preparation_sha256=values["source_preparation_sha256"],
             dataset_manifest_sha256=values["dataset_manifest_sha256"],
             training_parquet_sha256=values["training_parquet_sha256"],
             comparison_sha256=values["comparison_sha256"],
