@@ -39,6 +39,16 @@ def _canonical_json(value: object) -> str:
     )
 
 
+def _sha256_path(path: Path, field: str) -> str:
+    if not path.is_file():
+        raise RuntimeError(f"ARCHIVE_PRESET_BUNDLE_{field}_MISSING")
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class HistoricalArchiveExperimentPreset:
     name: str
@@ -184,6 +194,92 @@ class HistoricalArchivePresetRunReceipt:
 
     def to_dict(self) -> dict[str, object]:
         return {**self.identity_payload(), "receipt_id": self.receipt_id}
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalArchivePresetBundleReceipt:
+    preset_name: str
+    preset_id: str
+    evidence_class: str
+    preset_run_receipt_id: str
+    archive_download_manifest_sha256: str
+    archive_ingest_sha256: str
+    coverage_sha256: str
+    overlap_sha256: str
+    dataset_manifest_sha256: str
+    training_parquet_sha256: str
+    comparison_sha256: str
+    preset_run_receipt_sha256: str
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        for field in ("preset_name", "preset_id", "preset_run_receipt_id"):
+            value = getattr(self, field)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{field} must not be empty")
+        if self.evidence_class != EVIDENCE_CLASS:
+            raise ValueError("preset bundle evidence must remain touched_development")
+        for field in (
+            "archive_download_manifest_sha256",
+            "archive_ingest_sha256",
+            "coverage_sha256",
+            "overlap_sha256",
+            "dataset_manifest_sha256",
+            "training_parquet_sha256",
+            "comparison_sha256",
+            "preset_run_receipt_sha256",
+        ):
+            value = getattr(self, field)
+            if not isinstance(value, str) or len(value) != 64:
+                raise ValueError(f"{field} must be SHA-256")
+        if self.schema_version != 1:
+            raise ValueError("unsupported preset bundle receipt schema")
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "preset_name": self.preset_name,
+            "preset_id": self.preset_id,
+            "evidence_class": self.evidence_class,
+            "preset_run_receipt_id": self.preset_run_receipt_id,
+            "archive_download_manifest_sha256": (
+                self.archive_download_manifest_sha256
+            ),
+            "archive_ingest_sha256": self.archive_ingest_sha256,
+            "coverage_sha256": self.coverage_sha256,
+            "overlap_sha256": self.overlap_sha256,
+            "dataset_manifest_sha256": self.dataset_manifest_sha256,
+            "training_parquet_sha256": self.training_parquet_sha256,
+            "comparison_sha256": self.comparison_sha256,
+            "preset_run_receipt_sha256": self.preset_run_receipt_sha256,
+            "schema_version": self.schema_version,
+        }
+
+    @property
+    def bundle_id(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, object]:
+        return {**self.identity_payload(), "bundle_id": self.bundle_id}
+
+
+def _archive_preset_bundle_paths(
+    *,
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> dict[str, Path]:
+    return {
+        "archive_download_manifest": archive_root / "download_manifest.json",
+        "archive_ingest": source_root / "archive_ingest.json",
+        "coverage": source_root / "coverage.json",
+        "overlap": source_root / "archive_native_overlap.json",
+        "dataset_manifest": output_root / "dataset" / "manifest.json",
+        "training_parquet": output_root / "dataset" / "training.parquet",
+        "comparison": output_root / "comparison.json",
+        "preset_run_receipt": output_root / "preset-run.json",
+    }
 
 
 def _summary_string(
@@ -338,6 +434,162 @@ def verify_archive_preset_run_receipt(
     return receipt
 
 
+def build_archive_preset_bundle_receipt(
+    preset: HistoricalArchiveExperimentPreset,
+    *,
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> HistoricalArchivePresetBundleReceipt:
+    run_receipt = verify_archive_preset_run_receipt(
+        output_root / "preset-run.json",
+        preset=preset,
+    )
+    paths = _archive_preset_bundle_paths(
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    return HistoricalArchivePresetBundleReceipt(
+        preset_name=preset.name,
+        preset_id=preset.preset_id,
+        evidence_class=preset.evidence_class,
+        preset_run_receipt_id=run_receipt.receipt_id,
+        archive_download_manifest_sha256=_sha256_path(
+            paths["archive_download_manifest"],
+            "ARCHIVE_DOWNLOAD_MANIFEST",
+        ),
+        archive_ingest_sha256=_sha256_path(
+            paths["archive_ingest"],
+            "ARCHIVE_INGEST",
+        ),
+        coverage_sha256=_sha256_path(paths["coverage"], "COVERAGE"),
+        overlap_sha256=_sha256_path(paths["overlap"], "OVERLAP"),
+        dataset_manifest_sha256=_sha256_path(
+            paths["dataset_manifest"],
+            "DATASET_MANIFEST",
+        ),
+        training_parquet_sha256=_sha256_path(
+            paths["training_parquet"],
+            "TRAINING_PARQUET",
+        ),
+        comparison_sha256=_sha256_path(
+            paths["comparison"],
+            "COMPARISON",
+        ),
+        preset_run_receipt_sha256=_sha256_path(
+            paths["preset_run_receipt"],
+            "PRESET_RUN_RECEIPT",
+        ),
+    )
+
+
+def write_archive_preset_bundle_receipt(
+    output_root: Path,
+    receipt: HistoricalArchivePresetBundleReceipt,
+) -> Path:
+    path = output_root / "preset-bundle.json"
+    payload = _canonical_json(receipt.to_dict()) + "\n"
+    if path.exists():
+        if path.read_text(encoding="utf-8") != payload:
+            raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_CONFLICT")
+        return path
+
+    temporary = output_root / ".preset-bundle.json.tmp"
+    temporary.write_text(payload, encoding="utf-8")
+    temporary.replace(path)
+    return path
+
+
+def verify_archive_preset_bundle_receipt(
+    path: Path,
+    *,
+    preset: HistoricalArchiveExperimentPreset,
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> HistoricalArchivePresetBundleReceipt:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_INVALID") from exc
+    if not isinstance(raw, dict):
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_INVALID")
+
+    string_fields = (
+        "preset_name",
+        "preset_id",
+        "evidence_class",
+        "preset_run_receipt_id",
+        "archive_download_manifest_sha256",
+        "archive_ingest_sha256",
+        "coverage_sha256",
+        "overlap_sha256",
+        "dataset_manifest_sha256",
+        "training_parquet_sha256",
+        "comparison_sha256",
+        "preset_run_receipt_sha256",
+        "bundle_id",
+    )
+    values: dict[str, str] = {}
+    for field in string_fields:
+        value = raw.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_INVALID")
+        values[field] = value
+
+    schema_version = raw.get("schema_version")
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_INVALID")
+
+    try:
+        receipt = HistoricalArchivePresetBundleReceipt(
+            preset_name=values["preset_name"],
+            preset_id=values["preset_id"],
+            evidence_class=values["evidence_class"],
+            preset_run_receipt_id=values["preset_run_receipt_id"],
+            archive_download_manifest_sha256=values[
+                "archive_download_manifest_sha256"
+            ],
+            archive_ingest_sha256=values["archive_ingest_sha256"],
+            coverage_sha256=values["coverage_sha256"],
+            overlap_sha256=values["overlap_sha256"],
+            dataset_manifest_sha256=values["dataset_manifest_sha256"],
+            training_parquet_sha256=values["training_parquet_sha256"],
+            comparison_sha256=values["comparison_sha256"],
+            preset_run_receipt_sha256=values["preset_run_receipt_sha256"],
+            schema_version=schema_version,
+        )
+    except ValueError as exc:
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_INVALID") from exc
+
+    if values["bundle_id"] != receipt.bundle_id:
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RECEIPT_ID_MISMATCH")
+    if (
+        receipt.preset_name != preset.name
+        or receipt.preset_id != preset.preset_id
+        or receipt.evidence_class != preset.evidence_class
+    ):
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_PRESET_MISMATCH")
+
+    run_receipt = verify_archive_preset_run_receipt(
+        output_root / "preset-run.json",
+        preset=preset,
+    )
+    if run_receipt.receipt_id != receipt.preset_run_receipt_id:
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_RUN_RECEIPT_MISMATCH")
+
+    expected = build_archive_preset_bundle_receipt(
+        preset,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    if expected != receipt:
+        raise RuntimeError("ARCHIVE_PRESET_BUNDLE_FILE_DIGEST_MISMATCH")
+    return receipt
+
+
 def write_archive_preset_run_receipt(
     output_root: Path,
     receipt: HistoricalArchivePresetRunReceipt,
@@ -462,4 +714,11 @@ def run_archive_experiment_preset(
     )
     receipt = build_archive_preset_run_receipt(preset, result)
     write_archive_preset_run_receipt(output_root, receipt)
+    bundle = build_archive_preset_bundle_receipt(
+        preset,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    write_archive_preset_bundle_receipt(output_root, bundle)
     return result
