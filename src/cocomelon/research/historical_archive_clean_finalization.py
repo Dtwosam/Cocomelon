@@ -46,6 +46,22 @@ def _require_sha256(value: str, field: str) -> None:
         raise ValueError(f"{field} must be lowercase SHA-256")
 
 
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise HistoricalArchiveCleanFinalizationError(
+            f"{field} must be an object"
+        )
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HistoricalArchiveCleanFinalizationError(
+            f"{field} must be an integer"
+        )
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ArchiveCleanFinalBlockResult:
     block_index: int
@@ -504,6 +520,48 @@ def build_archive_clean_finalization(
         verdict=VERDICT_ELIGIBLE if eligible else VERDICT_FAILED,
         eligible_for_candidate_review=eligible,
     )
+
+
+def verify_archive_clean_finalization(
+    path: Path,
+    *,
+    spec: HistoricalArchiveCleanValidationSpec,
+    runtime_id: str,
+    pin_id: str,
+    checkpoint: ArchiveCleanOperationalCheckpoint,
+) -> ArchiveCleanFinalization:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "archive clean finalization",
+        )
+        finalized_at_ms = _integer(
+            raw.get("finalized_at_ms"),
+            "finalized_at_ms",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HistoricalArchiveCleanFinalizationError(
+            "ARCHIVE_CLEAN_FINALIZATION_INVALID"
+        ) from exc
+    expected = build_archive_clean_finalization(
+        spec,
+        runtime_id=runtime_id,
+        pin_id=pin_id,
+        checkpoint=checkpoint,
+        finalized_at_ms=finalized_at_ms,
+    )
+    normalized = json.loads(_canonical_json(expected.to_dict()))
+    if raw != normalized:
+        raise HistoricalArchiveCleanFinalizationError(
+            "ARCHIVE_CLEAN_FINALIZATION_EVIDENCE_MISMATCH"
+        )
+    if path.read_text(encoding="utf-8") != _canonical_json(
+        expected.to_dict()
+    ) + "\n":
+        raise HistoricalArchiveCleanFinalizationError(
+            "ARCHIVE_CLEAN_FINALIZATION_NON_CANONICAL"
+        )
+    return expected
 
 
 def write_archive_clean_finalization(
