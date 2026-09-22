@@ -304,3 +304,34 @@ def test_directional_clean_entry_anchor_cannot_predate_cutover() -> None:
             entry_candle=_candle(end_ms=anchor_end, close="50"),
             prior_observations=(),
         )
+
+
+
+def test_state_digest_is_deterministic_and_changes_with_clean_evidence(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+    empty_digest = store.state_digest
+    assert len(empty_digest) == 64
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == empty_digest
+
+    anchor_end = CUTOVER + HOUR
+    observation = build_prospective_observation(
+        spec,
+        raw_decision=_decision(as_of_ms=anchor_end + 5_000),
+        entry_candle=_candle(end_ms=anchor_end, close="50"),
+        prior_observations=(),
+    )
+    store.record_observation(observation)
+    observation_digest = store.state_digest
+    assert observation_digest != empty_digest
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == observation_digest
+
+    outcome = build_prospective_outcome(
+        spec,
+        observation=observation,
+        exit_candle=_candle(end_ms=observation.target_end_ms, close="55"),
+    )
+    store.record_outcome(outcome)
+    outcome_digest = store.state_digest
+    assert outcome_digest != observation_digest
+    assert ProspectiveEvidenceStore(tmp_path, spec=spec).state_digest == outcome_digest
