@@ -10,8 +10,12 @@ on:
       - ".github/workflows/prospective-hype-readiness.yml"
       - ".github/workflows/prospective-hype-clean.yml"
       - "src/cocomelon/research/prospective_campaign_readiness.py"
+      - "src/cocomelon/research/prospective_readiness_failure.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
+      - "src/cocomelon/prospective_hype_readiness_failure_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
+      - "tests/test_prospective_readiness_failure.py"
+      - "tests/test_prospective_readiness_failure_cli.py"
       - "tests/test_prospective_hype_readiness_workflow.py"
   pull_request:
     branches:
@@ -20,8 +24,12 @@ on:
       - ".github/workflows/prospective-hype-readiness.yml"
       - ".github/workflows/prospective-hype-clean.yml"
       - "src/cocomelon/research/prospective_campaign_readiness.py"
+      - "src/cocomelon/research/prospective_readiness_failure.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
+      - "src/cocomelon/prospective_hype_readiness_failure_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
+      - "tests/test_prospective_readiness_failure.py"
+      - "tests/test_prospective_readiness_failure_cli.py"
       - "tests/test_prospective_hype_readiness_workflow.py"
   workflow_dispatch:
 
@@ -54,11 +62,37 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
+      - name: Capture readiness audit identity
+        id: audit_identity
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import hashlib
+          import time
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/prospective-hype-clean.yml")
+          workflow_sha = (
+              hashlib.sha256(workflow.read_bytes()).hexdigest()
+              if workflow.is_file()
+              else "none"
+          )
+          print(f"audited_at_ms={time.time_ns() // 1_000_000}")
+          print(f"observer_workflow_sha256={workflow_sha}")
+          PY
+
       - name: Build immutable readiness receipt
+        id: build
+        continue-on-error: true
+        env:
+          AUDIT_MS: ${{ steps.audit_identity.outputs.audited_at_ms }}
         run: |
           set -euo pipefail
           mkdir -p artifacts/prospective-hype-readiness
-          cocomelon-prospective-hype-readiness             --workflow .github/workflows/prospective-hype-clean.yml             > artifacts/prospective-hype-readiness/readiness.json
+          cocomelon-prospective-hype-readiness \
+            --workflow .github/workflows/prospective-hype-clean.yml \
+            --as-of-ms "$AUDIT_MS" \
+            > artifacts/prospective-hype-readiness/readiness.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -82,6 +116,9 @@ jobs:
           PY
 
       - name: Upload readiness receipt
+        id: success_upload
+        continue-on-error: true
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: prospective-hype-readiness-${{ github.run_id }}-${{ github.run_attempt }}
@@ -89,3 +126,60 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+
+      - name: Preserve redacted readiness failure receipt
+        if: >-
+          always() &&
+          (
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        env:
+          AUDIT_MS: ${{ steps.audit_identity.outputs.audited_at_ms }}
+          WORKFLOW_SHA: ${{ steps.audit_identity.outputs.observer_workflow_sha256 }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.success_upload.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "$BUILD_OUTCOME" == "failure" ]]; then
+            stage="build"
+            reason_code="READINESS_CONTRACT_VERIFY_FAILED"
+          elif [[ "$UPLOAD_OUTCOME" == "failure" ]]; then
+            stage="upload"
+            reason_code="READINESS_RECEIPT_UPLOAD_FAILED"
+          else
+            echo "readiness failure stage could not be resolved" >&2
+            exit 2
+          fi
+
+          cocomelon-prospective-hype-readiness-failure \
+            --audited-at-ms "$AUDIT_MS" \
+            --stage "$stage" \
+            --reason-code "$reason_code" \
+            --observer-workflow-sha256 "$WORKFLOW_SHA" \
+            > artifacts/prospective-hype-readiness/failure.json
+
+      - name: Upload readiness failure receipt
+        if: >-
+          always() &&
+          (
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-failed-readiness-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-readiness/failure.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve readiness failure status
+        if: >-
+          always() &&
+          (
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        run: exit 1
