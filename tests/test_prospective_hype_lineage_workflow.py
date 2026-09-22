@@ -38,7 +38,9 @@ def test_lineage_audit_uses_artifact_creation_times_and_record_level_verifier() 
     assert "--current-artifact-id" in source
     assert "--previous-audited-at-ms" in source
     assert "--current-audited-at-ms" in source
-    assert 'payload["lineage_status"] == "append_only_valid"' in source
+    assert 'payload["lineage_status"] in {' in source
+    assert '"append_only_valid"' in source
+    assert '"waiting_for_second_frozen_format_state"' in source
 
 
 def test_lineage_receipt_is_preserved_as_separate_immutable_artifact() -> None:
@@ -49,3 +51,27 @@ def test_lineage_receipt_is_preserved_as_separate_immutable_artifact() -> None:
     assert "artifacts/prospective-hype-lineage/lineage.json" in source
     assert "if-no-files-found: error" in source
     assert "retention-days: 90" in source
+
+
+
+def test_lineage_audit_never_skips_an_invalid_latest_frozen_state() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Verify latest frozen-format state and classify predecessor" in source
+    assert "cocomelon-prospective-hype-state-readiness" in source
+    assert '--root "$LINEAGE_ROOT/current"' in source
+    assert '--root "$LINEAGE_ROOT/previous"' in source
+    assert '[[ -f "$LINEAGE_ROOT/previous/control-plane.json" ]]' in source
+    assert "for candidate" not in source
+    assert "previous, current = artifacts[-2:]" in source
+
+
+def test_lineage_bootstrap_receipt_is_only_for_pre_control_plane_predecessor() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "previous_artifact_predates_control_plane_freeze" in source
+    assert 'HAS_FROZEN_PAIR: ${{ steps.compatibility.outputs.has_frozen_pair }}' in source
+    assert 'if [[ "$HAS_FROZEN_PAIR" == "true" ]]; then' in source
+    assert '"current_state_digest": current["state_digest"]' in source
+    assert '"runtime_attestation_id": current["runtime_attestation_id"]' in source
+    assert '"control_plane_id": current["control_plane_id"]' in source
