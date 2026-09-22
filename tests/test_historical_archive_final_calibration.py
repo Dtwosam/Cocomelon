@@ -79,7 +79,7 @@ def _plan(
     }[family]
     return SimpleNamespace(
         candidate_id="a" * 64,
-        plan_id="p" * 64,
+        plan_id="f" * 64,
         bundle_id="b" * 64,
         dataset_id="d" * 64,
         model_family=family,
