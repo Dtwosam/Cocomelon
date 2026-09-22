@@ -478,14 +478,17 @@ jobs:
               or created_ms >= validation_start_ms
           ):
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_PRE_CUTOVER")
+          if (
+              not isinstance(source_revision, str)
+              or len(source_revision) != 40
+              or any(char not in "0123456789abcdef" for char in source_revision)
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_INVALID")
           output = Path(os.environ["GITHUB_OUTPUT"])
           with output.open("a", encoding="utf-8") as handle:
-              handle.write(f"artifact_id={os.environ['ARTIFACT_ID']}\n")
               handle.write(f"source_revision={source_revision}\n")
           PY
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: ${{ steps.activation_restore.outputs.artifact_id }}
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
       - name: Checkout activation auditor revision
         uses: actions/checkout@v7
