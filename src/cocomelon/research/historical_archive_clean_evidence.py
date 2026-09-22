@@ -1271,7 +1271,7 @@ class ArchiveCleanEvidenceStore:
             raise HistoricalArchiveCleanEvidenceConsistencyError(
                 "CLEAN_EVIDENCE_DUPLICATE_ANCHOR"
             )
-        for previous, current in zip(ordered, ordered[1:]):
+        for previous, current in zip(ordered, ordered[1:], strict=False):
             if previous.state_after != current.state_before:
                 raise HistoricalArchiveCleanEvidenceConsistencyError(
                     "CLEAN_EVIDENCE_STATE_CONTINUITY_MISMATCH"
