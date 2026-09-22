@@ -86,7 +86,7 @@ def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> No
     assert "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED" in control_plane
     assert "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION" in control_plane
     assert 'state_root / "checkpoint.json"' in source
-    assert 'state_root / "control-plane.json"' in source
+    assert 'state_root / "control-plane.json"' in control_plane
 
 
 def test_archive_clean_control_plane_is_frozen_into_cumulative_state() -> None:
