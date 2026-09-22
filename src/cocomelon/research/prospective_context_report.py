@@ -459,6 +459,10 @@ def build_prospective_validation_report(
         raise ValueError("as_of_ms must be non-negative")
 
     all_observations = store.iter_observations()
+    if any(item.anchor_end_ms > as_of_ms for item in all_observations):
+        raise ProspectiveValidationError(
+            "prospective campaign contains future observation relative to report"
+        )
     if any(item.anchor_end_ms < plan.validation_start_ms for item in all_observations):
         raise ProspectiveValidationError(
             "prospective campaign contains pre-validation observation"
@@ -482,6 +486,10 @@ def build_prospective_validation_report(
 
     observation_by_id = {item.observation_id: item for item in observations}
     all_outcomes = store.iter_outcomes()
+    if any(item.target_end_ms > as_of_ms for item in all_outcomes):
+        raise ProspectiveValidationError(
+            "prospective campaign contains future outcome relative to report"
+        )
     outcomes: list[ProspectiveOutcome] = []
     outcomes_by_observation: dict[str, ProspectiveOutcome] = {}
     for outcome in all_outcomes:
