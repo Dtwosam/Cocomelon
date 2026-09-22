@@ -41,15 +41,15 @@ from cocomelon.research.historical_archive_review import (
     build_archive_development_review,
     write_archive_development_review,
 )
-from cocomelon.research.historical_archive_validation_spec import (
-    build_archive_clean_validation_spec,
-    verify_archive_clean_validation_spec,
-    write_archive_clean_validation_spec,
-)
 from cocomelon.research.historical_archive_training_plan import (
     build_archive_candidate_training_plan,
     verify_archive_candidate_training_plan,
     write_archive_candidate_training_plan,
+)
+from cocomelon.research.historical_archive_validation_spec import (
+    build_archive_clean_validation_spec,
+    verify_archive_clean_validation_spec,
+    write_archive_clean_validation_spec,
 )
 
 
