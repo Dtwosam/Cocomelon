@@ -62,8 +62,6 @@ def _write_valid_state(root: Path) -> None:
 
 
 
-def test_clean_pre_cutover_state_is_ready
-
 
 def test_clean_pre_cutover_state_is_ready(tmp_path: Path) -> None:
     _write_valid_state(tmp_path)
