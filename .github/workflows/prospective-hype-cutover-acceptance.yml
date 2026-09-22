@@ -1,0 +1,339 @@
+name: Prospective HYPE Cutover Acceptance
+
+on:
+  schedule:
+    - cron: "30 * 23-25 9 *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-cutover-acceptance.yml"
+      - "src/cocomelon/research/prospective_cutover_acceptance.py"
+      - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/prospective_hype_cutover_cli.py"
+      - "tests/test_prospective_cutover_acceptance.py"
+      - "tests/test_prospective_hype_cutover_workflow.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-cutover-acceptance.yml"
+      - "src/cocomelon/research/prospective_cutover_acceptance.py"
+      - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/prospective_hype_cutover_cli.py"
+      - "tests/test_prospective_cutover_acceptance.py"
+      - "tests/test_prospective_hype_cutover_workflow.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prospective-hype-cutover-acceptance
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      CUTOVER_ARTIFACT_NAME: prospective-hype-cutover-acceptance
+      CUTOVER_ROOT: artifacts/prospective-hype-cutover-acceptance
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install cutover audit runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Resolve bounded cutover audit window
+        id: window
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          now = datetime.now(UTC)
+          scheduled_window = (
+              now.year == 2026
+              and now.month == 9
+              and 23 <= now.day <= 25
+          )
+          active = scheduled_window or os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"active={'true' if active else 'false'}\n")
+          print(
+              "cutover audit active"
+              if active
+              else "outside bounded cutover window; no-op"
+          )
+          PY
+
+      - name: Discover canonical receipt or latest blind monitor
+        if: steps.window.outputs.active == 'true'
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/prospective-cutover-artifacts.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-cutover-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = [
+              item
+              for item in payload["artifacts"]
+              if not item["expired"]
+              and item["workflow_run"]["head_branch"] == "main"
+          ]
+          existing = [
+              item
+              for item in artifacts
+              if item["name"] == os.environ["CUTOVER_ARTIFACT_NAME"]
+          ]
+          monitor = [
+              item
+              for item in artifacts
+              if item["name"].startswith("prospective-hype-blind-monitor-")
+          ]
+          outputs: dict[str, object]
+          if existing:
+              chosen = max(existing, key=lambda item: (item["created_at"], item["id"]))
+              outputs = {
+                  "has_receipt": "true",
+                  "receipt_artifact_id": chosen["id"],
+                  "monitor_artifact_id": "",
+              }
+          else:
+              chosen = (
+                  max(monitor, key=lambda item: (item["created_at"], item["id"]))
+                  if monitor
+                  else None
+              )
+              outputs = {
+                  "has_receipt": "false",
+                  "receipt_artifact_id": "",
+                  "monitor_artifact_id": "" if chosen is None else chosen["id"],
+              }
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              for key, value in outputs.items():
+                  handle.write(f"{key}={value}\n")
+          PY
+
+      - name: Verify existing canonical cutover receipt
+        if: >-
+          steps.window.outputs.active == 'true' &&
+          steps.discover.outputs.has_receipt == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECEIPT_ID: ${{ steps.discover.outputs.receipt_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CUTOVER_ROOT/existing"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RECEIPT_ID/zip" \
+            > /tmp/prospective-cutover.zip
+          unzip -q /tmp/prospective-cutover.zip -d "$CUTOVER_ROOT/existing"
+          test -f "$CUTOVER_ROOT/existing/cutover.json"
+          cocomelon-prospective-hype-cutover verify \
+            --receipt "$CUTOVER_ROOT/existing/cutover.json" \
+            > /tmp/verified-cutover.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/verified-cutover.json").read_text(encoding="utf-8")
+          )
+          assert payload["cutover_status"] == "cutover_integrity_valid"
+          assert payload["interim_economics_redacted"] is True
+          assert len(payload["receipt_id"]) == 64
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Download latest redacted blind monitor
+        if: >-
+          steps.window.outputs.active == 'true' &&
+          steps.discover.outputs.has_receipt != 'true' &&
+          steps.discover.outputs.monitor_artifact_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MONITOR_ID: ${{ steps.discover.outputs.monitor_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CUTOVER_ROOT/monitor"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$MONITOR_ID/zip" \
+            > /tmp/prospective-monitor.zip
+          unzip -q /tmp/prospective-monitor.zip -d "$CUTOVER_ROOT/monitor"
+          test -f "$CUTOVER_ROOT/monitor/monitor.json"
+
+      - name: Decide whether cutover evidence is ready
+        if: >-
+          steps.window.outputs.active == 'true' &&
+          steps.discover.outputs.has_receipt != 'true' &&
+          steps.discover.outputs.monitor_artifact_id != ''
+        id: ready
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.prospective_context_report import (
+              HYPE_PROSPECTIVE_VALIDATION_V1,
+          )
+
+          payload = json.loads(
+              Path(
+                  "artifacts/prospective-hype-cutover-acceptance/monitor/monitor.json"
+              ).read_text(encoding="utf-8")
+          )
+          plan = HYPE_PROSPECTIVE_VALIDATION_V1
+          ready = (
+              payload.get("as_of_ms", -1) >= plan.first_expected_anchor_ms
+              and payload.get("expected_anchor_count_to_date", 0) >= 1
+              and payload.get("lineage_status") == "append_only_valid"
+              and payload.get("campaign_health_status") in {"healthy", "degraded"}
+          )
+          state_id = payload.get("state_artifact_id", "") if ready else ""
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              handle.write(f"ready={'true' if ready else 'false'}\n")
+              handle.write(f"state_artifact_id={state_id}\n")
+          print(
+              "cutover evidence ready"
+              if ready
+              else "waiting for first legal anchor and append-only lineage"
+          )
+          PY
+
+      - name: Download exact state bound by blind monitor
+        if: steps.ready.outputs.ready == 'true'
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE_ID: ${{ steps.ready.outputs.state_artifact_id }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$STATE_ID" \
+            > /tmp/prospective-cutover-state-meta.json
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-cutover-state-meta.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["expired"]:
+              raise SystemExit("state artifact is expired")
+          if payload["workflow_run"]["head_branch"] != "main":
+              raise SystemExit("state artifact must originate from main")
+          created = datetime.fromisoformat(
+              payload["created_at"].replace("Z", "+00:00")
+          )
+          state_ms = int(created.timestamp() * 1000)
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              handle.write(f"state_audited_at_ms={state_ms}\n")
+          PY
+          mkdir -p "$CUTOVER_ROOT/state"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$STATE_ID/zip" \
+            > /tmp/prospective-cutover-state.zip
+          unzip -q /tmp/prospective-cutover-state.zip -d "$CUTOVER_ROOT/state"
+
+      - name: Build canonical cutover acceptance receipt
+        if: steps.ready.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          audit_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
+          cocomelon-prospective-hype-cutover build \
+            --monitor "$CUTOVER_ROOT/monitor/monitor.json" \
+            --state-root "$CUTOVER_ROOT/state" \
+            --state-artifact-id "${{ steps.ready.outputs.state_artifact_id }}" \
+            --state-audited-at-ms "${{ steps.state.outputs.state_audited_at_ms }}" \
+            --audited-at-ms "$audit_ms" \
+            > "$CUTOVER_ROOT/cutover.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "artifacts/prospective-hype-cutover-acceptance/cutover.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert payload["cutover_status"] == "cutover_integrity_valid"
+          assert payload["interim_economics_redacted"] is True
+          assert payload["pre_cutover_observation_count"] == 0
+          assert payload["observation_grid_valid"] is True
+          assert payload["first_anchor_status"] in {"captured", "missed"}
+          assert len(payload["receipt_id"]) == 64
+          for forbidden in (
+              "mean_net_return",
+              "total_net_return",
+              "positive_net_count",
+              "non_positive_net_count",
+              "gross_return",
+              "net_return",
+          ):
+              assert forbidden not in payload
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload one canonical cutover receipt
+        if: steps.ready.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-cutover-acceptance
+          path: artifacts/prospective-hype-cutover-acceptance/cutover.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
