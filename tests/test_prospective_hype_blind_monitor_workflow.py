@@ -61,6 +61,8 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
 
     assert "cocomelon-prospective-hype-blind-monitor" in source
     assert "--state-artifact-id" in source
+    assert "--audited-at-ms" in source
+    assert "time.time_ns() // 1_000_000" in source
     assert 'payload["interim_economics_redacted"] is True' in source
     assert "actions/upload-artifact@v7" in source
     assert (
