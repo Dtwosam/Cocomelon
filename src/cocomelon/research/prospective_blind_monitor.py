@@ -242,6 +242,210 @@ class ProspectiveBlindMonitor:
         return {**self.identity_payload(), "monitor_id": self.monitor_id}
 
 
+def verify_prospective_hype_blind_monitor_receipt(
+    path: str | Path,
+) -> ProspectiveBlindMonitor:
+    payload = _load_object(path, "BLIND_MONITOR")
+    _verify_identity(
+        payload,
+        identity_field="monitor_id",
+        error_code="BLIND_MONITOR_ID_MISMATCH",
+    )
+    raw_blocks = payload.get("block_recoverability")
+    if not isinstance(raw_blocks, list):
+        raise ProspectiveBlindMonitorError("BLOCK_RECOVERABILITY_INVALID")
+    blocks: list[BlindBlockHealth] = []
+    try:
+        for index, raw in enumerate(raw_blocks, start=1):
+            if not isinstance(raw, dict):
+                raise ProspectiveBlindMonitorError("BLOCK_RECOVERABILITY_INVALID")
+            block = cast(dict[str, object], raw)
+            resolved = BlindBlockHealth(
+                block_index=_integer(block.get("block_index"), "BLOCK_INDEX"),
+                settled_trade_count=_integer(
+                    block.get("settled_trade_count"),
+                    "BLOCK_SETTLED_TRADE_COUNT",
+                ),
+                remaining_expected_anchors=_integer(
+                    block.get("remaining_expected_anchors"),
+                    "BLOCK_REMAINING_EXPECTED_ANCHORS",
+                ),
+                maximum_possible_settled_trades=_integer(
+                    block.get("maximum_possible_settled_trades"),
+                    "BLOCK_MAXIMUM_POSSIBLE_SETTLED_TRADES",
+                ),
+                required_settled_trades=_integer(
+                    block.get("required_settled_trades"),
+                    "BLOCK_REQUIRED_SETTLED_TRADES",
+                ),
+                recoverable=_boolean(
+                    block.get("recoverable"),
+                    "BLOCK_RECOVERABLE",
+                ),
+            )
+            if resolved.block_index != index:
+                raise ProspectiveBlindMonitorError("BLOCK_INDEX_MISMATCH")
+            blocks.append(resolved)
+
+        raw_reasons = payload.get("irrecoverable_reasons")
+        if not isinstance(raw_reasons, list) or any(
+            not isinstance(item, str) or not item.strip()
+            for item in raw_reasons
+        ):
+            raise ProspectiveBlindMonitorError("IRRECOVERABLE_REASONS_INVALID")
+        coverage_raw = payload.get("capture_coverage_to_date")
+        coverage = (
+            None
+            if coverage_raw is None
+            else _string(coverage_raw, "CAPTURE_COVERAGE_TO_DATE")
+        )
+        monitor = ProspectiveBlindMonitor(
+            as_of_ms=_integer(payload.get("as_of_ms"), "AS_OF_MS"),
+            campaign_health_status=_string(
+                payload.get("campaign_health_status"),
+                "CAMPAIGN_HEALTH_STATUS",
+            ),
+            lineage_status=_string(payload.get("lineage_status"), "LINEAGE_STATUS"),
+            campaign_id=_string(payload.get("campaign_id"), "CAMPAIGN_ID"),
+            state_artifact_id=_string(
+                payload.get("state_artifact_id"),
+                "STATE_ARTIFACT_ID",
+            ),
+            current_state_digest=_string(
+                payload.get("current_state_digest"),
+                "CURRENT_STATE_DIGEST",
+            ),
+            health_id=_string(payload.get("health_id"), "HEALTH_ID"),
+            lineage_receipt_id=_string(
+                payload.get("lineage_receipt_id"),
+                "LINEAGE_RECEIPT_ID",
+            ),
+            expected_anchor_count=_integer(
+                payload.get("expected_anchor_count"),
+                "EXPECTED_ANCHOR_COUNT",
+            ),
+            expected_anchor_count_to_date=_integer(
+                payload.get("expected_anchor_count_to_date"),
+                "EXPECTED_ANCHOR_COUNT_TO_DATE",
+            ),
+            observation_count_to_date=_integer(
+                payload.get("observation_count_to_date"),
+                "OBSERVATION_COUNT_TO_DATE",
+            ),
+            capture_coverage_to_date=coverage,
+            missed_anchor_count_to_date=_integer(
+                payload.get("missed_anchor_count_to_date"),
+                "MISSED_ANCHOR_COUNT_TO_DATE",
+            ),
+            missed_anchor_budget=_integer(
+                payload.get("missed_anchor_budget"),
+                "MISSED_ANCHOR_BUDGET",
+            ),
+            remaining_missed_anchor_budget=_integer(
+                payload.get("remaining_missed_anchor_budget"),
+                "REMAINING_MISSED_ANCHOR_BUDGET",
+            ),
+            remaining_expected_anchors=_integer(
+                payload.get("remaining_expected_anchors"),
+                "REMAINING_EXPECTED_ANCHORS",
+            ),
+            required_final_observation_count=_integer(
+                payload.get("required_final_observation_count"),
+                "REQUIRED_FINAL_OBSERVATION_COUNT",
+            ),
+            settled_trade_count=_integer(
+                payload.get("settled_trade_count"),
+                "SETTLED_TRADE_COUNT",
+            ),
+            required_settled_trades=_integer(
+                payload.get("required_settled_trades"),
+                "REQUIRED_SETTLED_TRADES",
+            ),
+            maximum_possible_settled_trades=_integer(
+                payload.get("maximum_possible_settled_trades"),
+                "MAXIMUM_POSSIBLE_SETTLED_TRADES",
+            ),
+            overdue_unsettled_count=_integer(
+                payload.get("overdue_unsettled_count"),
+                "OVERDUE_UNSETTLED_COUNT",
+            ),
+            block_recoverability=tuple(blocks),
+            irrecoverable_reasons=tuple(cast(list[str], raw_reasons)),
+            interim_economics_redacted=_boolean(
+                payload.get("interim_economics_redacted"),
+                "INTERIM_ECONOMICS_REDACTED",
+            ),
+            schema_version=_integer(payload.get("schema_version"), "SCHEMA_VERSION"),
+        )
+    except ValueError as exc:
+        raise ProspectiveBlindMonitorError("BLIND_MONITOR_INVALID") from exc
+
+    plan = HYPE_PROSPECTIVE_VALIDATION_V1
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    expected_campaign_id = ProspectiveCampaignManifest(
+        candidate_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        validation_not_before_ms=spec.validation_not_before_ms,
+    ).campaign_id
+    if monitor.campaign_id != expected_campaign_id:
+        raise ProspectiveBlindMonitorError("CAMPAIGN_ID_MISMATCH")
+    if monitor.expected_anchor_count != plan.expected_anchor_count:
+        raise ProspectiveBlindMonitorError("EXPECTED_ANCHOR_COUNT_MISMATCH")
+
+    required_final = int(
+        (
+            plan.min_capture_coverage * Decimal(plan.expected_anchor_count)
+        ).to_integral_value(rounding=ROUND_CEILING)
+    )
+    missed_budget = plan.expected_anchor_count - required_final
+    if monitor.required_final_observation_count != required_final:
+        raise ProspectiveBlindMonitorError("FINAL_OBSERVATION_FLOOR_MISMATCH")
+    if monitor.missed_anchor_budget != missed_budget:
+        raise ProspectiveBlindMonitorError("MISSED_ANCHOR_BUDGET_MISMATCH")
+    if not 0 <= monitor.expected_anchor_count_to_date <= plan.expected_anchor_count:
+        raise ProspectiveBlindMonitorError("EXPECTED_ANCHOR_COUNT_TO_DATE_INVALID")
+    if not 0 <= monitor.observation_count_to_date <= monitor.expected_anchor_count_to_date:
+        raise ProspectiveBlindMonitorError("OBSERVATION_COUNT_TO_DATE_INVALID")
+    expected_missed = (
+        monitor.expected_anchor_count_to_date - monitor.observation_count_to_date
+    )
+    if monitor.missed_anchor_count_to_date != expected_missed:
+        raise ProspectiveBlindMonitorError("MISSED_ANCHOR_COUNT_MISMATCH")
+    if monitor.remaining_expected_anchors != (
+        plan.expected_anchor_count - monitor.expected_anchor_count_to_date
+    ):
+        raise ProspectiveBlindMonitorError("REMAINING_EXPECTED_ANCHORS_MISMATCH")
+    if monitor.remaining_missed_anchor_budget != max(
+        0,
+        missed_budget - expected_missed,
+    ):
+        raise ProspectiveBlindMonitorError("REMAINING_MISSED_BUDGET_MISMATCH")
+    if monitor.expected_anchor_count_to_date == 0:
+        if monitor.capture_coverage_to_date is not None:
+            raise ProspectiveBlindMonitorError("CAPTURE_COVERAGE_TO_DATE_MISMATCH")
+    else:
+        expected_coverage = str(
+            Decimal(monitor.observation_count_to_date)
+            / Decimal(monitor.expected_anchor_count_to_date)
+        )
+        if monitor.capture_coverage_to_date != expected_coverage:
+            raise ProspectiveBlindMonitorError("CAPTURE_COVERAGE_TO_DATE_MISMATCH")
+    if monitor.required_settled_trades != plan.min_settled_trades:
+        raise ProspectiveBlindMonitorError("REQUIRED_SETTLED_TRADES_MISMATCH")
+    if len(monitor.block_recoverability) != plan.stability_blocks:
+        raise ProspectiveBlindMonitorError("BLOCK_RECOVERABILITY_INVALID")
+    for block in monitor.block_recoverability:
+        if block.required_settled_trades != plan.min_block_trades:
+            raise ProspectiveBlindMonitorError("BLOCK_SETTLED_FLOOR_MISMATCH")
+        if block.maximum_possible_settled_trades < block.settled_trade_count:
+            raise ProspectiveBlindMonitorError("BLOCK_MAXIMUM_SETTLED_INVALID")
+        if block.recoverable != (
+            block.maximum_possible_settled_trades >= block.required_settled_trades
+        ):
+            raise ProspectiveBlindMonitorError("BLOCK_RECOVERABILITY_MISMATCH")
+    return monitor
+
+
 def _validate_health(payload: dict[str, object]) -> None:
     _verify_identity(
         payload,
