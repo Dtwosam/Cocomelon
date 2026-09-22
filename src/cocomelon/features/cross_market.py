@@ -185,7 +185,15 @@ class CrossMarketContextSnapshot:
 
 
 def _return_for_window(snapshot: FeatureSnapshot, window: str) -> Decimal | None:
-    return getattr(snapshot, f"return_{window}")
+    if window == "5m":
+        return snapshot.return_5m
+    if window == "15m":
+        return snapshot.return_15m
+    if window == "1h":
+        return snapshot.return_1h
+    if window == "4h":
+        return snapshot.return_4h
+    raise ValueError(f"unsupported cross-market window: {window}")
 
 
 def _window_context(
