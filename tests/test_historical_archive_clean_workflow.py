@@ -86,18 +86,13 @@ def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> No
 def test_archive_clean_control_plane_is_frozen_into_cumulative_state() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert '"kind": "historical-archive-clean-control-plane"' in source
-    assert '"frozen_revision": os.environ["FROZEN_REVISION"]' in source
-    assert '"runtime_artifact_id": os.environ["RUNTIME_ARTIFACT_ID"]' in source
-    assert '"workflow_path": os.environ["WORKFLOW_PATH"]' in source
-    assert '"state_artifact_name": os.environ["STATE_ARTIFACT_NAME"]' in source
-    assert '"execution_mode": os.environ["COCOMELON_EXECUTION_MODE"]' in source
-    assert '"api_url": os.environ["COCOMELON_API_URL"]' in source
-    assert '"ws_url": os.environ["COCOMELON_WS_URL"]' in source
-    assert '"cancel_in_progress": False' in source
-    assert '"contents_permission": "read"' in source
-    assert '"actions_permission": "read"' in source
-    assert '"control_plane_id"' in source
+    assert "ensure_archive_clean_control_plane" in source
+    assert "CAPTURE_SCHEDULE_CRON" in source
+    assert "ARCHIVE_CLEAN_CAPTURE_SCHEDULE_MISMATCH" in source
+    assert 'Path(os.environ["STATE_ROOT"])' in source
+    assert 'frozen_revision=os.environ["FROZEN_REVISION"]' in source
+    assert 'runtime_artifact_id=os.environ["RUNTIME_ARTIFACT_ID"]' in source
+    assert "/tmp/archive-clean-control-plane.json" in source
 
 
 def test_archive_clean_workflow_runs_checkpoint_cycle_and_append_only_lineage() -> None:
