@@ -35,6 +35,7 @@ cocomelon-historical-archive-experiment = "cocomelon.historical_archive_experime
 cocomelon-historical-archive-preset = "cocomelon.historical_archive_preset_cli:main"
 cocomelon-historical-archive-clean-observer = "cocomelon.historical_archive_clean_observer_cli:main"
 cocomelon-historical-archive-clean-cycle = "cocomelon.historical_archive_clean_cycle_cli:main"
+cocomelon-historical-archive-clean-finalize = "cocomelon.historical_archive_clean_finalize_cli:main"
 cocomelon-historical-archive-clean-runtime = "cocomelon.historical_archive_clean_runtime_cli:main"
 cocomelon-historical-dataset = "cocomelon.historical_dataset_cli:main"
 cocomelon-historical-experiment = "cocomelon.historical_experiment_cli:main"
