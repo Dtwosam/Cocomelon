@@ -515,6 +515,7 @@ jobs:
           echo "exit_code=$monitor_rc" >> "$GITHUB_OUTPUT"
 
           if [[ "$monitor_rc" -ne 0 ]]; then
+            echo "status=failure" >> "$GITHUB_OUTPUT"
             rm -f "$MONITOR_ROOT/monitor.json"
             reason_code="$(python - <<'PY'
           import json
@@ -549,6 +550,7 @@ jobs:
               --state-artifact-id "$STATE_ID" \
               > "$MONITOR_ROOT/failure.json"
           else
+            echo "status=success" >> "$GITHUB_OUTPUT"
             python - <<'PY'
           import json
           from pathlib import Path
@@ -587,5 +589,5 @@ jobs:
           compression-level: 9
 
       - name: Preserve monitor failure status
-        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.provenance.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.monitor.outputs.exit_code != '0') }}
+        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.provenance.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.monitor.outputs.status != 'success') }}
         run: exit 1
