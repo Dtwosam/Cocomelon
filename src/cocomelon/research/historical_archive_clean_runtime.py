@@ -638,6 +638,7 @@ def load_pinned_archive_clean_runtime(
     publish_root: Path,
     *,
     expected_pin_id: str,
+    require_current_source_match: bool = True,
 ) -> PinnedArchiveCleanRuntime:
     _require_sha256(expected_pin_id, "expected_pin_id")
     pin = load_archive_clean_runtime_pin(publish_root / "pin.json")
@@ -730,13 +731,14 @@ def load_pinned_archive_clean_runtime(
         raise HistoricalArchiveCleanRuntimeError(
             "ARCHIVE_CLEAN_RUNTIME_SOURCE_ATTESTATION_MISMATCH"
         )
-    current_source = _build_source_attestation(
-        validation_spec_id=bundle.validation_spec_id,
-    )
-    if current_source != source_attestation:
-        raise HistoricalArchiveCleanRuntimeError(
-            "ARCHIVE_CLEAN_RUNTIME_SOURCE_TREE_DRIFT"
+    if require_current_source_match:
+        current_source = _build_source_attestation(
+            validation_spec_id=bundle.validation_spec_id,
         )
+        if current_source != source_attestation:
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_SOURCE_TREE_DRIFT"
+            )
 
     artifact = load_archive_candidate_model_artifact(model_path)
     spec = load_archive_clean_validation_spec(spec_path)
