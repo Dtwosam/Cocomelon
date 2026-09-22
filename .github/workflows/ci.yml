@@ -57,6 +57,7 @@ jobs:
           tests/test_historical_archive_review.py
           tests/test_historical_archive_candidate_freeze.py
           tests/test_historical_archive_training_plan.py
+          tests/test_historical_archive_final_calibration.py
           tests/test_python_source_attestation.py
           tests/test_historical_archive_overlap.py
           tests/test_historical_tree.py
