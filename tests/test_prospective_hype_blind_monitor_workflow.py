@@ -86,3 +86,25 @@ def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
     assert "tests/test_prospective_blind_monitor.py" in source
     assert "tests/test_prospective_cutover_acceptance.py" in source
     assert "tests/test_prospective_hype_blind_monitor_workflow.py" in source
+
+
+
+def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "prospective_blind_monitor_failure" in source
+    assert "MONITOR_BUILD_FAILED" in source
+    assert "failure.json" in source
+    assert "if: ${{ always() }}" in source
+    assert "Preserve monitor failure status" in source
+    assert "steps.monitor.outputs.exit_code != '0'" in source
+    assert "interim_economics_redacted" in source
+    for token in (
+        "mean_net_return",
+        "total_net_return",
+        "positive_net_count",
+        "non_positive_net_count",
+        "gross_return",
+        "net_return",
+    ):
+        assert token not in source
