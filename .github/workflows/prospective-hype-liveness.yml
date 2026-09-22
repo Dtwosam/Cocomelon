@@ -1,0 +1,128 @@
+name: Prospective HYPE Observer Liveness Watchdog
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-liveness.yml"
+      - "src/cocomelon/research/prospective_liveness.py"
+      - "src/cocomelon/prospective_hype_liveness_cli.py"
+      - "tests/test_prospective_liveness.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-liveness.yml"
+      - "src/cocomelon/research/prospective_liveness.py"
+      - "src/cocomelon/prospective_hype_liveness_cli.py"
+      - "tests/test_prospective_liveness.py"
+  schedule:
+    - cron: "35 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      STATE_ARTIFACT_NAME: prospective-hype-clean-state
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install watchdog runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Resolve latest observer state artifact
+        id: artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"             --jq '[.artifacts[]
+              | select(.expired == false)
+              | select(.workflow_run.head_branch == "main")]
+              | sort_by(.created_at)
+              | last
+              | {id, created_at, workflow_run_id: .workflow_run.id}'             > /tmp/latest-prospective-state-artifact.json
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from datetime import datetime
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/latest-prospective-state-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if not isinstance(payload, dict) or not payload.get("id"):
+              raise SystemExit("PROSPECTIVE_OBSERVER_STATE_ARTIFACT_MISSING")
+          created = datetime.fromisoformat(
+              str(payload["created_at"]).replace("Z", "+00:00")
+          )
+          print(f"artifact_id={int(payload['id'])}")
+          print(f"artifact_created_at_ms={int(created.timestamp() * 1000)}")
+          print(f"observer_workflow_run_id={int(payload['workflow_run_id'])}")
+          PY
+
+      - name: Build liveness receipt
+        id: liveness
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/prospective-hype-liveness
+          set +e
+          cocomelon-prospective-hype-liveness             --artifact-id "${{ steps.artifact.outputs.artifact_id }}"             --artifact-created-at-ms "${{ steps.artifact.outputs.artifact_created_at_ms }}"             > artifacts/prospective-hype-liveness/liveness.json
+          rc="$?"
+          set -e
+          if [ "$rc" -eq 2 ]; then
+            exit "$rc"
+          fi
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "artifacts/prospective-hype-liveness/liveness.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert payload["artifact_id"]
+          assert payload["max_artifact_age_ms"] == 5400000
+          assert len(payload["validation_plan_id"]) == 64
+          assert len(payload["liveness_id"]) == 64
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload immutable liveness receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-liveness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-liveness/liveness.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Fail visibly if observer artifacts are stale
+        if: ${{ steps.liveness.outputs.exit_code != '0' }}
+        run: |
+          set -euo pipefail
+          echo "PROSPECTIVE_OBSERVER_LIVENESS_STALE"
+          exit 1
