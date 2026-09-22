@@ -11,10 +11,6 @@ from typing import TextIO
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
-from cocomelon.research.historical_archive_review import (
-    build_archive_development_review,
-    write_archive_development_review,
-)
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
     build_archive_preset_preflight,
@@ -23,6 +19,10 @@ from cocomelon.research.historical_archive_presets import (
     verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
     verify_archive_preset_source_attestation,
+)
+from cocomelon.research.historical_archive_review import (
+    build_archive_development_review,
+    write_archive_development_review,
 )
 
 
