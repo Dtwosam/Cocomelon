@@ -1251,6 +1251,10 @@ class ArchiveCleanEvidenceStore:
             return None
         return self._load_anchor_path(path)
 
+    def observation_id_for_time(self, anchor_end_ms: int) -> str | None:
+        observation = self.anchor_for_time(anchor_end_ms)
+        return None if observation is None else observation.observation_id
+
     def load_anchor(
         self,
         observation_id: str,
