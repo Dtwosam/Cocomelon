@@ -198,11 +198,15 @@ Verified implementation evidence: PR #237 implementation head `2e61ea9966e024750
 - [x] Gate requester-pays archive inspection/download behind exact acknowledgement, hard byte budgets, and integrity checks (#252).
 - [x] Compose verified archive cache -> funding -> reconstructed candles -> authenticated dataset -> model comparison (#253).
 - [x] Require archive/native candle overlap equality before archive-based learning may proceed (#254).
+- [x] Freeze one current-main multi-month archive preset and bind completed runs to immutable logical, byte-level, and implementation-source attestations (#327–#332).
+- [x] Add a no-network preflight that verifies the complete local archive cache, frozen shard geometry, clean output root, and exact implementation identity before execution (#333).
 - [ ] Run broader multi-regime archive experiments only after the archive source is verified and any requester-pays transfer is explicitly authorized.
+
+Execution note: the implementation path is ready, but requester-pays acquisition remains a separate explicitly authorized action. No paid inspection/download is implied by completing the preflight and attestation tooling.
 
 ### Slice E3 — nonlinear challenger
 
-- [ ] Evaluate the fixed shallow tree challenger in PR #256 under the same chronological folds, costs, NO_TRADE floor, and four-block validation stability rule.
+- [ ] Evaluate the merged fixed shallow tree challenger from #256 on the frozen multi-month archive preset under the same chronological folds, costs, NO_TRADE floor, and four-block validation stability rule.
 - [ ] Do not tune the tree from test outcomes; reject it if stable validation does not justify trading.
 - [ ] Freeze a candidate only after a model demonstrates reproducible touched-development edge strong enough to justify future clean validation.
 
