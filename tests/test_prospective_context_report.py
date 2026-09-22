@@ -274,3 +274,18 @@ def test_prevalidation_observation_fails_closed() -> None:
             store,
             as_of_ms=PLAN.validation_start_ms,
         )
+
+
+
+def test_postvalidation_observation_fails_closed() -> None:
+    late = _observation(
+        PLAN.validation_end_ms,
+        trade=False,
+    )
+    store = FakeStore(observations=(late,), outcomes=())
+
+    with pytest.raises(ProspectiveValidationError, match="post-validation observation"):
+        build_prospective_validation_report(
+            store,
+            as_of_ms=PLAN.finalization_not_before_ms,
+        )
