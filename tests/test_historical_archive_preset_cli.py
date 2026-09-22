@@ -200,6 +200,118 @@ def test_preflight_is_offline_and_emits_readiness(
     assert payload["preflight_id"] == "p" * 64
 
 
+
+def test_freeze_candidate_is_offline_and_emits_non_executable_recipe(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("freeze-candidate must not construct a client")
+        ),
+    )
+    freeze = SimpleNamespace(
+        candidate_id="a" * 64,
+        candidate_kind="model_family_recipe",
+        model_family="stable_tree",
+        calibration_variant="shared",
+        selection_policy="unique_qualified_variant_only",
+        prospective_only=True,
+        promotion_eligible=False,
+        execution_ready=False,
+        frozen_at_ms=123,
+        validation_not_before_ms=456,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_candidate_freeze",
+        lambda *args, **kwargs: freeze,
+    )
+    freeze_path = tmp_path / "output" / "candidate-freeze.json"
+    monkeypatch.setattr(
+        cli,
+        "write_archive_candidate_freeze",
+        lambda *args, **kwargs: freeze_path,
+    )
+
+    status = cli.main(
+        [
+            "freeze-candidate",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+            "--frozen-at-ms",
+            "123",
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "freeze-candidate"
+    assert payload["paid_request_performed"] is False
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["candidate_kind"] == "model_family_recipe"
+    assert payload["model_family"] == "stable_tree"
+    assert payload["calibration_variant"] == "shared"
+    assert payload["prospective_only"] is True
+    assert payload["promotion_eligible"] is False
+    assert payload["execution_ready"] is False
+    assert payload["candidate_freeze"] == str(freeze_path)
+
+
+def test_verify_candidate_freeze_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify-candidate-freeze must not construct a client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_candidate_freeze",
+        lambda *args, **kwargs: SimpleNamespace(candidate_id="b" * 64),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "verify-candidate-freeze",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-candidate-freeze"
+    assert payload["paid_request_performed"] is False
+    assert payload["valid"] is True
+    assert payload["candidate_id"] == "b" * 64
+    assert payload["candidate_freeze"] == str(
+        output_root / "candidate-freeze.json"
+    )
+
 def test_review_is_offline_and_emits_only_qualified_variants(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

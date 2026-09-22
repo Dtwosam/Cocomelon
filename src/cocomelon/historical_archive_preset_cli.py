@@ -11,6 +11,11 @@ from typing import TextIO
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
+from cocomelon.research.historical_archive_candidate_freeze import (
+    build_archive_candidate_freeze,
+    verify_archive_candidate_freeze,
+    write_archive_candidate_freeze,
+)
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
     build_archive_preset_preflight,
@@ -72,6 +77,19 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--archive-root", required=True, type=Path)
     preflight.add_argument("--source-root", required=True, type=Path)
     preflight.add_argument("--output-root", required=True, type=Path)
+
+    freeze_candidate = subparsers.add_parser("freeze-candidate")
+    freeze_candidate.add_argument("--preset", default=PRESET_NAME)
+    freeze_candidate.add_argument("--archive-root", required=True, type=Path)
+    freeze_candidate.add_argument("--source-root", required=True, type=Path)
+    freeze_candidate.add_argument("--output-root", required=True, type=Path)
+    freeze_candidate.add_argument("--frozen-at-ms", required=True, type=int)
+
+    verify_candidate = subparsers.add_parser("verify-candidate-freeze")
+    verify_candidate.add_argument("--preset", default=PRESET_NAME)
+    verify_candidate.add_argument("--archive-root", required=True, type=Path)
+    verify_candidate.add_argument("--source-root", required=True, type=Path)
+    verify_candidate.add_argument("--output-root", required=True, type=Path)
 
     review = subparsers.add_parser("review")
     review.add_argument("--preset", default=PRESET_NAME)
@@ -164,6 +182,61 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "command": "preflight",
                     "ready": True,
                     **preflight.to_dict(),
+                }
+            )
+            return 0
+        if args.command == "freeze-candidate":
+            freeze = build_archive_candidate_freeze(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+                frozen_at_ms=args.frozen_at_ms,
+            )
+            freeze_path = write_archive_candidate_freeze(
+                args.output_root,
+                freeze,
+            )
+            _emit(
+                {
+                    "command": "freeze-candidate",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": freeze.candidate_id,
+                    "candidate_kind": freeze.candidate_kind,
+                    "model_family": freeze.model_family,
+                    "calibration_variant": freeze.calibration_variant,
+                    "selection_policy": freeze.selection_policy,
+                    "prospective_only": freeze.prospective_only,
+                    "promotion_eligible": freeze.promotion_eligible,
+                    "execution_ready": freeze.execution_ready,
+                    "frozen_at_ms": freeze.frozen_at_ms,
+                    "validation_not_before_ms": (
+                        freeze.validation_not_before_ms
+                    ),
+                    "candidate_freeze": str(freeze_path),
+                }
+            )
+            return 0
+        if args.command == "verify-candidate-freeze":
+            freeze_path = args.output_root / "candidate-freeze.json"
+            freeze = verify_archive_candidate_freeze(
+                freeze_path,
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "verify-candidate-freeze",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": freeze.candidate_id,
+                    "valid": True,
+                    "candidate_freeze": str(freeze_path),
                 }
             )
             return 0
