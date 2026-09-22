@@ -9,6 +9,7 @@ on:
       - "src/cocomelon/research/prospective_state_readiness.py"
       - "src/cocomelon/prospective_hype_state_readiness_cli.py"
       - "tests/test_prospective_state_readiness.py"
+      - "tests/test_prospective_hype_state_readiness_workflow.py"
   pull_request:
     branches:
       - main
@@ -17,6 +18,7 @@ on:
       - "src/cocomelon/research/prospective_state_readiness.py"
       - "src/cocomelon/prospective_hype_state_readiness_cli.py"
       - "tests/test_prospective_state_readiness.py"
+      - "tests/test_prospective_hype_state_readiness_workflow.py"
   workflow_dispatch:
 
 permissions:
@@ -65,7 +67,64 @@ jobs:
                 | .id // empty'
           )"
           test -n "$artifact_id"
-          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/prospective-hype-state.zip
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" \
+            > /tmp/prospective-hype-state-meta.json
+          run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-hype-state-meta.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            > /tmp/prospective-hype-state-run.json
+
+          ARTIFACT_ID="$artifact_id" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact = json.loads(
+              Path("/tmp/prospective-hype-state-meta.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          run = json.loads(
+              Path("/tmp/prospective-hype-state-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          workflow_run = artifact.get("workflow_run")
+          if (
+              str(artifact.get("id")) != os.environ["ARTIFACT_ID"]
+              or artifact.get("name") != "prospective-hype-clean-state"
+              or artifact.get("expired") is not False
+              or not isinstance(workflow_run, dict)
+              or workflow_run.get("head_branch") != "main"
+              or run.get("id") != workflow_run.get("id")
+              or run.get("head_branch") != "main"
+              or run.get("path") != ".github/workflows/prospective-hype-clean.yml"
+              or run.get("repository", {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+          ):
+              raise SystemExit("STATE_ARTIFACT_PRODUCER_PROVENANCE_INVALID")
+          PY
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > /tmp/prospective-hype-state.zip
           unzip -q /tmp/prospective-hype-state.zip -d "$EVIDENCE_ROOT"
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
