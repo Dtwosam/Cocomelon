@@ -460,3 +460,40 @@ def test_overdue_settlement_degrades_health_but_is_not_irrecoverable() -> None:
     assert health.overdue_unsettled_count == 1
     assert health.status is ProspectiveCampaignHealthStatus.DEGRADED
     assert health.irrecoverable is False
+
+
+
+def test_future_observation_relative_to_report_clock_fails_closed() -> None:
+    first = PLAN.first_expected_anchor_ms
+    store = FakeStore(
+        observations=(_observation(first, trade=False),),
+        outcomes=(),
+    )
+
+    with pytest.raises(
+        ProspectiveValidationError,
+        match="future observation relative to report",
+    ):
+        build_prospective_validation_report(
+            store,
+            as_of_ms=first - 1,
+        )
+
+
+def test_future_outcome_relative_to_report_clock_fails_closed() -> None:
+    first = PLAN.first_expected_anchor_ms
+    observation = _observation(first, trade=True)
+    outcome = _outcome(observation, net_return=Decimal("0.01"))
+    store = FakeStore(
+        observations=(observation,),
+        outcomes=(outcome,),
+    )
+
+    with pytest.raises(
+        ProspectiveValidationError,
+        match="future outcome relative to report",
+    ):
+        build_prospective_validation_report(
+            store,
+            as_of_ms=outcome.target_end_ms - 1,
+        )
