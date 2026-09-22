@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterable
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from cocomelon.research.historical_archive_clean_checkpoint import (
     build_archive_clean_initial_checkpoint,
