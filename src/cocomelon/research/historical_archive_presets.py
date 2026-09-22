@@ -252,6 +252,92 @@ def build_archive_preset_run_receipt(
     )
 
 
+def verify_archive_preset_run_receipt(
+    path: Path,
+    *,
+    preset: HistoricalArchiveExperimentPreset,
+) -> HistoricalArchivePresetRunReceipt:
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_INVALID") from exc
+    if not isinstance(raw, dict):
+        raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_INVALID")
+
+    required_strings = (
+        "preset_name",
+        "preset_id",
+        "preset_identity_sha256",
+        "evidence_class",
+        "archive_manifest_id",
+        "archive_ingest_manifest_id",
+        "coverage_report_id",
+        "overlap_report_id",
+        "dataset_id",
+        "comparison_report_id",
+        "comparison_version",
+        "receipt_id",
+    )
+    values: dict[str, str] = {}
+    for field in required_strings:
+        value = raw.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_INVALID")
+        values[field] = value
+
+    integer_fields = (
+        "archive_shard_count",
+        "archive_total_byte_count",
+        "overlap_compared_count",
+        "dataset_row_count",
+        "fold_count",
+        "schema_version",
+    )
+    integers: dict[str, int] = {}
+    for field in integer_fields:
+        value = raw.get(field)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_INVALID")
+        integers[field] = value
+
+    try:
+        receipt = HistoricalArchivePresetRunReceipt(
+            preset_name=values["preset_name"],
+            preset_id=values["preset_id"],
+            preset_identity_sha256=values["preset_identity_sha256"],
+            evidence_class=values["evidence_class"],
+            archive_manifest_id=values["archive_manifest_id"],
+            archive_ingest_manifest_id=values["archive_ingest_manifest_id"],
+            coverage_report_id=values["coverage_report_id"],
+            overlap_report_id=values["overlap_report_id"],
+            dataset_id=values["dataset_id"],
+            comparison_report_id=values["comparison_report_id"],
+            comparison_version=values["comparison_version"],
+            archive_shard_count=integers["archive_shard_count"],
+            archive_total_byte_count=integers["archive_total_byte_count"],
+            overlap_compared_count=integers["overlap_compared_count"],
+            dataset_row_count=integers["dataset_row_count"],
+            fold_count=integers["fold_count"],
+            schema_version=integers["schema_version"],
+        )
+    except ValueError as exc:
+        raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_INVALID") from exc
+
+    if values["receipt_id"] != receipt.receipt_id:
+        raise RuntimeError("ARCHIVE_PRESET_RUN_RECEIPT_ID_MISMATCH")
+    expected_preset_sha256 = hashlib.sha256(
+        _canonical_json(preset.identity_payload()).encode("utf-8")
+    ).hexdigest()
+    if (
+        receipt.preset_name != preset.name
+        or receipt.preset_id != preset.preset_id
+        or receipt.preset_identity_sha256 != expected_preset_sha256
+        or receipt.evidence_class != preset.evidence_class
+    ):
+        raise RuntimeError("ARCHIVE_PRESET_RUN_PRESET_MISMATCH")
+    return receipt
+
+
 def write_archive_preset_run_receipt(
     output_root: Path,
     receipt: HistoricalArchivePresetRunReceipt,
