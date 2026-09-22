@@ -9,8 +9,12 @@ from typing import cast
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
-from cocomelon.research.prospective_campaign_readiness import (
+from cocomelon.research.prospective_capture_transport import (
     FROZEN_OBSERVER_SOURCE_REVISION,
+    ProspectiveCaptureTransportError,
+    build_legacy_prospective_hype_control_plane,
+    build_prospective_hype_control_plane,
+    verify_control_plane_supersession,
 )
 from cocomelon.research.prospective_context_evidence import (
     MAX_ENTRY_CANDLE_AGE_MS,
@@ -166,37 +170,31 @@ def verify_prospective_hype_state_readiness(
     if runtime.observer_source_revision != FROZEN_OBSERVER_SOURCE_REVISION:
         raise ProspectiveStateReadinessError("RUNTIME_SOURCE_REVISION_MISMATCH")
 
-    control = _object(root_path / "control-plane.json", "CONTROL_PLANE")
-    expected_control = {
-        "kind": "prospective-hype-clean-control-plane",
-        "candidate_spec_id": spec.spec_id,
-        "validation_plan_id": plan.plan_id,
-        "observer_source_revision": FROZEN_OBSERVER_SOURCE_REVISION,
-        "schedule_cron": "3,8,13 * * * *",
-        "attempt_minutes_utc": [3, 8, 13],
-        "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
-        "state_artifact_name": "prospective-hype-clean-state",
-        "evidence_root": "artifacts/prospective-hype-clean",
-        "concurrency_group": "prospective-hype-clean-observer",
-        "cancel_in_progress": False,
-        "job_timeout_minutes": 10,
-        "execution_mode": "paper",
-        "api_url": "https://api.hyperliquid.xyz",
-        "ws_url": "wss://api.hyperliquid.xyz/ws",
-        "contents_permission": "read",
-        "actions_permission": "read",
-        "artifact_retention_days": 90,
-        "schema_version": 1,
-    }
-    expected_control["control_plane_id"] = hashlib.sha256(
-        _canonical_json(expected_control).encode("utf-8")
-    ).hexdigest()
-    if control != expected_control:
-        raise ProspectiveStateReadinessError("CONTROL_PLANE_MISMATCH")
-
     store = ProspectiveEvidenceStore(root_path, spec=spec)
     observations = store.iter_observations()
     outcomes = store.iter_outcomes()
+
+    control = _object(root_path / "control-plane.json", "CONTROL_PLANE")
+    expected_control = build_prospective_hype_control_plane()
+    legacy_control = build_legacy_prospective_hype_control_plane()
+    supersession_path = root_path / "control-plane-supersession.json"
+    if control == expected_control:
+        try:
+            verify_control_plane_supersession(supersession_path)
+        except ProspectiveCaptureTransportError as exc:
+            raise ProspectiveStateReadinessError(str(exc)) from exc
+    elif control == legacy_control:
+        if (
+            audited_at_ms >= plan.validation_start_ms
+            or observations
+            or outcomes
+            or supersession_path.exists()
+        ):
+            raise ProspectiveStateReadinessError(
+                "LEGACY_CONTROL_PLANE_NOT_PRE_CUTOVER_EMPTY"
+            )
+    else:
+        raise ProspectiveStateReadinessError("CONTROL_PLANE_MISMATCH")
     if audited_at_ms < plan.validation_start_ms and (observations or outcomes):
         raise ProspectiveStateReadinessError("PRE_CUTOVER_STATE_CONTAMINATED")
     if any(item.anchor_end_ms < plan.validation_start_ms for item in observations):
