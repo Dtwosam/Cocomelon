@@ -11,6 +11,9 @@ from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanBlockEconomics,
     ArchiveCleanOperationalCheckpoint,
 )
+from cocomelon.research.historical_archive_clean_evidence import (
+    ArchiveCleanCampaignManifest,
+)
 from cocomelon.research.historical_archive_validation_spec import (
     HistoricalArchiveCleanValidationSpec,
 )
@@ -326,10 +329,23 @@ def _verify_checkpoint_lineage(
     pin_id: str,
     checkpoint: ArchiveCleanOperationalCheckpoint,
 ) -> None:
+    campaign = ArchiveCleanCampaignManifest(
+        validation_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        model_artifact_id=spec.model_artifact_id,
+        model_payload_sha256=spec.model_payload_sha256,
+        markets=spec.markets,
+        active_horizons=spec.active_horizons,
+        validation_start_ms=spec.validation_start_ms,
+        validation_end_ms=spec.validation_end_ms,
+        finalization_not_before_ms=spec.finalization_not_before_ms,
+        expected_anchor_count=spec.expected_anchor_count,
+    )
     expected = (
         spec.spec_id,
         spec.candidate_id,
         spec.model_artifact_id,
+        campaign.campaign_id,
         runtime_id,
         pin_id,
         spec.first_expected_anchor_ms,
@@ -342,6 +358,7 @@ def _verify_checkpoint_lineage(
         checkpoint.validation_spec_id,
         checkpoint.candidate_id,
         checkpoint.model_artifact_id,
+        checkpoint.campaign_id,
         checkpoint.runtime_id,
         checkpoint.pin_id,
         checkpoint.first_expected_anchor_ms,
