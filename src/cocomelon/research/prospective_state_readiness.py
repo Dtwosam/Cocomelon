@@ -17,7 +17,6 @@ from cocomelon.research.prospective_capture_transport import (
     verify_control_plane_supersession,
 )
 from cocomelon.research.prospective_context_evidence import (
-    MAX_ENTRY_CANDLE_AGE_MS,
     ProspectiveCampaignManifest,
     ProspectiveEvidenceStore,
 )
