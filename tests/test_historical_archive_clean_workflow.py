@@ -123,7 +123,14 @@ def test_archive_clean_observer_requires_authenticated_activation_before_continu
     continuity = source.index("Verify state continuity and canonical finalization")
     cycle = source.index("Run pinned paper-only clean cycle")
 
-    assert bootstrap < activation_restore < auditor_checkout < activation_verify < continuity < cycle
+    assert (
+        bootstrap
+        < activation_restore
+        < auditor_checkout
+        < activation_verify
+        < continuity
+        < cycle
+    )
     assert "ACTIVATION_ARTIFACT_NAME" in source
     assert "historical-archive-clean-activation-" in source
     assert "ACTIVATION_WORKFLOW_PATH" in source
