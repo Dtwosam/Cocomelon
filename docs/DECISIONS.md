@@ -222,3 +222,18 @@ This file records decisions that should not be casually re-litigated in later ch
 **Interpretation:** `eligible_for_candidate_review` is the strongest possible output of this campaign. It is not promotion eligibility and does not authorize live capital. All existing >=500 mainnet paper-trade, >=45-day shadow, risk/integrity, and explicit-live-authorization gates remain mandatory.
 
 **Development consequence:** During the clean campaign, unrelated research may continue only if it cannot contaminate this evidence. Any materially different hypothesis must be frozen as a new candidate and collect a new future clean sample.
+
+
+## D-028 — Pre-cutover HYPE capture transport supersedes the unreliable scheduler shape
+
+**Decision:** D-027's economic candidate, validation window, evidence semantics, frozen observer revision, stale-anchor limit, paper-only mode, Hyperliquid endpoints, state identity, costs, occupancy rule, and qualification thresholds remain unchanged. Before any clean observation exists, the capture transport may perform one audited supersession from the original near-top-of-hour scheduler shape to an off-peak pre-warmed scheduler shape.
+
+**Evidence:** On 2026-09-22, before the prospective window opened, repository Actions history showed sparse delivery of the frozen observer despite the declared `:03/:08/:13` attempts, including run `35721665228` being created at 11:28 UTC and not starting until 13:43 UTC. Successful observer runs were separated by hours rather than the declared redundant attempts. GitHub documents that scheduled workflows can be delayed during high load, especially around the start of the hour, and queued scheduled jobs may be dropped. This is capture-transport evidence, not economic evidence from the candidate.
+
+**Replacement transport:** The workflow schedules one off-peak pre-warm at minute 47, keeps the runner alive until the protected minute 03 attempt, allows an already-delayed start to proceed only while the same 15-minute freshness ceiling is still satisfiable, and otherwise fails closed. The job timeout becomes 30 minutes solely to cover pre-warm sleep plus the unchanged observer. The frozen observer source remains `0131fccdb09a2b9ba959dd5785ea213a6297f719`.
+
+**Supersession invariant:** The old control plane may be replaced only before 2026-09-23 00:00:00 UTC, only when the restored campaign contains zero observations and zero outcomes, and only when the old attestation exactly matches the known D-027 control plane. The workflow first writes an immutable `control-plane-supersession.json` receipt binding old and new control-plane IDs, the zero-evidence state, the validation boundary, and the reason code, then atomically replaces `control-plane.json`. Any unknown control plane, missing/tampered supersession receipt, non-empty evidence, or post-cutover attempt fails closed.
+
+**Lineage consequence:** State-readiness accepts the legacy control plane only for empty artifacts audited before cutover. Append-only lineage permits exactly the attested legacy-to-replacement transition and no other control-plane drift. All later artifacts must carry the replacement control plane and immutable supersession receipt.
+
+**Interpretation:** This is a reliability repair discovered before the first clean sample, not a candidate retune. D-027 remains authoritative for economics and validation. After cutover, the replacement transport is frozen and any material capture change requires a new campaign.
