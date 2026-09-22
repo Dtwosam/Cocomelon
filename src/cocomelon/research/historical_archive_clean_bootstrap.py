@@ -16,6 +16,7 @@ from cocomelon.research.historical_archive_clean_checkpoint import (
 )
 from cocomelon.research.historical_archive_clean_control_plane import (
     ArchiveCleanControlPlaneAttestation,
+    build_archive_clean_control_plane,
     ensure_archive_clean_control_plane,
 )
 from cocomelon.research.historical_archive_clean_runtime import (
@@ -402,6 +403,14 @@ def bootstrap_archive_clean_state(
         raise HistoricalArchiveCleanBootstrapError(
             "POST_CUTOVER_ARCHIVE_CLEAN_BOOTSTRAP_FORBIDDEN"
         )
+
+    # Validate immutable runtime/package/control-plane lineage before
+    # touching bootstrap state.
+    build_archive_clean_control_plane(
+        pinned,
+        frozen_revision=frozen_revision,
+        runtime_artifact_id=runtime_artifact_id,
+    )
 
     receipt_path = state_root / "bootstrap.json"
     checkpoint_path = state_root / "checkpoint.json"
