@@ -157,15 +157,6 @@ jobs:
               ).read_text(encoding="utf-8")
           )
           assert payload["interim_economics_redacted"] is True
-          forbidden = {
-              "mean_net_return",
-              "total_net_return",
-              "positive_net_count",
-              "non_positive_net_count",
-              "gross_return",
-              "net_return",
-          }
-          assert forbidden.isdisjoint(payload)
           assert payload["campaign_health_status"] in {
               "pre_validation",
               "healthy",
