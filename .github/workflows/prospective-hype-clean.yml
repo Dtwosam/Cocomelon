@@ -106,6 +106,12 @@ jobs:
           set -euo pipefail
           cocomelon-prospective-hype-observer --root "$EVIDENCE_ROOT"             | tee /tmp/prospective-hype-cycle.json
 
+      - name: Build current frozen validation report
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-report --root "$EVIDENCE_ROOT" \
+            | tee /tmp/prospective-hype-report.json
+
       - name: Verify research-only receipt
         run: |
           set -euo pipefail
@@ -116,10 +122,25 @@ jobs:
           payload = json.loads(
               Path("/tmp/prospective-hype-cycle.json").read_text(encoding="utf-8")
           )
+          report = json.loads(
+              Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
+          )
           assert payload["execution_mode"] == "paper"
           assert payload["evidence_class"] == "prospective_clean"
           assert payload["promotion_eligible"] is False
           assert len(payload["state_digest"]) == 64
+          assert report["evidence_class"] == "prospective_clean"
+          assert report["promotion_eligible"] is False
+          assert report["campaign_id"] == payload["campaign_id"]
+          assert report["state_digest"] == payload["state_digest"]
+          assert report["plan_id"] == payload["validation_plan_id"]
+          assert report["expected_anchor_count"] == 1080
+          assert report["status"] in {
+              "collecting",
+              "data_incomplete",
+              "not_qualified",
+              "eligible_for_candidate_review",
+          }
           PY
 
       - name: Build immutable state-lineage receipt
@@ -152,6 +173,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          report = json.loads(
+              Path("/tmp/prospective-hype-report.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           prior_campaign = continuity["campaign_id"]
           if prior_campaign is not None:
               assert prior_campaign == cycle["campaign_id"]
@@ -174,6 +200,7 @@ jobs:
               "evidence_class": cycle["evidence_class"],
               "promotion_eligible": cycle["promotion_eligible"],
               "cycle": cycle,
+              "validation_report": report,
           }
           payload["receipt_id"] = hashlib.sha256(
               canonical(payload).encode("utf-8")
@@ -197,6 +224,9 @@ jobs:
           payload = json.loads(
               Path("/tmp/prospective-hype-cycle.json").read_text(encoding="utf-8")
           )
+          report = json.loads(
+              Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
+          )
           observation = payload["observation"]
           print("## Prospective HYPE clean observer")
           print()
@@ -215,6 +245,24 @@ jobs:
           print(f"- effective direction: {observation['effective_direction']}")
           print(f"- observations: {payload['observation_count']}")
           print(f"- outcomes: {payload['outcome_count']}")
+          print(f"- validation status: {report['status']}")
+          print(
+              "- anchors captured to date: "
+              f"{report['observation_count_to_date']}/"
+              f"{report['expected_anchor_count_to_date']}"
+          )
+          print(
+              "- missed anchors to date: "
+              f"{report['missed_anchor_count_to_date']}"
+          )
+          print(
+              "- capture coverage to date: "
+              f"{report['capture_coverage_to_date']}"
+          )
+          print(f"- effective trades: {report['effective_trade_count']}")
+          print(f"- settled trades: {report['settled_trade_count']}")
+          print(f"- overdue unsettled: {report['overdue_unsettled_count']}")
+          print(f"- mean modeled net return: {report['mean_net_return']}")
           print(f"- settled this run: {len(payload['settled_outcome_ids'])}")
           print(
               "- missing exact target candles: "
@@ -236,6 +284,15 @@ jobs:
         with:
           name: prospective-hype-clean-run-${{ github.run_id }}-${{ github.run_attempt }}
           path: /tmp/prospective-hype-lineage.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload immutable validation report
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/prospective-hype-report.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
