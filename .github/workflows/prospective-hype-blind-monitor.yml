@@ -253,7 +253,7 @@ jobs:
 
       - name: Verify source artifact producer provenance
         id: provenance
-        if: ${{ steps.discover.outputs.status == 'ok' && steps.provenance.outputs.status == 'ok' }}
+        if: ${{ steps.discover.outputs.status == 'ok' }}
         env:
           GH_TOKEN: ${{ github.token }}
           HEALTH_ID: ${{ steps.discover.outputs.health_id }}
@@ -422,7 +422,7 @@ jobs:
 
       - name: Download operational health and lineage receipts
         id: download
-        if: ${{ steps.discover.outputs.status == 'ok' }}
+        if: ${{ steps.discover.outputs.status == 'ok' && steps.provenance.outputs.status == 'ok' }}
         env:
           GH_TOKEN: ${{ github.token }}
           HEALTH_ID: ${{ steps.discover.outputs.health_id }}
