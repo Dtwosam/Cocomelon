@@ -70,6 +70,7 @@ def _manifest_digest(values: tuple[dict[str, object], ...]) -> str:
 class ArchiveCleanOperationalCycleReceipt:
     runtime_id: str
     pin_id: str
+    control_plane_id: str
     campaign_id: str
     validation_spec_id: str
     candidate_id: str
@@ -101,6 +102,7 @@ class ArchiveCleanOperationalCycleReceipt:
         for field in (
             "runtime_id",
             "pin_id",
+            "control_plane_id",
             "campaign_id",
             "validation_spec_id",
             "candidate_id",
@@ -160,6 +162,7 @@ class ArchiveCleanOperationalCycleReceipt:
         return {
             "runtime_id": self.runtime_id,
             "pin_id": self.pin_id,
+            "control_plane_id": self.control_plane_id,
             "campaign_id": self.campaign_id,
             "validation_spec_id": self.validation_spec_id,
             "candidate_id": self.candidate_id,
@@ -206,6 +209,7 @@ def build_archive_clean_operational_cycle_receipt(
     *,
     runtime_id: str,
     pin_id: str,
+    control_plane_id: str,
     campaign_id: str,
     validation_spec_id: str,
     candidate_id: str,
@@ -228,6 +232,7 @@ def build_archive_clean_operational_cycle_receipt(
     return ArchiveCleanOperationalCycleReceipt(
         runtime_id=runtime_id,
         pin_id=pin_id,
+        control_plane_id=control_plane_id,
         campaign_id=campaign_id,
         validation_spec_id=validation_spec_id,
         candidate_id=candidate_id,
