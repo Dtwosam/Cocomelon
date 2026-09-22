@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.research.historical_archive_model_artifact import (
@@ -58,7 +59,7 @@ def _require_sha256(value: str, field: str) -> None:
 def _mapping(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise HistoricalArchiveValidationSpecError(f"{field} must be an object")
-    return value
+    return cast(dict[str, object], value)
 
 
 def _sequence(value: object, field: str) -> tuple[object, ...]:
