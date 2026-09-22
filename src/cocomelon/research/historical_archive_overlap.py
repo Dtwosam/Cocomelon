@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
 
 from cocomelon.domain.market import MarketId
@@ -38,7 +39,7 @@ def _canonical_json(value: object) -> str:
 def _mapping(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise HistoricalArchiveOverlapError(f"{field} must be an object")
-    return value
+    return cast(dict[str, object], value)
 
 
 def _sequence(value: object, field: str) -> tuple[object, ...]:
