@@ -241,3 +241,56 @@ Merged implementation frontier after PR #237:
 Active development frontier: PR #256 adds one fixed shallow nonlinear tree challenger behind the same four-block stability gate. It remains touched research and is not a promotion candidate unless the verified exact-head evidence justifies that status.
 
 Current economic conclusion: the system is correctly rejecting attractive-looking but unstable historical patterns. No merged historical learner has yet demonstrated repeatable cost-adjusted edge sufficient for promotion. The next priority is broader trustworthy history and reproducible challenger comparison, not weakening NO_TRADE or validation gates.
+
+
+
+## 10. Frozen prospective HYPE clean-validation campaign — 2026-09-22
+
+This is the current primary research frontier and supersedes older historical-only handoff text where they conflict.
+
+Frozen candidate:
+
+- `hype-down-bearish-near-basket-long-4h-v1`;
+- HYPE, 1h anchors, `down/bearish/near_basket`, LONG, 4h horizon;
+- one-position-per-market occupancy;
+- fixed modeled costs: 7 bps round-trip fee, 5 bps round-trip slippage, 1 bp/hour funding reserve;
+- historical discovery remains touched and non-promotional.
+
+Frozen clean-validation plan:
+
+- start: 2026-09-23 00:00:00 UTC;
+- first expected anchor: 2026-09-23 00:59:59.999 UTC;
+- end: 2026-11-07 00:00:00 UTC;
+- finalization not before: 2026-11-07 04:00:00 UTC;
+- 1,080 expected hourly anchors;
+- >=972 captured observations (90%);
+- >=80 settled executable trades;
+- four chronological blocks, >=15 settled trades per block;
+- overall mean modeled net return >0;
+- every block mean modeled net return >0;
+- passing status means candidate-review eligibility only, never automatic promotion.
+
+Frozen runtime/control plane:
+
+- observer/report/evidence Python revision is permanently pinned for this campaign to `0131fccdb09a2b9ba959dd5785ea213a6297f719`;
+- the workflow checkout must remain that exact SHA;
+- the cumulative runtime attestation must remain present and match the candidate/plan/source revision;
+- capture cron remains `3,8,13 * * * *` UTC;
+- 15-minute maximum entry-candle age, paper mode, canonical Hyperliquid mainnet endpoints, state artifact identity, evidence-root path, concurrency, timeout, read-only permissions, and retention are bound into a pre-cutover cumulative control-plane attestation;
+- post-cutover missing or conflicting runtime/control-plane attestation fails closed.
+
+Evidence continuity/finalization:
+
+- cumulative state restore is mandatory after cutover;
+- no new observations are admitted after the frozen validation end;
+- exact 4h outcome settlement may continue after the observation window;
+- per-cycle frozen validation report and workflow-only recoverability health are immutable run artifacts;
+- health may mark the campaign degraded or mathematically irrecoverable but may not alter strategy logic;
+- state/report/health/lineage artifacts are preserved before any irrecoverable failure turns the workflow red;
+- exactly one canonical `finalization.json` may be created after the finalization boundary and only when no due exact-horizon settlement is overdue;
+- finalization binds state digest, evidence digest, final economics, block results, runtime attestation, source SHA, and control-plane attestation;
+- later state/economic/finalization drift fails closed rather than creating a second verdict.
+
+During the clean campaign, do **not** tune this candidate from emerging evidence. No feature/context/direction/horizon/cost/occupancy/threshold/runtime/control-plane changes are allowed for this campaign. Unrelated research may continue only if it cannot contaminate the campaign.
+
+Live trading remains disabled and all existing paper/shadow/risk/promotion/explicit-authorization gates remain unchanged.
