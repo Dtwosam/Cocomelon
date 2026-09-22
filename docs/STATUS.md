@@ -207,3 +207,78 @@ Merged implementation frontier after PR #237:
 Active development frontier: PR #256 adds one fixed shallow nonlinear tree challenger behind the same four-block stability gate. It remains touched research and is not a promotion candidate unless the verified exact-head evidence justifies that status.
 
 Current economic conclusion: the system is correctly rejecting attractive-looking but unstable historical patterns. No merged historical learner has yet demonstrated repeatable cost-adjusted edge sufficient for promotion. The next priority is broader trustworthy history and reproducible challenger comparison, not weakening NO_TRADE or validation gates.
+
+
+
+## Prospective clean validation frontier — 2026-09-22
+
+This section supersedes older "next action" text above wherever the two conflict.
+
+Historical discovery has advanced to one frozen, prospective-only candidate:
+
+- candidate: `hype-down-bearish-near-basket-long-4h-v1`;
+- market: HYPE;
+- frozen context: `down/bearish/near_basket`;
+- direction: LONG;
+- horizon: 4h;
+- execution semantics: one position per market;
+- modeled round-trip fee: `0.0007`;
+- modeled round-trip slippage: `0.0005`;
+- conservative funding reserve: `0.0001` per hour;
+- source discovery remains TOUCHED / DEVELOPMENT-ONLY and cannot become clean evidence retroactively.
+
+The clean prospective campaign is frozen before its first counted anchor:
+
+- validation start: **2026-09-23 00:00:00 UTC**;
+- first expected 1h anchor: **2026-09-23 00:59:59.999 UTC**;
+- validation end: **2026-11-07 00:00:00 UTC**;
+- finalization not before: **2026-11-07 04:00:00 UTC**;
+- expected hourly anchors: **1,080**;
+- minimum capture coverage: **90%**, therefore at least **972** observations and a maximum miss budget of **108** anchors;
+- minimum settled executable trades: **80**;
+- chronological stability blocks: **4**;
+- minimum settled trades per block: **15**;
+- required economics: overall modeled mean net return **> 0** and every block mean net return **> 0**;
+- even a passing result becomes only **eligible_for_candidate_review**; it is not promotion or live authorization.
+
+The clean campaign runtime is immutable:
+
+- frozen observer/report/evidence source revision: `0131fccdb09a2b9ba959dd5785ea213a6297f719` (#299);
+- #300 pins every scheduled/manual observer checkout to that exact revision and verifies it before execution;
+- cumulative runtime attestation binds the candidate spec, frozen validation plan, and exact source revision;
+- missing/conflicting runtime attestation after cutover fails closed.
+
+The capture control plane is also frozen (#304):
+
+- cron: `3,8,13 * * * *` UTC;
+- frozen attempt minutes: 03, 08, 13;
+- frozen maximum entry-candle age: 15 minutes;
+- paper mode and canonical Hyperliquid mainnet endpoints only;
+- cumulative state artifact: `prospective-hype-clean-state`;
+- evidence root: `artifacts/prospective-hype-clean`;
+- concurrency group: `prospective-hype-clean-observer`;
+- `cancel-in-progress: false`;
+- job timeout: 10 minutes;
+- read-only contents/actions permissions;
+- 90-day artifact retention;
+- a pre-cutover `control-plane.json` attestation is required after cutover and is bound into lineage and finalization.
+
+Evidence integrity is fail-closed:
+
+- #296 requires restored cumulative state after cutover and rejects state resets;
+- #297 stops new observations at the fixed validation boundary while allowing exact 4h settlements afterward;
+- #298 publishes the frozen validation report and to-date capture health every cycle;
+- #302 derives workflow-only recoverability without altering the frozen Python runtime, including remaining miss budget, maximum achievable final coverage, optimistic final settled-trade capacity, and block-level trade-count recoverability;
+- if frozen requirements become mathematically unreachable, the workflow turns red only **after** state, lineage, report, and health artifacts are preserved;
+- #303 predeclares exactly one canonical terminal `finalization.json`; it waits for all due exact-horizon settlements, freezes state/evidence/economics/runtime identity on the first eligible post-boundary cycle, and rejects later drift or conflicting finalization state.
+
+Current development rule during the clean window:
+
+1. **Do not retune or replace this candidate from prospective results.**
+2. **Do not change its features, context definition, direction, horizon, costs, occupancy rule, validation thresholds, frozen Python runtime, or capture control plane.**
+3. Continue unrelated engineering only if it cannot contaminate this campaign.
+4. Treat health/lineage/finalization work as observational integrity, not strategy tuning.
+5. At finalization, accept the predeclared verdict as-is. A failure remains a valid result.
+6. A positive verdict is only candidate-review eligibility; all existing paper/shadow/risk/live gates remain mandatory.
+
+**LIVE TRADING: DISABLED.**
