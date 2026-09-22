@@ -11,6 +11,9 @@ from typing import cast
 from cocomelon.research.historical_archive_clean_bootstrap import (
     verify_archive_clean_bootstrap_state,
 )
+from cocomelon.research.historical_archive_clean_checkpoint import (
+    build_archive_clean_initial_checkpoint,
+)
 from cocomelon.research.historical_archive_clean_control_plane import (
     build_archive_clean_control_plane,
     load_archive_clean_control_plane,
@@ -217,17 +220,11 @@ def _expected_authorization(
     return ArchiveCleanActivationAuthorization(
         runtime_id=bundle.runtime_id,
         pin_id=pinned.pin.pin_id,
-        campaign_id=hashlib.sha256(
-            _canonical_json(
-                {
-                    "validation_spec_id": bundle.validation_spec_id,
-                    "candidate_id": bundle.candidate_id,
-                    "model_artifact_id": bundle.model_artifact_id,
-                    "runtime_id": bundle.runtime_id,
-                    "pin_id": pinned.pin.pin_id,
-                }
-            ).encode("utf-8")
-        ).hexdigest(),
+        campaign_id=build_archive_clean_initial_checkpoint(
+            spec,
+            runtime_id=bundle.runtime_id,
+            pin_id=pinned.pin.pin_id,
+        ).campaign_id,
         candidate_id=bundle.candidate_id,
         validation_spec_id=bundle.validation_spec_id,
         model_artifact_id=bundle.model_artifact_id,
