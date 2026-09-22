@@ -15,7 +15,6 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.features.cross_market import build_cross_market_contexts
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
-    HistoricalDiscoveryFreezeSpec,
     evaluate_prospective_context_candidate,
 )
 
