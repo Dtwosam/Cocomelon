@@ -1,0 +1,236 @@
+name: Historical Archive Clean Readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: historical-archive-clean-readiness-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CAMPAIGN_ENABLED: ${{ vars.ARCHIVE_CLEAN_CAMPAIGN_ENABLED }}
+      FROZEN_REVISION: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+      RUNTIME_ARTIFACT_ID: ${{ vars.ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID }}
+      PIN_ID: ${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      RUNTIME_ROOT: artifacts/historical-archive-clean-runtime
+      STATE_ROOT: artifacts/historical-archive-clean-state
+      WORKFLOW_PATH: .github/workflows/historical-archive-clean.yml
+      STATE_ARTIFACT_NAME: historical-archive-clean-state-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+
+    steps:
+      - name: Validate configured activation tuple
+        run: |
+          set -euo pipefail
+          [[ "$CAMPAIGN_ENABLED" =~ ^(true|false)$ ]]
+          [[ "$FROZEN_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNTIME_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$PIN_ID" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Checkout frozen observer revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify frozen observer revision
+        run: |
+          set -euo pipefail
+          actual_revision="$(git rev-parse HEAD)"
+          test "$actual_revision" = "$FROZEN_REVISION"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install frozen readiness runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Download configured runtime artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNTIME_ROOT"
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-readiness-runtime-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "/tmp/archive-clean-readiness-runtime-artifact.json"
+              ).read_text(encoding="utf-8")
+          )
+          if payload.get("expired") is not False:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_EXPIRED")
+          run = payload.get("workflow_run")
+          if not isinstance(run, dict) or run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN")
+          if str(payload.get("id")) != os.environ["RUNTIME_ARTIFACT_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID_MISMATCH")
+          PY
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip"             > /tmp/archive-clean-readiness-runtime.zip
+          unzip -q /tmp/archive-clean-readiness-runtime.zip -d "$RUNTIME_ROOT"
+
+      - name: Verify configured runtime pin and source tree
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime verify             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             > /tmp/archive-clean-readiness-runtime.json
+
+      - name: Restore latest pin-scoped observer state
+        id: restore
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$STATE_ROOT"
+          artifact_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"               --jq '[.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.head_branch == "main")]
+                | sort_by(.created_at)
+                | last // empty'
+          )"
+          if [ -z "$artifact_json" ]; then
+            echo "restored_artifact_id=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$artifact_json" > /tmp/archive-clean-readiness-state-artifact.json
+          artifact_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path(
+                  "/tmp/archive-clean-readiness-state-artifact.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload["id"])
+          PY
+          )"
+          run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path(
+                  "/tmp/archive-clean-readiness-state-artifact.json"
+              ).read_text(encoding="utf-8")
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id"             > /tmp/archive-clean-readiness-state-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-readiness-state-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("path") != os.environ["WORKFLOW_PATH"]:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_WORKFLOW_MISMATCH")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_BRANCH_MISMATCH")
+          if run.get("event") not in {"schedule", "workflow_dispatch"}:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_EVENT_MISMATCH")
+          if run.get("conclusion") not in {"success", "failure"}:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_NOT_TERMINAL")
+          PY
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/archive-clean-readiness-state.zip
+          unzip -q /tmp/archive-clean-readiness-state.zip -d "$STATE_ROOT"
+          echo "restored_artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
+      - name: Build offline activation readiness report
+        id: readiness
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-readiness             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --frozen-revision "$FROZEN_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             --enabled "$CAMPAIGN_ENABLED"             > /tmp/archive-clean-readiness.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-readiness.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(
+                  "operationally_valid="
+                  + ("true" if payload["operationally_valid"] else "false")
+                  + "\n"
+              )
+              handle.write(f"status={payload['status']}\n")
+          PY
+
+      - name: Publish redacted readiness summary
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-readiness.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Historical archive clean activation readiness")
+          print()
+          print(f"- status: {payload['status']}")
+          print(f"- enabled: {payload['enabled']}")
+          print(f"- operationally valid: {payload['operationally_valid']}")
+          print(f"- runtime: {payload['runtime_id']}")
+          print(f"- pin: {payload['pin_id']}")
+          print(f"- campaign: {payload['campaign_id']}")
+          print(f"- validation spec: {payload['validation_spec_id']}")
+          print(f"- control plane: {payload['control_plane_id']}")
+          print(f"- checkpoint: {payload['checkpoint_id']}")
+          print(f"- finalization: {payload['finalization_id']}")
+          print(f"- reasons: {payload['reasons']}")
+          print("- interim economics: redacted")
+          print("- execution ready: false")
+          PY
+
+      - name: Upload immutable readiness report
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/archive-clean-readiness.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Fail closed if activation is not operationally valid
+        env:
+          OPERATIONALLY_VALID: ${{ steps.readiness.outputs.operationally_valid }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          test "$UPLOAD_OUTCOME" = "success"
+          test "$OPERATIONALLY_VALID" = "true"
