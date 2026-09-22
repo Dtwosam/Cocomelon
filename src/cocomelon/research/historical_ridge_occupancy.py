@@ -21,6 +21,7 @@ from cocomelon.research.historical_occupancy import (
 from cocomelon.research.historical_ridge import (
     PreparedRidgeWalkForward,
     RidgeDirectionalModel,
+    fit_ridge_directional_model,
     prepare_ridge_walk_forward,
     validate_prepared_ridge_walk_forward,
 )
@@ -363,6 +364,67 @@ def _threshold_items(
     return tuple(
         (item.horizon_ms, item.calibration.selected_threshold)
         for item in validation.horizons
+    )
+
+
+def select_final_occupancy_stable_ridge(
+    fit_rows: Sequence[HistoricalTrainingRow],
+    calibration_rows: Sequence[HistoricalTrainingRow],
+    *,
+    costs: ExecutionCostAssumptions,
+    candidate_alphas: Sequence[Decimal],
+    candidate_thresholds: Sequence[Decimal],
+    min_market_samples: int,
+    min_sample_count: int,
+    min_validation_trades: int,
+    stability_blocks: int,
+    min_block_trades: int,
+    allow_coin_calibration: bool,
+    min_validation_mean_net_return: Decimal = ZERO,
+) -> tuple[
+    OccupancyRidgeAlphaValidation | None,
+    tuple[OccupancyRidgeAlphaValidation, ...],
+]:
+    alphas = tuple(sorted(set(candidate_alphas)))
+    if not alphas:
+        raise ValueError("candidate_alphas must not be empty")
+    if not fit_rows or not calibration_rows:
+        raise ValueError("fit_rows and calibration_rows must not be empty")
+
+    candidates: list[OccupancyRidgeAlphaValidation] = []
+    for alpha in alphas:
+        model = fit_ridge_directional_model(
+            fit_rows,
+            alpha=alpha,
+            min_market_samples=min_market_samples,
+        )
+        horizons, evaluation = _calibrate_horizons(
+            model,
+            calibration_rows,
+            costs=costs,
+            candidate_thresholds=candidate_thresholds,
+            min_sample_count=min_sample_count,
+            min_validation_trades=min_validation_trades,
+            stability_blocks=stability_blocks,
+            min_block_trades=min_block_trades,
+            allow_coin_calibration=allow_coin_calibration,
+            min_validation_mean_net_return=min_validation_mean_net_return,
+        )
+        candidates.append(
+            OccupancyRidgeAlphaValidation(
+                alpha=alpha,
+                horizons=horizons,
+                evaluation=evaluation,
+            )
+        )
+    resolved = tuple(candidates)
+    return (
+        _choose_alpha(
+            resolved,
+            min_validation_trades=min_validation_trades,
+            min_validation_mean_net_return=min_validation_mean_net_return,
+        ),
+        resolved,
     )
 
 
