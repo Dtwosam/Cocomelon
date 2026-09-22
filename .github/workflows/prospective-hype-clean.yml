@@ -149,6 +149,134 @@ jobs:
           cocomelon-prospective-hype-report --root "$EVIDENCE_ROOT" \
             | tee /tmp/prospective-hype-report.json
 
+      - name: Build workflow-only campaign recoverability health
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/prospective-hype-health.json
+          import hashlib
+          import json
+          from decimal import Decimal, ROUND_CEILING
+          from pathlib import Path
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          def remaining_block_anchors(*, as_of_ms, first_ms, last_ms, interval_ms):
+              if as_of_ms < first_ms:
+                  return ((last_ms - first_ms) // interval_ms) + 1
+              if as_of_ms >= last_ms:
+                  return 0
+              first_remaining = (
+                  first_ms
+                  + (((as_of_ms - first_ms) // interval_ms) + 1) * interval_ms
+              )
+              if first_remaining > last_ms:
+                  return 0
+              return ((last_ms - first_remaining) // interval_ms) + 1
+
+          report = json.loads(
+              Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
+          )
+          plan = report["plan"]
+          expected = int(report["expected_anchor_count"])
+          expected_to_date = int(report["expected_anchor_count_to_date"])
+          observed_to_date = int(report["observation_count_to_date"])
+          missed_to_date = int(report["missed_anchor_count_to_date"])
+          remaining_expected = expected - expected_to_date
+          required_observations = int(
+              (
+                  Decimal(plan["min_capture_coverage"]) * Decimal(expected)
+              ).to_integral_value(rounding=ROUND_CEILING)
+          )
+          missed_budget = expected - required_observations
+          maximum_final_observations = observed_to_date + remaining_expected
+          maximum_final_capture = (
+              Decimal(maximum_final_observations) / Decimal(expected)
+          )
+          maximum_possible_settled = (
+              int(report["effective_trade_count"]) + remaining_expected
+          )
+
+          block_health = []
+          reasons = []
+          for block in report["blocks"]:
+              remaining = remaining_block_anchors(
+                  as_of_ms=int(report["as_of_ms"]),
+                  first_ms=int(block["first_anchor_ms"]),
+                  last_ms=int(block["last_anchor_ms"]),
+                  interval_ms=int(plan["anchor_interval_ms"]),
+              )
+              maximum = int(block["effective_trade_count"]) + remaining
+              required = int(plan["min_block_trades"])
+              recoverable = maximum >= required
+              block_health.append(
+                  {
+                      "block_index": int(block["block_index"]),
+                      "settled_trade_count": int(block["settled_trade_count"]),
+                      "effective_trade_count": int(block["effective_trade_count"]),
+                      "remaining_expected_anchors": remaining,
+                      "maximum_possible_settled_trades": maximum,
+                      "required_settled_trades": required,
+                      "recoverable": recoverable,
+                  }
+              )
+              if not recoverable:
+                  reasons.append(
+                      f"block_{block['block_index']}_minimum_trade_count_unreachable"
+                  )
+
+          if maximum_final_observations < required_observations:
+              reasons.insert(0, "capture_floor_unreachable")
+          if maximum_possible_settled < int(plan["min_settled_trades"]):
+              reasons.append("minimum_settled_trade_count_unreachable")
+
+          first_expected_anchor = int(report["blocks"][0]["first_anchor_ms"])
+          if reasons:
+              status = "irrecoverable"
+          elif int(report["as_of_ms"]) < first_expected_anchor:
+              status = "pre_validation"
+          elif missed_to_date > 0 or int(report["overdue_unsettled_count"]) > 0:
+              status = "degraded"
+          else:
+              status = "healthy"
+
+          payload = {
+              "validation_report_id": report["report_id"],
+              "plan_id": report["plan_id"],
+              "as_of_ms": int(report["as_of_ms"]),
+              "status": status,
+              "expected_anchor_count": expected,
+              "expected_anchor_count_to_date": expected_to_date,
+              "observation_count_to_date": observed_to_date,
+              "remaining_expected_anchors": remaining_expected,
+              "required_final_observation_count": required_observations,
+              "missed_anchor_budget": missed_budget,
+              "missed_anchor_count_to_date": missed_to_date,
+              "remaining_missed_anchor_budget": missed_budget - missed_to_date,
+              "maximum_final_observation_count": maximum_final_observations,
+              "maximum_final_capture_coverage": str(maximum_final_capture),
+              "effective_trade_count": int(report["effective_trade_count"]),
+              "settled_trade_count": int(report["settled_trade_count"]),
+              "remaining_trade_opportunities_upper_bound": remaining_expected,
+              "maximum_possible_settled_trades": maximum_possible_settled,
+              "required_settled_trades": int(plan["min_settled_trades"]),
+              "overdue_unsettled_count": int(report["overdue_unsettled_count"]),
+              "block_recoverability": block_health,
+              "irrecoverable_reasons": reasons,
+              "schema_version": 1,
+          }
+          payload["health_id"] = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          print(canonical(payload))
+          PY
+
       - name: Verify research-only receipt
         run: |
           set -euo pipefail
@@ -165,6 +293,9 @@ jobs:
           runtime = json.loads(
               Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
           )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
           assert payload["execution_mode"] == "paper"
           assert payload["evidence_class"] == "prospective_clean"
           assert payload["promotion_eligible"] is False
@@ -179,6 +310,18 @@ jobs:
           assert len(runtime["observer_source_revision"]) == 40
           assert len(runtime["attestation_id"]) == 64
           assert report["expected_anchor_count"] == 1080
+          assert health["validation_report_id"] == report["report_id"]
+          assert health["plan_id"] == report["plan_id"]
+          assert health["expected_anchor_count"] == 1080
+          assert health["required_final_observation_count"] == 972
+          assert health["missed_anchor_budget"] == 108
+          assert len(health["health_id"]) == 64
+          assert health["status"] in {
+              "pre_validation",
+              "healthy",
+              "degraded",
+              "irrecoverable",
+          }
           assert report["status"] in {
               "collecting",
               "data_incomplete",
@@ -227,6 +370,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           prior_campaign = continuity["campaign_id"]
           if prior_campaign is not None:
               assert prior_campaign == cycle["campaign_id"]
@@ -250,6 +398,7 @@ jobs:
               "promotion_eligible": cycle["promotion_eligible"],
               "cycle": cycle,
               "validation_report": report,
+              "campaign_health": health,
               "runtime_attestation": runtime,
           }
           payload["receipt_id"] = hashlib.sha256(
@@ -277,6 +426,12 @@ jobs:
           report = json.loads(
               Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
           )
+          runtime = json.loads(
+              Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
+          )
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
           observation = payload["observation"]
           print("## Prospective HYPE clean observer")
           print()
@@ -298,6 +453,23 @@ jobs:
           print(f"- observations: {payload['observation_count']}")
           print(f"- outcomes: {payload['outcome_count']}")
           print(f"- validation status: {report['status']}")
+          print(f"- campaign health: {health['status']}")
+          print(
+              "- remaining miss budget: "
+              f"{health['remaining_missed_anchor_budget']}"
+          )
+          print(
+              "- maximum final capture coverage: "
+              f"{health['maximum_final_capture_coverage']}"
+          )
+          print(
+              "- maximum possible settled trades: "
+              f"{health['maximum_possible_settled_trades']}"
+          )
+          print(
+              "- irrecoverable reasons: "
+              f"{health['irrecoverable_reasons']}"
+          )
           print(
               "- anchors captured to date: "
               f"{report['observation_count_to_date']}/"
@@ -348,3 +520,29 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Upload immutable campaign health
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/prospective-hype-health.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Fail closed if frozen campaign is irrecoverable
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          health = json.loads(
+              Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
+          if health["status"] == "irrecoverable":
+              reasons = ", ".join(health["irrecoverable_reasons"])
+              raise SystemExit(
+                  "PROSPECTIVE_CAMPAIGN_IRRECOVERABLE: " + reasons
+              )
+          PY

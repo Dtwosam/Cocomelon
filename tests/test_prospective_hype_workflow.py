@@ -96,3 +96,42 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
     assert "capture_coverage_to_date" in source
     assert "overdue_unsettled_count" in source
     assert "GITHUB_STEP_SUMMARY" in source
+
+
+
+def test_prospective_hype_workflow_monitors_recoverability_after_preserving_state() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "/tmp/prospective-hype-health.json" in source
+    assert 'health["validation_report_id"] == report["report_id"]' in source
+    assert 'health["required_final_observation_count"] == 972' in source
+    assert 'health["missed_anchor_budget"] == 108' in source
+    assert '"campaign_health": health' in source
+    assert "remaining_missed_anchor_budget" in source
+    assert "maximum_final_capture_coverage" in source
+    assert "maximum_possible_settled_trades" in source
+    assert "irrecoverable_reasons" in source
+    assert "prospective-hype-clean-health-" in source
+    assert "PROSPECTIVE_CAMPAIGN_IRRECOVERABLE" in source
+    assert source.index("Upload cumulative clean evidence state") < source.index(
+        "Fail closed if frozen campaign is irrecoverable"
+    )
+    assert source.index("Upload immutable validation report") < source.index(
+        "Fail closed if frozen campaign is irrecoverable"
+    )
+    assert source.index("Upload immutable campaign health") < source.index(
+        "Fail closed if frozen campaign is irrecoverable"
+    )
+
+
+def test_prospective_hype_summary_loads_frozen_runtime_before_rendering() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert source.count('Path("/tmp/prospective-hype-runtime.json")') >= 3
+    summary_start = source.index("- name: Publish run summary")
+    summary = source[summary_start:]
+    runtime_load = summary.index(
+        'Path("/tmp/prospective-hype-runtime.json").read_text'
+    )
+    runtime_use = summary.index("runtime['attestation_id']")
+    assert runtime_load < runtime_use
