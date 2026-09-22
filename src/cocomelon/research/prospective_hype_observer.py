@@ -206,9 +206,15 @@ def observe_current_anchor(
     *,
     store: ProspectiveEvidenceStore,
     spec: HistoricalDiscoveryFreezeSpec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
+    validation_end_ms: int | None = None,
 ) -> ProspectiveObservationResult:
     if store.spec.spec_id != spec.spec_id:
         raise ValueError("prospective store does not match frozen spec")
+    if (
+        validation_end_ms is not None
+        and validation_end_ms <= spec.validation_not_before_ms
+    ):
+        raise ValueError("validation_end_ms must be after prospective cutover")
     if data.as_of_ms < spec.validation_not_before_ms:
         return ProspectiveObservationResult(
             status="before_prospective_cutover",
@@ -230,6 +236,17 @@ def observe_current_anchor(
     if entry.end_ms < spec.validation_not_before_ms:
         return ProspectiveObservationResult(
             status="waiting_for_post_cutover_anchor",
+            as_of_ms=data.as_of_ms,
+            anchor_end_ms=entry.end_ms,
+            raw_direction=None,
+            effective_direction=None,
+            context_state_1h=None,
+            observation_id=None,
+            created=False,
+        )
+    if validation_end_ms is not None and entry.end_ms >= validation_end_ms:
+        return ProspectiveObservationResult(
+            status="after_validation_window",
             as_of_ms=data.as_of_ms,
             anchor_end_ms=entry.end_ms,
             raw_direction=None,
@@ -427,9 +444,15 @@ def run_prospective_observer_cycle(
     store: ProspectiveEvidenceStore,
     clock_ms: Callable[[], int],
     spec: HistoricalDiscoveryFreezeSpec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
+    validation_end_ms: int | None = None,
 ) -> ProspectiveObserverCycleResult:
     current = collect_current_market_data(reader, clock_ms=clock_ms)
-    observation = observe_current_anchor(current, store=store, spec=spec)
+    observation = observe_current_anchor(
+        current,
+        store=store,
+        spec=spec,
+        validation_end_ms=validation_end_ms,
+    )
 
     settle_as_of_ms = clock_ms()
     due = store.due_unsettled_observations(as_of_ms=settle_as_of_ms)
