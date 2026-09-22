@@ -55,7 +55,7 @@ def _manifest(
     *,
     preset: HistoricalArchiveExperimentPreset,
     dataset_id: str = "d" * 64,
-    logical_sha256: str = "l" * 64,
+    logical_sha256: str = "e" * 64,
     row_count: int = 8,
 ) -> None:
     path = output_root / "dataset" / "manifest.json"
@@ -92,7 +92,7 @@ def _install_verified_evidence(
     preset: HistoricalArchiveExperimentPreset,
     rows: tuple[SimpleNamespace, ...] | None = None,
     dataset_id: str = "d" * 64,
-    logical_sha256: str = "l" * 64,
+    logical_sha256: str = "e" * 64,
     row_count: int = 8,
 ) -> Path:
     output_root = tmp_path / "output"
@@ -166,7 +166,7 @@ def test_training_plan_freezes_exact_fit_embargo_calibration_geometry(
     assert plan.model_family == "stable_tree"
     assert plan.calibration_variant == "shared"
     assert plan.dataset_id == "d" * 64
-    assert plan.dataset_logical_sha256 == "l" * 64
+    assert plan.dataset_logical_sha256 == "e" * 64
     assert plan.total_anchor_count == 8
     assert plan.fit_anchor_count == 5
     assert plan.fit_row_count == 5
