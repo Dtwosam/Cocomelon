@@ -249,6 +249,9 @@ def _validate_health(payload: dict[str, object]) -> None:
         payload.get("expected_anchor_count_to_date"),
         "EXPECTED_ANCHOR_COUNT_TO_DATE",
     )
+    as_of_ms = _integer(payload.get("as_of_ms"), "HEALTH_AS_OF_MS")
+    if expected_to_date != plan.expected_anchor_count_as_of(as_of_ms):
+        raise ProspectiveBlindMonitorError("EXPECTED_ANCHORS_TO_DATE_MISMATCH")
     observed = _integer(
         payload.get("observation_count_to_date"),
         "OBSERVATION_COUNT_TO_DATE",
@@ -285,6 +288,25 @@ def _validate_health(payload: dict[str, object]) -> None:
     )
     if remaining != expected - expected_to_date:
         raise ProspectiveBlindMonitorError("REMAINING_ANCHOR_COUNT_MISMATCH")
+    maximum_observations = _integer(
+        payload.get("maximum_final_observation_count"),
+        "MAXIMUM_FINAL_OBSERVATION_COUNT",
+    )
+    if maximum_observations != observed + remaining:
+        raise ProspectiveBlindMonitorError("MAXIMUM_OBSERVATION_COUNT_MISMATCH")
+    maximum_capture = Decimal(
+        _string(
+            payload.get("maximum_final_capture_coverage"),
+            "MAXIMUM_FINAL_CAPTURE_COVERAGE",
+        )
+    )
+    if maximum_capture != Decimal(maximum_observations) / Decimal(expected):
+        raise ProspectiveBlindMonitorError("MAXIMUM_CAPTURE_COVERAGE_MISMATCH")
+    if _integer(
+        payload.get("remaining_trade_opportunities_upper_bound"),
+        "REMAINING_TRADE_OPPORTUNITIES_UPPER_BOUND",
+    ) != remaining:
+        raise ProspectiveBlindMonitorError("REMAINING_TRADE_BOUND_MISMATCH")
 
     effective = _integer(payload.get("effective_trade_count"), "EFFECTIVE_TRADE_COUNT")
     maximum_settled = _integer(
@@ -298,6 +320,15 @@ def _validate_health(payload: dict[str, object]) -> None:
         "REQUIRED_SETTLED_TRADES",
     ) != plan.min_settled_trades:
         raise ProspectiveBlindMonitorError("REQUIRED_SETTLED_TRADES_MISMATCH")
+    settled = _integer(payload.get("settled_trade_count"), "SETTLED_TRADE_COUNT")
+    overdue = _integer(
+        payload.get("overdue_unsettled_count"),
+        "OVERDUE_UNSETTLED_COUNT",
+    )
+    if settled > effective:
+        raise ProspectiveBlindMonitorError("SETTLED_TRADE_COUNT_EXCEEDS_EFFECTIVE")
+    if overdue > effective - settled:
+        raise ProspectiveBlindMonitorError("OVERDUE_UNSETTLED_COUNT_INVALID")
 
     raw_blocks = payload.get("block_recoverability")
     if not isinstance(raw_blocks, list) or len(raw_blocks) != plan.stability_blocks:
@@ -337,10 +368,16 @@ def _validate_health(payload: dict[str, object]) -> None:
     ):
         raise ProspectiveBlindMonitorError("IRRECOVERABLE_REASONS_INVALID")
     status = _string(payload.get("status"), "HEALTH_STATUS")
-    if status == "irrecoverable" and not reasons:
-        raise ProspectiveBlindMonitorError("IRRECOVERABLE_STATUS_WITHOUT_REASON")
-    if status != "irrecoverable" and reasons:
-        raise ProspectiveBlindMonitorError("RECOVERABLE_STATUS_WITH_REASON")
+    if reasons:
+        expected_status = "irrecoverable"
+    elif as_of_ms < plan.first_expected_anchor_ms:
+        expected_status = "pre_validation"
+    elif missed > 0 or overdue > 0:
+        expected_status = "degraded"
+    else:
+        expected_status = "healthy"
+    if status != expected_status:
+        raise ProspectiveBlindMonitorError("HEALTH_STATUS_MISMATCH")
 
 
 def _validate_lineage(
