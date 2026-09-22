@@ -251,7 +251,9 @@ def verify_archive_clean_cycle_lineage(
                 "ARCHIVE_CLEAN_LINEAGE_CAPTURE_DELTA_MISMATCH"
             )
         has_observation = receipt.observation_id is not None
-        if has_observation != receipt.status in {"recorded", "already_recorded"}:
+        if has_observation != (
+            receipt.status in {"recorded", "already_recorded"}
+        ):
             raise HistoricalArchiveCleanLineageError(
                 "ARCHIVE_CLEAN_LINEAGE_OBSERVATION_STATUS_MISMATCH"
             )
