@@ -5,7 +5,9 @@ import json
 import os
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from cocomelon.research.historical_archive_clean_evidence import (
     ArchiveCleanAnchorObservation,
@@ -58,7 +60,7 @@ def _require_sha256(value: str, field: str) -> None:
 def _mapping(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise HistoricalArchiveCleanCheckpointError(f"{field} must be an object")
-    return value
+    return cast(dict[str, object], value)
 
 
 def _sequence(value: object, field: str) -> tuple[object, ...]:
@@ -715,8 +717,7 @@ class ArchiveCleanCheckpointEvidenceStore:
 
     @staticmethod
     def _decimal_ratio(numerator: int, denominator: int):
-        from decimal import Decimal
-
+        
         return Decimal(numerator) / Decimal(denominator)
 
     def save(self, *, as_of_ms: int) -> ArchiveCleanOperationalCheckpoint:
