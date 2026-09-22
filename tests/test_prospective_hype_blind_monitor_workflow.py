@@ -30,12 +30,14 @@ def test_blind_monitor_runs_after_capture_and_lineage_schedules() -> None:
 def test_blind_monitor_matches_state_to_latest_health_run() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert 'item["name"].startswith("prospective-hype-clean-health-")' in source
-    assert 'item["name"].startswith("prospective-hype-lineage-")' in source
-    assert 'item["name"] == "prospective-hype-clean-state"' in source
-    assert 'item["workflow_run"]["id"] == health["workflow_run"]["id"]' in source
+    assert 'str(item.get("name", "")).startswith(' in source
+    assert '"prospective-hype-clean-health-"' in source
+    assert '"prospective-hype-lineage-"' in source
+    assert 'item.get("name") == "prospective-hype-clean-state"' in source
+    assert 'item["workflow_run"].get("id")' in source
+    assert 'health["workflow_run"].get("id")' in source
     assert "len(matching_states) != 1" in source
-    assert '"state_id": state["id"]' in source
+    assert 'state_id=state["id"]' in source
 
 
 def test_blind_monitor_never_downloads_or_names_interim_economics() -> None:
