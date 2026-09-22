@@ -31,15 +31,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.as_of_ms is None
         else args.as_of_ms
     )
-    kwargs: dict[str, object] = {
-        "artifact_id": args.artifact_id,
-        "artifact_created_at_ms": args.artifact_created_at_ms,
-        "audited_at_ms": audited_at_ms,
-    }
-    if args.max_artifact_age_ms is not None:
-        kwargs["max_artifact_age_ms"] = args.max_artifact_age_ms
     try:
-        receipt = evaluate_prospective_observer_liveness(**kwargs)
+        if args.max_artifact_age_ms is None:
+            receipt = evaluate_prospective_observer_liveness(
+                artifact_id=args.artifact_id,
+                artifact_created_at_ms=args.artifact_created_at_ms,
+                audited_at_ms=audited_at_ms,
+            )
+        else:
+            receipt = evaluate_prospective_observer_liveness(
+                artifact_id=args.artifact_id,
+                artifact_created_at_ms=args.artifact_created_at_ms,
+                audited_at_ms=audited_at_ms,
+                max_artifact_age_ms=args.max_artifact_age_ms,
+            )
     except (ValueError, ProspectiveLivenessError) as exc:
         print(
             json.dumps(
