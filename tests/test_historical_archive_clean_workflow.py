@@ -61,6 +61,15 @@ def test_archive_clean_workflow_uses_frozen_revision_runtime_and_pin() -> None:
     assert "load_pinned_archive_clean_runtime" in source
     assert "ARCHIVE_CLEAN_RUNTIME_ARTIFACT_EXPIRED" in source
     assert "ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN" in source
+    assert "historical-archive-clean-runtime-" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NAME_MISMATCH" in source
+    assert "RUNTIME_PUBLISHER_WORKFLOW_PATH" in source
+    assert "historical-archive-clean-runtime-publish.yml" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_REPOSITORY_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_NOT_SUCCESS" in source
 
 
 def test_archive_clean_state_is_pin_scoped_and_producer_authenticated() -> None:
