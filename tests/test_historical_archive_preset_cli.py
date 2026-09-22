@@ -562,6 +562,131 @@ def test_verify_candidate_model_is_offline(
         output_root / "candidate-model.json"
     )
 
+
+def test_build_clean_validation_spec_is_offline_and_non_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("clean validation spec must not construct a client")
+        ),
+    )
+    spec = SimpleNamespace(
+        candidate_id="a" * 64,
+        model_artifact_id="b" * 64,
+        spec_id="c" * 64,
+        validation_evidence_class="prospective_clean",
+        validation_start_ms=100,
+        validation_end_ms=200,
+        finalization_not_before_ms=300,
+        expected_anchor_count=12_960,
+        active_horizons=(900_000, 14_400_000),
+        decision_policy="cost_adjusted_directional_threshold_v1",
+        execution_policy="portfolio_capacity",
+        paper_only=True,
+        prospective_only=True,
+        promotion_eligible=False,
+        execution_ready=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_clean_validation_spec",
+        lambda *args, **kwargs: spec,
+    )
+    spec_path = tmp_path / "output" / "candidate-validation-spec.json"
+    monkeypatch.setattr(
+        cli,
+        "write_archive_clean_validation_spec",
+        lambda *args, **kwargs: spec_path,
+    )
+
+    status = cli.main(
+        [
+            "build-clean-validation-spec",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "build-clean-validation-spec"
+    assert payload["paid_request_performed"] is False
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["model_artifact_id"] == "b" * 64
+    assert payload["spec_id"] == "c" * 64
+    assert payload["validation_evidence_class"] == "prospective_clean"
+    assert payload["expected_anchor_count"] == 12_960
+    assert payload["paper_only"] is True
+    assert payload["prospective_only"] is True
+    assert payload["promotion_eligible"] is False
+    assert payload["execution_ready"] is False
+    assert payload["validation_spec"] == str(spec_path)
+
+
+def test_verify_clean_validation_spec_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("validation spec verification must stay offline")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_clean_validation_spec",
+        lambda *args, **kwargs: SimpleNamespace(
+            candidate_id="a" * 64,
+            model_artifact_id="b" * 64,
+            spec_id="c" * 64,
+            paper_only=True,
+            execution_ready=False,
+        ),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "verify-clean-validation-spec",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-clean-validation-spec"
+    assert payload["paid_request_performed"] is False
+    assert payload["valid"] is True
+    assert payload["spec_id"] == "c" * 64
+    assert payload["paper_only"] is True
+    assert payload["execution_ready"] is False
+    assert payload["validation_spec"] == str(
+        output_root / "candidate-validation-spec.json"
+    )
+
 def test_plan_candidate_training_is_offline_and_emits_partition(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

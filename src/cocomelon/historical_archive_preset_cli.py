@@ -46,6 +46,11 @@ from cocomelon.research.historical_archive_training_plan import (
     verify_archive_candidate_training_plan,
     write_archive_candidate_training_plan,
 )
+from cocomelon.research.historical_archive_validation_spec import (
+    build_archive_clean_validation_spec,
+    verify_archive_clean_validation_spec,
+    write_archive_clean_validation_spec,
+)
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -129,6 +134,22 @@ def build_parser() -> argparse.ArgumentParser:
     verify_model.add_argument("--archive-root", required=True, type=Path)
     verify_model.add_argument("--source-root", required=True, type=Path)
     verify_model.add_argument("--output-root", required=True, type=Path)
+
+    build_validation = subparsers.add_parser(
+        "build-clean-validation-spec"
+    )
+    build_validation.add_argument("--preset", default=PRESET_NAME)
+    build_validation.add_argument("--archive-root", required=True, type=Path)
+    build_validation.add_argument("--source-root", required=True, type=Path)
+    build_validation.add_argument("--output-root", required=True, type=Path)
+
+    verify_validation = subparsers.add_parser(
+        "verify-clean-validation-spec"
+    )
+    verify_validation.add_argument("--preset", default=PRESET_NAME)
+    verify_validation.add_argument("--archive-root", required=True, type=Path)
+    verify_validation.add_argument("--source-root", required=True, type=Path)
+    verify_validation.add_argument("--output-root", required=True, type=Path)
 
     plan_training = subparsers.add_parser("plan-candidate-training")
     plan_training.add_argument("--preset", default=PRESET_NAME)
@@ -436,6 +457,71 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "execution_ready": artifact.execution_ready,
                     "valid": True,
                     "candidate_model": str(artifact_path),
+                }
+            )
+            return 0
+        if args.command == "build-clean-validation-spec":
+            spec = build_archive_clean_validation_spec(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            spec_path = write_archive_clean_validation_spec(
+                args.output_root,
+                spec,
+            )
+            _emit(
+                {
+                    "command": "build-clean-validation-spec",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": spec.candidate_id,
+                    "model_artifact_id": spec.model_artifact_id,
+                    "spec_id": spec.spec_id,
+                    "validation_evidence_class": (
+                        spec.validation_evidence_class
+                    ),
+                    "validation_start_ms": spec.validation_start_ms,
+                    "validation_end_ms": spec.validation_end_ms,
+                    "finalization_not_before_ms": (
+                        spec.finalization_not_before_ms
+                    ),
+                    "expected_anchor_count": spec.expected_anchor_count,
+                    "active_horizons": spec.active_horizons,
+                    "decision_policy": spec.decision_policy,
+                    "execution_policy": spec.execution_policy,
+                    "paper_only": spec.paper_only,
+                    "prospective_only": spec.prospective_only,
+                    "promotion_eligible": spec.promotion_eligible,
+                    "execution_ready": spec.execution_ready,
+                    "validation_spec": str(spec_path),
+                }
+            )
+            return 0
+        if args.command == "verify-clean-validation-spec":
+            spec_path = args.output_root / "candidate-validation-spec.json"
+            spec = verify_archive_clean_validation_spec(
+                spec_path,
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "verify-clean-validation-spec",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": spec.candidate_id,
+                    "model_artifact_id": spec.model_artifact_id,
+                    "spec_id": spec.spec_id,
+                    "paper_only": spec.paper_only,
+                    "execution_ready": spec.execution_ready,
+                    "valid": True,
+                    "validation_spec": str(spec_path),
                 }
             )
             return 0
