@@ -281,7 +281,9 @@ def _write_prepared_source_fixture(
         )
         for start_ms in range(0, HOUR + 1, 300_000)
     )
-    shard = manifest["shards"][0]
+    raw_shards = manifest["shards"]
+    assert isinstance(raw_shards, tuple)
+    shard = raw_shards[0]
     assert isinstance(shard, dict)
     candle_manifest = write_archive_candle_source(
         source_root / "BTC" / "candles" / "5m",
@@ -314,7 +316,7 @@ def _write_prepared_source_fixture(
                 "sha256": item["sha256"],
                 "byte_count": item["byte_count"],
             }
-            for item in manifest["shards"]
+            for item in raw_shards
         ),
         "schema_version": 1,
     }
