@@ -132,6 +132,8 @@ def _validate_lineage(
         or spec.calibration_id != artifact.calibration_id
         or spec.model_family != artifact.model_family
         or spec.calibration_variant != artifact.calibration_variant
+        or spec.model_format != artifact.model_format
+        or spec.horizon_thresholds != artifact.selected_horizon_thresholds
         or spec.allow_coin_calibration != artifact.allow_coin_calibration
         or spec.min_sample_count != artifact.min_sample_count
         or spec.execution_policy != artifact.execution_policy
@@ -181,7 +183,8 @@ class ArchivePaperSignal:
     horizon_ms: int
     target_end_ms: int
     direction: Direction
-    expected_gross_return: Decimal
+    expected_long_gross_return: Decimal
+    expected_short_gross_return: Decimal
     expected_long_net_return: Decimal
     expected_short_net_return: Decimal
     expected_net_edge: Decimal
@@ -207,7 +210,8 @@ class ArchivePaperSignal:
         if self.target_end_ms != self.anchor_end_ms + self.horizon_ms:
             raise ValueError("target_end_ms must match horizon")
         for field in (
-            "expected_gross_return",
+            "expected_long_gross_return",
+            "expected_short_gross_return",
             "expected_long_net_return",
             "expected_short_net_return",
             "expected_net_edge",
@@ -216,6 +220,8 @@ class ArchivePaperSignal:
             value = getattr(self, field)
             if not value.is_finite():
                 raise ValueError(f"{field} must be finite")
+        if self.expected_short_gross_return != -self.expected_long_gross_return:
+            raise ValueError("gross directional predictions must be symmetric")
         if self.cost_fraction < ZERO:
             raise ValueError("cost_fraction must be non-negative")
         if self.threshold is not None and (
@@ -373,7 +379,8 @@ def score_archive_candidate_feature(
         horizon_ms=horizon_ms,
         target_end_ms=feature.anchor_end_ms + horizon_ms,
         direction=direction,
-        expected_gross_return=gross,
+        expected_long_gross_return=gross,
+        expected_short_gross_return=-gross,
         expected_long_net_return=long_net,
         expected_short_net_return=short_net,
         expected_net_edge=edge,
