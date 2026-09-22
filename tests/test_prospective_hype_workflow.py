@@ -51,6 +51,12 @@ def test_prospective_hype_workflow_restores_and_republishes_cumulative_state() -
     assert "prospective_clean" in source
     assert "promotion_eligible" in source
     assert "cocomelon-prospective-hype-observer" in source
+    assert "cocomelon-prospective-hype-report" in source
+    assert "/tmp/prospective-hype-report.json" in source
+    assert 'report["state_digest"] == payload["state_digest"]' in source
+    assert 'report["campaign_id"] == payload["campaign_id"]' in source
+    assert 'report["plan_id"] == payload["validation_plan_id"]' in source
+    assert 'report["expected_anchor_count"] == 1080' in source
 
 
 def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
@@ -66,4 +72,14 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
     assert '"restored_artifact_id"' in source
     assert '"receipt_id"' in source
     assert '"cycle": cycle' in source
+    assert '"validation_report": report' in source
+    assert (
+        "prospective-hype-clean-report-${{ github.run_id }}-${{ github.run_attempt }}"
+        in source
+    )
+    assert '"observation_count_to_date"' in source
+    assert '"expected_anchor_count_to_date"' in source
+    assert '"missed_anchor_count_to_date"' in source
+    assert '"capture_coverage_to_date"' in source
+    assert '"overdue_unsettled_count"' in source
     assert "GITHUB_STEP_SUMMARY" in source
