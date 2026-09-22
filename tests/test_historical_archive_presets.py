@@ -12,17 +12,39 @@ from cocomelon.research.historical_archive_presets import (
     JUL_SEP_2026_V2,
     build_archive_preset_bundle_receipt,
     build_archive_preset_run_receipt,
+    build_archive_preset_source_attestation,
     ensure_archive_preset_output_root_clean,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
     verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
+    verify_archive_preset_source_attestation,
     write_archive_preset_bundle_receipt,
     write_archive_preset_run_receipt,
+)
+from cocomelon.research.python_source_attestation import (
+    PythonSourceFileAttestation,
+    PythonSourceTreeAttestation,
+    write_python_source_tree_attestation,
 )
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
+
+
+def _fake_source_attestation() -> PythonSourceTreeAttestation:
+    return PythonSourceTreeAttestation(
+        subject_type="historical_archive_preset",
+        subject_id=JUL_SEP_2026_V2.preset_id,
+        source_root_name="cocomelon",
+        files=(
+            PythonSourceFileAttestation(
+                relative_path="research/fake.py",
+                sha256="a" * 64,
+                byte_count=10,
+            ),
+        ),
+    )
 
 
 def _fake_experiment_result() -> SimpleNamespace:
@@ -98,6 +120,10 @@ def _write_fake_bundle_files(
         '{"comparison":"report"}\n',
         encoding="utf-8",
     )
+    write_python_source_tree_attestation(
+        output_root / "implementation.json",
+        _fake_source_attestation(),
+    )
 
 
 def test_jul_sep_2026_v2_locks_current_multimonth_geometry() -> None:
@@ -170,6 +196,12 @@ def test_preset_runner_forwards_only_frozen_values(
         return experiment_result
 
     monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
+    source_attestation = _fake_source_attestation()
+    monkeypatch.setattr(
+        presets,
+        "build_archive_preset_source_attestation",
+        lambda _preset: source_attestation,
+    )
     client = object()
 
     def clock() -> int:
@@ -207,7 +239,14 @@ def test_preset_runner_forwards_only_frozen_values(
     bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
     assert bundle_payload["preset_run_receipt_id"] == payload["receipt_id"]
     assert len(bundle_payload["comparison_sha256"]) == 64
+    assert len(bundle_payload["implementation_sha256"]) == 64
+    assert bundle_payload["schema_version"] == 2
     assert len(bundle_payload["bundle_id"]) == 64
+    implementation = verify_archive_preset_source_attestation(
+        output_root,
+        preset=JUL_SEP_2026_V2,
+    )
+    assert implementation == source_attestation
 
 
 def test_preset_run_receipt_is_deterministic_and_binds_outputs() -> None:
@@ -449,6 +488,97 @@ def test_preset_bundle_requires_every_canonical_file(
     ):
         build_archive_preset_bundle_receipt(
             JUL_SEP_2026_V2,
+            archive_root=archive_root,
+            source_root=source_root,
+            output_root=output_root,
+        )
+
+def test_preset_runner_fails_if_source_tree_changes_during_run(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    first = _fake_source_attestation()
+    second = PythonSourceTreeAttestation(
+        subject_type=first.subject_type,
+        subject_id=first.subject_id,
+        source_root_name=first.source_root_name,
+        files=(
+            PythonSourceFileAttestation(
+                relative_path="research/fake.py",
+                sha256="b" * 64,
+                byte_count=10,
+            ),
+        ),
+    )
+    attestations = iter((first, second))
+
+    def fake_run(client: object, **kwargs: object) -> object:
+        del client
+        archive_root = kwargs["archive_root"]
+        source_root = kwargs["source_root"]
+        output_root = kwargs["output_root"]
+        assert isinstance(archive_root, Path)
+        assert isinstance(source_root, Path)
+        assert isinstance(output_root, Path)
+        _write_fake_bundle_files(archive_root, source_root, output_root)
+        return _fake_experiment_result()
+
+    monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
+    monkeypatch.setattr(
+        presets,
+        "build_archive_preset_source_attestation",
+        lambda _preset: next(attestations),
+    )
+    output_root = tmp_path / "output"
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_SOURCE_TREE_CHANGED_DURING_RUN",
+    ):
+        run_archive_experiment_preset(
+            object(),  # type: ignore[arg-type]
+            preset=JUL_SEP_2026_V2,
+            archive_root=tmp_path / "archive",
+            source_root=tmp_path / "sources",
+            output_root=output_root,
+            clock_ms=lambda: 123,
+        )
+
+    assert not (output_root / "preset-run.json").exists()
+    assert not (output_root / "preset-bundle.json").exists()
+    assert not (output_root / "implementation.json").exists()
+
+
+def test_preset_bundle_detects_implementation_attestation_tampering(
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    output_root = tmp_path / "output"
+    _write_fake_bundle_files(archive_root, source_root, output_root)
+
+    run_receipt = build_archive_preset_run_receipt(
+        JUL_SEP_2026_V2,
+        _fake_experiment_result(),  # type: ignore[arg-type]
+    )
+    write_archive_preset_run_receipt(output_root, run_receipt)
+    bundle = build_archive_preset_bundle_receipt(
+        JUL_SEP_2026_V2,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    path = write_archive_preset_bundle_receipt(output_root, bundle)
+
+    (output_root / "implementation.json").write_text(
+        '{"tampered":true}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(Exception):
+        verify_archive_preset_bundle_receipt(
+            path,
+            preset=JUL_SEP_2026_V2,
             archive_root=archive_root,
             source_root=source_root,
             output_root=output_root,
