@@ -533,6 +533,35 @@ def _logical_sha256(rows: Sequence[Mapping[str, object]]) -> str:
     return digest.hexdigest()
 
 
+def canonical_training_rows(
+    rows: Sequence[HistoricalTrainingRow],
+) -> tuple[HistoricalTrainingRow, ...]:
+    ordered = tuple(
+        sorted(
+            rows,
+            key=lambda item: (
+                item.market.canonical,
+                item.anchor_end_ms,
+                item.horizon_ms,
+                item.training_row_id,
+            ),
+        )
+    )
+    if not ordered:
+        raise ValueError("training rows must not be empty")
+    identities = tuple(row.training_row_id for row in ordered)
+    if len(set(identities)) != len(identities):
+        raise HistoricalDatasetIntegrityError("duplicate training row identity")
+    return ordered
+
+
+def training_rows_logical_sha256(
+    rows: Sequence[HistoricalTrainingRow],
+) -> str:
+    ordered = canonical_training_rows(rows)
+    return _logical_sha256(tuple(_row_payload(row) for row in ordered))
+
+
 @dataclass(frozen=True, slots=True)
 class HistoricalDatasetManifest:
     output_relative_path: str
@@ -650,7 +679,7 @@ def export_training_dataset(
     anchor_interval = anchor_intervals[0]
 
     payloads = tuple(_row_payload(row) for row in ordered)
-    logical_sha256 = _logical_sha256(payloads)
+    logical_sha256 = training_rows_logical_sha256(ordered)
     pyarrow, parquet = _load_pyarrow()
     table = pyarrow.Table.from_pylist(list(payloads))
     table = table.select(list(TRAINING_COLUMNS))

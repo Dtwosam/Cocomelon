@@ -31,6 +31,11 @@ from cocomelon.research.historical_archive_review import (
     build_archive_development_review,
     write_archive_development_review,
 )
+from cocomelon.research.historical_archive_training_plan import (
+    build_archive_candidate_training_plan,
+    verify_archive_candidate_training_plan,
+    write_archive_candidate_training_plan,
+)
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -90,6 +95,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify_candidate.add_argument("--archive-root", required=True, type=Path)
     verify_candidate.add_argument("--source-root", required=True, type=Path)
     verify_candidate.add_argument("--output-root", required=True, type=Path)
+
+    plan_training = subparsers.add_parser("plan-candidate-training")
+    plan_training.add_argument("--preset", default=PRESET_NAME)
+    plan_training.add_argument("--archive-root", required=True, type=Path)
+    plan_training.add_argument("--source-root", required=True, type=Path)
+    plan_training.add_argument("--output-root", required=True, type=Path)
+
+    verify_training = subparsers.add_parser("verify-candidate-training-plan")
+    verify_training.add_argument("--preset", default=PRESET_NAME)
+    verify_training.add_argument("--archive-root", required=True, type=Path)
+    verify_training.add_argument("--source-root", required=True, type=Path)
+    verify_training.add_argument("--output-root", required=True, type=Path)
 
     review = subparsers.add_parser("review")
     review.add_argument("--preset", default=PRESET_NAME)
@@ -237,6 +254,63 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "candidate_id": freeze.candidate_id,
                     "valid": True,
                     "candidate_freeze": str(freeze_path),
+                }
+            )
+            return 0
+        if args.command == "plan-candidate-training":
+            plan = build_archive_candidate_training_plan(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            plan_path = write_archive_candidate_training_plan(
+                args.output_root,
+                plan,
+            )
+            _emit(
+                {
+                    "command": "plan-candidate-training",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": plan.candidate_id,
+                    "plan_id": plan.plan_id,
+                    "model_family": plan.model_family,
+                    "calibration_variant": plan.calibration_variant,
+                    "training_policy": plan.training_policy,
+                    "selection_algorithm": plan.selection_algorithm,
+                    "dataset_id": plan.dataset_id,
+                    "fit_anchor_count": plan.fit_anchor_count,
+                    "embargo_anchor_count": plan.embargo_anchor_count,
+                    "calibration_anchor_count": plan.calibration_anchor_count,
+                    "validation_not_before_ms": plan.validation_not_before_ms,
+                    "prospective_only": plan.prospective_only,
+                    "promotion_eligible": plan.promotion_eligible,
+                    "execution_ready": plan.execution_ready,
+                    "training_plan": str(plan_path),
+                }
+            )
+            return 0
+        if args.command == "verify-candidate-training-plan":
+            plan_path = args.output_root / "candidate-training-plan.json"
+            plan = verify_archive_candidate_training_plan(
+                plan_path,
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "verify-candidate-training-plan",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": plan.candidate_id,
+                    "plan_id": plan.plan_id,
+                    "valid": True,
+                    "training_plan": str(plan_path),
                 }
             )
             return 0
