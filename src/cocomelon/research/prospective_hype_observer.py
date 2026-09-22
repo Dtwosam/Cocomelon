@@ -25,6 +25,7 @@ from cocomelon.research.historical_discovery_freeze import (
 )
 from cocomelon.research.prospective_context_evidence import (
     FROZEN_CONTEXT_BASKET,
+    MAX_ENTRY_CANDLE_AGE_MS,
     ProspectiveEvidenceStore,
     ProspectiveObservation,
     ProspectiveOutcome,
@@ -229,6 +230,17 @@ def observe_current_anchor(
     if entry.end_ms < spec.validation_not_before_ms:
         return ProspectiveObservationResult(
             status="waiting_for_post_cutover_anchor",
+            as_of_ms=data.as_of_ms,
+            anchor_end_ms=entry.end_ms,
+            raw_direction=None,
+            effective_direction=None,
+            context_state_1h=None,
+            observation_id=None,
+            created=False,
+        )
+    if data.as_of_ms - entry.end_ms > MAX_ENTRY_CANDLE_AGE_MS:
+        return ProspectiveObservationResult(
+            status="missed_anchor_window",
             as_of_ms=data.as_of_ms,
             anchor_end_ms=entry.end_ms,
             raw_direction=None,
