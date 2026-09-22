@@ -95,7 +95,6 @@ def _bootstrap(tmp_path: Path) -> tuple[SimpleNamespace, Path]:
         pinned,  # type: ignore[arg-type]
         state_root=state_root,
         frozen_revision="f" * 40,
-        authorization_source_revision="a" * 40,
         runtime_artifact_id="123",
         as_of_ms=1_000,
     )
@@ -150,6 +149,7 @@ def test_activation_authorization_is_pre_cutover_only(tmp_path: Path) -> None:
             pinned,  # type: ignore[arg-type]
             state_root=state_root,
             frozen_revision="f" * 40,
+            authorization_source_revision="a" * 40,
             runtime_artifact_id="123",
             as_of_ms=pinned.runtime.spec.validation_start_ms,
         )
@@ -163,6 +163,7 @@ def test_activation_authorization_requires_valid_bootstrap(tmp_path: Path) -> No
             pinned,  # type: ignore[arg-type]
             state_root=tmp_path / "missing-state",
             frozen_revision="f" * 40,
+            authorization_source_revision="a" * 40,
             runtime_artifact_id="123",
             as_of_ms=2_000,
         )
