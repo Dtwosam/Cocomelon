@@ -8,6 +8,11 @@ from enum import StrEnum
 from typing import Protocol
 
 from cocomelon.domain.features import TrendRegime
+from cocomelon.features.cross_market import (
+    basket_breadth_bucket as basket_breadth_1h_bucket,
+    basket_direction_bucket as basket_direction_1h_bucket,
+    relative_strength_bucket as relative_strength_1h_bucket,
+)
 from cocomelon.research.historical_features import (
     HistoricalFeatureRow,
     HistoricalTrainingRow,
@@ -772,36 +777,6 @@ class _PolicyObservation:
                 raise ValueError("NO_TRADE cannot have realized return")
         elif self.action is not DecisionAction.NO_TRADE:
             raise ValueError("trades require realized return")
-
-
-def basket_direction_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value > ZERO:
-        return "up"
-    if value < ZERO:
-        return "down"
-    return "flat"
-
-
-def basket_breadth_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value <= Decimal("0.25"):
-        return "bearish"
-    if value >= Decimal("0.75"):
-        return "bullish"
-    return "mixed"
-
-
-def relative_strength_1h_bucket(value: Decimal | None) -> str:
-    if value is None:
-        return "missing"
-    if value <= Decimal("-1"):
-        return "lagging_1sd"
-    if value >= Decimal("1"):
-        return "leading_1sd"
-    return "near_basket"
 
 
 @dataclass(frozen=True, slots=True)
