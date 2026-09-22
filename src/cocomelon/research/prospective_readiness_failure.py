@@ -52,6 +52,12 @@ EXPECTED_CANDIDATE_SPEC_ID = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1.spec_id
 EXPECTED_VALIDATION_PLAN_ID = HYPE_PROSPECTIVE_VALIDATION_V1.plan_id
 
 
+def _string(value: object, code: str) -> str:
+    if not isinstance(value, str):
+        raise ProspectiveReadinessFailureError(code)
+    return value
+
+
 def _optional_sha256(value: object, field: str) -> str | None:
     if value is None:
         return None
@@ -192,30 +198,34 @@ def verify_prospective_readiness_failure(
         raise ProspectiveReadinessFailureError("READINESS_FAILURE_FIELDS_INVALID")
 
     audited_at_ms = payload["audited_at_ms"]
-    stage = payload["stage"]
-    reason_code = payload["reason_code"]
-    campaign_id = payload["campaign_id"]
-    candidate_spec_id = payload["candidate_spec_id"]
-    validation_plan_id = payload["validation_plan_id"]
-    observer_source_revision = payload["observer_source_revision"]
-    kind = payload["kind"]
+    stage = _string(payload["stage"], "READINESS_FAILURE_STAGE_INVALID")
+    reason_code = _string(
+        payload["reason_code"],
+        "READINESS_FAILURE_REASON_INVALID",
+    )
+    campaign_id = _string(
+        payload["campaign_id"],
+        "READINESS_FAILURE_CAMPAIGN_INVALID",
+    )
+    candidate_spec_id = _string(
+        payload["candidate_spec_id"],
+        "READINESS_FAILURE_CANDIDATE_INVALID",
+    )
+    validation_plan_id = _string(
+        payload["validation_plan_id"],
+        "READINESS_FAILURE_PLAN_INVALID",
+    )
+    observer_source_revision = _string(
+        payload["observer_source_revision"],
+        "READINESS_FAILURE_REVISION_INVALID",
+    )
+    kind = _string(payload["kind"], "READINESS_FAILURE_KIND_INVALID")
     redacted = payload["interim_economics_redacted"]
     schema_version = payload["schema_version"]
     failure_id = payload["failure_id"]
 
     if isinstance(audited_at_ms, bool) or not isinstance(audited_at_ms, int):
         raise ProspectiveReadinessFailureError("READINESS_FAILURE_TIME_INVALID")
-    for value, code in (
-        (stage, "READINESS_FAILURE_STAGE_INVALID"),
-        (reason_code, "READINESS_FAILURE_REASON_INVALID"),
-        (campaign_id, "READINESS_FAILURE_CAMPAIGN_INVALID"),
-        (candidate_spec_id, "READINESS_FAILURE_CANDIDATE_INVALID"),
-        (validation_plan_id, "READINESS_FAILURE_PLAN_INVALID"),
-        (observer_source_revision, "READINESS_FAILURE_REVISION_INVALID"),
-        (kind, "READINESS_FAILURE_KIND_INVALID"),
-    ):
-        if not isinstance(value, str):
-            raise ProspectiveReadinessFailureError(code)
     if not isinstance(redacted, bool):
         raise ProspectiveReadinessFailureError("READINESS_FAILURE_REDACTION_INVALID")
     if isinstance(schema_version, bool) or not isinstance(schema_version, int):
