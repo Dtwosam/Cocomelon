@@ -88,6 +88,30 @@ def test_archive_clean_state_is_pin_scoped_and_producer_authenticated() -> None:
     assert 'run.get("conclusion") not in {"success", "failure"}' in source
 
 
+
+def test_archive_clean_observer_uses_bootstrap_only_as_first_state_fallback() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    normal_restore = source.index("Restore latest cumulative clean state")
+    bootstrap_restore = source.index("Restore pre-cutover bootstrap fallback")
+    continuity = source.index("Verify state continuity and canonical finalization")
+
+    assert normal_restore < bootstrap_restore < continuity
+    assert "steps.restore.outputs.restored_artifact_id == 'none'" in source
+    assert "BOOTSTRAP_STATE_ARTIFACT_NAME" in source
+    assert "historical-archive-clean-bootstrap-state-" in source
+    assert "BOOTSTRAP_WORKFLOW_PATH" in source
+    assert "historical-archive-clean-bootstrap.yml" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REPOSITORY_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REVISION_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_EVENT_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_NOT_SUCCESS" in source
+    assert "--verify-only" in source
+    assert "RESTORED_OBSERVER_ARTIFACT_ID" in source
+    assert "RESTORED_BOOTSTRAP_ARTIFACT_ID" in source
+
 def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
