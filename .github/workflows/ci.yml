@@ -62,6 +62,8 @@ jobs:
           tests/test_historical_archive_validation_spec.py
           tests/test_historical_archive_paper_scorer.py
           tests/test_historical_archive_clean_evidence.py
+          tests/test_historical_archive_clean_observer.py
+          tests/test_historical_archive_clean_observer_cli.py
           tests/test_python_source_attestation.py
           tests/test_historical_archive_overlap.py
           tests/test_historical_tree.py

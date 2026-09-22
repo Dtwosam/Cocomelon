@@ -116,6 +116,17 @@ def _optional_decimal(value: object, field: str) -> Decimal | None:
     return resolved
 
 
+def _tuple_sequences(value: object) -> object:
+    if isinstance(value, list):
+        return tuple(_tuple_sequences(item) for item in value)
+    if isinstance(value, dict):
+        return {
+            key: _tuple_sequences(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def _finite_float(value: object, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise HistoricalArchiveModelArtifactError(f"{field} must be numeric")
@@ -594,6 +605,165 @@ def write_archive_candidate_model_artifact(
     return path
 
 
+def load_archive_candidate_model_artifact(
+    path: Path,
+) -> HistoricalArchiveCandidateModelArtifact:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "candidate model artifact",
+        )
+        thresholds = tuple(
+            (
+                _integer(
+                    _mapping(item, "selected horizon threshold").get(
+                        "horizon_ms"
+                    ),
+                    "selected horizon threshold horizon_ms",
+                ),
+                _optional_decimal(
+                    _mapping(item, "selected horizon threshold").get(
+                        "threshold"
+                    ),
+                    "selected horizon threshold threshold",
+                ),
+            )
+            for item in _sequence(
+                raw.get("selected_horizon_thresholds"),
+                "selected_horizon_thresholds",
+            )
+        )
+        raw_costs = _mapping(raw.get("costs"), "costs")
+        costs = {
+            key: _string(raw_costs.get(key), f"costs.{key}")
+            for key in (
+                "round_trip_fee_fraction",
+                "round_trip_slippage_fraction",
+                "funding_reserve_fraction_per_hour",
+            )
+        }
+        artifact = HistoricalArchiveCandidateModelArtifact(
+            preset_name=_string(raw.get("preset_name"), "preset_name"),
+            preset_id=_string(raw.get("preset_id"), "preset_id"),
+            evidence_class=_string(
+                raw.get("evidence_class"),
+                "evidence_class",
+            ),
+            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+            training_plan_id=_string(
+                raw.get("training_plan_id"),
+                "training_plan_id",
+            ),
+            calibration_id=_string(
+                raw.get("calibration_id"),
+                "calibration_id",
+            ),
+            bundle_id=_string(raw.get("bundle_id"), "bundle_id"),
+            dataset_id=_string(raw.get("dataset_id"), "dataset_id"),
+            model_family=_string(raw.get("model_family"), "model_family"),
+            calibration_variant=_string(
+                raw.get("calibration_variant"),
+                "calibration_variant",
+            ),
+            model_format=_string(raw.get("model_format"), "model_format"),
+            model_payload=cast(
+                dict[str, object],
+                _tuple_sequences(
+                    _mapping(
+                        raw.get("model_payload"),
+                        "model_payload",
+                    )
+                ),
+            ),
+            model_payload_sha256=_string(
+                raw.get("model_payload_sha256"),
+                "model_payload_sha256",
+            ),
+            selected_candidate_sha256=_string(
+                raw.get("selected_candidate_sha256"),
+                "selected_candidate_sha256",
+            ),
+            selected_alpha=_optional_decimal(
+                raw.get("selected_alpha"),
+                "selected_alpha",
+            ),
+            selected_horizon_thresholds=thresholds,
+            allow_coin_calibration=_boolean(
+                raw.get("allow_coin_calibration"),
+                "allow_coin_calibration",
+            ),
+            min_sample_count=_integer(
+                raw.get("min_sample_count"),
+                "min_sample_count",
+            ),
+            min_market_samples=_integer(
+                raw.get("min_market_samples"),
+                "min_market_samples",
+            ),
+            execution_policy=_string(
+                raw.get("execution_policy"),
+                "execution_policy",
+            ),
+            max_concurrent_positions=_optional_integer(
+                raw.get("max_concurrent_positions"),
+                "max_concurrent_positions",
+            ),
+            costs=costs,
+            numpy_version=_string(
+                raw.get("numpy_version"),
+                "numpy_version",
+            ),
+            scikit_learn_version=_string(
+                raw.get("scikit_learn_version"),
+                "scikit_learn_version",
+            ),
+            validation_not_before_ms=_integer(
+                raw.get("validation_not_before_ms"),
+                "validation_not_before_ms",
+            ),
+            prospective_only=_boolean(
+                raw.get("prospective_only"),
+                "prospective_only",
+            ),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            trained_model_persisted=_boolean(
+                raw.get("trained_model_persisted"),
+                "trained_model_persisted",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            schema_version=_integer(
+                raw.get("schema_version"),
+                "schema_version",
+            ),
+        )
+    except (
+        OSError,
+        json.JSONDecodeError,
+        ValueError,
+        ArithmeticError,
+    ) as exc:
+        raise HistoricalArchiveModelArtifactError(
+            "ARCHIVE_MODEL_ARTIFACT_INVALID"
+        ) from exc
+
+    if _string(raw.get("artifact_id"), "artifact_id") != artifact.artifact_id:
+        raise HistoricalArchiveModelArtifactError(
+            "ARCHIVE_MODEL_ARTIFACT_ID_MISMATCH"
+        )
+    canonical = _canonical_json(artifact.to_dict()) + "\n"
+    if path.read_text(encoding="utf-8") != canonical:
+        raise HistoricalArchiveModelArtifactError(
+            "ARCHIVE_MODEL_ARTIFACT_NON_CANONICAL"
+        )
+    return artifact
+
+
 def verify_archive_candidate_model_artifact(
     path: Path,
     *,
@@ -603,13 +773,10 @@ def verify_archive_candidate_model_artifact(
     output_root: Path,
 ) -> HistoricalArchiveCandidateModelArtifact:
     try:
-        raw = _mapping(
-            json.loads(path.read_text(encoding="utf-8")),
-            "candidate model artifact",
-        )
-    except (OSError, json.JSONDecodeError) as exc:
+        loaded = load_archive_candidate_model_artifact(path)
+    except HistoricalArchiveModelArtifactError as exc:
         raise HistoricalArchiveModelArtifactError(
-            "ARCHIVE_MODEL_ARTIFACT_INVALID"
+            "ARCHIVE_MODEL_ARTIFACT_EVIDENCE_MISMATCH"
         ) from exc
     expected = build_archive_candidate_model_artifact(
         preset,
@@ -617,14 +784,9 @@ def verify_archive_candidate_model_artifact(
         source_root=source_root,
         output_root=output_root,
     )
-    expected_payload = json.loads(_canonical_json(expected.to_dict()))
-    if raw != expected_payload:
+    if loaded != expected:
         raise HistoricalArchiveModelArtifactError(
             "ARCHIVE_MODEL_ARTIFACT_EVIDENCE_MISMATCH"
-        )
-    if path.read_text(encoding="utf-8") != _canonical_json(expected.to_dict()) + "\n":
-        raise HistoricalArchiveModelArtifactError(
-            "ARCHIVE_MODEL_ARTIFACT_NON_CANONICAL"
         )
     return expected
 

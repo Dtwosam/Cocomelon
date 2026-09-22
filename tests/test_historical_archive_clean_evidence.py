@@ -336,6 +336,87 @@ def _market(canonical: str) -> MarketId:
     return MarketId("", canonical)
 
 
+
+def test_store_allows_natural_position_expiry_between_anchors(
+    tmp_path: Path,
+) -> None:
+    spec = _spec(
+        execution_policy="single_position_occupancy",
+        horizon_ms=FIFTEEN,
+    )
+    store = ArchiveCleanEvidenceStore(tmp_path, spec=spec)
+    first = spec.first_expected_anchor_ms
+    btc = _signal(
+        spec,
+        market="BTC",
+        anchor_end_ms=first,
+        direction=Direction.LONG,
+        edge="0.01",
+    )
+    eth = _signal(
+        spec,
+        market="ETH",
+        anchor_end_ms=first,
+        direction=Direction.NO_TRADE,
+        edge="0",
+    )
+    first_position = ArchivePaperPosition(
+        market="BTC",
+        opened_at_ms=first,
+        hold_until_ms=first + FIFTEEN,
+        horizon_ms=FIFTEEN,
+        direction=Direction.LONG,
+        expected_net_edge=btc.expected_net_edge,
+    )
+    first_result = ArchivePaperAnchorResult(
+        anchor_end_ms=first,
+        raw_signals=(btc, eth),
+        accepted_signals=(btc,),
+        no_trade_markets=("ETH",),
+        occupied_skip_markets=(),
+        capacity_skip_markets=(),
+        next_state=ArchivePaperState(positions=(first_position,)),
+    )
+    store.record_anchor_result(
+        features=(_feature(BTC, first), _feature(ETH, first)),
+        state_before=ArchivePaperState(),
+        result=first_result,
+    )
+
+    second = first + FIFTEEN
+    second_result = ArchivePaperAnchorResult(
+        anchor_end_ms=second,
+        raw_signals=(
+            _signal(
+                spec,
+                market="BTC",
+                anchor_end_ms=second,
+                direction=Direction.NO_TRADE,
+                edge="0",
+            ),
+            _signal(
+                spec,
+                market="ETH",
+                anchor_end_ms=second,
+                direction=Direction.NO_TRADE,
+                edge="0",
+            ),
+        ),
+        accepted_signals=(),
+        no_trade_markets=("BTC", "ETH"),
+        occupied_skip_markets=(),
+        capacity_skip_markets=(),
+        next_state=ArchivePaperState(),
+    )
+    second_observation = store.record_anchor_result(
+        features=(_feature(BTC, second), _feature(ETH, second)),
+        state_before=store.latest_state(),
+        result=second_result,
+    )
+
+    assert second_observation.state_before == ArchivePaperState()
+    assert store.iter_anchors()[-1] == second_observation
+
 def test_store_rejects_state_discontinuity(
     tmp_path: Path,
 ) -> None:

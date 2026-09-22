@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from cocomelon.hyperliquid.client import INTERVAL_MS
 from cocomelon.research.historical_archive_model_artifact import (
@@ -53,6 +54,61 @@ def _canonical_json(value: object) -> str:
 def _require_sha256(value: str, field: str) -> None:
     if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError(f"{field} must be lowercase SHA-256")
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise HistoricalArchiveValidationSpecError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _sequence(value: object, field: str) -> tuple[object, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise HistoricalArchiveValidationSpecError(f"{field} must be a sequence")
+    return tuple(value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise HistoricalArchiveValidationSpecError(
+            f"{field} must be a non-empty string"
+        )
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HistoricalArchiveValidationSpecError(f"{field} must be an integer")
+    return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise HistoricalArchiveValidationSpecError(f"{field} must be boolean")
+    return value
+
+
+def _optional_integer(value: object, field: str) -> int | None:
+    if value is None:
+        return None
+    return _integer(value, field)
+
+
+def _decimal(value: object, field: str) -> Decimal:
+    if not isinstance(value, str):
+        raise HistoricalArchiveValidationSpecError(
+            f"{field} must be a decimal string"
+        )
+    resolved = Decimal(value)
+    if not resolved.is_finite():
+        raise HistoricalArchiveValidationSpecError(f"{field} must be finite")
+    return resolved
+
+
+def _optional_decimal(value: object, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    return _decimal(value, field)
 
 
 @dataclass(frozen=True, slots=True)
@@ -417,6 +473,187 @@ def write_archive_clean_validation_spec(
     return path
 
 
+def load_archive_clean_validation_spec(
+    path: Path,
+) -> HistoricalArchiveCleanValidationSpec:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "clean validation spec",
+        )
+        raw_costs = _mapping(raw.get("costs"), "costs")
+        costs = {
+            key: _string(raw_costs.get(key), f"costs.{key}")
+            for key in (
+                "round_trip_fee_fraction",
+                "round_trip_slippage_fraction",
+                "funding_reserve_fraction_per_hour",
+            )
+        }
+        thresholds = tuple(
+            (
+                _integer(
+                    _mapping(item, "horizon threshold").get("horizon_ms"),
+                    "horizon threshold horizon_ms",
+                ),
+                _optional_decimal(
+                    _mapping(item, "horizon threshold").get("threshold"),
+                    "horizon threshold threshold",
+                ),
+            )
+            for item in _sequence(
+                raw.get("horizon_thresholds"),
+                "horizon_thresholds",
+            )
+        )
+        spec = HistoricalArchiveCleanValidationSpec(
+            preset_name=_string(raw.get("preset_name"), "preset_name"),
+            preset_id=_string(raw.get("preset_id"), "preset_id"),
+            source_evidence_class=_string(
+                raw.get("source_evidence_class"),
+                "source_evidence_class",
+            ),
+            validation_evidence_class=_string(
+                raw.get("validation_evidence_class"),
+                "validation_evidence_class",
+            ),
+            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+            training_plan_id=_string(
+                raw.get("training_plan_id"),
+                "training_plan_id",
+            ),
+            calibration_id=_string(
+                raw.get("calibration_id"),
+                "calibration_id",
+            ),
+            model_artifact_id=_string(
+                raw.get("model_artifact_id"),
+                "model_artifact_id",
+            ),
+            model_payload_sha256=_string(
+                raw.get("model_payload_sha256"),
+                "model_payload_sha256",
+            ),
+            model_family=_string(raw.get("model_family"), "model_family"),
+            calibration_variant=_string(
+                raw.get("calibration_variant"),
+                "calibration_variant",
+            ),
+            model_format=_string(raw.get("model_format"), "model_format"),
+            markets=tuple(
+                _string(item, "market")
+                for item in _sequence(raw.get("markets"), "markets")
+            ),
+            anchor_interval=_string(
+                raw.get("anchor_interval"),
+                "anchor_interval",
+            ),
+            anchor_interval_ms=_integer(
+                raw.get("anchor_interval_ms"),
+                "anchor_interval_ms",
+            ),
+            anchor_end_offset_ms=_integer(
+                raw.get("anchor_end_offset_ms"),
+                "anchor_end_offset_ms",
+            ),
+            horizon_thresholds=thresholds,
+            allow_coin_calibration=_boolean(
+                raw.get("allow_coin_calibration"),
+                "allow_coin_calibration",
+            ),
+            min_sample_count=_integer(
+                raw.get("min_sample_count"),
+                "min_sample_count",
+            ),
+            decision_policy=_string(
+                raw.get("decision_policy"),
+                "decision_policy",
+            ),
+            execution_policy=_string(
+                raw.get("execution_policy"),
+                "execution_policy",
+            ),
+            max_concurrent_positions=_optional_integer(
+                raw.get("max_concurrent_positions"),
+                "max_concurrent_positions",
+            ),
+            costs=costs,
+            validation_start_ms=_integer(
+                raw.get("validation_start_ms"),
+                "validation_start_ms",
+            ),
+            validation_end_ms=_integer(
+                raw.get("validation_end_ms"),
+                "validation_end_ms",
+            ),
+            min_capture_coverage=_decimal(
+                raw.get("min_capture_coverage"),
+                "min_capture_coverage",
+            ),
+            min_settled_trades=_integer(
+                raw.get("min_settled_trades"),
+                "min_settled_trades",
+            ),
+            stability_blocks=_integer(
+                raw.get("stability_blocks"),
+                "stability_blocks",
+            ),
+            min_block_trades=_integer(
+                raw.get("min_block_trades"),
+                "min_block_trades",
+            ),
+            min_mean_net_return=_decimal(
+                raw.get("min_mean_net_return"),
+                "min_mean_net_return",
+            ),
+            min_block_mean_net_return=_decimal(
+                raw.get("min_block_mean_net_return"),
+                "min_block_mean_net_return",
+            ),
+            validation_policy=_string(
+                raw.get("validation_policy"),
+                "validation_policy",
+            ),
+            paper_only=_boolean(raw.get("paper_only"), "paper_only"),
+            prospective_only=_boolean(
+                raw.get("prospective_only"),
+                "prospective_only",
+            ),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            schema_version=_integer(
+                raw.get("schema_version"),
+                "schema_version",
+            ),
+        )
+    except (
+        OSError,
+        json.JSONDecodeError,
+        ValueError,
+        ArithmeticError,
+    ) as exc:
+        raise HistoricalArchiveValidationSpecError(
+            "ARCHIVE_VALIDATION_SPEC_INVALID"
+        ) from exc
+
+    if _string(raw.get("spec_id"), "spec_id") != spec.spec_id:
+        raise HistoricalArchiveValidationSpecError(
+            "ARCHIVE_VALIDATION_SPEC_ID_MISMATCH"
+        )
+    canonical = _canonical_json(spec.to_dict()) + "\n"
+    if path.read_text(encoding="utf-8") != canonical:
+        raise HistoricalArchiveValidationSpecError(
+            "ARCHIVE_VALIDATION_SPEC_NON_CANONICAL"
+        )
+    return spec
+
+
 def verify_archive_clean_validation_spec(
     path: Path,
     *,
@@ -426,28 +663,19 @@ def verify_archive_clean_validation_spec(
     output_root: Path,
 ) -> HistoricalArchiveCleanValidationSpec:
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        loaded = load_archive_clean_validation_spec(path)
+    except HistoricalArchiveValidationSpecError as exc:
         raise HistoricalArchiveValidationSpecError(
-            "ARCHIVE_VALIDATION_SPEC_INVALID"
+            "ARCHIVE_VALIDATION_SPEC_EVIDENCE_MISMATCH"
         ) from exc
-    if not isinstance(raw, dict):
-        raise HistoricalArchiveValidationSpecError(
-            "ARCHIVE_VALIDATION_SPEC_INVALID"
-        )
     expected = build_archive_clean_validation_spec(
         preset,
         archive_root=archive_root,
         source_root=source_root,
         output_root=output_root,
     )
-    expected_payload = json.loads(_canonical_json(expected.to_dict()))
-    if raw != expected_payload:
+    if loaded != expected:
         raise HistoricalArchiveValidationSpecError(
             "ARCHIVE_VALIDATION_SPEC_EVIDENCE_MISMATCH"
-        )
-    if path.read_text(encoding="utf-8") != _canonical_json(expected.to_dict()) + "\n":
-        raise HistoricalArchiveValidationSpecError(
-            "ARCHIVE_VALIDATION_SPEC_NON_CANONICAL"
         )
     return expected
