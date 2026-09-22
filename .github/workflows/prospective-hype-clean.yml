@@ -1,6 +1,11 @@
 name: Prospective HYPE Clean Observer
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-clean.yml"
   schedule:
     - cron: "3,8,13 * * * *"
   workflow_dispatch:
