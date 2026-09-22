@@ -3,8 +3,8 @@
 **Last updated:** 2026-09-22  
 **Repository:** `Dtwosam/Cocomelon`  
 **Default branch:** `main`  
-**Verified implementation baseline:** `bd50d9554529830af919f930c7fb82577a41f16d`  
-**Latest verified development CI:** post-merge CI run `35737033904` on `bd50d9554529830af919f930c7fb82577a41f16d` — success  
+**Verified implementation baseline:** `8b6bda6c5dfabc6c77acec9811e3ee16bb3862c2`  
+**Latest verified development CI:** post-merge CI run `35740726772` on `8b6bda6c5dfabc6c77acec9811e3ee16bb3862c2` — success  
 **Live trading:** **DISABLED**  
 **Baseline edge:** **V4 RETIRED / TOUCHED — NO EDGE DEMONSTRATED**  
 **Phase 10:** **OFFLINE LEARNING ENGINEERING ACTIVE; PROMOTION/LIVE BLOCKED**
@@ -293,7 +293,10 @@ Verified operational frontier:
 - PR #319 authenticated artifact producers across lineage, blind-monitor, and cutover audit paths without changing the frozen observer or strategy.
 - PR #322 closed the remaining state-readiness provenance gap; post-merge CI and the state-readiness audit passed.
 - PR #323 made blind-monitor state selection safe across legitimate GitHub Actions reruns, which reuse one workflow run ID while producing another cumulative state artifact. It also guarantees early redacted failure receipts can be written.
+- PR #325 made lineage selection rerun-safe by comparing the latest cumulative states from the latest two **distinct observer workflow runs**, while taking the newest rerun artifact within each run; producer-provenance failures are now terminal after preserving redacted failure evidence.
 - full post-merge CI for #323 passed in run `35737033904`;
+- full post-merge CI for #325 passed in run `35740726772`; post-merge lineage audit `35740726978` and blind monitor `35740726702` both passed on first attempt;
+- latest verified lineage artifact: `10699293253`, status `append_only_valid`, binding previous distinct-run state `10684992618` to current state `10697590747` rather than the older same-run rerun copy `10691392286`;
 - the frozen clean observer was re-executed as run `35721665228`, attempt 2, and completed successfully without changing its frozen runtime/control-plane contract;
 - the independent lineage audit was refreshed as run `35730889418`, attempt 2, and completed successfully;
 - the synchronized blind monitor then passed as run `35737033996`, attempt 2;
