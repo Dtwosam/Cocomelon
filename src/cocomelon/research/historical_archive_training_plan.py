@@ -21,11 +21,11 @@ from cocomelon.research.historical_archive_presets import (
     verify_archive_preset_run_receipt,
 )
 from cocomelon.research.historical_dataset import (
-    HistoricalTrainingRow,
     build_training_rows_from_source_root,
     canonical_training_rows,
     training_rows_logical_sha256,
 )
+from cocomelon.research.historical_features import HistoricalTrainingRow
 
 TRAINING_PLAN_POLICY = "chronological-final-fit-calibration-v1"
 TRAINING_PLAN_SCHEMA_VERSION = 1
