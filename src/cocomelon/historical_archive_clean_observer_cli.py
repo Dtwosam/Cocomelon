@@ -15,8 +15,10 @@ from cocomelon.research.historical_archive_clean_evidence import (
 from cocomelon.research.historical_archive_clean_observer import (
     ArchiveCleanPublicReader,
     ArchiveCleanSourceCaptureStore,
-    load_archive_clean_frozen_runtime,
     run_archive_clean_observer_cycle,
+)
+from cocomelon.research.historical_archive_clean_runtime import (
+    load_pinned_archive_clean_runtime,
 )
 from cocomelon.util.time import utc_now_ms
 
@@ -43,7 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
             "frozen archive candidate"
         ),
     )
-    parser.add_argument("--output-root", required=True, type=Path)
+    parser.add_argument("--runtime-root", required=True, type=Path)
+    parser.add_argument("--pin-id", required=True)
     parser.add_argument("--root", required=True, type=Path)
     return parser
 
@@ -51,7 +54,8 @@ def build_parser() -> argparse.ArgumentParser:
 def archive_clean_observer_payload(
     settings: Settings,
     *,
-    output_root: Path,
+    runtime_root: Path,
+    pin_id: str,
     root: Path,
     reader: ArchiveCleanPublicReader | None = None,
     clock_ms: Callable[[], int] = utc_now_ms,
@@ -59,7 +63,11 @@ def archive_clean_observer_payload(
     if settings.execution_mode is not ExecutionMode.PAPER:
         raise ValueError("archive clean observer requires paper execution mode")
 
-    runtime = load_archive_clean_frozen_runtime(output_root)
+    pinned = load_pinned_archive_clean_runtime(
+        runtime_root,
+        expected_pin_id=pin_id,
+    )
+    runtime = pinned.runtime
     spec = runtime.spec
     artifact = runtime.artifact
     evidence_store = ArchiveCleanEvidenceStore(root, spec=spec)
@@ -88,6 +96,11 @@ def archive_clean_observer_payload(
         "model_payload_sha256": spec.model_payload_sha256,
         "validation_spec_id": spec.spec_id,
         "campaign_id": evidence_store.manifest.campaign_id,
+        "runtime_id": pinned.bundle.runtime_id,
+        "pin_id": pinned.pin.pin_id,
+        "observer_source_tree_sha256": (
+            pinned.bundle.observer_source_tree_sha256
+        ),
         "evidence_class": spec.validation_evidence_class,
         "validation_start_ms": spec.validation_start_ms,
         "validation_end_ms": spec.validation_end_ms,
@@ -113,7 +126,7 @@ def archive_clean_observer_payload(
         "settled_outcome_count": len(outcomes),
         "root": str(root),
         "source_root": str(root / "sources"),
-        "output_root": str(output_root),
+        "runtime_root": str(runtime_root),
     }
 
 
@@ -122,7 +135,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         payload = archive_clean_observer_payload(
             Settings.from_env(),
-            output_root=args.output_root,
+            runtime_root=args.runtime_root,
+            pin_id=args.pin_id,
             root=args.root,
         )
     except (OSError, RuntimeError, ValueError) as exc:
