@@ -407,6 +407,10 @@ def build_prospective_validation_report(
         raise ProspectiveValidationError(
             "prospective campaign contains pre-validation observation"
         )
+    if any(item.anchor_end_ms >= plan.validation_end_ms for item in all_observations):
+        raise ProspectiveValidationError(
+            "prospective campaign contains post-validation observation"
+        )
     observations = tuple(
         item
         for item in all_observations
