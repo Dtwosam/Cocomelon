@@ -10,6 +10,7 @@ import pytest
 from cocomelon.domain.market import Candle, MarketId
 from cocomelon.research.historical_archive_overlap import (
     HistoricalArchiveOverlapError,
+    load_archive_native_overlap_report,
     validate_archive_native_overlap,
 )
 from cocomelon.research.historical_trade_archive import (
@@ -179,3 +180,35 @@ def test_native_overlap_rejects_overlap_larger_than_native_page_limit(
             overlap_candles=5_001,
             clock_ms=lambda: 20_000_000,
         )
+
+def test_native_overlap_report_round_trips_offline_and_detects_tampering(
+    tmp_path: Path,
+) -> None:
+    _write_archive_source(tmp_path)
+    report = validate_archive_native_overlap(
+        FakeCandleClient(),
+        source_root=tmp_path,
+        markets=(BTC,),
+        intervals=("5m",),
+        overlap_candles=2,
+        clock_ms=lambda: 20_000_000,
+    )
+    path = tmp_path / "archive_native_overlap.json"
+
+    loaded = load_archive_native_overlap_report(path)
+
+    assert loaded == report
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["entries"][0]["exact_match_count"] = 1
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        HistoricalArchiveOverlapError,
+        match="ARCHIVE_NATIVE_OVERLAP_ENTRY_EXACT_MISMATCH",
+    ):
+        load_archive_native_overlap_report(path)
+

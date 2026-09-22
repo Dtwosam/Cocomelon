@@ -6,6 +6,7 @@ import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote
 
 from cocomelon.domain.market import MarketId
@@ -33,6 +34,30 @@ def _canonical_json(value: object) -> str:
         ensure_ascii=False,
         allow_nan=False,
     )
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise HistoricalArchiveOverlapError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _sequence(value: object, field: str) -> tuple[object, ...]:
+    if not isinstance(value, list):
+        raise HistoricalArchiveOverlapError(f"{field} must be an array")
+    return tuple(value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise HistoricalArchiveOverlapError(f"{field} must be a non-empty string")
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise HistoricalArchiveOverlapError(f"{field} must be an integer")
+    return value
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
@@ -156,6 +181,143 @@ class ArchiveNativeOverlapReport:
             "compared_count": self.compared_count,
             "report_id": self.report_id,
         }
+
+
+def load_archive_native_overlap_report(
+    path: Path,
+) -> ArchiveNativeOverlapReport:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "archive native overlap report",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise HistoricalArchiveOverlapError(
+            "ARCHIVE_NATIVE_OVERLAP_REPORT_INVALID"
+        ) from exc
+
+    raw_entries = _sequence(raw.get("entries"), "archive native overlap entries")
+    entries: list[ArchiveNativeOverlapEntry] = []
+    for index, raw_entry in enumerate(raw_entries):
+        item = _mapping(raw_entry, f"archive native overlap entries[{index}]")
+        raw_mismatches = _sequence(
+            item.get("mismatches"),
+            f"archive native overlap entries[{index}].mismatches",
+        )
+        mismatches: list[CandleOverlapMismatch] = []
+        for mismatch_index, raw_mismatch in enumerate(raw_mismatches):
+            mismatch = _mapping(
+                raw_mismatch,
+                (
+                    f"archive native overlap entries[{index}]"
+                    f".mismatches[{mismatch_index}]"
+                ),
+            )
+            raw_fields = _sequence(
+                mismatch.get("fields"),
+                (
+                    f"archive native overlap entries[{index}]"
+                    f".mismatches[{mismatch_index}].fields"
+                ),
+            )
+            fields = tuple(
+                _string(
+                    value,
+                    (
+                        f"archive native overlap entries[{index}]"
+                        f".mismatches[{mismatch_index}].fields"
+                    ),
+                )
+                for value in raw_fields
+            )
+            mismatches.append(
+                CandleOverlapMismatch(
+                    start_ms=_integer(
+                        mismatch.get("start_ms"),
+                        (
+                            f"archive native overlap entries[{index}]"
+                            f".mismatches[{mismatch_index}].start_ms"
+                        ),
+                    ),
+                    fields=fields,
+                )
+            )
+
+        entry = ArchiveNativeOverlapEntry(
+            market=_string(item.get("market"), f"entries[{index}].market"),
+            interval=_string(item.get("interval"), f"entries[{index}].interval"),
+            start_ms=_integer(item.get("start_ms"), f"entries[{index}].start_ms"),
+            end_ms=_integer(item.get("end_ms"), f"entries[{index}].end_ms"),
+            archive_manifest_id=_string(
+                item.get("archive_manifest_id"),
+                f"entries[{index}].archive_manifest_id",
+            ),
+            native_manifest_id=_string(
+                item.get("native_manifest_id"),
+                f"entries[{index}].native_manifest_id",
+            ),
+            compared_count=_integer(
+                item.get("compared_count"),
+                f"entries[{index}].compared_count",
+            ),
+            exact_match_count=_integer(
+                item.get("exact_match_count"),
+                f"entries[{index}].exact_match_count",
+            ),
+            missing_archive_starts=tuple(
+                _integer(value, f"entries[{index}].missing_archive_starts")
+                for value in _sequence(
+                    item.get("missing_archive_starts"),
+                    f"entries[{index}].missing_archive_starts",
+                )
+            ),
+            missing_native_starts=tuple(
+                _integer(value, f"entries[{index}].missing_native_starts")
+                for value in _sequence(
+                    item.get("missing_native_starts"),
+                    f"entries[{index}].missing_native_starts",
+                )
+            ),
+            mismatches=tuple(mismatches),
+        )
+        if item.get("exact") is not entry.exact:
+            raise HistoricalArchiveOverlapError(
+                "ARCHIVE_NATIVE_OVERLAP_ENTRY_EXACT_MISMATCH"
+            )
+        entries.append(entry)
+
+    try:
+        report = ArchiveNativeOverlapReport(
+            overlap_candles=_integer(
+                raw.get("overlap_candles"),
+                "archive native overlap overlap_candles",
+            ),
+            entries=tuple(entries),
+            schema_version=_integer(
+                raw.get("schema_version"),
+                "archive native overlap schema_version",
+            ),
+        )
+    except ValueError as exc:
+        raise HistoricalArchiveOverlapError(
+            "ARCHIVE_NATIVE_OVERLAP_REPORT_INVALID"
+        ) from exc
+
+    if raw.get("exact") is not report.exact:
+        raise HistoricalArchiveOverlapError(
+            "ARCHIVE_NATIVE_OVERLAP_EXACT_MISMATCH"
+        )
+    if _integer(raw.get("compared_count"), "archive native overlap compared_count") != (
+        report.compared_count
+    ):
+        raise HistoricalArchiveOverlapError(
+            "ARCHIVE_NATIVE_OVERLAP_COMPARED_COUNT_MISMATCH"
+        )
+    if _string(raw.get("report_id"), "archive native overlap report_id") != report.report_id:
+        raise HistoricalArchiveOverlapError(
+            "ARCHIVE_NATIVE_OVERLAP_REPORT_ID_MISMATCH"
+        )
+    return report
 
 
 def validate_archive_native_overlap(
