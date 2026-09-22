@@ -41,6 +41,12 @@ def _canonical_json(value: object) -> str:
     )
 
 
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ProspectiveStateReadinessError(f"{field}_INVALID")
+    return value
+
+
 def _object(path: Path, field: str) -> dict[str, object]:
     if not path.is_file():
         raise ProspectiveStateReadinessError(f"{field}_MISSING")
@@ -127,10 +133,14 @@ def verify_prospective_hype_state_readiness(
         candidate_id=spec.candidate_id,
         validation_not_before_ms=spec.validation_not_before_ms,
     )
-    expected_manifest_payload = {
-        **expected_manifest.identity_payload(),
-        "campaign_id": expected_manifest.campaign_id,
-    }
+    expected_manifest_payload = json.loads(
+        _canonical_json(
+            {
+                **expected_manifest.identity_payload(),
+                "campaign_id": expected_manifest.campaign_id,
+            }
+        )
+    )
     if manifest_raw != expected_manifest_payload:
         raise ProspectiveStateReadinessError("CAMPAIGN_MANIFEST_MISMATCH")
 
@@ -140,7 +150,10 @@ def verify_prospective_hype_state_readiness(
             candidate_spec_id=str(runtime_raw["candidate_spec_id"]),
             validation_plan_id=str(runtime_raw["validation_plan_id"]),
             observer_source_revision=str(runtime_raw["observer_source_revision"]),
-            schema_version=int(runtime_raw["schema_version"]),
+            schema_version=_integer(
+                runtime_raw.get("schema_version"),
+                "RUNTIME_SCHEMA_VERSION",
+            ),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ProspectiveStateReadinessError("RUNTIME_ATTESTATION_INVALID") from exc
