@@ -9,8 +9,12 @@ on:
     paths:
       - ".github/workflows/prospective-hype-lineage.yml"
       - "src/cocomelon/research/prospective_artifact_lineage.py"
+      - "src/cocomelon/research/prospective_lineage_failure.py"
       - "src/cocomelon/prospective_hype_lineage_cli.py"
+      - "src/cocomelon/prospective_hype_lineage_failure_cli.py"
       - "tests/test_prospective_artifact_lineage.py"
+      - "tests/test_prospective_lineage_failure.py"
+      - "tests/test_prospective_lineage_failure_cli.py"
       - "tests/test_prospective_hype_lineage_workflow.py"
   pull_request:
     branches:
@@ -18,8 +22,12 @@ on:
     paths:
       - ".github/workflows/prospective-hype-lineage.yml"
       - "src/cocomelon/research/prospective_artifact_lineage.py"
+      - "src/cocomelon/research/prospective_lineage_failure.py"
       - "src/cocomelon/prospective_hype_lineage_cli.py"
+      - "src/cocomelon/prospective_hype_lineage_failure_cli.py"
       - "tests/test_prospective_artifact_lineage.py"
+      - "tests/test_prospective_lineage_failure.py"
+      - "tests/test_prospective_lineage_failure_cli.py"
       - "tests/test_prospective_hype_lineage_workflow.py"
   workflow_dispatch:
 
@@ -57,8 +65,20 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
+      - name: Capture lineage audit clock
+        id: clock
+        run: |
+          set -euo pipefail
+          audit_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
+          echo "audited_at_ms=$audit_ms" >> "$GITHUB_OUTPUT"
+
       - name: Discover latest two cumulative main-state artifacts
         id: discover
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -109,6 +129,9 @@ jobs:
           PY
 
       - name: Download previous and current cumulative states
+        id: download
+        continue-on-error: true
+        if: steps.discover.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
@@ -129,6 +152,8 @@ jobs:
 
       - name: Verify latest frozen-format state and classify predecessor
         id: compatibility
+        continue-on-error: true
+        if: steps.download.outcome == 'success'
         env:
           PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
           CURRENT_ID: ${{ steps.discover.outputs.current_id }}
@@ -154,6 +179,9 @@ jobs:
           fi
 
       - name: Build immutable append-only lineage receipt
+        id: build
+        continue-on-error: true
+        if: steps.compatibility.outcome == 'success'
         env:
           PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
           CURRENT_ID: ${{ steps.discover.outputs.current_id }}
@@ -254,6 +282,9 @@ jobs:
           PY
 
       - name: Upload lineage receipt
+        id: success_upload
+        continue-on-error: true
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: prospective-hype-lineage-${{ github.run_id }}-${{ github.run_attempt }}
@@ -261,3 +292,86 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+
+      - name: Preserve redacted lineage failure receipt
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.compatibility.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          DISCOVER_OUTCOME: ${{ steps.discover.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          COMPATIBILITY_OUTCOME: ${{ steps.compatibility.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.success_upload.outcome }}
+          PREVIOUS_ID: ${{ steps.discover.outputs.previous_id }}
+          CURRENT_ID: ${{ steps.discover.outputs.current_id }}
+        run: |
+          set -euo pipefail
+          stage=""
+          reason_code=""
+          if [[ "$DISCOVER_OUTCOME" == "failure" ]]; then
+            stage="discovery"
+            reason_code="LINEAGE_ARTIFACT_DISCOVERY_FAILED"
+          elif [[ "$DOWNLOAD_OUTCOME" == "failure" ]]; then
+            stage="download"
+            reason_code="LINEAGE_STATE_DOWNLOAD_FAILED"
+          elif [[ "$COMPATIBILITY_OUTCOME" == "failure" ]]; then
+            stage="state"
+            reason_code="LINEAGE_STATE_READINESS_FAILED"
+          elif [[ "$BUILD_OUTCOME" == "failure" ]]; then
+            stage="verify"
+            reason_code="LINEAGE_APPEND_ONLY_VERIFY_FAILED"
+          elif [[ "$UPLOAD_OUTCOME" == "failure" ]]; then
+            stage="upload"
+            reason_code="LINEAGE_RECEIPT_UPLOAD_FAILED"
+          else
+            echo "lineage failure stage could not be resolved" >&2
+            exit 2
+          fi
+
+          mkdir -p "$LINEAGE_ROOT"
+          cocomelon-prospective-hype-lineage-failure \
+            --audited-at-ms "$AUDIT_MS" \
+            --stage "$stage" \
+            --reason-code "$reason_code" \
+            --previous-artifact-id "${PREVIOUS_ID:-none}" \
+            --current-artifact-id "${CURRENT_ID:-none}" \
+            > "$LINEAGE_ROOT/failure.json"
+
+      - name: Upload lineage failure receipt
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.compatibility.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-failed-lineage-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-lineage/failure.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve lineage failure status
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.compatibility.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        run: exit 1
