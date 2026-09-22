@@ -8,11 +8,17 @@ from pathlib import Path
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
+from cocomelon.research.prospective_capture_transport import (
+    CAPTURE_SCHEDULE_CRON,
+    CAPTURE_TRANSPORT,
+    FROZEN_OBSERVER_SOURCE_REVISION,
+    JOB_TIMEOUT_MINUTES,
+    PREWARM_MINUTE_UTC,
+    PROTECTED_ATTEMPT_MINUTE_UTC,
+)
 from cocomelon.research.prospective_context_report import (
     HYPE_PROSPECTIVE_VALIDATION_V1,
 )
-
-FROZEN_OBSERVER_SOURCE_REVISION = "0131fccdb09a2b9ba959dd5785ea213a6297f719"
 READINESS_SCHEMA_VERSION = 1
 
 
@@ -124,12 +130,12 @@ def verify_prospective_hype_campaign_readiness(
         raise ProspectiveCampaignReadinessError("CANDIDATE_PLAN_HORIZON_MISMATCH")
 
     exact_requirements = (
-        ('cron: "3,8,13 * * * *"', "FROZEN_CRON_MISSING"),
+        (f'cron: "{CAPTURE_SCHEDULE_CRON}"', "FROZEN_CRON_MISSING"),
         ("contents: read", "CONTENTS_PERMISSION_NOT_READ_ONLY"),
         ("actions: read", "ACTIONS_PERMISSION_NOT_READ_ONLY"),
         ("group: prospective-hype-clean-observer", "FROZEN_CONCURRENCY_GROUP_MISSING"),
         ("cancel-in-progress: false", "FROZEN_CONCURRENCY_MODE_MISSING"),
-        ("timeout-minutes: 10", "FROZEN_TIMEOUT_MISSING"),
+        (f"timeout-minutes: {JOB_TIMEOUT_MINUTES}", "FROZEN_TIMEOUT_MISSING"),
         ("COCOMELON_EXECUTION_MODE: paper", "PAPER_MODE_MISSING"),
         (
             "COCOMELON_API_URL: https://api.hyperliquid.xyz",
@@ -157,6 +163,21 @@ def verify_prospective_hype_campaign_readiness(
         ),
         ("persist-credentials: false", "CHECKOUT_CREDENTIAL_PERSISTENCE_NOT_DISABLED"),
         ("Verify frozen observer source revision", "SOURCE_REVISION_VERIFY_STEP_MISSING"),
+        ("Pre-warm for protected hourly capture", "PREWARM_STEP_MISSING"),
+        (f'"capture_transport": "{CAPTURE_TRANSPORT}"', "CAPTURE_TRANSPORT_MISSING"),
+        (f'"prewarm_minute_utc": {PREWARM_MINUTE_UTC}', "PREWARM_MINUTE_MISSING"),
+        (
+            f'"protected_attempt_minute_utc": {PROTECTED_ATTEMPT_MINUTE_UTC}',
+            "PROTECTED_ATTEMPT_MINUTE_MISSING",
+        ),
+        (
+            "control-plane-supersession.json",
+            "CONTROL_PLANE_SUPERSESSION_RECEIPT_MISSING",
+        ),
+        (
+            "POST_CUTOVER_CONTROL_PLANE_SUPERSESSION_FORBIDDEN",
+            "POST_CUTOVER_SUPERSESSION_GATE_MISSING",
+        ),
         ("Restore latest clean evidence state", "STATE_RESTORE_STEP_MISSING"),
         ("Verify cumulative state continuity", "STATE_CONTINUITY_STEP_MISSING"),
         ("Verify prospective runtime attestation", "RUNTIME_ATTESTATION_STEP_MISSING"),
@@ -196,6 +217,12 @@ def verify_prospective_hype_campaign_readiness(
     if "testnet" in workflow_source.lower():
         raise ProspectiveCampaignReadinessError("TESTNET_REFERENCE_FORBIDDEN")
 
+    _require_before(
+        workflow_source,
+        "Pre-warm for protected hourly capture",
+        "Restore latest clean evidence state",
+        "PREWARM_ORDER_INVALID",
+    )
     _require_before(
         workflow_source,
         "Restore latest clean evidence state",
