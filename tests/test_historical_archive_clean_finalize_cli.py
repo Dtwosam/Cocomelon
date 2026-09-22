@@ -5,12 +5,14 @@ from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import cocomelon.historical_archive_clean_finalize_cli as cli
 
 
 def test_finalization_cli_is_offline_and_emits_terminal_verdict(
-    monkeypatch,
-    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
     runtime = SimpleNamespace(
