@@ -73,7 +73,6 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
     assert "if-no-files-found: error" in source
 
 
-
 def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
@@ -86,7 +85,6 @@ def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
     assert "tests/test_prospective_blind_monitor.py" in source
     assert "tests/test_prospective_cutover_acceptance.py" in source
     assert "tests/test_prospective_hype_blind_monitor_workflow.py" in source
-
 
 
 def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> None:
@@ -117,7 +115,6 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
         "net_return",
     ):
         assert token not in source
-
 
 
 def test_blind_monitor_uses_one_audit_clock_across_all_failure_stages() -> None:
