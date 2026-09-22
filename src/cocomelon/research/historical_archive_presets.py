@@ -71,7 +71,7 @@ class HistoricalArchiveExperimentPreset:
     overlap_candles: int
     max_funding_items: int
     evidence_class: str = EVIDENCE_CLASS
-    schema_version: int = 3
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
         if not self.name.strip():
@@ -301,7 +301,7 @@ class HistoricalArchivePresetBundleReceipt:
     comparison_sha256: str
     preset_run_receipt_sha256: str
     implementation_sha256: str
-    schema_version: int = 2
+    schema_version: int = 3
 
     def __post_init__(self) -> None:
         for field in ("preset_name", "preset_id", "preset_run_receipt_id"):
