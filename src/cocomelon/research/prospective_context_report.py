@@ -256,6 +256,20 @@ class ProspectiveValidationReport:
         ):
             if cast(int, getattr(self, field)) < 0:
                 raise ValueError(f"{field} must be non-negative")
+        if self.capture_coverage != (
+            Decimal(self.observation_count) / Decimal(self.expected_anchor_count)
+        ):
+            raise ValueError("capture_coverage must match observation count")
+        if self.settled_trade_count > self.effective_trade_count:
+            raise ValueError("settled_trade_count cannot exceed effective_trade_count")
+        if self.positive_net_count + self.non_positive_net_count != self.settled_trade_count:
+            raise ValueError("settled return counts must reconcile")
+        if not self.total_net_return.is_finite():
+            raise ValueError("total_net_return must be finite")
+        if self.mean_net_return is not None and not self.mean_net_return.is_finite():
+            raise ValueError("mean_net_return must be finite when present")
+        if len(self.blocks) != self.plan.stability_blocks:
+            raise ValueError("report blocks must match validation plan")
         if self.evidence_class != PROSPECTIVE_EVIDENCE_CLASS:
             raise ValueError("prospective report evidence class is fixed")
         if self.promotion_eligible:
@@ -388,10 +402,15 @@ def build_prospective_validation_report(
     if as_of_ms < 0:
         raise ValueError("as_of_ms must be non-negative")
 
+    all_observations = store.iter_observations()
+    if any(item.anchor_end_ms < plan.validation_start_ms for item in all_observations):
+        raise ProspectiveValidationError(
+            "prospective campaign contains pre-validation observation"
+        )
     observations = tuple(
         item
-        for item in store.iter_observations()
-        if plan.validation_start_ms <= item.anchor_end_ms < plan.validation_end_ms
+        for item in all_observations
+        if item.anchor_end_ms < plan.validation_end_ms
     )
     for observation in observations:
         _validate_anchor(observation, plan)
@@ -419,7 +438,7 @@ def build_prospective_validation_report(
             raise ProspectiveValidationError("outcome anchor does not match observation")
         if outcome.target_end_ms != observation.target_end_ms:
             raise ProspectiveValidationError("outcome target does not match observation")
-        if outcome.direction is not observation.effective_direction:
+        if outcome.direction != observation.effective_direction:
             raise ProspectiveValidationError("outcome direction does not match observation")
         outcomes_by_observation[outcome.observation_id] = outcome
         outcomes.append(outcome)
