@@ -16,6 +16,7 @@ from cocomelon.hyperliquid.normalize import (
 )
 from cocomelon.research.historical_archive_clean_evidence import (
     ArchiveCleanAnchorObservation,
+    ArchiveCleanCaptureSummary,
     ArchiveCleanEvidenceStore,
     ArchiveCleanOutcome,
     ArchiveCleanSignalEvidence,
@@ -26,6 +27,8 @@ from cocomelon.research.historical_archive_model_artifact import (
     load_archive_candidate_model_artifact,
 )
 from cocomelon.research.historical_archive_paper_scorer import (
+    ArchivePaperAnchorResult,
+    ArchivePaperState,
     score_archive_candidate_anchor,
 )
 from cocomelon.research.historical_archive_validation_spec import (
@@ -133,14 +136,14 @@ class ArchiveCleanEvidenceBackend(Protocol):
 
     def observation_id_for_time(self, anchor_end_ms: int) -> str | None: ...
 
-    def latest_state(self) -> object: ...
+    def latest_state(self) -> ArchivePaperState: ...
 
     def record_anchor_result(
         self,
         *,
         features: tuple[HistoricalFeatureRow, ...],
-        state_before: object,
-        result: object,
+        state_before: ArchivePaperState,
+        result: ArchivePaperAnchorResult,
     ) -> ArchiveCleanAnchorObservation: ...
 
     def due_unsettled_signals(
@@ -154,7 +157,11 @@ class ArchiveCleanEvidenceBackend(Protocol):
 
     def record_outcome(self, outcome: ArchiveCleanOutcome) -> object: ...
 
-    def capture_summary(self, *, as_of_ms: int) -> object: ...
+    def capture_summary(
+        self,
+        *,
+        as_of_ms: int,
+    ) -> ArchiveCleanCaptureSummary: ...
 
 
 def _canonical_json(value: object) -> str:
