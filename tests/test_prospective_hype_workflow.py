@@ -25,6 +25,9 @@ def test_prospective_hype_workflow_is_paper_only_and_read_only() -> None:
 def test_prospective_hype_workflow_runs_redundant_early_hour_attempts() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
+    assert "push:" in source
+    assert 'branches:' in source
+    assert '.github/workflows/prospective-hype-clean.yml' in source
     assert 'cron: "3,8,13 * * * *"' in source
     assert "workflow_dispatch:" in source
     assert "cancel-in-progress: false" in source
