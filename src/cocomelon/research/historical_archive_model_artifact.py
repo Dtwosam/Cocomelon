@@ -12,7 +12,6 @@ from typing import Any, cast
 
 from cocomelon.domain.features import TrendRegime
 from cocomelon.research.historical_archive_final_calibration import (
-    HistoricalArchiveFinalCalibration,
     verify_archive_final_calibration,
 )
 from cocomelon.research.historical_archive_presets import (
@@ -589,7 +588,8 @@ def verify_archive_candidate_model_artifact(
         source_root=source_root,
         output_root=output_root,
     )
-    if raw != expected.to_dict():
+    expected_payload = json.loads(_canonical_json(expected.to_dict()))
+    if raw != expected_payload:
         raise HistoricalArchiveModelArtifactError(
             "ARCHIVE_MODEL_ARTIFACT_EVIDENCE_MISMATCH"
         )
