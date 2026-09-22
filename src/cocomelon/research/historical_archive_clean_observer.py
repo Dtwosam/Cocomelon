@@ -607,15 +607,17 @@ def settle_archive_clean_due_signals(
     settled: list[ArchiveCleanOutcome] = []
     missing: list[str] = []
     for observation, signal in due:
-        candle = candle_by_market_end.get((signal.market, signal.target_end_ms))
-        if candle is None:
+        exit_candle = candle_by_market_end.get(
+            (signal.market, signal.target_end_ms)
+        )
+        if exit_candle is None:
             missing.append(signal.signal_id)
             continue
         outcome = build_archive_clean_outcome(
             spec,
             observation=observation,
             signal=signal,
-            exit_candle=candle,
+            exit_candle=exit_candle,
             as_of_ms=as_of_ms,
         )
         evidence_store.record_outcome(outcome)
@@ -651,20 +653,24 @@ def run_archive_clean_observer_cycle(
     if evidence_store.spec.spec_id != spec.spec_id:
         raise ValueError("clean evidence store does not match validation spec")
     cycle_started_ms = clock_ms()
-    anchor_end_ms = latest_closed_anchor_ms(cycle_started_ms, spec)
+    candidate_anchor_end_ms = latest_closed_anchor_ms(cycle_started_ms, spec)
+    anchor_end_ms: int | None = candidate_anchor_end_ms
 
     status = "no_anchor_recorded"
     observation_id: str | None = None
     if cycle_started_ms < spec.validation_start_ms:
         status = "before_validation_window"
         anchor_end_ms = None
-    elif anchor_end_ms >= spec.validation_end_ms:
+    elif candidate_anchor_end_ms >= spec.validation_end_ms:
         status = "after_validation_window"
         anchor_end_ms = None
-    elif cycle_started_ms - anchor_end_ms > MAX_ENTRY_CANDLE_AGE_MS:
+    elif (
+        cycle_started_ms - candidate_anchor_end_ms
+        > MAX_ENTRY_CANDLE_AGE_MS
+    ):
         status = "missed_anchor_window"
     else:
-        existing = evidence_store.anchor_for_time(anchor_end_ms)
+        existing = evidence_store.anchor_for_time(candidate_anchor_end_ms)
         if existing is not None:
             status = "already_recorded"
             observation_id = existing.observation_id
@@ -672,7 +678,7 @@ def run_archive_clean_observer_cycle(
             collection = collect_archive_clean_features(
                 reader,
                 spec=spec,
-                anchor_end_ms=anchor_end_ms,
+                anchor_end_ms=candidate_anchor_end_ms,
                 clock_ms=clock_ms,
                 source_store=source_store,
             )
