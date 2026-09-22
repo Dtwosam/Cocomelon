@@ -310,87 +310,39 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import hashlib
           import json
           import os
-          import re
           from pathlib import Path
 
+          from cocomelon.research.historical_archive_clean_control_plane import (
+              CAPTURE_SCHEDULE_CRON,
+              ensure_archive_clean_control_plane,
+          )
           from cocomelon.research.historical_archive_clean_runtime import (
               load_pinned_archive_clean_runtime,
           )
           from cocomelon.util.time import utc_now_ms
 
-          def canonical(value):
-              return json.dumps(
-                  value,
-                  sort_keys=True,
-                  separators=(",", ":"),
-                  ensure_ascii=False,
-                  allow_nan=False,
-              )
-
+          if os.environ["SCHEDULE_CRON"] != CAPTURE_SCHEDULE_CRON:
+              raise SystemExit("ARCHIVE_CLEAN_CAPTURE_SCHEDULE_MISMATCH")
           pinned = load_pinned_archive_clean_runtime(
               Path(os.environ["RUNTIME_ROOT"]),
               expected_pin_id=os.environ["PIN_ID"],
           )
-          schedule = os.environ["SCHEDULE_CRON"]
-          minutes = tuple(
-              int(value)
-              for value in schedule.split()[0].split(",")
+          attestation = ensure_archive_clean_control_plane(
+              Path(os.environ["STATE_ROOT"]),
+              pinned=pinned,
+              frozen_revision=os.environ["FROZEN_REVISION"],
+              runtime_artifact_id=os.environ["RUNTIME_ARTIFACT_ID"],
+              as_of_ms=utc_now_ms(),
           )
-          expected_minutes = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)
-          if minutes != expected_minutes:
-              raise SystemExit("ARCHIVE_CLEAN_CAPTURE_MINUTES_MISMATCH")
-          payload = {
-              "kind": "historical-archive-clean-control-plane",
-              "runtime_id": pinned.bundle.runtime_id,
-              "pin_id": pinned.pin.pin_id,
-              "candidate_id": pinned.bundle.candidate_id,
-              "validation_spec_id": pinned.bundle.validation_spec_id,
-              "model_artifact_id": pinned.bundle.model_artifact_id,
-              "frozen_revision": os.environ["FROZEN_REVISION"],
-              "runtime_artifact_id": os.environ["RUNTIME_ARTIFACT_ID"],
-              "workflow_path": os.environ["WORKFLOW_PATH"],
-              "schedule_cron": schedule,
-              "attempt_minutes_utc": expected_minutes,
-              "max_entry_candle_age_ms": 900000,
-              "state_artifact_name": os.environ["STATE_ARTIFACT_NAME"],
-              "execution_mode": os.environ["COCOMELON_EXECUTION_MODE"],
-              "api_url": os.environ["COCOMELON_API_URL"],
-              "ws_url": os.environ["COCOMELON_WS_URL"],
-              "concurrency_group": (
-                  "historical-archive-clean-" + os.environ["PIN_ID"]
-              ),
-              "cancel_in_progress": False,
-              "job_timeout_minutes": 12,
-              "contents_permission": "read",
-              "actions_permission": "read",
-              "artifact_retention_days": int(
-                  os.environ["ARTIFACT_RETENTION_DAYS"]
-              ),
-              "schema_version": 1,
-          }
-          payload["control_plane_id"] = hashlib.sha256(
-              canonical(payload).encode("utf-8")
-          ).hexdigest()
-          state_root = Path(os.environ["STATE_ROOT"])
-          path = state_root / "control-plane.json"
-          encoded = canonical(payload) + "\n"
-          now_ms = utc_now_ms()
-          if path.exists():
-              if path.read_text(encoding="utf-8") != encoded:
-                  raise SystemExit(
-                      "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION"
-                  )
-          elif now_ms >= pinned.runtime.spec.validation_start_ms:
-              raise SystemExit(
-                  "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED"
-              )
-          else:
-              path.write_text(encoded, encoding="utf-8")
           Path("/tmp/archive-clean-control-plane.json").write_text(
-              encoded,
+              json.dumps(
+                  attestation.to_dict(),
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
               encoding="utf-8",
           )
           PY

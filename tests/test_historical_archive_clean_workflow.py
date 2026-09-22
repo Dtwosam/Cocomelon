@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/historical-archive-clean.yml")
+CONTROL_PLANE = Path(
+    "src/cocomelon/research/historical_archive_clean_control_plane.py"
+)
 
 
 def test_archive_clean_workflow_is_disabled_by_default_and_paper_only() -> None:
@@ -30,11 +33,13 @@ def test_archive_clean_workflow_retries_inside_fifteen_minute_freshness() -> Non
     cron = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
     assert f'cron: "{cron}"' in source
     assert f'SCHEDULE_CRON: "{cron}"' in source
+    control_plane = CONTROL_PLANE.read_text(encoding="utf-8")
     assert (
-        "expected_minutes = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)"
-        in source
+        "CAPTURE_ATTEMPT_MINUTES_UTC = "
+        "(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)"
+        in control_plane
     )
-    assert '"max_entry_candle_age_ms": 900000' in source
+    assert "MAX_ENTRY_CANDLE_AGE_MS" in control_plane
     assert "workflow_dispatch:" in source
     assert "cancel-in-progress: false" in source
     assert "timeout-minutes: 12" in source
@@ -77,27 +82,23 @@ def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> No
 
     assert "POST_CUTOVER_ARCHIVE_CLEAN_STATE_RESTORE_REQUIRED" in source
     assert "POST_CUTOVER_ARCHIVE_CLEAN_CHECKPOINT_REQUIRED" in source
-    assert "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED" in source
-    assert "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION" in source
+    control_plane = CONTROL_PLANE.read_text(encoding="utf-8")
+    assert "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED" in control_plane
+    assert "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION" in control_plane
     assert 'state_root / "checkpoint.json"' in source
-    assert 'state_root / "control-plane.json"' in source
+    assert 'state_root / "control-plane.json"' in control_plane
 
 
 def test_archive_clean_control_plane_is_frozen_into_cumulative_state() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert '"kind": "historical-archive-clean-control-plane"' in source
-    assert '"frozen_revision": os.environ["FROZEN_REVISION"]' in source
-    assert '"runtime_artifact_id": os.environ["RUNTIME_ARTIFACT_ID"]' in source
-    assert '"workflow_path": os.environ["WORKFLOW_PATH"]' in source
-    assert '"state_artifact_name": os.environ["STATE_ARTIFACT_NAME"]' in source
-    assert '"execution_mode": os.environ["COCOMELON_EXECUTION_MODE"]' in source
-    assert '"api_url": os.environ["COCOMELON_API_URL"]' in source
-    assert '"ws_url": os.environ["COCOMELON_WS_URL"]' in source
-    assert '"cancel_in_progress": False' in source
-    assert '"contents_permission": "read"' in source
-    assert '"actions_permission": "read"' in source
-    assert '"control_plane_id"' in source
+    assert "ensure_archive_clean_control_plane" in source
+    assert "CAPTURE_SCHEDULE_CRON" in source
+    assert "ARCHIVE_CLEAN_CAPTURE_SCHEDULE_MISMATCH" in source
+    assert 'Path(os.environ["STATE_ROOT"])' in source
+    assert 'frozen_revision=os.environ["FROZEN_REVISION"]' in source
+    assert 'runtime_artifact_id=os.environ["RUNTIME_ARTIFACT_ID"]' in source
+    assert "/tmp/archive-clean-control-plane.json" in source
 
 
 def test_archive_clean_workflow_runs_checkpoint_cycle_and_append_only_lineage() -> None:
