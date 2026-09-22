@@ -173,6 +173,7 @@ jobs:
               ),
               "evidence_class": cycle["evidence_class"],
               "promotion_eligible": cycle["promotion_eligible"],
+              "cycle": cycle,
           }
           payload["receipt_id"] = hashlib.sha256(
               canonical(payload).encode("utf-8")
