@@ -1,0 +1,723 @@
+name: Historical Archive Clean Observer
+
+on:
+  schedule:
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: historical-archive-clean-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: ${{ github.ref == 'refs/heads/main' && vars.ARCHIVE_CLEAN_CAMPAIGN_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      FROZEN_REVISION: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+      RUNTIME_ARTIFACT_ID: ${{ vars.ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID }}
+      PIN_ID: ${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      RUNTIME_ROOT: artifacts/historical-archive-clean-runtime
+      STATE_ROOT: artifacts/historical-archive-clean-state
+      CYCLE_ROOT: artifacts/historical-archive-clean-cycle
+      SOURCE_ROOT: artifacts/historical-archive-clean-sources
+      STATE_ARTIFACT_NAME: historical-archive-clean-state-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      WORKFLOW_PATH: .github/workflows/historical-archive-clean.yml
+      SCHEDULE_CRON: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+      ARTIFACT_RETENTION_DAYS: "90"
+
+    steps:
+      - name: Validate frozen activation inputs
+        run: |
+          set -euo pipefail
+          test -n "$FROZEN_REVISION"
+          test -n "$RUNTIME_ARTIFACT_ID"
+          test -n "$PIN_ID"
+          [[ "$FROZEN_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNTIME_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$PIN_ID" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Checkout frozen observer revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify frozen observer revision
+        run: |
+          set -euo pipefail
+          actual_revision="$(git rev-parse HEAD)"
+          test "$actual_revision" = "$FROZEN_REVISION"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install frozen observer runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Download pinned runtime artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNTIME_ROOT"
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-runtime-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-runtime-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload.get("expired") is not False:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_EXPIRED")
+          run = payload.get("workflow_run")
+          if not isinstance(run, dict) or run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN")
+          if str(payload.get("id")) != os.environ["RUNTIME_ARTIFACT_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID_MISMATCH")
+          PY
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip"             > /tmp/archive-clean-runtime.zip
+          unzip -q /tmp/archive-clean-runtime.zip -d "$RUNTIME_ROOT"
+
+      - name: Verify pinned clean runtime
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime verify             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             > /tmp/archive-clean-runtime.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_runtime import (
+              load_pinned_archive_clean_runtime,
+          )
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-runtime.json").read_text(encoding="utf-8")
+          )
+          pinned = load_pinned_archive_clean_runtime(
+              Path(os.environ["RUNTIME_ROOT"]),
+              expected_pin_id=os.environ["PIN_ID"],
+          )
+          if payload["runtime_id"] != pinned.bundle.runtime_id:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ID_MISMATCH")
+          metadata = {
+              "runtime_id": pinned.bundle.runtime_id,
+              "candidate_id": pinned.bundle.candidate_id,
+              "validation_spec_id": pinned.bundle.validation_spec_id,
+              "model_artifact_id": pinned.bundle.model_artifact_id,
+              "validation_start_ms": pinned.runtime.spec.validation_start_ms,
+              "validation_end_ms": pinned.runtime.spec.validation_end_ms,
+              "finalization_not_before_ms": (
+                  pinned.runtime.spec.finalization_not_before_ms
+              ),
+              "first_expected_anchor_ms": (
+                  pinned.runtime.spec.first_expected_anchor_ms
+              ),
+              "anchor_interval_ms": pinned.runtime.spec.anchor_interval_ms,
+              "max_entry_candle_age_ms": 900000,
+          }
+          Path("/tmp/archive-clean-runtime-metadata.json").write_text(
+              json.dumps(
+                  metadata,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Restore latest cumulative clean state
+        id: restore
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$STATE_ROOT"
+          artifact_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"               --jq '[.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.head_branch == "main")]
+                | sort_by(.created_at)
+                | last // empty'
+          )"
+          if [ -z "$artifact_json" ]; then
+            echo "restored_artifact_id=none" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s\n' "$artifact_json" > /tmp/archive-clean-state-artifact.json
+          artifact_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/archive-clean-state-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["id"])
+          PY
+          )"
+          run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/archive-clean-state-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id"             > /tmp/archive-clean-state-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-state-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("path") != os.environ["WORKFLOW_PATH"]:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_WORKFLOW_MISMATCH")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_BRANCH_MISMATCH")
+          if run.get("event") not in {"schedule", "workflow_dispatch"}:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_EVENT_MISMATCH")
+          if run.get("conclusion") not in {"success", "failure"}:
+              raise SystemExit("ARCHIVE_CLEAN_STATE_PRODUCER_NOT_TERMINAL")
+          PY
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/archive-clean-state.zip
+          unzip -q /tmp/archive-clean-state.zip -d "$STATE_ROOT"
+          echo "restored_artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
+      - name: Verify state continuity and canonical finalization
+        id: continuity
+        env:
+          RESTORED_ARTIFACT_ID: ${{ steps.restore.outputs.restored_artifact_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_checkpoint import (
+              load_archive_clean_operational_checkpoint,
+          )
+          from cocomelon.research.historical_archive_clean_finalization import (
+              verify_archive_clean_finalization,
+          )
+          from cocomelon.research.historical_archive_clean_runtime import (
+              load_pinned_archive_clean_runtime,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          state_root = Path(os.environ["STATE_ROOT"])
+          checkpoint_path = state_root / "checkpoint.json"
+          finalization_path = state_root / "finalization" / "finalization.json"
+          restored = os.environ["RESTORED_ARTIFACT_ID"]
+          pinned = load_pinned_archive_clean_runtime(
+              Path(os.environ["RUNTIME_ROOT"]),
+              expected_pin_id=os.environ["PIN_ID"],
+          )
+          now_ms = utc_now_ms()
+          if restored == "none" and now_ms >= pinned.runtime.spec.validation_start_ms:
+              raise SystemExit(
+                  "POST_CUTOVER_ARCHIVE_CLEAN_STATE_RESTORE_REQUIRED"
+              )
+          if (
+              restored != "none"
+              and now_ms >= pinned.runtime.spec.validation_start_ms
+              and not checkpoint_path.is_file()
+          ):
+              raise SystemExit(
+                  "POST_CUTOVER_ARCHIVE_CLEAN_CHECKPOINT_REQUIRED"
+              )
+
+          finalized = False
+          finalization_id = None
+          verdict = None
+          if finalization_path.exists():
+              if not checkpoint_path.is_file():
+                  raise SystemExit(
+                      "ARCHIVE_CLEAN_FINALIZATION_CHECKPOINT_MISSING"
+                  )
+              checkpoint = load_archive_clean_operational_checkpoint(
+                  checkpoint_path
+              )
+              finalization = verify_archive_clean_finalization(
+                  finalization_path,
+                  spec=pinned.runtime.spec,
+                  runtime_id=pinned.bundle.runtime_id,
+                  pin_id=pinned.pin.pin_id,
+                  checkpoint=checkpoint,
+              )
+              finalized = True
+              finalization_id = finalization.finalization_id
+              verdict = finalization.verdict
+
+          payload = {
+              "restored_artifact_id": restored,
+              "as_of_ms": now_ms,
+              "validation_start_ms": pinned.runtime.spec.validation_start_ms,
+              "finalized": finalized,
+              "finalization_id": finalization_id,
+              "verdict": verdict,
+          }
+          Path("/tmp/archive-clean-continuity.json").write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"finalized={'true' if finalized else 'false'}\n")
+              handle.write(f"finalization_id={finalization_id or ''}\n")
+              handle.write(f"verdict={verdict or ''}\n")
+          PY
+
+      - name: Freeze or verify capture control plane
+        if: ${{ steps.continuity.outputs.finalized != 'true' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_runtime import (
+              load_pinned_archive_clean_runtime,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          pinned = load_pinned_archive_clean_runtime(
+              Path(os.environ["RUNTIME_ROOT"]),
+              expected_pin_id=os.environ["PIN_ID"],
+          )
+          schedule = os.environ["SCHEDULE_CRON"]
+          minutes = tuple(
+              int(value)
+              for value in schedule.split()[0].split(",")
+          )
+          expected_minutes = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)
+          if minutes != expected_minutes:
+              raise SystemExit("ARCHIVE_CLEAN_CAPTURE_MINUTES_MISMATCH")
+          payload = {
+              "kind": "historical-archive-clean-control-plane",
+              "runtime_id": pinned.bundle.runtime_id,
+              "pin_id": pinned.pin.pin_id,
+              "candidate_id": pinned.bundle.candidate_id,
+              "validation_spec_id": pinned.bundle.validation_spec_id,
+              "model_artifact_id": pinned.bundle.model_artifact_id,
+              "frozen_revision": os.environ["FROZEN_REVISION"],
+              "runtime_artifact_id": os.environ["RUNTIME_ARTIFACT_ID"],
+              "workflow_path": os.environ["WORKFLOW_PATH"],
+              "schedule_cron": schedule,
+              "attempt_minutes_utc": expected_minutes,
+              "max_entry_candle_age_ms": 900000,
+              "state_artifact_name": os.environ["STATE_ARTIFACT_NAME"],
+              "execution_mode": os.environ["COCOMELON_EXECUTION_MODE"],
+              "api_url": os.environ["COCOMELON_API_URL"],
+              "ws_url": os.environ["COCOMELON_WS_URL"],
+              "concurrency_group": (
+                  "historical-archive-clean-" + os.environ["PIN_ID"]
+              ),
+              "cancel_in_progress": False,
+              "job_timeout_minutes": 12,
+              "contents_permission": "read",
+              "actions_permission": "read",
+              "artifact_retention_days": int(
+                  os.environ["ARTIFACT_RETENTION_DAYS"]
+              ),
+              "schema_version": 1,
+          }
+          payload["control_plane_id"] = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          state_root = Path(os.environ["STATE_ROOT"])
+          path = state_root / "control-plane.json"
+          encoded = canonical(payload) + "\n"
+          now_ms = utc_now_ms()
+          if path.exists():
+              if path.read_text(encoding="utf-8") != encoded:
+                  raise SystemExit(
+                      "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION"
+                  )
+          elif now_ms >= pinned.runtime.spec.validation_start_ms:
+              raise SystemExit(
+                  "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED"
+              )
+          else:
+              path.write_text(encoded, encoding="utf-8")
+          Path("/tmp/archive-clean-control-plane.json").write_text(
+              encoded,
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Prepare empty per-cycle roots
+        if: ${{ steps.continuity.outputs.finalized != 'true' }}
+        run: |
+          set -euo pipefail
+          rm -rf "$CYCLE_ROOT" "$SOURCE_ROOT"
+          mkdir -p "$CYCLE_ROOT" "$SOURCE_ROOT"
+
+      - name: Run pinned paper-only clean cycle
+        id: cycle
+        if: ${{ steps.continuity.outputs.finalized != 'true' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-cycle             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --checkpoint "$STATE_ROOT/checkpoint.json"             --cycle-evidence-root "$CYCLE_ROOT"             --source-root "$SOURCE_ROOT"             > /tmp/archive-clean-cycle.json             2> /tmp/archive-clean-cycle.stderr
+
+      - name: Preserve cycle failure receipt
+        if: ${{ steps.continuity.outputs.finalized != 'true' && steps.cycle.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          stderr = Path("/tmp/archive-clean-cycle.stderr").read_bytes()
+          runtime = json.loads(
+              Path("/tmp/archive-clean-runtime.json").read_text(encoding="utf-8")
+          )
+          payload = {
+              "kind": "historical-archive-clean-cycle-failure",
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "runtime_id": runtime["runtime_id"],
+              "pin_id": os.environ["PIN_ID"],
+              "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
+              "paper_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "schema_version": 1,
+          }
+          payload["failure_id"] = hashlib.sha256(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+          ).hexdigest()
+          Path("/tmp/archive-clean-cycle-failure.json").write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Append immutable cycle receipt to cumulative lineage
+        if: ${{ steps.continuity.outputs.finalized != 'true' && steps.cycle.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          cycle_path = Path(os.environ["CYCLE_ROOT"]) / "cycle.json"
+          payload = json.loads(cycle_path.read_text(encoding="utf-8"))
+          destination = (
+              Path(os.environ["STATE_ROOT"])
+              / "receipts"
+              / (
+                  f"{int(payload['completed_at_ms']):013d}-"
+                  f"{payload['receipt_id']}"
+              )
+              / "cycle.json"
+          )
+          destination.parent.mkdir(parents=True, exist_ok=True)
+          if destination.exists():
+              if destination.read_bytes() != cycle_path.read_bytes():
+                  raise SystemExit("ARCHIVE_CLEAN_CYCLE_RECEIPT_CONFLICT")
+          else:
+              destination.write_bytes(cycle_path.read_bytes())
+          PY
+
+      - name: Verify append-only cycle lineage
+        id: lineage
+        if: ${{ steps.continuity.outputs.finalized != 'true' && steps.cycle.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-lineage             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --checkpoint "$STATE_ROOT/checkpoint.json"             --receipts-root "$STATE_ROOT/receipts"             > /tmp/archive-clean-lineage.json             2> /tmp/archive-clean-lineage.stderr
+
+      - name: Determine terminal finalization readiness
+        id: terminal
+        if: ${{ steps.continuity.outputs.finalized != 'true' && steps.cycle.outcome == 'success' && steps.lineage.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_checkpoint import (
+              load_archive_clean_operational_checkpoint,
+          )
+          from cocomelon.research.historical_archive_clean_runtime import (
+              load_pinned_archive_clean_runtime,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          pinned = load_pinned_archive_clean_runtime(
+              Path(os.environ["RUNTIME_ROOT"]),
+              expected_pin_id=os.environ["PIN_ID"],
+          )
+          checkpoint = load_archive_clean_operational_checkpoint(
+              Path(os.environ["STATE_ROOT"]) / "checkpoint.json"
+          )
+          now_ms = utc_now_ms()
+          pending_signal_count = sum(
+              len(item.pending_signal_ids)
+              for item in checkpoint.pending_observations
+          )
+          active_position_count = len(
+              checkpoint.latest_state.active_at(now_ms).positions
+          )
+          ready = (
+              now_ms >= pinned.runtime.spec.finalization_not_before_ms
+              and checkpoint.as_of_ms >= pinned.runtime.spec.finalization_not_before_ms
+              and pending_signal_count == 0
+              and active_position_count == 0
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"ready={'true' if ready else 'false'}\n")
+              handle.write(f"pending_signal_count={pending_signal_count}\n")
+              handle.write(f"active_position_count={active_position_count}\n")
+          PY
+
+      - name: Finalize terminal clean campaign
+        id: finalization
+        if: ${{ steps.terminal.outputs.ready == 'true' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p "$STATE_ROOT/finalization"
+          cocomelon-historical-archive-clean-finalize             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --checkpoint "$STATE_ROOT/checkpoint.json"             --output-root "$STATE_ROOT/finalization"             > /tmp/archive-clean-finalization.json             2> /tmp/archive-clean-finalization.stderr
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-finalization.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"finalization_id={payload['finalization_id']}\n")
+              handle.write(f"verdict={payload['verdict']}\n")
+          PY
+
+      - name: Publish redacted run summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          print("## Historical archive clean observer")
+          print()
+          continuity_path = Path("/tmp/archive-clean-continuity.json")
+          if continuity_path.exists():
+              continuity = json.loads(
+                  continuity_path.read_text(encoding="utf-8")
+              )
+              print(f"- restored artifact: {continuity['restored_artifact_id']}")
+              print(f"- already finalized: {continuity['finalized']}")
+              if continuity["finalized"]:
+                  print(f"- finalization id: {continuity['finalization_id']}")
+                  print(f"- terminal verdict: {continuity['verdict']}")
+          cycle_path = Path("/tmp/archive-clean-cycle.json")
+          if cycle_path.exists():
+              cycle = json.loads(cycle_path.read_text(encoding="utf-8"))
+              print(f"- cycle status: {cycle['status']}")
+              print(f"- checkpoint: {cycle['checkpoint_id']}")
+              print(
+                  "- anchors captured to date: "
+                  f"{cycle['captured_elapsed_anchor_count']}/"
+                  f"{cycle['expected_elapsed_anchor_count']}"
+              )
+              print(
+                  "- settled outcomes to date: "
+                  f"{cycle['cumulative_settled_outcome_count']}"
+              )
+              print(f"- pending signals: {cycle['pending_signal_count']}")
+          lineage_path = Path("/tmp/archive-clean-lineage.json")
+          if lineage_path.exists():
+              lineage = json.loads(
+                  lineage_path.read_text(encoding="utf-8")
+              )
+              print(f"- lineage: {lineage['status']}")
+              print(f"- lineage id: {lineage['lineage_id']}")
+              print(f"- cycle receipts: {lineage['receipt_count']}")
+          finalization_path = Path("/tmp/archive-clean-finalization.json")
+          if finalization_path.exists():
+              finalization = json.loads(
+                  finalization_path.read_text(encoding="utf-8")
+              )
+              print(f"- finalization id: {finalization['finalization_id']}")
+              print(f"- terminal verdict: {finalization['verdict']}")
+              print(
+                  "- candidate review eligible: "
+                  f"{finalization['eligible_for_candidate_review']}"
+              )
+          print("- interim economics: redacted")
+          print("- execution ready: false")
+          PY
+
+      - name: Upload cumulative archive clean state
+        id: state_upload
+        if: ${{ always() && steps.continuity.outputs.finalized != 'true' && hashFiles('artifacts/historical-archive-clean-state/**') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.STATE_ARTIFACT_NAME }}
+          path: ${{ env.STATE_ROOT }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload immutable cycle evidence
+        id: cycle_upload
+        if: ${{ always() && steps.continuity.outputs.finalized != 'true' && hashFiles('artifacts/historical-archive-clean-cycle/**') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-cycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CYCLE_ROOT }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload immutable source captures
+        id: source_upload
+        if: ${{ always() && steps.continuity.outputs.finalized != 'true' && hashFiles('artifacts/historical-archive-clean-sources/**') != '' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-sources-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.SOURCE_ROOT }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload immutable lineage report
+        id: lineage_upload
+        if: ${{ always() && steps.lineage.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-lineage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/archive-clean-lineage.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload cycle failure receipt
+        id: failure_upload
+        if: ${{ always() && steps.cycle.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-failed-cycle-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/archive-clean-cycle-failure.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload canonical terminal finalization
+        id: finalization_upload
+        if: ${{ always() && steps.finalization.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-finalization-${{ steps.finalization.outputs.finalization_id }}
+          path: ${{ env.STATE_ROOT }}/finalization/finalization.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve terminal failure status
+        if: ${{ always() }}
+        env:
+          CYCLE_OUTCOME: ${{ steps.cycle.outcome }}
+          LINEAGE_OUTCOME: ${{ steps.lineage.outcome }}
+          FINALIZATION_OUTCOME: ${{ steps.finalization.outcome }}
+          STATE_UPLOAD_OUTCOME: ${{ steps.state_upload.outcome }}
+          CYCLE_UPLOAD_OUTCOME: ${{ steps.cycle_upload.outcome }}
+          SOURCE_UPLOAD_OUTCOME: ${{ steps.source_upload.outcome }}
+          LINEAGE_UPLOAD_OUTCOME: ${{ steps.lineage_upload.outcome }}
+          FAILURE_UPLOAD_OUTCOME: ${{ steps.failure_upload.outcome }}
+          FINALIZATION_UPLOAD_OUTCOME: ${{ steps.finalization_upload.outcome }}
+          ALREADY_FINALIZED: ${{ steps.continuity.outputs.finalized }}
+        run: |
+          set -euo pipefail
+          if [ "$ALREADY_FINALIZED" = "true" ]; then
+            exit 0
+          fi
+          if [ "$CYCLE_OUTCOME" = "failure" ]; then
+            test "$FAILURE_UPLOAD_OUTCOME" = "success"
+            exit 1
+          fi
+          test "$CYCLE_OUTCOME" = "success"
+          test "$LINEAGE_OUTCOME" = "success"
+          test "$STATE_UPLOAD_OUTCOME" = "success"
+          test "$CYCLE_UPLOAD_OUTCOME" = "success"
+          test "$SOURCE_UPLOAD_OUTCOME" = "success"
+          test "$LINEAGE_UPLOAD_OUTCOME" = "success"
+          if [ "$FINALIZATION_OUTCOME" = "failure" ]; then
+            exit 1
+          fi
+          if [ "$FINALIZATION_OUTCOME" = "success" ]; then
+            test "$FINALIZATION_UPLOAD_OUTCOME" = "success"
+          fi
