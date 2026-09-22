@@ -252,6 +252,17 @@ def observe_current_anchor(
             created=False,
         )
 
+    hype_15m = _latest_closed(
+        data.candles_15m["HYPE"],
+        market=spec.market,
+        interval="15m",
+        as_of_ms=data.as_of_ms,
+    )
+    if hype_15m.close_px != entry.close_px:
+        raise ProspectiveObserverError(
+            "HYPE 15m and 1h closes disagree at prospective anchor"
+        )
+
     features = _feature_snapshots(data, anchor_end_ms=entry.end_ms)
     hype_feature, hype_context = _hype_context(features)
     raw_decision = evaluate_prospective_context_candidate(
