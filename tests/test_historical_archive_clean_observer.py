@@ -13,8 +13,11 @@ from cocomelon.research.historical_archive_clean_evidence import (
     ArchiveCleanEvidenceStore,
 )
 from cocomelon.research.historical_archive_clean_observer import (
+    ArchiveCleanFrozenRuntime,
     ArchiveCleanSourceCaptureStore,
+    HistoricalArchiveCleanObserverError,
     collect_archive_clean_features,
+    load_archive_clean_frozen_runtime,
     latest_closed_anchor_ms,
     run_archive_clean_observer_cycle,
     settle_archive_clean_due_signals,
@@ -297,6 +300,66 @@ def _scored_result(
         next_state=ArchivePaperState(),
     )
 
+
+
+def _runtime_artifact(spec: HistoricalArchiveCleanValidationSpec) -> SimpleNamespace:
+    return SimpleNamespace(
+        artifact_id=spec.model_artifact_id,
+        model_payload_sha256=spec.model_payload_sha256,
+        candidate_id=spec.candidate_id,
+        training_plan_id=spec.training_plan_id,
+        calibration_id=spec.calibration_id,
+        model_family=spec.model_family,
+        calibration_variant=spec.calibration_variant,
+        model_format=spec.model_format,
+        selected_horizon_thresholds=spec.horizon_thresholds,
+        allow_coin_calibration=spec.allow_coin_calibration,
+        min_sample_count=spec.min_sample_count,
+        execution_policy=spec.execution_policy,
+        max_concurrent_positions=spec.max_concurrent_positions,
+        costs=spec.costs,
+        validation_not_before_ms=spec.validation_start_ms,
+        execution_ready=False,
+        promotion_eligible=False,
+    )
+
+
+def test_frozen_runtime_loads_files_without_rebuild_and_binds_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _spec()
+    artifact_value = _runtime_artifact(spec)
+    monkeypatch.setattr(
+        observer,
+        "load_archive_candidate_model_artifact",
+        lambda path: artifact_value,
+    )
+    monkeypatch.setattr(
+        observer,
+        "load_archive_clean_validation_spec",
+        lambda path: spec,
+    )
+
+    runtime = load_archive_clean_frozen_runtime(tmp_path)
+
+    assert runtime.artifact is artifact_value
+    assert runtime.spec is spec
+
+
+def test_frozen_runtime_rejects_model_spec_lineage_drift() -> None:
+    spec = _spec()
+    artifact_value = _runtime_artifact(spec)
+    artifact_value.model_payload_sha256 = "9" * 64
+
+    with pytest.raises(
+        HistoricalArchiveCleanObserverError,
+        match="ARCHIVE_CLEAN_RUNTIME_LINEAGE_MISMATCH",
+    ):
+        ArchiveCleanFrozenRuntime(
+            artifact=artifact_value,  # type: ignore[arg-type]
+            spec=spec,
+        )
 
 def test_latest_closed_anchor_uses_frozen_5m_end_offset() -> None:
     spec = _spec()
