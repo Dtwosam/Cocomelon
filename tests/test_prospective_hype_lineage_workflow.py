@@ -38,8 +38,8 @@ def test_lineage_audit_compares_latest_two_distinct_observer_runs() -> None:
 def test_lineage_audit_uses_artifact_creation_times_and_record_level_verifier() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert '"previous_audited_at_ms": epoch_ms(previous["created_at"])' in source
-    assert '"current_audited_at_ms": epoch_ms(current["created_at"])' in source
+    assert '"previous_audited_at_ms": selected.previous_audited_at_ms' in source
+    assert '"current_audited_at_ms": selected.current_audited_at_ms' in source
     assert "cocomelon-prospective-hype-lineage" in source
     assert "--previous-artifact-id" in source
     assert "--current-artifact-id" in source
