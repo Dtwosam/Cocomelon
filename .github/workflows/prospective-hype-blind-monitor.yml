@@ -9,10 +9,12 @@ on:
     paths:
       - ".github/workflows/prospective-hype-blind-monitor.yml"
       - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/research/prospective_artifact_selection.py"
       - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
       - "src/cocomelon/research/prospective_blind_monitor_failure.py"
       - "src/cocomelon/prospective_hype_blind_monitor_failure_cli.py"
       - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_artifact_selection.py"
       - "tests/test_prospective_blind_monitor_failure.py"
       - "tests/test_prospective_blind_monitor_failure_cli.py"
       - "tests/test_prospective_hype_blind_monitor_workflow.py"
@@ -67,6 +69,7 @@ jobs:
           set -euo pipefail
           python -m pytest \
             tests/test_prospective_blind_monitor.py \
+            tests/test_prospective_artifact_selection.py \
             tests/test_prospective_blind_monitor_failure.py \
             tests/test_prospective_blind_monitor_failure_cli.py \
             tests/test_prospective_cutover_acceptance.py \
@@ -142,6 +145,11 @@ jobs:
           import json
           import os
           from pathlib import Path
+
+          from cocomelon.research.prospective_artifact_selection import (
+              ProspectiveArtifactSelectionError,
+              select_state_artifact_for_health,
+          )
 
           def emit(**values):
               with Path(os.environ["GITHUB_OUTPUT"]).open(
@@ -224,30 +232,27 @@ jobs:
               lineage_items,
               key=lambda item: (item["created_at"], item["id"]),
           )
-          matching_states = [
-              item
-              for item in artifacts
-              if item.get("name") == "prospective-hype-clean-state"
-              and item["workflow_run"].get("id")
-              == health["workflow_run"].get("id")
-          ]
-          if len(matching_states) != 1:
+          try:
+              state_id = select_state_artifact_for_health(
+                  raw_artifacts,
+                  health,
+              )
+          except ProspectiveArtifactSelectionError as exc:
               emit(
                   status="failure",
-                  reason_code="STATE_ARTIFACT_MATCH_INVALID",
+                  reason_code=str(exc),
                   health_id=health["id"],
                   lineage_id=lineage["id"],
                   state_id="none",
               )
               raise SystemExit(0)
 
-          state = matching_states[0]
           emit(
               status="ok",
               reason_code="none",
               health_id=health["id"],
               lineage_id=lineage["id"],
-              state_id=state["id"],
+              state_id=state_id,
           )
           PY
 
@@ -406,6 +411,7 @@ jobs:
           STATE_ID: ${{ steps.discover.outputs.state_id }}
         run: |
           set -euo pipefail
+          mkdir -p "$MONITOR_ROOT"
           if [[ "$DISCOVERY_STATUS" != "ok" ]]; then
             reason_code="$DISCOVERY_REASON"
           else

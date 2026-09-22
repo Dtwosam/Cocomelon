@@ -32,17 +32,25 @@ def test_blind_monitor_matches_state_to_latest_health_run() -> None:
     assert 'str(item.get("name", "")).startswith(' in source
     assert '"prospective-hype-clean-health-"' in source
     assert '"prospective-hype-lineage-"' in source
-    assert 'item.get("name") == "prospective-hype-clean-state"' in source
-    assert 'item["workflow_run"].get("id")' in source
-    assert 'health["workflow_run"].get("id")' in source
-    assert "len(matching_states) != 1" in source
-    assert 'state_id=state["id"]' in source
+    assert "select_state_artifact_for_health" in source
+    assert "ProspectiveArtifactSelectionError" in source
+    assert "raw_artifacts" in source
+    assert "state_id=state_id" in source
     assert "Verify source artifact producer provenance" in source
     assert 'health_run.get("path")' in source
     assert '== ".github/workflows/prospective-hype-clean.yml"' in source
     assert 'lineage_run.get("path")' in source
     assert '== ".github/workflows/prospective-hype-lineage.yml"' in source
     assert 'state_workflow.get("id") == health_workflow.get("id")' in source
+
+
+def test_blind_monitor_discovery_is_safe_across_workflow_reruns() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert '"src/cocomelon/research/prospective_artifact_selection.py"' in source
+    assert '"tests/test_prospective_artifact_selection.py"' in source
+    assert "tests/test_prospective_artifact_selection.py \\" in source
+    assert "len(matching_states) != 1" not in source
 
 
 def test_blind_monitor_never_downloads_or_names_interim_economics() -> None:
@@ -102,7 +110,6 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "ARTIFACT_DISCOVERY_REQUEST_FAILED" in source
     assert "HEALTH_ARTIFACT_MISSING" in source
     assert "LINEAGE_ARTIFACT_MISSING" in source
-    assert "STATE_ARTIFACT_MATCH_INVALID" in source
     assert "ARTIFACT_PROVENANCE_REQUEST_FAILED" in source
     assert "ARTIFACT_PRODUCER_PROVENANCE_INVALID" in source
     assert "HEALTH_ARTIFACT_DOWNLOAD_FAILED" in source
@@ -113,6 +120,9 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "if: ${{ always() }}" in source
     assert "always() && steps.discover.outputs.status == 'ok'" in source
     assert "Preserve discovery failure receipt" in source
+    discovery_failure_index = source.index("Preserve discovery failure receipt")
+    failure_tail = source[discovery_failure_index:]
+    assert 'mkdir -p "$MONITOR_ROOT"' in failure_tail
     assert "Preserve download failure receipt" in source
     assert "Preserve monitor failure status" in source
     assert "steps.discover.outputs.status != 'ok'" in source
