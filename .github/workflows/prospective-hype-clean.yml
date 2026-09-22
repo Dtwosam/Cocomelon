@@ -73,6 +73,34 @@ jobs:
           fi
         id: restore
 
+      - name: Verify cumulative state continuity
+        env:
+          RESTORED_ARTIFACT_ID: ${{ steps.restore.outputs.restored_artifact_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/prospective-hype-continuity.json
+          import json
+          import os
+
+          from cocomelon.research.prospective_state_continuity import (
+              verify_prospective_state_continuity,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          result = verify_prospective_state_continuity(
+              os.environ["EVIDENCE_ROOT"],
+              restored_artifact_id=os.environ["RESTORED_ARTIFACT_ID"],
+              as_of_ms=utc_now_ms(),
+          )
+          print(
+              json.dumps(
+                  result.to_dict(),
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+          )
+          PY
+
       - name: Run prospective clean observer
         run: |
           set -euo pipefail
@@ -94,6 +122,68 @@ jobs:
           assert len(payload["state_digest"]) == 64
           PY
 
+      - name: Build immutable state-lineage receipt
+        env:
+          RESTORED_ARTIFACT_ID: ${{ steps.restore.outputs.restored_artifact_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          continuity = json.loads(
+              Path("/tmp/prospective-hype-continuity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          cycle = json.loads(
+              Path("/tmp/prospective-hype-cycle.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          prior_campaign = continuity["campaign_id"]
+          if prior_campaign is not None:
+              assert prior_campaign == cycle["campaign_id"]
+
+          payload = {
+              "github_run_id": os.environ["GITHUB_RUN_ID"],
+              "github_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "restored_artifact_id": os.environ["RESTORED_ARTIFACT_ID"],
+              "continuity_status": continuity["status"],
+              "campaign_id": cycle["campaign_id"],
+              "prior_state_digest": continuity["prior_state_digest"],
+              "current_state_digest": cycle["state_digest"],
+              "observation_count": cycle["observation_count"],
+              "outcome_count": cycle["outcome_count"],
+              "observation": cycle["observation"],
+              "settled_outcome_ids": cycle["settled_outcome_ids"],
+              "missing_target_observation_ids": (
+                  cycle["missing_target_observation_ids"]
+              ),
+              "evidence_class": cycle["evidence_class"],
+              "promotion_eligible": cycle["promotion_eligible"],
+              "cycle": cycle,
+          }
+          payload["receipt_id"] = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          Path("/tmp/prospective-hype-lineage.json").write_text(
+              canonical(payload) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Publish run summary
         env:
           RESTORED_ARTIFACT_ID: ${{ steps.restore.outputs.restored_artifact_id }}
@@ -112,7 +202,14 @@ jobs:
           print()
           print(f"- restored artifact: {os.environ['RESTORED_ARTIFACT_ID']}")
           print(f"- campaign: {payload['campaign_id']}")
+          continuity = json.loads(
+              Path("/tmp/prospective-hype-continuity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           print(f"- state digest: {payload['state_digest']}")
+          print(f"- continuity: {continuity['status']}")
+          print(f"- prior state digest: {continuity['prior_state_digest']}")
           print(f"- status: {observation['status']}")
           print(f"- raw direction: {observation['raw_direction']}")
           print(f"- effective direction: {observation['effective_direction']}")
@@ -137,8 +234,8 @@ jobs:
       - name: Upload immutable run receipt
         uses: actions/upload-artifact@v7
         with:
-          name: prospective-hype-clean-run-${{ github.run_id }}
-          path: /tmp/prospective-hype-cycle.json
+          name: prospective-hype-clean-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/prospective-hype-lineage.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
