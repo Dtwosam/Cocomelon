@@ -20,6 +20,9 @@ CONTROL_PLANE_SCHEMA_VERSION = 2
 CAPTURE_SCHEDULE_CRON = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
 CAPTURE_ATTEMPT_MINUTES_UTC = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)
 WORKFLOW_PATH = ".github/workflows/historical-archive-clean.yml"
+RUNTIME_PUBLISHER_WORKFLOW_PATH = (
+    ".github/workflows/historical-archive-clean-runtime-publish.yml"
+)
 EXECUTION_MODE = "paper"
 API_URL = "https://api.hyperliquid.xyz"
 WS_URL = "wss://api.hyperliquid.xyz/ws"
@@ -99,6 +102,7 @@ class ArchiveCleanControlPlaneAttestation:
     candidate_package_sha256: str
     frozen_revision: str
     runtime_artifact_id: str
+    runtime_publisher_workflow_path: str
     workflow_path: str
     schedule_cron: str
     attempt_minutes_utc: tuple[int, ...]
@@ -131,6 +135,10 @@ class ArchiveCleanControlPlaneAttestation:
             raise ValueError("frozen_revision must be a lowercase git SHA")
         if not self.runtime_artifact_id.isdigit():
             raise ValueError("runtime_artifact_id must be numeric")
+        if self.runtime_publisher_workflow_path != RUNTIME_PUBLISHER_WORKFLOW_PATH:
+            raise ValueError(
+                "runtime_publisher_workflow_path must match frozen publisher"
+            )
         if self.workflow_path != WORKFLOW_PATH:
             raise ValueError("workflow_path must match frozen control plane")
         if self.schedule_cron != CAPTURE_SCHEDULE_CRON:
@@ -182,6 +190,9 @@ class ArchiveCleanControlPlaneAttestation:
             "candidate_package_sha256": self.candidate_package_sha256,
             "frozen_revision": self.frozen_revision,
             "runtime_artifact_id": self.runtime_artifact_id,
+            "runtime_publisher_workflow_path": (
+                self.runtime_publisher_workflow_path
+            ),
             "workflow_path": self.workflow_path,
             "schedule_cron": self.schedule_cron,
             "attempt_minutes_utc": self.attempt_minutes_utc,
@@ -240,6 +251,7 @@ def build_archive_clean_control_plane(
         candidate_package_sha256=pinned.bundle.candidate_package_sha256,
         frozen_revision=frozen_revision,
         runtime_artifact_id=runtime_artifact_id,
+        runtime_publisher_workflow_path=RUNTIME_PUBLISHER_WORKFLOW_PATH,
         workflow_path=WORKFLOW_PATH,
         schedule_cron=CAPTURE_SCHEDULE_CRON,
         attempt_minutes_utc=CAPTURE_ATTEMPT_MINUTES_UTC,
@@ -292,6 +304,10 @@ def load_archive_clean_control_plane(
             runtime_artifact_id=_string(
                 raw.get("runtime_artifact_id"),
                 "runtime_artifact_id",
+            ),
+            runtime_publisher_workflow_path=_string(
+                raw.get("runtime_publisher_workflow_path"),
+                "runtime_publisher_workflow_path",
             ),
             workflow_path=_string(raw.get("workflow_path"), "workflow_path"),
             schedule_cron=_string(raw.get("schedule_cron"), "schedule_cron"),
