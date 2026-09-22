@@ -53,10 +53,15 @@ def test_prospective_hype_workflow_restores_and_republishes_cumulative_state() -
     assert "cocomelon-prospective-hype-observer" in source
     assert "cocomelon-prospective-hype-report" in source
     assert "/tmp/prospective-hype-report.json" in source
+    assert "cocomelon-prospective-hype-health" in source
+    assert "/tmp/prospective-hype-health.json" in source
     assert 'report["state_digest"] == payload["state_digest"]' in source
     assert 'report["campaign_id"] == payload["campaign_id"]' in source
     assert 'report["plan_id"] == payload["validation_plan_id"]' in source
     assert 'report["expected_anchor_count"] == 1080' in source
+    assert 'health["validation_report_id"] == report["report_id"]' in source
+    assert 'health["required_final_observation_count"] == 972' in source
+    assert 'health["missed_anchor_budget"] == 108' in source
 
 
 def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
@@ -73,6 +78,7 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
     assert '"receipt_id"' in source
     assert '"cycle": cycle' in source
     assert '"validation_report": report' in source
+    assert '"campaign_health": health' in source
     assert (
         "prospective-hype-clean-report-${{ github.run_id }}-${{ github.run_attempt }}"
         in source
@@ -82,4 +88,16 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
     assert "missed_anchor_count_to_date" in source
     assert "capture_coverage_to_date" in source
     assert "overdue_unsettled_count" in source
+    assert "remaining_missed_anchor_budget" in source
+    assert "maximum_final_capture_coverage" in source
+    assert "maximum_possible_settled_trades" in source
+    assert "irrecoverable_reasons" in source
+    assert "prospective-hype-clean-health-${{ github.run_id }}-${{ github.run_attempt }}" in source
+    assert "PROSPECTIVE_CAMPAIGN_IRRECOVERABLE" in source
+    assert source.index("Upload cumulative clean evidence state") < source.index(
+        "Fail closed if frozen campaign is irrecoverable"
+    )
+    assert source.index("Upload immutable campaign health") < source.index(
+        "Fail closed if frozen campaign is irrecoverable"
+    )
     assert "GITHUB_STEP_SUMMARY" in source
