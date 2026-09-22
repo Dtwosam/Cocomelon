@@ -74,9 +74,15 @@ def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
 
 
 
-def test_blind_monitor_runs_on_relevant_pull_requests() -> None:
+def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "pull_request:" in source
     assert 'branches:\n      - main' in source
     assert '"src/cocomelon/research/prospective_blind_monitor.py"' in source
+    assert "github.event_name == 'pull_request'" in source
+    assert "github.event_name != 'pull_request'" in source
+    assert "Validate freshness and workflow contracts" in source
+    assert "tests/test_prospective_blind_monitor.py" in source
+    assert "tests/test_prospective_cutover_acceptance.py" in source
+    assert "tests/test_prospective_hype_blind_monitor_workflow.py" in source
