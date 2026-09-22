@@ -30,6 +30,12 @@ def test_readiness_workflow_verifies_frozen_runtime_and_pin_scoped_state() -> No
     assert "Checkout frozen observer revision" in source
     assert 'test "$actual_revision" = "$FROZEN_REVISION"' in source
     assert "cocomelon-historical-archive-clean-runtime verify" in source
+    assert "historical-archive-clean-runtime-" in source
+    assert "RUNTIME_PUBLISHER_WORKFLOW_PATH" in source
+    assert "historical-archive-clean-runtime-publish.yml" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NAME_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH" in source
     assert "historical-archive-clean-state-" in source
     assert "actions/artifacts?name=$STATE_ARTIFACT_NAME" in source
     assert 'run.get("path") != os.environ["WORKFLOW_PATH"]' in source
