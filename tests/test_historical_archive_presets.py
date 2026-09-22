@@ -179,7 +179,12 @@ def test_preset_run_receipt_is_deterministic_and_binds_outputs() -> None:
 
 def test_preset_run_receipt_rejects_comparison_config_drift() -> None:
     result = _fake_experiment_result()
-    result.comparison.config = object()
+
+    class DriftedConfig:
+        def to_dict(self) -> dict[str, object]:
+            return {"drifted": True}
+
+    result.comparison.config = DriftedConfig()
 
     with pytest.raises(
         RuntimeError,
