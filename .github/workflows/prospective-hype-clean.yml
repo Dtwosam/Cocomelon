@@ -29,14 +29,21 @@ jobs:
       COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
       EVIDENCE_ROOT: artifacts/prospective-hype-clean
       STATE_ARTIFACT_NAME: prospective-hype-clean-state
+      OBSERVER_SOURCE_REVISION: 0131fccdb09a2b9ba959dd5785ea213a6297f719
 
     steps:
       - name: Checkout observer revision
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.sha }}
+          ref: 0131fccdb09a2b9ba959dd5785ea213a6297f719
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Verify frozen observer source revision
+        run: |
+          set -euo pipefail
+          actual_revision="$(git rev-parse HEAD)"
+          test "$actual_revision" = "$OBSERVER_SOURCE_REVISION"
 
       - uses: actions/setup-python@v7
         with:
@@ -104,8 +111,9 @@ jobs:
       - name: Verify prospective runtime attestation
         run: |
           set -euo pipefail
-          observer_source_revision="$(git rev-parse HEAD)"
-          python - "$observer_source_revision" \
+          actual_revision="$(git rev-parse HEAD)"
+          test "$actual_revision" = "$OBSERVER_SOURCE_REVISION"
+          python - "$OBSERVER_SOURCE_REVISION" \
             > /tmp/prospective-hype-runtime.json <<'PY'
           import json
           import os
