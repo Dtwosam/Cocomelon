@@ -1,11 +1,14 @@
 name: Prospective HYPE Readiness Audit
 
 on:
+  schedule:
+    - cron: "15 */6 * * *"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/prospective-hype-readiness.yml"
+      - ".github/workflows/prospective-hype-clean.yml"
       - "src/cocomelon/research/prospective_campaign_readiness.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
@@ -14,6 +17,7 @@ on:
       - main
     paths:
       - ".github/workflows/prospective-hype-readiness.yml"
+      - ".github/workflows/prospective-hype-clean.yml"
       - "src/cocomelon/research/prospective_campaign_readiness.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
@@ -21,6 +25,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: prospective-hype-readiness-audit
+  cancel-in-progress: false
 
 jobs:
   audit:
