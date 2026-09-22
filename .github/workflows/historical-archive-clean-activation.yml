@@ -1,0 +1,293 @@
+name: Historical Archive Clean Activation Authorization
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: historical-archive-clean-activation-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CAMPAIGN_ENABLED: ${{ vars.ARCHIVE_CLEAN_CAMPAIGN_ENABLED }}
+      FROZEN_REVISION: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+      RUNTIME_ARTIFACT_ID: ${{ vars.ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID }}
+      PIN_ID: ${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      RUNTIME_ROOT: artifacts/historical-archive-clean-runtime
+      STATE_ROOT: artifacts/historical-archive-clean-bootstrap-state
+      AUTHORIZATION_ROOT: artifacts/historical-archive-clean-activation
+      RUNTIME_PUBLISHER_WORKFLOW_PATH: .github/workflows/historical-archive-clean-runtime-publish.yml
+      BOOTSTRAP_WORKFLOW_PATH: .github/workflows/historical-archive-clean-bootstrap.yml
+      BOOTSTRAP_STATE_ARTIFACT_NAME: historical-archive-clean-bootstrap-state-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      ACTIVATION_ARTIFACT_NAME: historical-archive-clean-activation-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+
+    steps:
+      - name: Validate disabled pre-cutover activation tuple
+        run: |
+          set -euo pipefail
+          test "${CAMPAIGN_ENABLED:-false}" != "true"
+          [[ "$FROZEN_REVISION" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RUNTIME_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$PIN_ID" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Checkout frozen observer revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ vars.ARCHIVE_CLEAN_FROZEN_REVISION }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify frozen observer revision
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_REVISION"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install frozen activation runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Download authenticated package-bound runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNTIME_ROOT"
+          gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-activation-runtime-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation-runtime-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload.get("expired") is not False:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_EXPIRED")
+          if str(payload.get("id")) != os.environ["RUNTIME_ARTIFACT_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_ID_MISMATCH")
+          expected = "historical-archive-clean-runtime-" + os.environ["PIN_ID"]
+          if payload.get("name") != expected:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NAME_MISMATCH")
+          run = payload.get("workflow_run")
+          if (
+              not isinstance(run, dict)
+              or run.get("head_branch") != "main"
+              or not isinstance(run.get("id"), int)
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_ARTIFACT_NOT_MAIN")
+          Path("/tmp/archive-clean-activation-runtime-run-id").write_text(
+              str(run["id"]),
+              encoding="utf-8",
+          )
+          PY
+          runtime_run_id="$(cat /tmp/archive-clean-activation-runtime-run-id)"
+          gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/runs/$runtime_run_id"             > /tmp/archive-clean-activation-runtime-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-activation-runtime-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("path") != os.environ["RUNTIME_PUBLISHER_WORKFLOW_PATH"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_WORKFLOW_MISMATCH")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_BRANCH_MISMATCH")
+          if run.get("head_sha") != os.environ["FROZEN_REVISION"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_REVISION_MISMATCH")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_EVENT_MISMATCH")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PRODUCER_NOT_SUCCESS")
+          PY
+          gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$RUNTIME_ARTIFACT_ID/zip"             > /tmp/archive-clean-activation-runtime.zip
+          unzip -q /tmp/archive-clean-activation-runtime.zip -d "$RUNTIME_ROOT"
+
+      - name: Verify pinned package-bound runtime
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime verify             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             > /tmp/archive-clean-activation-runtime.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation-runtime.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["valid"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_RUNTIME_INVALID")
+          if payload["portable_package_bound"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PACKAGE_BINDING_REQUIRED")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_EXECUTION_READY_FORBIDDEN")
+          PY
+
+      - name: Restore authenticated pre-cutover bootstrap state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$STATE_ROOT"
+          artifact_json="$(
+            gh api -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$BOOTSTRAP_STATE_ARTIFACT_NAME&per_page=100"               --jq '[.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.head_branch == "main")]
+                | sort_by(.created_at)
+                | last // empty'
+          )"
+          test -n "$artifact_json"
+          printf '%s
+' "$artifact_json" > /tmp/archive-clean-activation-bootstrap-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation-bootstrap-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload.get("name") != os.environ["BOOTSTRAP_STATE_ARTIFACT_NAME"]:
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_ARTIFACT_NAME_MISMATCH")
+          run = payload.get("workflow_run")
+          if (
+              not isinstance(run, dict)
+              or not isinstance(run.get("id"), int)
+              or run.get("head_branch") != "main"
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_RUN_MISSING")
+          Path("/tmp/archive-clean-activation-bootstrap-artifact-id").write_text(
+              str(payload["id"]),
+              encoding="utf-8",
+          )
+          Path("/tmp/archive-clean-activation-bootstrap-run-id").write_text(
+              str(run["id"]),
+              encoding="utf-8",
+          )
+          PY
+          bootstrap_run_id="$(cat /tmp/archive-clean-activation-bootstrap-run-id)"
+          gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/runs/$bootstrap_run_id"             > /tmp/archive-clean-activation-bootstrap-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-activation-bootstrap-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("path") != os.environ["BOOTSTRAP_WORKFLOW_PATH"]:
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_WORKFLOW_MISMATCH")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_BRANCH_MISMATCH")
+          if run.get("head_sha") != os.environ["FROZEN_REVISION"]:
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REVISION_MISMATCH")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_EVENT_MISMATCH")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_NOT_SUCCESS")
+          PY
+          bootstrap_artifact_id="$(cat /tmp/archive-clean-activation-bootstrap-artifact-id)"
+          gh api -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$bootstrap_artifact_id/zip"             > /tmp/archive-clean-activation-bootstrap.zip
+          unzip -q /tmp/archive-clean-activation-bootstrap.zip -d "$STATE_ROOT"
+          cocomelon-historical-archive-clean-bootstrap             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --frozen-revision "$FROZEN_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             --verify-only             > /tmp/archive-clean-activation-bootstrap-verify.json
+
+      - name: Create pre-cutover activation authorization
+        id: authorize
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-activation             --runtime-root "$RUNTIME_ROOT"             --pin-id "$PIN_ID"             --state-root "$STATE_ROOT"             --authorization-root "$AUTHORIZATION_ROOT"             --frozen-revision "$FROZEN_REVISION"             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID"             > /tmp/archive-clean-activation.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation.json").read_text(encoding="utf-8")
+          )
+          if payload["campaign_enabled_at_authorization"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_CAMPAIGN_ENABLED_FORBIDDEN")
+          if payload["activation_authorized"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_AUTHORIZATION_REQUIRED")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_EXECUTION_READY_FORBIDDEN")
+          if payload["activation_artifact_name"] != os.environ["ACTIVATION_ARTIFACT_NAME"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_ARTIFACT_NAME_MISMATCH")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"authorization_id={payload['authorization_id']}\n")
+              handle.write(f"control_plane_id={payload['control_plane_id']}\n")
+              handle.write(f"bootstrap_id={payload['bootstrap_id']}\n")
+          PY
+
+      - name: Verify activation authorization file set
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["AUTHORIZATION_ROOT"])
+          files = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if path.is_file()
+          }
+          if files != {"activation.json"}:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_FILE_SET_MISMATCH")
+          PY
+
+      - name: Upload immutable pin-scoped activation authorization
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ACTIVATION_ARTIFACT_NAME }}
+          path: ${{ env.AUTHORIZATION_ROOT }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Publish redacted activation summary
+        run: |
+          set -euo pipefail
+          {
+            echo "## Historical archive clean activation authorization"
+            echo
+            echo "- pin: `$PIN_ID`"
+            echo "- authorization: `${{ steps.authorize.outputs.authorization_id }}`"
+            echo "- control plane: `${{ steps.authorize.outputs.control_plane_id }}`"
+            echo "- bootstrap: `${{ steps.authorize.outputs.bootstrap_id }}`"
+            echo "- activation artifact: `${{ steps.upload.outputs.artifact-id }}`"
+            echo "- campaign enabled at authorization: false"
+            echo "- market access performed: false"
+            echo "- activation authorized: true"
+            echo "- execution ready: false"
+          } >> "$GITHUB_STEP_SUMMARY"
