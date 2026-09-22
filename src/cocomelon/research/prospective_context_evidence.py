@@ -514,7 +514,12 @@ class ProspectiveEvidenceStore:
     def record_observation(self, observation: ProspectiveObservation) -> Path:
         if observation.candidate_spec_id != self.spec.spec_id:
             raise ValueError("observation does not belong to this campaign")
-        existing = self.observation_for_anchor(observation.anchor_end_ms)
+        try:
+            existing = self.observation_for_anchor(observation.anchor_end_ms)
+        except ProspectiveEvidenceConsistencyError as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "conflicting prospective observation evidence"
+            ) from exc
         if existing is not None and existing != observation:
             raise ProspectiveEvidenceConsistencyError(
                 "conflicting prospective observation for anchor"
@@ -571,14 +576,14 @@ class ProspectiveEvidenceStore:
         for path in sorted((self.root / "observations").glob("*/*.json")):
             if path.stem != observation_id:
                 continue
-            return self._observation_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            return self._load_observation_path(path)
         return None
 
     def load_outcome(self, outcome_id: str) -> ProspectiveOutcome | None:
         for path in sorted((self.root / "outcomes").glob("*/*.json")):
             if path.stem != outcome_id:
                 continue
-            return self._outcome_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            return self._load_outcome_path(path)
         return None
 
     def iter_observations(self) -> tuple[ProspectiveObservation, ...]:
@@ -586,7 +591,7 @@ class ProspectiveEvidenceStore:
         if not root.exists():
             return ()
         values = tuple(
-            self._observation_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            self._load_observation_path(path)
             for path in sorted(root.glob("*/*.json"))
         )
         return tuple(sorted(values, key=lambda item: (item.anchor_end_ms, item.observation_id)))
@@ -596,7 +601,7 @@ class ProspectiveEvidenceStore:
         if not root.exists():
             return ()
         values = tuple(
-            self._outcome_from_payload(json.loads(path.read_text(encoding="utf-8")))
+            self._load_outcome_path(path)
             for path in sorted(root.glob("*/*.json"))
         )
         return tuple(sorted(values, key=lambda item: (item.target_end_ms, item.outcome_id)))
@@ -616,6 +621,42 @@ class ProspectiveEvidenceStore:
             and observation.target_end_ms <= as_of_ms
             and observation.observation_id not in settled
         )
+
+    def _load_observation_path(self, path: Path) -> ProspectiveObservation:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "invalid prospective observation record"
+            ) from exc
+        observation = self._observation_from_payload(raw)
+        if observation.candidate_spec_id != self.spec.spec_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective observation candidate spec mismatch"
+            )
+        if path.stem != observation.observation_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective observation identity mismatch"
+            )
+        return observation
+
+    def _load_outcome_path(self, path: Path) -> ProspectiveOutcome:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProspectiveEvidenceConsistencyError(
+                "invalid prospective outcome record"
+            ) from exc
+        outcome = self._outcome_from_payload(raw)
+        if outcome.candidate_spec_id != self.spec.spec_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective outcome candidate spec mismatch"
+            )
+        if path.stem != outcome.outcome_id:
+            raise ProspectiveEvidenceConsistencyError(
+                "prospective outcome identity mismatch"
+            )
+        return outcome
 
     @staticmethod
     def _observation_from_payload(raw: object) -> ProspectiveObservation:
