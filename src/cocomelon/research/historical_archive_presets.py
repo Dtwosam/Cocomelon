@@ -12,8 +12,11 @@ from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
 from cocomelon.research.historical_archive_experiment import (
     ArchiveHistoricalExperimentResult,
+    ArchiveHistoricalSourcePreparation,
     HistoricalArchiveExperimentClient,
+    prepare_archive_historical_sources,
     run_archive_historical_experiment,
+    run_prepared_archive_historical_experiment,
     verify_downloaded_archive_cache,
 )
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
@@ -853,6 +856,68 @@ def ensure_archive_preset_output_root_clean(output_root: Path) -> None:
         raise RuntimeError("ARCHIVE_PRESET_OUTPUT_ROOT_NOT_DIRECTORY")
     if any(output_root.iterdir()):
         raise RuntimeError("ARCHIVE_PRESET_OUTPUT_ROOT_NOT_EMPTY")
+
+
+def prepare_archive_experiment_preset(
+    client: HistoricalArchiveExperimentClient,
+    *,
+    preset: HistoricalArchiveExperimentPreset,
+    archive_root: Path,
+    source_root: Path,
+    clock_ms: Callable[[], int],
+) -> ArchiveHistoricalSourcePreparation:
+    return prepare_archive_historical_sources(
+        client,
+        archive_root=archive_root,
+        source_root=source_root,
+        markets=preset.markets,
+        intervals=preset.intervals,
+        start_ms=preset.start_ms,
+        end_ms=preset.end_ms,
+        clock_ms=clock_ms,
+        max_funding_items=preset.max_funding_items,
+        overlap_candles=preset.overlap_candles,
+    )
+
+
+def run_prepared_archive_experiment_preset(
+    *,
+    preset: HistoricalArchiveExperimentPreset,
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> ArchiveHistoricalExperimentResult:
+    ensure_archive_preset_output_root_clean(output_root)
+    source_before = build_archive_preset_source_attestation(preset)
+    result = run_prepared_archive_historical_experiment(
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+        markets=preset.markets,
+        intervals=preset.intervals,
+        horizons_ms=preset.horizons_ms,
+        start_ms=preset.start_ms,
+        end_ms=preset.end_ms,
+        config=preset.comparison_config,
+        overlap_candles=preset.overlap_candles,
+    )
+    source_after = build_archive_preset_source_attestation(preset)
+    if source_after != source_before:
+        raise RuntimeError("ARCHIVE_PRESET_SOURCE_TREE_CHANGED_DURING_RUN")
+    write_python_source_tree_attestation(
+        output_root / "implementation.json",
+        source_after,
+    )
+    receipt = build_archive_preset_run_receipt(preset, result)
+    write_archive_preset_run_receipt(output_root, receipt)
+    bundle = build_archive_preset_bundle_receipt(
+        preset,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    write_archive_preset_bundle_receipt(output_root, bundle)
+    return result
 
 
 def run_archive_experiment_preset(
