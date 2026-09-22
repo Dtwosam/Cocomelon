@@ -15,8 +15,10 @@ from cocomelon.hyperliquid.normalize import (
     normalize_funding_history,
 )
 from cocomelon.research.historical_archive_clean_evidence import (
+    ArchiveCleanAnchorObservation,
     ArchiveCleanEvidenceStore,
     ArchiveCleanOutcome,
+    ArchiveCleanSignalEvidence,
     build_archive_clean_outcome,
 )
 from cocomelon.research.historical_archive_model_artifact import (
@@ -204,6 +206,7 @@ class ArchiveCleanSettlementSourceCapture:
     market: str
     requested_start_ms: int
     requested_end_ms: int
+    received_at_ms: int
     candles: tuple[Candle, ...]
     schema_version: int = SOURCE_CAPTURE_SCHEMA_VERSION
 
@@ -216,6 +219,8 @@ class ArchiveCleanSettlementSourceCapture:
             raise ValueError("requested_start_ms must be non-negative")
         if self.requested_end_ms < self.requested_start_ms:
             raise ValueError("requested_end_ms must follow requested_start_ms")
+        if self.received_at_ms < self.requested_end_ms:
+            raise ValueError("settlement capture must be received after requested end")
         if any(item.market.canonical != self.market for item in self.candles):
             raise ValueError("settlement capture market mismatch")
         if any(item.interval != "5m" for item in self.candles):
@@ -224,10 +229,6 @@ class ArchiveCleanSettlementSourceCapture:
             raise ValueError("settlement capture contains future candle")
         if self.schema_version != SOURCE_CAPTURE_SCHEMA_VERSION:
             raise ValueError("unsupported settlement source capture schema")
-
-    @property
-    def received_at_ms(self) -> int:
-        return 0 if not self.candles else max(item.received_at_ms for item in self.candles)
 
     def identity_payload(self) -> dict[str, object]:
         return {
@@ -554,7 +555,7 @@ def settle_archive_clean_due_signals(
 
     due_by_market: dict[
         str,
-        list[tuple[object, object]],
+        list[tuple[ArchiveCleanAnchorObservation, ArchiveCleanSignalEvidence]],
     ] = {}
     for observation, signal in due:
         due_by_market.setdefault(signal.market, []).append((observation, signal))
@@ -564,12 +565,7 @@ def settle_archive_clean_due_signals(
     for canonical in sorted(due_by_market):
         values = due_by_market[canonical]
         target_ends = tuple(
-            sorted(
-                {
-                    getattr(signal, "target_end_ms")
-                    for _observation, signal in values
-                }
-            )
+            sorted({signal.target_end_ms for _observation, signal in values})
         )
         start_ms = max(0, min(target_ends) - spec.anchor_interval_ms + 1)
         end_ms = max(target_ends)
@@ -595,6 +591,7 @@ def settle_archive_clean_due_signals(
             market=canonical,
             requested_start_ms=start_ms,
             requested_end_ms=end_ms,
+            received_at_ms=received_at_ms,
             candles=candles,
         )
         source_store.record_settlement(capture)
