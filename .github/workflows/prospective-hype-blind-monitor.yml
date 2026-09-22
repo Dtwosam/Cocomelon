@@ -10,7 +10,11 @@ on:
       - ".github/workflows/prospective-hype-blind-monitor.yml"
       - "src/cocomelon/research/prospective_blind_monitor.py"
       - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
+      - "src/cocomelon/research/prospective_blind_monitor_failure.py"
+      - "src/cocomelon/prospective_hype_blind_monitor_failure_cli.py"
       - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_blind_monitor_failure.py"
+      - "tests/test_prospective_blind_monitor_failure_cli.py"
       - "tests/test_prospective_hype_blind_monitor_workflow.py"
   pull_request:
     branches:
@@ -19,7 +23,11 @@ on:
       - ".github/workflows/prospective-hype-blind-monitor.yml"
       - "src/cocomelon/research/prospective_blind_monitor.py"
       - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
+      - "src/cocomelon/research/prospective_blind_monitor_failure.py"
+      - "src/cocomelon/prospective_hype_blind_monitor_failure_cli.py"
       - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_blind_monitor_failure.py"
+      - "tests/test_prospective_blind_monitor_failure_cli.py"
       - "tests/test_prospective_hype_blind_monitor_workflow.py"
   workflow_dispatch:
 
@@ -59,6 +67,8 @@ jobs:
           set -euo pipefail
           python -m pytest \
             tests/test_prospective_blind_monitor.py \
+            tests/test_prospective_blind_monitor_failure.py \
+            tests/test_prospective_blind_monitor_failure_cli.py \
             tests/test_prospective_cutover_acceptance.py \
             tests/test_prospective_hype_blind_monitor_workflow.py \
             -q
@@ -88,99 +98,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Discover matching health state and lineage artifacts
-        id: discover
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
-            > /tmp/prospective-artifacts.json
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          payload = json.loads(
-              Path("/tmp/prospective-artifacts.json").read_text(
-                  encoding="utf-8"
-              )
-          )
-          artifacts = [
-              item
-              for item in payload["artifacts"]
-              if not item["expired"]
-              and item["workflow_run"]["head_branch"] == "main"
-          ]
-
-          health = max(
-              (
-                  item
-                  for item in artifacts
-                  if item["name"].startswith("prospective-hype-clean-health-")
-              ),
-              key=lambda item: (item["created_at"], item["id"]),
-          )
-          lineage = max(
-              (
-                  item
-                  for item in artifacts
-                  if item["name"].startswith("prospective-hype-lineage-")
-              ),
-              key=lambda item: (item["created_at"], item["id"]),
-          )
-          matching_states = [
-              item
-              for item in artifacts
-              if item["name"] == "prospective-hype-clean-state"
-              and item["workflow_run"]["id"] == health["workflow_run"]["id"]
-          ]
-          if len(matching_states) != 1:
-              raise SystemExit(
-                  "exactly one state artifact must match the latest health run"
-              )
-          state = matching_states[0]
-
-          outputs = {
-              "health_id": health["id"],
-              "health_run_id": health["workflow_run"]["id"],
-              "state_id": state["id"],
-              "lineage_id": lineage["id"],
-          }
-          with Path(os.environ["GITHUB_OUTPUT"]).open(
-              "a",
-              encoding="utf-8",
-          ) as handle:
-              for key, value in outputs.items():
-                  handle.write(f"{key}={value}\n")
-          PY
-
-      - name: Download operational health and lineage receipts
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
-          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$MONITOR_ROOT/health" "$MONITOR_ROOT/lineage"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$HEALTH_ID/zip" \
-            > /tmp/prospective-health.zip
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$LINEAGE_ID/zip" \
-            > /tmp/prospective-lineage.zip
-          unzip -q /tmp/prospective-health.zip -d "$MONITOR_ROOT/health"
-          unzip -q /tmp/prospective-lineage.zip -d "$MONITOR_ROOT/lineage"
-          test -f "$MONITOR_ROOT/health/prospective-hype-health.json"
-          test -f "$MONITOR_ROOT/lineage/lineage.json"
-
-      - name: Build redacted campaign monitor receipt
-        env:
-          STATE_ID: ${{ steps.discover.outputs.state_id }}
+      - name: Capture monitor audit clock
+        id: clock
         run: |
           set -euo pipefail
           audit_ms="$(python - <<'PY'
@@ -188,13 +107,299 @@ jobs:
           print(time.time_ns() // 1_000_000)
           PY
           )"
+          echo "audited_at_ms=$audit_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Discover matching health state and lineage artifacts
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo "status=failure"
+            echo "reason_code=ARTIFACT_DISCOVERY_UNEXPECTED_FAILURE"
+            echo "health_id=none"
+            echo "lineage_id=none"
+            echo "state_id=none"
+          } >> "$GITHUB_OUTPUT"
+
+          if ! gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/prospective-artifacts.json
+          then
+            {
+              echo "status=failure"
+              echo "reason_code=ARTIFACT_DISCOVERY_REQUEST_FAILED"
+              echo "health_id=none"
+              echo "lineage_id=none"
+              echo "state_id=none"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def emit(**values):
+              with Path(os.environ["GITHUB_OUTPUT"]).open(
+                  "a",
+                  encoding="utf-8",
+              ) as handle:
+                  for key, value in values.items():
+                      handle.write(f"{key}={value}\n")
+
+          try:
+              payload = json.loads(
+                  Path("/tmp/prospective-artifacts.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              raw_artifacts = payload["artifacts"]
+              if not isinstance(raw_artifacts, list):
+                  raise TypeError
+              artifacts = [
+                  item
+                  for item in raw_artifacts
+                  if isinstance(item, dict)
+                  and not item.get("expired", True)
+                  and isinstance(item.get("workflow_run"), dict)
+                  and item["workflow_run"].get("head_branch") == "main"
+              ]
+          except (OSError, json.JSONDecodeError, KeyError, TypeError):
+              emit(
+                  status="failure",
+                  reason_code="ARTIFACT_DISCOVERY_PAYLOAD_INVALID",
+                  health_id="none",
+                  lineage_id="none",
+                  state_id="none",
+              )
+              raise SystemExit(0)
+
+          health_items = [
+              item
+              for item in artifacts
+              if str(item.get("name", "")).startswith(
+                  "prospective-hype-clean-health-"
+              )
+          ]
+          if not health_items:
+              emit(
+                  status="failure",
+                  reason_code="HEALTH_ARTIFACT_MISSING",
+                  health_id="none",
+                  lineage_id="none",
+                  state_id="none",
+              )
+              raise SystemExit(0)
+
+          lineage_items = [
+              item
+              for item in artifacts
+              if str(item.get("name", "")).startswith(
+                  "prospective-hype-lineage-"
+              )
+          ]
+          if not lineage_items:
+              health = max(
+                  health_items,
+                  key=lambda item: (item["created_at"], item["id"]),
+              )
+              emit(
+                  status="failure",
+                  reason_code="LINEAGE_ARTIFACT_MISSING",
+                  health_id=health["id"],
+                  lineage_id="none",
+                  state_id="none",
+              )
+              raise SystemExit(0)
+
+          health = max(
+              health_items,
+              key=lambda item: (item["created_at"], item["id"]),
+          )
+          lineage = max(
+              lineage_items,
+              key=lambda item: (item["created_at"], item["id"]),
+          )
+          matching_states = [
+              item
+              for item in artifacts
+              if item.get("name") == "prospective-hype-clean-state"
+              and item["workflow_run"].get("id")
+              == health["workflow_run"].get("id")
+          ]
+          if len(matching_states) != 1:
+              emit(
+                  status="failure",
+                  reason_code="STATE_ARTIFACT_MATCH_INVALID",
+                  health_id=health["id"],
+                  lineage_id=lineage["id"],
+                  state_id="none",
+              )
+              raise SystemExit(0)
+
+          state = matching_states[0]
+          emit(
+              status="ok",
+              reason_code="none",
+              health_id=health["id"],
+              lineage_id=lineage["id"],
+              state_id=state["id"],
+          )
+          PY
+
+      - name: Preserve discovery failure receipt
+        if: ${{ always() && steps.discover.outputs.status != 'ok' }}
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          REASON_CODE: ${{ steps.discover.outputs.reason_code }}
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
+          STATE_ID: ${{ steps.discover.outputs.state_id }}
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-blind-monitor-failure \
+            --audited-at-ms "$AUDIT_MS" \
+            --stage discovery \
+            --reason-code "$REASON_CODE" \
+            --health-artifact-id "$HEALTH_ID" \
+            --lineage-artifact-id "$LINEAGE_ID" \
+            --state-artifact-id "$STATE_ID" \
+            > "$MONITOR_ROOT/failure.json"
+
+      - name: Download operational health and lineage receipts
+        id: download
+        if: ${{ steps.discover.outputs.status == 'ok' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "status=failure"
+            echo "reason_code=SOURCE_ARTIFACT_DOWNLOAD_UNEXPECTED_FAILURE"
+          } >> "$GITHUB_OUTPUT"
+          mkdir -p "$MONITOR_ROOT/health" "$MONITOR_ROOT/lineage"
+          status="ok"
+          reason_code="none"
+
+          if ! gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$HEALTH_ID/zip" \
+            > /tmp/prospective-health.zip
+          then
+            status="failure"
+            reason_code="HEALTH_ARTIFACT_DOWNLOAD_FAILED"
+          elif ! gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$LINEAGE_ID/zip" \
+            > /tmp/prospective-lineage.zip
+          then
+            status="failure"
+            reason_code="LINEAGE_ARTIFACT_DOWNLOAD_FAILED"
+          elif ! unzip -q /tmp/prospective-health.zip -d "$MONITOR_ROOT/health"
+          then
+            status="failure"
+            reason_code="HEALTH_ARTIFACT_UNPACK_FAILED"
+          elif ! unzip -q /tmp/prospective-lineage.zip -d "$MONITOR_ROOT/lineage"
+          then
+            status="failure"
+            reason_code="LINEAGE_ARTIFACT_UNPACK_FAILED"
+          elif [[ ! -f "$MONITOR_ROOT/health/prospective-hype-health.json" ]]
+          then
+            status="failure"
+            reason_code="HEALTH_ARTIFACT_FILE_MISSING"
+          elif [[ ! -f "$MONITOR_ROOT/lineage/lineage.json" ]]
+          then
+            status="failure"
+            reason_code="LINEAGE_ARTIFACT_FILE_MISSING"
+          fi
+
+          {
+            echo "status=$status"
+            echo "reason_code=$reason_code"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Preserve download failure receipt
+        if: ${{ always() && steps.discover.outputs.status == 'ok' && steps.download.outputs.status != 'ok' }}
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          REASON_CODE: ${{ steps.download.outputs.reason_code }}
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
+          STATE_ID: ${{ steps.discover.outputs.state_id }}
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-blind-monitor-failure \
+            --audited-at-ms "$AUDIT_MS" \
+            --stage download \
+            --reason-code "$REASON_CODE" \
+            --health-artifact-id "$HEALTH_ID" \
+            --lineage-artifact-id "$LINEAGE_ID" \
+            --state-artifact-id "$STATE_ID" \
+            > "$MONITOR_ROOT/failure.json"
+
+      - name: Build redacted campaign monitor receipt
+        id: monitor
+        if: ${{ steps.discover.outputs.status == 'ok' && steps.download.outputs.status == 'ok' }}
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
+          STATE_ID: ${{ steps.discover.outputs.state_id }}
+        run: |
+          set -euo pipefail
+          monitor_rc=0
           cocomelon-prospective-hype-blind-monitor \
             --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
             --lineage "$MONITOR_ROOT/lineage/lineage.json" \
             --state-artifact-id "$STATE_ID" \
-            --audited-at-ms "$audit_ms" \
-            > "$MONITOR_ROOT/monitor.json"
-          python - <<'PY'
+            --audited-at-ms "$AUDIT_MS" \
+            > "$MONITOR_ROOT/monitor.json" \
+            2> /tmp/prospective-hype-monitor-error.json \
+            || monitor_rc=$?
+          echo "exit_code=$monitor_rc" >> "$GITHUB_OUTPUT"
+
+          if [[ "$monitor_rc" -ne 0 ]]; then
+            rm -f "$MONITOR_ROOT/monitor.json"
+            reason_code="$(python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          reason = "MONITOR_BUILD_FAILED"
+          try:
+              payload = json.loads(
+                  Path("/tmp/prospective-hype-monitor-error.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              candidate = payload.get("error")
+              if (
+                  isinstance(candidate, str)
+                  and len(candidate) <= 96
+                  and re.fullmatch(r"[A-Z][A-Z0-9_]*", candidate)
+              ):
+                  reason = candidate
+          except (OSError, json.JSONDecodeError):
+              pass
+          print(reason)
+          PY
+          )"
+            cocomelon-prospective-hype-blind-monitor-failure \
+              --audited-at-ms "$AUDIT_MS" \
+              --stage build \
+              --reason-code "$reason_code" \
+              --health-artifact-id "$HEALTH_ID" \
+              --lineage-artifact-id "$LINEAGE_ID" \
+              --state-artifact-id "$STATE_ID" \
+              > "$MONITOR_ROOT/failure.json"
+          else
+            python - <<'PY'
           import json
           from pathlib import Path
 
@@ -217,12 +422,20 @@ jobs:
           assert len(payload["monitor_id"]) == 64
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
+          fi
 
       - name: Upload blind monitor receipt
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: prospective-hype-blind-monitor-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/prospective-hype-blind-monitor/monitor.json
+          path: |
+            artifacts/prospective-hype-blind-monitor/monitor.json
+            artifacts/prospective-hype-blind-monitor/failure.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Preserve monitor failure status
+        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.monitor.outputs.exit_code != '0') }}
+        run: exit 1
