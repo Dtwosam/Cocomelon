@@ -382,7 +382,7 @@ jobs:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REPOSITORY_MISMATCH")
           if run.get("head_branch") != "main":
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH")
-          if run.get("event") != "workflow_dispatch":
+          if run.get("event") not in {"workflow_dispatch", "workflow_run"}:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH")
           if run.get("status") != "completed" or run.get("conclusion") != "success":
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS")
