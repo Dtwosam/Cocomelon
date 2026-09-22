@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from cocomelon.research.historical_archive_clean_observer import (
+from cocomelon.research.prospective_context_evidence import (
     MAX_ENTRY_CANDLE_AGE_MS,
 )
 from cocomelon.research.historical_archive_clean_runtime import (
