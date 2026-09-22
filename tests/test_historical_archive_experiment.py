@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 import cocomelon.research.historical_archive_experiment as experiment
-from cocomelon.domain.market import MarketId
+from cocomelon.domain.market import Candle, MarketId
 from cocomelon.research.historical_archive_acquisition import (
     ARCHIVE_BUCKET,
     ARCHIVE_PREFIX,
@@ -17,12 +17,25 @@ from cocomelon.research.historical_archive_acquisition import (
 from cocomelon.research.historical_archive_experiment import (
     HistoricalArchiveExperimentError,
     backfill_archive_experiment_funding,
+    prepare_archive_historical_sources,
     run_archive_historical_experiment,
+    run_prepared_archive_historical_experiment,
     verify_downloaded_archive_cache,
+    verify_prepared_archive_historical_sources,
+)
+from cocomelon.research.historical_archive_overlap import (
+    validate_archive_native_overlap,
+)
+from cocomelon.research.historical_backfill import (
+    build_coverage_report,
+    write_coverage_report,
 )
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 from cocomelon.research.historical_model_comparison import (
     HistoricalModelComparisonConfig,
+)
+from cocomelon.research.historical_trade_archive import (
+    write_archive_candle_source,
 )
 
 BTC = MarketId(dex="", coin="BTC")
@@ -187,6 +200,183 @@ def test_verified_archive_cache_rejects_corrupted_downloaded_shard(
         verify_downloaded_archive_cache(tmp_path, start_ms=0, end_ms=0)
 
 
+class FakeCandleClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, int, int]] = []
+
+    def candles(
+        self,
+        market: MarketId,
+        interval: str,
+        *,
+        start_ms: int,
+        end_ms: int,
+    ) -> object:
+        self.calls.append((market.canonical, interval, start_ms, end_ms))
+        rows = []
+        cursor = start_ms
+        while cursor <= end_ms:
+            px = str(100 + cursor // 300_000)
+            rows.append(
+                {
+                    "t": cursor,
+                    "T": cursor + 300_000 - 1,
+                    "s": market.wire_name,
+                    "i": interval,
+                    "o": px,
+                    "c": px,
+                    "h": px,
+                    "l": px,
+                    "v": "1",
+                    "n": 1,
+                }
+            )
+            cursor += 300_000
+        return rows
+
+
+def _write_prepared_source_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Path, Path, object]:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    manifest = _write_download_manifest(
+        archive_root,
+        start_ms=0,
+        end_ms=HOUR,
+    )
+    archive = verify_downloaded_archive_cache(
+        archive_root,
+        start_ms=0,
+        end_ms=HOUR,
+    )
+
+    funding_client = FakeFundingClient()
+    funding_ids = backfill_archive_experiment_funding(
+        funding_client,
+        source_root=source_root,
+        markets=(BTC,),
+        start_ms=0,
+        end_ms=HOUR,
+        clock_ms=lambda: 10_000_000,
+    )
+    assert len(funding_ids) == 1
+
+    candles = tuple(
+        Candle(
+            market=BTC,
+            interval="5m",
+            start_ms=start_ms,
+            end_ms=start_ms + 300_000 - 1,
+            open_px=Decimal(str(100 + start_ms // 300_000)),
+            high_px=Decimal(str(100 + start_ms // 300_000)),
+            low_px=Decimal(str(100 + start_ms // 300_000)),
+            close_px=Decimal(str(100 + start_ms // 300_000)),
+            volume=Decimal("1"),
+            trade_count=1,
+            source="hyperliquid-node-fills-by-block",
+            received_at_ms=10_000_000,
+            schema_version=1,
+        )
+        for start_ms in range(0, HOUR + 1, 300_000)
+    )
+    shard = manifest["shards"][0]
+    assert isinstance(shard, dict)
+    candle_manifest = write_archive_candle_source(
+        source_root / "BTC" / "candles" / "5m",
+        candles=candles,
+        market=BTC,
+        interval="5m",
+        start_ms=0,
+        end_ms=HOUR,
+        raw_archive_digests=(str(shard["sha256"]),),
+    )
+
+    from cocomelon.research.historical_dataset import load_funding_source
+
+    funding_manifest, _ = load_funding_source(source_root / "BTC" / "funding")
+    coverage = build_coverage_report(
+        candle_manifests=(candle_manifest,),
+        funding_manifests=(funding_manifest,),
+    )
+    write_coverage_report(source_root / "coverage.json", coverage)
+
+    ingest_identity = {
+        "kind": "hyperliquid-node-fills-by-block",
+        "source": "s3://hl-mainnet-node-data/node_fills_by_block",
+        "requested_start_ms": 0,
+        "requested_end_ms": HOUR,
+        "received_at_ms": 10_000_000,
+        "files": tuple(
+            {
+                "relative_path": item["relative_path"],
+                "sha256": item["sha256"],
+                "byte_count": item["byte_count"],
+            }
+            for item in manifest["shards"]
+        ),
+        "schema_version": 1,
+    }
+    archive_ingest = {
+        **ingest_identity,
+        "manifest_id": hashlib.sha256(
+            _canonical_json(ingest_identity).encode("utf-8")
+        ).hexdigest()[:24],
+    }
+    (source_root / "archive_ingest.json").write_text(
+        _canonical_json(archive_ingest) + "\n",
+        encoding="utf-8",
+    )
+
+    overlap = validate_archive_native_overlap(
+        FakeCandleClient(),
+        source_root=source_root,
+        markets=(BTC,),
+        intervals=("5m",),
+        overlap_candles=2,
+        clock_ms=lambda: 20_000_000,
+    )
+    source_summary = {
+        "archive_file_count": archive.shard_count,
+        "archive_manifest_id": archive_ingest["manifest_id"],
+        "candle_manifests": 1,
+        "coverage_report_id": coverage["report_id"],
+        "funding_manifests": 1,
+        "market_count": 1,
+        "parsed_trade_count": 13,
+        "source_root": str(source_root),
+    }
+
+    monkeypatch.setattr(
+        experiment,
+        "backfill_archive_experiment_funding",
+        lambda *args, **kwargs: funding_ids,
+    )
+    monkeypatch.setattr(
+        experiment,
+        "ingest_archive_candles",
+        lambda **kwargs: source_summary,
+    )
+    monkeypatch.setattr(
+        experiment,
+        "validate_archive_native_overlap",
+        lambda *args, **kwargs: overlap,
+    )
+    preparation = prepare_archive_historical_sources(
+        object(),  # type: ignore[arg-type]
+        archive_root=archive_root,
+        source_root=source_root,
+        markets=(BTC,),
+        intervals=("5m",),
+        start_ms=0,
+        end_ms=HOUR,
+        clock_ms=lambda: 30_000_000,
+        overlap_candles=2,
+    )
+    return archive_root, source_root, preparation
+
+
 class FakeFundingClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, int]] = []
@@ -314,3 +504,113 @@ def test_archive_experiment_orders_verification_funding_ingest_then_comparison(
     assert result.overlap.report_id == "overlap-report"
     assert result.report_id == "report-id"
     assert result.dataset_id == "dataset-id"
+
+def test_prepared_archive_sources_verify_end_to_end_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive_root, source_root, preparation = _write_prepared_source_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+
+    verified = verify_prepared_archive_historical_sources(
+        archive_root=archive_root,
+        source_root=source_root,
+        markets=(BTC,),
+        intervals=("5m",),
+        start_ms=0,
+        end_ms=HOUR,
+        overlap_candles=2,
+    )
+
+    assert verified == preparation
+    assert verified.overlap.exact is True
+    assert verified.coverage_report_id
+    assert (source_root / "source-preparation.json").is_file()
+
+
+def test_prepared_archive_sources_fail_before_modeling_on_source_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive_root, source_root, _ = _write_prepared_source_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    (source_root / "coverage.json").write_text(
+        '{"tampered":true}\n',
+        encoding="utf-8",
+    )
+    called = False
+
+    def forbidden_comparison(**kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("comparison must not run after prepared-source drift")
+
+    monkeypatch.setattr(
+        experiment,
+        "run_historical_model_comparison_from_sources",
+        forbidden_comparison,
+    )
+
+    with pytest.raises(
+        HistoricalArchiveExperimentError,
+        match="ARCHIVE_SOURCE_PREPARATION_COVERAGE_DIGEST_MISMATCH",
+    ):
+        run_prepared_archive_historical_experiment(
+            archive_root=archive_root,
+            source_root=source_root,
+            output_root=tmp_path / "output",
+            markets=(BTC,),
+            intervals=("5m",),
+            horizons_ms=(900_000,),
+            start_ms=0,
+            end_ms=HOUR,
+            config=_config(),
+            overlap_candles=2,
+        )
+
+    assert called is False
+
+
+def test_prepared_archive_experiment_runs_model_comparison_without_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    archive_root, source_root, preparation = _write_prepared_source_fixture(
+        tmp_path,
+        monkeypatch,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_comparison(**kwargs: object) -> FakeComparison:
+        captured.update(kwargs)
+        return FakeComparison()
+
+    monkeypatch.setattr(
+        experiment,
+        "run_historical_model_comparison_from_sources",
+        fake_comparison,
+    )
+
+    result = run_prepared_archive_historical_experiment(
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=tmp_path / "output",
+        markets=(BTC,),
+        intervals=("5m",),
+        horizons_ms=(900_000,),
+        start_ms=0,
+        end_ms=HOUR,
+        config=_config(),
+        overlap_candles=2,
+    )
+
+    assert result.archive == preparation.archive
+    assert result.overlap == preparation.overlap
+    assert result.report_id == "report-id"
+    assert captured["source_root"] == source_root
+    assert captured["output_root"] == tmp_path / "output"
+
