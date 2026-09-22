@@ -13,6 +13,7 @@ from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
+    build_archive_preset_preflight,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
     verify_archive_preset_bundle_receipt,
@@ -59,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify")
     verify.add_argument("--preset", default=PRESET_NAME)
     verify.add_argument("--receipt", required=True, type=Path)
+
+    preflight = subparsers.add_parser("preflight")
+    preflight.add_argument("--preset", default=PRESET_NAME)
+    preflight.add_argument("--archive-root", required=True, type=Path)
+    preflight.add_argument("--source-root", required=True, type=Path)
+    preflight.add_argument("--output-root", required=True, type=Path)
 
     verify_bundle = subparsers.add_parser("verify-bundle")
     verify_bundle.add_argument("--preset", default=PRESET_NAME)
@@ -118,6 +125,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "paid_request_performed": False,
                     "receipt_id": receipt.receipt_id,
                     "valid": True,
+                }
+            )
+            return 0
+        if args.command == "preflight":
+            preflight = build_archive_preset_preflight(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "preflight",
+                    "ready": True,
+                    **preflight.to_dict(),
                 }
             )
             return 0
