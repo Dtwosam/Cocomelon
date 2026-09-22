@@ -89,6 +89,7 @@ class ArchiveCleanActivationAuthorization:
     bootstrap_checkpoint_id: str
     control_plane_id: str
     frozen_revision: str
+    authorization_source_revision: str
     runtime_artifact_id: str
     authorized_at_ms: int
     validation_start_ms: int
@@ -122,6 +123,10 @@ class ArchiveCleanActivationAuthorization:
             _require_sha256(getattr(self, field), field)
         if not re.fullmatch(r"[0-9a-f]{40}", self.frozen_revision):
             raise ValueError("frozen_revision must be a lowercase git SHA")
+        if not re.fullmatch(r"[0-9a-f]{40}", self.authorization_source_revision):
+            raise ValueError(
+                "authorization_source_revision must be a lowercase git SHA"
+            )
         if not self.runtime_artifact_id.isdigit():
             raise ValueError("runtime_artifact_id must be numeric")
         if self.authorized_at_ms < 0:
@@ -167,6 +172,7 @@ class ArchiveCleanActivationAuthorization:
             "bootstrap_checkpoint_id": self.bootstrap_checkpoint_id,
             "control_plane_id": self.control_plane_id,
             "frozen_revision": self.frozen_revision,
+            "authorization_source_revision": self.authorization_source_revision,
             "runtime_artifact_id": self.runtime_artifact_id,
             "authorized_at_ms": self.authorized_at_ms,
             "validation_start_ms": self.validation_start_ms,
@@ -202,6 +208,7 @@ def _expected_authorization(
     bootstrap_checkpoint_id: str,
     control_plane_id: str,
     frozen_revision: str,
+    authorization_source_revision: str,
     runtime_artifact_id: str,
     authorized_at_ms: int,
 ) -> ArchiveCleanActivationAuthorization:
@@ -234,6 +241,7 @@ def _expected_authorization(
         bootstrap_checkpoint_id=bootstrap_checkpoint_id,
         control_plane_id=control_plane_id,
         frozen_revision=frozen_revision,
+        authorization_source_revision=authorization_source_revision,
         runtime_artifact_id=runtime_artifact_id,
         authorized_at_ms=authorized_at_ms,
         validation_start_ms=spec.validation_start_ms,
@@ -250,6 +258,7 @@ def build_archive_clean_activation_authorization(
     *,
     state_root: Path,
     frozen_revision: str,
+    authorization_source_revision: str,
     runtime_artifact_id: str,
     as_of_ms: int,
 ) -> ArchiveCleanActivationAuthorization:
@@ -290,6 +299,7 @@ def build_archive_clean_activation_authorization(
         bootstrap_checkpoint_id=bootstrap.checkpoint_id,
         control_plane_id=bootstrap.control_plane_id,
         frozen_revision=frozen_revision,
+        authorization_source_revision=authorization_source_revision,
         runtime_artifact_id=runtime_artifact_id,
         authorized_at_ms=as_of_ms,
     )
@@ -362,6 +372,10 @@ def load_archive_clean_activation_authorization(
             frozen_revision=_string(
                 raw.get("frozen_revision"),
                 "frozen_revision",
+            ),
+            authorization_source_revision=_string(
+                raw.get("authorization_source_revision"),
+                "authorization_source_revision",
             ),
             runtime_artifact_id=_string(
                 raw.get("runtime_artifact_id"),
@@ -462,6 +476,7 @@ def verify_archive_clean_activation_authorization(
         bootstrap_checkpoint_id=authorization.bootstrap_checkpoint_id,
         control_plane_id=control_plane.control_plane_id,
         frozen_revision=frozen_revision,
+        authorization_source_revision=authorization.authorization_source_revision,
         runtime_artifact_id=runtime_artifact_id,
         authorized_at_ms=authorization.authorized_at_ms,
     )
