@@ -1,0 +1,190 @@
+name: Prospective HYPE Blind Monitor
+
+on:
+  schedule:
+    - cron: "25 * * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-blind-monitor.yml"
+      - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
+      - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_hype_blind_monitor_workflow.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prospective-hype-blind-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      MONITOR_ROOT: artifacts/prospective-hype-blind-monitor
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install monitor runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Discover matching health state and lineage artifacts
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/prospective-artifacts.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = [
+              item
+              for item in payload["artifacts"]
+              if not item["expired"]
+              and item["workflow_run"]["head_branch"] == "main"
+          ]
+
+          health = max(
+              (
+                  item
+                  for item in artifacts
+                  if item["name"].startswith("prospective-hype-clean-health-")
+              ),
+              key=lambda item: (item["created_at"], item["id"]),
+          )
+          lineage = max(
+              (
+                  item
+                  for item in artifacts
+                  if item["name"].startswith("prospective-hype-lineage-")
+              ),
+              key=lambda item: (item["created_at"], item["id"]),
+          )
+          matching_states = [
+              item
+              for item in artifacts
+              if item["name"] == "prospective-hype-clean-state"
+              and item["workflow_run"]["id"] == health["workflow_run"]["id"]
+          ]
+          if len(matching_states) != 1:
+              raise SystemExit(
+                  "exactly one state artifact must match the latest health run"
+              )
+          state = matching_states[0]
+
+          outputs = {
+              "health_id": health["id"],
+              "health_run_id": health["workflow_run"]["id"],
+              "state_id": state["id"],
+              "lineage_id": lineage["id"],
+          }
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              for key, value in outputs.items():
+                  handle.write(f"{key}={value}\n")
+          PY
+
+      - name: Download operational health and lineage receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$MONITOR_ROOT/health" "$MONITOR_ROOT/lineage"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$HEALTH_ID/zip" \
+            > /tmp/prospective-health.zip
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$LINEAGE_ID/zip" \
+            > /tmp/prospective-lineage.zip
+          unzip -q /tmp/prospective-health.zip -d "$MONITOR_ROOT/health"
+          unzip -q /tmp/prospective-lineage.zip -d "$MONITOR_ROOT/lineage"
+          test -f "$MONITOR_ROOT/health/prospective-hype-health.json"
+          test -f "$MONITOR_ROOT/lineage/lineage.json"
+
+      - name: Build redacted campaign monitor receipt
+        env:
+          STATE_ID: ${{ steps.discover.outputs.state_id }}
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-blind-monitor \
+            --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
+            --lineage "$MONITOR_ROOT/lineage/lineage.json" \
+            --state-artifact-id "$STATE_ID" \
+            > "$MONITOR_ROOT/monitor.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "artifacts/prospective-hype-blind-monitor/monitor.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert payload["interim_economics_redacted"] is True
+          forbidden = {
+              "mean_net_return",
+              "total_net_return",
+              "positive_net_count",
+              "non_positive_net_count",
+              "gross_return",
+              "net_return",
+          }
+          assert forbidden.isdisjoint(payload)
+          assert payload["campaign_health_status"] in {
+              "pre_validation",
+              "healthy",
+              "degraded",
+              "irrecoverable",
+          }
+          assert payload["lineage_status"] in {
+              "append_only_valid",
+              "waiting_for_second_frozen_format_state",
+          }
+          assert len(payload["monitor_id"]) == 64
+          print(json.dumps(payload, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload blind monitor receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-blind-monitor-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-blind-monitor/monitor.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
