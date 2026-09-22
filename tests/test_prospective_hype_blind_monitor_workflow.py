@@ -118,7 +118,9 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "steps.discover.outputs.status != 'ok'" in source
     assert "steps.provenance.outputs.status != 'ok'" in source
     assert "steps.download.outputs.status != 'ok'" in source
-    assert "steps.monitor.outputs.exit_code != '0'" in source
+    assert 'echo "status=failure" >> "$GITHUB_OUTPUT"' in source
+    assert 'echo "status=success" >> "$GITHUB_OUTPUT"' in source
+    assert "steps.monitor.outputs.status != 'success'" in source
     for token in (
         "mean_net_return",
         "total_net_return",
