@@ -320,6 +320,192 @@ def test_verify_bundle_is_offline_and_emits_bundle_identity(
     assert payload["bundle_id"] == "b" * 64
 
 
+
+def test_run_prepared_is_offline_and_emits_verified_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("run-prepared must not construct a Hyperliquid client")
+        ),
+    )
+    result = SimpleNamespace(
+        archive=SimpleNamespace(
+            manifest_id="archive-manifest",
+            shard_count=1968,
+            total_byte_count=123,
+        ),
+        overlap=SimpleNamespace(
+            report_id="overlap-report",
+            compared_count=384,
+        ),
+        dataset_id="dataset-id",
+        report_id="comparison-report-id",
+        comparison=SimpleNamespace(
+            comparison_version="historical-model-comparison-v7",
+            dataset_row_count=24000,
+            baseline_folds=(object(), object()),
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "run_prepared_archive_experiment_preset",
+        lambda **kwargs: result,
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_run_receipt",
+        lambda *args, **kwargs: SimpleNamespace(receipt_id="r" * 64),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_bundle_receipt",
+        lambda *args, **kwargs: SimpleNamespace(bundle_id="b" * 64),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_source_attestation",
+        lambda *args, **kwargs: SimpleNamespace(
+            attestation_id="i" * 64,
+            source_tree_sha256="s" * 64,
+            files=(object(), object()),
+        ),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "run-prepared",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "run-prepared"
+    assert payload["paid_request_performed"] is False
+    assert payload["prepared_source_execution"] is True
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["preset_run_receipt_id"] == "r" * 64
+    assert payload["preset_bundle_id"] == "b" * 64
+    assert payload["implementation_attestation_id"] == "i" * 64
+    assert payload["source_file_count"] == 2
+    assert payload["output_root"] == str(output_root)
+
+
+def test_prepare_requires_paper_mode_before_client_construction(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    class FakeSettings:
+        @classmethod
+        def from_env(cls) -> LiveSettings:
+            return LiveSettings()
+
+    monkeypatch.setattr(cli, "Settings", FakeSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("live prepare must fail before client construction")
+        ),
+    )
+
+    status = cli.main(
+        [
+            "prepare",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--received-at-ms",
+            "123",
+        ]
+    )
+
+    assert status == 2
+    captured = capsys.readouterr()
+    payload = json.loads(captured.err)
+    assert payload["error"] == "historical archive presets require paper execution mode"
+
+
+def test_prepare_emits_authenticated_source_preparation(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    class PaperSettings:
+        execution_mode = ExecutionMode.PAPER
+
+    class FakeSettings:
+        @classmethod
+        def from_env(cls) -> PaperSettings:
+            return PaperSettings()
+
+    preparation = SimpleNamespace(
+        preparation_id="q" * 64,
+        archive=SimpleNamespace(
+            manifest_id="archive-manifest",
+            shard_count=1968,
+            total_byte_count=456,
+        ),
+        archive_ingest_manifest_id="archive-ingest",
+        coverage_report_id="coverage-report",
+        overlap=SimpleNamespace(
+            report_id="overlap-report",
+            compared_count=384,
+        ),
+    )
+    monkeypatch.setattr(cli, "Settings", FakeSettings)
+    monkeypatch.setattr(cli, "InfoClient", lambda _settings: object())
+    monkeypatch.setattr(
+        cli,
+        "prepare_archive_experiment_preset",
+        lambda *args, **kwargs: preparation,
+    )
+
+    source_root = tmp_path / "sources"
+    status = cli.main(
+        [
+            "prepare",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(source_root),
+            "--received-at-ms",
+            "123",
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "prepare"
+    assert payload["paid_request_performed"] is False
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["preparation_id"] == "q" * 64
+    assert payload["archive_shard_count"] == 1968
+    assert payload["archive_ingest_manifest_id"] == "archive-ingest"
+    assert payload["coverage_report_id"] == "coverage-report"
+    assert payload["overlap_report_id"] == "overlap-report"
+    assert payload["source_preparation"] == str(
+        source_root / "source-preparation.json"
+    )
+
 def test_run_rejects_live_mode_before_client_or_experiment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
