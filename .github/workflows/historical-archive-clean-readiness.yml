@@ -309,7 +309,8 @@ jobs:
             > /tmp/archive-clean-readiness-bootstrap-verify.json
           echo "restored_artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
-      - name: Verify activation authorization when enabled
+      - name: Restore authenticated activation authorization when enabled
+        id: activation_restore
         if: ${{ env.CAMPAIGN_ENABLED == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -381,8 +382,6 @@ jobs:
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REPOSITORY_MISMATCH")
           if run.get("head_branch") != "main":
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH")
-          if run.get("head_sha") != os.environ["FROZEN_REVISION"]:
-              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH")
           if run.get("event") != "workflow_dispatch":
               raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH")
           if run.get("status") != "completed" or run.get("conclusion") != "success":
@@ -393,12 +392,78 @@ jobs:
             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
             > /tmp/archive-clean-readiness-activation.zip
           unzip -q /tmp/archive-clean-readiness-activation.zip -d "$AUTHORIZATION_ROOT"
-          cocomelon-historical-archive-clean-activation \
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+
+          authorization = json.loads(
+              (Path(os.environ["AUTHORIZATION_ROOT"]) / "activation.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          run = json.loads(
+              Path("/tmp/archive-clean-readiness-activation-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          source_revision = authorization.get("authorization_source_revision")
+          if run.get("head_sha") != source_revision:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH")
+          if (
+              not isinstance(source_revision, str)
+              or len(source_revision) != 40
+              or any(char not in "0123456789abcdef" for char in source_revision)
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_SOURCE_REVISION_INVALID")
+          created_at = run.get("created_at")
+          if not isinstance(created_at, str):
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_TIME_MISSING")
+          created_ms = int(
+              datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+              * 1000
+          )
+          validation_start_ms = authorization.get("validation_start_ms")
+          if (
+              isinstance(validation_start_ms, bool)
+              or not isinstance(validation_start_ms, int)
+              or created_ms >= validation_start_ms
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_PRE_CUTOVER")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"source_revision={source_revision}\n")
+          PY
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout activation auditor revision when enabled
+        if: ${{ env.CAMPAIGN_ENABLED == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.activation_restore.outputs.source_revision }}
+          path: activation-auditor
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify activation auditor checkout when enabled
+        if: ${{ env.CAMPAIGN_ENABLED == 'true' }}
+        run: |
+          set -euo pipefail
+          test "$(git -C activation-auditor rev-parse HEAD)" = "${{ steps.activation_restore.outputs.source_revision }}"
+
+      - name: Verify activation authorization when enabled
+        if: ${{ env.CAMPAIGN_ENABLED == 'true' }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/activation-auditor/src
+        run: |
+          set -euo pipefail
+          python -m cocomelon.historical_archive_clean_activation_cli \
             --runtime-root "$RUNTIME_ROOT" \
             --pin-id "$PIN_ID" \
             --state-root "$STATE_ROOT" \
             --authorization-root "$AUTHORIZATION_ROOT" \
             --frozen-revision "$FROZEN_REVISION" \
+            --authorization-source-revision "${{ steps.activation_restore.outputs.source_revision }}" \
             --runtime-artifact-id "$RUNTIME_ARTIFACT_ID" \
             --verify-only \
             > /tmp/archive-clean-readiness-activation-verify.json
