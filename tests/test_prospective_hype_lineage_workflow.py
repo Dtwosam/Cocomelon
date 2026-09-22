@@ -91,7 +91,7 @@ def test_lineage_audit_runs_hourly_after_frozen_capture_attempts() -> None:
     assert 'cron: "20 * * * *"' in source
     assert "group: prospective-hype-lineage-audit" in source
     assert "cancel-in-progress: false" in source
-    assert 'cron: "3,8,13 * * * *"' not in source
+    assert 'cron: "47 * * * *"' not in source
     assert "cocomelon-prospective-hype-observer" not in source
 
 
