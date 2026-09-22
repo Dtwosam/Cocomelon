@@ -312,6 +312,129 @@ def test_verify_candidate_freeze_is_offline(
         output_root / "candidate-freeze.json"
     )
 
+
+def test_plan_candidate_training_is_offline_and_emits_partition(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("plan-candidate-training must not construct a client")
+        ),
+    )
+    plan = SimpleNamespace(
+        candidate_id="a" * 64,
+        plan_id="p" * 64,
+        model_family="stable_tree",
+        calibration_variant="shared",
+        training_policy="chronological-final-fit-calibration-v1",
+        selection_algorithm="stable_tree_final_calibration_v1",
+        dataset_id="d" * 64,
+        fit_anchor_count=8000,
+        embargo_anchor_count=48,
+        calibration_anchor_count=2000,
+        validation_not_before_ms=123456,
+        prospective_only=True,
+        promotion_eligible=False,
+        execution_ready=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_candidate_training_plan",
+        lambda *args, **kwargs: plan,
+    )
+    plan_path = tmp_path / "output" / "candidate-training-plan.json"
+    monkeypatch.setattr(
+        cli,
+        "write_archive_candidate_training_plan",
+        lambda *args, **kwargs: plan_path,
+    )
+
+    status = cli.main(
+        [
+            "plan-candidate-training",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "plan-candidate-training"
+    assert payload["paid_request_performed"] is False
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["plan_id"] == "p" * 64
+    assert payload["model_family"] == "stable_tree"
+    assert payload["calibration_variant"] == "shared"
+    assert payload["fit_anchor_count"] == 8000
+    assert payload["embargo_anchor_count"] == 48
+    assert payload["calibration_anchor_count"] == 2000
+    assert payload["prospective_only"] is True
+    assert payload["promotion_eligible"] is False
+    assert payload["execution_ready"] is False
+    assert payload["training_plan"] == str(plan_path)
+
+
+def test_verify_candidate_training_plan_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError(
+                "verify-candidate-training-plan must not construct a client"
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_candidate_training_plan",
+        lambda *args, **kwargs: SimpleNamespace(
+            candidate_id="a" * 64,
+            plan_id="p" * 64,
+        ),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "verify-candidate-training-plan",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-candidate-training-plan"
+    assert payload["paid_request_performed"] is False
+    assert payload["valid"] is True
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["plan_id"] == "p" * 64
+    assert payload["training_plan"] == str(
+        output_root / "candidate-training-plan.json"
+    )
+
 def test_review_is_offline_and_emits_only_qualified_variants(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
