@@ -4,6 +4,7 @@ import hashlib
 import json
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -446,40 +447,30 @@ class FakeComparison:
     horizons_ms = (900_000,)
 
 
-def test_archive_experiment_orders_verification_funding_ingest_then_comparison(
+def test_archive_experiment_orders_preparation_then_comparison(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     calls: list[str] = []
-
-    monkeypatch.setattr(
-        experiment,
-        "verify_downloaded_archive_cache",
-        lambda *args, **kwargs: (
-            calls.append("verify")
-            or experiment.VerifiedArchiveCache(
-                manifest_id="manifest",
-                requested_start_ms=0,
-                requested_end_ms=HOUR,
-                shard_count=2,
-                total_byte_count=20,
-            )
+    preparation = SimpleNamespace(
+        archive=experiment.VerifiedArchiveCache(
+            manifest_id="manifest",
+            requested_start_ms=0,
+            requested_end_ms=HOUR,
+            shard_count=2,
+            total_byte_count=20,
         ),
+        overlap=FakeOverlap(),
+        source_summary=lambda source_root: {
+            "archive_manifest_id": "archive-ingest",
+            "coverage_report_id": "coverage",
+            "source_root": str(source_root),
+        },
     )
     monkeypatch.setattr(
         experiment,
-        "backfill_archive_experiment_funding",
-        lambda *args, **kwargs: calls.append("funding") or ("funding-id",),
-    )
-    monkeypatch.setattr(
-        experiment,
-        "ingest_archive_candles",
-        lambda **kwargs: calls.append("candles") or {"coverage_report_id": "coverage"},
-    )
-    monkeypatch.setattr(
-        experiment,
-        "validate_archive_native_overlap",
-        lambda *args, **kwargs: calls.append("overlap") or FakeOverlap(),
+        "prepare_archive_historical_sources",
+        lambda *args, **kwargs: calls.append("prepare") or preparation,
     )
     monkeypatch.setattr(
         experiment,
@@ -501,12 +492,13 @@ def test_archive_experiment_orders_verification_funding_ingest_then_comparison(
         config=_config(),
     )
 
-    assert calls == ["verify", "funding", "candles", "overlap", "comparison"]
+    assert calls == ["prepare", "comparison"]
     assert result.archive.manifest_id == "manifest"
     assert result.source_summary["coverage_report_id"] == "coverage"
     assert result.overlap.report_id == "overlap-report"
     assert result.report_id == "report-id"
     assert result.dataset_id == "dataset-id"
+
 
 def test_prepared_archive_sources_verify_end_to_end_without_network(
     monkeypatch: pytest.MonkeyPatch,
