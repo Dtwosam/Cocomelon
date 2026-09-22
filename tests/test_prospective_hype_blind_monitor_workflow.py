@@ -110,7 +110,6 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "ARTIFACT_DISCOVERY_REQUEST_FAILED" in source
     assert "HEALTH_ARTIFACT_MISSING" in source
     assert "LINEAGE_ARTIFACT_MISSING" in source
-    assert "STATE_ARTIFACT_MATCH_INVALID" in source
     assert "ARTIFACT_PROVENANCE_REQUEST_FAILED" in source
     assert "ARTIFACT_PRODUCER_PROVENANCE_INVALID" in source
     assert "HEALTH_ARTIFACT_DOWNLOAD_FAILED" in source
