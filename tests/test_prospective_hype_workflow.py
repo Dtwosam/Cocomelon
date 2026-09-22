@@ -33,6 +33,11 @@ def test_prospective_hype_workflow_runs_redundant_early_hour_attempts() -> None:
     assert "cancel-in-progress: false" in source
     assert "github.ref == 'refs/heads/main'" in source
     assert "timeout-minutes: 10" in source
+    assert "OBSERVER_SOURCE_REVISION: 0131fccdb09a2b9ba959dd5785ea213a6297f719" in source
+    assert "ref: 0131fccdb09a2b9ba959dd5785ea213a6297f719" in source
+    assert "ref: ${{ github.sha }}" not in source
+    assert "Verify frozen observer source revision" in source
+    assert 'test "$actual_revision" = "$OBSERVER_SOURCE_REVISION"' in source
 
 
 def test_prospective_hype_workflow_restores_and_republishes_cumulative_state() -> None:
@@ -49,6 +54,7 @@ def test_prospective_hype_workflow_restores_and_republishes_cumulative_state() -
     assert "Verify prospective runtime attestation" in source
     assert "ensure_prospective_runtime_attestation" in source
     assert "git rev-parse HEAD" in source
+    assert 'python - "$OBSERVER_SOURCE_REVISION"' in source
     assert "/tmp/prospective-hype-runtime.json" in source
     assert "POST_CUTOVER_PROSPECTIVE_STATE_RESTORE_REQUIRED" not in source
     assert "/tmp/prospective-hype-continuity.json" in source
