@@ -169,12 +169,108 @@ jobs:
                   handle.write(f"{key}={value}\n")
           PY
 
+      - name: Verify selected audit artifact producer
+        id: provenance
+        continue-on-error: true
+        if: >-
+          steps.window.outputs.active == 'true' &&
+          steps.discover.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_RECEIPT: ${{ steps.discover.outputs.has_receipt }}
+          RECEIPT_ID: ${{ steps.discover.outputs.receipt_artifact_id }}
+          MONITOR_ID: ${{ steps.discover.outputs.monitor_artifact_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$HAS_RECEIPT" == "true" ]]; then
+            artifact_id="$RECEIPT_ID"
+            expected_name="prospective-hype-cutover-acceptance"
+            expected_prefix=""
+            expected_path=".github/workflows/prospective-hype-cutover-acceptance.yml"
+          elif [[ -n "$MONITOR_ID" ]]; then
+            artifact_id="$MONITOR_ID"
+            expected_name=""
+            expected_prefix="prospective-hype-blind-monitor-"
+            expected_path=".github/workflows/prospective-hype-blind-monitor.yml"
+          else
+            echo "status=waiting" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id" \
+            > /tmp/prospective-cutover-selected-artifact.json
+          run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-cutover-selected-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            > /tmp/prospective-cutover-selected-run.json
+
+          ARTIFACT_ID="$artifact_id" \
+          EXPECTED_NAME="$expected_name" \
+          EXPECTED_PREFIX="$expected_prefix" \
+          EXPECTED_PATH="$expected_path" \
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact = json.loads(
+              Path("/tmp/prospective-cutover-selected-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          run = json.loads(
+              Path("/tmp/prospective-cutover-selected-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          workflow_run = artifact.get("workflow_run")
+          name = str(artifact.get("name", ""))
+          expected_name = os.environ["EXPECTED_NAME"]
+          expected_prefix = os.environ["EXPECTED_PREFIX"]
+          valid_name = (
+              name == expected_name
+              if expected_name
+              else name.startswith(expected_prefix)
+          )
+          if (
+              str(artifact.get("id")) != os.environ["ARTIFACT_ID"]
+              or not valid_name
+              or artifact.get("expired") is not False
+              or not isinstance(workflow_run, dict)
+              or workflow_run.get("head_branch") != "main"
+              or run.get("id") != workflow_run.get("id")
+              or run.get("head_branch") != "main"
+              or run.get("path") != os.environ["EXPECTED_PATH"]
+              or run.get("repository", {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+          ):
+              raise SystemExit("CUTOVER_ARTIFACT_PROVENANCE_INVALID")
+          PY
+          echo "status=ok" >> "$GITHUB_OUTPUT"
+
       - name: Verify existing canonical cutover receipt
         id: existing
         continue-on-error: true
         if: >-
           steps.window.outputs.active == 'true' &&
           steps.discover.outcome == 'success' &&
+          steps.provenance.outcome == 'success' &&
+          steps.provenance.outputs.status != 'waiting' &&
           steps.discover.outputs.has_receipt == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -210,6 +306,8 @@ jobs:
         if: >-
           steps.window.outputs.active == 'true' &&
           steps.discover.outcome == 'success' &&
+          steps.provenance.outcome == 'success' &&
+          steps.provenance.outputs.status == 'ok' &&
           steps.discover.outputs.has_receipt != 'true' &&
           steps.discover.outputs.monitor_artifact_id != ''
         env:
@@ -286,6 +384,23 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$STATE_ID" \
             > /tmp/prospective-cutover-state-meta.json
+          state_run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-cutover-state-meta.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$state_run_id" \
+            > /tmp/prospective-cutover-state-run.json
           python - <<'PY'
           import json
           import os
@@ -297,10 +412,24 @@ jobs:
                   encoding="utf-8"
               )
           )
+          run = json.loads(
+              Path("/tmp/prospective-cutover-state-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          workflow_run = payload.get("workflow_run")
           if payload["expired"]:
               raise SystemExit("state artifact is expired")
-          if payload["workflow_run"]["head_branch"] != "main":
-              raise SystemExit("state artifact must originate from main")
+          if (
+              not isinstance(workflow_run, dict)
+              or workflow_run.get("head_branch") != "main"
+              or run.get("id") != workflow_run.get("id")
+              or run.get("head_branch") != "main"
+              or run.get("path") != ".github/workflows/prospective-hype-clean.yml"
+              or run.get("repository", {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+          ):
+              raise SystemExit("state artifact producer provenance is invalid")
           created = datetime.fromisoformat(
               payload["created_at"].replace("Z", "+00:00")
           )
@@ -384,6 +513,7 @@ jobs:
           steps.window.outputs.active == 'true' &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.existing.outcome == 'failure' ||
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||
@@ -394,6 +524,7 @@ jobs:
         env:
           AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           DISCOVER_OUTCOME: ${{ steps.discover.outcome }}
+          PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
           EXISTING_OUTCOME: ${{ steps.existing.outcome }}
           MONITOR_OUTCOME: ${{ steps.monitor.outcome }}
           READY_OUTCOME: ${{ steps.ready.outcome }}
@@ -410,6 +541,9 @@ jobs:
           if [[ "$DISCOVER_OUTCOME" == "failure" ]]; then
             stage="discovery"
             reason_code="CUTOVER_ARTIFACT_DISCOVERY_FAILED"
+          elif [[ "$PROVENANCE_OUTCOME" == "failure" ]]; then
+            stage="discovery"
+            reason_code="CUTOVER_ARTIFACT_PROVENANCE_FAILED"
           elif [[ "$EXISTING_OUTCOME" == "failure" ]]; then
             stage="existing_receipt"
             reason_code="CUTOVER_EXISTING_RECEIPT_VERIFY_FAILED"
@@ -449,6 +583,7 @@ jobs:
           steps.window.outputs.active == 'true' &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.existing.outcome == 'failure' ||
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||
@@ -470,6 +605,7 @@ jobs:
           steps.window.outputs.active == 'true' &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.existing.outcome == 'failure' ||
             steps.monitor.outcome == 'failure' ||
             steps.ready.outcome == 'failure' ||

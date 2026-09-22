@@ -13,7 +13,6 @@ def test_cutover_audit_is_read_only_and_never_invokes_frozen_observer() -> None:
     assert "contents: write" not in source
     assert "actions: write" not in source
     assert "cocomelon-prospective-hype-observer" not in source
-    assert "prospective-hype-clean.yml" not in source
     assert "COCOMELON_EXECUTION_MODE" not in source
 
 
@@ -39,6 +38,9 @@ def test_cutover_audit_reuses_one_canonical_receipt() -> None:
     assert "cocomelon-prospective-hype-cutover verify" in source
     assert "Upload one canonical cutover receipt" in source
     assert "name: prospective-hype-cutover-acceptance" in source
+    assert "Verify selected audit artifact producer" in source
+    assert 'expected_path=".github/workflows/prospective-hype-cutover-acceptance.yml"' in source
+    assert 'expected_path=".github/workflows/prospective-hype-blind-monitor.yml"' in source
 
 
 def test_cutover_audit_waits_for_first_anchor_and_append_only_lineage() -> None:
@@ -56,7 +58,9 @@ def test_cutover_audit_binds_exact_state_from_blind_monitor() -> None:
 
     assert 'state_id = payload.get("state_artifact_id", "") if ready else ""' in source
     assert "/actions/artifacts/$STATE_ID" in source
-    assert 'payload["workflow_run"]["head_branch"] != "main"' in source
+    assert 'workflow_run.get("head_branch") != "main"' in source
+    assert 'run.get("path") != ".github/workflows/prospective-hype-clean.yml"' in source
+    assert "/actions/runs/$state_run_id" in source
     assert "--state-artifact-id" in source
     assert "--state-audited-at-ms" in source
     assert "--audited-at-ms" in source
@@ -97,6 +101,7 @@ def test_cutover_audit_preserves_redacted_failure_receipt_before_failing() -> No
 
     assert "cocomelon-prospective-hype-cutover-failure" in source
     assert "CUTOVER_ARTIFACT_DISCOVERY_FAILED" in source
+    assert "CUTOVER_ARTIFACT_PROVENANCE_FAILED" in source
     assert "CUTOVER_EXISTING_RECEIPT_VERIFY_FAILED" in source
     assert "CUTOVER_MONITOR_ARTIFACT_INVALID" in source
     assert "CUTOVER_MONITOR_READINESS_FAILED" in source

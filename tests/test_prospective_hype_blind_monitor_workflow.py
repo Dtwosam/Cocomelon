@@ -13,7 +13,6 @@ def test_blind_monitor_is_read_only_and_never_invokes_frozen_observer() -> None:
     assert "contents: write" not in source
     assert "actions: write" not in source
     assert "cocomelon-prospective-hype-observer" not in source
-    assert "prospective-hype-clean.yml" not in source
     assert "COCOMELON_EXECUTION_MODE" not in source
 
 
@@ -38,6 +37,12 @@ def test_blind_monitor_matches_state_to_latest_health_run() -> None:
     assert 'health["workflow_run"].get("id")' in source
     assert "len(matching_states) != 1" in source
     assert 'state_id=state["id"]' in source
+    assert "Verify source artifact producer provenance" in source
+    assert 'health_run.get("path")' in source
+    assert '== ".github/workflows/prospective-hype-clean.yml"' in source
+    assert 'lineage_run.get("path")' in source
+    assert '== ".github/workflows/prospective-hype-lineage.yml"' in source
+    assert 'state_workflow.get("id") == health_workflow.get("id")' in source
 
 
 def test_blind_monitor_never_downloads_or_names_interim_economics() -> None:
@@ -98,18 +103,20 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "HEALTH_ARTIFACT_MISSING" in source
     assert "LINEAGE_ARTIFACT_MISSING" in source
     assert "STATE_ARTIFACT_MATCH_INVALID" in source
+    assert "ARTIFACT_PROVENANCE_REQUEST_FAILED" in source
+    assert "ARTIFACT_PRODUCER_PROVENANCE_INVALID" in source
     assert "HEALTH_ARTIFACT_DOWNLOAD_FAILED" in source
     assert "LINEAGE_ARTIFACT_DOWNLOAD_FAILED" in source
     assert "SOURCE_ARTIFACT_DOWNLOAD_UNEXPECTED_FAILURE" in source
     assert "MONITOR_BUILD_FAILED" in source
     assert "failure.json" in source
     assert "if: ${{ always() }}" in source
-    assert "always() && steps.discover.outputs.status != 'ok'" in source
     assert "always() && steps.discover.outputs.status == 'ok'" in source
     assert "Preserve discovery failure receipt" in source
     assert "Preserve download failure receipt" in source
     assert "Preserve monitor failure status" in source
     assert "steps.discover.outputs.status != 'ok'" in source
+    assert "steps.provenance.outputs.status != 'ok'" in source
     assert "steps.download.outputs.status != 'ok'" in source
     assert "steps.monitor.outputs.exit_code != '0'" in source
     for token in (
