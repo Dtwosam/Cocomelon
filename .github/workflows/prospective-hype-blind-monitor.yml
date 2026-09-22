@@ -179,7 +179,10 @@ jobs:
           test -f "$MONITOR_ROOT/lineage/lineage.json"
 
       - name: Build redacted campaign monitor receipt
+        id: monitor
         env:
+          HEALTH_ID: ${{ steps.discover.outputs.health_id }}
+          LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
           STATE_ID: ${{ steps.discover.outputs.state_id }}
         run: |
           set -euo pipefail
@@ -188,13 +191,62 @@ jobs:
           print(time.time_ns() // 1_000_000)
           PY
           )"
+          monitor_rc=0
           cocomelon-prospective-hype-blind-monitor \
             --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
             --lineage "$MONITOR_ROOT/lineage/lineage.json" \
             --state-artifact-id "$STATE_ID" \
             --audited-at-ms "$audit_ms" \
-            > "$MONITOR_ROOT/monitor.json"
-          python - <<'PY'
+            > "$MONITOR_ROOT/monitor.json" \
+            2> /tmp/prospective-hype-monitor-error.json \
+            || monitor_rc=$?
+          echo "exit_code=$monitor_rc" >> "$GITHUB_OUTPUT"
+
+          if [[ "$monitor_rc" -ne 0 ]]; then
+            rm -f "$MONITOR_ROOT/monitor.json"
+            export AUDIT_MS="$audit_ms"
+            python - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          from cocomelon.research.prospective_blind_monitor_failure import (
+              build_prospective_blind_monitor_failure,
+          )
+
+          reason = "MONITOR_BUILD_FAILED"
+          try:
+              payload = json.loads(
+                  Path("/tmp/prospective-hype-monitor-error.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              candidate = payload.get("error")
+              if isinstance(candidate, str) and re.fullmatch(
+                  r"[A-Z][A-Z0-9_]*",
+                  candidate,
+              ):
+                  reason = candidate
+          except (OSError, json.JSONDecodeError):
+              pass
+
+          receipt = build_prospective_blind_monitor_failure(
+              audited_at_ms=int(os.environ["AUDIT_MS"]),
+              stage="build",
+              reason_code=reason,
+              health_artifact_id=os.environ["HEALTH_ID"],
+              lineage_artifact_id=os.environ["LINEAGE_ID"],
+              state_artifact_id=os.environ["STATE_ID"],
+          )
+          output = Path(
+              "artifacts/prospective-hype-blind-monitor/failure.json"
+          )
+          receipt.write(output)
+          print(json.dumps(receipt.to_dict(), indent=2, sort_keys=True))
+          PY
+          else
+            python - <<'PY'
           import json
           from pathlib import Path
 
@@ -217,12 +269,20 @@ jobs:
           assert len(payload["monitor_id"]) == 64
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
+          fi
 
       - name: Upload blind monitor receipt
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
           name: prospective-hype-blind-monitor-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/prospective-hype-blind-monitor/monitor.json
+          path: |
+            artifacts/prospective-hype-blind-monitor/monitor.json
+            artifacts/prospective-hype-blind-monitor/failure.json
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Preserve monitor failure status
+        if: ${{ steps.monitor.outputs.exit_code != '0' }}
+        run: exit 1
