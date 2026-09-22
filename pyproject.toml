@@ -38,6 +38,7 @@ cocomelon-historical-archive-clean-cycle = "cocomelon.historical_archive_clean_c
 cocomelon-historical-archive-clean-finalize = "cocomelon.historical_archive_clean_finalize_cli:main"
 cocomelon-historical-archive-clean-lineage = "cocomelon.historical_archive_clean_lineage_cli:main"
 cocomelon-historical-archive-clean-readiness = "cocomelon.historical_archive_clean_readiness_cli:main"
+cocomelon-historical-archive-candidate-package = "cocomelon.historical_archive_candidate_package_cli:main"
 cocomelon-historical-archive-clean-runtime = "cocomelon.historical_archive_clean_runtime_cli:main"
 cocomelon-historical-dataset = "cocomelon.historical_dataset_cli:main"
 cocomelon-historical-experiment = "cocomelon.historical_experiment_cli:main"
