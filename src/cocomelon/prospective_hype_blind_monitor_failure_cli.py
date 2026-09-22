@@ -26,7 +26,7 @@ def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
 
 
 def _optional_artifact_id(value: str | None) -> str | None:
-    if value in {None, "", "none"}:
+    if value is None or value in {"", "none"}:
         return None
     if not value.isdigit():
         raise argparse.ArgumentTypeError("artifact ids must be numeric when present")
