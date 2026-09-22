@@ -325,14 +325,14 @@ def settle_due_observations(
     settled: list[ProspectiveOutcome] = []
     missing: list[str] = []
     for observation in due:
-        candle = by_end.get(observation.target_end_ms)
-        if candle is None:
+        exit_candle = by_end.get(observation.target_end_ms)
+        if exit_candle is None:
             missing.append(observation.observation_id)
             continue
         outcome = build_prospective_outcome(
             spec,
             observation=observation,
-            exit_candle=candle,
+            exit_candle=exit_candle,
         )
         store.record_outcome(outcome)
         settled.append(outcome)
