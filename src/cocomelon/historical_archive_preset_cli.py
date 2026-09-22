@@ -21,6 +21,11 @@ from cocomelon.research.historical_archive_final_calibration import (
     verify_archive_final_calibration,
     write_archive_final_calibration,
 )
+from cocomelon.research.historical_archive_model_artifact import (
+    build_archive_candidate_model_artifact,
+    verify_archive_candidate_model_artifact,
+    write_archive_candidate_model_artifact,
+)
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
     build_archive_preset_preflight,
@@ -112,6 +117,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify_calibration.add_argument("--archive-root", required=True, type=Path)
     verify_calibration.add_argument("--source-root", required=True, type=Path)
     verify_calibration.add_argument("--output-root", required=True, type=Path)
+
+    build_model = subparsers.add_parser("build-candidate-model")
+    build_model.add_argument("--preset", default=PRESET_NAME)
+    build_model.add_argument("--archive-root", required=True, type=Path)
+    build_model.add_argument("--source-root", required=True, type=Path)
+    build_model.add_argument("--output-root", required=True, type=Path)
+
+    verify_model = subparsers.add_parser("verify-candidate-model")
+    verify_model.add_argument("--preset", default=PRESET_NAME)
+    verify_model.add_argument("--archive-root", required=True, type=Path)
+    verify_model.add_argument("--source-root", required=True, type=Path)
+    verify_model.add_argument("--output-root", required=True, type=Path)
 
     plan_training = subparsers.add_parser("plan-candidate-training")
     plan_training.add_argument("--preset", default=PRESET_NAME)
@@ -353,6 +370,72 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "calibration_id": calibration.calibration_id,
                     "valid": True,
                     "final_calibration": str(calibration_path),
+                }
+            )
+            return 0
+        if args.command == "build-candidate-model":
+            artifact = build_archive_candidate_model_artifact(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            artifact_path = write_archive_candidate_model_artifact(
+                args.output_root,
+                artifact,
+            )
+            _emit(
+                {
+                    "command": "build-candidate-model",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": artifact.candidate_id,
+                    "training_plan_id": artifact.training_plan_id,
+                    "calibration_id": artifact.calibration_id,
+                    "artifact_id": artifact.artifact_id,
+                    "model_family": artifact.model_family,
+                    "calibration_variant": artifact.calibration_variant,
+                    "model_format": artifact.model_format,
+                    "model_payload_sha256": artifact.model_payload_sha256,
+                    "execution_policy": artifact.execution_policy,
+                    "max_concurrent_positions": (
+                        artifact.max_concurrent_positions
+                    ),
+                    "validation_not_before_ms": (
+                        artifact.validation_not_before_ms
+                    ),
+                    "prospective_only": artifact.prospective_only,
+                    "promotion_eligible": artifact.promotion_eligible,
+                    "trained_model_persisted": (
+                        artifact.trained_model_persisted
+                    ),
+                    "execution_ready": artifact.execution_ready,
+                    "candidate_model": str(artifact_path),
+                }
+            )
+            return 0
+        if args.command == "verify-candidate-model":
+            artifact_path = args.output_root / "candidate-model.json"
+            artifact = verify_archive_candidate_model_artifact(
+                artifact_path,
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "command": "verify-candidate-model",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "candidate_id": artifact.candidate_id,
+                    "artifact_id": artifact.artifact_id,
+                    "model_payload_sha256": artifact.model_payload_sha256,
+                    "execution_ready": artifact.execution_ready,
+                    "valid": True,
+                    "candidate_model": str(artifact_path),
                 }
             )
             return 0
