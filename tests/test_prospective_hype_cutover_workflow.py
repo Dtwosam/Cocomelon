@@ -102,6 +102,8 @@ def test_cutover_audit_preserves_redacted_failure_receipt_before_failing() -> No
     assert "CUTOVER_MONITOR_READINESS_FAILED" in source
     assert "CUTOVER_STATE_DOWNLOAD_FAILED" in source
     assert "CUTOVER_BUILD_FAILED" in source
+    assert "CUTOVER_RECEIPT_UPLOAD_FAILED" in source
+    assert "id: success_upload" in source
     assert "failure.json" in source
     assert "Upload cutover failure receipt" in source
     assert "Preserve cutover failure status" in source
