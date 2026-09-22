@@ -90,3 +90,55 @@ def test_cutover_receipt_requires_clean_grid_and_zero_pre_cutover_records() -> N
     assert 'payload["first_anchor_status"] in {"captured", "missed"}' in source
     assert "retention-days: 90" in source
     assert "if-no-files-found: error" in source
+
+
+def test_cutover_audit_preserves_redacted_failure_receipt_before_failing() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cocomelon-prospective-hype-cutover-failure" in source
+    assert "CUTOVER_ARTIFACT_DISCOVERY_FAILED" in source
+    assert "CUTOVER_EXISTING_RECEIPT_VERIFY_FAILED" in source
+    assert "CUTOVER_MONITOR_ARTIFACT_INVALID" in source
+    assert "CUTOVER_MONITOR_READINESS_FAILED" in source
+    assert "CUTOVER_STATE_DOWNLOAD_FAILED" in source
+    assert "CUTOVER_BUILD_FAILED" in source
+    assert "failure.json" in source
+    assert "Upload cutover failure receipt" in source
+    assert "Preserve cutover failure status" in source
+    assert "continue-on-error: true" in source
+    assert "prospective-hype-cutover-failure-${{ github.run_id }}-" in source
+    assert "if-no-files-found: error" in source
+
+
+def test_cutover_audit_uses_one_clock_for_success_and_failure_receipts() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert source.count("time.time_ns() // 1_000_000") == 1
+    assert "id: clock" in source
+    assert "steps.clock.outputs.audited_at_ms" in source
+    assert '--audited-at-ms "$AUDIT_MS"' in source
+    assert '--stage "$stage"' in source
+
+
+def test_cutover_waiting_for_first_anchor_is_not_classified_as_failure() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "waiting for first legal anchor and append-only lineage" in source
+    assert "CUTOVER_EVIDENCE_NOT_READY" not in source
+    assert "steps.ready.outputs.ready == 'true'" in source
+    assert "steps.ready.outcome == 'failure'" in source
+
+
+def test_cutover_failure_paths_remain_economics_redacted() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    for token in (
+        '"mean_net_return":',
+        '"total_net_return":',
+        '"positive_net_count":',
+        '"non_positive_net_count":',
+        '"gross_return":',
+        '"net_return":',
+        '"pnl":',
+    ):
+        assert token not in source
