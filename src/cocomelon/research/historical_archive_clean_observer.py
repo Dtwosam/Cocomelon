@@ -17,7 +17,6 @@ from cocomelon.hyperliquid.normalize import (
 from cocomelon.research.historical_archive_clean_evidence import (
     ArchiveCleanAnchorObservation,
     ArchiveCleanCaptureSummary,
-    ArchiveCleanEvidenceStore,
     ArchiveCleanOutcome,
     ArchiveCleanSignalEvidence,
     build_archive_clean_outcome,
