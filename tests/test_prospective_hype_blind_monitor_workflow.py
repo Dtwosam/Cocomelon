@@ -21,7 +21,7 @@ def test_blind_monitor_runs_after_capture_and_lineage_schedules() -> None:
 
     assert 'cron: "25 * * * *"' in source
     assert 'cron: "20 * * * *"' not in source
-    assert 'cron: "3,8,13 * * * *"' not in source
+    assert 'cron: "47 * * * *"' not in source
     assert "group: prospective-hype-blind-monitor" in source
     assert "cancel-in-progress: false" in source
 
