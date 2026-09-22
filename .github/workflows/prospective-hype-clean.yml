@@ -277,6 +277,187 @@ jobs:
           print(canonical(payload))
           PY
 
+      - name: Build or verify canonical campaign finalization
+        id: finalization
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          root = Path(os.environ["EVIDENCE_ROOT"])
+          final_path = root / "finalization.json"
+          report = json.loads(
+              Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
+          )
+          cycle = json.loads(
+              Path("/tmp/prospective-hype-cycle.json").read_text(encoding="utf-8")
+          )
+          runtime = json.loads(
+              Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
+          )
+          plan = report["plan"]
+          boundary = int(plan["finalization_not_before_ms"])
+          as_of_ms = int(report["as_of_ms"])
+
+          economic_payload = {
+              "evidence_digest": report["evidence_digest"],
+              "validation_status": report["status"],
+              "capture_coverage": report["capture_coverage"],
+              "observation_count": int(report["observation_count"]),
+              "raw_match_count": int(report["raw_match_count"]),
+              "effective_trade_count": int(report["effective_trade_count"]),
+              "occupancy_blocked_count": int(report["occupancy_blocked_count"]),
+              "settled_trade_count": int(report["settled_trade_count"]),
+              "overdue_unsettled_count": int(report["overdue_unsettled_count"]),
+              "total_net_return": report["total_net_return"],
+              "mean_net_return": report["mean_net_return"],
+              "positive_net_count": int(report["positive_net_count"]),
+              "non_positive_net_count": int(report["non_positive_net_count"]),
+              "blocks": report["blocks"],
+          }
+
+          expected_static = {
+              "kind": "prospective-hype-clean-finalization",
+              "candidate_spec_id": cycle["candidate_spec_id"],
+              "plan_id": report["plan_id"],
+              "campaign_id": cycle["campaign_id"],
+              "runtime_attestation_id": runtime["attestation_id"],
+              "observer_source_revision": runtime["observer_source_revision"],
+              "finalization_not_before_ms": boundary,
+              "promotion_eligible": False,
+              "schema_version": 1,
+          }
+
+          status_payload = {
+              "status": "pending",
+              "finalization_not_before_ms": boundary,
+              "as_of_ms": as_of_ms,
+              "finalization_id": None,
+              "conflict_reasons": [],
+          }
+
+          if final_path.exists():
+              conflicts = []
+              try:
+                  existing = json.loads(final_path.read_text(encoding="utf-8"))
+                  if not isinstance(existing, dict):
+                      raise ValueError("finalization receipt must be an object")
+                  identity = {
+                      key: existing[key]
+                      for key in (
+                          "kind",
+                          "candidate_spec_id",
+                          "plan_id",
+                          "campaign_id",
+                          "runtime_attestation_id",
+                          "observer_source_revision",
+                          "finalization_not_before_ms",
+                          "finalized_at_ms",
+                          "state_digest",
+                          "economic_payload",
+                          "promotion_eligible",
+                          "schema_version",
+                      )
+                  }
+                  calculated_id = hashlib.sha256(
+                      canonical(identity).encode("utf-8")
+                  ).hexdigest()
+              except (KeyError, OSError, ValueError, json.JSONDecodeError):
+                  existing = {}
+                  calculated_id = None
+                  conflicts.append("invalid_finalization_receipt")
+
+              if calculated_id is not None:
+                  if existing.get("finalization_id") != calculated_id:
+                      conflicts.append("finalization_identity_mismatch")
+                  for key, value in expected_static.items():
+                      if existing.get(key) != value:
+                          conflicts.append(f"{key}_mismatch")
+                  if existing.get("state_digest") != cycle["state_digest"]:
+                      conflicts.append("state_digest_changed_after_finalization")
+                  if existing.get("economic_payload") != economic_payload:
+                      conflicts.append("economic_payload_changed_after_finalization")
+              if conflicts:
+                  status_payload = {
+                      "status": "conflict",
+                      "finalization_not_before_ms": boundary,
+                      "as_of_ms": as_of_ms,
+                      "finalization_id": existing.get("finalization_id"),
+                      "conflict_reasons": conflicts,
+                  }
+              else:
+                  status_payload = {
+                      "status": "finalized",
+                      "finalization_not_before_ms": boundary,
+                      "as_of_ms": as_of_ms,
+                      "finalization_id": calculated_id,
+                      "conflict_reasons": [],
+                  }
+          elif as_of_ms < boundary:
+              pass
+          elif int(report["overdue_unsettled_count"]) > 0:
+              status_payload["status"] = "waiting_for_exact_settlements"
+          elif report["status"] == "collecting":
+              status_payload = {
+                  "status": "conflict",
+                  "finalization_not_before_ms": boundary,
+                  "as_of_ms": as_of_ms,
+                  "finalization_id": None,
+                  "conflict_reasons": ["report_still_collecting_after_finalization_boundary"],
+              }
+          else:
+              receipt = {
+                  **expected_static,
+                  "finalized_at_ms": as_of_ms,
+                  "state_digest": cycle["state_digest"],
+                  "economic_payload": economic_payload,
+              }
+              receipt["finalization_id"] = hashlib.sha256(
+                  canonical(receipt).encode("utf-8")
+              ).hexdigest()
+              encoded = canonical(receipt) + "\n"
+              temp = final_path.with_name("finalization.json.tmp")
+              with temp.open("x", encoding="utf-8") as handle:
+                  handle.write(encoded)
+                  handle.flush()
+                  os.fsync(handle.fileno())
+              os.replace(temp, final_path)
+              status_payload = {
+                  "status": "finalized",
+                  "finalization_not_before_ms": boundary,
+                  "as_of_ms": as_of_ms,
+                  "finalization_id": receipt["finalization_id"],
+                  "conflict_reasons": [],
+              }
+
+          Path("/tmp/prospective-hype-finalization-status.json").write_text(
+              canonical(status_payload) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"status={status_payload['status']}\n")
+              output.write(
+                  "finalized="
+                  + ("true" if status_payload["status"] == "finalized" else "false")
+                  + "\n"
+              )
+              output.write(
+                  f"finalization_id={status_payload['finalization_id'] or ''}\n"
+              )
+          PY
+
       - name: Verify research-only receipt
         run: |
           set -euo pipefail
@@ -295,6 +476,11 @@ jobs:
           )
           health = json.loads(
               Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
+          )
+          finalization = json.loads(
+              Path("/tmp/prospective-hype-finalization-status.json").read_text(
+                  encoding="utf-8"
+              )
           )
           assert payload["execution_mode"] == "paper"
           assert payload["evidence_class"] == "prospective_clean"
@@ -322,6 +508,14 @@ jobs:
               "degraded",
               "irrecoverable",
           }
+          assert finalization["status"] in {
+              "pending",
+              "waiting_for_exact_settlements",
+              "finalized",
+              "conflict",
+          }
+          if finalization["status"] == "finalized":
+              assert len(finalization["finalization_id"]) == 64
           assert report["status"] in {
               "collecting",
               "data_incomplete",
@@ -375,6 +569,11 @@ jobs:
                   encoding="utf-8"
               )
           )
+          finalization = json.loads(
+              Path("/tmp/prospective-hype-finalization-status.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           prior_campaign = continuity["campaign_id"]
           if prior_campaign is not None:
               assert prior_campaign == cycle["campaign_id"]
@@ -399,6 +598,7 @@ jobs:
               "cycle": cycle,
               "validation_report": report,
               "campaign_health": health,
+              "finalization": finalization,
               "runtime_attestation": runtime,
           }
           payload["receipt_id"] = hashlib.sha256(
@@ -432,6 +632,11 @@ jobs:
           health = json.loads(
               Path("/tmp/prospective-hype-health.json").read_text(encoding="utf-8")
           )
+          finalization = json.loads(
+              Path("/tmp/prospective-hype-finalization-status.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           observation = payload["observation"]
           print("## Prospective HYPE clean observer")
           print()
@@ -454,6 +659,8 @@ jobs:
           print(f"- outcomes: {payload['outcome_count']}")
           print(f"- validation status: {report['status']}")
           print(f"- campaign health: {health['status']}")
+          print(f"- finalization: {finalization['status']}")
+          print(f"- finalization id: {finalization['finalization_id']}")
           print(
               "- remaining miss budget: "
               f"{health['remaining_missed_anchor_budget']}"
@@ -529,6 +736,44 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Upload immutable finalization status
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-finalization-status-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/prospective-hype-finalization-status.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload canonical finalization receipt
+        if: ${{ steps.finalization.outputs.finalized == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-finalization-${{ steps.finalization.outputs.finalization_id }}
+          path: artifacts/prospective-hype-clean/finalization.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Fail closed on finalization conflict
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          finalization = json.loads(
+              Path("/tmp/prospective-hype-finalization-status.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if finalization["status"] == "conflict":
+              reasons = ", ".join(finalization["conflict_reasons"])
+              raise SystemExit(
+                  "PROSPECTIVE_FINALIZATION_CONFLICT: " + reasons
+              )
+          PY
 
       - name: Fail closed if frozen campaign is irrecoverable
         run: |
