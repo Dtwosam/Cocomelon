@@ -11,6 +11,7 @@ import cocomelon.historical_archive_clean_activation_cli as cli
 
 def _receipt() -> SimpleNamespace:
     return SimpleNamespace(
+        authorization_source_revision="8" * 40,
         to_dict=lambda: {
             "runtime_id": "1" * 64,
             "pin_id": "2" * 64,
