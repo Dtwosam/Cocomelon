@@ -8,10 +8,33 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from cocomelon.research.historical_discovery_freeze import (
+    HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
+)
+from cocomelon.research.prospective_context_evidence import (
+    ProspectiveCampaignManifest,
+)
+from cocomelon.research.prospective_context_report import (
+    HYPE_PROSPECTIVE_VALIDATION_V1,
+)
+
 FAILURE_RECEIPT_KIND = "prospective-hype-blind-monitor-failure"
 FAILURE_RECEIPT_SCHEMA_VERSION = 1
 _ALLOWED_STAGES = {"discovery", "download", "build"}
 _REASON_CODE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _expected_campaign_id() -> str:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    return ProspectiveCampaignManifest(
+        candidate_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        validation_not_before_ms=spec.validation_not_before_ms,
+    ).campaign_id
+
+
+EXPECTED_CAMPAIGN_ID = _expected_campaign_id()
+EXPECTED_VALIDATION_PLAN_ID = HYPE_PROSPECTIVE_VALIDATION_V1.plan_id
 
 
 class ProspectiveBlindMonitorFailureError(RuntimeError):
@@ -44,6 +67,8 @@ class ProspectiveBlindMonitorFailure:
     health_artifact_id: str | None = None
     lineage_artifact_id: str | None = None
     state_artifact_id: str | None = None
+    campaign_id: str = EXPECTED_CAMPAIGN_ID
+    validation_plan_id: str = EXPECTED_VALIDATION_PLAN_ID
     kind: str = FAILURE_RECEIPT_KIND
     interim_economics_redacted: bool = True
     schema_version: int = FAILURE_RECEIPT_SCHEMA_VERSION
@@ -66,6 +91,10 @@ class ProspectiveBlindMonitorFailure:
             value = cast(str | None, getattr(self, field))
             if value is not None and not value.isdigit():
                 raise ValueError(f"{field} must be numeric when present")
+        if self.campaign_id != EXPECTED_CAMPAIGN_ID:
+            raise ValueError("failure receipt campaign mismatch")
+        if self.validation_plan_id != EXPECTED_VALIDATION_PLAN_ID:
+            raise ValueError("failure receipt validation plan mismatch")
         if self.kind != FAILURE_RECEIPT_KIND:
             raise ValueError("unsupported failure receipt kind")
         if self.interim_economics_redacted is not True:
@@ -81,6 +110,8 @@ class ProspectiveBlindMonitorFailure:
             "health_artifact_id": self.health_artifact_id,
             "lineage_artifact_id": self.lineage_artifact_id,
             "state_artifact_id": self.state_artifact_id,
+            "campaign_id": self.campaign_id,
+            "validation_plan_id": self.validation_plan_id,
             "kind": self.kind,
             "interim_economics_redacted": self.interim_economics_redacted,
             "schema_version": self.schema_version,
@@ -150,6 +181,8 @@ def verify_prospective_blind_monitor_failure(
         "health_artifact_id",
         "lineage_artifact_id",
         "state_artifact_id",
+        "campaign_id",
+        "validation_plan_id",
         "kind",
         "interim_economics_redacted",
         "schema_version",
@@ -161,6 +194,8 @@ def verify_prospective_blind_monitor_failure(
     audited_at_ms = payload["audited_at_ms"]
     stage = payload["stage"]
     reason_code = payload["reason_code"]
+    campaign_id = payload["campaign_id"]
+    validation_plan_id = payload["validation_plan_id"]
     kind = payload["kind"]
     redacted = payload["interim_economics_redacted"]
     schema_version = payload["schema_version"]
@@ -171,6 +206,10 @@ def verify_prospective_blind_monitor_failure(
         raise ProspectiveBlindMonitorFailureError("FAILURE_STAGE_INVALID")
     if not isinstance(reason_code, str):
         raise ProspectiveBlindMonitorFailureError("FAILURE_REASON_INVALID")
+    if not isinstance(campaign_id, str):
+        raise ProspectiveBlindMonitorFailureError("FAILURE_CAMPAIGN_ID_INVALID")
+    if not isinstance(validation_plan_id, str):
+        raise ProspectiveBlindMonitorFailureError("FAILURE_PLAN_ID_INVALID")
     if not isinstance(kind, str):
         raise ProspectiveBlindMonitorFailureError("FAILURE_KIND_INVALID")
     if not isinstance(redacted, bool):
@@ -197,6 +236,8 @@ def verify_prospective_blind_monitor_failure(
                 payload["state_artifact_id"],
                 "STATE_ARTIFACT_ID",
             ),
+            campaign_id=campaign_id,
+            validation_plan_id=validation_plan_id,
             kind=kind,
             interim_economics_redacted=redacted,
             schema_version=schema_version,
