@@ -333,23 +333,20 @@ jobs:
 
       - name: Build redacted campaign monitor receipt
         id: monitor
+        if: ${{ steps.discover.outputs.status == 'ok' && steps.download.outputs.status == 'ok' }}
         env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           HEALTH_ID: ${{ steps.discover.outputs.health_id }}
           LINEAGE_ID: ${{ steps.discover.outputs.lineage_id }}
           STATE_ID: ${{ steps.discover.outputs.state_id }}
         run: |
           set -euo pipefail
-          audit_ms="$(python - <<'PY'
-          import time
-          print(time.time_ns() // 1_000_000)
-          PY
-          )"
           monitor_rc=0
           cocomelon-prospective-hype-blind-monitor \
             --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
             --lineage "$MONITOR_ROOT/lineage/lineage.json" \
             --state-artifact-id "$STATE_ID" \
-            --audited-at-ms "$audit_ms" \
+            --audited-at-ms "$AUDIT_MS" \
             > "$MONITOR_ROOT/monitor.json" \
             2> /tmp/prospective-hype-monitor-error.json \
             || monitor_rc=$?
@@ -357,16 +354,10 @@ jobs:
 
           if [[ "$monitor_rc" -ne 0 ]]; then
             rm -f "$MONITOR_ROOT/monitor.json"
-            export AUDIT_MS="$audit_ms"
-            python - <<'PY'
+            reason_code="$(python - <<'PY'
           import json
-          import os
           import re
           from pathlib import Path
-
-          from cocomelon.research.prospective_blind_monitor_failure import (
-              build_prospective_blind_monitor_failure,
-          )
 
           reason = "MONITOR_BUILD_FAILED"
           try:
@@ -376,28 +367,25 @@ jobs:
                   )
               )
               candidate = payload.get("error")
-              if isinstance(candidate, str) and re.fullmatch(
-                  r"[A-Z][A-Z0-9_]*",
-                  candidate,
+              if (
+                  isinstance(candidate, str)
+                  and len(candidate) <= 96
+                  and re.fullmatch(r"[A-Z][A-Z0-9_]*", candidate)
               ):
                   reason = candidate
           except (OSError, json.JSONDecodeError):
               pass
-
-          receipt = build_prospective_blind_monitor_failure(
-              audited_at_ms=int(os.environ["AUDIT_MS"]),
-              stage="build",
-              reason_code=reason,
-              health_artifact_id=os.environ["HEALTH_ID"],
-              lineage_artifact_id=os.environ["LINEAGE_ID"],
-              state_artifact_id=os.environ["STATE_ID"],
-          )
-          output = Path(
-              "artifacts/prospective-hype-blind-monitor/failure.json"
-          )
-          receipt.write(output)
-          print(json.dumps(receipt.to_dict(), indent=2, sort_keys=True))
+          print(reason)
           PY
+          )"
+            cocomelon-prospective-hype-blind-monitor-failure \
+              --audited-at-ms "$AUDIT_MS" \
+              --stage build \
+              --reason-code "$reason_code" \
+              --health-artifact-id "$HEALTH_ID" \
+              --lineage-artifact-id "$LINEAGE_ID" \
+              --state-artifact-id "$STATE_ID" \
+              > "$MONITOR_ROOT/failure.json"
           else
             python - <<'PY'
           import json
@@ -437,5 +425,5 @@ jobs:
           compression-level: 9
 
       - name: Preserve monitor failure status
-        if: ${{ steps.monitor.outputs.exit_code != '0' }}
+        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.monitor.outputs.exit_code != '0') }}
         run: exit 1
