@@ -412,8 +412,8 @@ def build_prospective_validation_report(
         for item in all_observations
         if item.anchor_end_ms < plan.validation_end_ms
     )
-    for observation in observations:
-        _validate_anchor(observation, plan)
+    for observed in observations:
+        _validate_anchor(observed, plan)
     observations = tuple(
         sorted(observations, key=lambda item: (item.anchor_end_ms, item.observation_id))
     )
