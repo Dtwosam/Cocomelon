@@ -18,6 +18,7 @@ from cocomelon.research.historical_archive_validation_spec import (
     VALIDATION_WINDOW_MS,
     HistoricalArchiveValidationSpecError,
     build_archive_clean_validation_spec,
+    load_archive_clean_validation_spec,
     verify_archive_clean_validation_spec,
     write_archive_clean_validation_spec,
 )
@@ -182,6 +183,58 @@ def test_clean_validation_spec_preserves_non_capacity_policy(
     assert spec.execution_policy == "single_position_occupancy"
     assert spec.max_concurrent_positions is None
 
+
+
+def test_clean_validation_runtime_loader_does_not_rebuild_history(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install(monkeypatch)
+    spec = build_archive_clean_validation_spec(
+        JUL_SEP_2026_V2,
+        archive_root=tmp_path / "archive",
+        source_root=tmp_path / "sources",
+        output_root=tmp_path,
+    )
+    path = write_archive_clean_validation_spec(tmp_path, spec)
+    monkeypatch.setattr(
+        validation,
+        "build_archive_clean_validation_spec",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("runtime loader must not rebuild validation spec")
+        ),
+    )
+
+    loaded = load_archive_clean_validation_spec(path)
+
+    assert loaded == spec
+    assert loaded.spec_id == spec.spec_id
+
+
+def test_clean_validation_runtime_loader_rejects_policy_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _install(monkeypatch)
+    spec = build_archive_clean_validation_spec(
+        JUL_SEP_2026_V2,
+        archive_root=tmp_path / "archive",
+        source_root=tmp_path / "sources",
+        output_root=tmp_path,
+    )
+    path = write_archive_clean_validation_spec(tmp_path, spec)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["min_settled_trades"] = 1
+    path.write_text(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        HistoricalArchiveValidationSpecError,
+        match="ARCHIVE_VALIDATION_SPEC_INVALID",
+    ):
+        load_archive_clean_validation_spec(path)
 
 def test_clean_validation_spec_round_trips_and_detects_tampering(
     monkeypatch: pytest.MonkeyPatch,
