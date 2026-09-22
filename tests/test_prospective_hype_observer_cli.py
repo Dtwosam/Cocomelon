@@ -134,6 +134,7 @@ def test_payload_runs_one_paper_only_clean_observation_cycle(tmp_path) -> None:
     assert observation["context_state_1h"] == "down/bearish/near_basket"
     assert payload["observation_count"] == 1
     assert payload["outcome_count"] == 0
+    assert len(payload["state_digest"]) == 64
     assert reader.candle_calls == [
         ("BTC", "15m"),
         ("ETH", "15m"),
