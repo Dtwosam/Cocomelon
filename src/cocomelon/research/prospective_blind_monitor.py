@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_CEILING
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 from pathlib import Path
 from typing import cast
 
@@ -63,6 +63,18 @@ def _boolean(value: object, field: str) -> bool:
     if not isinstance(value, bool):
         raise ProspectiveBlindMonitorError(f"{field}_INVALID")
     return value
+
+
+def _decimal(value: object, field: str) -> Decimal:
+    if not isinstance(value, str) or not value.strip():
+        raise ProspectiveBlindMonitorError(f"{field}_INVALID")
+    try:
+        resolved = Decimal(value)
+    except InvalidOperation as exc:
+        raise ProspectiveBlindMonitorError(f"{field}_INVALID") from exc
+    if not resolved.is_finite():
+        raise ProspectiveBlindMonitorError(f"{field}_INVALID")
+    return resolved
 
 
 def _verify_identity(
@@ -294,11 +306,9 @@ def _validate_health(payload: dict[str, object]) -> None:
     )
     if maximum_observations != observed + remaining:
         raise ProspectiveBlindMonitorError("MAXIMUM_OBSERVATION_COUNT_MISMATCH")
-    maximum_capture = Decimal(
-        _string(
-            payload.get("maximum_final_capture_coverage"),
-            "MAXIMUM_FINAL_CAPTURE_COVERAGE",
-        )
+    maximum_capture = _decimal(
+        payload.get("maximum_final_capture_coverage"),
+        "MAXIMUM_FINAL_CAPTURE_COVERAGE",
     )
     if maximum_capture != Decimal(maximum_observations) / Decimal(expected):
         raise ProspectiveBlindMonitorError("MAXIMUM_CAPTURE_COVERAGE_MISMATCH")
