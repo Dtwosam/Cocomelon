@@ -22,17 +22,20 @@ def test_prospective_hype_workflow_is_paper_only_and_read_only() -> None:
     assert "submit_order" not in source
 
 
-def test_prospective_hype_workflow_runs_redundant_early_hour_attempts() -> None:
+def test_prospective_hype_workflow_prewarms_off_peak_for_hourly_capture() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "push:" in source
     assert 'branches:' in source
     assert '.github/workflows/prospective-hype-clean.yml' in source
-    assert 'cron: "3,8,13 * * * *"' in source
+    assert 'cron: "47 * * * *"' in source
     assert "workflow_dispatch:" in source
+    assert "Pre-warm for protected hourly capture" in source
+    assert "PREWARM_SCHEDULE_TOO_LATE_FOR_FRESH_CAPTURE" in source
+    assert "PREWARM_DELAY_OUT_OF_BOUNDS" in source
     assert "cancel-in-progress: false" in source
     assert "github.ref == 'refs/heads/main'" in source
-    assert "timeout-minutes: 10" in source
+    assert "timeout-minutes: 30" in source
     assert "OBSERVER_SOURCE_REVISION: 0131fccdb09a2b9ba959dd5785ea213a6297f719" in source
     assert "ref: 0131fccdb09a2b9ba959dd5785ea213a6297f719" in source
     assert "ref: ${{ github.sha }}" not in source
@@ -198,8 +201,8 @@ def test_prospective_hype_workflow_freezes_capture_control_plane_before_cutover(
     assert "Verify prospective control-plane attestation" in source
     assert 'root / "control-plane.json"' in source
     assert '"kind": "prospective-hype-clean-control-plane"' in source
-    assert '"schedule_cron": "3,8,13 * * * *"' in source
-    assert '"attempt_minutes_utc": [3, 8, 13]' in source
+    assert '"schedule_cron": "47 * * * *"' in source
+    assert '"attempt_minutes_utc": [3]' in source
     assert '"max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS' in source
     assert '"state_artifact_name": os.environ["STATE_ARTIFACT_NAME"]' in source
     assert '"evidence_root": os.environ["EVIDENCE_ROOT"]' in source
@@ -212,7 +215,13 @@ def test_prospective_hype_workflow_freezes_capture_control_plane_before_cutover(
     assert '"contents_permission": "read"' in source
     assert '"actions_permission": "read"' in source
     assert '"artifact_retention_days": 90' in source
-    assert "POST_CUTOVER_CONTROL_PLANE_ATTESTATION_REQUIRED" in source
+    assert '"capture_transport": "off_peak_prewarm_v1"' in source
+    assert '"prewarm_minute_utc": 47' in source
+    assert '"protected_attempt_minute_utc": 3' in source
+    assert '"job_timeout_minutes": 30' in source
+    assert '"schema_version": 2' in source
+    assert "control-plane-supersession.json" in source
+    assert "POST_CUTOVER_CONTROL_PLANE_SUPERSESSION_FORBIDDEN" in source
     assert "CONFLICTING_PROSPECTIVE_CONTROL_PLANE_ATTESTATION" in source
     assert "NON_CANONICAL_PROSPECTIVE_CONTROL_PLANE_ATTESTATION" in source
 
@@ -233,8 +242,8 @@ def test_control_plane_is_bound_into_lineage_summary_and_finalization() -> None:
 def test_yaml_capture_settings_match_frozen_control_plane_contract() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert 'cron: "3,8,13 * * * *"' in source
-    assert "timeout-minutes: 10" in source
+    assert 'cron: "47 * * * *"' in source
+    assert "timeout-minutes: 30" in source
     assert "group: prospective-hype-clean-observer" in source
     assert "cancel-in-progress: false" in source
     assert "STATE_ARTIFACT_NAME: prospective-hype-clean-state" in source
