@@ -67,6 +67,7 @@ def test_failure_receipt_supports_missing_ids_before_discovery_finishes() -> Non
         ("unknown", "HEALTH_ARTIFACT_STALE"),
         ("build", "health stale"),
         ("build", ""),
+        ("build", "A" * 97),
     ),
 )
 def test_failure_receipt_rejects_unbounded_failure_metadata(
