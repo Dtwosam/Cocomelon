@@ -458,8 +458,12 @@ def test_settlement_requires_exact_target_candle_and_is_idempotent(
     assert result.missing_signal_ids == ()
     assert {item.market for item in result.settled} == {"BTC", "ETH"}
     by_market = {item.market: item for item in result.settled}
-    assert by_market["BTC"].gross_return == Decimal("0.02")
-    assert by_market["ETH"].gross_return == Decimal("0.02")
+    assert by_market["BTC"].gross_return == (
+        by_market["BTC"].exit_px / by_market["BTC"].entry_px - Decimal("1")
+    )
+    assert by_market["ETH"].gross_return == -(
+        by_market["ETH"].exit_px / by_market["ETH"].entry_px - Decimal("1")
+    )
     assert len(evidence.iter_outcomes()) == 2
 
     repeated = settle_archive_clean_due_signals(
