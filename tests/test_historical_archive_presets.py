@@ -279,7 +279,9 @@ def test_prepare_preset_forwards_only_frozen_source_values(
         fake_prepare,
     )
     client = object()
-    clock = lambda: 123
+
+    def clock() -> int:
+        return 123
 
     result = prepare_archive_experiment_preset(
         client,  # type: ignore[arg-type]
