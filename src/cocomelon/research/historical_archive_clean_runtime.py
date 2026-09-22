@@ -293,6 +293,34 @@ def publish_archive_clean_runtime(
         validation_spec_bytes=validation_bytes,
         source_attestation=source_attestation,
     )
+    pin_path = publish_root / "pin.json"
+    if pin_path.exists():
+        existing = load_archive_clean_runtime_pin(pin_path)
+        if (
+            existing.runtime_id != bundle.runtime_id
+            or existing.candidate_id != bundle.candidate_id
+            or existing.model_artifact_id != bundle.model_artifact_id
+            or existing.validation_spec_id != bundle.validation_spec_id
+            or existing.validation_start_ms != bundle.validation_start_ms
+        ):
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_PIN_CONFLICT"
+            )
+        pin = existing
+    else:
+        if pinned_at_ms >= bundle.validation_start_ms:
+            raise HistoricalArchiveCleanRuntimeError(
+                "POST_CUTOVER_ARCHIVE_CLEAN_RUNTIME_PIN_FORBIDDEN"
+            )
+        pin = ArchiveCleanRuntimePin(
+            runtime_id=bundle.runtime_id,
+            candidate_id=bundle.candidate_id,
+            model_artifact_id=bundle.model_artifact_id,
+            validation_spec_id=bundle.validation_spec_id,
+            pinned_at_ms=pinned_at_ms,
+            validation_start_ms=bundle.validation_start_ms,
+        )
+
     bundle_root = publish_root / "bundles" / bundle.runtime_id
     _write_consistent(bundle_root / "candidate-model.json", model_bytes)
     _write_consistent(
@@ -307,27 +335,11 @@ def publish_archive_clean_runtime(
         bundle_root / "runtime.json",
         (_canonical_json(bundle.to_dict()) + "\n").encode("utf-8"),
     )
-
-    pin = ArchiveCleanRuntimePin(
-        runtime_id=bundle.runtime_id,
-        candidate_id=bundle.candidate_id,
-        model_artifact_id=bundle.model_artifact_id,
-        validation_spec_id=bundle.validation_spec_id,
-        pinned_at_ms=pinned_at_ms,
-        validation_start_ms=bundle.validation_start_ms,
-    )
-    pin_path = publish_root / "pin.json"
-    if pin_path.exists():
-        existing = load_archive_clean_runtime_pin(pin_path)
-        if existing != pin:
-            raise HistoricalArchiveCleanRuntimeError(
-                "ARCHIVE_CLEAN_RUNTIME_PIN_CONFLICT"
-            )
-        return bundle, existing
-    _write_consistent(
-        pin_path,
-        (_canonical_json(pin.to_dict()) + "\n").encode("utf-8"),
-    )
+    if not pin_path.exists():
+        _write_consistent(
+            pin_path,
+            (_canonical_json(pin.to_dict()) + "\n").encode("utf-8"),
+        )
     return bundle, pin
 
 
