@@ -5,6 +5,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from cocomelon.research.historical_archive_clean_observer import (
     ArchiveCleanFrozenRuntime,
@@ -54,7 +55,7 @@ def _require_sha256(value: str, field: str) -> None:
 def _mapping(value: object, field: str) -> dict[str, object]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise HistoricalArchiveCleanRuntimeError(f"{field} must be an object")
-    return value
+    return cast(dict[str, object], value)
 
 
 def _string(value: object, field: str) -> str:
