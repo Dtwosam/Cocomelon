@@ -331,7 +331,7 @@ def test_build_model_artifact_binds_calibration_and_family_policy(
             "min_market_samples": 100,
             "numeric_features": (),
             "trend_regimes": (),
-            "horizons": ({"horizon_ms": FIVE},),
+            "horizons": ({"horizon_ms": 900_000},),
         },
     )
     monkeypatch.setattr(
