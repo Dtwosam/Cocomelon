@@ -1,0 +1,109 @@
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import TextIO
+
+from cocomelon.research.historical_archive_clean_readiness import (
+    build_archive_clean_activation_readiness,
+)
+from cocomelon.research.historical_archive_clean_runtime import (
+    load_pinned_archive_clean_runtime,
+)
+from cocomelon.util.time import utc_now_ms
+
+
+def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
+    target = sys.stdout if stream is None else stream
+    print(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ),
+        file=target,
+    )
+
+
+def _parse_enabled(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise ValueError("enabled must be true or false")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="cocomelon-historical-archive-clean-readiness",
+        description=(
+            "Audit archive clean campaign activation readiness without "
+            "network market access or execution"
+        ),
+    )
+    parser.add_argument("--runtime-root", required=True, type=Path)
+    parser.add_argument("--pin-id", required=True)
+    parser.add_argument("--state-root", required=True, type=Path)
+    parser.add_argument("--frozen-revision", required=True)
+    parser.add_argument("--runtime-artifact-id", required=True)
+    parser.add_argument("--enabled", required=True)
+    return parser
+
+
+def archive_clean_readiness_payload(
+    *,
+    runtime_root: Path,
+    pin_id: str,
+    state_root: Path,
+    frozen_revision: str,
+    runtime_artifact_id: str,
+    enabled: bool,
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> dict[str, object]:
+    pinned = load_pinned_archive_clean_runtime(
+        runtime_root,
+        expected_pin_id=pin_id,
+    )
+    readiness = build_archive_clean_activation_readiness(
+        pinned,
+        state_root=state_root,
+        frozen_revision=frozen_revision,
+        runtime_artifact_id=runtime_artifact_id,
+        enabled=enabled,
+        as_of_ms=clock_ms(),
+    )
+    return {
+        "command": "historical-archive-clean-readiness",
+        **readiness.to_dict(),
+    }
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    try:
+        payload = archive_clean_readiness_payload(
+            runtime_root=args.runtime_root,
+            pin_id=args.pin_id,
+            state_root=args.state_root,
+            frozen_revision=args.frozen_revision,
+            runtime_artifact_id=args.runtime_artifact_id,
+            enabled=_parse_enabled(args.enabled),
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        _emit(
+            {"error": str(exc), "error_type": type(exc).__name__},
+            stream=sys.stderr,
+        )
+        return 2
+    _emit(payload)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
