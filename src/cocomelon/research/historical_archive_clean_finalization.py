@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanBlockEconomics,
@@ -51,7 +52,7 @@ def _mapping(value: object, field: str) -> dict[str, object]:
         raise HistoricalArchiveCleanFinalizationError(
             f"{field} must be an object"
         )
-    return value
+    return cast(dict[str, object], value)
 
 
 def _integer(value: object, field: str) -> int:
