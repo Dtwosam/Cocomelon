@@ -43,6 +43,27 @@ def test_readiness_workflow_verifies_frozen_runtime_and_pin_scoped_state() -> No
     assert 'run.get("path") != os.environ["WORKFLOW_PATH"]' in source
 
 
+
+def test_readiness_uses_bootstrap_only_when_observer_state_is_missing() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    observer_restore = source.index("Restore latest pin-scoped observer state")
+    bootstrap_restore = source.index("Restore pre-cutover bootstrap fallback")
+    readiness = source.index("Build offline activation readiness report")
+
+    assert observer_restore < bootstrap_restore < readiness
+    assert "steps.restore.outputs.restored_artifact_id == 'none'" in source
+    assert "BOOTSTRAP_STATE_ARTIFACT_NAME" in source
+    assert "historical-archive-clean-bootstrap-state-" in source
+    assert "BOOTSTRAP_WORKFLOW_PATH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REPOSITORY_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_REVISION_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_EVENT_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_BOOTSTRAP_PRODUCER_NOT_SUCCESS" in source
+    assert "--verify-only" in source
+
 def test_readiness_report_is_uploaded_before_terminal_failure() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
