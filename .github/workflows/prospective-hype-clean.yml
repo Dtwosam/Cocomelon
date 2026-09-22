@@ -101,6 +101,35 @@ jobs:
           )
           PY
 
+      - name: Verify prospective runtime attestation
+        run: |
+          set -euo pipefail
+          observer_source_revision="$(git rev-parse HEAD)"
+          python - "$observer_source_revision" \
+            > /tmp/prospective-hype-runtime.json <<'PY'
+          import json
+          import os
+          import sys
+
+          from cocomelon.research.prospective_runtime_attestation import (
+              ensure_prospective_runtime_attestation,
+          )
+          from cocomelon.util.time import utc_now_ms
+
+          attestation = ensure_prospective_runtime_attestation(
+              os.environ["EVIDENCE_ROOT"],
+              observer_source_revision=sys.argv[1],
+              as_of_ms=utc_now_ms(),
+          )
+          print(
+              json.dumps(
+                  attestation.to_dict(),
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+          )
+          PY
+
       - name: Run prospective clean observer
         run: |
           set -euo pipefail
@@ -125,6 +154,9 @@ jobs:
           report = json.loads(
               Path("/tmp/prospective-hype-report.json").read_text(encoding="utf-8")
           )
+          runtime = json.loads(
+              Path("/tmp/prospective-hype-runtime.json").read_text(encoding="utf-8")
+          )
           assert payload["execution_mode"] == "paper"
           assert payload["evidence_class"] == "prospective_clean"
           assert payload["promotion_eligible"] is False
@@ -134,6 +166,10 @@ jobs:
           assert report["campaign_id"] == payload["campaign_id"]
           assert report["state_digest"] == payload["state_digest"]
           assert report["plan_id"] == payload["validation_plan_id"]
+          assert runtime["candidate_spec_id"] == payload["candidate_spec_id"]
+          assert runtime["validation_plan_id"] == payload["validation_plan_id"]
+          assert len(runtime["observer_source_revision"]) == 40
+          assert len(runtime["attestation_id"]) == 64
           assert report["expected_anchor_count"] == 1080
           assert report["status"] in {
               "collecting",
@@ -165,6 +201,11 @@ jobs:
 
           continuity = json.loads(
               Path("/tmp/prospective-hype-continuity.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          runtime = json.loads(
+              Path("/tmp/prospective-hype-runtime.json").read_text(
                   encoding="utf-8"
               )
           )
@@ -201,6 +242,7 @@ jobs:
               "promotion_eligible": cycle["promotion_eligible"],
               "cycle": cycle,
               "validation_report": report,
+              "runtime_attestation": runtime,
           }
           payload["receipt_id"] = hashlib.sha256(
               canonical(payload).encode("utf-8")
@@ -240,6 +282,8 @@ jobs:
           print(f"- state digest: {payload['state_digest']}")
           print(f"- continuity: {continuity['status']}")
           print(f"- prior state digest: {continuity['prior_state_digest']}")
+          print(f"- runtime attestation: {runtime['attestation_id']}")
+          print(f"- observer source revision: {runtime['observer_source_revision']}")
           print(f"- status: {observation['status']}")
           print(f"- raw direction: {observation['raw_direction']}")
           print(f"- effective direction: {observation['effective_direction']}")

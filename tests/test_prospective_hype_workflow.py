@@ -46,6 +46,10 @@ def test_prospective_hype_workflow_restores_and_republishes_cumulative_state() -
     assert "state_digest" in source
     assert "Verify cumulative state continuity" in source
     assert "verify_prospective_state_continuity" in source
+    assert "Verify prospective runtime attestation" in source
+    assert "ensure_prospective_runtime_attestation" in source
+    assert "git rev-parse HEAD" in source
+    assert "/tmp/prospective-hype-runtime.json" in source
     assert "POST_CUTOVER_PROSPECTIVE_STATE_RESTORE_REQUIRED" not in source
     assert "/tmp/prospective-hype-continuity.json" in source
     assert "prospective_clean" in source
@@ -73,6 +77,9 @@ def test_prospective_hype_workflow_keeps_per_run_receipt_separate() -> None:
     assert '"receipt_id"' in source
     assert '"cycle": cycle' in source
     assert '"validation_report": report' in source
+    assert '"runtime_attestation": runtime' in source
+    assert '"observer_source_revision"' in source
+    assert '"attestation_id"' in source
     assert (
         "prospective-hype-clean-report-${{ github.run_id }}-${{ github.run_attempt }}"
         in source
