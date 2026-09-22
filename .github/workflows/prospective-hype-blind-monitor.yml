@@ -142,10 +142,16 @@ jobs:
           STATE_ID: ${{ steps.discover.outputs.state_id }}
         run: |
           set -euo pipefail
+          audit_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
           cocomelon-prospective-hype-blind-monitor \
             --health "$MONITOR_ROOT/health/prospective-hype-health.json" \
             --lineage "$MONITOR_ROOT/lineage/lineage.json" \
             --state-artifact-id "$STATE_ID" \
+            --audited-at-ms "$audit_ms" \
             > "$MONITOR_ROOT/monitor.json"
           python - <<'PY'
           import json
