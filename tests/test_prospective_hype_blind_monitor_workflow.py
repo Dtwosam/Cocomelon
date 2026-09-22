@@ -92,13 +92,22 @@ def test_blind_monitor_validates_pull_requests_without_live_artifacts() -> None:
 def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
-    assert "prospective_blind_monitor_failure" in source
+    assert "cocomelon-prospective-hype-blind-monitor-failure" in source
+    assert "ARTIFACT_DISCOVERY_REQUEST_FAILED" in source
+    assert "HEALTH_ARTIFACT_MISSING" in source
+    assert "LINEAGE_ARTIFACT_MISSING" in source
+    assert "STATE_ARTIFACT_MATCH_INVALID" in source
+    assert "HEALTH_ARTIFACT_DOWNLOAD_FAILED" in source
+    assert "LINEAGE_ARTIFACT_DOWNLOAD_FAILED" in source
     assert "MONITOR_BUILD_FAILED" in source
     assert "failure.json" in source
     assert "if: ${{ always() }}" in source
+    assert "Preserve discovery failure receipt" in source
+    assert "Preserve download failure receipt" in source
     assert "Preserve monitor failure status" in source
+    assert "steps.discover.outputs.status != 'ok'" in source
+    assert "steps.download.outputs.status != 'ok'" in source
     assert "steps.monitor.outputs.exit_code != '0'" in source
-    assert "interim_economics_redacted" in source
     for token in (
         "mean_net_return",
         "total_net_return",
@@ -108,3 +117,25 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
         "net_return",
     ):
         assert token not in source
+
+
+
+def test_blind_monitor_uses_one_audit_clock_across_all_failure_stages() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert source.count("time.time_ns() // 1_000_000") == 1
+    assert "id: clock" in source
+    assert "steps.clock.outputs.audited_at_ms" in source
+    assert "--stage discovery" in source
+    assert "--stage download" in source
+    assert "--stage build" in source
+
+
+def test_blind_monitor_only_consumes_live_artifacts_outside_pull_requests() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "if: ${{ github.event_name == 'pull_request' }}" in source
+    assert "if: ${{ github.event_name != 'pull_request' }}" in source
+    validate_index = source.index("jobs:\n  validate:")
+    monitor_index = source.index("\n  monitor:")
+    assert validate_index < monitor_index
