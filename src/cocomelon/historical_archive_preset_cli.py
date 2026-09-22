@@ -16,6 +16,7 @@ from cocomelon.research.historical_archive_presets import (
     build_archive_preset_run_receipt,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
+    verify_archive_preset_run_receipt,
 )
 
 
@@ -54,6 +55,10 @@ def build_parser() -> argparse.ArgumentParser:
     keys = subparsers.add_parser("keys")
     keys.add_argument("--preset", default=PRESET_NAME)
 
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--preset", default=PRESET_NAME)
+    verify.add_argument("--receipt", required=True, type=Path)
+
     run = subparsers.add_parser("run")
     run.add_argument("--preset", default=PRESET_NAME)
     run.add_argument("--archive-root", required=True, type=Path)
@@ -90,6 +95,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "paid_request_performed": False,
                     "shard_count": len(shards),
                     "keys": tuple(item.key for item in shards),
+                }
+            )
+            return 0
+        if args.command == "verify":
+            receipt = verify_archive_preset_run_receipt(
+                args.receipt,
+                preset=preset,
+            )
+            _emit(
+                {
+                    "command": "verify",
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "paid_request_performed": False,
+                    "receipt_id": receipt.receipt_id,
+                    "valid": True,
                 }
             )
             return 0
