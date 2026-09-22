@@ -80,7 +80,9 @@ def test_preset_runner_forwards_only_frozen_values(
 
     monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
     client = object()
-    clock = lambda: 123
+
+    def clock() -> int:
+        return 123
 
     result = run_archive_experiment_preset(
         client,  # type: ignore[arg-type]
