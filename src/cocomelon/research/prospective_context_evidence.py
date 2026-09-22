@@ -514,6 +514,17 @@ class ProspectiveEvidenceStore:
     def record_observation(self, observation: ProspectiveObservation) -> Path:
         if observation.candidate_spec_id != self.spec.spec_id:
             raise ValueError("observation does not belong to this campaign")
+        existing = self.observation_for_anchor(observation.anchor_end_ms)
+        if existing is not None and existing != observation:
+            raise ProspectiveEvidenceConsistencyError(
+                "conflicting prospective observation for anchor"
+            )
+        if existing is not None:
+            return self._record_path(
+                "observations",
+                existing.anchor_end_ms,
+                existing.observation_id,
+            )
         path = self._record_path(
             "observations",
             observation.anchor_end_ms,
@@ -540,6 +551,21 @@ class ProspectiveEvidenceStore:
             )
         path = self._record_path("outcomes", outcome.target_end_ms, outcome.outcome_id)
         return self._write_consistent(path, outcome.identity_payload())
+
+    def observation_for_anchor(
+        self,
+        anchor_end_ms: int,
+    ) -> ProspectiveObservation | None:
+        matches = tuple(
+            item
+            for item in self.iter_observations()
+            if item.anchor_end_ms == anchor_end_ms
+        )
+        if len(matches) > 1:
+            raise ProspectiveEvidenceConsistencyError(
+                "multiple prospective observations for one anchor"
+            )
+        return None if not matches else matches[0]
 
     def load_observation(self, observation_id: str) -> ProspectiveObservation | None:
         for path in sorted((self.root / "observations").glob("*/*.json")):
