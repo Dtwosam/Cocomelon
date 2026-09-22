@@ -1177,7 +1177,10 @@ class ArchiveCleanEvidenceStore:
         )
         if prior:
             latest = prior[-1]
-            if latest.state_after != observation.state_before:
+            if (
+                latest.state_after.active_at(observation.anchor_end_ms)
+                != observation.state_before
+            ):
                 raise HistoricalArchiveCleanEvidenceConsistencyError(
                     "CLEAN_EVIDENCE_STATE_CONTINUITY_MISMATCH"
                 )
@@ -1272,7 +1275,10 @@ class ArchiveCleanEvidenceStore:
                 "CLEAN_EVIDENCE_DUPLICATE_ANCHOR"
             )
         for previous, current in zip(ordered, ordered[1:], strict=False):
-            if previous.state_after != current.state_before:
+            if (
+                previous.state_after.active_at(current.anchor_end_ms)
+                != current.state_before
+            ):
                 raise HistoricalArchiveCleanEvidenceConsistencyError(
                     "CLEAN_EVIDENCE_STATE_CONTINUITY_MISMATCH"
                 )
