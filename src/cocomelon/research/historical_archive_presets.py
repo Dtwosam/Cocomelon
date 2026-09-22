@@ -426,6 +426,15 @@ def get_archive_experiment_preset(name: str) -> HistoricalArchiveExperimentPrese
         raise ValueError(f"unknown archive experiment preset: {name}") from exc
 
 
+def ensure_archive_preset_output_root_clean(output_root: Path) -> None:
+    if not output_root.exists():
+        return
+    if not output_root.is_dir():
+        raise RuntimeError("ARCHIVE_PRESET_OUTPUT_ROOT_NOT_DIRECTORY")
+    if any(output_root.iterdir()):
+        raise RuntimeError("ARCHIVE_PRESET_OUTPUT_ROOT_NOT_EMPTY")
+
+
 def run_archive_experiment_preset(
     client: HistoricalArchiveExperimentClient,
     *,
@@ -435,6 +444,7 @@ def run_archive_experiment_preset(
     output_root: Path,
     clock_ms: Callable[[], int],
 ) -> ArchiveHistoricalExperimentResult:
+    ensure_archive_preset_output_root_clean(output_root)
     result = run_archive_historical_experiment(
         client,
         archive_root=archive_root,

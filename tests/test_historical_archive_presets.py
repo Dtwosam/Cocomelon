@@ -11,6 +11,7 @@ import cocomelon.research.historical_archive_presets as presets
 from cocomelon.research.historical_archive_presets import (
     JUL_SEP_2026_V2,
     build_archive_preset_run_receipt,
+    ensure_archive_preset_output_root_clean,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
     verify_archive_preset_run_receipt,
@@ -247,4 +248,80 @@ def test_preset_run_receipt_verifies_round_trip_and_detects_tampering(
             path,
             preset=JUL_SEP_2026_V2,
         )
+
+def test_preset_output_preflight_allows_missing_or_empty_directory(
+    tmp_path: Path,
+) -> None:
+    missing = tmp_path / "missing"
+    ensure_archive_preset_output_root_clean(missing)
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    ensure_archive_preset_output_root_clean(empty)
+
+
+def test_preset_output_preflight_rejects_non_empty_directory(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    (output_root / "comparison.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_OUTPUT_ROOT_NOT_EMPTY",
+    ):
+        ensure_archive_preset_output_root_clean(output_root)
+
+
+def test_preset_output_preflight_rejects_file_path(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    output_root.write_text("not a directory\n", encoding="utf-8")
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_OUTPUT_ROOT_NOT_DIRECTORY",
+    ):
+        ensure_archive_preset_output_root_clean(output_root)
+
+
+def test_preset_runner_blocks_existing_output_before_experiment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "output"
+    output_root.mkdir()
+    sentinel = output_root / "preset-run.json"
+    sentinel.write_text('{"existing":true}\n', encoding="utf-8")
+
+    called = False
+
+    def forbidden_run(*args: object, **kwargs: object) -> object:
+        nonlocal called
+        called = True
+        raise AssertionError("experiment must not run for a reused output root")
+
+    monkeypatch.setattr(
+        presets,
+        "run_archive_historical_experiment",
+        forbidden_run,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_OUTPUT_ROOT_NOT_EMPTY",
+    ):
+        run_archive_experiment_preset(
+            object(),  # type: ignore[arg-type]
+            preset=JUL_SEP_2026_V2,
+            archive_root=tmp_path / "archive",
+            source_root=tmp_path / "sources",
+            output_root=output_root,
+            clock_ms=lambda: 123,
+        )
+
+    assert called is False
+    assert sentinel.read_text(encoding="utf-8") == '{"existing":true}\n'
 
