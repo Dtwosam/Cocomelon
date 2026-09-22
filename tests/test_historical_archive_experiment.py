@@ -35,6 +35,7 @@ from cocomelon.research.historical_model_comparison import (
     HistoricalModelComparisonConfig,
 )
 from cocomelon.research.historical_trade_archive import (
+    ARCHIVE_SOURCE,
     write_archive_candle_source,
 )
 
@@ -275,7 +276,7 @@ def _write_prepared_source_fixture(
             close_px=Decimal(str(100 + start_ms // 300_000)),
             volume=Decimal("1"),
             trade_count=1,
-            source="hyperliquid-node-fills-by-block",
+            source=ARCHIVE_SOURCE,
             received_at_ms=10_000_000,
             schema_version=1,
         )
