@@ -272,6 +272,15 @@ def test_run_emits_preset_run_receipt_identity(
         "verify_archive_preset_bundle_receipt",
         lambda *args, **kwargs: SimpleNamespace(bundle_id="b" * 64),
     )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_source_attestation",
+        lambda *args, **kwargs: SimpleNamespace(
+            attestation_id="i" * 64,
+            source_tree_sha256="s" * 64,
+            files=(object(), object(), object()),
+        ),
+    )
 
     output_root = tmp_path / "output"
     status = cli.main(
@@ -300,6 +309,9 @@ def test_run_emits_preset_run_receipt_identity(
     assert payload["preset_bundle_receipt"] == str(
         output_root / "preset-bundle.json"
     )
+    assert payload["implementation_attestation_id"] == "i" * 64
+    assert payload["source_tree_sha256"] == "s" * 64
+    assert payload["source_file_count"] == 3
     assert payload["comparison_version"] == "historical-model-comparison-v7"
 
 def test_clock_rejects_negative_fixed_retrieval_time() -> None:

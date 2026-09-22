@@ -17,6 +17,7 @@ from cocomelon.research.historical_archive_presets import (
     run_archive_experiment_preset,
     verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
+    verify_archive_preset_source_attestation,
 )
 
 
@@ -162,6 +163,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             source_root=args.source_root,
             output_root=args.output_root,
         )
+        implementation = verify_archive_preset_source_attestation(
+            args.output_root,
+            preset=preset,
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
@@ -187,6 +192,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "preset_run_receipt": str(args.output_root / "preset-run.json"),
             "preset_bundle_id": bundle.bundle_id,
             "preset_bundle_receipt": str(args.output_root / "preset-bundle.json"),
+            "implementation_attestation_id": implementation.attestation_id,
+            "source_tree_sha256": implementation.source_tree_sha256,
+            "source_file_count": len(implementation.files),
             "row_count": result.comparison.dataset_row_count,
             "fold_count": len(result.comparison.baseline_folds),
             "output_root": str(args.output_root),
