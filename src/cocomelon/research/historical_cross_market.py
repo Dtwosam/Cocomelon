@@ -91,18 +91,25 @@ def _validate_unique_feature_states(
     return by_key
 
 
-def enrich_training_rows_with_basket_context(
-    rows: Sequence[HistoricalTrainingRow],
-) -> tuple[HistoricalTrainingRow, ...]:
-    if not rows:
+def enrich_feature_rows_with_basket_context(
+    features: Sequence[HistoricalFeatureRow],
+) -> tuple[HistoricalFeatureRow, ...]:
+    if not features:
         return ()
 
-    unique_features = _validate_unique_feature_states(rows)
+    by_key: dict[tuple[str, int], HistoricalFeatureRow] = {}
+    for feature in features:
+        key = _feature_key(feature)
+        existing = by_key.get(key)
+        if existing is not None and existing != feature:
+            raise HistoricalCrossMarketError("CONFLICTING_FEATURE_STATE")
+        by_key[key] = feature
+
     by_anchor: dict[int, list[HistoricalFeatureRow]] = defaultdict(list)
-    for feature in unique_features.values():
+    for feature in by_key.values():
         by_anchor[feature.anchor_end_ms].append(feature)
 
-    enriched_features: dict[tuple[str, int], HistoricalFeatureRow] = {}
+    enriched_features: list[HistoricalFeatureRow] = []
     for anchor_end_ms, anchor_features in by_anchor.items():
         group = tuple(
             sorted(anchor_features, key=lambda item: item.market.canonical)
@@ -152,81 +159,113 @@ def enrich_training_rows_with_basket_context(
                     unavailable.discard(name)
                     available.add(name)
 
-            enriched = replace(
-                target,
-                btc_return_5m=context["btc_return_5m"],
-                btc_return_15m=context["btc_return_15m"],
-                btc_return_1h=context["btc_return_1h"],
-                btc_return_4h=context["btc_return_4h"],
-                eth_return_5m=context["eth_return_5m"],
-                eth_return_15m=context["eth_return_15m"],
-                eth_return_1h=context["eth_return_1h"],
-                eth_return_4h=context["eth_return_4h"],
-                basket_median_return_5m=context["basket_median_return_5m"],
-                basket_median_return_15m=context["basket_median_return_15m"],
-                basket_median_return_1h=context["basket_median_return_1h"],
-                basket_median_return_4h=context["basket_median_return_4h"],
-                basket_breadth_positive_5m=context[
-                    "basket_breadth_positive_5m"
-                ],
-                basket_breadth_positive_15m=context[
-                    "basket_breadth_positive_15m"
-                ],
-                basket_breadth_positive_1h=context[
-                    "basket_breadth_positive_1h"
-                ],
-                basket_breadth_positive_4h=context[
-                    "basket_breadth_positive_4h"
-                ],
-                relative_return_5m_vs_basket=context[
-                    "relative_return_5m_vs_basket"
-                ],
-                relative_return_15m_vs_basket=context[
-                    "relative_return_15m_vs_basket"
-                ],
-                relative_return_1h_vs_basket=context[
-                    "relative_return_1h_vs_basket"
-                ],
-                relative_return_4h_vs_basket=context[
-                    "relative_return_4h_vs_basket"
-                ],
-                basket_return_count_5m=context["basket_return_count_5m"],
-                basket_return_count_15m=context["basket_return_count_15m"],
-                basket_return_count_1h=context["basket_return_count_1h"],
-                basket_return_count_4h=context["basket_return_count_4h"],
-                basket_return_dispersion_5m=context[
-                    "basket_return_dispersion_5m"
-                ],
-                basket_return_dispersion_15m=context[
-                    "basket_return_dispersion_15m"
-                ],
-                basket_return_dispersion_1h=context[
-                    "basket_return_dispersion_1h"
-                ],
-                basket_return_dispersion_4h=context[
-                    "basket_return_dispersion_4h"
-                ],
-                relative_return_zscore_5m_vs_basket=context[
-                    "relative_return_zscore_5m_vs_basket"
-                ],
-                relative_return_zscore_15m_vs_basket=context[
-                    "relative_return_zscore_15m_vs_basket"
-                ],
-                relative_return_zscore_1h_vs_basket=context[
-                    "relative_return_zscore_1h_vs_basket"
-                ],
-                relative_return_zscore_4h_vs_basket=context[
-                    "relative_return_zscore_4h_vs_basket"
-                ],
-                source_retrieved_at_ms=retrieved_at_ms,
-                retrieved_after_anchor=retrieved_at_ms > anchor_end_ms,
-                available_features=tuple(sorted(available)),
-                unavailable_features=tuple(sorted(unavailable)),
-                provenance=provenance,
-                source_manifest_ids=manifest_ids,
-                schema_version=max(3, target.schema_version),
+            enriched_features.append(
+                replace(
+                    target,
+                    btc_return_5m=context["btc_return_5m"],
+                    btc_return_15m=context["btc_return_15m"],
+                    btc_return_1h=context["btc_return_1h"],
+                    btc_return_4h=context["btc_return_4h"],
+                    eth_return_5m=context["eth_return_5m"],
+                    eth_return_15m=context["eth_return_15m"],
+                    eth_return_1h=context["eth_return_1h"],
+                    eth_return_4h=context["eth_return_4h"],
+                    basket_median_return_5m=context["basket_median_return_5m"],
+                    basket_median_return_15m=context["basket_median_return_15m"],
+                    basket_median_return_1h=context["basket_median_return_1h"],
+                    basket_median_return_4h=context["basket_median_return_4h"],
+                    basket_breadth_positive_5m=context[
+                        "basket_breadth_positive_5m"
+                    ],
+                    basket_breadth_positive_15m=context[
+                        "basket_breadth_positive_15m"
+                    ],
+                    basket_breadth_positive_1h=context[
+                        "basket_breadth_positive_1h"
+                    ],
+                    basket_breadth_positive_4h=context[
+                        "basket_breadth_positive_4h"
+                    ],
+                    relative_return_5m_vs_basket=context[
+                        "relative_return_5m_vs_basket"
+                    ],
+                    relative_return_15m_vs_basket=context[
+                        "relative_return_15m_vs_basket"
+                    ],
+                    relative_return_1h_vs_basket=context[
+                        "relative_return_1h_vs_basket"
+                    ],
+                    relative_return_4h_vs_basket=context[
+                        "relative_return_4h_vs_basket"
+                    ],
+                    basket_return_count_5m=context["basket_return_count_5m"],
+                    basket_return_count_15m=context["basket_return_count_15m"],
+                    basket_return_count_1h=context["basket_return_count_1h"],
+                    basket_return_count_4h=context["basket_return_count_4h"],
+                    basket_return_dispersion_5m=context[
+                        "basket_return_dispersion_5m"
+                    ],
+                    basket_return_dispersion_15m=context[
+                        "basket_return_dispersion_15m"
+                    ],
+                    basket_return_dispersion_1h=context[
+                        "basket_return_dispersion_1h"
+                    ],
+                    basket_return_dispersion_4h=context[
+                        "basket_return_dispersion_4h"
+                    ],
+                    relative_return_zscore_5m_vs_basket=context[
+                        "relative_return_zscore_5m_vs_basket"
+                    ],
+                    relative_return_zscore_15m_vs_basket=context[
+                        "relative_return_zscore_15m_vs_basket"
+                    ],
+                    relative_return_zscore_1h_vs_basket=context[
+                        "relative_return_zscore_1h_vs_basket"
+                    ],
+                    relative_return_zscore_4h_vs_basket=context[
+                        "relative_return_zscore_4h_vs_basket"
+                    ],
+                    source_retrieved_at_ms=retrieved_at_ms,
+                    retrieved_after_anchor=retrieved_at_ms > anchor_end_ms,
+                    available_features=tuple(sorted(available)),
+                    unavailable_features=tuple(sorted(unavailable)),
+                    provenance=provenance,
+                    source_manifest_ids=manifest_ids,
+                    schema_version=max(3, target.schema_version),
+                )
             )
-            enriched_features[_feature_key(target)] = enriched
+
+    ordered = tuple(
+        sorted(
+            enriched_features,
+            key=lambda item: (
+                item.market.canonical,
+                item.anchor_end_ms,
+                item.row_id,
+            ),
+        )
+    )
+    identities = tuple(item.row_id for item in ordered)
+    if len(set(identities)) != len(identities):
+        raise HistoricalCrossMarketError("DUPLICATE_ENRICHED_FEATURE_ID")
+    return ordered
+
+
+def enrich_training_rows_with_basket_context(
+    rows: Sequence[HistoricalTrainingRow],
+) -> tuple[HistoricalTrainingRow, ...]:
+    if not rows:
+        return ()
+
+    unique_features = _validate_unique_feature_states(rows)
+    enriched = enrich_feature_rows_with_basket_context(
+        tuple(unique_features.values())
+    )
+    enriched_features = {
+        _feature_key(feature): feature
+        for feature in enriched
+    }
 
     enriched_rows = tuple(
         replace(
