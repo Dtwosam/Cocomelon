@@ -16,6 +16,7 @@ from cocomelon.research.historical_archive_clean_runtime import (
     load_archive_clean_runtime_pin,
     load_pinned_archive_clean_runtime,
     publish_archive_clean_runtime,
+    publish_archive_clean_runtime_from_package,
 )
 from cocomelon.research.python_source_attestation import (
     PythonSourceFileAttestation,
@@ -150,6 +151,35 @@ def _write_mutable_runtime(output_root: Path) -> None:
     )
 
 
+
+def _portable_package(
+    runtime: ArchiveCleanFrozenRuntime,
+    package_root: Path,
+) -> SimpleNamespace:
+    model_bytes = (package_root / "candidate-model.json").read_bytes()
+    spec_bytes = (package_root / "candidate-validation-spec.json").read_bytes()
+    return SimpleNamespace(
+        package_id="9" * 64,
+        candidate_id=runtime.artifact.candidate_id,
+        model_artifact_id=runtime.artifact.artifact_id,
+        validation_spec_id=runtime.spec.spec_id,
+        model_payload_sha256=runtime.artifact.model_payload_sha256,
+        candidate_model_sha256=runtime_module._sha256_bytes(model_bytes),
+        validation_spec_sha256=runtime_module._sha256_bytes(spec_bytes),
+    )
+
+
+def _write_portable_package(
+    package_root: Path,
+    runtime: ArchiveCleanFrozenRuntime,
+) -> SimpleNamespace:
+    _write_mutable_runtime(package_root)
+    (package_root / "candidate-package.json").write_text(
+        '{"kind":"candidate-package"}\n',
+        encoding="utf-8",
+    )
+    return _portable_package(runtime, package_root)
+
 def test_runtime_publication_is_content_addressed_and_pinned_before_cutover(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -182,6 +212,133 @@ def test_runtime_publication_is_content_addressed_and_pinned_before_cutover(
     assert pin.validation_start_ms == 1_000
     assert len(pin.pin_id) == 64
 
+
+
+def test_portable_package_publication_binds_package_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime()
+    attestation = _attestation(runtime.spec.spec_id)
+    package_root = tmp_path / "package"
+    package = _write_portable_package(package_root, runtime)
+    loaded_package = SimpleNamespace(package=package, runtime=runtime)
+    monkeypatch.setattr(
+        runtime_module,
+        "load_archive_clean_candidate_package",
+        lambda _root: loaded_package,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_build_source_attestation",
+        lambda **kwargs: attestation,
+    )
+    publish_root = tmp_path / "published"
+
+    bundle, pin = publish_archive_clean_runtime_from_package(
+        package_root=package_root,
+        publish_root=publish_root,
+        pinned_at_ms=999,
+    )
+
+    bundle_root = publish_root / "bundles" / bundle.runtime_id
+    assert bundle.portable_package_bound is True
+    assert bundle.candidate_package_id == package.package_id
+    assert bundle.candidate_package_sha256 == runtime_module._sha256_bytes(
+        (package_root / "candidate-package.json").read_bytes()
+    )
+    assert pin.portable_package_bound is True
+    assert pin.candidate_package_id == package.package_id
+    assert (bundle_root / "candidate-package.json").read_bytes() == (
+        package_root / "candidate-package.json"
+    ).read_bytes()
+    assert load_archive_clean_runtime_pin(publish_root / "pin.json") == pin
+
+
+def test_package_bound_runtime_loads_package_lineage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime()
+    attestation = _attestation(runtime.spec.spec_id)
+    package_root = tmp_path / "package"
+    package = _write_portable_package(package_root, runtime)
+    loaded_package = SimpleNamespace(package=package, runtime=runtime)
+    monkeypatch.setattr(
+        runtime_module,
+        "load_archive_clean_candidate_package",
+        lambda _root: loaded_package,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_build_source_attestation",
+        lambda **kwargs: attestation,
+    )
+    publish_root = tmp_path / "published"
+    _bundle, pin = publish_archive_clean_runtime_from_package(
+        package_root=package_root,
+        publish_root=publish_root,
+        pinned_at_ms=999,
+    )
+    _install_runtime_load_fakes(
+        monkeypatch,
+        runtime=runtime,
+        attestation=attestation,
+    )
+
+    pinned = load_pinned_archive_clean_runtime(
+        publish_root,
+        expected_pin_id=pin.pin_id,
+    )
+
+    assert pinned.candidate_package is package
+    assert pinned.bundle.candidate_package_id == package.package_id
+    assert pinned.pin.candidate_package_id == package.package_id
+
+
+def test_package_bound_runtime_rejects_package_receipt_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime()
+    attestation = _attestation(runtime.spec.spec_id)
+    package_root = tmp_path / "package"
+    package = _write_portable_package(package_root, runtime)
+    loaded_package = SimpleNamespace(package=package, runtime=runtime)
+    monkeypatch.setattr(
+        runtime_module,
+        "load_archive_clean_candidate_package",
+        lambda _root: loaded_package,
+    )
+    monkeypatch.setattr(
+        runtime_module,
+        "_build_source_attestation",
+        lambda **kwargs: attestation,
+    )
+    publish_root = tmp_path / "published"
+    bundle, pin = publish_archive_clean_runtime_from_package(
+        package_root=package_root,
+        publish_root=publish_root,
+        pinned_at_ms=999,
+    )
+    (publish_root / "bundles" / bundle.runtime_id / "candidate-package.json").write_text(
+        '{"tampered":true}\n',
+        encoding="utf-8",
+    )
+    _install_runtime_load_fakes(
+        monkeypatch,
+        runtime=runtime,
+        attestation=attestation,
+    )
+
+    with pytest.raises(
+        HistoricalArchiveCleanRuntimeError,
+        match="ARCHIVE_CLEAN_RUNTIME_PACKAGE_DIGEST_MISMATCH",
+    ):
+        load_pinned_archive_clean_runtime(
+            publish_root,
+            expected_pin_id=pin.pin_id,
+        )
 
 def test_existing_pre_cutover_pin_is_idempotent_after_cutover(
     monkeypatch: pytest.MonkeyPatch,

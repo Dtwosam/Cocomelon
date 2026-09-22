@@ -10,6 +10,7 @@ from typing import TextIO
 from cocomelon.research.historical_archive_clean_runtime import (
     load_pinned_archive_clean_runtime,
     publish_archive_clean_runtime,
+    publish_archive_clean_runtime_from_package,
 )
 from cocomelon.util.time import utc_now_ms
 
@@ -41,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     publish.add_argument("--output-root", required=True, type=Path)
     publish.add_argument("--runtime-root", required=True, type=Path)
 
+    publish_package = subparsers.add_parser("publish-package")
+    publish_package.add_argument("--package-root", required=True, type=Path)
+    publish_package.add_argument("--runtime-root", required=True, type=Path)
+
     verify = subparsers.add_parser("verify")
     verify.add_argument("--runtime-root", required=True, type=Path)
     verify.add_argument("--pin-id", required=True)
@@ -54,14 +59,21 @@ def runtime_payload(
     clock_ms: Callable[[], int] = utc_now_ms,
 ) -> dict[str, object]:
     args = build_parser().parse_args(argv)
-    if args.command == "publish":
-        bundle, pin = publish_archive_clean_runtime(
-            output_root=args.output_root,
-            publish_root=args.runtime_root,
-            pinned_at_ms=clock_ms(),
-        )
+    if args.command in {"publish", "publish-package"}:
+        if args.command == "publish":
+            bundle, pin = publish_archive_clean_runtime(
+                output_root=args.output_root,
+                publish_root=args.runtime_root,
+                pinned_at_ms=clock_ms(),
+            )
+        else:
+            bundle, pin = publish_archive_clean_runtime_from_package(
+                package_root=args.package_root,
+                publish_root=args.runtime_root,
+                pinned_at_ms=clock_ms(),
+            )
         return {
-            "command": "publish",
+            "command": args.command,
             "paid_request_performed": False,
             "paper_only": True,
             "prospective_only": True,
@@ -72,6 +84,21 @@ def runtime_payload(
             "validation_spec_id": bundle.validation_spec_id,
             "runtime_id": bundle.runtime_id,
             "pin_id": pin.pin_id,
+            "portable_package_bound": getattr(
+                bundle,
+                "portable_package_bound",
+                False,
+            ),
+            "candidate_package_id": getattr(
+                bundle,
+                "candidate_package_id",
+                None,
+            ),
+            "candidate_package_sha256": getattr(
+                bundle,
+                "candidate_package_sha256",
+                None,
+            ),
             "pinned_at_ms": pin.pinned_at_ms,
             "validation_start_ms": bundle.validation_start_ms,
             "validation_end_ms": bundle.validation_end_ms,
@@ -102,6 +129,21 @@ def runtime_payload(
         "validation_spec_id": bundle.validation_spec_id,
         "runtime_id": bundle.runtime_id,
         "pin_id": pinned.pin.pin_id,
+        "portable_package_bound": getattr(
+            bundle,
+            "portable_package_bound",
+            False,
+        ),
+        "candidate_package_id": getattr(
+            bundle,
+            "candidate_package_id",
+            None,
+        ),
+        "candidate_package_sha256": getattr(
+            bundle,
+            "candidate_package_sha256",
+            None,
+        ),
         "pinned_at_ms": pinned.pin.pinned_at_ms,
         "observer_source_tree_sha256": bundle.observer_source_tree_sha256,
         "runtime_root": str(args.runtime_root),

@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from cocomelon.research.historical_archive_candidate_package import (
+    HistoricalArchiveCandidatePackage,
+    load_archive_clean_candidate_package,
+)
 from cocomelon.research.historical_archive_clean_observer import (
     ArchiveCleanFrozenRuntime,
     load_archive_clean_frozen_runtime,
@@ -24,8 +28,8 @@ from cocomelon.research.python_source_attestation import (
     write_python_source_tree_attestation,
 )
 
-RUNTIME_BUNDLE_SCHEMA_VERSION = 1
-RUNTIME_PIN_SCHEMA_VERSION = 1
+RUNTIME_BUNDLE_SCHEMA_VERSION = 2
+RUNTIME_PIN_SCHEMA_VERSION = 2
 RUNTIME_SOURCE_SUBJECT_TYPE = "historical_archive_clean_observer_runtime"
 
 
@@ -90,6 +94,9 @@ class ArchiveCleanRuntimeBundle:
     validation_spec_id: str
     candidate_model_sha256: str
     validation_spec_sha256: str
+    candidate_package_id: str | None
+    candidate_package_sha256: str | None
+    portable_package_bound: bool
     observer_source_attestation_id: str
     observer_source_tree_sha256: str
     validation_start_ms: int
@@ -113,6 +120,23 @@ class ArchiveCleanRuntimeBundle:
             "observer_source_tree_sha256",
         ):
             _require_sha256(getattr(self, field), field)
+        if self.portable_package_bound:
+            if self.candidate_package_id is None or self.candidate_package_sha256 is None:
+                raise ValueError(
+                    "portable package runtime requires package identity and digest"
+                )
+            _require_sha256(self.candidate_package_id, "candidate_package_id")
+            _require_sha256(
+                self.candidate_package_sha256,
+                "candidate_package_sha256",
+            )
+        elif (
+            self.candidate_package_id is not None
+            or self.candidate_package_sha256 is not None
+        ):
+            raise ValueError(
+                "legacy runtime cannot carry portable package identity"
+            )
         if self.validation_start_ms < 0:
             raise ValueError("validation_start_ms must be non-negative")
         if self.validation_end_ms <= self.validation_start_ms:
@@ -134,6 +158,9 @@ class ArchiveCleanRuntimeBundle:
             "validation_spec_id": self.validation_spec_id,
             "candidate_model_sha256": self.candidate_model_sha256,
             "validation_spec_sha256": self.validation_spec_sha256,
+            "candidate_package_id": self.candidate_package_id,
+            "candidate_package_sha256": self.candidate_package_sha256,
+            "portable_package_bound": self.portable_package_bound,
             "observer_source_attestation_id": self.observer_source_attestation_id,
             "observer_source_tree_sha256": self.observer_source_tree_sha256,
             "validation_start_ms": self.validation_start_ms,
@@ -162,6 +189,8 @@ class ArchiveCleanRuntimePin:
     candidate_id: str
     model_artifact_id: str
     validation_spec_id: str
+    candidate_package_id: str | None
+    portable_package_bound: bool
     pinned_at_ms: int
     validation_start_ms: int
     schema_version: int = RUNTIME_PIN_SCHEMA_VERSION
@@ -174,6 +203,16 @@ class ArchiveCleanRuntimePin:
             "validation_spec_id",
         ):
             _require_sha256(getattr(self, field), field)
+        if self.portable_package_bound:
+            if self.candidate_package_id is None:
+                raise ValueError(
+                    "portable package runtime pin requires package identity"
+                )
+            _require_sha256(self.candidate_package_id, "candidate_package_id")
+        elif self.candidate_package_id is not None:
+            raise ValueError(
+                "legacy runtime pin cannot carry package identity"
+            )
         if self.pinned_at_ms < 0:
             raise ValueError("pinned_at_ms must be non-negative")
         if self.validation_start_ms < 0:
@@ -189,6 +228,8 @@ class ArchiveCleanRuntimePin:
             "candidate_id": self.candidate_id,
             "model_artifact_id": self.model_artifact_id,
             "validation_spec_id": self.validation_spec_id,
+            "candidate_package_id": self.candidate_package_id,
+            "portable_package_bound": self.portable_package_bound,
             "pinned_at_ms": self.pinned_at_ms,
             "validation_start_ms": self.validation_start_ms,
             "schema_version": self.schema_version,
@@ -210,6 +251,7 @@ class PinnedArchiveCleanRuntime:
     bundle: ArchiveCleanRuntimeBundle
     pin: ArchiveCleanRuntimePin
     source_attestation: PythonSourceTreeAttestation
+    candidate_package: HistoricalArchiveCandidatePackage | None = None
 
 
 def _write_consistent(path: Path, data: bytes) -> None:
@@ -249,6 +291,8 @@ def _runtime_bundle_from_files(
     candidate_model_bytes: bytes,
     validation_spec_bytes: bytes,
     source_attestation: PythonSourceTreeAttestation,
+    candidate_package_id: str | None = None,
+    candidate_package_sha256: str | None = None,
 ) -> ArchiveCleanRuntimeBundle:
     spec = runtime.spec
     artifact = runtime.artifact
@@ -259,6 +303,9 @@ def _runtime_bundle_from_files(
         validation_spec_id=spec.spec_id,
         candidate_model_sha256=_sha256_bytes(candidate_model_bytes),
         validation_spec_sha256=_sha256_bytes(validation_spec_bytes),
+        candidate_package_id=candidate_package_id,
+        candidate_package_sha256=candidate_package_sha256,
+        portable_package_bound=candidate_package_id is not None,
         observer_source_attestation_id=source_attestation.attestation_id,
         observer_source_tree_sha256=source_attestation.source_tree_sha256,
         validation_start_ms=spec.validation_start_ms,
@@ -302,6 +349,8 @@ def publish_archive_clean_runtime(
             or existing.candidate_id != bundle.candidate_id
             or existing.model_artifact_id != bundle.model_artifact_id
             or existing.validation_spec_id != bundle.validation_spec_id
+            or existing.candidate_package_id != bundle.candidate_package_id
+            or existing.portable_package_bound != bundle.portable_package_bound
             or existing.validation_start_ms != bundle.validation_start_ms
         ):
             raise HistoricalArchiveCleanRuntimeError(
@@ -318,6 +367,8 @@ def publish_archive_clean_runtime(
             candidate_id=bundle.candidate_id,
             model_artifact_id=bundle.model_artifact_id,
             validation_spec_id=bundle.validation_spec_id,
+            candidate_package_id=bundle.candidate_package_id,
+            portable_package_bound=bundle.portable_package_bound,
             pinned_at_ms=pinned_at_ms,
             validation_start_ms=bundle.validation_start_ms,
         )
@@ -328,6 +379,93 @@ def publish_archive_clean_runtime(
         bundle_root / "candidate-validation-spec.json",
         validation_bytes,
     )
+    write_python_source_tree_attestation(
+        bundle_root / "observer-source.json",
+        source_attestation,
+    )
+    _write_consistent(
+        bundle_root / "runtime.json",
+        (_canonical_json(bundle.to_dict()) + "\n").encode("utf-8"),
+    )
+    if not pin_path.exists():
+        _write_consistent(
+            pin_path,
+            (_canonical_json(pin.to_dict()) + "\n").encode("utf-8"),
+        )
+    return bundle, pin
+
+
+def publish_archive_clean_runtime_from_package(
+    *,
+    package_root: Path,
+    publish_root: Path,
+    pinned_at_ms: int,
+) -> tuple[ArchiveCleanRuntimeBundle, ArchiveCleanRuntimePin]:
+    loaded = load_archive_clean_candidate_package(package_root)
+    package = loaded.package
+    runtime = loaded.runtime
+    model_path = package_root / "candidate-model.json"
+    validation_path = package_root / "candidate-validation-spec.json"
+    package_path = package_root / "candidate-package.json"
+    try:
+        model_bytes = model_path.read_bytes()
+        validation_bytes = validation_path.read_bytes()
+        package_bytes = package_path.read_bytes()
+    except OSError as exc:
+        raise HistoricalArchiveCleanRuntimeError(
+            "ARCHIVE_CLEAN_RUNTIME_PACKAGE_FILE_MISSING"
+        ) from exc
+
+    source_attestation = _build_source_attestation(
+        validation_spec_id=runtime.spec.spec_id,
+    )
+    bundle = _runtime_bundle_from_files(
+        runtime,
+        candidate_model_bytes=model_bytes,
+        validation_spec_bytes=validation_bytes,
+        source_attestation=source_attestation,
+        candidate_package_id=package.package_id,
+        candidate_package_sha256=_sha256_bytes(package_bytes),
+    )
+    pin_path = publish_root / "pin.json"
+    if pin_path.exists():
+        existing = load_archive_clean_runtime_pin(pin_path)
+        if (
+            existing.runtime_id != bundle.runtime_id
+            or existing.candidate_id != bundle.candidate_id
+            or existing.model_artifact_id != bundle.model_artifact_id
+            or existing.validation_spec_id != bundle.validation_spec_id
+            or existing.candidate_package_id != package.package_id
+            or not existing.portable_package_bound
+            or existing.validation_start_ms != bundle.validation_start_ms
+        ):
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_PIN_CONFLICT"
+            )
+        pin = existing
+    else:
+        if pinned_at_ms >= bundle.validation_start_ms:
+            raise HistoricalArchiveCleanRuntimeError(
+                "POST_CUTOVER_ARCHIVE_CLEAN_RUNTIME_PIN_FORBIDDEN"
+            )
+        pin = ArchiveCleanRuntimePin(
+            runtime_id=bundle.runtime_id,
+            candidate_id=bundle.candidate_id,
+            model_artifact_id=bundle.model_artifact_id,
+            validation_spec_id=bundle.validation_spec_id,
+            candidate_package_id=package.package_id,
+            portable_package_bound=True,
+            pinned_at_ms=pinned_at_ms,
+            validation_start_ms=bundle.validation_start_ms,
+        )
+
+    bundle_root = publish_root / "bundles" / bundle.runtime_id
+    _write_consistent(bundle_root / "candidate-model.json", model_bytes)
+    _write_consistent(
+        bundle_root / "candidate-validation-spec.json",
+        validation_bytes,
+    )
+    _write_consistent(bundle_root / "candidate-package.json", package_bytes)
     write_python_source_tree_attestation(
         bundle_root / "observer-source.json",
         source_attestation,
@@ -360,6 +498,18 @@ def load_archive_clean_runtime_pin(path: Path) -> ArchiveCleanRuntimePin:
             validation_spec_id=_string(
                 raw.get("validation_spec_id"),
                 "validation_spec_id",
+            ),
+            candidate_package_id=(
+                None
+                if raw.get("candidate_package_id") is None
+                else _string(
+                    raw.get("candidate_package_id"),
+                    "candidate_package_id",
+                )
+            ),
+            portable_package_bound=_boolean(
+                raw.get("portable_package_bound"),
+                "portable_package_bound",
             ),
             pinned_at_ms=_integer(raw.get("pinned_at_ms"), "pinned_at_ms"),
             validation_start_ms=_integer(
@@ -410,6 +560,26 @@ def _load_runtime_bundle(path: Path) -> ArchiveCleanRuntimeBundle:
             validation_spec_sha256=_string(
                 raw.get("validation_spec_sha256"),
                 "validation_spec_sha256",
+            ),
+            candidate_package_id=(
+                None
+                if raw.get("candidate_package_id") is None
+                else _string(
+                    raw.get("candidate_package_id"),
+                    "candidate_package_id",
+                )
+            ),
+            candidate_package_sha256=(
+                None
+                if raw.get("candidate_package_sha256") is None
+                else _string(
+                    raw.get("candidate_package_sha256"),
+                    "candidate_package_sha256",
+                )
+            ),
+            portable_package_bound=_boolean(
+                raw.get("portable_package_bound"),
+                "portable_package_bound",
             ),
             observer_source_attestation_id=_string(
                 raw.get("observer_source_attestation_id"),
@@ -485,6 +655,8 @@ def load_pinned_archive_clean_runtime(
         bundle.candidate_id != pin.candidate_id
         or bundle.model_artifact_id != pin.model_artifact_id
         or bundle.validation_spec_id != pin.validation_spec_id
+        or bundle.candidate_package_id != pin.candidate_package_id
+        or bundle.portable_package_bound != pin.portable_package_bound
         or bundle.validation_start_ms != pin.validation_start_ms
     ):
         raise HistoricalArchiveCleanRuntimeError(
@@ -508,6 +680,41 @@ def load_pinned_archive_clean_runtime(
         raise HistoricalArchiveCleanRuntimeError(
             "ARCHIVE_CLEAN_RUNTIME_SPEC_DIGEST_MISMATCH"
         )
+
+    candidate_package: HistoricalArchiveCandidatePackage | None = None
+    if bundle.portable_package_bound:
+        package_path = bundle_root / "candidate-package.json"
+        try:
+            package_bytes = package_path.read_bytes()
+        except OSError as exc:
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_PACKAGE_FILE_MISSING"
+            ) from exc
+        if (
+            bundle.candidate_package_sha256 is None
+            or _sha256_bytes(package_bytes) != bundle.candidate_package_sha256
+        ):
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_PACKAGE_DIGEST_MISMATCH"
+            )
+        loaded_package = load_archive_clean_candidate_package(bundle_root)
+        candidate_package = loaded_package.package
+        if (
+            bundle.candidate_package_id is None
+            or candidate_package.package_id != bundle.candidate_package_id
+            or candidate_package.candidate_id != bundle.candidate_id
+            or candidate_package.model_artifact_id != bundle.model_artifact_id
+            or candidate_package.validation_spec_id != bundle.validation_spec_id
+            or candidate_package.model_payload_sha256
+            != bundle.model_payload_sha256
+            or candidate_package.candidate_model_sha256
+            != bundle.candidate_model_sha256
+            or candidate_package.validation_spec_sha256
+            != bundle.validation_spec_sha256
+        ):
+            raise HistoricalArchiveCleanRuntimeError(
+                "ARCHIVE_CLEAN_RUNTIME_PACKAGE_LINEAGE_MISMATCH"
+            )
 
     source_attestation = verify_python_source_tree_attestation(
         bundle_root / "observer-source.json",
@@ -551,4 +758,5 @@ def load_pinned_archive_clean_runtime(
         bundle=bundle,
         pin=pin,
         source_attestation=source_attestation,
+        candidate_package=candidate_package,
     )
