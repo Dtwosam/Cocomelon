@@ -13,8 +13,10 @@ from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
+    build_archive_preset_run_receipt,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
+    verify_archive_preset_run_receipt,
 )
 
 
@@ -52,6 +54,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     keys = subparsers.add_parser("keys")
     keys.add_argument("--preset", default=PRESET_NAME)
+
+    verify = subparsers.add_parser("verify")
+    verify.add_argument("--preset", default=PRESET_NAME)
+    verify.add_argument("--receipt", required=True, type=Path)
 
     run = subparsers.add_parser("run")
     run.add_argument("--preset", default=PRESET_NAME)
@@ -92,6 +98,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 }
             )
             return 0
+        if args.command == "verify":
+            receipt = verify_archive_preset_run_receipt(
+                args.receipt,
+                preset=preset,
+            )
+            _emit(
+                {
+                    "command": "verify",
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "paid_request_performed": False,
+                    "receipt_id": receipt.receipt_id,
+                    "valid": True,
+                }
+            )
+            return 0
 
         settings = Settings.from_env()
         if settings.execution_mode is not ExecutionMode.PAPER:
@@ -104,6 +126,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_root=args.output_root,
             clock_ms=_clock(args.received_at_ms),
         )
+        receipt = build_archive_preset_run_receipt(preset, result)
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
@@ -125,6 +148,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "dataset_id": result.dataset_id,
             "report_id": result.report_id,
             "comparison_version": result.comparison.comparison_version,
+            "preset_run_receipt_id": receipt.receipt_id,
+            "preset_run_receipt": str(args.output_root / "preset-run.json"),
             "row_count": result.comparison.dataset_row_count,
             "fold_count": len(result.comparison.baseline_folds),
             "output_root": str(args.output_root),

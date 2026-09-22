@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,46 @@ def test_show_rejects_unknown_preset_without_runtime_access(
     assert "unknown archive experiment preset" in payload["error"]
 
 
+
+def test_verify_is_offline_and_emits_receipt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify must not construct a Hyperliquid client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_run_receipt",
+        lambda *args, **kwargs: SimpleNamespace(receipt_id="v" * 64),
+    )
+    receipt_path = tmp_path / "preset-run.json"
+    receipt_path.write_text("{}\n", encoding="utf-8")
+
+    status = cli.main(
+        [
+            "verify",
+            "--receipt",
+            str(receipt_path),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify"
+    assert payload["valid"] is True
+    assert payload["paid_request_performed"] is False
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["receipt_id"] == "v" * 64
+
 def test_run_rejects_live_mode_before_client_or_experiment(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -141,6 +182,76 @@ def test_run_rejects_live_mode_before_client_or_experiment(
     payload = json.loads(captured.err)
     assert payload["error"] == "historical archive presets require paper execution mode"
 
+
+
+def test_run_emits_preset_run_receipt_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    class PaperSettings:
+        execution_mode = ExecutionMode.PAPER
+
+    class FakeSettings:
+        @classmethod
+        def from_env(cls) -> PaperSettings:
+            return PaperSettings()
+
+    result = SimpleNamespace(
+        archive=SimpleNamespace(
+            manifest_id="archive-manifest",
+            shard_count=1968,
+            total_byte_count=123,
+        ),
+        overlap=SimpleNamespace(
+            report_id="overlap-report",
+            compared_count=384,
+        ),
+        dataset_id="dataset-id",
+        report_id="comparison-report-id",
+        comparison=SimpleNamespace(
+            comparison_version="historical-model-comparison-v7",
+            dataset_row_count=24000,
+            baseline_folds=(object(), object()),
+        ),
+    )
+    monkeypatch.setattr(cli, "Settings", FakeSettings)
+    monkeypatch.setattr(cli, "InfoClient", lambda _settings: object())
+    monkeypatch.setattr(
+        cli,
+        "run_archive_experiment_preset",
+        lambda *args, **kwargs: result,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_preset_run_receipt",
+        lambda *args, **kwargs: SimpleNamespace(receipt_id="r" * 64),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "run",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+            "--received-at-ms",
+            "123",
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["preset_id"] == JUL_SEP_2026_V2.preset_id
+    assert payload["preset_run_receipt_id"] == "r" * 64
+    assert payload["preset_run_receipt"] == str(output_root / "preset-run.json")
+    assert payload["comparison_version"] == "historical-model-comparison-v7"
 
 def test_clock_rejects_negative_fixed_retrieval_time() -> None:
     with pytest.raises(ValueError, match="received_at_ms must be non-negative"):
