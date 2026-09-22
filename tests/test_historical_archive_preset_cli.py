@@ -99,7 +99,6 @@ def test_show_rejects_unknown_preset_without_runtime_access(
     assert "unknown archive experiment preset" in payload["error"]
 
 
-
 def test_verify_is_offline_and_emits_receipt_identity(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -138,6 +137,48 @@ def test_verify_is_offline_and_emits_receipt_identity(
     assert payload["paid_request_performed"] is False
     assert payload["preset"] == JUL_SEP_2026_V2.name
     assert payload["receipt_id"] == "v" * 64
+
+def test_verify_bundle_is_offline_and_emits_bundle_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify-bundle must not construct a Hyperliquid client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_bundle_receipt",
+        lambda *args, **kwargs: SimpleNamespace(bundle_id="b" * 64),
+    )
+
+    status = cli.main(
+        [
+            "verify-bundle",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-bundle"
+    assert payload["valid"] is True
+    assert payload["paid_request_performed"] is False
+    assert payload["preset"] == JUL_SEP_2026_V2.name
+    assert payload["bundle_id"] == "b" * 64
+
 
 def test_run_rejects_live_mode_before_client_or_experiment(
     monkeypatch: pytest.MonkeyPatch,
@@ -183,7 +224,6 @@ def test_run_rejects_live_mode_before_client_or_experiment(
     assert payload["error"] == "historical archive presets require paper execution mode"
 
 
-
 def test_run_emits_preset_run_receipt_identity(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -224,8 +264,13 @@ def test_run_emits_preset_run_receipt_identity(
     )
     monkeypatch.setattr(
         cli,
-        "build_archive_preset_run_receipt",
+        "verify_archive_preset_run_receipt",
         lambda *args, **kwargs: SimpleNamespace(receipt_id="r" * 64),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_preset_bundle_receipt",
+        lambda *args, **kwargs: SimpleNamespace(bundle_id="b" * 64),
     )
 
     output_root = tmp_path / "output"
@@ -251,6 +296,10 @@ def test_run_emits_preset_run_receipt_identity(
     assert payload["preset_id"] == JUL_SEP_2026_V2.preset_id
     assert payload["preset_run_receipt_id"] == "r" * 64
     assert payload["preset_run_receipt"] == str(output_root / "preset-run.json")
+    assert payload["preset_bundle_id"] == "b" * 64
+    assert payload["preset_bundle_receipt"] == str(
+        output_root / "preset-bundle.json"
+    )
     assert payload["comparison_version"] == "historical-model-comparison-v7"
 
 def test_clock_rejects_negative_fixed_retrieval_time() -> None:

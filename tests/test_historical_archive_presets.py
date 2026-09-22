@@ -10,11 +10,14 @@ import pytest
 import cocomelon.research.historical_archive_presets as presets
 from cocomelon.research.historical_archive_presets import (
     JUL_SEP_2026_V2,
+    build_archive_preset_bundle_receipt,
     build_archive_preset_run_receipt,
     ensure_archive_preset_output_root_clean,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
+    verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
+    write_archive_preset_bundle_receipt,
     write_archive_preset_run_receipt,
 )
 from cocomelon.research.historical_discovery_freeze import (
@@ -56,6 +59,44 @@ def _fake_experiment_result() -> SimpleNamespace:
         ),
         dataset_id="dataset-id",
         report_id="comparison-report-id",
+    )
+
+
+def _write_fake_bundle_files(
+    archive_root: Path,
+    source_root: Path,
+    output_root: Path,
+) -> None:
+    archive_root.mkdir(parents=True, exist_ok=True)
+    source_root.mkdir(parents=True, exist_ok=True)
+    (output_root / "dataset").mkdir(parents=True, exist_ok=True)
+
+    (archive_root / "download_manifest.json").write_text(
+        '{"archive":"download"}\n',
+        encoding="utf-8",
+    )
+    (source_root / "archive_ingest.json").write_text(
+        '{"archive":"ingest"}\n',
+        encoding="utf-8",
+    )
+    (source_root / "coverage.json").write_text(
+        '{"coverage":true}\n',
+        encoding="utf-8",
+    )
+    (source_root / "archive_native_overlap.json").write_text(
+        '{"overlap":"exact"}\n',
+        encoding="utf-8",
+    )
+    (output_root / "dataset" / "manifest.json").write_text(
+        '{"dataset":"manifest"}\n',
+        encoding="utf-8",
+    )
+    (output_root / "dataset" / "training.parquet").write_bytes(
+        b"fake-parquet-bytes"
+    )
+    (output_root / "comparison.json").write_text(
+        '{"comparison":"report"}\n',
+        encoding="utf-8",
     )
 
 
@@ -119,6 +160,13 @@ def test_preset_runner_forwards_only_frozen_values(
     def fake_run(client: object, **kwargs: object) -> object:
         captured["client"] = client
         captured.update(kwargs)
+        archive_root = kwargs["archive_root"]
+        source_root = kwargs["source_root"]
+        output_root = kwargs["output_root"]
+        assert isinstance(archive_root, Path)
+        assert isinstance(source_root, Path)
+        assert isinstance(output_root, Path)
+        _write_fake_bundle_files(archive_root, source_root, output_root)
         return experiment_result
 
     monkeypatch.setattr(presets, "run_archive_historical_experiment", fake_run)
@@ -154,6 +202,12 @@ def test_preset_runner_forwards_only_frozen_values(
     assert payload["comparison_report_id"] == "comparison-report-id"
     assert len(payload["preset_identity_sha256"]) == 64
     assert len(payload["receipt_id"]) == 64
+    bundle_path = output_root / "preset-bundle.json"
+    assert bundle_path.is_file()
+    bundle_payload = json.loads(bundle_path.read_text(encoding="utf-8"))
+    assert bundle_payload["preset_run_receipt_id"] == payload["receipt_id"]
+    assert len(bundle_payload["comparison_sha256"]) == 64
+    assert len(bundle_payload["bundle_id"]) == 64
 
 
 def test_preset_run_receipt_is_deterministic_and_binds_outputs() -> None:
@@ -324,4 +378,79 @@ def test_preset_runner_blocks_existing_output_before_experiment(
 
     assert called is False
     assert sentinel.read_text(encoding="utf-8") == '{"existing":true}\n'
+
+def test_preset_bundle_verifies_files_and_detects_tampering(
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    output_root = tmp_path / "output"
+    _write_fake_bundle_files(archive_root, source_root, output_root)
+
+    result = _fake_experiment_result()
+    run_receipt = build_archive_preset_run_receipt(
+        JUL_SEP_2026_V2,
+        result,  # type: ignore[arg-type]
+    )
+    write_archive_preset_run_receipt(output_root, run_receipt)
+    bundle = build_archive_preset_bundle_receipt(
+        JUL_SEP_2026_V2,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    path = write_archive_preset_bundle_receipt(output_root, bundle)
+
+    verified = verify_archive_preset_bundle_receipt(
+        path,
+        preset=JUL_SEP_2026_V2,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    assert verified == bundle
+
+    (output_root / "comparison.json").write_text(
+        '{"comparison":"tampered"}\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_BUNDLE_FILE_DIGEST_MISMATCH",
+    ):
+        verify_archive_preset_bundle_receipt(
+            path,
+            preset=JUL_SEP_2026_V2,
+            archive_root=archive_root,
+            source_root=source_root,
+            output_root=output_root,
+        )
+
+
+def test_preset_bundle_requires_every_canonical_file(
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    output_root = tmp_path / "output"
+    _write_fake_bundle_files(archive_root, source_root, output_root)
+
+    result = _fake_experiment_result()
+    run_receipt = build_archive_preset_run_receipt(
+        JUL_SEP_2026_V2,
+        result,  # type: ignore[arg-type]
+    )
+    write_archive_preset_run_receipt(output_root, run_receipt)
+    (source_root / "coverage.json").unlink()
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_BUNDLE_COVERAGE_MISSING",
+    ):
+        build_archive_preset_bundle_receipt(
+            JUL_SEP_2026_V2,
+            archive_root=archive_root,
+            source_root=source_root,
+            output_root=output_root,
+        )
 
