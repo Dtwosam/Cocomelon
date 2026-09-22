@@ -18,6 +18,9 @@ from cocomelon.research.historical_discovery_freeze import (
 from cocomelon.research.prospective_context_evidence import (
     ProspectiveEvidenceStore,
 )
+from cocomelon.research.prospective_context_report import (
+    HYPE_PROSPECTIVE_VALIDATION_V1,
+)
 from cocomelon.research.prospective_hype_observer import (
     ProspectiveMarketData,
     ProspectiveObserverError,
@@ -28,6 +31,7 @@ from cocomelon.research.prospective_hype_observer import (
 HOUR = 3_600_000
 FIFTEEN = 900_000
 CUTOVER = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1.validation_not_before_ms
+VALIDATION_END = HYPE_PROSPECTIVE_VALIDATION_V1.validation_end_ms
 BASKET_CLOSES = {
     "BTC": Decimal("95"),
     "ETH": Decimal("96"),
@@ -330,3 +334,52 @@ def test_late_hourly_capture_is_skipped_instead_of_reconstructed(tmp_path) -> No
     assert result.status == "missed_anchor_window"
     assert result.created is False
     assert store.iter_observations() == ()
+
+
+
+def test_last_anchor_before_fixed_validation_end_remains_eligible(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+    anchor = VALIDATION_END - 1
+
+    result = observe_current_anchor(
+        _data(anchor_end_ms=anchor),
+        store=store,
+        spec=spec,
+        validation_end_ms=VALIDATION_END,
+    )
+
+    assert result.status == "recorded"
+    assert result.created is True
+    assert result.anchor_end_ms == anchor
+    assert len(store.iter_observations()) == 1
+
+
+def test_first_anchor_at_fixed_validation_end_is_not_recorded(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+
+    result = observe_current_anchor(
+        _data(anchor_end_ms=VALIDATION_END),
+        store=store,
+        spec=spec,
+        validation_end_ms=VALIDATION_END,
+    )
+
+    assert result.status == "after_validation_window"
+    assert result.created is False
+    assert result.anchor_end_ms == VALIDATION_END
+    assert store.iter_observations() == ()
+
+
+def test_validation_end_must_be_after_cutover(tmp_path) -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    store = ProspectiveEvidenceStore(tmp_path, spec=spec)
+
+    with pytest.raises(ValueError, match="validation_end_ms must be after"):
+        observe_current_anchor(
+            _data(anchor_end_ms=CUTOVER + HOUR),
+            store=store,
+            spec=spec,
+            validation_end_ms=CUTOVER,
+        )

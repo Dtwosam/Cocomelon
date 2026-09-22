@@ -13,6 +13,9 @@ from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
 from cocomelon.research.prospective_context_evidence import ProspectiveEvidenceStore
+from cocomelon.research.prospective_context_report import (
+    HYPE_PROSPECTIVE_VALIDATION_V1,
+)
 from cocomelon.research.prospective_hype_observer import (
     ProspectivePublicReader,
     run_prospective_observer_cycle,
@@ -59,11 +62,13 @@ def prospective_hype_observer_payload(
     spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
     source = reader or InfoClient(settings)
     store = ProspectiveEvidenceStore(root, spec=spec)
+    plan = HYPE_PROSPECTIVE_VALIDATION_V1
     result = run_prospective_observer_cycle(
         source,
         store=store,
         clock_ms=clock_ms,
         spec=spec,
+        validation_end_ms=plan.validation_end_ms,
     )
     observation = result.observation
     return {
@@ -76,6 +81,9 @@ def prospective_hype_observer_payload(
         "evidence_class": store.manifest.evidence_class,
         "promotion_eligible": store.manifest.promotion_eligible,
         "validation_not_before_ms": spec.validation_not_before_ms,
+        "validation_plan_id": plan.plan_id,
+        "validation_end_ms": plan.validation_end_ms,
+        "finalization_not_before_ms": plan.finalization_not_before_ms,
         "observation": {
             "status": observation.status,
             "as_of_ms": observation.as_of_ms,

@@ -10,6 +10,9 @@ from cocomelon.prospective_hype_observer_cli import prospective_hype_observer_pa
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
 )
+from cocomelon.research.prospective_context_report import (
+    HYPE_PROSPECTIVE_VALIDATION_V1,
+)
 
 HOUR = 3_600_000
 FIFTEEN = 900_000
@@ -126,6 +129,15 @@ def test_payload_runs_one_paper_only_clean_observation_cycle(tmp_path) -> None:
     assert payload["execution_mode"] == "paper"
     assert payload["evidence_class"] == "prospective_clean"
     assert payload["promotion_eligible"] is False
+    assert payload["validation_plan_id"] == HYPE_PROSPECTIVE_VALIDATION_V1.plan_id
+    assert (
+        payload["validation_end_ms"]
+        == HYPE_PROSPECTIVE_VALIDATION_V1.validation_end_ms
+    )
+    assert (
+        payload["finalization_not_before_ms"]
+        == HYPE_PROSPECTIVE_VALIDATION_V1.finalization_not_before_ms
+    )
     observation = payload["observation"]
     assert isinstance(observation, dict)
     assert observation["status"] == "recorded"
