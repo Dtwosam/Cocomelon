@@ -32,6 +32,20 @@ def test_lineage_audit_compares_latest_two_main_state_artifacts() -> None:
     assert 'run.get("repository", {}).get("full_name")' in source
 
 
+def test_lineage_audit_authenticates_both_state_artifact_producers() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Verify selected state artifact producers" in source
+    assert 'for label in previous current; do' in source
+    assert '"/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id"' in source
+    assert '"/repos/$GITHUB_REPOSITORY/actions/runs/$run_id"' in source
+    assert 'artifact.get("name") != "prospective-hype-clean-state"' in source
+    assert 'run.get("path") != expected_path' in source
+    assert 'expected_path = ".github/workflows/prospective-hype-clean.yml"' in source
+    assert "LINEAGE_ARTIFACT_PROVENANCE_FAILED" in source
+    assert "steps.provenance.outcome == 'failure'" in source
+
+
 def test_lineage_audit_uses_artifact_creation_times_and_record_level_verifier() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
