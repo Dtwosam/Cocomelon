@@ -88,3 +88,26 @@ def test_readiness_summary_redacts_interim_economics() -> None:
     assert "mean_net_return" not in summary
     assert "net_return_sum" not in summary
     assert "execution ready: false" in summary
+
+def test_readiness_requires_activation_authorization_when_campaign_enabled() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    activation = source.index("Verify activation authorization when enabled")
+    readiness = source.index("Build offline activation readiness report")
+
+    assert activation < readiness
+    assert "env.CAMPAIGN_ENABLED == 'true'" in source
+    assert "ACTIVATION_ARTIFACT_NAME" in source
+    assert "historical-archive-clean-activation-" in source
+    assert "ACTIVATION_WORKFLOW_PATH" in source
+    assert "historical-archive-clean-activation.yml" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_AUTHORIZATION_REQUIRED" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REPOSITORY_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS" in source
+    assert "cocomelon-historical-archive-clean-activation" in source
+    assert "--verify-only" in source
+
