@@ -14,7 +14,6 @@ def test_lineage_audit_is_read_only_and_separate_from_frozen_observer() -> None:
     assert "actions: write" not in source
     assert "COCOMELON_EXECUTION_MODE" not in source
     assert "cocomelon-prospective-hype-observer" not in source
-    assert "prospective-hype-clean.yml" not in source
 
 
 def test_lineage_audit_compares_latest_two_main_state_artifacts() -> None:
@@ -26,6 +25,11 @@ def test_lineage_audit_compares_latest_two_main_state_artifacts() -> None:
     assert "previous, current = artifacts[-2:]" in source
     assert "/artifacts/$PREVIOUS_ID/zip" in source
     assert "/artifacts/$CURRENT_ID/zip" in source
+    assert "Verify selected state artifact producers" in source
+    assert "/actions/runs/$run_id" in source
+    assert 'run.get("path") != expected_path' in source
+    assert 'expected_path = ".github/workflows/prospective-hype-clean.yml"' in source
+    assert 'run.get("repository", {}).get("full_name")' in source
 
 
 def test_lineage_audit_uses_artifact_creation_times_and_record_level_verifier() -> None:
@@ -93,6 +97,7 @@ def test_lineage_audit_preserves_redacted_failure_receipt_before_failing() -> No
 
     assert "cocomelon-prospective-hype-lineage-failure" in source
     assert "LINEAGE_ARTIFACT_DISCOVERY_FAILED" in source
+    assert "LINEAGE_ARTIFACT_PROVENANCE_FAILED" in source
     assert "LINEAGE_STATE_DOWNLOAD_FAILED" in source
     assert "LINEAGE_STATE_READINESS_FAILED" in source
     assert "LINEAGE_APPEND_ONLY_VERIFY_FAILED" in source
