@@ -23,12 +23,14 @@ from cocomelon.research.historical_archive_clean_evidence import (
 )
 from cocomelon.research.historical_archive_model_artifact import (
     HistoricalArchiveCandidateModelArtifact,
+    load_archive_candidate_model_artifact,
 )
 from cocomelon.research.historical_archive_paper_scorer import (
     score_archive_candidate_anchor,
 )
 from cocomelon.research.historical_archive_validation_spec import (
     HistoricalArchiveCleanValidationSpec,
+    load_archive_clean_validation_spec,
 )
 from cocomelon.research.historical_cross_market import (
     enrich_feature_rows_with_basket_context,
@@ -52,6 +54,59 @@ SOURCE_CAPTURE_SCHEMA_VERSION = 1
 
 class HistoricalArchiveCleanObserverError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveCleanFrozenRuntime:
+    artifact: HistoricalArchiveCandidateModelArtifact
+    spec: HistoricalArchiveCleanValidationSpec
+
+    def __post_init__(self) -> None:
+        artifact = self.artifact
+        spec = self.spec
+        if (
+            spec.model_artifact_id != artifact.artifact_id
+            or spec.model_payload_sha256 != artifact.model_payload_sha256
+            or spec.candidate_id != artifact.candidate_id
+            or spec.training_plan_id != artifact.training_plan_id
+            or spec.calibration_id != artifact.calibration_id
+            or spec.model_family != artifact.model_family
+            or spec.calibration_variant != artifact.calibration_variant
+            or spec.model_format != artifact.model_format
+            or spec.horizon_thresholds != artifact.selected_horizon_thresholds
+            or spec.allow_coin_calibration != artifact.allow_coin_calibration
+            or spec.min_sample_count != artifact.min_sample_count
+            or spec.execution_policy != artifact.execution_policy
+            or spec.max_concurrent_positions != artifact.max_concurrent_positions
+            or spec.costs != artifact.costs
+            or spec.validation_start_ms != artifact.validation_not_before_ms
+        ):
+            raise HistoricalArchiveCleanObserverError(
+                "ARCHIVE_CLEAN_RUNTIME_LINEAGE_MISMATCH"
+            )
+        if (
+            not spec.paper_only
+            or not spec.prospective_only
+            or spec.execution_ready
+            or spec.promotion_eligible
+            or artifact.execution_ready
+            or artifact.promotion_eligible
+        ):
+            raise HistoricalArchiveCleanObserverError(
+                "ARCHIVE_CLEAN_RUNTIME_NOT_PAPER_ONLY"
+            )
+
+
+def load_archive_clean_frozen_runtime(
+    output_root: Path,
+) -> ArchiveCleanFrozenRuntime:
+    artifact = load_archive_candidate_model_artifact(
+        output_root / "candidate-model.json"
+    )
+    spec = load_archive_clean_validation_spec(
+        output_root / "candidate-validation-spec.json"
+    )
+    return ArchiveCleanFrozenRuntime(artifact=artifact, spec=spec)
 
 
 class ArchiveCleanPublicReader(Protocol):
