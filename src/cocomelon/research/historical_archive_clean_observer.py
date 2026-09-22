@@ -25,7 +25,6 @@ from cocomelon.research.historical_archive_model_artifact import (
     HistoricalArchiveCandidateModelArtifact,
 )
 from cocomelon.research.historical_archive_paper_scorer import (
-    ArchivePaperState,
     score_archive_candidate_anchor,
 )
 from cocomelon.research.historical_archive_validation_spec import (
