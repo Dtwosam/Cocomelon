@@ -55,6 +55,8 @@ def _spec(
         model_family=(
             "portfolio_capacity_stable_ridge"
             if execution_policy == "portfolio_capacity"
+            else "occupancy_stable_ridge"
+            if execution_policy == "single_position_occupancy"
             else "stable_horizon_ridge"
         ),
         calibration_variant="shared",
@@ -207,6 +209,38 @@ def test_anchor_observation_requires_complete_market_capture() -> None:
         )
 
 
+
+def test_anchor_observation_rejects_corrupt_state_transition() -> None:
+    spec = _spec()
+    anchor = spec.first_expected_anchor_ms
+    result = _independent_result(spec, anchor)
+    corrupt = replace(
+        result,
+        next_state=ArchivePaperState(
+            positions=(
+                ArchivePaperPosition(
+                    market="BTC",
+                    opened_at_ms=anchor,
+                    hold_until_ms=anchor + FIFTEEN,
+                    horizon_ms=FIFTEEN,
+                    direction=Direction.LONG,
+                    expected_net_edge=Decimal("0.01"),
+                ),
+            )
+        ),
+    )
+
+    with pytest.raises(
+        HistoricalArchiveCleanEvidenceError,
+        match="CLEAN_EVIDENCE_STATE_TRANSITION_MISMATCH",
+    ):
+        build_archive_clean_anchor_observation(
+            spec,
+            features=(_feature(BTC, anchor), _feature(ETH, anchor)),
+            state_before=ArchivePaperState(),
+            result=corrupt,
+        )
+
 def test_store_records_anchor_idempotently_and_tracks_missing_coverage(
     tmp_path: Path,
 ) -> None:
@@ -305,7 +339,10 @@ def _market(canonical: str) -> MarketId:
 def test_store_rejects_state_discontinuity(
     tmp_path: Path,
 ) -> None:
-    spec = _spec(horizon_ms=3_600_000)
+    spec = _spec(
+        execution_policy="single_position_occupancy",
+        horizon_ms=3_600_000,
+    )
     store = ArchiveCleanEvidenceStore(tmp_path, spec=spec)
     first = spec.first_expected_anchor_ms
     first_features = (_feature(BTC, first), _feature(ETH, first))
