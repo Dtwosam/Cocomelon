@@ -120,7 +120,11 @@ def test_blind_monitor_preserves_redacted_failure_receipt_before_failing() -> No
     assert "steps.download.outputs.status != 'ok'" in source
     assert 'echo "status=failure" >> "$GITHUB_OUTPUT"' in source
     assert 'echo "status=success" >> "$GITHUB_OUTPUT"' in source
-    assert "steps.monitor.outputs.status != 'success'" in source
+    assert 'DISCOVERY_STATUS: ${{ steps.discover.outputs.status }}' in source
+    assert 'PROVENANCE_STATUS: ${{ steps.provenance.outputs.status }}' in source
+    assert 'DOWNLOAD_STATUS: ${{ steps.download.outputs.status }}' in source
+    assert 'test -f "$MONITOR_ROOT/monitor.json"' in source
+    assert 'test ! -f "$MONITOR_ROOT/failure.json"' in source
     for token in (
         "mean_net_return",
         "total_net_return",
