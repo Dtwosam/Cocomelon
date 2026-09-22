@@ -234,8 +234,11 @@ def test_control_plane_is_bound_into_lineage_summary_and_finalization() -> None:
     assert '"control_plane_attestation_id": control_plane["control_plane_id"]' in source
     assert "control_plane['control_plane_id']" in source
     assert "control_plane['schedule_cron']" in source
-    assert 'control_plane["schedule_cron"] == "3,8,13 * * * *"' in source
-    assert 'control_plane["attempt_minutes_utc"] == [3, 8, 13]' in source
+    assert 'control_plane["schedule_cron"] == "47 * * * *"' in source
+    assert 'control_plane["attempt_minutes_utc"] == [3]' in source
+    assert 'control_plane["capture_transport"] == "off_peak_prewarm_v1"' in source
+    assert 'control_plane["prewarm_minute_utc"] == 47' in source
+    assert 'control_plane["protected_attempt_minute_utc"] == 3' in source
     assert 'control_plane["max_entry_candle_age_ms"] == 900000' in source
 
 
