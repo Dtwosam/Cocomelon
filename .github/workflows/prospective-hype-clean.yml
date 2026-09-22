@@ -349,37 +349,46 @@ jobs:
           }
 
           if final_path.exists():
-              existing = json.loads(final_path.read_text(encoding="utf-8"))
-              identity = {
-                  key: existing[key]
-                  for key in (
-                      "kind",
-                      "candidate_spec_id",
-                      "plan_id",
-                      "campaign_id",
-                      "runtime_attestation_id",
-                      "observer_source_revision",
-                      "finalization_not_before_ms",
-                      "finalized_at_ms",
-                      "state_digest",
-                      "economic_payload",
-                      "promotion_eligible",
-                      "schema_version",
-                  )
-              }
-              calculated_id = hashlib.sha256(
-                  canonical(identity).encode("utf-8")
-              ).hexdigest()
               conflicts = []
-              if existing.get("finalization_id") != calculated_id:
-                  conflicts.append("finalization_identity_mismatch")
-              for key, value in expected_static.items():
-                  if existing.get(key) != value:
-                      conflicts.append(f"{key}_mismatch")
-              if existing.get("state_digest") != cycle["state_digest"]:
-                  conflicts.append("state_digest_changed_after_finalization")
-              if existing.get("economic_payload") != economic_payload:
-                  conflicts.append("economic_payload_changed_after_finalization")
+              try:
+                  existing = json.loads(final_path.read_text(encoding="utf-8"))
+                  if not isinstance(existing, dict):
+                      raise ValueError("finalization receipt must be an object")
+                  identity = {
+                      key: existing[key]
+                      for key in (
+                          "kind",
+                          "candidate_spec_id",
+                          "plan_id",
+                          "campaign_id",
+                          "runtime_attestation_id",
+                          "observer_source_revision",
+                          "finalization_not_before_ms",
+                          "finalized_at_ms",
+                          "state_digest",
+                          "economic_payload",
+                          "promotion_eligible",
+                          "schema_version",
+                      )
+                  }
+                  calculated_id = hashlib.sha256(
+                      canonical(identity).encode("utf-8")
+                  ).hexdigest()
+              except (KeyError, OSError, ValueError, json.JSONDecodeError):
+                  existing = {}
+                  calculated_id = None
+                  conflicts.append("invalid_finalization_receipt")
+
+              if calculated_id is not None:
+                  if existing.get("finalization_id") != calculated_id:
+                      conflicts.append("finalization_identity_mismatch")
+                  for key, value in expected_static.items():
+                      if existing.get(key) != value:
+                          conflicts.append(f"{key}_mismatch")
+                  if existing.get("state_digest") != cycle["state_digest"]:
+                      conflicts.append("state_digest_changed_after_finalization")
+                  if existing.get("economic_payload") != economic_payload:
+                      conflicts.append("economic_payload_changed_after_finalization")
               if conflicts:
                   status_payload = {
                       "status": "conflict",
