@@ -136,6 +136,8 @@ class ProspectiveCutoverAcceptance:
             raise ValueError("state_artifact_id must be numeric")
         if self.first_expected_anchor_ms < 0:
             raise ValueError("first_expected_anchor_ms must be non-negative")
+        if self.audited_at_ms < self.first_expected_anchor_ms:
+            raise ValueError("cutover acceptance cannot predate first expected anchor")
         for field in (
             "expected_anchor_count_to_date",
             "observation_count_to_date",
@@ -144,6 +146,8 @@ class ProspectiveCutoverAcceptance:
         ):
             if cast(int, getattr(self, field)) < 0:
                 raise ValueError(f"{field} must be non-negative")
+        if self.expected_anchor_count_to_date < 1:
+            raise ValueError("cutover acceptance requires at least one expected anchor")
         if self.observation_count_to_date > self.expected_anchor_count_to_date:
             raise ValueError("observation_count_to_date cannot exceed expected anchors")
         if self.missed_anchor_count_to_date != (
@@ -152,6 +156,14 @@ class ProspectiveCutoverAcceptance:
             raise ValueError("missed_anchor_count_to_date must reconcile")
         if self.first_anchor_status not in {"captured", "missed"}:
             raise ValueError("unsupported first_anchor_status")
+        if self.first_anchor_status == "captured":
+            if self.earliest_observation_anchor_ms != self.first_expected_anchor_ms:
+                raise ValueError("captured first anchor must be earliest observation")
+        elif (
+            self.earliest_observation_anchor_ms is not None
+            and self.earliest_observation_anchor_ms <= self.first_expected_anchor_ms
+        ):
+            raise ValueError("missed first anchor requires a later earliest observation")
         if self.earliest_observation_anchor_ms is None:
             if self.latest_observation_anchor_ms is not None:
                 raise ValueError("latest observation requires earliest observation")
