@@ -114,6 +114,10 @@ def _write_fake_bundle_files(
         '{"overlap":"exact"}\n',
         encoding="utf-8",
     )
+    (source_root / "source-preparation.json").write_text(
+        '{"preparation":"receipt"}\n',
+        encoding="utf-8",
+    )
     (output_root / "dataset" / "manifest.json").write_text(
         '{"dataset":"manifest"}\n',
         encoding="utf-8",
@@ -251,7 +255,8 @@ def test_preset_runner_forwards_only_frozen_values(
     assert bundle_payload["preset_run_receipt_id"] == payload["receipt_id"]
     assert len(bundle_payload["comparison_sha256"]) == 64
     assert len(bundle_payload["implementation_sha256"]) == 64
-    assert bundle_payload["schema_version"] == 2
+    assert len(bundle_payload["source_preparation_sha256"]) == 64
+    assert bundle_payload["schema_version"] == 3
     assert len(bundle_payload["bundle_id"]) == 64
     implementation = verify_archive_preset_source_attestation(
         output_root,
@@ -709,6 +714,45 @@ def test_preset_bundle_verifies_files_and_detects_tampering(
             output_root=output_root,
         )
 
+
+
+def test_preset_bundle_detects_source_preparation_tampering(
+    tmp_path: Path,
+) -> None:
+    archive_root = tmp_path / "archive"
+    source_root = tmp_path / "sources"
+    output_root = tmp_path / "output"
+    _write_fake_bundle_files(archive_root, source_root, output_root)
+
+    run_receipt = build_archive_preset_run_receipt(
+        JUL_SEP_2026_V2,
+        _fake_experiment_result(),  # type: ignore[arg-type]
+    )
+    write_archive_preset_run_receipt(output_root, run_receipt)
+    bundle = build_archive_preset_bundle_receipt(
+        JUL_SEP_2026_V2,
+        archive_root=archive_root,
+        source_root=source_root,
+        output_root=output_root,
+    )
+    path = write_archive_preset_bundle_receipt(output_root, bundle)
+
+    (source_root / "source-preparation.json").write_text(
+        '{"preparation":"tampered"}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="ARCHIVE_PRESET_BUNDLE_FILE_DIGEST_MISMATCH",
+    ):
+        verify_archive_preset_bundle_receipt(
+            path,
+            preset=JUL_SEP_2026_V2,
+            archive_root=archive_root,
+            source_root=source_root,
+            output_root=output_root,
+        )
 
 def test_preset_bundle_requires_every_canonical_file(
     tmp_path: Path,
