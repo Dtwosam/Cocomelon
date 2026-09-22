@@ -18,6 +18,7 @@ from cocomelon.research.historical_archive_clean_control_plane import (
     ArchiveCleanControlPlaneAttestation,
     build_archive_clean_control_plane,
     ensure_archive_clean_control_plane,
+    load_archive_clean_control_plane,
 )
 from cocomelon.research.historical_archive_clean_runtime import (
     PinnedArchiveCleanRuntime,
@@ -389,6 +390,53 @@ def _expected_receipt(
     )
 
 
+def verify_archive_clean_bootstrap_state(
+    pinned: PinnedArchiveCleanRuntime,
+    *,
+    state_root: Path,
+    frozen_revision: str,
+    runtime_artifact_id: str,
+) -> ArchiveCleanBootstrapReceipt:
+    receipt_path = state_root / "bootstrap.json"
+    checkpoint_path = state_root / "checkpoint.json"
+    control_plane_path = state_root / "control-plane.json"
+    if (
+        not receipt_path.is_file()
+        or not checkpoint_path.is_file()
+        or not control_plane_path.is_file()
+    ):
+        raise HistoricalArchiveCleanBootstrapError(
+            "ARCHIVE_CLEAN_BOOTSTRAP_STATE_INCOMPLETE"
+        )
+
+    receipt = load_archive_clean_bootstrap_receipt(receipt_path)
+    checkpoint = load_archive_clean_operational_checkpoint(checkpoint_path)
+    _verify_empty_checkpoint(pinned, checkpoint)
+    control_plane = load_archive_clean_control_plane(control_plane_path)
+    expected_control = build_archive_clean_control_plane(
+        pinned,
+        frozen_revision=frozen_revision,
+        runtime_artifact_id=runtime_artifact_id,
+    )
+    if control_plane != expected_control:
+        raise HistoricalArchiveCleanBootstrapError(
+            "ARCHIVE_CLEAN_BOOTSTRAP_CONTROL_PLANE_MISMATCH"
+        )
+    expected = _expected_receipt(
+        pinned,
+        checkpoint=checkpoint,
+        control_plane=control_plane,
+        frozen_revision=frozen_revision,
+        runtime_artifact_id=runtime_artifact_id,
+        bootstrap_as_of_ms=receipt.bootstrap_as_of_ms,
+    )
+    if receipt != expected:
+        raise HistoricalArchiveCleanBootstrapError(
+            "ARCHIVE_CLEAN_BOOTSTRAP_RECEIPT_MISMATCH"
+        )
+    return receipt
+
+
 def bootstrap_archive_clean_state(
     pinned: PinnedArchiveCleanRuntime,
     *,
@@ -417,33 +465,12 @@ def bootstrap_archive_clean_state(
     control_plane_path = state_root / "control-plane.json"
 
     if receipt_path.exists():
-        receipt = load_archive_clean_bootstrap_receipt(receipt_path)
-        if not checkpoint_path.is_file() or not control_plane_path.is_file():
-            raise HistoricalArchiveCleanBootstrapError(
-                "ARCHIVE_CLEAN_BOOTSTRAP_STATE_INCOMPLETE"
-            )
-        checkpoint = load_archive_clean_operational_checkpoint(checkpoint_path)
-        _verify_empty_checkpoint(pinned, checkpoint)
-        control_plane = ensure_archive_clean_control_plane(
-            state_root,
-            pinned=pinned,
-            frozen_revision=frozen_revision,
-            runtime_artifact_id=runtime_artifact_id,
-            as_of_ms=as_of_ms,
-        )
-        expected = _expected_receipt(
+        return verify_archive_clean_bootstrap_state(
             pinned,
-            checkpoint=checkpoint,
-            control_plane=control_plane,
+            state_root=state_root,
             frozen_revision=frozen_revision,
             runtime_artifact_id=runtime_artifact_id,
-            bootstrap_as_of_ms=receipt.bootstrap_as_of_ms,
         )
-        if receipt != expected:
-            raise HistoricalArchiveCleanBootstrapError(
-                "ARCHIVE_CLEAN_BOOTSTRAP_RECEIPT_MISMATCH"
-            )
-        return receipt
 
     if checkpoint_path.exists() or control_plane_path.exists():
         raise HistoricalArchiveCleanBootstrapError(
