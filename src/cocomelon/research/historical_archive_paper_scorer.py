@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import cast
@@ -17,6 +19,16 @@ from cocomelon.research.historical_features import HistoricalFeatureRow
 ZERO = Decimal("0")
 STATE_SCHEMA_VERSION = 1
 SIGNAL_SCHEMA_VERSION = 1
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
 
 
 class HistoricalArchivePaperScorerError(RuntimeError):
@@ -245,6 +257,37 @@ class ArchivePaperSignal:
         if self.schema_version != SIGNAL_SCHEMA_VERSION:
             raise ValueError("unsupported archive signal schema")
 
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "candidate_id": self.candidate_id,
+            "validation_spec_id": self.validation_spec_id,
+            "model_artifact_id": self.model_artifact_id,
+            "market": self.market,
+            "anchor_end_ms": self.anchor_end_ms,
+            "horizon_ms": self.horizon_ms,
+            "target_end_ms": self.target_end_ms,
+            "direction": self.direction.value,
+            "expected_long_gross_return": str(self.expected_long_gross_return),
+            "expected_short_gross_return": str(self.expected_short_gross_return),
+            "expected_long_net_return": str(self.expected_long_net_return),
+            "expected_short_net_return": str(self.expected_short_net_return),
+            "expected_net_edge": str(self.expected_net_edge),
+            "cost_fraction": str(self.cost_fraction),
+            "threshold": None if self.threshold is None else str(self.threshold),
+            "sample_count": self.sample_count,
+            "estimate_source": self.estimate_source,
+            "reason_codes": self.reason_codes,
+            "paper_only": self.paper_only,
+            "schema_version": self.schema_version,
+        }
+
+    @property
+    def signal_id(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
+
     @property
     def is_trade(self) -> bool:
         return self.direction in {Direction.LONG, Direction.SHORT}
@@ -271,6 +314,16 @@ class ArchivePaperPosition:
         if not self.expected_net_edge.is_finite():
             raise ValueError("expected_net_edge must be finite")
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "market": self.market,
+            "opened_at_ms": self.opened_at_ms,
+            "hold_until_ms": self.hold_until_ms,
+            "horizon_ms": self.horizon_ms,
+            "direction": self.direction.value,
+            "expected_net_edge": str(self.expected_net_edge),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class ArchivePaperState:
@@ -283,6 +336,18 @@ class ArchivePaperState:
             raise ValueError("paper positions must be sorted unique by market")
         if self.schema_version != STATE_SCHEMA_VERSION:
             raise ValueError("unsupported paper state schema")
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "positions": tuple(item.to_dict() for item in self.positions),
+            "schema_version": self.schema_version,
+        }
+
+    @property
+    def state_digest(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
 
     def active_at(self, anchor_end_ms: int) -> ArchivePaperState:
         return ArchivePaperState(
@@ -330,6 +395,26 @@ class ArchivePaperAnchorResult:
                 raise ValueError(f"{field} must be sorted unique")
         if not self.paper_only:
             raise ValueError("anchor result must remain paper-only")
+
+    def identity_payload(self) -> dict[str, object]:
+        return {
+            "anchor_end_ms": self.anchor_end_ms,
+            "raw_signals": tuple(item.identity_payload() for item in self.raw_signals),
+            "accepted_signals": tuple(
+                item.identity_payload() for item in self.accepted_signals
+            ),
+            "no_trade_markets": self.no_trade_markets,
+            "occupied_skip_markets": self.occupied_skip_markets,
+            "capacity_skip_markets": self.capacity_skip_markets,
+            "next_state": self.next_state.identity_payload(),
+            "paper_only": self.paper_only,
+        }
+
+    @property
+    def result_id(self) -> str:
+        return hashlib.sha256(
+            _canonical_json(self.identity_payload()).encode("utf-8")
+        ).hexdigest()
 
 
 def score_archive_candidate_feature(
