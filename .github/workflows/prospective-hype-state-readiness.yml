@@ -7,16 +7,26 @@ on:
     paths:
       - ".github/workflows/prospective-hype-state-readiness.yml"
       - "src/cocomelon/research/prospective_state_readiness.py"
+      - "src/cocomelon/research/prospective_state_readiness_failure.py"
       - "src/cocomelon/prospective_hype_state_readiness_cli.py"
+      - "src/cocomelon/prospective_hype_state_readiness_failure_cli.py"
       - "tests/test_prospective_state_readiness.py"
+      - "tests/test_prospective_state_readiness_failure.py"
+      - "tests/test_prospective_state_readiness_failure_cli.py"
+      - "tests/test_prospective_hype_state_readiness_workflow.py"
   pull_request:
     branches:
       - main
     paths:
       - ".github/workflows/prospective-hype-state-readiness.yml"
       - "src/cocomelon/research/prospective_state_readiness.py"
+      - "src/cocomelon/research/prospective_state_readiness_failure.py"
       - "src/cocomelon/prospective_hype_state_readiness_cli.py"
+      - "src/cocomelon/prospective_hype_state_readiness_failure_cli.py"
       - "tests/test_prospective_state_readiness.py"
+      - "tests/test_prospective_state_readiness_failure.py"
+      - "tests/test_prospective_state_readiness_failure_cli.py"
+      - "tests/test_prospective_hype_state_readiness_workflow.py"
   workflow_dispatch:
 
 permissions:
@@ -30,6 +40,7 @@ jobs:
     env:
       STATE_ARTIFACT_NAME: prospective-hype-clean-state
       EVIDENCE_ROOT: artifacts/prospective-hype-clean
+      AUDIT_ROOT: artifacts/prospective-hype-state-readiness
 
     steps:
       - uses: actions/checkout@v7
@@ -49,15 +60,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e .
 
-      - name: Restore latest cumulative prospective state
-        id: restore
+      - name: Capture state-readiness audit clock
+        id: clock
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import time
+
+          print(f"audited_at_ms={time.time_ns() // 1_000_000}")
+          PY
+
+      - name: Discover latest cumulative prospective state
+        id: discover
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p "$EVIDENCE_ROOT"
+          echo "artifact_id=none" >> "$GITHUB_OUTPUT"
           artifact_id="$(
-            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"               --jq '[.artifacts[]
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100" \
+              --jq '[.artifacts[]
                 | select(.expired == false)
                 | select(.workflow_run.head_branch == "main")]
                 | sort_by(.created_at)
@@ -65,15 +90,41 @@ jobs:
                 | .id // empty'
           )"
           test -n "$artifact_id"
-          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/prospective-hype-state.zip
-          unzip -q /tmp/prospective-hype-state.zip -d "$EVIDENCE_ROOT"
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
-      - name: Build immutable state-readiness receipt
+      - name: Download latest cumulative prospective state
+        id: download
+        continue-on-error: true
+        if: steps.discover.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.discover.outputs.artifact_id }}
         run: |
           set -euo pipefail
-          mkdir -p artifacts/prospective-hype-state-readiness
-          cocomelon-prospective-hype-state-readiness             --root "$EVIDENCE_ROOT"             --artifact-id "${{ steps.restore.outputs.artifact_id }}"             > artifacts/prospective-hype-state-readiness/readiness.json
+          mkdir -p "$EVIDENCE_ROOT"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/prospective-hype-state.zip
+          unzip -q /tmp/prospective-hype-state.zip -d "$EVIDENCE_ROOT"
+
+      - name: Build immutable state-readiness receipt
+        id: build
+        continue-on-error: true
+        if: >-
+          steps.discover.outcome == 'success' &&
+          steps.download.outcome == 'success'
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          ARTIFACT_ID: ${{ steps.discover.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$AUDIT_ROOT"
+          cocomelon-prospective-hype-state-readiness \
+            --root "$EVIDENCE_ROOT" \
+            --artifact-id "$ARTIFACT_ID" \
+            --as-of-ms "$AUDIT_MS" \
+            > "$AUDIT_ROOT/readiness.json"
           python - <<'PY'
           import json
           from pathlib import Path
@@ -96,6 +147,9 @@ jobs:
           PY
 
       - name: Upload state-readiness receipt
+        id: success_upload
+        continue-on-error: true
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: prospective-hype-state-readiness-${{ github.run_id }}-${{ github.run_attempt }}
@@ -103,3 +157,74 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 9
+
+      - name: Preserve redacted state-readiness failure receipt
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        env:
+          AUDIT_MS: ${{ steps.clock.outputs.audited_at_ms }}
+          DISCOVER_OUTCOME: ${{ steps.discover.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.success_upload.outcome }}
+          ARTIFACT_ID: ${{ steps.discover.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$DISCOVER_OUTCOME" == "failure" ]]; then
+            stage="discovery"
+            reason_code="STATE_ARTIFACT_DISCOVERY_FAILED"
+          elif [[ "$DOWNLOAD_OUTCOME" == "failure" ]]; then
+            stage="download"
+            reason_code="STATE_ARTIFACT_DOWNLOAD_FAILED"
+          elif [[ "$BUILD_OUTCOME" == "failure" ]]; then
+            stage="verify"
+            reason_code="STATE_READINESS_VERIFY_FAILED"
+          elif [[ "$UPLOAD_OUTCOME" == "failure" ]]; then
+            stage="upload"
+            reason_code="STATE_READINESS_RECEIPT_UPLOAD_FAILED"
+          else
+            echo "state-readiness failure stage could not be resolved" >&2
+            exit 2
+          fi
+
+          mkdir -p "$AUDIT_ROOT"
+          cocomelon-prospective-hype-state-readiness-failure \
+            --audited-at-ms "$AUDIT_MS" \
+            --stage "$stage" \
+            --reason-code "$reason_code" \
+            --state-artifact-id "${ARTIFACT_ID:-none}" \
+            > "$AUDIT_ROOT/failure.json"
+
+      - name: Upload state-readiness failure receipt
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-failed-state-readiness-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-state-readiness/failure.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve state-readiness failure status
+        if: >-
+          always() &&
+          (
+            steps.discover.outcome == 'failure' ||
+            steps.download.outcome == 'failure' ||
+            steps.build.outcome == 'failure' ||
+            steps.success_upload.outcome == 'failure'
+          )
+        run: exit 1
