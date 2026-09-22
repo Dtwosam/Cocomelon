@@ -441,6 +441,127 @@ def test_verify_final_calibration_is_offline(
         output_root / "candidate-final-calibration.json"
     )
 
+
+def test_build_candidate_model_is_offline_and_non_executable(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("build-candidate-model must not construct a client")
+        ),
+    )
+    model = SimpleNamespace(
+        candidate_id="a" * 64,
+        training_plan_id="b" * 64,
+        calibration_id="c" * 64,
+        artifact_id="d" * 64,
+        model_family="stable_tree",
+        calibration_variant="shared",
+        model_format="hist-gradient-boosting-json-v1",
+        model_payload_sha256="e" * 64,
+        execution_policy="independent_horizon",
+        max_concurrent_positions=None,
+        validation_not_before_ms=123456,
+        prospective_only=True,
+        promotion_eligible=False,
+        trained_model_persisted=True,
+        execution_ready=False,
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_candidate_model_artifact",
+        lambda *args, **kwargs: model,
+    )
+    model_path = tmp_path / "output" / "candidate-model.json"
+    monkeypatch.setattr(
+        cli,
+        "write_archive_candidate_model_artifact",
+        lambda *args, **kwargs: model_path,
+    )
+
+    status = cli.main(
+        [
+            "build-candidate-model",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "build-candidate-model"
+    assert payload["paid_request_performed"] is False
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["artifact_id"] == "d" * 64
+    assert payload["model_payload_sha256"] == "e" * 64
+    assert payload["trained_model_persisted"] is True
+    assert payload["execution_ready"] is False
+    assert payload["promotion_eligible"] is False
+    assert payload["candidate_model"] == str(model_path)
+
+
+def test_verify_candidate_model_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("verify-candidate-model must not construct a client")
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "verify_archive_candidate_model_artifact",
+        lambda *args, **kwargs: SimpleNamespace(
+            candidate_id="a" * 64,
+            artifact_id="d" * 64,
+            model_payload_sha256="e" * 64,
+            execution_ready=False,
+        ),
+    )
+
+    output_root = tmp_path / "output"
+    status = cli.main(
+        [
+            "verify-candidate-model",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(output_root),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "verify-candidate-model"
+    assert payload["paid_request_performed"] is False
+    assert payload["valid"] is True
+    assert payload["candidate_id"] == "a" * 64
+    assert payload["artifact_id"] == "d" * 64
+    assert payload["execution_ready"] is False
+    assert payload["candidate_model"] == str(
+        output_root / "candidate-model.json"
+    )
+
 def test_plan_candidate_training_is_offline_and_emits_partition(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
