@@ -12,6 +12,15 @@ on:
       - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
       - "tests/test_prospective_blind_monitor.py"
       - "tests/test_prospective_hype_blind_monitor_workflow.py"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-blind-monitor.yml"
+      - "src/cocomelon/research/prospective_blind_monitor.py"
+      - "src/cocomelon/prospective_hype_blind_monitor_cli.py"
+      - "tests/test_prospective_blind_monitor.py"
+      - "tests/test_prospective_hype_blind_monitor_workflow.py"
   workflow_dispatch:
 
 permissions:
