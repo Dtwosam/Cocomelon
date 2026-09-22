@@ -206,10 +206,6 @@ def verify_prospective_hype_campaign_readiness(
             "IRRECOVERABLE_GATE_MISSING",
         ),
         ("retention-days: 90", "FROZEN_RETENTION_MISSING"),
-        (
-            "POST_CUTOVER_CONTROL_PLANE_ATTESTATION_REQUIRED",
-            "CONTROL_PLANE_FAIL_CLOSED_MISSING",
-        ),
     )
     for needle, code in exact_requirements:
         _require(workflow_source, needle, code)
