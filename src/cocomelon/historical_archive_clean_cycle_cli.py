@@ -60,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--runtime-root", required=True, type=Path)
     parser.add_argument("--pin-id", required=True)
+    parser.add_argument("--control-plane-id", required=True)
     parser.add_argument("--checkpoint", required=True, type=Path)
     parser.add_argument("--cycle-evidence-root", required=True, type=Path)
     parser.add_argument("--source-root", required=True, type=Path)
@@ -71,6 +72,7 @@ def archive_clean_cycle_payload(
     *,
     runtime_root: Path,
     pin_id: str,
+    control_plane_id: str,
     checkpoint_path: Path,
     cycle_evidence_root: Path,
     source_root: Path,
@@ -95,6 +97,7 @@ def archive_clean_cycle_payload(
         spec=spec,
         runtime_id=pinned.bundle.runtime_id,
         pin_id=pinned.pin.pin_id,
+        control_plane_id=control_plane_id,
     )
     restored_checkpoint_id = evidence_store.checkpoint.checkpoint_id
     source_store = ArchiveCleanSourceCaptureStore(source_root)
@@ -113,6 +116,7 @@ def archive_clean_cycle_payload(
     receipt = build_archive_clean_operational_cycle_receipt(
         runtime_id=pinned.bundle.runtime_id,
         pin_id=pinned.pin.pin_id,
+        control_plane_id=control_plane_id,
         campaign_id=evidence_store.campaign_id,
         validation_spec_id=spec.spec_id,
         candidate_id=spec.candidate_id,
@@ -137,6 +141,7 @@ def archive_clean_cycle_payload(
         "execution_ready": False,
         "runtime_id": pinned.bundle.runtime_id,
         "pin_id": pinned.pin.pin_id,
+        "control_plane_id": control_plane_id,
         "campaign_id": evidence_store.campaign_id,
         "validation_spec_id": spec.spec_id,
         "candidate_id": spec.candidate_id,
@@ -176,6 +181,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             Settings.from_env(),
             runtime_root=args.runtime_root,
             pin_id=args.pin_id,
+            control_plane_id=args.control_plane_id,
             checkpoint_path=args.checkpoint,
             cycle_evidence_root=args.cycle_evidence_root,
             source_root=args.source_root,
