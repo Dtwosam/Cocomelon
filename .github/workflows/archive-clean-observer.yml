@@ -1,0 +1,339 @@
+name: Archive Clean Prospective Observer
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/archive-clean-observer.yml"
+      - "runtime/archive-clean/**"
+  schedule:
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: archive-clean-prospective-observer
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: >-
+      ${{
+        github.ref == 'refs/heads/main' &&
+        vars.ARCHIVE_CLEAN_RUNTIME_PIN_ID != '' &&
+        vars.ARCHIVE_CLEAN_CONTROL_PLANE_ID != ''
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      RUNTIME_ROOT: runtime/archive-clean
+      RUNTIME_PIN_ID: ${{ vars.ARCHIVE_CLEAN_RUNTIME_PIN_ID }}
+      CONTROL_PLANE_ID: ${{ vars.ARCHIVE_CLEAN_CONTROL_PLANE_ID }}
+      WORKFLOW_PATH: .github/workflows/archive-clean-observer.yml
+      CHECKPOINT_ARTIFACT_NAME: archive-clean-operational-checkpoint
+      CHECKPOINT_ROOT: artifacts/archive-clean-state
+      CHECKPOINT_PATH: artifacts/archive-clean-state/checkpoint.json
+      CYCLE_EVIDENCE_ROOT: artifacts/archive-clean-cycle
+      CYCLE_SOURCE_ROOT: artifacts/archive-clean-cycle-sources
+
+    steps:
+      - name: Checkout current control plane
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install observer runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Verify pinned candidate runtime
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime verify \
+            --runtime-root "$RUNTIME_ROOT" \
+            --pin-id "$RUNTIME_PIN_ID" \
+            | tee /tmp/archive-clean-runtime.json
+
+      - name: Verify frozen scheduled control plane
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-control-plane verify \
+            --runtime-root "$RUNTIME_ROOT" \
+            --pin-id "$RUNTIME_PIN_ID" \
+            --control-plane-id "$CONTROL_PLANE_ID" \
+            --workflow "$WORKFLOW_PATH" \
+            | tee /tmp/archive-clean-control-plane.json
+
+      - name: Capture cycle clock
+        id: clock
+        run: |
+          set -euo pipefail
+          now_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
+          echo "now_ms=$now_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Discover latest logical checkpoint artifact
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$CHECKPOINT_ARTIFACT_NAME&per_page=100" \
+            > /tmp/archive-clean-checkpoint-artifacts.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_artifact_selection import (
+              select_latest_archive_clean_checkpoint_artifact,
+          )
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-checkpoint-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          selected = select_latest_archive_clean_checkpoint_artifact(
+              payload.get("artifacts")
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              if selected is None:
+                  handle.write("artifact_id=none\n")
+                  handle.write("workflow_run_id=none\n")
+              else:
+                  handle.write(f"artifact_id={selected.artifact_id}\n")
+                  handle.write(
+                      f"workflow_run_id={selected.workflow_run_id}\n"
+                  )
+          PY
+
+      - name: Verify checkpoint artifact producer
+        if: steps.discover.outputs.artifact_id != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.discover.outputs.artifact_id }}
+          PRODUCER_RUN_ID: ${{ steps.discover.outputs.workflow_run_id }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID" \
+            > /tmp/archive-clean-checkpoint-artifact.json
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$PRODUCER_RUN_ID" \
+            > /tmp/archive-clean-checkpoint-run.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          artifact = json.loads(
+              Path("/tmp/archive-clean-checkpoint-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          run = json.loads(
+              Path("/tmp/archive-clean-checkpoint-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          workflow_run = artifact.get("workflow_run")
+          valid_events = {"schedule", "push", "workflow_dispatch"}
+          if (
+              str(artifact.get("id")) != os.environ["ARTIFACT_ID"]
+              or artifact.get("name") != os.environ["CHECKPOINT_ARTIFACT_NAME"]
+              or artifact.get("expired") is not False
+              or not isinstance(workflow_run, dict)
+              or str(workflow_run.get("id")) != os.environ["PRODUCER_RUN_ID"]
+              or workflow_run.get("head_branch") != "main"
+              or str(run.get("id")) != os.environ["PRODUCER_RUN_ID"]
+              or run.get("head_branch") != "main"
+              or run.get("path") != os.environ["WORKFLOW_PATH"]
+              or run.get("event") not in valid_events
+              or run.get("conclusion") != "success"
+              or run.get("repository", {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_CHECKPOINT_PROVENANCE_INVALID")
+          PY
+
+      - name: Restore compact checkpoint
+        if: steps.discover.outputs.artifact_id != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.discover.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CHECKPOINT_ROOT"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/archive-clean-checkpoint.zip
+          unzip -q /tmp/archive-clean-checkpoint.zip -d "$CHECKPOINT_ROOT"
+          test -f "$CHECKPOINT_PATH"
+
+      - name: Require pre-cutover bootstrap when checkpoint is absent
+        if: steps.discover.outputs.artifact_id == 'none'
+        env:
+          NOW_MS: ${{ steps.clock.outputs.now_ms }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          runtime = json.loads(
+              Path("/tmp/archive-clean-runtime.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          now_ms = int(os.environ["NOW_MS"])
+          validation_start_ms = int(runtime["validation_start_ms"])
+          if now_ms >= validation_start_ms:
+              raise SystemExit(
+                  "POST_CUTOVER_ARCHIVE_CLEAN_CHECKPOINT_REQUIRED"
+              )
+          PY
+
+      - name: Prepare fresh cycle roots
+        run: |
+          set -euo pipefail
+          mkdir -p "$CHECKPOINT_ROOT"
+          rm -rf "$CYCLE_EVIDENCE_ROOT" "$CYCLE_SOURCE_ROOT"
+          mkdir -p "$CYCLE_EVIDENCE_ROOT" "$CYCLE_SOURCE_ROOT"
+
+      - name: Run pinned clean cycle
+        id: cycle
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-cycle \
+            --runtime-root "$RUNTIME_ROOT" \
+            --pin-id "$RUNTIME_PIN_ID" \
+            --control-plane-id "$CONTROL_PLANE_ID" \
+            --checkpoint "$CHECKPOINT_PATH" \
+            --cycle-evidence-root "$CYCLE_EVIDENCE_ROOT" \
+            --source-root "$CYCLE_SOURCE_ROOT" \
+            | tee /tmp/archive-clean-cycle.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-cycle.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["runtime_id"] != os.environ["RUNTIME_PIN_ID"] and False:
+              raise SystemExit("unreachable")
+          expected = {
+              "pin_id": os.environ["RUNTIME_PIN_ID"],
+              "control_plane_id": os.environ["CONTROL_PLANE_ID"],
+              "paper_only": True,
+              "prospective_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+          }
+          for key, value in expected.items():
+              if payload.get(key) != value:
+                  raise SystemExit(
+                      f"ARCHIVE_CLEAN_CYCLE_RECEIPT_{key.upper()}_MISMATCH"
+                  )
+          with Path(os.environ["GITHUB_OUTPUT"]).open(
+              "a",
+              encoding="utf-8",
+          ) as handle:
+              handle.write(
+                  f"source_file_count={payload['source_file_count']}\n"
+              )
+              handle.write(
+                  f"checkpoint_id={payload['checkpoint_id']}\n"
+              )
+              handle.write(f"receipt_id={payload['receipt_id']}\n")
+          PY
+
+      - name: Verify compact checkpoint output
+        run: |
+          set -euo pipefail
+          test -f "$CHECKPOINT_PATH"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_archive_clean_checkpoint import (
+              load_archive_clean_operational_checkpoint,
+          )
+
+          checkpoint = load_archive_clean_operational_checkpoint(
+              Path(os.environ["CHECKPOINT_PATH"])
+          )
+          cycle = json.loads(
+              Path("/tmp/archive-clean-cycle.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if checkpoint.checkpoint_id != cycle["checkpoint_id"]:
+              raise SystemExit("ARCHIVE_CLEAN_CHECKPOINT_OUTPUT_ID_MISMATCH")
+          if checkpoint.pin_id != os.environ["RUNTIME_PIN_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_CHECKPOINT_PIN_MISMATCH")
+          if checkpoint.control_plane_id != os.environ["CONTROL_PLANE_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_CHECKPOINT_CONTROL_PLANE_MISMATCH")
+          PY
+
+      - name: Upload immutable cycle evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: archive-clean-cycle-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/archive-clean-cycle
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload immutable cycle source captures
+        if: steps.cycle.outputs.source_file_count != '0'
+        uses: actions/upload-artifact@v7
+        with:
+          name: archive-clean-cycle-sources-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/archive-clean-cycle-sources
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Upload compact checkpoint last
+        uses: actions/upload-artifact@v7
+        with:
+          name: archive-clean-operational-checkpoint
+          path: artifacts/archive-clean-state/checkpoint.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
