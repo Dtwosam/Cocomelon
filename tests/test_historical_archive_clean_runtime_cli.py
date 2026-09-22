@@ -60,6 +60,65 @@ def test_publish_cli_is_offline_and_emits_pin_identity(
     assert payload["observer_source_tree_sha256"] == "f" * 64
 
 
+
+def test_publish_package_cli_binds_portable_package(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bundle = SimpleNamespace(
+        candidate_id="a" * 64,
+        model_artifact_id="b" * 64,
+        validation_spec_id="c" * 64,
+        runtime_id="d" * 64,
+        validation_start_ms=1_000,
+        validation_end_ms=2_000,
+        observer_source_attestation_id="e" * 64,
+        observer_source_tree_sha256="f" * 64,
+        portable_package_bound=True,
+        candidate_package_id="2" * 64,
+        candidate_package_sha256="3" * 64,
+    )
+    pin = SimpleNamespace(
+        pin_id="1" * 64,
+        pinned_at_ms=999,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_publish(**kwargs: object) -> tuple[object, object]:
+        captured.update(kwargs)
+        return bundle, pin
+
+    monkeypatch.setattr(
+        cli,
+        "publish_archive_clean_runtime_from_package",
+        fake_publish,
+    )
+
+    payload = cli.runtime_payload(
+        (
+            "publish-package",
+            "--package-root",
+            str(tmp_path / "package"),
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+        ),
+        clock_ms=lambda: 999,
+    )
+
+    assert captured == {
+        "package_root": tmp_path / "package",
+        "publish_root": tmp_path / "runtime",
+        "pinned_at_ms": 999,
+    }
+    assert payload["command"] == "publish-package"
+    assert payload["paid_request_performed"] is False
+    assert payload["runtime_id"] == "d" * 64
+    assert payload["pin_id"] == "1" * 64
+    assert payload["portable_package_bound"] is True
+    assert payload["candidate_package_id"] == "2" * 64
+    assert payload["candidate_package_sha256"] == "3" * 64
+    assert payload["execution_ready"] is False
+
 def test_verify_cli_requires_exact_pin_id(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
