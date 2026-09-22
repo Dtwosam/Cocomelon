@@ -12,6 +12,7 @@ from cocomelon.research.historical_discovery_freeze import (
 from cocomelon.research.prospective_blind_monitor import (
     ProspectiveBlindMonitorError,
     build_prospective_hype_blind_monitor,
+    verify_prospective_hype_blind_monitor_receipt,
 )
 from cocomelon.research.prospective_context_evidence import (
     ProspectiveCampaignManifest,
@@ -214,3 +215,54 @@ def test_tampered_lineage_receipt_fails_blind_monitor(tmp_path: Path) -> None:
             lineage,
             expected_state_artifact_id="101",
         )
+
+
+
+def test_blind_monitor_receipt_round_trips_through_structural_verifier(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.json"
+    lineage = tmp_path / "lineage.json"
+    receipt = tmp_path / "monitor.json"
+    _write(health, _health_payload())
+    _write(lineage, _lineage_payload())
+
+    monitor = build_prospective_hype_blind_monitor(
+        health,
+        lineage,
+        expected_state_artifact_id="101",
+    )
+    _write(receipt, monitor.to_dict())
+
+    verified = verify_prospective_hype_blind_monitor_receipt(receipt)
+
+    assert verified == monitor
+    assert verified.monitor_id == monitor.monitor_id
+
+
+def test_self_hashed_structurally_false_blind_monitor_is_rejected(
+    tmp_path: Path,
+) -> None:
+    health = tmp_path / "health.json"
+    lineage = tmp_path / "lineage.json"
+    receipt = tmp_path / "monitor.json"
+    _write(health, _health_payload())
+    _write(lineage, _lineage_payload())
+
+    payload = build_prospective_hype_blind_monitor(
+        health,
+        lineage,
+        expected_state_artifact_id="101",
+    ).to_dict()
+    payload.pop("monitor_id")
+    payload["required_final_observation_count"] = 971
+    payload["monitor_id"] = hashlib.sha256(
+        _canonical(payload).encode("utf-8")
+    ).hexdigest()
+    _write(receipt, payload)
+
+    with pytest.raises(
+        ProspectiveBlindMonitorError,
+        match="FINAL_OBSERVATION_FLOOR_MISMATCH",
+    ):
+        verify_prospective_hype_blind_monitor_receipt(receipt)
