@@ -20,6 +20,12 @@ from cocomelon.research.historical_model_comparison import (
     HistoricalModelComparisonConfig,
 )
 from cocomelon.research.historical_tree import TreeModelConfig
+from cocomelon.research.python_source_attestation import (
+    PythonSourceTreeAttestation,
+    build_python_source_tree_attestation,
+    verify_python_source_tree_attestation,
+    write_python_source_tree_attestation,
+)
 
 PRESET_NAME = "archive-jul-sep-2026-v2"
 EVIDENCE_CLASS = "touched_development"
@@ -210,7 +216,8 @@ class HistoricalArchivePresetBundleReceipt:
     training_parquet_sha256: str
     comparison_sha256: str
     preset_run_receipt_sha256: str
-    schema_version: int = 1
+    implementation_sha256: str
+    schema_version: int = 2
 
     def __post_init__(self) -> None:
         for field in ("preset_name", "preset_id", "preset_run_receipt_id"):
@@ -228,11 +235,12 @@ class HistoricalArchivePresetBundleReceipt:
             "training_parquet_sha256",
             "comparison_sha256",
             "preset_run_receipt_sha256",
+            "implementation_sha256",
         ):
             value = getattr(self, field)
             if not isinstance(value, str) or len(value) != 64:
                 raise ValueError(f"{field} must be SHA-256")
-        if self.schema_version != 1:
+        if self.schema_version != 2:
             raise ValueError("unsupported preset bundle receipt schema")
 
     def identity_payload(self) -> dict[str, object]:
@@ -251,6 +259,7 @@ class HistoricalArchivePresetBundleReceipt:
             "training_parquet_sha256": self.training_parquet_sha256,
             "comparison_sha256": self.comparison_sha256,
             "preset_run_receipt_sha256": self.preset_run_receipt_sha256,
+            "implementation_sha256": self.implementation_sha256,
             "schema_version": self.schema_version,
         }
 
@@ -279,7 +288,34 @@ def _archive_preset_bundle_paths(
         "training_parquet": output_root / "dataset" / "training.parquet",
         "comparison": output_root / "comparison.json",
         "preset_run_receipt": output_root / "preset-run.json",
+        "implementation": output_root / "implementation.json",
     }
+
+
+def _package_source_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def build_archive_preset_source_attestation(
+    preset: HistoricalArchiveExperimentPreset,
+) -> PythonSourceTreeAttestation:
+    return build_python_source_tree_attestation(
+        _package_source_root(),
+        subject_type="historical_archive_preset",
+        subject_id=preset.preset_id,
+    )
+
+
+def verify_archive_preset_source_attestation(
+    output_root: Path,
+    *,
+    preset: HistoricalArchiveExperimentPreset,
+) -> PythonSourceTreeAttestation:
+    return verify_python_source_tree_attestation(
+        output_root / "implementation.json",
+        expected_subject_type="historical_archive_preset",
+        expected_subject_id=preset.preset_id,
+    )
 
 
 def _summary_string(
@@ -445,6 +481,10 @@ def build_archive_preset_bundle_receipt(
         output_root / "preset-run.json",
         preset=preset,
     )
+    verify_archive_preset_source_attestation(
+        output_root,
+        preset=preset,
+    )
     paths = _archive_preset_bundle_paths(
         archive_root=archive_root,
         source_root=source_root,
@@ -480,6 +520,10 @@ def build_archive_preset_bundle_receipt(
         preset_run_receipt_sha256=_sha256_path(
             paths["preset_run_receipt"],
             "PRESET_RUN_RECEIPT",
+        ),
+        implementation_sha256=_sha256_path(
+            paths["implementation"],
+            "IMPLEMENTATION",
         ),
     )
 
@@ -529,6 +573,7 @@ def verify_archive_preset_bundle_receipt(
         "training_parquet_sha256",
         "comparison_sha256",
         "preset_run_receipt_sha256",
+        "implementation_sha256",
         "bundle_id",
     )
     values: dict[str, str] = {}
@@ -558,6 +603,7 @@ def verify_archive_preset_bundle_receipt(
             training_parquet_sha256=values["training_parquet_sha256"],
             comparison_sha256=values["comparison_sha256"],
             preset_run_receipt_sha256=values["preset_run_receipt_sha256"],
+            implementation_sha256=values["implementation_sha256"],
             schema_version=schema_version,
         )
     except ValueError as exc:
@@ -697,6 +743,7 @@ def run_archive_experiment_preset(
     clock_ms: Callable[[], int],
 ) -> ArchiveHistoricalExperimentResult:
     ensure_archive_preset_output_root_clean(output_root)
+    source_before = build_archive_preset_source_attestation(preset)
     result = run_archive_historical_experiment(
         client,
         archive_root=archive_root,
@@ -711,6 +758,13 @@ def run_archive_experiment_preset(
         config=preset.comparison_config,
         max_funding_items=preset.max_funding_items,
         overlap_candles=preset.overlap_candles,
+    )
+    source_after = build_archive_preset_source_attestation(preset)
+    if source_after != source_before:
+        raise RuntimeError("ARCHIVE_PRESET_SOURCE_TREE_CHANGED_DURING_RUN")
+    write_python_source_tree_attestation(
+        output_root / "implementation.json",
+        source_after,
     )
     receipt = build_archive_preset_run_receipt(preset, result)
     write_archive_preset_run_receipt(output_root, receipt)
