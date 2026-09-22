@@ -9,6 +9,10 @@ from typing import TextIO
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.hyperliquid.client import InfoClient
+from cocomelon.research.historical_archive_clean_control_plane import (
+    CONTROL_PLANE_WORKFLOW_PATH,
+    verify_archive_clean_control_plane,
+)
 from cocomelon.research.historical_archive_clean_checkpoint import (
     ArchiveCleanCheckpointEvidenceStore,
 )
@@ -86,6 +90,13 @@ def archive_clean_cycle_payload(
         runtime_root,
         expected_pin_id=pin_id,
     )
+    control_plane = verify_archive_clean_control_plane(
+        runtime_root / "control-plane.json",
+        runtime_root=runtime_root,
+        expected_pin_id=pin_id,
+        workflow_path=Path(CONTROL_PLANE_WORKFLOW_PATH),
+        expected_control_plane_id=control_plane_id,
+    )
     spec = pinned.runtime.spec
     artifact = pinned.runtime.artifact
 
@@ -97,7 +108,7 @@ def archive_clean_cycle_payload(
         spec=spec,
         runtime_id=pinned.bundle.runtime_id,
         pin_id=pinned.pin.pin_id,
-        control_plane_id=control_plane_id,
+        control_plane_id=control_plane.control_plane_id,
     )
     restored_checkpoint_id = evidence_store.checkpoint.checkpoint_id
     source_store = ArchiveCleanSourceCaptureStore(source_root)
@@ -116,7 +127,7 @@ def archive_clean_cycle_payload(
     receipt = build_archive_clean_operational_cycle_receipt(
         runtime_id=pinned.bundle.runtime_id,
         pin_id=pinned.pin.pin_id,
-        control_plane_id=control_plane_id,
+        control_plane_id=control_plane.control_plane_id,
         campaign_id=evidence_store.campaign_id,
         validation_spec_id=spec.spec_id,
         candidate_id=spec.candidate_id,
@@ -141,7 +152,7 @@ def archive_clean_cycle_payload(
         "execution_ready": False,
         "runtime_id": pinned.bundle.runtime_id,
         "pin_id": pinned.pin.pin_id,
-        "control_plane_id": control_plane_id,
+        "control_plane_id": control_plane.control_plane_id,
         "campaign_id": evidence_store.campaign_id,
         "validation_spec_id": spec.spec_id,
         "candidate_id": spec.candidate_id,
