@@ -766,6 +766,11 @@ def verify_prepared_archive_historical_sources(
     overlap_path = source_root / "archive_native_overlap.json"
     overlap = load_archive_native_overlap_report(overlap_path)
     preparation = _preparation_from_payload(raw, overlap=overlap)
+    canonical_preparation = _canonical_json(preparation.to_dict()) + "\n"
+    if path.read_text(encoding="utf-8") != canonical_preparation:
+        raise HistoricalArchiveExperimentError(
+            "ARCHIVE_SOURCE_PREPARATION_NON_CANONICAL"
+        )
 
     archive = verify_downloaded_archive_cache(
         archive_root,
