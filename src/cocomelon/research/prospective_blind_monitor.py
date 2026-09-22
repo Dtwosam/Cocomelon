@@ -554,7 +554,7 @@ def _validate_health(payload: dict[str, object]) -> None:
         if _integer(block.get("block_index"), "BLOCK_INDEX") != index:
             raise ProspectiveBlindMonitorError("BLOCK_INDEX_MISMATCH")
         if _integer(
-            block_payload.get("required_settled_trades"),
+            block.get("required_settled_trades"),
             "BLOCK_REQUIRED_SETTLED_TRADES",
         ) != plan.min_block_trades:
             raise ProspectiveBlindMonitorError("BLOCK_SETTLED_FLOOR_MISMATCH")
@@ -563,16 +563,16 @@ def _validate_health(payload: dict[str, object]) -> None:
             "BLOCK_EFFECTIVE_TRADE_COUNT",
         )
         block_remaining = _integer(
-            block_payload.get("remaining_expected_anchors"),
+            block.get("remaining_expected_anchors"),
             "BLOCK_REMAINING_EXPECTED_ANCHORS",
         )
         block_maximum = _integer(
-            block_payload.get("maximum_possible_settled_trades"),
+            block.get("maximum_possible_settled_trades"),
             "BLOCK_MAXIMUM_POSSIBLE_SETTLED_TRADES",
         )
         if block_maximum != block_effective + block_remaining:
             raise ProspectiveBlindMonitorError("BLOCK_MAXIMUM_SETTLED_MISMATCH")
-        recoverable = _boolean(block_payload.get("recoverable"), "BLOCK_RECOVERABLE")
+        recoverable = _boolean(block.get("recoverable"), "BLOCK_RECOVERABLE")
         if recoverable != (block_maximum >= plan.min_block_trades):
             raise ProspectiveBlindMonitorError("BLOCK_RECOVERABILITY_MISMATCH")
 
