@@ -105,8 +105,8 @@ jobs:
         run: |
           set -euo pipefail
           observer_source_revision="$(git rev-parse HEAD)"
-          python - "$observer_source_revision" <<'PY' \
-            > /tmp/prospective-hype-runtime.json
+          python - "$observer_source_revision" \
+            > /tmp/prospective-hype-runtime.json <<'PY'
           import json
           import os
           import sys
