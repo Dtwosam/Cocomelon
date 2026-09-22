@@ -14,7 +14,6 @@ from cocomelon.research.historical_archive_presets import (
     HistoricalArchiveExperimentPreset,
 )
 from cocomelon.research.historical_archive_training_plan import (
-    HistoricalArchiveCandidateTrainingPlan,
     materialize_archive_candidate_training_rows,
     verify_archive_candidate_training_plan,
 )
