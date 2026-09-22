@@ -662,7 +662,12 @@ def verify_archive_clean_validation_spec(
     source_root: Path,
     output_root: Path,
 ) -> HistoricalArchiveCleanValidationSpec:
-    loaded = load_archive_clean_validation_spec(path)
+    try:
+        loaded = load_archive_clean_validation_spec(path)
+    except HistoricalArchiveValidationSpecError as exc:
+        raise HistoricalArchiveValidationSpecError(
+            "ARCHIVE_VALIDATION_SPEC_EVIDENCE_MISMATCH"
+        ) from exc
     expected = build_archive_clean_validation_spec(
         preset,
         archive_root=archive_root,
