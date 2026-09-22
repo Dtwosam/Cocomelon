@@ -198,3 +198,27 @@ This file records decisions that should not be casually re-litigated in later ch
 **Historical-data consequence:** Recent public candle/funding history remains valid for bounded touched research. Deeper history may use deterministic candles reconstructed from official Hyperliquid node fill archives only after provenance/integrity checks and exact overlap reconciliation against native recent candles. Requester-pays archive acquisition remains optional and acknowledgement-gated; no paid transfer is automatic.
 
 **Promotion consequence:** A model that abstains everywhere has demonstrated safety/selectivity, not trading edge. It must not be promoted until a frozen candidate later demonstrates positive cost-complete evidence under the required future clean validation and paper/shadow gates.
+
+
+
+## D-027 — Frozen prospective HYPE validation is observational, not tunable
+
+**Decision:** The touched historical candidate `hype-down-bearish-near-basket-long-4h-v1` is admitted to one predeclared prospective-clean evidence campaign. Its candidate logic and evidence-collection semantics are frozen before the clean window. Emerging prospective results may be observed but may not be used to retune this campaign.
+
+**Candidate freeze:** HYPE, 1h anchor, exact context `down/bearish/near_basket`, LONG, 4h horizon, one-position-per-market occupancy, and the fixed modeled fee/slippage/funding assumptions are immutable for this campaign.
+
+**Validation freeze:** The clean window is 2026-09-23 00:00:00 UTC through 2026-11-07 00:00:00 UTC, with finalization no earlier than 2026-11-07 04:00:00 UTC. The frozen plan requires 1,080 expected hourly anchors, >=90% capture (>=972 observations), >=80 settled executable trades, four chronological blocks with >=15 settled trades each, overall mean modeled net return >0, and every block mean modeled net return >0.
+
+**Runtime freeze:** Observer/report/evidence Python for this campaign is pinned to git revision `0131fccdb09a2b9ba959dd5785ea213a6297f719`. A cumulative runtime attestation binds the candidate spec, validation plan, and source revision. Missing or conflicting runtime identity after cutover fails closed.
+
+**Control-plane freeze:** The campaign's capture-critical cron, attempt minutes, 15-minute stale-anchor limit, cumulative state artifact/evidence-root identity, non-cancelling concurrency, timeout, paper mode, canonical Hyperliquid mainnet endpoints, read-only permissions, and artifact retention are bound into a cumulative pre-cutover control-plane attestation. Materially changing those settings requires a new campaign rather than silently mutating this one.
+
+**Continuity consequence:** Post-cutover evidence requires restored cumulative state. State resets, wrong campaign identity, conflicting runtime/control-plane state, post-window observations, or other integrity conflicts fail closed. There is no protected-interval retry/backfill mechanism that can turn a failed or incomplete clean campaign into a success.
+
+**Recoverability consequence:** Workflow-only monitoring may report pre-validation, healthy, degraded, or mathematically irrecoverable capture state. Monitoring does not alter the frozen candidate. An irrecoverable campaign is allowed to fail honestly; audit artifacts are preserved before the workflow turns red.
+
+**Finalization consequence:** Exactly one canonical terminal finalization receipt is predeclared. It may be created only after the frozen finalization boundary and only when no due exact-horizon settlement is overdue. It binds state digest, evidence digest, final economic status/counts/returns/block results, frozen runtime identity, and frozen control-plane identity. Later state/economic drift or conflicting finalization state fails closed rather than producing a second verdict.
+
+**Interpretation:** `eligible_for_candidate_review` is the strongest possible output of this campaign. It is not promotion eligibility and does not authorize live capital. All existing >=500 mainnet paper-trade, >=45-day shadow, risk/integrity, and explicit-live-authorization gates remain mandatory.
+
+**Development consequence:** During the clean campaign, unrelated research may continue only if it cannot contaminate this evidence. Any materially different hypothesis must be frozen as a new candidate and collect a new future clean sample.
