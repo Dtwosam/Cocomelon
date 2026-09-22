@@ -12,6 +12,7 @@ on:
       - "src/cocomelon/research/prospective_campaign_readiness.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
+      - "tests/test_prospective_hype_readiness_workflow.py"
   pull_request:
     branches:
       - main
@@ -21,6 +22,7 @@ on:
       - "src/cocomelon/research/prospective_campaign_readiness.py"
       - "src/cocomelon/prospective_hype_readiness_cli.py"
       - "tests/test_prospective_campaign_readiness.py"
+      - "tests/test_prospective_hype_readiness_workflow.py"
   workflow_dispatch:
 
 permissions:
