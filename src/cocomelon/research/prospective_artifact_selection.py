@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
@@ -12,6 +13,16 @@ _MAX_STATE_TO_HEALTH_SECONDS = 10 * 60
 
 class ProspectiveArtifactSelectionError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class LineageStatePair:
+    previous_artifact_id: str
+    current_artifact_id: str
+    previous_audited_at_ms: int
+    current_audited_at_ms: int
+    previous_run_id: int
+    current_run_id: int
 
 
 def _created_at(item: dict[str, object], field: str) -> datetime:
@@ -46,6 +57,81 @@ def _sort_key(item: dict[str, object]) -> tuple[datetime, int]:
     return (
         _created_at(item, "STATE"),
         int(_artifact_id(item, "STATE")),
+    )
+
+
+def select_lineage_state_pair(raw_artifacts: object) -> LineageStatePair:
+    if not isinstance(raw_artifacts, list):
+        raise ProspectiveArtifactSelectionError(
+            "ARTIFACT_DISCOVERY_PAYLOAD_INVALID"
+        )
+
+    states: list[dict[str, object]] = []
+    for raw in raw_artifacts:
+        if not isinstance(raw, dict):
+            continue
+        item = cast(dict[str, object], raw)
+        if (
+            item.get("expired") is not False
+            or item.get("name") != "prospective-hype-clean-state"
+        ):
+            continue
+        workflow = item.get("workflow_run")
+        if not isinstance(workflow, dict):
+            continue
+        run_id = workflow.get("id")
+        if (
+            workflow.get("head_branch") != "main"
+            or isinstance(run_id, bool)
+            or not isinstance(run_id, int)
+            or run_id <= 0
+        ):
+            continue
+        _created_at(item, "STATE")
+        _artifact_id(item, "STATE")
+        states.append(item)
+
+    latest_by_run: dict[int, dict[str, object]] = {}
+    for state in states:
+        run_id = cast(int, cast(dict[str, object], state["workflow_run"])["id"])
+        current = latest_by_run.get(run_id)
+        if current is None or _sort_key(state) > _sort_key(current):
+            latest_by_run[run_id] = state
+
+    distinct_states = sorted(latest_by_run.values(), key=_sort_key)
+    if len(distinct_states) < 2:
+        raise ProspectiveArtifactSelectionError(
+            "DISTINCT_STATE_RUNS_INSUFFICIENT"
+        )
+
+    previous, current = distinct_states[-2:]
+    previous_run_id = cast(
+        int,
+        cast(dict[str, object], previous["workflow_run"])["id"],
+    )
+    current_run_id = cast(
+        int,
+        cast(dict[str, object], current["workflow_run"])["id"],
+    )
+    if previous_run_id == current_run_id:
+        raise ProspectiveArtifactSelectionError(
+            "DISTINCT_STATE_RUNS_INSUFFICIENT"
+        )
+
+    previous_created = _created_at(previous, "STATE")
+    current_created = _created_at(current, "STATE")
+    if previous_created >= current_created:
+        raise ProspectiveArtifactSelectionError(
+            "STATE_ARTIFACT_ORDER_INVALID"
+        )
+
+    return LineageStatePair(
+        previous_artifact_id=_artifact_id(previous, "STATE"),
+        current_artifact_id=_artifact_id(current, "STATE"),
+        previous_audited_at_ms=int(previous_created.timestamp() * 1000),
+        current_audited_at_ms=int(current_created.timestamp() * 1000),
+        previous_run_id=previous_run_id,
+        current_run_id=current_run_id,
     )
 
 
