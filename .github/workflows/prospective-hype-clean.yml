@@ -1,0 +1,139 @@
+name: Prospective HYPE Clean Observer
+
+on:
+  schedule:
+    - cron: "3,8,13 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prospective-hype-clean-observer
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      EVIDENCE_ROOT: artifacts/prospective-hype-clean
+      STATE_ARTIFACT_NAME: prospective-hype-clean-state
+
+    steps:
+      - name: Checkout observer revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install observer runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Restore latest clean evidence state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_ROOT"
+          artifact_id="$(
+            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$STATE_ARTIFACT_NAME&per_page=100"               --jq '[.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.head_branch == "main")]
+                | sort_by(.created_at)
+                | last
+                | .id // empty'
+          )"
+          if [ -n "$artifact_id" ]; then
+            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/prospective-hype-state.zip
+            unzip -q /tmp/prospective-hype-state.zip -d "$EVIDENCE_ROOT"
+            echo "restored_artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          else
+            echo "restored_artifact_id=none" >> "$GITHUB_OUTPUT"
+          fi
+        id: restore
+
+      - name: Run prospective clean observer
+        run: |
+          set -euo pipefail
+          cocomelon-prospective-hype-observer --root "$EVIDENCE_ROOT"             | tee /tmp/prospective-hype-cycle.json
+
+      - name: Verify research-only receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-hype-cycle.json").read_text(encoding="utf-8")
+          )
+          assert payload["execution_mode"] == "paper"
+          assert payload["evidence_class"] == "prospective_clean"
+          assert payload["promotion_eligible"] is False
+          assert len(payload["state_digest"]) == 64
+          PY
+
+      - name: Publish run summary
+        env:
+          RESTORED_ARTIFACT_ID: ${{ steps.restore.outputs.restored_artifact_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-hype-cycle.json").read_text(encoding="utf-8")
+          )
+          observation = payload["observation"]
+          print("## Prospective HYPE clean observer")
+          print()
+          print(f"- restored artifact: {os.environ['RESTORED_ARTIFACT_ID']}")
+          print(f"- campaign: {payload['campaign_id']}")
+          print(f"- state digest: {payload['state_digest']}")
+          print(f"- status: {observation['status']}")
+          print(f"- raw direction: {observation['raw_direction']}")
+          print(f"- effective direction: {observation['effective_direction']}")
+          print(f"- observations: {payload['observation_count']}")
+          print(f"- outcomes: {payload['outcome_count']}")
+          print(f"- settled this run: {len(payload['settled_outcome_ids'])}")
+          print(
+              "- missing exact target candles: "
+              f"{len(payload['missing_target_observation_ids'])}"
+          )
+          PY
+
+      - name: Upload cumulative clean evidence state
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-state
+          path: artifacts/prospective-hype-clean
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
+      - name: Upload immutable run receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-clean-run-${{ github.run_id }}
+          path: /tmp/prospective-hype-cycle.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
