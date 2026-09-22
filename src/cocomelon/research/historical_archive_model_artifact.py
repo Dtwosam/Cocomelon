@@ -200,9 +200,23 @@ class HistoricalArchiveCandidateModelArtifact:
             raise ValueError("model_format must match model_family")
         if _sha256_json(self.model_payload) != self.model_payload_sha256:
             raise ValueError("model_payload_sha256 must match model_payload")
+        payload_format = self.model_payload.get("format")
+        if payload_format != self.model_format:
+            raise ValueError("embedded model format must match model_format")
+        payload_min_market_samples = self.model_payload.get("min_market_samples")
+        if (
+            isinstance(payload_min_market_samples, bool)
+            or not isinstance(payload_min_market_samples, int)
+            or payload_min_market_samples != self.min_market_samples
+        ):
+            raise ValueError(
+                "embedded min_market_samples must match artifact metadata"
+            )
         if self.model_family in RIDGE_FAMILIES:
             if self.selected_alpha is None:
                 raise ValueError("ridge model artifact requires selected_alpha")
+            if self.model_payload.get("alpha") != str(self.selected_alpha):
+                raise ValueError("embedded ridge alpha must match selected_alpha")
         elif self.model_family == "stable_tree":
             if self.selected_alpha is not None:
                 raise ValueError("tree model artifact must not have selected_alpha")
@@ -218,6 +232,21 @@ class HistoricalArchiveCandidateModelArtifact:
             for _horizon_ms, threshold in self.selected_horizon_thresholds
         ):
             raise ValueError("candidate model artifact must trade at least one horizon")
+        raw_model_horizons = self.model_payload.get("horizons")
+        if not isinstance(raw_model_horizons, (tuple, list)):
+            raise ValueError("embedded model horizons must be a sequence")
+        model_horizons: list[int] = []
+        for item in raw_model_horizons:
+            if not isinstance(item, dict):
+                raise ValueError("embedded model horizon must be an object")
+            value = item.get("horizon_ms")
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError("embedded model horizon_ms must be positive")
+            model_horizons.append(value)
+        if tuple(model_horizons) != horizons:
+            raise ValueError(
+                "embedded model horizons must match selected horizon thresholds"
+            )
         if self.min_sample_count <= 0 or self.min_market_samples <= 0:
             raise ValueError("sample floors must be positive")
         expected_policy = {
