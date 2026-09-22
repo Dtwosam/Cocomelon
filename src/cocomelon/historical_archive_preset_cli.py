@@ -13,9 +13,9 @@ from cocomelon.hyperliquid.client import InfoClient
 from cocomelon.research.historical_archive_acquisition import plan_archive_shards
 from cocomelon.research.historical_archive_presets import (
     PRESET_NAME,
-    build_archive_preset_run_receipt,
     get_archive_experiment_preset,
     run_archive_experiment_preset,
+    verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
 )
 
@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify")
     verify.add_argument("--preset", default=PRESET_NAME)
     verify.add_argument("--receipt", required=True, type=Path)
+
+    verify_bundle = subparsers.add_parser("verify-bundle")
+    verify_bundle.add_argument("--preset", default=PRESET_NAME)
+    verify_bundle.add_argument("--archive-root", required=True, type=Path)
+    verify_bundle.add_argument("--source-root", required=True, type=Path)
+    verify_bundle.add_argument("--output-root", required=True, type=Path)
 
     run = subparsers.add_parser("run")
     run.add_argument("--preset", default=PRESET_NAME)
@@ -114,6 +120,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 }
             )
             return 0
+        if args.command == "verify-bundle":
+            bundle = verify_archive_preset_bundle_receipt(
+                args.output_root / "preset-bundle.json",
+                preset=preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            _emit(
+                {
+                    "bundle_id": bundle.bundle_id,
+                    "command": "verify-bundle",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "valid": True,
+                }
+            )
+            return 0
 
         settings = Settings.from_env()
         if settings.execution_mode is not ExecutionMode.PAPER:
@@ -126,7 +151,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_root=args.output_root,
             clock_ms=_clock(args.received_at_ms),
         )
-        receipt = build_archive_preset_run_receipt(preset, result)
+        receipt = verify_archive_preset_run_receipt(
+            args.output_root / "preset-run.json",
+            preset=preset,
+        )
+        bundle = verify_archive_preset_bundle_receipt(
+            args.output_root / "preset-bundle.json",
+            preset=preset,
+            archive_root=args.archive_root,
+            source_root=args.source_root,
+            output_root=args.output_root,
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
@@ -150,6 +185,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "comparison_version": result.comparison.comparison_version,
             "preset_run_receipt_id": receipt.receipt_id,
             "preset_run_receipt": str(args.output_root / "preset-run.json"),
+            "preset_bundle_id": bundle.bundle_id,
+            "preset_bundle_receipt": str(args.output_root / "preset-bundle.json"),
             "row_count": result.comparison.dataset_row_count,
             "fold_count": len(result.comparison.baseline_folds),
             "output_root": str(args.output_root),
