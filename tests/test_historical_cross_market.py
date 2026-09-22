@@ -9,6 +9,7 @@ from cocomelon.domain.features import TrendRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.research.historical_cross_market import (
     HistoricalCrossMarketError,
+    enrich_feature_rows_with_basket_context,
     enrich_training_rows_with_basket_context,
 )
 from cocomelon.research.historical_features import HistoricalFeatureRow, HistoricalTrainingRow
@@ -123,6 +124,41 @@ def _context_rows() -> tuple[HistoricalTrainingRow, ...]:
         ),
     )
 
+
+
+def test_feature_only_basket_enrichment_matches_training_route_exactly() -> None:
+    rows = _context_rows()
+    feature_only = enrich_feature_rows_with_basket_context(
+        tuple(row.feature for row in rows)
+    )
+    training = enrich_training_rows_with_basket_context(rows)
+    training_features = tuple(row.feature for row in training)
+
+    assert feature_only == training_features
+    assert tuple(item.row_id for item in feature_only) == tuple(
+        item.row_id for item in training_features
+    )
+    assert all(item.schema_version == 3 for item in feature_only)
+
+
+def test_feature_only_basket_enrichment_is_input_order_independent() -> None:
+    features = tuple(row.feature for row in _context_rows())
+
+    expected = enrich_feature_rows_with_basket_context(features)
+    actual = enrich_feature_rows_with_basket_context(tuple(reversed(features)))
+
+    assert actual == expected
+
+
+def test_feature_only_basket_enrichment_rejects_conflicting_feature_state() -> None:
+    first = _context_rows()[0].feature
+    conflicting = replace(first, return_5m=Decimal("0.99"))
+
+    with pytest.raises(
+        HistoricalCrossMarketError,
+        match="CONFLICTING_FEATURE_STATE",
+    ):
+        enrich_feature_rows_with_basket_context((first, conflicting))
 
 def test_basket_context_is_same_anchor_deterministic_and_direction_neutral() -> None:
     rows = _context_rows()
