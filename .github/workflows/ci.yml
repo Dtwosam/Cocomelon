@@ -79,6 +79,9 @@ jobs:
           tests/test_historical_archive_clean_bootstrap.py
           tests/test_historical_archive_clean_bootstrap_cli.py
           tests/test_historical_archive_clean_bootstrap_workflow.py
+          tests/test_historical_archive_clean_activation.py
+          tests/test_historical_archive_clean_activation_cli.py
+          tests/test_historical_archive_clean_activation_workflow.py
           tests/test_historical_archive_clean_workflow.py
           tests/test_historical_archive_clean_readiness.py
           tests/test_historical_archive_clean_readiness_workflow.py

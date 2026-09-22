@@ -112,6 +112,30 @@ def test_archive_clean_observer_uses_bootstrap_only_as_first_state_fallback() ->
     assert "RESTORED_OBSERVER_ARTIFACT_ID" in source
     assert "RESTORED_BOOTSTRAP_ARTIFACT_ID" in source
 
+
+def test_archive_clean_observer_requires_authenticated_activation_before_continuity() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    bootstrap = source.index("Restore pre-cutover bootstrap fallback")
+    activation = source.index("Restore and verify activation authorization")
+    continuity = source.index("Verify state continuity and canonical finalization")
+    cycle = source.index("Run pinned paper-only clean cycle")
+
+    assert bootstrap < activation < continuity < cycle
+    assert "ACTIVATION_ARTIFACT_NAME" in source
+    assert "historical-archive-clean-activation-" in source
+    assert "ACTIVATION_WORKFLOW_PATH" in source
+    assert "historical-archive-clean-activation.yml" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_AUTHORIZATION_REQUIRED" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_WORKFLOW_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REPOSITORY_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH" in source
+    assert "ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS" in source
+    assert "cocomelon-historical-archive-clean-activation" in source
+    assert "--verify-only" in source
+
 def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 

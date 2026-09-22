@@ -33,7 +33,10 @@ jobs:
       WORKFLOW_PATH: .github/workflows/historical-archive-clean.yml
       RUNTIME_PUBLISHER_WORKFLOW_PATH: .github/workflows/historical-archive-clean-runtime-publish.yml
       BOOTSTRAP_WORKFLOW_PATH: .github/workflows/historical-archive-clean-bootstrap.yml
+      ACTIVATION_WORKFLOW_PATH: .github/workflows/historical-archive-clean-activation.yml
       BOOTSTRAP_STATE_ARTIFACT_NAME: historical-archive-clean-bootstrap-state-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      ACTIVATION_ARTIFACT_NAME: historical-archive-clean-activation-${{ vars.ARCHIVE_CLEAN_PIN_ID }}
+      AUTHORIZATION_ROOT: artifacts/historical-archive-clean-activation
       SCHEDULE_CRON: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
       ARTIFACT_RETENTION_DAYS: "90"
 
@@ -359,6 +362,120 @@ jobs:
             --verify-only \
             > /tmp/archive-clean-bootstrap-verify.json
           echo "restored_artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
+      - name: Restore and verify activation authorization
+        id: activation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$AUTHORIZATION_ROOT"
+          artifact_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ACTIVATION_ARTIFACT_NAME&per_page=100" \
+              --jq '[.artifacts[]
+                | select(.expired == false)
+                | select(.workflow_run.head_branch == "main")]
+                | sort_by(.created_at)
+                | last // empty'
+          )"
+          if [ -z "$artifact_json" ]; then
+            echo "ARCHIVE_CLEAN_ACTIVATION_AUTHORIZATION_REQUIRED" >&2
+            exit 1
+          fi
+          printf '%s\n' "$artifact_json" > /tmp/archive-clean-activation-artifact.json
+          artifact_id="$(
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload.get("expired") is not False:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_ARTIFACT_EXPIRED")
+          if payload.get("name") != os.environ["ACTIVATION_ARTIFACT_NAME"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_ARTIFACT_NAME_MISMATCH")
+          run = payload.get("workflow_run")
+          if (
+              not isinstance(run, dict)
+              or not isinstance(run.get("id"), int)
+              or run.get("head_branch") != "main"
+          ):
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_RUN_MISSING")
+          Path("/tmp/archive-clean-activation-run-id").write_text(
+              str(run["id"]),
+              encoding="utf-8",
+          )
+          print(payload["id"])
+          PY
+          )"
+          run_id="$(cat /tmp/archive-clean-activation-run-id)"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            > /tmp/archive-clean-activation-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-activation-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("path") != os.environ["ACTIVATION_WORKFLOW_PATH"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_WORKFLOW_MISMATCH")
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_BRANCH_MISMATCH")
+          if run.get("head_sha") != os.environ["FROZEN_REVISION"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_REVISION_MISMATCH")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_EVENT_MISMATCH")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PRODUCER_NOT_SUCCESS")
+          PY
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > /tmp/archive-clean-activation.zip
+          unzip -q /tmp/archive-clean-activation.zip -d "$AUTHORIZATION_ROOT"
+          cocomelon-historical-archive-clean-activation \
+            --runtime-root "$RUNTIME_ROOT" \
+            --pin-id "$PIN_ID" \
+            --state-root "$STATE_ROOT" \
+            --authorization-root "$AUTHORIZATION_ROOT" \
+            --frozen-revision "$FROZEN_REVISION" \
+            --runtime-artifact-id "$RUNTIME_ARTIFACT_ID" \
+            --verify-only \
+            > /tmp/archive-clean-activation-verify.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-activation-verify.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["activation_authorized"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_AUTHORIZATION_REQUIRED")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_EXECUTION_READY_FORBIDDEN")
+          if payload["pin_id"] != os.environ["PIN_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_ACTIVATION_PIN_MISMATCH")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"authorization_id={payload['authorization_id']}\n")
+          PY
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
       - name: Verify state continuity and canonical finalization
         id: continuity
