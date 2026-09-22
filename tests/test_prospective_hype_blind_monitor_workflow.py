@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+WORKFLOW = Path(".github/workflows/prospective-hype-blind-monitor.yml")
+
+
+def test_blind_monitor_is_read_only_and_never_invokes_frozen_observer() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "contents: read" in source
+    assert "actions: read" in source
+    assert "contents: write" not in source
+    assert "actions: write" not in source
+    assert "cocomelon-prospective-hype-observer" not in source
+    assert "prospective-hype-clean.yml" not in source
+    assert "COCOMELON_EXECUTION_MODE" not in source
+
+
+def test_blind_monitor_runs_after_capture_and_lineage_schedules() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'cron: "25 * * * *"' in source
+    assert 'cron: "20 * * * *"' not in source
+    assert 'cron: "3,8,13 * * * *"' not in source
+    assert "group: prospective-hype-blind-monitor" in source
+    assert "cancel-in-progress: false" in source
+
+
+def test_blind_monitor_matches_state_to_latest_health_run() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'item["name"].startswith("prospective-hype-clean-health-")' in source
+    assert 'item["name"].startswith("prospective-hype-lineage-")' in source
+    assert 'item["name"] == "prospective-hype-clean-state"' in source
+    assert 'item["workflow_run"]["id"] == health["workflow_run"]["id"]' in source
+    assert "len(matching_states) != 1" in source
+    assert '"state_id": state["id"]' in source
+
+
+def test_blind_monitor_never_downloads_or_names_interim_economics() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "prospective-hype-clean-report-" not in source
+    assert "prospective-hype-report.json" not in source
+    assert "prospective-hype-health.json" in source
+    assert "lineage.json" in source
+    for token in (
+        "mean_net_return",
+        "total_net_return",
+        "positive_net_count",
+        "non_positive_net_count",
+        "gross_return",
+        "net_return",
+    ):
+        assert token not in source
+
+
+def test_blind_monitor_requires_redacted_output_and_uploads_receipt() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cocomelon-prospective-hype-blind-monitor" in source
+    assert "--state-artifact-id" in source
+    assert 'payload["interim_economics_redacted"] is True' in source
+    assert "actions/upload-artifact@v7" in source
+    assert (
+        "prospective-hype-blind-monitor-${{ github.run_id }}-"
+        "${{ github.run_attempt }}"
+    ) in source
+    assert "retention-days: 90" in source
+    assert "if-no-files-found: error" in source
