@@ -161,8 +161,7 @@ jobs:
                 | last // empty'
           )"
           test -n "$artifact_json"
-          printf '%s
-' "$artifact_json" > /tmp/archive-clean-activation-bootstrap-artifact.json
+          printf '%s\\n' "$artifact_json" > /tmp/archive-clean-activation-bootstrap-artifact.json
           python - <<'PY'
           import json
           import os
@@ -281,11 +280,11 @@ jobs:
           {
             echo "## Historical archive clean activation authorization"
             echo
-            echo "- pin: `$PIN_ID`"
-            echo "- authorization: `${{ steps.authorize.outputs.authorization_id }}`"
-            echo "- control plane: `${{ steps.authorize.outputs.control_plane_id }}`"
-            echo "- bootstrap: `${{ steps.authorize.outputs.bootstrap_id }}`"
-            echo "- activation artifact: `${{ steps.upload.outputs.artifact-id }}`"
+            echo "- pin: \\`$PIN_ID\\`"
+            echo "- authorization: \\`${{ steps.authorize.outputs.authorization_id }}\\`"
+            echo "- control plane: \\`${{ steps.authorize.outputs.control_plane_id }}\\`"
+            echo "- bootstrap: \\`${{ steps.authorize.outputs.bootstrap_id }}\\`"
+            echo "- activation artifact: \\`${{ steps.upload.outputs.artifact-id }}\\`"
             echo "- campaign enabled at authorization: false"
             echo "- market access performed: false"
             echo "- activation authorized: true"
