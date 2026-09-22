@@ -189,3 +189,56 @@ def test_finalization_status_is_bound_into_lineage_and_summary() -> None:
     assert '"waiting_for_exact_settlements"' in source
     assert '"finalized"' in source
     assert '"conflict"' in source
+
+
+
+def test_prospective_hype_workflow_freezes_capture_control_plane_before_cutover() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "Verify prospective control-plane attestation" in source
+    assert 'root / "control-plane.json"' in source
+    assert '"kind": "prospective-hype-clean-control-plane"' in source
+    assert '"schedule_cron": "3,8,13 * * * *"' in source
+    assert '"attempt_minutes_utc": [3, 8, 13]' in source
+    assert '"max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS' in source
+    assert '"state_artifact_name": os.environ["STATE_ARTIFACT_NAME"]' in source
+    assert '"evidence_root": os.environ["EVIDENCE_ROOT"]' in source
+    assert '"concurrency_group": "prospective-hype-clean-observer"' in source
+    assert '"cancel_in_progress": False' in source
+    assert '"job_timeout_minutes": 10' in source
+    assert '"execution_mode": os.environ["COCOMELON_EXECUTION_MODE"]' in source
+    assert '"api_url": os.environ["COCOMELON_API_URL"]' in source
+    assert '"ws_url": os.environ["COCOMELON_WS_URL"]' in source
+    assert '"contents_permission": "read"' in source
+    assert '"actions_permission": "read"' in source
+    assert '"artifact_retention_days": 90' in source
+    assert "POST_CUTOVER_CONTROL_PLANE_ATTESTATION_REQUIRED" in source
+    assert "CONFLICTING_PROSPECTIVE_CONTROL_PLANE_ATTESTATION" in source
+    assert "NON_CANONICAL_PROSPECTIVE_CONTROL_PLANE_ATTESTATION" in source
+
+
+def test_control_plane_is_bound_into_lineage_summary_and_finalization() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "/tmp/prospective-hype-control-plane.json" in source
+    assert '"control_plane_attestation": control_plane' in source
+    assert '"control_plane_attestation_id": control_plane["control_plane_id"]' in source
+    assert "control_plane['control_plane_id']" in source
+    assert "control_plane['schedule_cron']" in source
+    assert 'control_plane["schedule_cron"] == "3,8,13 * * * *"' in source
+    assert 'control_plane["attempt_minutes_utc"] == [3, 8, 13]' in source
+    assert 'control_plane["max_entry_candle_age_ms"] == 900000' in source
+
+
+def test_yaml_capture_settings_match_frozen_control_plane_contract() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'cron: "3,8,13 * * * *"' in source
+    assert "timeout-minutes: 10" in source
+    assert "group: prospective-hype-clean-observer" in source
+    assert "cancel-in-progress: false" in source
+    assert "STATE_ARTIFACT_NAME: prospective-hype-clean-state" in source
+    assert "EVIDENCE_ROOT: artifacts/prospective-hype-clean" in source
+    assert "COCOMELON_EXECUTION_MODE: paper" in source
+    assert "COCOMELON_API_URL: https://api.hyperliquid.xyz" in source
+    assert "COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws" in source
