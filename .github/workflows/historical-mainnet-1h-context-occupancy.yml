@@ -1,0 +1,146 @@
+name: Historical Mainnet 1h Context Occupancy
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/historical-mainnet-1h-context-occupancy.yml"
+      - "tests/test_historical_mainnet_1h_context_occupancy_workflow.py"
+      - "src/cocomelon/research/historical_context_occupancy.py"
+      - "src/cocomelon/historical_context_occupancy_cli.py"
+      - "src/cocomelon/research/historical_dataset.py"
+      - "src/cocomelon/research/historical_features.py"
+      - "src/cocomelon/research/historical_cross_market.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: historical-mainnet-1h-context-occupancy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  touched-historical-context-occupancy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      COCOMELON_EXECUTION_MODE: paper
+      COCOMELON_API_URL: https://api.hyperliquid.xyz
+      COCOMELON_WS_URL: wss://api.hyperliquid.xyz/ws
+      SOURCE_ROOT: artifacts/historical-mainnet-1h-context-occupancy-2026-03-01-to-2026-09-20/sources
+      OUTPUT_ROOT: artifacts/historical-mainnet-1h-context-occupancy-2026-03-01-to-2026-09-20/occupancy
+      WINDOW_START_ISO: "2026-03-01T00:00:00+00:00"
+      WINDOW_END_ISO: "2026-09-20T00:00:00+00:00"
+      DISCOVERY_REPORT_ID: f3b38a6625ad2ea2d1b2df7e736f5dbded6f2b415c53c80db35514e4f3589481
+      DISCOVERY_DATASET_ID: 268aa965584316f35a9db520b13848fd030123eadc99482a89cd7bc68ffc091f
+
+    steps:
+      - name: Checkout experiment revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install research runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Resolve immutable UTC window
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_ENV"
+          from datetime import datetime
+
+          for env_name, value in (
+              ("WINDOW_START_MS", "2026-03-01T00:00:00+00:00"),
+              ("WINDOW_END_MS", "2026-09-20T00:00:00+00:00"),
+          ):
+              resolved = datetime.fromisoformat(value)
+              print(f"{env_name}={int(resolved.timestamp() * 1000)}")
+          PY
+
+      - name: Acquire authenticated public-mainnet 1h history
+        run: |
+          set -euo pipefail
+          cocomelon-historical-backfill \
+            --root "$SOURCE_ROOT" \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --interval 1h \
+            --start-ms "$WINDOW_START_MS" \
+            --end-ms "$WINDOW_END_MS" \
+            --max-candles 5000 \
+            --max-funding-items 500
+
+      - name: Require complete six-month 1h candle grids
+        run: |
+          set -euo pipefail
+          jq -e '
+            ([.sources[] | select(.kind == "candles" and .interval == "1h")] | length) == 4
+            and all(
+              .sources[]
+              | select(.kind == "candles" and .interval == "1h");
+              .complete_requested_grid == true and .record_count == 4873
+            )
+          ' "$SOURCE_ROOT/coverage.json" >/dev/null
+
+      - name: Evaluate discovered HYPE context with occupancy
+        run: |
+          set -euo pipefail
+          cocomelon-historical-context-occupancy \
+            --source-root "$SOURCE_ROOT" \
+            --output-root "$OUTPUT_ROOT" \
+            --anchor-interval 1h \
+            --market BTC \
+            --market ETH \
+            --market SOL \
+            --market HYPE \
+            --horizon-ms 14400000 \
+            --discovery-report-id "$DISCOVERY_REPORT_ID" \
+            --discovery-dataset-id "$DISCOVERY_DATASET_ID" \
+            --candidate-market HYPE \
+            --context-state down/bearish/near_basket \
+            --direction long \
+            --candidate-horizon-ms 14400000 \
+            --round-trip-fee-fraction 0.0007 \
+            --round-trip-slippage-fraction 0.0005 \
+            --funding-reserve-fraction-per-hour 0.0001 \
+            --stability-blocks 4 \
+            --min-block-trades 20 \
+            --min-block-mean-net-return 0
+
+      - name: Render executable context diagnostics
+        run: |
+          set -euo pipefail
+          jq '{
+            report_id,
+            evidence_class,
+            dataset_id,
+            discovery_report_id,
+            discovery_dataset_id,
+            evaluation
+          }' "$OUTPUT_ROOT/context_occupancy.json"
+
+      - name: Upload touched occupancy bundle
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-mainnet-1h-context-occupancy-2026-03-01-to-2026-09-20
+          path: artifacts/historical-mainnet-1h-context-occupancy-2026-03-01-to-2026-09-20
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 6
