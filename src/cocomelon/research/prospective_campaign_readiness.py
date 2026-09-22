@@ -19,6 +19,7 @@ from cocomelon.research.prospective_capture_transport import (
 from cocomelon.research.prospective_context_report import (
     HYPE_PROSPECTIVE_VALIDATION_V1,
 )
+
 READINESS_SCHEMA_VERSION = 1
 
 
