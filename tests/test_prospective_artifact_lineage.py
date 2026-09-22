@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import shutil
 from decimal import Decimal
@@ -16,11 +15,13 @@ from cocomelon.research.prospective_artifact_lineage import (
     ProspectiveArtifactLineageError,
     verify_prospective_hype_artifact_lineage,
 )
-from cocomelon.research.prospective_campaign_readiness import (
+from cocomelon.research.prospective_capture_transport import (
     FROZEN_OBSERVER_SOURCE_REVISION,
+    build_control_plane_supersession,
+    build_legacy_prospective_hype_control_plane,
+    build_prospective_hype_control_plane,
 )
 from cocomelon.research.prospective_context_evidence import (
-    MAX_ENTRY_CANDLE_AGE_MS,
     ProspectiveEvidenceStore,
     ProspectiveObservation,
     ProspectiveOutcome,
@@ -54,35 +55,23 @@ def _write_valid_state(root: Path) -> ProspectiveEvidenceStore:
         observer_source_revision=FROZEN_OBSERVER_SOURCE_REVISION,
         as_of_ms=PLAN.validation_start_ms - 1,
     )
-    control = {
-        "kind": "prospective-hype-clean-control-plane",
-        "candidate_spec_id": SPEC.spec_id,
-        "validation_plan_id": PLAN.plan_id,
-        "observer_source_revision": FROZEN_OBSERVER_SOURCE_REVISION,
-        "schedule_cron": "3,8,13 * * * *",
-        "attempt_minutes_utc": [3, 8, 13],
-        "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
-        "state_artifact_name": "prospective-hype-clean-state",
-        "evidence_root": "artifacts/prospective-hype-clean",
-        "concurrency_group": "prospective-hype-clean-observer",
-        "cancel_in_progress": False,
-        "job_timeout_minutes": 10,
-        "execution_mode": "paper",
-        "api_url": "https://api.hyperliquid.xyz",
-        "ws_url": "wss://api.hyperliquid.xyz/ws",
-        "contents_permission": "read",
-        "actions_permission": "read",
-        "artifact_retention_days": 90,
-        "schema_version": 1,
-    }
-    control["control_plane_id"] = hashlib.sha256(
-        _canonical(control).encode("utf-8")
-    ).hexdigest()
+    control = build_prospective_hype_control_plane()
     (root / "control-plane.json").write_text(
         _canonical(control) + "\n",
         encoding="utf-8",
     )
+    supersession = build_control_plane_supersession(
+        superseded_at_ms=PLAN.validation_start_ms - 1,
+    )
+    (root / "control-plane-supersession.json").write_text(
+        _canonical(supersession) + "\n",
+        encoding="utf-8",
+    )
     return store
+
+
+
+def _observation
 
 
 def _observation(anchor_end_ms: int) -> ProspectiveObservation:
@@ -339,3 +328,46 @@ def test_future_dated_observation_fails_lineage(tmp_path: Path) -> None:
             previous_ms=PLAN.validation_start_ms,
             current_ms=PLAN.first_expected_anchor_ms + 500,
         )
+
+
+def test_pre_cutover_control_plane_supersession_preserves_lineage(
+    tmp_path: Path,
+) -> None:
+    previous = tmp_path / "previous"
+    current = tmp_path / "current"
+    ProspectiveEvidenceStore(previous, spec=SPEC)
+    ensure_prospective_runtime_attestation(
+        previous,
+        observer_source_revision=FROZEN_OBSERVER_SOURCE_REVISION,
+        as_of_ms=PLAN.validation_start_ms - 3,
+    )
+    legacy = build_legacy_prospective_hype_control_plane()
+    (previous / "control-plane.json").write_text(
+        _canonical(legacy) + "\n",
+        encoding="utf-8",
+    )
+    shutil.copytree(previous, current)
+
+    replacement = build_prospective_hype_control_plane()
+    (current / "control-plane.json").write_text(
+        _canonical(replacement) + "\n",
+        encoding="utf-8",
+    )
+    supersession = build_control_plane_supersession(
+        superseded_at_ms=PLAN.validation_start_ms - 2,
+    )
+    (current / "control-plane-supersession.json").write_text(
+        _canonical(supersession) + "\n",
+        encoding="utf-8",
+    )
+
+    receipt = _audit(
+        previous,
+        current,
+        previous_ms=PLAN.validation_start_ms - 3,
+        current_ms=PLAN.validation_start_ms - 1,
+    )
+
+    assert receipt.control_plane_id == replacement["control_plane_id"]
+    assert receipt.appended_observation_ids == ()
+    assert receipt.appended_outcome_ids == ()
