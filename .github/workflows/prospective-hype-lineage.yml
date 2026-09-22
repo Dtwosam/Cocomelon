@@ -9,10 +9,12 @@ on:
     paths:
       - ".github/workflows/prospective-hype-lineage.yml"
       - "src/cocomelon/research/prospective_artifact_lineage.py"
+      - "src/cocomelon/research/prospective_artifact_selection.py"
       - "src/cocomelon/research/prospective_lineage_failure.py"
       - "src/cocomelon/prospective_hype_lineage_cli.py"
       - "src/cocomelon/prospective_hype_lineage_failure_cli.py"
       - "tests/test_prospective_artifact_lineage.py"
+      - "tests/test_prospective_artifact_selection.py"
       - "tests/test_prospective_lineage_failure.py"
       - "tests/test_prospective_lineage_failure_cli.py"
       - "tests/test_prospective_hype_lineage_workflow.py"
@@ -22,10 +24,12 @@ on:
     paths:
       - ".github/workflows/prospective-hype-lineage.yml"
       - "src/cocomelon/research/prospective_artifact_lineage.py"
+      - "src/cocomelon/research/prospective_artifact_selection.py"
       - "src/cocomelon/research/prospective_lineage_failure.py"
       - "src/cocomelon/prospective_hype_lineage_cli.py"
       - "src/cocomelon/prospective_hype_lineage_failure_cli.py"
       - "tests/test_prospective_artifact_lineage.py"
+      - "tests/test_prospective_artifact_selection.py"
       - "tests/test_prospective_lineage_failure.py"
       - "tests/test_prospective_lineage_failure_cli.py"
       - "tests/test_prospective_hype_lineage_workflow.py"
@@ -90,35 +94,28 @@ jobs:
           python - <<'PY'
           import json
           import os
-          from datetime import datetime
           from pathlib import Path
+
+          from cocomelon.research.prospective_artifact_selection import (
+              ProspectiveArtifactSelectionError,
+              select_lineage_state_pair,
+          )
 
           payload = json.loads(
               Path("/tmp/prospective-state-artifacts.json").read_text(
                   encoding="utf-8"
               )
           )
-          artifacts = [
-              item
-              for item in payload["artifacts"]
-              if not item["expired"]
-              and item["workflow_run"]["head_branch"] == "main"
-          ]
-          artifacts.sort(key=lambda item: (item["created_at"], item["id"]))
-          if len(artifacts) < 2:
-              raise SystemExit("at least two cumulative main-state artifacts are required")
-
-          previous, current = artifacts[-2:]
-
-          def epoch_ms(value: str) -> int:
-              resolved = datetime.fromisoformat(value.replace("Z", "+00:00"))
-              return int(resolved.timestamp() * 1000)
+          try:
+              selected = select_lineage_state_pair(payload["artifacts"])
+          except (KeyError, ProspectiveArtifactSelectionError) as exc:
+              raise SystemExit(str(exc)) from exc
 
           outputs = {
-              "previous_id": previous["id"],
-              "current_id": current["id"],
-              "previous_audited_at_ms": epoch_ms(previous["created_at"]),
-              "current_audited_at_ms": epoch_ms(current["created_at"]),
+              "previous_id": selected.previous_artifact_id,
+              "current_id": selected.current_artifact_id,
+              "previous_audited_at_ms": selected.previous_audited_at_ms,
+              "current_audited_at_ms": selected.current_audited_at_ms,
           }
           with Path(os.environ["GITHUB_OUTPUT"]).open(
               "a",
@@ -454,6 +451,7 @@ jobs:
           always() &&
           (
             steps.discover.outcome == 'failure' ||
+            steps.provenance.outcome == 'failure' ||
             steps.download.outcome == 'failure' ||
             steps.compatibility.outcome == 'failure' ||
             steps.build.outcome == 'failure' ||
