@@ -9,6 +9,7 @@ from typing import TextIO
 
 from cocomelon.research.historical_archive_clean_bootstrap import (
     bootstrap_archive_clean_state,
+    verify_archive_clean_bootstrap_state,
 )
 from cocomelon.research.historical_archive_clean_runtime import (
     load_pinned_archive_clean_runtime,
@@ -42,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--state-root", required=True, type=Path)
     parser.add_argument("--frozen-revision", required=True)
     parser.add_argument("--runtime-artifact-id", required=True)
+    parser.add_argument("--verify-only", action="store_true")
     return parser
 
 
@@ -52,21 +54,32 @@ def archive_clean_bootstrap_payload(
     state_root: Path,
     frozen_revision: str,
     runtime_artifact_id: str,
+    verify_only: bool = False,
     clock_ms: Callable[[], int] = utc_now_ms,
 ) -> dict[str, object]:
     pinned = load_pinned_archive_clean_runtime(
         runtime_root,
         expected_pin_id=pin_id,
     )
-    receipt = bootstrap_archive_clean_state(
-        pinned,
-        state_root=state_root,
-        frozen_revision=frozen_revision,
-        runtime_artifact_id=runtime_artifact_id,
-        as_of_ms=clock_ms(),
-    )
+    if verify_only:
+        receipt = verify_archive_clean_bootstrap_state(
+            pinned,
+            state_root=state_root,
+            frozen_revision=frozen_revision,
+            runtime_artifact_id=runtime_artifact_id,
+        )
+        command = "historical-archive-clean-bootstrap-verify"
+    else:
+        receipt = bootstrap_archive_clean_state(
+            pinned,
+            state_root=state_root,
+            frozen_revision=frozen_revision,
+            runtime_artifact_id=runtime_artifact_id,
+            as_of_ms=clock_ms(),
+        )
+        command = "historical-archive-clean-bootstrap"
     return {
-        "command": "historical-archive-clean-bootstrap",
+        "command": command,
         **receipt.to_dict(),
     }
 
@@ -80,6 +93,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_root=args.state_root,
             frozen_revision=args.frozen_revision,
             runtime_artifact_id=args.runtime_artifact_id,
+            verify_only=args.verify_only,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
