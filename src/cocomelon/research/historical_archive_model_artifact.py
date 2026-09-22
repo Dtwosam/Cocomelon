@@ -116,6 +116,17 @@ def _optional_decimal(value: object, field: str) -> Decimal | None:
     return resolved
 
 
+def _tuple_sequences(value: object) -> object:
+    if isinstance(value, list):
+        return tuple(_tuple_sequences(item) for item in value)
+    if isinstance(value, dict):
+        return {
+            key: _tuple_sequences(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 def _finite_float(value: object, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise HistoricalArchiveModelArtifactError(f"{field} must be numeric")
@@ -655,9 +666,14 @@ def load_archive_candidate_model_artifact(
                 "calibration_variant",
             ),
             model_format=_string(raw.get("model_format"), "model_format"),
-            model_payload=_mapping(
-                raw.get("model_payload"),
-                "model_payload",
+            model_payload=cast(
+                dict[str, object],
+                _tuple_sequences(
+                    _mapping(
+                        raw.get("model_payload"),
+                        "model_payload",
+                    )
+                ),
             ),
             model_payload_sha256=_string(
                 raw.get("model_payload_sha256"),
@@ -756,7 +772,12 @@ def verify_archive_candidate_model_artifact(
     source_root: Path,
     output_root: Path,
 ) -> HistoricalArchiveCandidateModelArtifact:
-    loaded = load_archive_candidate_model_artifact(path)
+    try:
+        loaded = load_archive_candidate_model_artifact(path)
+    except HistoricalArchiveModelArtifactError as exc:
+        raise HistoricalArchiveModelArtifactError(
+            "ARCHIVE_MODEL_ARTIFACT_EVIDENCE_MISMATCH"
+        ) from exc
     expected = build_archive_candidate_model_artifact(
         preset,
         archive_root=archive_root,
