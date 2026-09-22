@@ -536,7 +536,22 @@ def _logical_sha256(rows: Sequence[Mapping[str, object]]) -> str:
 def canonical_training_rows(
     rows: Sequence[HistoricalTrainingRow],
 ) -> tuple[HistoricalTrainingRow, ...]:
-    ordered = canonical_training_rows(rows)
+    ordered = tuple(
+        sorted(
+            rows,
+            key=lambda item: (
+                item.market.canonical,
+                item.anchor_end_ms,
+                item.horizon_ms,
+                item.training_row_id,
+            ),
+        )
+    )
+    if not ordered:
+        raise ValueError("training rows must not be empty")
+    identities = tuple(row.training_row_id for row in ordered)
+    if len(set(identities)) != len(identities):
+        raise HistoricalDatasetIntegrityError("duplicate training row identity")
     return ordered
 
 
