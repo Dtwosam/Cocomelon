@@ -128,6 +128,35 @@ class ArchiveCleanPublicReader(Protocol):
     ) -> object: ...
 
 
+class ArchiveCleanEvidenceBackend(Protocol):
+    spec: HistoricalArchiveCleanValidationSpec
+
+    def observation_id_for_time(self, anchor_end_ms: int) -> str | None: ...
+
+    def latest_state(self) -> object: ...
+
+    def record_anchor_result(
+        self,
+        *,
+        features: tuple[HistoricalFeatureRow, ...],
+        state_before: object,
+        result: object,
+    ) -> ArchiveCleanAnchorObservation: ...
+
+    def due_unsettled_signals(
+        self,
+        *,
+        as_of_ms: int,
+    ) -> tuple[
+        tuple[ArchiveCleanAnchorObservation, ArchiveCleanSignalEvidence],
+        ...,
+    ]: ...
+
+    def record_outcome(self, outcome: ArchiveCleanOutcome) -> object: ...
+
+    def capture_summary(self, *, as_of_ms: int) -> object: ...
+
+
 def _canonical_json(value: object) -> str:
     return json.dumps(
         value,
@@ -593,7 +622,7 @@ def settle_archive_clean_due_signals(
     reader: ArchiveCleanPublicReader,
     *,
     spec: HistoricalArchiveCleanValidationSpec,
-    evidence_store: ArchiveCleanEvidenceStore,
+    evidence_store: ArchiveCleanEvidenceBackend,
     source_store: ArchiveCleanSourceCaptureStore,
     clock_ms: Callable[[], int],
 ) -> ArchiveCleanSettlementResult:
@@ -701,7 +730,7 @@ def run_archive_clean_observer_cycle(
     *,
     artifact: HistoricalArchiveCandidateModelArtifact,
     spec: HistoricalArchiveCleanValidationSpec,
-    evidence_store: ArchiveCleanEvidenceStore,
+    evidence_store: ArchiveCleanEvidenceBackend,
     source_store: ArchiveCleanSourceCaptureStore,
     clock_ms: Callable[[], int],
 ) -> ArchiveCleanObserverCycleResult:
@@ -725,10 +754,12 @@ def run_archive_clean_observer_cycle(
     ):
         status = "missed_anchor_window"
     else:
-        existing = evidence_store.anchor_for_time(candidate_anchor_end_ms)
-        if existing is not None:
+        existing_observation_id = evidence_store.observation_id_for_time(
+            candidate_anchor_end_ms
+        )
+        if existing_observation_id is not None:
             status = "already_recorded"
-            observation_id = existing.observation_id
+            observation_id = existing_observation_id
         else:
             collection = collect_archive_clean_features(
                 reader,
