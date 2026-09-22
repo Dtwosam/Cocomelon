@@ -312,6 +312,15 @@ def build_archive_clean_activation_readiness(
         )
 
     reasons: list[str] = []
+    if (
+        not pinned.bundle.portable_package_bound
+        or pinned.bundle.candidate_package_id is None
+        or pinned.bundle.candidate_package_sha256 is None
+        or not pinned.pin.portable_package_bound
+        or pinned.pin.candidate_package_id
+        != pinned.bundle.candidate_package_id
+    ):
+        reasons.append("runtime_not_portable_package_bound")
     if not enabled:
         reasons.append("campaign_not_enabled")
     if checkpoint is None:

@@ -1,0 +1,327 @@
+name: Historical Archive Clean Runtime Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_package_artifact_id:
+        description: "GitHub Actions artifact ID containing the portable candidate package"
+        required: true
+        type: string
+      expected_package_id:
+        description: "Precommitted SHA-256 package identity from local verified packaging"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: historical-archive-clean-runtime-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PACKAGE_ARTIFACT_ID: ${{ inputs.candidate_package_artifact_id }}
+      EXPECTED_PACKAGE_ID: ${{ inputs.expected_package_id }}
+      PACKAGE_ROOT: artifacts/historical-archive-clean-candidate-package
+      RUNTIME_ROOT: artifacts/historical-archive-clean-runtime
+      PUBLISHER_WORKFLOW_PATH: .github/workflows/historical-archive-clean-runtime-publish.yml
+      ARTIFACT_RETENTION_DAYS: "90"
+
+    steps:
+      - name: Validate publication inputs
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_PACKAGE_ID" =~ ^[0-9a-f]{64}$ ]]
+
+      - name: Checkout publisher revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify publisher revision
+        run: |
+          set -euo pipefail
+          actual_revision="$(git rev-parse HEAD)"
+          test "$actual_revision" = "$GITHUB_SHA"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install clean runtime publisher
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Download and authenticate portable candidate package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$PACKAGE_ROOT"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$PACKAGE_ARTIFACT_ID" \
+            > /tmp/archive-clean-package-artifact.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-package-artifact.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          expected_id = os.environ["PACKAGE_ARTIFACT_ID"]
+          expected_name = (
+              "historical-archive-clean-candidate-package-"
+              + os.environ["EXPECTED_PACKAGE_ID"]
+          )
+          if str(payload.get("id")) != expected_id:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_ARTIFACT_ID_MISMATCH")
+          if payload.get("expired") is not False:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_ARTIFACT_EXPIRED")
+          if payload.get("name") != expected_name:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_ARTIFACT_NAME_MISMATCH")
+          run = payload.get("workflow_run")
+          if not isinstance(run, dict) or not isinstance(run.get("id"), int):
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_PRODUCER_RUN_MISSING")
+          Path("/tmp/archive-clean-package-run-id").write_text(
+              str(run["id"]),
+              encoding="utf-8",
+          )
+          PY
+          producer_run_id="$(cat /tmp/archive-clean-package-run-id)"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$producer_run_id" \
+            > /tmp/archive-clean-package-producer-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/archive-clean-package-producer-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("repository", {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_PRODUCER_REPOSITORY_MISMATCH")
+          if run.get("head_branch") != "main":
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_PRODUCER_BRANCH_MISMATCH")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_PRODUCER_NOT_SUCCESS")
+          if run.get("event") not in {"workflow_dispatch", "push"}:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_PRODUCER_EVENT_MISMATCH")
+          PY
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$PACKAGE_ARTIFACT_ID/zip" \
+            > /tmp/archive-clean-package.zip
+          unzip -q /tmp/archive-clean-package.zip -d "$PACKAGE_ROOT"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["PACKAGE_ROOT"])
+          expected = {
+              "candidate-model.json",
+              "candidate-package.json",
+              "candidate-validation-spec.json",
+          }
+          files = {
+              path.relative_to(root).as_posix()
+              for path in root.rglob("*")
+              if path.is_file()
+          }
+          if files != expected:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_FILE_SET_MISMATCH")
+          PY
+
+      - name: Verify portable candidate package
+        id: package
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-candidate-package verify-portable \
+            --package-root "$PACKAGE_ROOT" \
+            > /tmp/archive-clean-package.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-package.json").read_text(encoding="utf-8")
+          )
+          if payload["package_id"] != os.environ["EXPECTED_PACKAGE_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_ID_NOT_EXPECTED")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_PACKAGE_EXECUTION_READY_FORBIDDEN")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"package_id={payload['package_id']}\n")
+              handle.write(f"candidate_id={payload['candidate_id']}\n")
+              handle.write(f"validation_spec_id={payload['validation_spec_id']}\n")
+          PY
+
+      - name: Publish package-bound clean runtime
+        id: runtime
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime publish-package \
+            --package-root "$PACKAGE_ROOT" \
+            --runtime-root "$RUNTIME_ROOT" \
+            > /tmp/archive-clean-runtime-publish.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-runtime-publish.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["portable_package_bound"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PACKAGE_BINDING_REQUIRED")
+          if payload["candidate_package_id"] != os.environ["EXPECTED_PACKAGE_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PACKAGE_ID_MISMATCH")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_EXECUTION_READY_FORBIDDEN")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"runtime_id={payload['runtime_id']}\n")
+              handle.write(f"pin_id={payload['pin_id']}\n")
+              handle.write(f"package_id={payload['candidate_package_id']}\n")
+          PY
+
+      - name: Verify package-bound clean runtime
+        run: |
+          set -euo pipefail
+          cocomelon-historical-archive-clean-runtime verify \
+            --runtime-root "$RUNTIME_ROOT" \
+            --pin-id "${{ steps.runtime.outputs.pin_id }}" \
+            > /tmp/archive-clean-runtime-verify.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/archive-clean-runtime-verify.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if payload["valid"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_VERIFY_FAILED")
+          if payload["portable_package_bound"] is not True:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PACKAGE_BINDING_REQUIRED")
+          if payload["candidate_package_id"] != os.environ["EXPECTED_PACKAGE_ID"]:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_PACKAGE_ID_MISMATCH")
+          if payload["execution_ready"] is not False:
+              raise SystemExit("ARCHIVE_CLEAN_RUNTIME_EXECUTION_READY_FORBIDDEN")
+          PY
+
+      - name: Upload immutable package-bound runtime
+        id: runtime_upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-runtime-${{ steps.runtime.outputs.pin_id }}
+          path: ${{ env.RUNTIME_ROOT }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Build immutable publication receipt
+        id: receipt
+        env:
+          RUNTIME_ARTIFACT_ID: ${{ steps.runtime_upload.outputs.artifact-id }}
+          RUNTIME_ID: ${{ steps.runtime.outputs.runtime_id }}
+          PIN_ID: ${{ steps.runtime.outputs.pin_id }}
+          PACKAGE_ID: ${{ steps.runtime.outputs.package_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "kind": "historical-archive-clean-runtime-publication",
+              "frozen_revision": os.environ["GITHUB_SHA"],
+              "publisher_workflow_path": os.environ["PUBLISHER_WORKFLOW_PATH"],
+              "publisher_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "publisher_run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "source_package_artifact_id": os.environ["PACKAGE_ARTIFACT_ID"],
+              "package_id": os.environ["PACKAGE_ID"],
+              "runtime_artifact_id": os.environ["RUNTIME_ARTIFACT_ID"],
+              "runtime_id": os.environ["RUNTIME_ID"],
+              "pin_id": os.environ["PIN_ID"],
+              "paper_only": True,
+              "prospective_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "schema_version": 1,
+          }
+          payload["publication_id"] = hashlib.sha256(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ).encode("utf-8")
+          ).hexdigest()
+          path = Path("/tmp/archive-clean-runtime-publication.json")
+          path.write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
+              handle.write(f"publication_id={payload['publication_id']}\n")
+          PY
+
+      - name: Upload immutable publication receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: historical-archive-clean-runtime-publication-${{ steps.runtime.outputs.pin_id }}
+          path: /tmp/archive-clean-runtime-publication.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Publish activation tuple summary
+        env:
+          RUNTIME_ARTIFACT_ID: ${{ steps.runtime_upload.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Historical archive clean runtime publication"
+            echo
+            echo "- package id: \`${{ steps.runtime.outputs.package_id }}\`"
+            echo "- runtime id: \`${{ steps.runtime.outputs.runtime_id }}\`"
+            echo "- pin id: \`${{ steps.runtime.outputs.pin_id }}\`"
+            echo "- frozen revision: \`$GITHUB_SHA\`"
+            echo "- runtime artifact id: \`$RUNTIME_ARTIFACT_ID\`"
+            echo "- publication id: \`${{ steps.receipt.outputs.publication_id }}\`"
+            echo "- campaign enabled: false"
+            echo "- execution ready: false"
+            echo
+            echo "Activation variables are intentionally not changed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"

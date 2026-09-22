@@ -16,10 +16,13 @@ from cocomelon.research.prospective_context_evidence import (
 )
 
 CONTROL_PLANE_KIND = "historical-archive-clean-control-plane"
-CONTROL_PLANE_SCHEMA_VERSION = 1
+CONTROL_PLANE_SCHEMA_VERSION = 2
 CAPTURE_SCHEDULE_CRON = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
 CAPTURE_ATTEMPT_MINUTES_UTC = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)
 WORKFLOW_PATH = ".github/workflows/historical-archive-clean.yml"
+RUNTIME_PUBLISHER_WORKFLOW_PATH = (
+    ".github/workflows/historical-archive-clean-runtime-publish.yml"
+)
 EXECUTION_MODE = "paper"
 API_URL = "https://api.hyperliquid.xyz"
 WS_URL = "wss://api.hyperliquid.xyz/ws"
@@ -95,8 +98,11 @@ class ArchiveCleanControlPlaneAttestation:
     candidate_id: str
     validation_spec_id: str
     model_artifact_id: str
+    candidate_package_id: str
+    candidate_package_sha256: str
     frozen_revision: str
     runtime_artifact_id: str
+    runtime_publisher_workflow_path: str
     workflow_path: str
     schedule_cron: str
     attempt_minutes_utc: tuple[int, ...]
@@ -121,12 +127,18 @@ class ArchiveCleanControlPlaneAttestation:
             "candidate_id",
             "validation_spec_id",
             "model_artifact_id",
+            "candidate_package_id",
+            "candidate_package_sha256",
         ):
             _require_sha256(getattr(self, field), field)
         if not re.fullmatch(r"[0-9a-f]{40}", self.frozen_revision):
             raise ValueError("frozen_revision must be a lowercase git SHA")
         if not self.runtime_artifact_id.isdigit():
             raise ValueError("runtime_artifact_id must be numeric")
+        if self.runtime_publisher_workflow_path != RUNTIME_PUBLISHER_WORKFLOW_PATH:
+            raise ValueError(
+                "runtime_publisher_workflow_path must match frozen publisher"
+            )
         if self.workflow_path != WORKFLOW_PATH:
             raise ValueError("workflow_path must match frozen control plane")
         if self.schedule_cron != CAPTURE_SCHEDULE_CRON:
@@ -174,8 +186,13 @@ class ArchiveCleanControlPlaneAttestation:
             "candidate_id": self.candidate_id,
             "validation_spec_id": self.validation_spec_id,
             "model_artifact_id": self.model_artifact_id,
+            "candidate_package_id": self.candidate_package_id,
+            "candidate_package_sha256": self.candidate_package_sha256,
             "frozen_revision": self.frozen_revision,
             "runtime_artifact_id": self.runtime_artifact_id,
+            "runtime_publisher_workflow_path": (
+                self.runtime_publisher_workflow_path
+            ),
             "workflow_path": self.workflow_path,
             "schedule_cron": self.schedule_cron,
             "attempt_minutes_utc": self.attempt_minutes_utc,
@@ -212,6 +229,17 @@ def build_archive_clean_control_plane(
     frozen_revision: str,
     runtime_artifact_id: str,
 ) -> ArchiveCleanControlPlaneAttestation:
+    if (
+        not pinned.bundle.portable_package_bound
+        or pinned.bundle.candidate_package_id is None
+        or pinned.bundle.candidate_package_sha256 is None
+        or pinned.pin.candidate_package_id
+        != pinned.bundle.candidate_package_id
+        or not pinned.pin.portable_package_bound
+    ):
+        raise HistoricalArchiveCleanControlPlaneError(
+            "ARCHIVE_CLEAN_CONTROL_PLANE_PORTABLE_PACKAGE_REQUIRED"
+        )
     pin_id = pinned.pin.pin_id
     return ArchiveCleanControlPlaneAttestation(
         runtime_id=pinned.bundle.runtime_id,
@@ -219,8 +247,11 @@ def build_archive_clean_control_plane(
         candidate_id=pinned.bundle.candidate_id,
         validation_spec_id=pinned.bundle.validation_spec_id,
         model_artifact_id=pinned.bundle.model_artifact_id,
+        candidate_package_id=pinned.bundle.candidate_package_id,
+        candidate_package_sha256=pinned.bundle.candidate_package_sha256,
         frozen_revision=frozen_revision,
         runtime_artifact_id=runtime_artifact_id,
+        runtime_publisher_workflow_path=RUNTIME_PUBLISHER_WORKFLOW_PATH,
         workflow_path=WORKFLOW_PATH,
         schedule_cron=CAPTURE_SCHEDULE_CRON,
         attempt_minutes_utc=CAPTURE_ATTEMPT_MINUTES_UTC,
@@ -258,6 +289,14 @@ def load_archive_clean_control_plane(
                 raw.get("model_artifact_id"),
                 "model_artifact_id",
             ),
+            candidate_package_id=_string(
+                raw.get("candidate_package_id"),
+                "candidate_package_id",
+            ),
+            candidate_package_sha256=_string(
+                raw.get("candidate_package_sha256"),
+                "candidate_package_sha256",
+            ),
             frozen_revision=_string(
                 raw.get("frozen_revision"),
                 "frozen_revision",
@@ -265,6 +304,10 @@ def load_archive_clean_control_plane(
             runtime_artifact_id=_string(
                 raw.get("runtime_artifact_id"),
                 "runtime_artifact_id",
+            ),
+            runtime_publisher_workflow_path=_string(
+                raw.get("runtime_publisher_workflow_path"),
+                "runtime_publisher_workflow_path",
             ),
             workflow_path=_string(raw.get("workflow_path"), "workflow_path"),
             schedule_cron=_string(raw.get("schedule_cron"), "schedule_cron"),
