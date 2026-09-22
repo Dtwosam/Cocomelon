@@ -14,6 +14,9 @@ from cocomelon.research.prospective_context_evidence import (
     ProspectiveObservation,
     ProspectiveOutcome,
 )
+from cocomelon.research.prospective_context_report import (
+    HYPE_PROSPECTIVE_VALIDATION_V1,
+)
 from cocomelon.research.prospective_state_readiness import (
     ProspectiveStateReadiness,
     verify_prospective_hype_state_readiness,
@@ -114,6 +117,50 @@ def _verify_outcome_links(
         ):
             raise ProspectiveArtifactLineageError(
                 f"{snapshot}_OUTCOME_OBSERVATION_LINK_MISMATCH"
+            )
+
+
+def _verify_snapshot_time_bounds(
+    observations: dict[str, ProspectiveObservation],
+    outcomes: dict[str, ProspectiveOutcome],
+    *,
+    audited_at_ms: int,
+    snapshot: str,
+) -> None:
+    plan = HYPE_PROSPECTIVE_VALIDATION_V1
+    first_anchor = plan.first_expected_anchor_ms
+    for observation in observations.values():
+        if observation.anchor_end_ms < first_anchor:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_OBSERVATION_BEFORE_FIRST_EXPECTED_ANCHOR"
+            )
+        if observation.anchor_end_ms >= plan.validation_end_ms:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_OBSERVATION_AFTER_VALIDATION_WINDOW"
+            )
+        if (
+            observation.anchor_end_ms - first_anchor
+        ) % plan.anchor_interval_ms != 0:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_OBSERVATION_OFF_FROZEN_ANCHOR_GRID"
+            )
+        if observation.decision_as_of_ms > audited_at_ms:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_FUTURE_DATED_OBSERVATION"
+            )
+        if observation.source_received_at_ms > audited_at_ms:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_FUTURE_RECEIVED_OBSERVATION"
+            )
+
+    for outcome in outcomes.values():
+        if outcome.target_end_ms > audited_at_ms:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_FUTURE_DATED_OUTCOME"
+            )
+        if outcome.exit_source_received_at_ms > audited_at_ms:
+            raise ProspectiveArtifactLineageError(
+                f"{snapshot}_FUTURE_RECEIVED_OUTCOME"
             )
 
 
@@ -295,6 +342,18 @@ def verify_prospective_hype_artifact_lineage(
     _verify_outcome_links(
         current_observations,
         current_outcomes,
+        snapshot="CURRENT",
+    )
+    _verify_snapshot_time_bounds(
+        previous_observations,
+        previous_outcomes,
+        audited_at_ms=previous_audited_at_ms,
+        snapshot="PREVIOUS",
+    )
+    _verify_snapshot_time_bounds(
+        current_observations,
+        current_outcomes,
+        audited_at_ms=current_audited_at_ms,
         snapshot="CURRENT",
     )
     _verify_preserved_records(
