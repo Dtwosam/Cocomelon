@@ -15,7 +15,9 @@ from cocomelon.research.historical_archive_presets import (
     build_archive_preset_run_receipt,
     ensure_archive_preset_output_root_clean,
     get_archive_experiment_preset,
+    prepare_archive_experiment_preset,
     run_archive_experiment_preset,
+    run_prepared_archive_experiment_preset,
     verify_archive_preset_bundle_receipt,
     verify_archive_preset_run_receipt,
     verify_archive_preset_source_attestation,
@@ -257,6 +259,101 @@ def test_preset_runner_forwards_only_frozen_values(
     )
     assert implementation == source_attestation
 
+
+
+def test_prepare_preset_forwards_only_frozen_source_values(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    expected = object()
+
+    def fake_prepare(client: object, **kwargs: object) -> object:
+        captured["client"] = client
+        captured.update(kwargs)
+        return expected
+
+    monkeypatch.setattr(
+        presets,
+        "prepare_archive_historical_sources",
+        fake_prepare,
+    )
+    client = object()
+    clock = lambda: 123
+
+    result = prepare_archive_experiment_preset(
+        client,  # type: ignore[arg-type]
+        preset=JUL_SEP_2026_V2,
+        archive_root=tmp_path / "archive",
+        source_root=tmp_path / "sources",
+        clock_ms=clock,
+    )
+
+    assert result is expected
+    assert captured["client"] is client
+    assert captured["markets"] == JUL_SEP_2026_V2.markets
+    assert captured["intervals"] == JUL_SEP_2026_V2.intervals
+    assert captured["start_ms"] == JUL_SEP_2026_V2.start_ms
+    assert captured["end_ms"] == JUL_SEP_2026_V2.end_ms
+    assert captured["max_funding_items"] == JUL_SEP_2026_V2.max_funding_items
+    assert captured["overlap_candles"] == JUL_SEP_2026_V2.overlap_candles
+    assert captured["clock_ms"] is clock
+
+
+def test_prepared_preset_runner_forwards_frozen_values_and_writes_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    experiment_result = _fake_experiment_result()
+    source_attestation = _fake_source_attestation()
+
+    def fake_run(**kwargs: object) -> object:
+        captured.update(kwargs)
+        archive_root = kwargs["archive_root"]
+        source_root = kwargs["source_root"]
+        output_root = kwargs["output_root"]
+        assert isinstance(archive_root, Path)
+        assert isinstance(source_root, Path)
+        assert isinstance(output_root, Path)
+        _write_fake_bundle_files(
+            archive_root,
+            source_root,
+            output_root,
+            include_implementation=False,
+        )
+        return experiment_result
+
+    monkeypatch.setattr(
+        presets,
+        "run_prepared_archive_historical_experiment",
+        fake_run,
+    )
+    monkeypatch.setattr(
+        presets,
+        "build_archive_preset_source_attestation",
+        lambda _preset: source_attestation,
+    )
+    output_root = tmp_path / "output"
+
+    result = run_prepared_archive_experiment_preset(
+        preset=JUL_SEP_2026_V2,
+        archive_root=tmp_path / "archive",
+        source_root=tmp_path / "sources",
+        output_root=output_root,
+    )
+
+    assert result is experiment_result
+    assert captured["markets"] == JUL_SEP_2026_V2.markets
+    assert captured["intervals"] == JUL_SEP_2026_V2.intervals
+    assert captured["horizons_ms"] == JUL_SEP_2026_V2.horizons_ms
+    assert captured["start_ms"] == JUL_SEP_2026_V2.start_ms
+    assert captured["end_ms"] == JUL_SEP_2026_V2.end_ms
+    assert captured["config"] == JUL_SEP_2026_V2.comparison_config
+    assert captured["overlap_candles"] == JUL_SEP_2026_V2.overlap_candles
+    assert (output_root / "preset-run.json").is_file()
+    assert (output_root / "preset-bundle.json").is_file()
+    assert (output_root / "implementation.json").is_file()
 
 def test_preset_run_receipt_is_deterministic_and_binds_outputs() -> None:
     result = _fake_experiment_result()
