@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO
 
 from cocomelon.research.historical_archive_candidate_package import (
+    LoadedArchiveCandidatePackage,
     build_archive_clean_candidate_package,
     load_archive_clean_candidate_package,
     materialize_archive_clean_candidate_package,
@@ -55,8 +56,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _payload(package_root: Path, loaded: object) -> dict[str, object]:
-    package = loaded.package  # type: ignore[attr-defined]
+def _payload(
+    package_root: Path,
+    loaded: LoadedArchiveCandidatePackage,
+) -> dict[str, object]:
+    package = loaded.package
     return {
         "package_id": package.package_id,
         "candidate_id": package.candidate_id,
