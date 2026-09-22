@@ -154,12 +154,12 @@ def test_append_only_state_growth_produces_lineage_receipt(tmp_path: Path) -> No
     current = tmp_path / "current"
     previous_store = _write_valid_state(previous)
 
-    first = _observation(PLAN.validation_start_ms + HOUR)
+    first = _observation(PLAN.first_expected_anchor_ms)
     previous_store.record_observation(first)
     previous_store.record_outcome(_outcome(first))
 
     current_store = _copy_state(previous, current)
-    second = _observation(PLAN.validation_start_ms + 6 * HOUR)
+    second = _observation(PLAN.first_expected_anchor_ms + 5 * HOUR)
     current_store.record_observation(second)
     current_store.record_outcome(_outcome(second))
 
@@ -185,7 +185,7 @@ def test_outcome_only_settlement_is_valid_lineage_progression(tmp_path: Path) ->
     current = tmp_path / "current"
     previous_store = _write_valid_state(previous)
 
-    observation = _observation(PLAN.validation_start_ms + HOUR)
+    observation = _observation(PLAN.first_expected_anchor_ms)
     previous_store.record_observation(observation)
 
     current_store = _copy_state(previous, current)
@@ -212,7 +212,7 @@ def test_deleted_prior_observation_fails_lineage(tmp_path: Path) -> None:
     current = tmp_path / "current"
     previous_store = _write_valid_state(previous)
 
-    observation = _observation(PLAN.validation_start_ms + HOUR)
+    observation = _observation(PLAN.first_expected_anchor_ms)
     path = previous_store.record_observation(observation)
 
     _copy_state(previous, current)
@@ -235,11 +235,11 @@ def test_late_backfill_of_older_anchor_fails_lineage(tmp_path: Path) -> None:
     current = tmp_path / "current"
     previous_store = _write_valid_state(previous)
 
-    later = _observation(PLAN.validation_start_ms + 6 * HOUR)
+    later = _observation(PLAN.first_expected_anchor_ms + 5 * HOUR)
     previous_store.record_observation(later)
 
     current_store = _copy_state(previous, current)
-    older = _observation(PLAN.validation_start_ms + 5 * HOUR)
+    older = _observation(PLAN.first_expected_anchor_ms + 4 * HOUR)
     current_store.record_observation(older)
 
     with pytest.raises(
@@ -260,7 +260,7 @@ def test_orphan_outcome_fails_lineage(tmp_path: Path) -> None:
     _write_valid_state(previous)
     current_store = _copy_state(previous, current)
 
-    missing = _observation(PLAN.validation_start_ms + HOUR)
+    missing = _observation(PLAN.first_expected_anchor_ms)
     current_store.record_outcome(_outcome(missing))
 
     with pytest.raises(
@@ -280,7 +280,7 @@ def test_same_record_set_requires_same_state_digest(tmp_path: Path) -> None:
     current = tmp_path / "current"
     previous_store = _write_valid_state(previous)
 
-    observation = _observation(PLAN.validation_start_ms + HOUR)
+    observation = _observation(PLAN.first_expected_anchor_ms)
     previous_store.record_observation(observation)
     _copy_state(previous, current)
 
@@ -294,3 +294,48 @@ def test_same_record_set_requires_same_state_digest(tmp_path: Path) -> None:
     assert receipt.appended_observation_ids == ()
     assert receipt.appended_outcome_ids == ()
     assert receipt.previous_state_digest == receipt.current_state_digest
+
+
+
+def test_off_grid_observation_fails_lineage(tmp_path: Path) -> None:
+    previous = tmp_path / "previous"
+    current = tmp_path / "current"
+    _write_valid_state(previous)
+    current_store = _copy_state(previous, current)
+
+    current_store.record_observation(
+        _observation(PLAN.first_expected_anchor_ms + 1)
+    )
+
+    with pytest.raises(
+        ProspectiveArtifactLineageError,
+        match="CURRENT_OBSERVATION_OFF_FROZEN_ANCHOR_GRID",
+    ):
+        _audit(
+            previous,
+            current,
+            previous_ms=PLAN.validation_start_ms,
+            current_ms=PLAN.validation_start_ms + 2 * HOUR,
+        )
+
+
+def test_future_dated_observation_fails_lineage(tmp_path: Path) -> None:
+    previous = tmp_path / "previous"
+    current = tmp_path / "current"
+    _write_valid_state(previous)
+    current_store = _copy_state(previous, current)
+
+    current_store.record_observation(
+        _observation(PLAN.first_expected_anchor_ms)
+    )
+
+    with pytest.raises(
+        ProspectiveArtifactLineageError,
+        match="CURRENT_FUTURE_DATED_OBSERVATION",
+    ):
+        _audit(
+            previous,
+            current,
+            previous_ms=PLAN.validation_start_ms,
+            current_ms=PLAN.first_expected_anchor_ms + 500,
+        )
