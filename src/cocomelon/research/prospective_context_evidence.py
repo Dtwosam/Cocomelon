@@ -606,6 +606,21 @@ class ProspectiveEvidenceStore:
         )
         return tuple(sorted(values, key=lambda item: (item.target_end_ms, item.outcome_id)))
 
+    @property
+    def state_digest(self) -> str:
+        payload = {
+            "campaign_id": self.manifest.campaign_id,
+            "observations": tuple(
+                item.identity_payload() for item in self.iter_observations()
+            ),
+            "outcomes": tuple(
+                item.identity_payload() for item in self.iter_outcomes()
+            ),
+        }
+        return hashlib.sha256(
+            _canonical_json(payload).encode("utf-8")
+        ).hexdigest()
+
     def due_unsettled_observations(
         self,
         *,
