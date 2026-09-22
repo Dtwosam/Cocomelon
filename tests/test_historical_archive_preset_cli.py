@@ -198,6 +198,85 @@ def test_preflight_is_offline_and_emits_readiness(
     assert payload["archive_shard_count"] == 1968
     assert payload["preflight_id"] == "p" * 64
 
+
+def test_review_is_offline_and_emits_only_qualified_variants(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "Settings", ForbiddenSettings)
+    monkeypatch.setattr(
+        cli,
+        "InfoClient",
+        lambda _settings: (_ for _ in ()).throw(
+            AssertionError("review must not construct a Hyperliquid client")
+        ),
+    )
+    qualified = SimpleNamespace(
+        model_family="stable_tree",
+        calibration_variant="shared",
+        total_test_trades=80,
+        mean_realized_net_return=Decimal("0.004"),
+        eligible_for_freeze_review=True,
+    )
+    rejected = SimpleNamespace(
+        model_family="stable_horizon_ridge",
+        calibration_variant="market",
+        total_test_trades=70,
+        mean_realized_net_return=Decimal("-0.001"),
+        eligible_for_freeze_review=False,
+    )
+    result = SimpleNamespace(
+        review_id="r" * 64,
+        policy_id="p" * 64,
+        status="freeze_review_available",
+        promotion_eligible=False,
+        variants=(qualified, rejected),
+    )
+    monkeypatch.setattr(
+        cli,
+        "build_archive_development_review",
+        lambda *args, **kwargs: result,
+    )
+    review_path = tmp_path / "output" / "development-review.json"
+    monkeypatch.setattr(
+        cli,
+        "write_archive_development_review",
+        lambda *args, **kwargs: review_path,
+    )
+
+    status = cli.main(
+        [
+            "review",
+            "--archive-root",
+            str(tmp_path / "archive"),
+            "--source-root",
+            str(tmp_path / "sources"),
+            "--output-root",
+            str(tmp_path / "output"),
+        ]
+    )
+
+    assert status == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    payload = json.loads(captured.out)
+    assert payload["command"] == "review"
+    assert payload["paid_request_performed"] is False
+    assert payload["status"] == "freeze_review_available"
+    assert payload["promotion_eligible"] is False
+    assert payload["review_id"] == "r" * 64
+    assert payload["review_policy_id"] == "p" * 64
+    assert payload["qualified_variants"] == [
+        {
+            "model_family": "stable_tree",
+            "calibration_variant": "shared",
+            "total_test_trades": 80,
+            "mean_realized_net_return": "0.004",
+        }
+    ]
+    assert payload["review_path"] == str(review_path)
+
 def test_verify_bundle_is_offline_and_emits_bundle_identity(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
