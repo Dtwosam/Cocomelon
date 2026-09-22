@@ -344,11 +344,6 @@ def verify_prospective_hype_artifact_lineage(
         )
     )
 
-    if len(current_observations) == len(previous_observations):
-        if current_readiness.state_digest != previous_readiness.state_digest:
-            raise ProspectiveArtifactLineageError(
-                "STATE_DIGEST_DRIFT_WITHOUT_NEW_OBSERVATIONS_OR_OUTCOMES"
-            )
     if (
         len(current_observations) == len(previous_observations)
         and len(current_outcomes) == len(previous_outcomes)
