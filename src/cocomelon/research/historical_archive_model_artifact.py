@@ -74,7 +74,7 @@ def _mapping(value: object, field: str) -> dict[str, object]:
 
 
 def _sequence(value: object, field: str) -> tuple[object, ...]:
-    if not isinstance(value, list):
+    if not isinstance(value, (list, tuple)):
         raise HistoricalArchiveModelArtifactError(f"{field} must be an array")
     return tuple(value)
 
