@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import TextIO
 
 from cocomelon.research.prospective_artifact_lineage import (
-    ProspectiveArtifactLineageError,
     verify_prospective_hype_artifact_lineage,
 )
 
@@ -55,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             previous_audited_at_ms=args.previous_audited_at_ms,
             current_audited_at_ms=args.current_audited_at_ms,
         )
-    except (OSError, RuntimeError, ValueError, ProspectiveArtifactLineageError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
             stream=sys.stderr,
