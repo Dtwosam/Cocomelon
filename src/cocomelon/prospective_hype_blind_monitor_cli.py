@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--health", required=True, type=Path)
     parser.add_argument("--lineage", required=True, type=Path)
     parser.add_argument("--state-artifact-id", required=True)
+    parser.add_argument("--audited-at-ms", required=True, type=int)
     return parser
 
 
@@ -47,6 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.health,
             args.lineage,
             expected_state_artifact_id=args.state_artifact_id,
+            audited_at_ms=args.audited_at_ms,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
