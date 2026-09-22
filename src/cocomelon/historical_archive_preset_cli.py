@@ -20,6 +20,10 @@ from cocomelon.research.historical_archive_presets import (
     verify_archive_preset_run_receipt,
     verify_archive_preset_source_attestation,
 )
+from cocomelon.research.historical_archive_review import (
+    build_archive_development_review,
+    write_archive_development_review,
+)
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -66,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("--archive-root", required=True, type=Path)
     preflight.add_argument("--source-root", required=True, type=Path)
     preflight.add_argument("--output-root", required=True, type=Path)
+
+    review = subparsers.add_parser("review")
+    review.add_argument("--preset", default=PRESET_NAME)
+    review.add_argument("--archive-root", required=True, type=Path)
+    review.add_argument("--source-root", required=True, type=Path)
+    review.add_argument("--output-root", required=True, type=Path)
 
     verify_bundle = subparsers.add_parser("verify-bundle")
     verify_bundle.add_argument("--preset", default=PRESET_NAME)
@@ -140,6 +150,45 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "command": "preflight",
                     "ready": True,
                     **preflight.to_dict(),
+                }
+            )
+            return 0
+        if args.command == "review":
+            review = build_archive_development_review(
+                preset,
+                archive_root=args.archive_root,
+                source_root=args.source_root,
+                output_root=args.output_root,
+            )
+            review_path = write_archive_development_review(
+                args.output_root,
+                review,
+            )
+            _emit(
+                {
+                    "command": "review",
+                    "paid_request_performed": False,
+                    "preset": preset.name,
+                    "preset_id": preset.preset_id,
+                    "review_id": review.review_id,
+                    "review_policy_id": review.policy_id,
+                    "status": review.status,
+                    "promotion_eligible": review.promotion_eligible,
+                    "qualified_variants": tuple(
+                        {
+                            "model_family": item.model_family,
+                            "calibration_variant": item.calibration_variant,
+                            "total_test_trades": item.total_test_trades,
+                            "mean_realized_net_return": (
+                                None
+                                if item.mean_realized_net_return is None
+                                else str(item.mean_realized_net_return)
+                            ),
+                        }
+                        for item in review.variants
+                        if item.eligible_for_freeze_review
+                    ),
+                    "review_path": str(review_path),
                 }
             )
             return 0
