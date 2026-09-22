@@ -40,6 +40,7 @@ cocomelon-historical-context-occupancy = "cocomelon.historical_context_occupancy
 cocomelon-historical-cross-sectional-spread = "cocomelon.historical_cross_sectional_spread_cli:main"
 cocomelon-prospective-hype-observer = "cocomelon.prospective_hype_observer_cli:main"
 cocomelon-prospective-hype-report = "cocomelon.prospective_hype_report_cli:main"
+cocomelon-prospective-hype-readiness = "cocomelon.prospective_hype_readiness_cli:main"
 cocomelon-research = "cocomelon.research_cli:main"
 cocomelon-research-status = "cocomelon.research_dashboard_cli:main"
 cocomelon-research-runner = "cocomelon.research_runner_cli:main"
