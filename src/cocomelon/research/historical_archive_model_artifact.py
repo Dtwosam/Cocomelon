@@ -505,12 +505,12 @@ def build_archive_candidate_model_artifact(
     )
     config = preset.comparison_config
     if calibration.model_family == "stable_tree":
-        model = fit_tree_directional_model(
+        tree_model = fit_tree_directional_model(
             fit_rows,
             config=config.tree_config,
             min_market_samples=config.tree_min_market_samples,
         )
-        model_payload = _tree_payload(model)
+        model_payload = _tree_payload(tree_model)
         min_market_samples = config.tree_min_market_samples
         model_format = TREE_MODEL_FORMAT
     else:
@@ -519,12 +519,12 @@ def build_archive_candidate_model_artifact(
             raise HistoricalArchiveModelArtifactError(
                 "ARCHIVE_MODEL_ARTIFACT_RIDGE_ALPHA_REQUIRED"
             )
-        model = fit_ridge_directional_model(
+        ridge_model = fit_ridge_directional_model(
             fit_rows,
             alpha=alpha,
             min_market_samples=config.ridge_min_market_samples,
         )
-        model_payload = _ridge_payload(model)
+        model_payload = _ridge_payload(ridge_model)
         min_market_samples = config.ridge_min_market_samples
         model_format = RIDGE_MODEL_FORMAT
 
