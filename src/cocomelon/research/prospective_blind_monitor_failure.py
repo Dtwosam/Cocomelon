@@ -53,7 +53,10 @@ class ProspectiveBlindMonitorFailure:
             raise ValueError("audited_at_ms must be non-negative")
         if self.stage not in _ALLOWED_STAGES:
             raise ValueError("unsupported failure stage")
-        if _REASON_CODE.fullmatch(self.reason_code) is None:
+        if (
+            len(self.reason_code) > 96
+            or _REASON_CODE.fullmatch(self.reason_code) is None
+        ):
             raise ValueError("reason_code must be a bounded uppercase identifier")
         for field in (
             "health_artifact_id",
