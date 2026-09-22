@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/historical-archive-clean.yml")
+CONTROL_PLANE = Path(
+    "src/cocomelon/research/historical_archive_clean_control_plane.py"
+)
 
 
 def test_archive_clean_workflow_is_disabled_by_default_and_paper_only() -> None:
@@ -30,11 +33,9 @@ def test_archive_clean_workflow_retries_inside_fifteen_minute_freshness() -> Non
     cron = "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
     assert f'cron: "{cron}"' in source
     assert f'SCHEDULE_CRON: "{cron}"' in source
-    assert (
-        "expected_minutes = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)"
-        in source
-    )
-    assert '"max_entry_candle_age_ms": 900000' in source
+    control_plane = CONTROL_PLANE.read_text(encoding="utf-8")
+    assert "CAPTURE_ATTEMPT_MINUTES_UTC = (2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57)" in control_plane
+    assert "MAX_ENTRY_CANDLE_AGE_MS" in control_plane
     assert "workflow_dispatch:" in source
     assert "cancel-in-progress: false" in source
     assert "timeout-minutes: 12" in source
@@ -77,8 +78,9 @@ def test_archive_clean_workflow_fails_closed_on_post_cutover_state_reset() -> No
 
     assert "POST_CUTOVER_ARCHIVE_CLEAN_STATE_RESTORE_REQUIRED" in source
     assert "POST_CUTOVER_ARCHIVE_CLEAN_CHECKPOINT_REQUIRED" in source
-    assert "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED" in source
-    assert "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION" in source
+    control_plane = CONTROL_PLANE.read_text(encoding="utf-8")
+    assert "POST_CUTOVER_ARCHIVE_CLEAN_CONTROL_PLANE_REQUIRED" in control_plane
+    assert "CONFLICTING_ARCHIVE_CLEAN_CONTROL_PLANE_ATTESTATION" in control_plane
     assert 'state_root / "checkpoint.json"' in source
     assert 'state_root / "control-plane.json"' in source
 
