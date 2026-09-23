@@ -352,3 +352,22 @@ Current next action for this lane:
 6. Keep live trading disabled; a future positive prospective verdict is only candidate-review eligibility and does not bypass paper/shadow/risk/live authorization gates.
 
 **LIVE TRADING: DISABLED.**
+
+
+## Prospective HYPE campaign frontier — 2026-09-23
+
+The original D-027 V1 campaign remains immutable. No scheduled `prospective-hype-clean` observer run was created through its first declared post-cutover `:03/:08/:13` attempts after 2026-09-23 00:00 UTC. Pre-cutover repair PR #363 was closed unmerged after the boundary passed; V1 is not backfilled or rewritten.
+
+PR #364 merged the fresh V2 primitives at `d15971eb22cec7b6fb2025bbb338c9d6d677eb63` after compile, Ruff, strict mypy, full pytest, and research CI passed. V2 keeps the same economic hypothesis and thresholds but has a new candidate/spec/plan/campaign identity and a fresh validation boundary at 2026-09-25 00:00 UTC.
+
+The active integration task is the V2 control plane:
+
+- pin observer runtime to `d15971eb22cec7b6fb2025bbb338c9d6d677eb63`;
+- isolate V2 evidence at `artifacts/prospective-hype-v2-clean` and state artifact `prospective-hype-v2-clean-state`;
+- use redundant off-peak schedule starts at UTC minutes 43/48/53;
+- pre-warm scheduled runners toward the protected minute-03 hourly capture;
+- preserve the 15-minute stale-anchor fail-closed ceiling;
+- initialize runtime/control-plane/state attestations before the V2 cutover;
+- preserve paper-only execution, canonical Hyperliquid mainnet endpoints, read-only permissions, non-cancelling serialized concurrency, and 90-day artifacts.
+
+V2 validation remains research-only and non-promotional. Live trading remains disabled.
