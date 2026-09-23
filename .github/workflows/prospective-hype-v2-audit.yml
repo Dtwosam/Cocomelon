@@ -538,6 +538,7 @@ jobs:
             exit 0
           fi
 
+          rm -f "$AUDIT_ROOT/audit.json"
           reason_code="$(python - <<'PY'
           import re
           from pathlib import Path
@@ -553,7 +554,7 @@ jobs:
           echo "reason_code=$reason_code" >> "$GITHUB_OUTPUT"
 
       - name: Preserve V2 audit failure receipt
-        if: ${{ always() && (steps.discover.outputs.status != 'ok' || steps.provenance.outputs.status != 'ok' || steps.download.outputs.status != 'ok' || steps.audit.outputs.status != 'success') }}
+        if: ${{ always() }}
         env:
           AUDITED_AT_MS: ${{ steps.clock.outputs.audited_at_ms }}
           DISCOVERY_STATUS: ${{ steps.discover.outputs.status }}
@@ -570,6 +571,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$AUDIT_ROOT"
+          if [[ -f "$AUDIT_ROOT/audit.json" ]]; then
+            rm -f "$AUDIT_ROOT/failure.json"
+            exit 0
+          fi
           python - <<'PY'
           import hashlib
           import json

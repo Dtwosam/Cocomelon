@@ -65,3 +65,7 @@ def test_v2_audit_preserves_failure_receipt_before_failing_red() -> None:
     assert upload < preserve
     assert "prospective-hype-v2-independent-audit-failure" in source
     assert "if-no-files-found: error" in source
+    assert 'if: ${{ always() }}' in source
+    assert 'if [[ -f "$AUDIT_ROOT/audit.json" ]]; then' in source
+    assert 'rm -f "$AUDIT_ROOT/audit.json"' in source
+    assert 'rm -f "$AUDIT_ROOT/failure.json"' in source
