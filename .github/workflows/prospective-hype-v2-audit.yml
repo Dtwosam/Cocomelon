@@ -364,10 +364,14 @@ jobs:
               candidate_id=spec.candidate_id,
               validation_not_before_ms=spec.validation_not_before_ms,
           )
-          expected_manifest_payload = {
-              **expected_manifest.identity_payload(),
-              "campaign_id": expected_manifest.campaign_id,
-          }
+          expected_manifest_payload = json.loads(
+              canonical(
+                  {
+                      **expected_manifest.identity_payload(),
+                      "campaign_id": expected_manifest.campaign_id,
+                  }
+              )
+          )
           if manifest != expected_manifest_payload:
               fail("CAMPAIGN_MANIFEST_MISMATCH")
 
