@@ -4,6 +4,10 @@ on:
   workflow_run:
     workflows:
       - "Research Dashboard Catch-up Dispatcher"
+      - "Prospective HYPE Artifact Lineage Audit"
+      - "Cocomelon Research Dashboard Refresh"
+      - "Cocomelon Evidence Dashboard Refresh"
+      - "Research Daily Gap Dispatcher"
     types:
       - completed
   pull_request:
@@ -54,12 +58,13 @@ jobs:
           python -m pytest             tests/test_prospective_capture_transport_canary_workflow.py             -q
 
   observe:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_run' || (github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'success')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       RECEIPT_ROOT: artifacts/prospective-capture-transport-canary
       UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+      UPSTREAM_WORKFLOW_NAME: ${{ github.event.workflow_run.name || '' }}
       UPSTREAM_EVENT: ${{ github.event.workflow_run.event || '' }}
       UPSTREAM_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
       UPSTREAM_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
@@ -133,7 +138,7 @@ jobs:
               "event_name": event_name,
               "observed_at_ms": observed_at_ms,
               "upstream_workflow_name": (
-                  "Research Dashboard Catch-up Dispatcher"
+                  os.environ.get("UPSTREAM_WORKFLOW_NAME")
                   if event_name == "workflow_run"
                   else None
               ),
@@ -170,9 +175,13 @@ jobs:
           assert payload["promotion_eligible"] is False
           assert len(payload["receipt_id"]) == 64
           if payload["event_name"] == "workflow_run":
-              assert payload["upstream_workflow_name"] == (
-                  "Research Dashboard Catch-up Dispatcher"
-              )
+              assert payload["upstream_workflow_name"] in {
+                  "Research Dashboard Catch-up Dispatcher",
+                  "Prospective HYPE Artifact Lineage Audit",
+                  "Cocomelon Research Dashboard Refresh",
+                  "Cocomelon Evidence Dashboard Refresh",
+                  "Research Daily Gap Dispatcher",
+              }
               assert payload["upstream_run_id"]
               assert payload["workflow_run_trigger_latency_ms"] >= 0
           PY
