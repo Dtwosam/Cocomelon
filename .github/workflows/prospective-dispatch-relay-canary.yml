@@ -112,9 +112,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          current_title="Prospective Relay hop $INPUT_HOP parent $INPUT_PARENT_RUN_ID"
+          export CURRENT_TITLE="Prospective Relay hop $INPUT_HOP parent $INPUT_PARENT_RUN_ID"
+          gh api             -H "Accept: application/vnd.github+json"             "/repos/$GITHUB_REPOSITORY/actions/workflows/prospective-dispatch-relay-canary.yml/runs?event=workflow_dispatch&per_page=100"             > /tmp/prospective-relay-runs.json
           leader_id="$(
-            gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/workflows/prospective-dispatch-relay-canary.yml/runs?event=workflow_dispatch&per_page=100"               --jq --arg title "$current_title"               '[.workflow_runs[] | select(.display_title == $title) | .id] | min // empty'
+            python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/prospective-relay-runs.json").read_text(encoding="utf-8")
+          )
+          matching = [
+              int(run["id"])
+              for run in payload.get("workflow_runs", [])
+              if run.get("display_title") == os.environ["CURRENT_TITLE"]
+          ]
+          print(min(matching) if matching else "")
+          PY
           )"
           if [[ -z "$leader_id" ]]; then
             echo "RELAY_LEADER_NOT_FOUND" >&2
