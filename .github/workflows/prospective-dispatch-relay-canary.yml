@@ -1,0 +1,180 @@
+name: Prospective Dispatch Relay Canary
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-dispatch-relay-canary.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/prospective-dispatch-relay-canary.yml"
+      - "tests/test_prospective_dispatch_relay_canary_workflow.py"
+  workflow_dispatch:
+    inputs:
+      hop:
+        description: Relay hop number
+        required: true
+        default: "0"
+        type: string
+      parent_run_id:
+        description: Immediate predecessor workflow run id
+        required: true
+        default: "none"
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: prospective-dispatch-relay-canary
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install validation runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Verify relay canary contract
+        run: |
+          set -euo pipefail
+          python -m pytest tests/test_prospective_dispatch_relay_canary_workflow.py -q
+
+  relay:
+    if: ${{ github.event_name != 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      RECEIPT_ROOT: artifacts/prospective-dispatch-relay-canary
+      INPUT_HOP: ${{ github.event_name == 'workflow_dispatch' && inputs.hop || '0' }}
+      INPUT_PARENT_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.parent_run_id || 'none' }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify relay event identity
+        id: identity
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+
+          event = os.environ["GITHUB_EVENT_NAME"]
+          hop_raw = os.environ["INPUT_HOP"]
+          parent = os.environ["INPUT_PARENT_RUN_ID"]
+
+          try:
+              hop = int(hop_raw)
+          except ValueError as exc:
+              raise SystemExit("RELAY_HOP_INVALID") from exc
+          if hop < 0 or hop > 3:
+              raise SystemExit("RELAY_HOP_OUT_OF_RANGE")
+
+          if event == "push":
+              if hop != 0 or parent != "none":
+                  raise SystemExit("PUSH_RELAY_IDENTITY_INVALID")
+          elif event == "workflow_dispatch":
+              if hop <= 0:
+                  raise SystemExit("DISPATCH_RELAY_HOP_INVALID")
+              if not parent.isdigit():
+                  raise SystemExit("DISPATCH_PARENT_RUN_ID_INVALID")
+          else:
+              raise SystemExit("UNSUPPORTED_RELAY_EVENT")
+          PY
+
+      - name: Build immutable relay receipt
+        run: |
+          set -euo pipefail
+          mkdir -p "$RECEIPT_ROOT"
+          python - <<'PY' > "$RECEIPT_ROOT/receipt.json"
+          import hashlib
+          import json
+          import os
+          import time
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          payload = {
+              "kind": "prospective-dispatch-relay-canary",
+              "event_name": os.environ["GITHUB_EVENT_NAME"],
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "hop": int(os.environ["INPUT_HOP"]),
+              "parent_run_id": (
+                  None
+                  if os.environ["INPUT_PARENT_RUN_ID"] == "none"
+                  else os.environ["INPUT_PARENT_RUN_ID"]
+              ),
+              "observed_at_ms": time.time_ns() // 1_000_000,
+              "head_branch": os.environ["GITHUB_REF_NAME"],
+              "economic_evidence": False,
+              "promotion_eligible": False,
+              "schema_version": 1,
+          }
+          payload["receipt_id"] = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          print(canonical(payload))
+          PY
+
+      - name: Verify non-economic receipt
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(
+                  "artifacts/prospective-dispatch-relay-canary/receipt.json"
+              ).read_text(encoding="utf-8")
+          )
+          assert payload["kind"] == "prospective-dispatch-relay-canary"
+          assert payload["economic_evidence"] is False
+          assert payload["promotion_eligible"] is False
+          assert 0 <= payload["hop"] <= 3
+          assert len(payload["receipt_id"]) == 64
+          PY
+
+      - name: Upload relay receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-dispatch-relay-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-dispatch-relay-canary/receipt.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 9
+
+      - name: Dispatch successor relay hop
+        if: ${{ env.INPUT_HOP != '3' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          next_hop="$((INPUT_HOP + 1))"
+          gh workflow run prospective-dispatch-relay-canary.yml             --repo "$GITHUB_REPOSITORY"             --ref main             -f "hop=$next_hop"             -f "parent_run_id=$GITHUB_RUN_ID"
