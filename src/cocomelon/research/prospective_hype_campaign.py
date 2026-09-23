@@ -6,15 +6,17 @@ from typing import Literal
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2,
+    HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3,
     HistoricalDiscoveryFreezeSpec,
 )
 from cocomelon.research.prospective_context_report import (
     HYPE_PROSPECTIVE_VALIDATION_V1,
     HYPE_PROSPECTIVE_VALIDATION_V2,
+    HYPE_PROSPECTIVE_VALIDATION_V3,
     ProspectiveValidationPlan,
 )
 
-ProspectiveHypeCampaignVersion = Literal["v1", "v2"]
+ProspectiveHypeCampaignVersion = Literal["v1", "v2", "v3"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +38,12 @@ HYPE_PROSPECTIVE_CAMPAIGN_V2 = ProspectiveHypeCampaign(
     plan=HYPE_PROSPECTIVE_VALIDATION_V2,
 )
 
+HYPE_PROSPECTIVE_CAMPAIGN_V3 = ProspectiveHypeCampaign(
+    version="v3",
+    spec=HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3,
+    plan=HYPE_PROSPECTIVE_VALIDATION_V3,
+)
+
 
 def resolve_prospective_hype_campaign(
     version: str,
@@ -44,4 +52,6 @@ def resolve_prospective_hype_campaign(
         return HYPE_PROSPECTIVE_CAMPAIGN_V1
     if version == "v2":
         return HYPE_PROSPECTIVE_CAMPAIGN_V2
+    if version == "v3":
+        return HYPE_PROSPECTIVE_CAMPAIGN_V3
     raise ValueError(f"unsupported prospective HYPE campaign: {version}")
