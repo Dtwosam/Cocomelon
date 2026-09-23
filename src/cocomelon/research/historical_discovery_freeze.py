@@ -191,6 +191,35 @@ HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2 = HistoricalDiscoveryFreezeSpec(
     ),
 )
 
+HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3 = HistoricalDiscoveryFreezeSpec(
+    candidate_id="hype-down-bearish-near-basket-long-4h-v3",
+    market=MarketId("", "HYPE"),
+    anchor_interval="1h",
+    context_state_1h="down/bearish/near_basket",
+    direction=Direction.LONG,
+    horizon_ms=14_400_000,
+    discovery_start_ms=1_772_323_200_000,
+    discovery_end_ms=1_789_862_400_000,
+    validation_not_before_ms=1_790_380_800_000,
+    discovery_report_id=(
+        "f3b38a6625ad2ea2d1b2df7e736f5dbded6f2b415c53c80db35514e4f3589481"
+    ),
+    discovery_dataset_id=(
+        "268aa965584316f35a9db520b13848fd030123eadc99482a89cd7bc68ffc091f"
+    ),
+    occupancy_report_id=(
+        "fc083ac327d1cbc758af4515393a35647b980ae231f9a3763e1e8005286414c9"
+    ),
+    occupancy_dataset_id=(
+        "543e919969cc3160f4b72ef687102f1a989ec8446d4f691b05c376b6d19b72df"
+    ),
+    costs=ExecutionCostAssumptions(
+        round_trip_fee_fraction=Decimal("0.0007"),
+        round_trip_slippage_fraction=Decimal("0.0005"),
+        funding_reserve_fraction_per_hour=Decimal("0.0001"),
+    ),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ProspectiveContextDecision:

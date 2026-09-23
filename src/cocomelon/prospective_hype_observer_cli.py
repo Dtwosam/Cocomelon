@@ -43,7 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--root", required=True, type=Path)
-    parser.add_argument("--campaign", choices=("v1", "v2"), default="v1")
+    parser.add_argument("--campaign", choices=("v1", "v2", "v3"), default="v1")
     return parser
 
 
