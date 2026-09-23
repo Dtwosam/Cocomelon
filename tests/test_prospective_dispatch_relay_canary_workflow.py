@@ -57,3 +57,15 @@ def test_relay_canary_preserves_immutable_receipts() -> None:
     assert "if-no-files-found: error" in source
     assert "retention-days: 14" in source
     assert "receipt_id" in source
+
+
+def test_relay_canary_retries_transient_dispatch_failures_without_forking() -> None:
+    source = _source()
+
+    assert "Elect deterministic relay leader" in source
+    assert "display_title == $title" in source
+    assert "leader_id" in source
+    assert "is_leader=false" in source
+    assert "HTTP (500|502|503|504)" in source
+    assert '"attempt" -ge 5' in source
+    assert 'sleep "$((attempt * 2))"' in source
