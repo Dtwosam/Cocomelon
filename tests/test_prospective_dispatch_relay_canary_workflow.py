@@ -67,5 +67,5 @@ def test_relay_canary_retries_transient_dispatch_failures_without_forking() -> N
     assert "leader_id" in source
     assert "is_leader=false" in source
     assert "HTTP (500|502|503|504)" in source
-    assert '"attempt" -ge 5' in source
+    assert '"$attempt" -ge 5' in source
     assert 'sleep "$((attempt * 2))"' in source
