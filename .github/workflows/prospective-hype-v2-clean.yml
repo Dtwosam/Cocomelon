@@ -223,7 +223,7 @@ jobs:
               "evidence_root": os.environ["EVIDENCE_ROOT"],
               "concurrency_group": "prospective-hype-v2-clean-observer",
               "cancel_in_progress": False,
-              "job_timeout_minutes": 10,
+              "job_timeout_minutes": 30,
               "execution_mode": os.environ["COCOMELON_EXECUTION_MODE"],
               "api_url": os.environ["COCOMELON_API_URL"],
               "ws_url": os.environ["COCOMELON_WS_URL"],
@@ -640,6 +640,7 @@ jobs:
           assert control_plane["schedule_minutes_utc"] == [43, 48, 53]
           assert control_plane["protected_attempt_minute_utc"] == 3
           assert control_plane["capture_transport"] == "off_peak_redundant_prewarm_v2"
+          assert control_plane["job_timeout_minutes"] == 30
           assert control_plane["max_entry_candle_age_ms"] == 900000
           assert len(control_plane["control_plane_id"]) == 64
           assert report["expected_anchor_count"] == 1080
