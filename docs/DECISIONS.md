@@ -222,3 +222,20 @@ This file records decisions that should not be casually re-litigated in later ch
 **Interpretation:** `eligible_for_candidate_review` is the strongest possible output of this campaign. It is not promotion eligibility and does not authorize live capital. All existing >=500 mainnet paper-trade, >=45-day shadow, risk/integrity, and explicit-live-authorization gates remain mandatory.
 
 **Development consequence:** During the clean campaign, unrelated research may continue only if it cannot contaminate this evidence. Any materially different hypothesis must be frozen as a new candidate and collect a new future clean sample.
+
+
+## D-028 — V1 capture failure is preserved; HYPE V2 restarts clean validation
+
+**Decision:** The original prospective HYPE V1 campaign remains immutable under D-027. Its predeclared GitHub Actions capture transport failed to create a scheduled observer run through the first post-cutover `:03/:08/:13` attempts on 2026-09-23. The unmerged pre-cutover transport-repair PR #363 was closed after the V1 cutover passed because merging it would have violated its own pre-cutover attestation invariant. V1 is not retroactively repaired, backfilled, or relabeled.
+
+**V2 identity:** A fresh candidate identity, `hype-down-bearish-near-basket-long-4h-v2`, preserves the V1 economic hypothesis exactly: HYPE, 1h anchors, context `down/bearish/near_basket`, LONG direction, 4h horizon, one-position-per-market occupancy, discovery lineage, and fixed fee/slippage/funding assumptions. The new identity exists only to bind a fresh future clean boundary and independent campaign state.
+
+**V2 validation freeze:** V2 begins 2026-09-25 00:00:00 UTC and runs for 45 calendar days through 2026-11-09 00:00:00 UTC, with finalization no earlier than 2026-11-09 04:00:00 UTC. The economic qualification thresholds remain identical to V1: 1,080 expected hourly anchors, >=90% capture, >=80 settled executable trades, four chronological stability blocks with >=15 settled trades each, positive overall mean modeled net return, and positive mean modeled net return in every block.
+
+**V2 source freeze:** V2 observer/report/evidence runtime is pinned to merged revision `d15971eb22cec7b6fb2025bbb338c9d6d677eb63`. The scheduled workflow may not substitute moving `main` source for that revision.
+
+**V2 transport freeze:** Capture uses redundant off-peak GitHub schedule starts at UTC minutes 43, 48, and 53. Scheduled jobs pre-warm toward the next hourly minute 03 protected attempt. If a delayed schedule starts after the protected attempt, it may proceed only while the existing 15-minute stale-anchor ceiling can still be satisfied; otherwise it fails closed. Concurrency is non-cancelling and serial, job timeout is 30 minutes, state/evidence identities are V2-specific, execution remains paper-only, Hyperliquid endpoints remain canonical mainnet, permissions remain read-only, and artifacts retain for 90 days.
+
+**Continuity consequence:** V2 state is independent from V1. Runtime and control-plane attestations must exist before V2 cutover. After cutover, missing state/runtime/control-plane identity fails closed. Duplicate redundant attempts may be idempotent, but no historical anchor backfill is allowed.
+
+**Interpretation:** The transport change is not evidence that the economic hypothesis improved. V2 must earn its own clean result. `eligible_for_candidate_review` remains non-promotional; all >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gates remain mandatory.
