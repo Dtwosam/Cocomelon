@@ -63,9 +63,17 @@ def test_relay_canary_retries_transient_dispatch_failures_without_forking() -> N
     source = _source()
 
     assert "Elect deterministic relay leader" in source
-    assert "display_title == $title" in source
+    assert 'run.get("display_title") == os.environ["CURRENT_TITLE"]' in source
     assert "leader_id" in source
     assert "is_leader=false" in source
     assert "HTTP (500|502|503|504)" in source
     assert '"$attempt" -ge 5' in source
     assert 'sleep "$((attempt * 2))"' in source
+
+
+def test_relay_leader_selection_uses_portable_api_json_parsing() -> None:
+    source = _source()
+
+    assert "/tmp/prospective-relay-runs.json" in source
+    assert "payload.get(\"workflow_runs\", [])" in source
+    assert "--jq --arg" not in source
