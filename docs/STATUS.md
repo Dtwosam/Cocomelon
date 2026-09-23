@@ -371,3 +371,24 @@ The active integration task is the V2 control plane:
 - preserve paper-only execution, canonical Hyperliquid mainnet endpoints, read-only permissions, non-cancelling serialized concurrency, and 90-day artifacts.
 
 V2 validation remains research-only and non-promotional. Live trading remains disabled.
+
+### V2 bootstrap verification — 2026-09-23
+
+PR #365 merged as `d1b79504f9fbc1feacf32a3ce3164a8828871bfc`. Post-merge CI run `35802064960` passed, and the V2 workflow push-bootstrap run `35802064994` completed successfully before the 2026-09-25 cutover.
+
+Verified bootstrap evidence:
+
+- cumulative state artifact: `prospective-hype-v2-clean-state`, artifact `10726571181`;
+- campaign ID: `72a465561e47cec5460d8ddf673a14e5ea6a9928b52a14f1fd8e467f747747e7`;
+- candidate spec ID: `ae42874f608f6a6382b39a781a2f58b470612fff910905e7e88d9c9cb1d57def`;
+- validation plan ID: `69975f885eb3a68163ab3ff465581f9829c6fedd6dac451900cc8eb7c18d77de`;
+- runtime attestation ID: `492dc2b3fd06376d035983e8c71f55b3ded2213e43c4fadfbecba749964dfb4c`;
+- control-plane ID: `078c5f15cb8e1151cf74f16e0d1c876ed05668b6b97f997512d1829990527a3d`;
+- pinned observer revision: `d15971eb22cec7b6fb2025bbb338c9d6d677eb63`;
+- bootstrap observations/outcomes: `0 / 0`;
+- health: `pre_validation`;
+- expected anchors: `1080`;
+- remaining missed-anchor budget: `108`;
+- maximum final capture coverage: `1`.
+
+The exact next operational check is the first real scheduled V2 transport cycle: confirm that an off-peak `:43/:48/:53` schedule starts, pre-warms toward minute `:03`, restores artifact `10726571181` or its latest descendant, and republishes the same campaign/runtime/control-plane identities without creating a pre-cutover observation. After 2026-09-25 00:00 UTC, the first eligible hourly anchor is 2026-09-25 00:59:59.999 UTC and must be captured only through the frozen V2 transport; no backfill is allowed.
