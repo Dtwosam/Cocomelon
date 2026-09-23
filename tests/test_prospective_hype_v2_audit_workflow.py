@@ -100,3 +100,29 @@ def test_v2_manifest_comparison_uses_json_normalized_shape() -> None:
     assert expected["basket_markets"] == ["BTC", "ETH", "HYPE", "SOL"]
     assert isinstance(expected["basket_markets"], list)
     assert 'expected_manifest_payload = json.loads(' in _source()
+
+
+def test_v2_audit_compares_latest_state_with_authenticated_predecessor() -> None:
+    source = _source()
+
+    assert "previous_state_id" in source
+    assert "previous_producer_run_id" in source
+    assert "PREVIOUS_STATE_ARTIFACT_METADATA_FAILED" in source
+    assert "PREVIOUS_PRODUCER_RUN_METADATA_FAILED" in source
+    assert "PREVIOUS_STATE_DOWNLOAD_FAILED" in source
+    assert "PREVIOUS_STATE_UNPACK_FAILED" in source
+    assert 'Path(os.environ["AUDIT_ROOT"]) / "previous-state"' in source
+
+
+def test_v2_audit_enforces_append_only_evidence_lineage() -> None:
+    source = _source()
+
+    assert "CAMPAIGN_MANIFEST_DRIFT" in source
+    assert "RUNTIME_ATTESTATION_DRIFT" in source
+    assert "CONTROL_PLANE_DRIFT" in source
+    assert "PREVIOUS_OBSERVATION_REWRITTEN_OR_REMOVED" in source
+    assert "PREVIOUS_OUTCOME_REWRITTEN_OR_REMOVED" in source
+    assert "HISTORICAL_OBSERVATION_BACKFILL_FORBIDDEN" in source
+    assert '"lineage_status": lineage_status' in source
+    assert '"appended_observation_count": appended_observation_count' in source
+    assert '"appended_outcome_count": appended_outcome_count' in source
