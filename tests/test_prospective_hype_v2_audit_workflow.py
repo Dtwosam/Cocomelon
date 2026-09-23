@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+from cocomelon.research.historical_discovery_freeze import (
+    HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2,
+)
+from cocomelon.research.prospective_context_evidence import (
+    ProspectiveCampaignManifest,
+)
 
 WORKFLOW = Path(".github/workflows/prospective-hype-v2-audit.yml")
 PINNED_REVISION = "d15971eb22cec7b6fb2025bbb338c9d6d677eb63"
@@ -69,3 +77,26 @@ def test_v2_audit_preserves_failure_receipt_before_failing_red() -> None:
     assert 'if [[ -f "$AUDIT_ROOT/audit.json" ]]; then' in source
     assert 'rm -f "$AUDIT_ROOT/audit.json"' in source
     assert 'rm -f "$AUDIT_ROOT/failure.json"' in source
+
+
+def test_v2_manifest_comparison_uses_json_normalized_shape() -> None:
+    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2
+    manifest = ProspectiveCampaignManifest(
+        candidate_spec_id=spec.spec_id,
+        candidate_id=spec.candidate_id,
+        validation_not_before_ms=spec.validation_not_before_ms,
+    )
+    expected = json.loads(
+        json.dumps(
+            {
+                **manifest.identity_payload(),
+                "campaign_id": manifest.campaign_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+
+    assert expected["basket_markets"] == ["BTC", "ETH", "HYPE", "SOL"]
+    assert isinstance(expected["basket_markets"], list)
+    assert 'expected_manifest_payload = json.loads(' in _source()
