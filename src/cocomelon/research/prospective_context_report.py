@@ -10,6 +10,7 @@ from typing import cast
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.historical_discovery_freeze import (
     HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
+    HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2,
 )
 from cocomelon.research.prospective_context_evidence import (
     PROSPECTIVE_EVIDENCE_CLASS,
@@ -170,6 +171,22 @@ HYPE_PROSPECTIVE_VALIDATION_V1 = ProspectiveValidationPlan(
         + 45 * DAY_MS
     ),
     horizon_ms=HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1.horizon_ms,
+    anchor_interval_ms=HOUR_MS,
+    anchor_end_offset_ms=HOUR_MS - 1,
+    min_capture_coverage=Decimal("0.90"),
+    min_settled_trades=80,
+    stability_blocks=4,
+    min_block_trades=15,
+)
+
+HYPE_PROSPECTIVE_VALIDATION_V2 = ProspectiveValidationPlan(
+    candidate_spec_id=HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2.spec_id,
+    validation_start_ms=HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2.validation_not_before_ms,
+    validation_end_ms=(
+        HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2.validation_not_before_ms
+        + 45 * DAY_MS
+    ),
+    horizon_ms=HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V2.horizon_ms,
     anchor_interval_ms=HOUR_MS,
     anchor_end_offset_ms=HOUR_MS - 1,
     min_capture_coverage=Decimal("0.90"),

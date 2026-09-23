@@ -9,12 +9,9 @@ from typing import TextIO
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.hyperliquid.client import InfoClient
-from cocomelon.research.historical_discovery_freeze import (
-    HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1,
-)
 from cocomelon.research.prospective_context_evidence import ProspectiveEvidenceStore
-from cocomelon.research.prospective_context_report import (
-    HYPE_PROSPECTIVE_VALIDATION_V1,
+from cocomelon.research.prospective_hype_campaign import (
+    resolve_prospective_hype_campaign,
 )
 from cocomelon.research.prospective_hype_observer import (
     ProspectivePublicReader,
@@ -46,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--root", required=True, type=Path)
+    parser.add_argument("--campaign", choices=("v1", "v2"), default="v1")
     return parser
 
 
@@ -53,16 +51,18 @@ def prospective_hype_observer_payload(
     settings: Settings,
     *,
     root: Path,
+    campaign: str = "v1",
     reader: ProspectivePublicReader | None = None,
     clock_ms: Callable[[], int] = utc_now_ms,
 ) -> dict[str, object]:
     if settings.execution_mode is not ExecutionMode.PAPER:
         raise ValueError("prospective HYPE observer requires paper execution mode")
 
-    spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V1
+    resolved_campaign = resolve_prospective_hype_campaign(campaign)
+    spec = resolved_campaign.spec
+    plan = resolved_campaign.plan
     source = reader or InfoClient(settings)
     store = ProspectiveEvidenceStore(root, spec=spec)
-    plan = HYPE_PROSPECTIVE_VALIDATION_V1
     result = run_prospective_observer_cycle(
         source,
         store=store,
@@ -73,6 +73,7 @@ def prospective_hype_observer_payload(
     observation = result.observation
     return {
         "command": "prospective-hype-observer",
+        "campaign_version": resolved_campaign.version,
         "execution_mode": settings.execution_mode.value,
         "api_url": settings.api_url,
         "candidate_id": spec.candidate_id,
@@ -121,6 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = prospective_hype_observer_payload(
             Settings.from_env(),
             root=args.root,
+            campaign=args.campaign,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
