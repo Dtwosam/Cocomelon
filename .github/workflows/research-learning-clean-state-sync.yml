@@ -1,0 +1,542 @@
+name: Research Learning Clean State Campaign Follower
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Research Mainnet Replay Campaign"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful research campaign run ID to recover
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-learning-clean-state-campaign-follower
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      campaign_run_id: ${{ steps.campaign.outputs.run_id }}
+      campaign_run_attempt: ${{ steps.campaign.outputs.run_attempt }}
+      campaign_head_sha: ${{ steps.campaign.outputs.head_sha }}
+      campaign_artifact_id: ${{ steps.campaign.outputs.artifact_id }}
+      campaign_artifact_digest: ${{ steps.campaign.outputs.artifact_digest }}
+      campaign_completed_ms: ${{ steps.campaign.outputs.completed_ms }}
+      state_matrix: ${{ steps.states.outputs.matrix }}
+    steps:
+      - name: Checkout current trusted clean follower
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Authenticate exact research campaign
+        id: campaign
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "research campaign run id is invalid" >&2
+            exit 64
+          fi
+
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/research-campaign-run.json
+
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/research-campaign-run.json").read_text(encoding="utf-8")
+          )
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("research campaign run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("research campaign run is not from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("research campaign run did not complete successfully")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("research campaign run event is invalid")
+          if run.get("path") != ".github/workflows/research-campaign-scheduled.yml":
+              raise SystemExit("research campaign workflow path is invalid")
+          if run.get("name") != "Scheduled Research Mainnet Replay Campaign":
+              raise SystemExit("research campaign workflow name is invalid")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("research campaign head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("research campaign run attempt is invalid")
+          repository = run.get("head_repository") or {}
+          if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("research campaign run is from another repository")
+          completed_at = run.get("updated_at")
+          if not isinstance(completed_at, str) or not completed_at:
+              raise SystemExit("research campaign completion timestamp is missing")
+          completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+          if completed.tzinfo is None:
+              raise SystemExit("research campaign completion timestamp is naive")
+          print(int(completed.timestamp() * 1000))
+          PY
+          COMPLETED_MS="$(
+            RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/research-campaign-run.json").read_text(encoding="utf-8")
+          )
+          completed = datetime.fromisoformat(
+              str(run["updated_at"]).replace("Z", "+00:00")
+          )
+          print(int(completed.timestamp() * 1000))
+          PY
+          )"
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/research-campaign-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/research-campaign-run.json)"
+          ARTIFACT_NAME="research-campaign-$RUN_ID-$RUN_ATTEMPT"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/research-campaign-artifacts.json
+
+          ARTIFACT_ROW="$(
+            python - "$ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          expected = sys.argv[1]
+          payload = json.loads(
+              Path("/tmp/research-campaign-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == expected and item.get("expired") is False
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  "expected exactly one complete research campaign artifact"
+              )
+          artifact = matches[0]
+          digest = artifact.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("research campaign artifact digest is missing")
+          print(str(artifact["id"]) + "\t" + digest)
+          PY
+          )"
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+
+          {
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+            echo "completed_ms=$COMPLETED_MS"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Discover latest trusted clean-state generations
+        id: states
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100"             > /tmp/clean-state-artifacts.json
+
+          MATRIX="$(
+            python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/clean-state-artifacts.json").read_text(encoding="utf-8")
+          )
+          pattern = re.compile(
+              r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          trusted = {
+              ".github/workflows/research-learning-clean-state-bootstrap.yml": {
+                  "name": "Research Learning Clean State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-sync.yml": {
+                  "name": "Research Learning Clean State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+          }
+          candidates = sorted(
+              (
+                  item
+                  for item in payload.get("artifacts", [])
+                  if item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and pattern.fullmatch(item["name"])
+                  and isinstance(item.get("workflow_run"), dict)
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          selected: dict[str, dict[str, object]] = {}
+          for artifact in candidates:
+              name = artifact["name"]
+              if name in selected:
+                  continue
+              run_id = artifact["workflow_run"].get("id")
+              if not isinstance(run_id, int):
+                  continue
+              fetched = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(fetched.stdout)
+              contract = trusted.get(run.get("path"))
+              if contract is None:
+                  continue
+              if (
+                  run.get("name") != contract["name"]
+                  or run.get("event") not in contract["events"]
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("head_branch") != "main"
+                  or run.get("head_sha") != artifact["workflow_run"].get("head_sha")
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit("trusted clean-state artifact digest is missing")
+              selected[name] = {
+                  "skip": False,
+                  "artifact_id": artifact["id"],
+                  "artifact_name": name,
+                  "artifact_digest": digest,
+                  "producer_run_id": run_id,
+                  "producer_run_attempt": run["run_attempt"],
+                  "producer_head_sha": run["head_sha"],
+              }
+
+          include = list(selected.values())
+          if not include:
+              include = [{"skip": True, "artifact_id": 0, "artifact_name": "none"}]
+          print(json.dumps({"include": include}, separators=(",", ":")))
+          PY
+          )"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  advance:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.state_matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout current trusted clean runtime
+        if: ${{ matrix.skip != true }}
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        if: ${{ matrix.skip != true }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        if: ${{ matrix.skip != true }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Download exact campaign and clean-state generation
+        if: ${{ matrix.skip != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAMPAIGN_ARTIFACT_ID: ${{ needs.prepare.outputs.campaign_artifact_id }}
+          STATE_ARTIFACT_ID: ${{ matrix.artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p incoming/campaign prior-state
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$CAMPAIGN_ARTIFACT_ID/zip"             > /tmp/research-campaign.zip
+          unzip -q /tmp/research-campaign.zip -d incoming/campaign
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$STATE_ARTIFACT_ID/zip"             > /tmp/clean-state.zip
+          unzip -q /tmp/clean-state.zip -d prior-state
+          test -f prior-state/bootstrap.json
+          test -d prior-state/candidates
+          cp -a prior-state next-state
+
+      - name: Advance every verified clean candidate
+        id: advance
+        if: ${{ matrix.skip != true }}
+        env:
+          CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
+          CAMPAIGN_RUN_ATTEMPT: ${{ needs.prepare.outputs.campaign_run_attempt }}
+          CAMPAIGN_HEAD_SHA: ${{ needs.prepare.outputs.campaign_head_sha }}
+          CAMPAIGN_ARTIFACT_ID: ${{ needs.prepare.outputs.campaign_artifact_id }}
+          CAMPAIGN_ARTIFACT_DIGEST: ${{ needs.prepare.outputs.campaign_artifact_digest }}
+          CAMPAIGN_COMPLETED_MS: ${{ needs.prepare.outputs.campaign_completed_ms }}
+        run: |
+          set -euo pipefail
+          PROCESSED=0
+          READY=0
+          for CANDIDATE_ROOT in next-state/candidates/*; do
+            if [ ! -d "$CANDIDATE_ROOT" ]; then
+              continue
+            fi
+            LABEL="$(basename "$CANDIDATE_ROOT")"
+            PACKAGE_ROOT="$CANDIDATE_ROOT/package"
+            SPEC_PATH="$CANDIDATE_ROOT/candidate-validation-spec.json"
+            EVIDENCE_ROOT="$CANDIDATE_ROOT/evidence"
+            STATE_PATH="$CANDIDATE_ROOT/state.json"
+
+            PACKAGE_ROOT="$PACKAGE_ROOT"             SPEC_PATH="$SPEC_PATH"             EVIDENCE_ROOT="$EVIDENCE_ROOT"             STATE_PATH="$STATE_PATH"             python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.learning_clean_state import (
+              verify_learning_clean_state,
+          )
+
+          state = verify_learning_clean_state(
+              Path(os.environ["STATE_PATH"]),
+              package_root=Path(os.environ["PACKAGE_ROOT"]),
+              validation_spec_path=Path(os.environ["SPEC_PATH"]),
+              evidence_root=Path(os.environ["EVIDENCE_ROOT"]),
+          )
+          if state.promotion_eligible or state.execution_ready:
+              raise SystemExit("prior clean state carries invalid authority")
+          PY
+
+            mkdir -p "$CANDIDATE_ROOT/state-history"               "$CANDIDATE_ROOT/campaign-syncs"
+            PRIOR_STATE_ID="$(jq -r '.state_id' "$STATE_PATH")"
+            PRIOR_AS_OF_MS="$(jq -r '.as_of_ms' "$STATE_PATH")"
+            HISTORY_PATH="$CANDIDATE_ROOT/state-history/$PRIOR_STATE_ID.json"
+            if [ -f "$HISTORY_PATH" ]; then
+              cmp -s "$STATE_PATH" "$HISTORY_PATH" || {
+                echo "conflicting clean-state history entry" >&2
+                exit 70
+              }
+            else
+              cp "$STATE_PATH" "$HISTORY_PATH"
+            fi
+
+            SYNC_TMP="/tmp/clean-sync-$LABEL.json"
+            cocomelon-learning-clean-campaign-sync               --campaign-root incoming/campaign               --package-root "$PACKAGE_ROOT"               --validation-spec "$SPEC_PATH"               --evidence-root "$EVIDENCE_ROOT"               --upstream-run-id "$CAMPAIGN_RUN_ID"               --upstream-run-attempt "$CAMPAIGN_RUN_ATTEMPT"               --upstream-head-sha "$CAMPAIGN_HEAD_SHA"               --upstream-artifact-id "$CAMPAIGN_ARTIFACT_ID"               --upstream-artifact-digest "$CAMPAIGN_ARTIFACT_DIGEST"               > "$SYNC_TMP"
+
+            SYNC_PATH="$CANDIDATE_ROOT/campaign-syncs/$CAMPAIGN_RUN_ID-$CAMPAIGN_RUN_ATTEMPT.json"
+            if [ -f "$SYNC_PATH" ]; then
+              cmp -s "$SYNC_TMP" "$SYNC_PATH" || {
+                echo "conflicting clean campaign sync receipt" >&2
+                exit 71
+              }
+            else
+              cp "$SYNC_TMP" "$SYNC_PATH"
+            fi
+
+            AS_OF_MS="$CAMPAIGN_COMPLETED_MS"
+            if [ "$PRIOR_AS_OF_MS" -gt "$AS_OF_MS" ]; then
+              AS_OF_MS="$PRIOR_AS_OF_MS"
+            fi
+            NEXT_STATE_ROOT="/tmp/clean-state-$LABEL"
+            rm -rf "$NEXT_STATE_ROOT"
+            cocomelon-learning-clean-state               --package-root "$PACKAGE_ROOT"               --validation-spec "$SPEC_PATH"               --evidence-root "$EVIDENCE_ROOT"               --output-root "$NEXT_STATE_ROOT"               --as-of-ms "$AS_OF_MS"               > "/tmp/clean-state-command-$LABEL.json"
+            cp "$NEXT_STATE_ROOT/state.json" "$STATE_PATH"
+
+            STATUS="$(jq -r '.status' "$STATE_PATH")"
+            if [ "$STATUS" = "ready_to_score" ]; then
+              mkdir -p "$CANDIDATE_ROOT/score"
+              cocomelon-learning-clean-validation-score                 --evidence-root "$EVIDENCE_ROOT"                 --package-root "$PACKAGE_ROOT"                 --validation-spec "$SPEC_PATH"                 --output-root "$CANDIDATE_ROOT/score"                 --as-of-ms "$AS_OF_MS"                 > "/tmp/clean-score-command-$LABEL.json"
+              READY=$((READY + 1))
+            fi
+
+            PROCESSED=$((PROCESSED + 1))
+          done
+
+          EXPECTED="$(jq -r '.candidate_count' next-state/bootstrap.json)"
+          if [ "$PROCESSED" -ne "$EXPECTED" ]; then
+            echo "processed clean candidate count does not match bootstrap" >&2
+            exit 72
+          fi
+          {
+            echo "candidate_count=$PROCESSED"
+            echo "ready_count=$READY"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Persist non-economic campaign generation receipt
+        if: ${{ matrix.skip != true }}
+        env:
+          CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
+          CAMPAIGN_RUN_ATTEMPT: ${{ needs.prepare.outputs.campaign_run_attempt }}
+          CAMPAIGN_HEAD_SHA: ${{ needs.prepare.outputs.campaign_head_sha }}
+          CAMPAIGN_ARTIFACT_ID: ${{ needs.prepare.outputs.campaign_artifact_id }}
+          CAMPAIGN_ARTIFACT_DIGEST: ${{ needs.prepare.outputs.campaign_artifact_digest }}
+          SOURCE_STATE_ARTIFACT_ID: ${{ matrix.artifact_id }}
+          SOURCE_STATE_ARTIFACT_NAME: ${{ matrix.artifact_name }}
+          SOURCE_STATE_ARTIFACT_DIGEST: ${{ matrix.artifact_digest }}
+          SOURCE_STATE_RUN_ID: ${{ matrix.producer_run_id }}
+          SOURCE_STATE_RUN_ATTEMPT: ${{ matrix.producer_run_attempt }}
+          SOURCE_STATE_HEAD_SHA: ${{ matrix.producer_head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p next-state/generations
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          rows = []
+          for root in sorted(
+              path for path in Path("next-state/candidates").iterdir()
+              if path.is_dir()
+          ):
+              state = json.loads(
+                  (root / "state.json").read_text(encoding="utf-8")
+              )
+              sync = json.loads(
+                  (
+                      root
+                      / "campaign-syncs"
+                      / (
+                          os.environ["CAMPAIGN_RUN_ID"]
+                          + "-"
+                          + os.environ["CAMPAIGN_RUN_ATTEMPT"]
+                          + ".json"
+                      )
+                  ).read_text(encoding="utf-8")
+              )
+              score_path = root / "score" / "candidate-validation-score.json"
+              rows.append(
+                  {
+                      "label": root.name,
+                      "candidate_id": state["candidate_id"],
+                      "validation_spec_id": state["validation_spec_id"],
+                      "state_id": state["state_id"],
+                      "status": state["status"],
+                      "sync_id": sync["sync_id"],
+                      "score_materialized": score_path.is_file(),
+                  }
+              )
+
+          payload = {
+              "schema_version": 1,
+              "campaign_run_id": int(os.environ["CAMPAIGN_RUN_ID"]),
+              "campaign_run_attempt": int(os.environ["CAMPAIGN_RUN_ATTEMPT"]),
+              "campaign_head_sha": os.environ["CAMPAIGN_HEAD_SHA"],
+              "campaign_artifact_id": int(os.environ["CAMPAIGN_ARTIFACT_ID"]),
+              "campaign_artifact_digest": os.environ["CAMPAIGN_ARTIFACT_DIGEST"],
+              "source_state_artifact_id": int(os.environ["SOURCE_STATE_ARTIFACT_ID"]),
+              "source_state_artifact_name": os.environ["SOURCE_STATE_ARTIFACT_NAME"],
+              "source_state_artifact_digest": os.environ["SOURCE_STATE_ARTIFACT_DIGEST"],
+              "source_state_run_id": int(os.environ["SOURCE_STATE_RUN_ID"]),
+              "source_state_run_attempt": int(
+                  os.environ["SOURCE_STATE_RUN_ATTEMPT"]
+              ),
+              "source_state_head_sha": os.environ["SOURCE_STATE_HEAD_SHA"],
+              "candidate_count": len(rows),
+              "candidates": rows,
+              "paper_only": True,
+              "prospective_only": True,
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+          }
+          generation_id = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          output = Path(
+              "next-state/generations/"
+              + os.environ["CAMPAIGN_RUN_ID"]
+              + "-"
+              + os.environ["CAMPAIGN_RUN_ATTEMPT"]
+              + ".json"
+          )
+          encoded = canonical({**payload, "generation_id": generation_id}) + "\n"
+          if output.exists() and output.read_text(encoding="utf-8") != encoded:
+              raise SystemExit("conflicting clean-state campaign generation")
+          output.write_text(encoded, encoding="utf-8")
+          PY
+
+      - name: Render blind clean-state progress summary
+        if: ${{ matrix.skip != true }}
+        run: |
+          {
+            echo "## Learning clean-state campaign follower"
+            echo "- state lineage: ${{ matrix.artifact_name }}"
+            echo "- clean candidates: ${{ steps.advance.outputs.candidate_count }}"
+            echo "- ready to score: ${{ steps.advance.outputs.ready_count }}"
+            echo "- paper-only: true"
+            echo "- research-only: true"
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish next durable clean-state generation
+        if: ${{ matrix.skip != true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: next-state/
+          if-no-files-found: error
+          retention-days: 90
