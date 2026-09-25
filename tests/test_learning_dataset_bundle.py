@@ -137,3 +137,28 @@ def test_verified_bundle_reader_rejects_tampered_manifest_identity(tmp_path) -> 
 
     with pytest.raises(ValueError, match="manifest identity mismatch"):
         load_verified_learning_dataset_bundle(output_dir=output_dir)
+
+
+def test_verified_bundle_reader_rejects_noncanonical_integer_types(tmp_path) -> None:
+    ledger = LearningEvidenceLedger(tmp_path / "ledger")
+    ledger.record(_paper_record())
+    snapshot = build_learning_dataset_snapshot(ledger, as_of_ms=20_000)
+    output_dir = tmp_path / "bundle"
+    write_learning_dataset_bundle(snapshot, output_dir=output_dir)
+
+    manifest_path = output_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["eligible_record_count"] = "1"
+    manifest_path.write_text(
+        json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+
+    with pytest.raises(ValueError, match="eligible_record_count must be an integer"):
+        load_verified_learning_dataset_bundle(output_dir=output_dir)
