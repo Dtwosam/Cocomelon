@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO
 
 from cocomelon.research.learning_shadow_evidence import (
+    LearningShadowEvidenceStore,
     learning_shadow_execution_from_payload,
     open_verified_learning_shadow_evidence_store,
 )
@@ -58,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _store(args: argparse.Namespace):
+def _store(args: argparse.Namespace) -> LearningShadowEvidenceStore:
     return open_verified_learning_shadow_evidence_store(
         args.shadow_evidence_root,
         shadow_admission_path=args.shadow_admission,
