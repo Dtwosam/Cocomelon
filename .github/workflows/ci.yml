@@ -92,6 +92,7 @@ jobs:
           tests/test_learning_tree_cli.py
           tests/test_learning_readiness.py
           tests/test_learning_readiness_cli.py
+          tests/test_learning_state_lineage.py
           tests/test_execution_learning_sync.py
           tests/test_research_learning_sync.py
           tests/test_research_learning_workflow.py
