@@ -469,6 +469,18 @@ jobs:
                 mkdir -p "$FINAL_ROOT"
                 cocomelon-learning-clean-finalize                   --package-root "$PACKAGE_ROOT"                   --validation-spec "$SPEC_PATH"                   --validation-score "$SCORE_PATH"                   --evidence-root "$EVIDENCE_ROOT"                   --output-root "$FINAL_ROOT"                   --finalized-at-ms "$AS_OF_MS"                   > "/tmp/clean-finalization-command-$LABEL.json"
               fi
+
+              REVIEW_ROOT="$CANDIDATE_ROOT/review-dossier"
+              REVIEW_PATH="$REVIEW_ROOT/candidate-review-dossier.json"
+              REVIEW_ELIGIBLE="$(jq -r '.eligible_for_candidate_review' "$FINAL_PATH")"
+              if [ "$REVIEW_ELIGIBLE" = "true" ]; then
+                mkdir -p "$REVIEW_ROOT"
+                cocomelon-learning-clean-review-dossier                   --package-root "$PACKAGE_ROOT"                   --validation-spec "$SPEC_PATH"                   --validation-score "$SCORE_PATH"                   --finalization "$FINAL_PATH"                   --evidence-root "$EVIDENCE_ROOT"                   --output-root "$REVIEW_ROOT"                   > "/tmp/clean-review-dossier-command-$LABEL.json"
+              elif [ -e "$REVIEW_ROOT" ]; then
+                echo "non-review-eligible candidate carries review dossier" >&2
+                exit 73
+              fi
+
               READY=$((READY + 1))
               FINALIZED=$((FINALIZED + 1))
             fi
@@ -543,6 +555,24 @@ jobs:
               finalization_path = (
                   root / "finalization" / "candidate-finalization.json"
               )
+              dossier_path = (
+                  root / "review-dossier" / "candidate-review-dossier.json"
+              )
+              dossier_id = None
+              if dossier_path.is_file():
+                  dossier = json.loads(
+                      dossier_path.read_text(encoding="utf-8")
+                  )
+                  dossier_id = dossier.get("dossier_id")
+                  if (
+                      not isinstance(dossier_id, str)
+                      or len(dossier_id) != 64
+                      or any(
+                          char not in "0123456789abcdef"
+                          for char in dossier_id
+                      )
+                  ):
+                      raise SystemExit("review dossier identity is invalid")
               rows.append(
                   {
                       "label": root.name,
@@ -553,6 +583,8 @@ jobs:
                       "sync_id": sync["sync_id"],
                       "score_materialized": score_path.is_file(),
                       "finalization_materialized": finalization_path.is_file(),
+                      "review_dossier_materialized": dossier_path.is_file(),
+                      "review_dossier_id": dossier_id,
                   }
               )
 
