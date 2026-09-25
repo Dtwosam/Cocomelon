@@ -87,6 +87,8 @@ def test_research_dashboard_includes_non_economic_learning_operations() -> None:
     assert "research-learning-state" in workflow
     assert "research-learning-cycle-" in workflow
     assert "cocomelon-learning-ops-status" in workflow
+    assert 'CYCLE_ROOT="$(dirname "$CYCLE_PATH")"' in workflow
+    assert 'cp -a "$CYCLE_ROOT"/. dashboard/cycle/' in workflow
     assert "dashboard/learning-status.md" in workflow
     assert "Continuous Learning Operations" in workflow
     assert "learning-state/last-sync.json" not in workflow

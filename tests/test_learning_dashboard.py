@@ -5,11 +5,16 @@ from pathlib import Path
 
 import pytest
 
+from cocomelon.research.learning_candidate_freeze import (
+    build_learning_candidate_freeze,
+    write_learning_candidate_freeze,
+)
 from cocomelon.research.learning_dashboard import (
     LearningDashboardError,
     build_learning_operations_status,
     render_learning_operations_markdown,
 )
+from tests.test_learning_experiment import _run
 
 
 def _write(path: Path, payload: dict[str, object]) -> None:
@@ -84,6 +89,36 @@ def _cycle(root: Path, *, status: str = "not_ready") -> None:
     )
 
 
+def _completed_cycle(
+    root: Path,
+    *,
+    baseline_experiment_id: str,
+    baseline_qualifies: bool,
+) -> None:
+    _write(
+        root / "cycle.json",
+        {
+            "status": "completed",
+            "as_of_ms": 999_000,
+            "learning_state_digest": "a" * 64,
+            "feature_state_digest": "b" * 64,
+            "eligible_record_count": 220,
+            "settled_train_record_count": 200,
+            "validation_record_count": 20,
+            "baseline_structurally_ready": True,
+            "tree_structurally_ready": True,
+            "baseline_experiment_id": baseline_experiment_id,
+            "tree_experiment_id": "1" * 64,
+            "baseline_qualifies_development": baseline_qualifies,
+            "tree_qualifies_development": False,
+            "cycle_id": "f" * 64,
+            "research_only": True,
+            "promotion_eligible": False,
+            "execution_ready": False,
+        },
+    )
+
+
 def test_learning_dashboard_reports_non_economic_readiness(tmp_path: Path) -> None:
     state = tmp_path / "state"
     _state(state)
@@ -100,6 +135,8 @@ def test_learning_dashboard_reports_non_economic_readiness(tmp_path: Path) -> No
     assert status["target_train_records"] == 200
     assert status["target_validation_records"] == 20
     assert status["cycle_status"] == "not_published"
+    assert status["frozen_candidate_count"] == 0
+    assert status["frozen_candidates"] == ()
     assert status["research_only"] is True
     assert status["promotion_eligible"] is False
     assert status["execution_ready"] is False
@@ -170,5 +207,87 @@ def test_learning_dashboard_rejects_cycle_from_other_state(tmp_path: Path) -> No
     with pytest.raises(
         LearningDashboardError,
         match="CYCLE_FEATURE_STATE_DIGEST_MISMATCH",
+    ):
+        build_learning_operations_status(state, cycle_root=cycle)
+
+
+def test_learning_dashboard_verifies_and_surfaces_frozen_candidate(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    cycle = tmp_path / "cycle"
+    _state(state)
+    experiment, experiment_root = _run(tmp_path, output_name="cycle/baseline")
+    _completed_cycle(
+        cycle,
+        baseline_experiment_id=experiment.experiment_id,
+        baseline_qualifies=True,
+    )
+    freeze = build_learning_candidate_freeze(
+        experiment_root=experiment_root,
+        frozen_at_ms=200_000,
+    )
+    write_learning_candidate_freeze(
+        cycle / "frozen-candidates" / "baseline",
+        freeze,
+    )
+
+    status = build_learning_operations_status(state, cycle_root=cycle)
+    markdown = render_learning_operations_markdown(status)
+
+    assert status["state"] == "research_cycle_completed"
+    assert status["frozen_candidate_count"] == 1
+    candidates = status["frozen_candidates"]
+    assert isinstance(candidates, tuple)
+    assert candidates == (
+        {
+            "label": "baseline",
+            "candidate_id": freeze.candidate_id,
+            "experiment_id": freeze.experiment_id,
+            "model_family": freeze.model_family,
+            "validation_not_before_ms": freeze.validation_not_before_ms,
+        },
+    )
+    assert freeze.candidate_id in markdown
+    assert str(freeze.validation_not_before_ms) in markdown
+    assert "Frozen development candidates: 1" in markdown
+    assert "pnl" not in markdown.lower()
+    assert "net_r" not in markdown.lower()
+
+
+def test_learning_dashboard_rejects_qualified_candidate_without_freeze(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    cycle = tmp_path / "cycle"
+    _state(state)
+    experiment, _experiment_root = _run(tmp_path, output_name="cycle/baseline")
+    _completed_cycle(
+        cycle,
+        baseline_experiment_id=experiment.experiment_id,
+        baseline_qualifies=True,
+    )
+
+    with pytest.raises(
+        LearningDashboardError,
+        match="QUALIFIED_CANDIDATE_FREEZE_MISSING:baseline",
+    ):
+        build_learning_operations_status(state, cycle_root=cycle)
+
+
+def test_learning_dashboard_rejects_freeze_on_not_ready_cycle(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    cycle = tmp_path / "cycle"
+    _state(state)
+    _cycle(cycle)
+    frozen = cycle / "frozen-candidates" / "baseline"
+    frozen.mkdir(parents=True)
+    (frozen / "candidate-freeze.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(
+        LearningDashboardError,
+        match="NOT_READY_CYCLE_CANNOT_HAVE_FROZEN_CANDIDATES",
     ):
         build_learning_operations_status(state, cycle_root=cycle)
