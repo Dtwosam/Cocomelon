@@ -18,6 +18,7 @@ def test_clean_state_continuity_is_bounded_and_read_only() -> None:
     assert "actions: read" in source
     assert "actions: write" not in source
     assert "cancel-in-progress: false" in source
+    assert "group: research-learning-clean-state-lineage-mutator" in source
     assert "retention-days: 90" in source
 
 
