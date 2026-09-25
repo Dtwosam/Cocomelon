@@ -4,22 +4,16 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
-from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import EvidenceClass
-from cocomelon.domain.strategy import Direction
-from cocomelon.execution_learning_sync_cli import execution_learning_sync_payload
-from cocomelon.journal.store import JournalStore
-from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
-from cocomelon.research.outcome_learning import LearningEvidenceKind, LearningEvidenceLedger
+from cocomelon import execution_learning_sync_cli
+from cocomelon.domain import features, journal, market, replay, strategy
+from cocomelon.journal import store as journal_store
+from cocomelon.research import learning_feature_snapshots, outcome_learning
+
+MARKET = market.MarketId("", "HYPE")
 
 
-MARKET = MarketId("", "HYPE")
-
-
-def _snapshot(*, as_of_ms: int = 9_000, market: MarketId = MARKET) -> FeatureSnapshot:
-    return FeatureSnapshot(
+def _snapshot(*, as_of_ms: int = 9_000, market: market.MarketId = MARKET) -> features.FeatureSnapshot:
+    return features.FeatureSnapshot(
         market=market,
         as_of_ms=as_of_ms,
         source_received_at_ms=as_of_ms - 100,
@@ -43,16 +37,16 @@ def _snapshot(*, as_of_ms: int = 9_000, market: MarketId = MARKET) -> FeatureSna
         ask_depth_25bps=Decimal("230000"),
         book_imbalance=Decimal("0.04"),
         book_age_ms=50,
-        trend_regime=TrendRegime.UP,
-        volatility_regime=VolatilityRegime.NORMAL,
+        trend_regime=features.TrendRegime.UP,
+        volatility_regime=features.VolatilityRegime.NORMAL,
         provenance=("hyperliquid-mainnet-info",),
     )
 
 
-def _trade(snapshot: FeatureSnapshot, *, run_id: str = "run-1") -> TradeJournalEntry:
-    return TradeJournalEntry(
+def _trade(snapshot: features.FeatureSnapshot, *, run_id: str = "run-1") -> journal.TradeJournalEntry:
+    return journal.TradeJournalEntry(
         market=MARKET,
-        direction=Direction.LONG,
+        direction=strategy.Direction.LONG,
         opened_at_ms=10_000,
         closed_at_ms=20_000,
         feature_snapshot_id=snapshot.snapshot_id,
@@ -87,20 +81,20 @@ def _trade(snapshot: FeatureSnapshot, *, run_id: str = "run-1") -> TradeJournalE
         equity_after=Decimal("10009.0955"),
         exit_reason="exit_thesis",
         health_refs=("paper-state-healthy",),
-        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        evidence_class=replay.EvidenceClass.MICROSTRUCTURE,
         replay_run_id=run_id,
     )
 
 
-def _source(tmp_path, *, snapshot: FeatureSnapshot, run_id: str = "run-1"):
+def _source(tmp_path, *, snapshot: features.FeatureSnapshot, run_id: str = "run-1"):
     journal_path = tmp_path / "journal.sqlite3"
-    journal = JournalStore(journal_path)
+    journal = journal_store.JournalStore(journal_path)
     try:
         journal.record_trade(_trade(snapshot, run_id=run_id))
     finally:
         journal.close()
     feature_store_dir = tmp_path / "features"
-    feature_store = LearningFeatureSnapshotStore(feature_store_dir)
+    feature_store = learning_feature_snapshots.LearningFeatureSnapshotStore(feature_store_dir)
     feature_store.record(snapshot)
     return journal_path, feature_store_dir
 
@@ -112,21 +106,21 @@ def test_execution_learning_sync_is_idempotent_and_preserves_execution_economics
     journal_path, feature_store_dir = _source(tmp_path, snapshot=snapshot)
     learning_root = tmp_path / "learning"
 
-    first = execution_learning_sync_payload(
+    first = execution_learning_sync_cli.execution_learning_sync_payload(
         journal_path=journal_path,
         feature_store_dir=feature_store_dir,
         learning_root=learning_root,
         candidate_id="candidate-paper-v1",
-        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
         research_eligible_at_ms=30_000,
         expected_replay_run_id="run-1",
     )
-    second = execution_learning_sync_payload(
+    second = execution_learning_sync_cli.execution_learning_sync_payload(
         journal_path=journal_path,
         feature_store_dir=feature_store_dir,
         learning_root=learning_root,
         candidate_id="candidate-paper-v1",
-        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
         research_eligible_at_ms=30_000,
         expected_replay_run_id="run-1",
     )
@@ -137,7 +131,7 @@ def test_execution_learning_sync_is_idempotent_and_preserves_execution_economics
     assert second["created_records"] == 0
     assert second["existing_records"] == 1
 
-    records = LearningEvidenceLedger(learning_root).iter_records()
+    records = outcome_learning.LearningEvidenceLedger(learning_root).iter_records()
     assert len(records) == 1
     record = records[0]
     assert record.feature_snapshot_id == snapshot.snapshot_id
@@ -157,12 +151,12 @@ def test_execution_learning_sync_rejects_wrong_replay_run(tmp_path) -> None:
     )
 
     with pytest.raises(ValueError, match="does not match expected replay run"):
-        execution_learning_sync_payload(
+        execution_learning_sync_cli.execution_learning_sync_payload(
             journal_path=journal_path,
             feature_store_dir=feature_store_dir,
             learning_root=tmp_path / "learning",
             candidate_id="candidate-paper-v1",
-            kind=LearningEvidenceKind.PAPER_EXECUTION,
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
             research_eligible_at_ms=30_000,
             expected_replay_run_id="run-b",
         )
@@ -174,12 +168,12 @@ def test_execution_learning_sync_rejects_missing_authenticated_snapshot(tmp_path
     empty_store = tmp_path / "empty-features"
 
     with pytest.raises(ValueError, match="missing authenticated feature snapshot"):
-        execution_learning_sync_payload(
+        execution_learning_sync_cli.execution_learning_sync_payload(
             journal_path=journal_path,
             feature_store_dir=empty_store,
             learning_root=tmp_path / "learning",
             candidate_id="candidate-paper-v1",
-            kind=LearningEvidenceKind.PAPER_EXECUTION,
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
             research_eligible_at_ms=30_000,
             expected_replay_run_id="run-1",
         )
@@ -190,12 +184,12 @@ def test_execution_learning_sync_rejects_feature_after_trade_open(tmp_path) -> N
     journal_path, feature_store_dir = _source(tmp_path, snapshot=snapshot)
 
     with pytest.raises(ValueError, match="after trade open"):
-        execution_learning_sync_payload(
+        execution_learning_sync_cli.execution_learning_sync_payload(
             journal_path=journal_path,
             feature_store_dir=feature_store_dir,
             learning_root=tmp_path / "learning",
             candidate_id="candidate-paper-v1",
-            kind=LearningEvidenceKind.PAPER_EXECUTION,
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
             research_eligible_at_ms=30_000,
             expected_replay_run_id="run-1",
         )
