@@ -18,7 +18,8 @@ def test_v3_transport_is_scheduler_independent_and_source_pinned() -> None:
     assert "target_capture_ms:" in source
     assert "queue_parent_run_id:" in source
     assert "\n  schedule:" not in source
-    assert "cron:" not in source
+    assert "\n  schedule:" not in source
+    assert '"schedule_cron"' + ":" not in source
     assert f"OBSERVER_SOURCE_REVISION: {PINNED_REVISION}" in source
     assert f"ref: {PINNED_REVISION}" in source
     assert "persist-credentials: false" in source
@@ -51,13 +52,14 @@ def test_v3_duplicate_dispatches_are_leader_elected_before_state_touch() -> None
     assert '"proceed=true\\n"' in source
     assert '"proceed=false"' not in source
     assert "needs.prepare.outputs.proceed == 'true'" in source
+    assert "V3_TRANSPORT_MAIN_REF_REQUIRED" in source
 
 
 def test_v3_dispatch_retries_only_transient_github_failures() -> None:
     source = _source()
 
     assert "attempt=1" in source
-    assert "attempt -ge 5" in source
+    assert '"$attempt" -ge 5' in source
     assert "HTTP (500|502|503|504)" in source
     assert 'gh workflow run "$WORKFLOW_FILE"' in source
     assert '--ref main' in source
