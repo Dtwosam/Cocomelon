@@ -15,8 +15,12 @@ def test_learning_cycle_workflow_follows_successful_learning_sync() -> None:
     assert "Research Autonomous Learning Cycle" in source
     assert 'workflows: ["Research Learning Evidence Sync"]' in source
     assert "types: [completed]" in source
+    assert "workflow_dispatch:" in source
+    assert "upstream_run_id:" in source
     assert "github.event.workflow_run.conclusion == 'success'" in source
     assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event_name == 'workflow_dispatch'" in source
+    assert 'inputs.upstream_run_id' in source
     assert "\n  schedule:" not in source
 
 
@@ -30,6 +34,8 @@ def test_learning_cycle_workflow_binds_exact_state_artifact_and_protocol() -> No
     assert "git rev-parse HEAD" in source
     assert "expected-learning-state-digest" in source
     assert "expected-feature-state-digest" in source
+    assert 'run.get("id") != int(os.environ["RUN_ID"])' in source
+    assert 'run.get("head_sha")' in source
 
 
 def test_learning_cycle_workflow_remains_research_only() -> None:

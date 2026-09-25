@@ -4,6 +4,12 @@ on:
   workflow_run:
     workflows: ["Research Learning Evidence Sync"]
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful learning sync run ID to recover
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,8 +25,9 @@ env:
 jobs:
   cycle:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -45,14 +52,24 @@ jobs:
         id: state
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "upstream learning sync run id is invalid" >&2
+            exit 64
+          fi
+
           mkdir -p learning-state
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/learning-sync-run.json
-          python - <<'PY'
+          RUN_ID="$RUN_ID" python - <<'PY'
           import json
           import os
           from pathlib import Path
@@ -60,24 +77,35 @@ jobs:
           run = json.loads(
               Path("/tmp/learning-sync-run.json").read_text(encoding="utf-8")
           )
-          expected = {
-              "id": int(os.environ["RUN_ID"]),
-              "run_attempt": int(os.environ["RUN_ATTEMPT"]),
-              "head_branch": "main",
-              "head_sha": os.environ["HEAD_SHA"],
-              "conclusion": "success",
-              "event": "workflow_run",
-              "path": ".github/workflows/research-learning-evidence.yml",
-              "name": "Research Learning Evidence Sync",
-          }
-          for key, value in expected.items():
-              if run.get(key) != value:
-                  raise SystemExit(f"untrusted learning sync run: {key}")
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("learning sync run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("learning sync run is not from main")
+          if run.get("conclusion") != "success":
+              raise SystemExit("learning sync run did not succeed")
+          if run.get("event") not in {"workflow_run", "workflow_dispatch"}:
+              raise SystemExit("learning sync run event is invalid")
+          if run.get("path") != ".github/workflows/research-learning-evidence.yml":
+              raise SystemExit("learning sync workflow path is invalid")
+          if run.get("name") != "Research Learning Evidence Sync":
+              raise SystemExit("learning sync workflow name is invalid")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("learning sync head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("learning sync run attempt is invalid")
           repository = run.get("head_repository") or {}
           if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
               raise SystemExit("learning sync run is from another repository")
           PY
 
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/learning-sync-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/learning-sync-run.json)"
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/learning-sync-artifacts.json
           ARTIFACT_ROW="$(
             python - <<'PY'
@@ -108,6 +136,9 @@ jobs:
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/research-learning-state.zip
           unzip -q /tmp/research-learning-state.zip -d learning-state
           {
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
             echo "artifact_id=$ARTIFACT_ID"
             echo "artifact_digest=$ARTIFACT_DIGEST"
           } >> "$GITHUB_OUTPUT"
