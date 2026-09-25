@@ -105,8 +105,7 @@ jobs:
               "/repos/$GITHUB_REPOSITORY/actions/workflows/$WORKFLOW_FILE/runs?event=workflow_dispatch&branch=main&per_page=100" \
               > /tmp/v3-dispatch-runs.json
           else
-            printf '{"workflow_runs":[]}
-' > /tmp/v3-dispatch-runs.json
+            printf '%s\\n' '{"workflow_runs":[]}' > /tmp/v3-dispatch-runs.json
           fi
 
           PYTHONPATH=src python - <<'PY'
