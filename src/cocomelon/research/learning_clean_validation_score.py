@@ -15,10 +15,9 @@ from cocomelon.research.learning_clean_validation_spec import (
     LearningCleanValidationSpec,
     verify_learning_clean_validation_spec,
 )
-from cocomelon.research.outcome_learning import (
-    LearningEvidenceKind,
-    LearningEvidenceLedger,
-    LearningEvidenceRecord,
+from cocomelon.research.learning_clean_evidence import (
+    LearningCleanEvidenceStore,
+    LearningCleanTradeOutcome,
 )
 
 LEARNING_CLEAN_VALIDATION_SCORE_SCHEMA_VERSION = 1
@@ -86,7 +85,7 @@ class LearningCleanValidationScore:
     validation_spec_id: str
     candidate_package_id: str
     as_of_ms: int
-    ledger_state_digest: str
+    clean_evidence_state_digest: str
     eligible_settled_trade_count: int
     target_settled_trades: int
     selected_record_ids: tuple[str, ...]
@@ -106,7 +105,7 @@ class LearningCleanValidationScore:
             "candidate_id",
             "validation_spec_id",
             "candidate_package_id",
-            "ledger_state_digest",
+            "clean_evidence_state_digest",
         ):
             _require_sha256(getattr(self, field), field)
         if self.as_of_ms < 0:
@@ -160,7 +159,7 @@ class LearningCleanValidationScore:
             "validation_spec_id": self.validation_spec_id,
             "candidate_package_id": self.candidate_package_id,
             "as_of_ms": self.as_of_ms,
-            "ledger_state_digest": self.ledger_state_digest,
+            "clean_evidence_state_digest": self.clean_evidence_state_digest,
             "eligible_settled_trade_count": self.eligible_settled_trade_count,
             "target_settled_trades": self.target_settled_trades,
             "selected_record_ids": self.selected_record_ids,
@@ -186,45 +185,17 @@ class LearningCleanValidationScore:
         return {**self.identity_payload(), "score_id": self.score_id}
 
 
-def _eligible_records(
-    records: tuple[LearningEvidenceRecord, ...],
+def _settled_outcomes_as_of(
+    outcomes: tuple[LearningCleanTradeOutcome, ...],
     *,
-    spec: LearningCleanValidationSpec,
     as_of_ms: int,
-) -> tuple[LearningEvidenceRecord, ...]:
-    eligible: list[LearningEvidenceRecord] = []
-    for record in records:
-        if record.kind is not LearningEvidenceKind.PAPER_EXECUTION:
-            continue
-        if record.candidate_id != spec.candidate_id:
-            continue
-        if record.candidate_spec_id != spec.spec_id:
-            continue
-        if record.opened_at_ms < spec.validation_start_ms:
-            continue
-        if record.research_eligible_at_ms > as_of_ms:
-            continue
-        if record.net_r is None:
-            raise LearningCleanValidationScoreError(
-                "LEARNING_CLEAN_VALIDATION_NET_R_MISSING"
-            )
-        eligible.append(record)
-    return tuple(
-        sorted(
-            eligible,
-            key=lambda item: (
-                item.closed_at_ms,
-                item.opened_at_ms,
-                item.market.canonical,
-                item.record_id,
-            ),
-        )
-    )
+) -> tuple[LearningCleanTradeOutcome, ...]:
+    return tuple(outcome for outcome in outcomes if outcome.closed_at_ms <= as_of_ms)
 
 
 def score_learning_clean_validation(
     *,
-    ledger_root: Path,
+    evidence_root: Path,
     package_root: Path,
     validation_spec_path: Path,
     as_of_ms: int,
@@ -250,11 +221,14 @@ def score_learning_clean_validation(
             "LEARNING_CLEAN_VALIDATION_BEFORE_START"
         )
 
-    ledger = LearningEvidenceLedger(ledger_root)
-    records = ledger.iter_records()
-    eligible = _eligible_records(records, spec=spec, as_of_ms=as_of_ms)
+    evidence = LearningCleanEvidenceStore(evidence_root, spec=spec)
+    evidence.verify()
+    eligible = _settled_outcomes_as_of(
+        evidence.iter_outcomes(),
+        as_of_ms=as_of_ms,
+    )
     selected = eligible[: spec.target_settled_trades]
-    selected_ids = tuple(record.record_id for record in selected)
+    selected_ids = tuple(outcome.outcome_id for outcome in selected)
 
     if len(selected) < spec.target_settled_trades:
         return LearningCleanValidationScore(
@@ -262,7 +236,7 @@ def score_learning_clean_validation(
             validation_spec_id=spec.spec_id,
             candidate_package_id=spec.candidate_package_id,
             as_of_ms=as_of_ms,
-            ledger_state_digest=ledger.state_digest,
+            clean_evidence_state_digest=evidence.state_digest,
             eligible_settled_trade_count=len(eligible),
             target_settled_trades=spec.target_settled_trades,
             selected_record_ids=selected_ids,
@@ -272,18 +246,18 @@ def score_learning_clean_validation(
             qualifies_clean_validation=None,
         )
 
-    values = tuple(cast(Decimal, record.net_r) for record in selected)
+    values = tuple(outcome.net_r for outcome in selected)
     overall = _mean(values)
     blocks: list[LearningCleanValidationBlock] = []
     for block_index in range(spec.stability_blocks):
-        start = block_index * spec.trades_per_block
-        end = start + spec.trades_per_block
-        block_records = selected[start:end]
-        block_values = tuple(cast(Decimal, record.net_r) for record in block_records)
+        block_start = block_index * spec.trades_per_block
+        block_end = block_start + spec.trades_per_block
+        block_outcomes = selected[block_start:block_end]
+        block_values = tuple(outcome.net_r for outcome in block_outcomes)
         blocks.append(
             LearningCleanValidationBlock(
                 block_index=block_index + 1,
-                record_ids=tuple(record.record_id for record in block_records),
+                record_ids=tuple(outcome.outcome_id for outcome in block_outcomes),
                 mean_net_r=_mean(block_values),
             )
         )
@@ -297,7 +271,7 @@ def score_learning_clean_validation(
         validation_spec_id=spec.spec_id,
         candidate_package_id=spec.candidate_package_id,
         as_of_ms=as_of_ms,
-        ledger_state_digest=ledger.state_digest,
+        clean_evidence_state_digest=evidence.state_digest,
         eligible_settled_trade_count=len(eligible),
         target_settled_trades=spec.target_settled_trades,
         selected_record_ids=selected_ids,
@@ -306,204 +280,6 @@ def score_learning_clean_validation(
         blocks=tuple(blocks),
         qualifies_clean_validation=qualifies,
     )
-
-
-def _mapping(value: object, field: str) -> dict[str, object]:
-    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
-        raise LearningCleanValidationScoreError(f"{field} must be a JSON object")
-    return cast(dict[str, object], value)
-
-
-def _string(value: object, field: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise LearningCleanValidationScoreError(
-            f"{field} must be a non-empty string"
-        )
-    return value
-
-
-def _integer(value: object, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise LearningCleanValidationScoreError(
-            f"{field} must be a non-negative integer"
-        )
-    return value
-
-
-def _boolean(value: object, field: str) -> bool:
-    if not isinstance(value, bool):
-        raise LearningCleanValidationScoreError(f"{field} must be boolean")
-    return value
-
-
-def _optional_boolean(value: object, field: str) -> bool | None:
-    if value is None:
-        return None
-    return _boolean(value, field)
-
-
-def _optional_decimal(value: object, field: str) -> Decimal | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise LearningCleanValidationScoreError(
-            f"{field} must be a decimal string or null"
-        )
-    try:
-        resolved = Decimal(value)
-    except Exception as exc:
-        raise LearningCleanValidationScoreError(
-            f"{field} must be a decimal string or null"
-        ) from exc
-    if not resolved.is_finite():
-        raise LearningCleanValidationScoreError(f"{field} must be finite")
-    return resolved
-
-
-def _score_from_payload(raw: dict[str, object]) -> LearningCleanValidationScore:
-    raw_record_ids = raw.get("selected_record_ids")
-    if not isinstance(raw_record_ids, list) or not all(
-        isinstance(item, str) for item in raw_record_ids
-    ):
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_RECORD_IDS_INVALID"
-        )
-    raw_blocks = raw.get("blocks")
-    if not isinstance(raw_blocks, list):
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_BLOCKS_INVALID"
-        )
-    blocks: list[LearningCleanValidationBlock] = []
-    for index, raw_block in enumerate(raw_blocks):
-        block = _mapping(raw_block, f"blocks[{index}]")
-        record_ids = block.get("record_ids")
-        if not isinstance(record_ids, list) or not all(
-            isinstance(item, str) for item in record_ids
-        ):
-            raise LearningCleanValidationScoreError(
-                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCKS_INVALID"
-            )
-        trade_count = _integer(block.get("trade_count"), "block trade_count")
-        if trade_count != len(record_ids):
-            raise LearningCleanValidationScoreError(
-                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCK_COUNT_MISMATCH"
-            )
-        mean = _optional_decimal(block.get("mean_net_r"), "block mean_net_r")
-        if mean is None:
-            raise LearningCleanValidationScoreError(
-                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCK_MEAN_REQUIRED"
-            )
-        blocks.append(
-            LearningCleanValidationBlock(
-                block_index=_integer(block.get("block_index"), "block_index"),
-                record_ids=tuple(record_ids),
-                mean_net_r=mean,
-            )
-        )
-
-    try:
-        score = LearningCleanValidationScore(
-            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
-            validation_spec_id=_string(
-                raw.get("validation_spec_id"),
-                "validation_spec_id",
-            ),
-            candidate_package_id=_string(
-                raw.get("candidate_package_id"),
-                "candidate_package_id",
-            ),
-            as_of_ms=_integer(raw.get("as_of_ms"), "as_of_ms"),
-            ledger_state_digest=_string(
-                raw.get("ledger_state_digest"),
-                "ledger_state_digest",
-            ),
-            eligible_settled_trade_count=_integer(
-                raw.get("eligible_settled_trade_count"),
-                "eligible_settled_trade_count",
-            ),
-            target_settled_trades=_integer(
-                raw.get("target_settled_trades"),
-                "target_settled_trades",
-            ),
-            selected_record_ids=tuple(raw_record_ids),
-            status=_string(raw.get("status"), "status"),
-            overall_mean_net_r=_optional_decimal(
-                raw.get("overall_mean_net_r"),
-                "overall_mean_net_r",
-            ),
-            blocks=tuple(blocks),
-            qualifies_clean_validation=_optional_boolean(
-                raw.get("qualifies_clean_validation"),
-                "qualifies_clean_validation",
-            ),
-            paper_only=_boolean(raw.get("paper_only"), "paper_only"),
-            prospective_only=_boolean(
-                raw.get("prospective_only"),
-                "prospective_only",
-            ),
-            research_only=_boolean(raw.get("research_only"), "research_only"),
-            promotion_eligible=_boolean(
-                raw.get("promotion_eligible"),
-                "promotion_eligible",
-            ),
-            execution_ready=_boolean(
-                raw.get("execution_ready"),
-                "execution_ready",
-            ),
-            schema_version=_integer(raw.get("schema_version"), "schema_version"),
-        )
-    except ValueError as exc:
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_INVALID"
-        ) from exc
-    if raw.get("score_id") != score.score_id:
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_ID_MISMATCH"
-        )
-    return score
-
-
-def load_learning_clean_validation_score(
-    path: Path,
-) -> LearningCleanValidationScore:
-    try:
-        stored_bytes = path.read_bytes()
-        raw = _mapping(
-            json.loads(stored_bytes),
-            "learning clean validation score",
-        )
-    except (OSError, json.JSONDecodeError) as exc:
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_INVALID"
-        ) from exc
-    score = _score_from_payload(raw)
-    canonical = (_canonical_json(score.to_dict()) + "\n").encode("utf-8")
-    if stored_bytes != canonical:
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_NON_CANONICAL"
-        )
-    return score
-
-
-def verify_learning_clean_validation_score(
-    path: Path,
-    *,
-    ledger_root: Path,
-    package_root: Path,
-    validation_spec_path: Path,
-) -> LearningCleanValidationScore:
-    stored = load_learning_clean_validation_score(path)
-    expected = score_learning_clean_validation(
-        ledger_root=ledger_root,
-        package_root=package_root,
-        validation_spec_path=validation_spec_path,
-        as_of_ms=stored.as_of_ms,
-    )
-    if stored != expected:
-        raise LearningCleanValidationScoreError(
-            "LEARNING_CLEAN_VALIDATION_SCORE_EVIDENCE_MISMATCH"
-        )
-    return stored
 
 
 def write_learning_clean_validation_score(
