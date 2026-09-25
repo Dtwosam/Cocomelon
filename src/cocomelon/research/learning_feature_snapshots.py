@@ -273,7 +273,7 @@ class LearningFeatureSnapshotStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             try:
-                os.replace(temporary, path)
+                os.link(temporary, path)
             except FileExistsError:
                 if path.read_bytes() != encoded:
                     raise LearningFeatureSnapshotError(
