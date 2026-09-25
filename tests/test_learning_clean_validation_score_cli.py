@@ -11,7 +11,7 @@ def test_learning_clean_validation_score_cli_materializes_verified_score(
     tmp_path,
     capsys,
 ) -> None:
-    freeze, package_root, spec, spec_path, ledger_root = _setup(tmp_path)
+    freeze, package_root, spec, spec_path, evidence_root = _setup(tmp_path)
     _append(
         ledger_root,
         candidate_id=freeze.candidate_id,
@@ -23,7 +23,7 @@ def test_learning_clean_validation_score_cli_materializes_verified_score(
 
     status = main(
         [
-            "--ledger-root",
+            "--evidence-root",
             str(ledger_root),
             "--package-root",
             str(package_root),
