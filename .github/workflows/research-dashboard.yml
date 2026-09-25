@@ -278,7 +278,8 @@ jobs:
               echo "trusted learning cycle artifact is incomplete" >&2
               exit 69
             fi
-            cp "$CYCLE_PATH" dashboard/cycle/cycle.json
+            CYCLE_ROOT="$(dirname "$CYCLE_PATH")"
+            cp -a "$CYCLE_ROOT"/. dashboard/cycle/
             printf 'true\n' > dashboard/cycle-available.txt
           fi
 
