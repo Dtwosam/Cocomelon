@@ -6,6 +6,7 @@ on:
   workflow_run:
     workflows:
       - Scheduled Genuine Mainnet Evidence Campaign V4
+      - Research V4 Acquisition Authority Sync
     types: [completed]
   workflow_dispatch:
 
