@@ -33,12 +33,9 @@ def _optional_decimal(value: object) -> Decimal | None:
 
 
 def _int_value(value: object, field: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, (int, str)):
+    if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"learning dataset {field} must be an integer")
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise ValueError(f"learning dataset {field} must be an integer") from exc
+    return value
 
 
 def _market_from_canonical(value: str) -> MarketId:
