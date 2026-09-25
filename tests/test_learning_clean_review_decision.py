@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal
-
 import pytest
 
 from cocomelon.research.learning_clean_review_decision import (
