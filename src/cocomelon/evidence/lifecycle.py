@@ -12,6 +12,7 @@ from cocomelon.domain.execution import (
     PaperOrderPlan,
     PositionAction,
 )
+from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
@@ -71,6 +72,10 @@ class DecisionEpochEngine(Protocol):
     def flush(self, end_ms: int) -> tuple[DecisionEpoch, ...]: ...
 
 
+class FeatureSnapshotSink(Protocol):
+    def record(self, snapshot: FeatureSnapshot) -> bool: ...
+
+
 @dataclass(slots=True)
 class _OpenTradeLifecycle:
     evaluation: EpochMarketEvaluation
@@ -103,6 +108,7 @@ class BaselineReplayPipeline:
         evidence_class: EvidenceClass,
         decision_engine: DecisionEpochEngine | None = None,
         new_exposure_cutoff_ms: int | None = None,
+        feature_snapshot_sink: FeatureSnapshotSink | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -122,6 +128,7 @@ class BaselineReplayPipeline:
         self._run_id = replay_run_id
         self._evidence_class = evidence_class
         self._new_exposure_cutoff_ms = new_exposure_cutoff_ms
+        self._feature_snapshot_sink = feature_snapshot_sink
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
             replay_config=replay_config,
@@ -179,6 +186,8 @@ class BaselineReplayPipeline:
         for evaluation in epoch.markets:
             decision = evaluation.decision
             self._latest_evaluation[decision.market.canonical] = evaluation
+            if self._feature_snapshot_sink is not None:
+                self._feature_snapshot_sink.record(evaluation.feature)
             self._facts.record_decision_fact(
                 decision_evaluation_fact(
                     decision,
