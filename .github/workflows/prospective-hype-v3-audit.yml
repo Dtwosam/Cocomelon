@@ -57,6 +57,7 @@ jobs:
       STATE_ARTIFACT_NAME: prospective-hype-v3-clean-state
       OBSERVER_WORKFLOW_PATH: .github/workflows/prospective-hype-v3-clean.yml
       PINNED_SOURCE_REVISION: 298723c52d6a3b09839d05451d3d7db9753815bf
+      OBSERVER_WORKFLOW_BLOB_SHA: e00502dacb925d03bd90328f6ea39f6d195d0fa5
       DISPATCH_WORKFLOW_FILE: prospective-hype-v3-clean.yml
       RUN_TITLE_PREFIX: Prospective HYPE V3 capture
       UPSTREAM_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
@@ -333,6 +334,26 @@ jobs:
             exit 0
           fi
 
+          producer_head_sha="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/v3-producer-run.json").read_text(encoding="utf-8")
+          )
+          print(payload["head_sha"])
+          PY
+          )"
+          if ! gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/contents/$OBSERVER_WORKFLOW_PATH?ref=$producer_head_sha" \
+            > /tmp/v3-producer-workflow-file.json
+          then
+            echo "reason_code=PRODUCER_WORKFLOW_BLOB_METADATA_FAILED" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [[ "$PREVIOUS_STATE_ID" != "none" ]]; then
             if ! gh api               -H "Accept: application/vnd.github+json"               "/repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS_STATE_ID"               > /tmp/v3-previous-state-meta.json
             then
@@ -355,9 +376,29 @@ jobs:
               echo "reason_code=PREVIOUS_PRODUCER_RUN_METADATA_FAILED" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            previous_head_sha="$(
+              python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/v3-previous-producer-run.json").read_text(encoding="utf-8")
+          )
+          print(payload["head_sha"])
+          PY
+            )"
+            if ! gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/contents/$OBSERVER_WORKFLOW_PATH?ref=$previous_head_sha" \
+              > /tmp/v3-previous-producer-workflow-file.json
+            then
+              echo "reason_code=PREVIOUS_PRODUCER_WORKFLOW_BLOB_METADATA_FAILED" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           else
             printf '{}\n' > /tmp/v3-previous-state-meta.json
             printf '{}\n' > /tmp/v3-previous-producer-run.json
+            printf '{}\n' > /tmp/v3-previous-producer-workflow-file.json
           fi
 
           python - <<'PY'
@@ -376,6 +417,14 @@ jobs:
           previous_run = json.loads(
               Path("/tmp/v3-previous-producer-run.json").read_text(encoding="utf-8")
           )
+          producer_workflow_file = json.loads(
+              Path("/tmp/v3-producer-workflow-file.json").read_text(encoding="utf-8")
+          )
+          previous_producer_workflow_file = json.loads(
+              Path("/tmp/v3-previous-producer-workflow-file.json").read_text(
+                  encoding="utf-8"
+              )
+          )
           workflow = state.get("workflow_run")
           valid = (
               str(state.get("id")) == os.environ["STATE_ID"]
@@ -390,6 +439,8 @@ jobs:
               and run.get("conclusion") == "success"
               and run.get("repository", {}).get("full_name")
               == os.environ["GITHUB_REPOSITORY"]
+              and producer_workflow_file.get("sha")
+              == os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
           )
 
           health_prefix = (
@@ -424,7 +475,24 @@ jobs:
                   and previous_run.get("conclusion") == "success"
                   and previous_run.get("repository", {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
+                  and previous_producer_workflow_file.get("sha")
+                  == os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
               )
+
+          workflow_blob_valid = (
+              producer_workflow_file.get("sha")
+              == os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
+          )
+          previous_workflow_blob_valid = (
+              previous_id == "none"
+              or previous_producer_workflow_file.get("sha")
+              == os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
+          )
+          reason_code = "PRODUCER_PROVENANCE_INVALID"
+          if not workflow_blob_valid:
+              reason_code = "PRODUCER_WORKFLOW_BLOB_DRIFT"
+          elif not previous_workflow_blob_valid:
+              reason_code = "PREVIOUS_PRODUCER_WORKFLOW_BLOB_DRIFT"
 
           with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as handle:
               if valid:
@@ -434,11 +502,17 @@ jobs:
                   handle.write(
                       f"previous_producer_run_id={previous_run_id}\n"
                   )
+                  handle.write(
+                      "workflow_blob_sha="
+                      + os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
+                      + "\n"
+                  )
               else:
                   handle.write("status=failure\n")
-                  handle.write("reason_code=PRODUCER_PROVENANCE_INVALID\n")
+                  handle.write(f"reason_code={reason_code}\n")
                   handle.write("health_id=none\n")
                   handle.write("previous_producer_run_id=none\n")
+                  handle.write("workflow_blob_sha=none\n")
           PY
 
       - name: Download V3 state and health
@@ -449,6 +523,7 @@ jobs:
           STATE_ID: ${{ steps.discover.outputs.state_id }}
           PREVIOUS_STATE_ID: ${{ steps.discover.outputs.previous_state_id }}
           HEALTH_ID: ${{ steps.provenance.outputs.health_id }}
+          WORKFLOW_BLOB_SHA: ${{ steps.provenance.outputs.workflow_blob_sha }}
         run: |
           set -euo pipefail
           mkdir -p "$AUDIT_ROOT/state" "$AUDIT_ROOT/health"
@@ -837,6 +912,7 @@ jobs:
               "validation_plan_id": plan.plan_id,
               "runtime_attestation_id": runtime.attestation_id,
               "control_plane_id": control["control_plane_id"],
+              "observer_workflow_blob_sha": os.environ["WORKFLOW_BLOB_SHA"],
               "state_digest": store.state_digest,
               "previous_state_digest": previous_state_digest,
               "lineage_status": lineage_status,
