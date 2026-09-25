@@ -166,3 +166,27 @@ def test_clean_evidence_store_write_is_conflict_safe(tmp_path) -> None:
         match="LEARNING_CLEAN_EVIDENCE_CONFLICT",
     ):
         store.record_prediction(prediction)
+
+
+def test_clean_evidence_store_rejects_reused_source_trade_id(tmp_path) -> None:
+    spec, predictor = _runtime(tmp_path)
+    store = LearningCleanEvidenceStore(tmp_path / "clean-evidence", spec=spec)
+    first = predictor.score(
+        feature_values=("HYPE", "long"),
+        observed_at_ms=spec.validation_start_ms,
+    )
+    second = predictor.score(
+        feature_values=("HYPE", "long"),
+        observed_at_ms=spec.validation_start_ms + 1,
+    )
+    store.record_prediction(first)
+    store.record_prediction(second)
+    store.record_outcome(_outcome(first, source_trade_id="same-paper-trade"))
+
+    with pytest.raises(
+        LearningCleanEvidenceError,
+        match="SOURCE_TRADE_DUPLICATE",
+    ):
+        store.record_outcome(
+            _outcome(second, source_trade_id="same-paper-trade")
+        )
