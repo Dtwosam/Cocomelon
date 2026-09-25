@@ -23,7 +23,7 @@ def _campaign(
     spec,
     market: MarketId = MarketId("", "HYPE"),
     snapshot_offset_ms: int = 1_000,
-) -> tuple[object, object, object]:
+) -> tuple[object, object, object, object]:
     campaign = tmp_path / f"campaign-{market.canonical}-{snapshot_offset_ms}"
     output = campaign / "audit" / "evaluated" / "root-key" / "output"
     output.mkdir(parents=True)
