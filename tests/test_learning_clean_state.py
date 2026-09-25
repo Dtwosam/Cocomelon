@@ -119,7 +119,7 @@ def test_clean_state_receipt_reverifies_and_rejects_tampering(tmp_path) -> None:
     ) == state
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["status"] = "ready_to_score"
+    payload["candidate_id"] = "0" * 64
     path.write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
