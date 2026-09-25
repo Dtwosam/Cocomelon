@@ -645,3 +645,29 @@ Current evidence boundary:
 - The next admissible paper campaign with authenticated `learning-features/` remains the required source of the first continuous-learning records.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Event-driven continuous-learning recovery — 2026-09-25
+
+PR #424 removes the ten-minute scheduler as a single recovery dependency without weakening the authenticated follower chain.
+
+Merged implementation:
+
+- `Research Learning Catch-up` now wakes on completion of both `Scheduled Research Mainnet Replay Campaign` and `Research Learning Evidence Sync`, while retaining its ten-minute cron and manual-dispatch recovery paths.
+- `workflow_run` events are wakeup signals only. Catch-up does not trust event-supplied run IDs or head SHAs; it still re-discovers the newest successful post-activation campaign and latest trusted learning state through GitHub before deciding whether recovery is needed.
+- Event-driven wakeups include a bounded ten-second registration grace so the normal workflow follower can appear before duplicate detection runs.
+- Existing active-sync/active-cycle checks, activation boundary, one-stage-per-pass behavior, and zero-new-record cycle skip remain unchanged.
+- The pre-feature-store 2026-09-25 campaign remains outside continuous learning and cannot be pulled in by the new wakeup path.
+
+Verification evidence:
+
+- #424 exact head `05e9085ae622e9637f6520f7e92a7ab88423eebb` passed CI run `36163201417` with both the full and research jobs green before merge `ab1fff95a624cbc88e70d86b510d1099a45995ed`.
+
+Operational effect:
+
+- Normal `workflow_run` followers remain the primary path.
+- Event-driven catch-up provides immediate bounded recovery when a normal follower is missed.
+- Cron/manual catch-up remains an independent fallback if event delivery is delayed or missed.
+- No strategy, sizing, learning threshold, promotion, or execution behavior changes.
+
+**LIVE TRADING: DISABLED.**
