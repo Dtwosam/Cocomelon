@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/prospective-hype-v3-clean.yml")
 PINNED_REVISION = "298723c52d6a3b09839d05451d3d7db9753815bf"
+FROZEN_WORKFLOW_BLOB_SHA = "e00502dacb925d03bd90328f6ea39f6d195d0fa5"
 
 
 def _source() -> str:
@@ -117,3 +119,9 @@ def test_v3_remains_paper_only_and_non_promotional() -> None:
     assert "actions: write" in source
     assert '"promotion_eligible": False' in source
     assert "testnet" not in source.lower()
+
+
+def test_v3_frozen_producer_workflow_bytes_cannot_drift() -> None:
+    payload = WORKFLOW.read_bytes()
+    identity = b"blob " + str(len(payload)).encode("ascii") + b"\\0" + payload
+    assert hashlib.sha1(identity).hexdigest() == FROZEN_WORKFLOW_BLOB_SHA
