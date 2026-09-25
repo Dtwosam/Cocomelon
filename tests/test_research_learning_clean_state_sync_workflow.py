@@ -17,6 +17,7 @@ def test_clean_state_follower_tracks_successful_paper_campaigns() -> None:
     assert "actions: read" in source
     assert "actions: write" not in source
     assert "cancel-in-progress: false" in source
+    assert "group: research-learning-clean-state-lineage-mutator" in source
 
 
 def test_clean_state_follower_reauthenticates_exact_campaign() -> None:
