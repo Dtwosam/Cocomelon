@@ -40,7 +40,7 @@ def test_learning_clean_validation_score_cli_materializes_verified_score(
     assert payload["candidate_id"] == freeze.candidate_id
     assert payload["status"] == "complete"
     assert payload["qualifies_clean_validation"] is True
-    assert payload["eligible_settled_trade_count"] == 20
+    assert payload["selected_settled_trade_count"] == 20
     assert payload["promotion_eligible"] is False
     assert payload["execution_ready"] is False
     assert (output_root / "candidate-validation-score.json").is_file()
