@@ -25,8 +25,6 @@ on:
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch'
       && format('Prospective HYPE V3 capture {0}', inputs.target_capture_ms)
-      || github.event_name == 'pull_request'
-      && 'Prospective HYPE V3 validation'
       || 'Prospective HYPE V3 bootstrap' }}
 
 permissions:
@@ -61,7 +59,7 @@ jobs:
           python -m pytest tests/test_prospective_hype_v3_workflow.py -q
 
   prepare:
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 270
     env:
@@ -128,6 +126,8 @@ jobs:
 
           event = os.environ["GITHUB_EVENT_NAME"]
           output = Path(os.environ["GITHUB_OUTPUT"])
+          if os.environ["GITHUB_REF"] != "refs/heads/main":
+              raise SystemExit("V3_TRANSPORT_MAIN_REF_REQUIRED")
 
           if event == "push":
               next_target = next_protected_capture_ms(time.time_ns() // 1_000_000)
@@ -1161,7 +1161,12 @@ jobs:
           print(f"- runtime attestation: {runtime['attestation_id']}")
           print(f"- observer source revision: {runtime['observer_source_revision']}")
           print(f"- control plane: {control_plane['control_plane_id']}")
-          print(f"- capture cron: {control_plane['schedule_cron']}")
+          print(f"- capture transport: {control_plane['capture_transport']}")
+          print(f"- queue depth: {control_plane['queue_depth']}")
+          print(
+              "- protected capture minute UTC: "
+              f"{control_plane['protected_capture_minute_utc']}"
+          )
           print(f"- status: {observation['status']}")
           print(f"- raw direction: {observation['raw_direction']}")
           print(f"- effective direction: {observation['effective_direction']}")
