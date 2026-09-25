@@ -7,7 +7,11 @@ import pytest
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.learning_challenger_run import (
+    LearningChallengerRunManifestError,
     build_learning_challenger_run_manifest,
+    load_learning_challenger_run_manifest,
+    verify_learning_challenger_run_manifest,
+    write_learning_challenger_run_manifest,
 )
 from cocomelon.research.learning_dataset import build_learning_dataset_snapshot
 from cocomelon.research.learning_dataset_bundle import (
@@ -130,3 +134,58 @@ def test_challenger_run_rejects_unbound_implementation_revision(tmp_path) -> Non
             decision_policy={"threshold": "0.001"},
             implementation_commit_sha="not-a-commit",
         )
+
+
+
+def test_challenger_run_manifest_round_trips_and_verifies_lineage(tmp_path) -> None:
+    bundle = _verified_bundle(tmp_path)
+    manifest = build_learning_challenger_run_manifest(
+        bundle,
+        input_kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        feature_registry=("context_state_1h", "direction"),
+        model_family="fixed_shallow_tree",
+        model_config={"max_leaf_nodes": 7},
+        decision_policy={"threshold": "0.001"},
+        implementation_commit_sha="a" * 40,
+    )
+    path = write_learning_challenger_run_manifest(
+        tmp_path / "challenger-run.json",
+        manifest,
+    )
+
+    assert load_learning_challenger_run_manifest(path) == manifest
+    assert verify_learning_challenger_run_manifest(path, bundle=bundle) == manifest
+
+
+def test_challenger_run_manifest_rejects_tampering(tmp_path) -> None:
+    manifest = _manifest(tmp_path)
+    path = write_learning_challenger_run_manifest(
+        tmp_path / "challenger-run.json",
+        manifest,
+    )
+    payload = path.read_text(encoding="utf-8").replace(
+        '"threshold":"0.001"',
+        '"threshold":"0.009"',
+    )
+    path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(
+        LearningChallengerRunManifestError,
+        match="IDENTITY_MISMATCH",
+    ):
+        load_learning_challenger_run_manifest(path)
+
+
+def test_challenger_run_manifest_refuses_conflicting_overwrite(tmp_path) -> None:
+    first = _manifest(tmp_path / "first", threshold="0.001")
+    second = _manifest(tmp_path / "second", threshold="0.002")
+    path = write_learning_challenger_run_manifest(
+        tmp_path / "challenger-run.json",
+        first,
+    )
+
+    with pytest.raises(
+        LearningChallengerRunManifestError,
+        match="MANIFEST_CONFLICT",
+    ):
+        write_learning_challenger_run_manifest(path, second)
