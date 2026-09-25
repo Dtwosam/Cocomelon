@@ -64,6 +64,10 @@ def test_clean_state_follower_verifies_and_versions_candidate_state() -> None:
     assert "cocomelon-learning-clean-state" in source
     assert 'if [ "$STATUS" = "ready_to_score" ]; then' in source
     assert "cocomelon-learning-clean-validation-score" in source
+    assert "cocomelon-learning-clean-finalize" in source
+    assert "verify_learning_clean_finalization" in source
+    assert "finalization/candidate-finalization.json" in source
+    assert "finalization_materialized" in source
     assert "processed clean candidate count does not match bootstrap" in source
 
 
@@ -73,6 +77,8 @@ def test_clean_state_follower_keeps_operator_surface_blind_and_research_only() -
     assert "overall_mean_net_r" not in source
     assert "qualifies_clean_validation" not in source
     assert "predicted_net_r" not in source
+    assert "eligible_for_candidate_review" not in source
+    assert '"verdict"' not in source
     assert "api.hyperliquid" not in source
     assert "promotion authorized: false" in source
     assert "execution enabled: false" in source
