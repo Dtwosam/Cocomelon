@@ -107,3 +107,11 @@ def test_v3_cutover_preserves_redacted_failure_before_failing() -> None:
     assert "Upload V3 cutover failure receipt" in source
     assert "Preserve V3 cutover failure status" in source
     assert "continue-on-error: true" in source
+
+
+def test_v3_cutover_ignores_skipped_or_failed_upstream_audits() -> None:
+    source = _source()
+
+    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event.workflow_run.event != 'pull_request'" in source
