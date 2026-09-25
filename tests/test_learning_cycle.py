@@ -61,10 +61,12 @@ def _ready_report(
         feature_registry=feature_registry,
         ledger_state_digest=ledger.state_digest,
         feature_store_state_digest="f" * 64,
-        eligible_record_ids=tuple(record.record_id for record in ledger.iter_records()),
+        eligible_record_ids=tuple(
+            sorted(record.record_id for record in ledger.iter_records())
+        ),
         quarantined_record_ids=(),
         feature_complete_record_ids=tuple(
-            record.record_id for record in ledger.iter_records()
+            sorted(record.record_id for record in ledger.iter_records())
         ),
         blocked_records=(),
     )
