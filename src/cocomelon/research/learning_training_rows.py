@@ -106,7 +106,7 @@ def _snapshot_feature_value(snapshot: object, feature: str) -> str:
     return str(value)
 
 
-def _feature_values(
+def resolve_learning_feature_values(
     record: LearningEvidenceRecord,
     feature_registry: tuple[str, ...],
     *,
@@ -349,7 +349,7 @@ def build_learning_training_set(
                     closed_at_ms=record.closed_at_ms,
                     feature_snapshot_id=record.feature_snapshot_id,
                     feature_registry=manifest.feature_registry,
-                    feature_values=_feature_values(
+                    feature_values=resolve_learning_feature_values(
                         record,
                         manifest.feature_registry,
                         feature_store=feature_store,
