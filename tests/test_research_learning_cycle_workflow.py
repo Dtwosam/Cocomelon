@@ -103,6 +103,6 @@ def test_learning_cycle_skips_freeze_when_cycle_is_not_completed() -> None:
         1,
     )[0]
 
-    assert 'CYCLE_STATUS="$(jq -r '.status' learning-cycle/cycle.json)"' in freeze
+    assert "CYCLE_STATUS=\"$(jq -r '.status' learning-cycle/cycle.json)\"" in freeze
     assert 'if [ "$CYCLE_STATUS" != "completed" ]; then' in freeze
     assert 'echo "frozen_count=0" >> "$GITHUB_OUTPUT"' in freeze
