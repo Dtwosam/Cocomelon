@@ -165,7 +165,7 @@ def test_research_learning_sync_is_idempotent_for_same_campaign(
     assert first.feature_state_digest == second.feature_state_digest
 
 
-def test_research_learning_sync_rejects_pre_feature-store_campaign(
+def test_research_learning_sync_rejects_pre_feature_store_campaign(
     tmp_path,
     monkeypatch,
 ) -> None:
