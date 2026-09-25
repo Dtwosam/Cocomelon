@@ -9,6 +9,7 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.learning_dataset import build_learning_dataset_snapshot
 from cocomelon.research.learning_dataset_bundle import (
+    load_verified_learning_dataset_bundle,
     verify_learning_dataset_bundle,
     write_learning_dataset_bundle,
 )
@@ -87,3 +88,46 @@ def test_bundle_verification_rejects_tampered_records(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="records digest mismatch"):
         verify_learning_dataset_bundle(output_dir=output_dir)
+
+
+def test_verified_bundle_reader_reconstructs_typed_snapshot(tmp_path) -> None:
+    ledger = LearningEvidenceLedger(tmp_path / "ledger")
+    record = _paper_record()
+    ledger.record(record)
+    snapshot = build_learning_dataset_snapshot(ledger, as_of_ms=20_000)
+    output_dir = tmp_path / "bundle"
+    write_learning_dataset_bundle(snapshot, output_dir=output_dir)
+
+    loaded = load_verified_learning_dataset_bundle(output_dir=output_dir)
+
+    assert loaded.snapshot.manifest == snapshot.manifest
+    assert loaded.snapshot.paper_execution_records == (record,)
+    assert loaded.snapshot.prospective_records == ()
+    assert loaded.snapshot.live_execution_records == ()
+    assert len(loaded.manifest_sha256) == 64
+    assert len(loaded.records_sha256) == 64
+
+
+def test_verified_bundle_reader_rejects_tampered_manifest_identity(tmp_path) -> None:
+    ledger = LearningEvidenceLedger(tmp_path / "ledger")
+    ledger.record(_paper_record())
+    snapshot = build_learning_dataset_snapshot(ledger, as_of_ms=20_000)
+    output_dir = tmp_path / "bundle"
+    write_learning_dataset_bundle(snapshot, output_dir=output_dir)
+
+    manifest_path = output_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_id"] = "0" * 64
+    manifest_path.write_text(
+        json.dumps(
+            manifest,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n"
+    )
+
+    with pytest.raises(ValueError, match="manifest identity mismatch"):
+        load_verified_learning_dataset_bundle(output_dir=output_dir)
