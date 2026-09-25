@@ -106,6 +106,12 @@ def test_verified_bundle_reader_reconstructs_typed_snapshot(tmp_path) -> None:
     assert loaded.snapshot.live_execution_records == ()
     assert len(loaded.manifest_sha256) == 64
     assert len(loaded.records_sha256) == 64
+    assert loaded.lineage_payload == {
+        "dataset_id": snapshot.manifest.dataset_id,
+        "manifest_sha256": loaded.manifest_sha256,
+        "records_sha256": loaded.records_sha256,
+    }
+    assert len(loaded.lineage_id) == 64
 
 
 def test_verified_bundle_reader_rejects_tampered_manifest_identity(tmp_path) -> None:
