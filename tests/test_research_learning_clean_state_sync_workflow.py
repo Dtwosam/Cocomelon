@@ -66,7 +66,7 @@ def test_clean_state_follower_verifies_and_versions_candidate_state() -> None:
     assert "cocomelon-learning-clean-validation-score" in source
     assert "cocomelon-learning-clean-finalize" in source
     assert "verify_learning_clean_finalization" in source
-    assert "finalization/candidate-finalization.json" in source
+    assert 'FINAL_PATH="$FINAL_ROOT/candidate-finalization.json"' in source
     assert "finalization_materialized" in source
     assert "processed clean candidate count does not match bootstrap" in source
 
