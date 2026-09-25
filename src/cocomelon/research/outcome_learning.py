@@ -140,15 +140,16 @@ class LearningEvidenceRecord:
                 raise ValueError("prospective learning evidence requires campaign identity")
             if not self.context_state_1h:
                 raise ValueError("prospective learning evidence requires context_state_1h")
-            if any(getattr(self, field) is None for field in return_fields):
+            gross_return = self.gross_return_fraction
+            modeled_cost = self.modeled_cost_fraction
+            net_return = self.net_return_fraction
+            if gross_return is None or modeled_cost is None or net_return is None:
                 raise ValueError("prospective learning evidence requires return fractions")
             if any(getattr(self, field) is not None for field in execution_fields):
                 raise ValueError("prospective learning evidence cannot contain execution PnL fields")
-            if self.modeled_cost_fraction is not None and self.modeled_cost_fraction < ZERO:
+            if modeled_cost < ZERO:
                 raise ValueError("modeled_cost_fraction must be non-negative")
-            if self.net_return_fraction != (
-                self.gross_return_fraction - self.modeled_cost_fraction
-            ):
+            if net_return != gross_return - modeled_cost:
                 raise ValueError("prospective net return must reconcile to modeled cost")
         else:
             if any(getattr(self, field) is not None for field in return_fields):
@@ -446,6 +447,10 @@ def sync_prospective_learning_evidence(
             raise LearningEvidenceError(
                 f"invalid prospective observation lineage: {outcome.observation_id}"
             ) from exc
+        if observation is None:
+            raise LearningEvidenceError(
+                f"missing prospective observation lineage: {outcome.observation_id}"
+            )
         record = prospective_learning_record(
             spec,
             plan,
