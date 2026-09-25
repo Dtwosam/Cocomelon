@@ -618,3 +618,30 @@ PR #420 locks the scheduled paper producer to the authenticated learning-feature
 This is a producer integrity guard only. It does not change strategy logic, risk, sizing, promotion criteria, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-learning state lineage — 2026-09-25
+
+PR #422 makes cumulative research-learning state transitions independently auditable instead of trusting only the newest state digest.
+
+Merged implementation:
+
+- Each authenticated research-learning sync now appends an immutable lineage entry inside the cumulative state artifact.
+- Every entry binds the exact upstream campaign run/attempt, head SHA, artifact ID/digest, required candidate identities, before/after learning-ledger counts and digests, before/after feature-store counts and digests, and created/existing evidence counts.
+- Entries form a cryptographic predecessor chain with contiguous sequence numbers. Missing entries, tampering, broken predecessor links, state-tail mismatches, upstream run regression, or changed immutable artifact identity for the same run/attempt fail closed.
+- The evidence sync verifies the existing chain before admitting a new campaign and writes the new transition only after evidence counts/digests reconcile.
+- The 14-day continuity checkpoint now verifies the complete lineage and requires the latest sync receipt to match the lineage tail before republishing state.
+- The autonomous learning cycle now re-opens the ledger and feature store, verifies their counts/digests, verifies the lineage tail, and refuses training if lineage does not match the sync receipt.
+- The dedicated research CI lane includes the new lineage regressions.
+
+Verification evidence:
+
+- #422 exact head `596f66f6f8b09ae2520f095b41cae460bd510b1c` passed CI run `36162620181`; both full and research jobs completed successfully before merge `460549fc438176b799f3f8e8b2ef7f87bc5aa441`.
+
+Current evidence boundary:
+
+- No legacy paper trades are backfilled into this chain. The first lineage entry must come from a genuine post-activation campaign accepted by the authenticated learning sync.
+- The chain adds provenance and rollback resistance only; it does not create evidence, relax the frozen 200/20 gate, alter strategy/risk, promote a challenger, or enable orders.
+- The next admissible paper campaign with authenticated `learning-features/` remains the required source of the first continuous-learning records.
+
+**LIVE TRADING: DISABLED.**
