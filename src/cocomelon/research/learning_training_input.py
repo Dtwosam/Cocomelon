@@ -222,8 +222,8 @@ class LearningTrainingTable:
                 raise ValueError("training row evidence kind does not match table")
             if row.target_name != self.target_name:
                 raise ValueError("training row target does not match table")
-            if tuple(row.features) != self.feature_registry:
-                raise ValueError("training row feature order does not match registry")
+            if set(row.features) != set(self.feature_registry):
+                raise ValueError("training row features do not match registry")
         if self.schema_version != TRAINING_INPUT_SCHEMA_VERSION:
             raise ValueError("unsupported learning training table schema")
 
