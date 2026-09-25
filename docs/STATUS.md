@@ -604,3 +604,17 @@ Current evidence boundary:
 - The next genuine successful research campaign with authenticated `learning-features/` remains the required source of the first continuous-learning records.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paper-producer learning evidence contract — 2026-09-25
+
+PR #420 locks the scheduled paper producer to the authenticated learning-feature path required by continuous learning.
+
+- The contract test binds `Scheduled Research Mainnet Replay Campaign` to trusted `complete_research_cohort(...)` completion.
+- The trusted cohort implementation must continue materializing `output/learning-features`, reporting `feature_snapshot_count` and `feature_snapshot_state_digest`, and rejecting incomplete decision-to-feature coverage.
+- `test_research_runner_workflow.py`, `test_research_cohort.py`, and the new producer-contract regression now run in the dedicated research CI lane as well as the full suite.
+- #420 exact head `fedf35b862ddfb8a5bdcefc1f74bf15293e5623b` passed CI run `36161337393` with both full and research jobs green before merge `88322848be5287e0071d96d8d930fdea66499b0e`.
+
+This is a producer integrity guard only. It does not change strategy logic, risk, sizing, promotion criteria, or execution authority.
+
+**LIVE TRADING: DISABLED.**
