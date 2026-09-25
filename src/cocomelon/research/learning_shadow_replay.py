@@ -28,6 +28,7 @@ from cocomelon.research.outcome_learning import (
 from cocomelon.research.strategy_seam import (
     StrategyEvaluator,
     build_candidate_strategy_decisions,
+    load_candidate_strategy_decisions,
     strategy_context_from_payload,
     strategy_decision_to_payload,
 )
@@ -459,3 +460,292 @@ def run_learning_shadow_replay(
         (_canonical_json(receipt.to_dict()) + "\n").encode("utf-8"),
     )
     return receipt
+
+def _receipt_from_payload(raw: dict[str, object]) -> LearningShadowReplayReceipt:
+    raw_trade_ids = raw.get("closed_trade_ids")
+    if not isinstance(raw_trade_ids, list) or not all(
+        isinstance(item, str) for item in raw_trade_ids
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_TRADE_IDS_INVALID"
+        )
+    try:
+        receipt = LearningShadowReplayReceipt(
+            shadow_admission_id=_string(
+                raw.get("shadow_admission_id"),
+                "shadow_admission_id",
+            ),
+            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+            runtime_code_revision=_string(
+                raw.get("runtime_code_revision"),
+                "runtime_code_revision",
+            ),
+            source_bundle_id=_string(
+                raw.get("source_bundle_id"),
+                "source_bundle_id",
+            ),
+            source_manifest_id=_string(
+                raw.get("source_manifest_id"),
+                "source_manifest_id",
+            ),
+            recording_session_digest=_string(
+                raw.get("recording_session_digest"),
+                "recording_session_digest",
+            ),
+            source_set_digest=_string(
+                raw.get("source_set_digest"),
+                "source_set_digest",
+            ),
+            candidate_decisions_sha256=_string(
+                raw.get("candidate_decisions_sha256"),
+                "candidate_decisions_sha256",
+            ),
+            contexts_digest=_string(
+                raw.get("contexts_digest"),
+                "contexts_digest",
+            ),
+            replay_run_id=_string(raw.get("replay_run_id"), "replay_run_id"),
+            replay_result_digest=_string(
+                raw.get("replay_result_digest"),
+                "replay_result_digest",
+            ),
+            shadow_campaign_id=_string(
+                raw.get("shadow_campaign_id"),
+                "shadow_campaign_id",
+            ),
+            closed_trade_ids=tuple(raw_trade_ids),
+            created_shadow_records=_integer(
+                raw.get("created_shadow_records"),
+                "created_shadow_records",
+            ),
+            existing_shadow_records=_integer(
+                raw.get("existing_shadow_records"),
+                "existing_shadow_records",
+            ),
+            feature_snapshot_count=_integer(
+                raw.get("feature_snapshot_count"),
+                "feature_snapshot_count",
+            ),
+            feature_snapshot_state_digest=_string(
+                raw.get("feature_snapshot_state_digest"),
+                "feature_snapshot_state_digest",
+            ),
+            shadow_evidence_state_digest=_string(
+                raw.get("shadow_evidence_state_digest"),
+                "shadow_evidence_state_digest",
+            ),
+            evidence_eligible_at_ms=_integer(
+                raw.get("evidence_eligible_at_ms"),
+                "evidence_eligible_at_ms",
+            ),
+            paper_only=_boolean(raw.get("paper_only"), "paper_only"),
+            research_only=_boolean(raw.get("research_only"), "research_only"),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            live_promotion_authorized=_boolean(
+                raw.get("live_promotion_authorized"),
+                "live_promotion_authorized",
+            ),
+            schema_version=_integer(raw.get("schema_version"), "schema_version"),
+        )
+    except ValueError as exc:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_INVALID"
+        ) from exc
+    if raw.get("receipt_id") != receipt.receipt_id:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_ID_MISMATCH"
+        )
+    return receipt
+
+
+def load_learning_shadow_replay_receipt(
+    path: Path,
+) -> LearningShadowReplayReceipt:
+    try:
+        stored = path.read_bytes()
+        raw = _mapping(
+            json.loads(stored),
+            "learning shadow replay receipt",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_INVALID"
+        ) from exc
+    receipt = _receipt_from_payload(raw)
+    canonical = (_canonical_json(receipt.to_dict()) + "\n").encode("utf-8")
+    if stored != canonical:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_NON_CANONICAL"
+        )
+    return receipt
+
+
+def verify_learning_shadow_replay_receipt(
+    path: Path,
+    *,
+    bundle_path: Path,
+    output_root: Path,
+    shadow_evidence_root: Path,
+    shadow_admission_path: Path,
+    review_decision_path: Path,
+    review_dossier_path: Path,
+    package_root: Path,
+    validation_spec_path: Path,
+    validation_score_path: Path,
+    finalization_path: Path,
+    clean_evidence_root: Path,
+) -> LearningShadowReplayReceipt:
+    receipt = load_learning_shadow_replay_receipt(path)
+    bundle = load_baseline_replay_bundle(bundle_path)
+    if (
+        receipt.source_bundle_id != bundle.bundle_id
+        or receipt.source_manifest_id != bundle.manifest.manifest_id
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_BUNDLE_MISMATCH"
+        )
+
+    decisions_path = output_root / "strategy-decisions.json"
+    decisions = load_candidate_strategy_decisions(
+        decisions_path,
+        bundle_path=bundle_path,
+    )
+    if _sha256_bytes(decisions_path.read_bytes()) != receipt.candidate_decisions_sha256:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_DECISION_DIGEST_MISMATCH"
+        )
+    if decisions.candidate_code_revision != receipt.runtime_code_revision:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_CODE_REVISION_MISMATCH"
+        )
+    if (
+        decisions.recording_session_digest != receipt.recording_session_digest
+        or decisions.source_set_digest != receipt.source_set_digest
+        or decisions.contexts_digest != receipt.contexts_digest
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_DECISION_LINEAGE_MISMATCH"
+        )
+
+    try:
+        replay_bytes = (output_root / "replay.json").read_bytes()
+        replay = _mapping(
+            json.loads(replay_bytes),
+            "learning shadow replay payload",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_REPLAY_INVALID"
+        ) from exc
+    if replay_bytes != (_canonical_json(replay) + "\n").encode("utf-8"):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_REPLAY_NON_CANONICAL"
+        )
+    if _string(replay.get("run_id"), "replay run_id") != receipt.replay_run_id:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_RUN_ID_MISMATCH"
+        )
+    if (
+        _string(replay.get("result_digest"), "replay result_digest")
+        != receipt.replay_result_digest
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_RESULT_DIGEST_MISMATCH"
+        )
+    raw_closed = replay.get("closed_trade_ids")
+    if not isinstance(raw_closed, list) or not all(
+        isinstance(item, str) for item in raw_closed
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_REPLAY_TRADES_INVALID"
+        )
+    if tuple(sorted(raw_closed)) != receipt.closed_trade_ids:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_REPLAY_TRADES_MISMATCH"
+        )
+
+    feature_store = LearningFeatureSnapshotStore(
+        output_root / "learning-features"
+    )
+    features = feature_store.iter_verified()
+    if (
+        len(features) != receipt.feature_snapshot_count
+        or feature_store.state_digest != receipt.feature_snapshot_state_digest
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_FEATURE_STATE_MISMATCH"
+        )
+
+    journal = JournalStore(output_root / "journal.sqlite3")
+    try:
+        trades = tuple(journal.iter_trades())
+    finally:
+        journal.close()
+    if tuple(sorted(trade.trade_id for trade in trades)) != receipt.closed_trade_ids:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_JOURNAL_MISMATCH"
+        )
+    if any(trade.replay_run_id != receipt.replay_run_id for trade in trades):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_JOURNAL_RUN_MISMATCH"
+        )
+    if any(
+        receipt.evidence_eligible_at_ms < trade.closed_at_ms for trade in trades
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_ELIGIBILITY_MISMATCH"
+        )
+
+    store = open_verified_learning_shadow_evidence_store(
+        shadow_evidence_root,
+        shadow_admission_path=shadow_admission_path,
+        review_decision_path=review_decision_path,
+        review_dossier_path=review_dossier_path,
+        package_root=package_root,
+        validation_spec_path=validation_spec_path,
+        validation_score_path=validation_score_path,
+        finalization_path=finalization_path,
+        clean_evidence_root=clean_evidence_root,
+    )
+    if store.admission.shadow_admission_id != receipt.shadow_admission_id:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_ADMISSION_MISMATCH"
+        )
+    if store.admission.candidate_id != receipt.candidate_id:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_CANDIDATE_MISMATCH"
+        )
+    expected_campaign_id = _shadow_campaign_id(
+        shadow_admission_id=receipt.shadow_admission_id,
+        source_bundle_id=receipt.source_bundle_id,
+        candidate_decisions_sha256=receipt.candidate_decisions_sha256,
+        replay_result_digest=receipt.replay_result_digest,
+    )
+    if expected_campaign_id != receipt.shadow_campaign_id:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_CAMPAIGN_ID_MISMATCH"
+        )
+    campaign_records = tuple(
+        record
+        for record in store.iter_records()
+        if record.campaign_id == receipt.shadow_campaign_id
+    )
+    if tuple(sorted(record.source_record_id for record in campaign_records)) != (
+        receipt.closed_trade_ids
+    ):
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_EVIDENCE_TRADES_MISMATCH"
+        )
+    if store.state_digest != receipt.shadow_evidence_state_digest:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_EVIDENCE_STATE_MISMATCH"
+        )
+    return receipt
+
