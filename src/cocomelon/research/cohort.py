@@ -29,6 +29,7 @@ from cocomelon.replay.adapters import ReplayRequirements
 from cocomelon.replay.engine import ReplayEngine, replay_run_id
 from cocomelon.replay.source import JsonlReplaySource, validate_recording
 from cocomelon.research.contracts import ResearchCandidateManifest
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.registry import ResearchRegistry
 from cocomelon.research.strategy_seam import (
     CandidateDecisionEpochEngine,
@@ -569,6 +570,7 @@ def run_baseline_replay_payload(
     facts_path: str | Path,
     *,
     strategy_decisions_path: str | Path | None = None,
+    feature_store_path: str | Path | None = None,
 ) -> dict[str, object]:
     resolved_bundle_path = Path(bundle_path)
     bundle = load_baseline_replay_bundle(resolved_bundle_path)
@@ -591,6 +593,11 @@ def run_baseline_replay_payload(
         startup_timestamp_ms=bundle.manifest.start_ms,
     )
     facts = EvaluationFactStore(facts_path)
+    feature_store = (
+        None
+        if feature_store_path is None
+        else LearningFeatureSnapshotStore(feature_store_path)
+    )
     try:
         existing = journal.load_replay_result(run_id)
         if existing is None:
@@ -614,6 +621,7 @@ def run_baseline_replay_payload(
                 evidence_class=bundle.manifest.evidence_class,
                 decision_engine=decision_engine,
                 new_exposure_cutoff_ms=new_exposure_cutoff_ms,
+                feature_snapshot_sink=feature_store,
             )
             result = ReplayEngine(
                 JsonlReplaySource(source_root),
@@ -631,6 +639,27 @@ def run_baseline_replay_payload(
         )
         if decision_count != result.strategy_decisions:
             raise ValueError("research replay decision facts do not match journal result")
+        feature_snapshot_count = 0
+        feature_snapshot_state_digest: str | None = None
+        if feature_store is not None:
+            decision_facts = tuple(
+                fact
+                for fact in facts.iter_decision_facts()
+                if fact.replay_run_id == result.run_id
+            )
+            missing_feature_ids = tuple(
+                fact.feature_snapshot_id
+                for fact in decision_facts
+                if feature_store.load(fact.feature_snapshot_id) is None
+            )
+            if missing_feature_ids:
+                raise ValueError(
+                    "research replay feature snapshot coverage is incomplete"
+                )
+            verified_features = feature_store.iter_verified()
+            feature_snapshot_count = len(verified_features)
+            feature_snapshot_state_digest = feature_store.state_digest
+
         return {
             "bundle_id": bundle.bundle_id,
             "closed_positions": result.closed_positions,
@@ -642,6 +671,13 @@ def run_baseline_replay_payload(
             "execution_attempts": result.execution_attempts,
             "evidence_class": result.evidence_class.value,
             "facts": str(Path(facts_path)),
+            "feature_snapshot_count": feature_snapshot_count,
+            "feature_snapshot_state_digest": feature_snapshot_state_digest,
+            "features": (
+                None
+                if feature_store_path is None
+                else str(Path(feature_store_path))
+            ),
             "fills": result.fills,
             "final_account_state_id": result.final_account_state_id,
             "final_equity": str(execution.account.equity),
@@ -698,6 +734,7 @@ def _assert_fresh_completion_output(output: Path) -> None:
         "journal.sqlite3",
         "execution.sqlite3",
         "facts.sqlite3",
+        "learning-features",
         "replay.json",
         "dataset.json",
         "cohort-summary.json",
@@ -730,6 +767,7 @@ def complete_research_cohort(
         output / "execution.sqlite3",
         output / "facts.sqlite3",
         strategy_decisions_path=strategy_decisions_path,
+        feature_store_path=output / "learning-features",
     )
     _assert_replay_eligible(replay, replay_config=bundle.replay_config)
     _write_json(output / "replay.json", replay)
