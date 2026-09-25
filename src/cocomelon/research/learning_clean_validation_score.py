@@ -55,26 +55,26 @@ def _mean(values: tuple[Decimal, ...]) -> Decimal:
 @dataclass(frozen=True, slots=True)
 class LearningCleanValidationBlock:
     block_index: int
-    record_ids: tuple[str, ...]
+    outcome_ids: tuple[str, ...]
     mean_net_r: Decimal
 
     def __post_init__(self) -> None:
         if self.block_index <= 0:
             raise ValueError("block_index must be positive")
-        if not self.record_ids:
+        if not self.outcome_ids:
             raise ValueError("clean validation block must not be empty")
-        if len(set(self.record_ids)) != len(self.record_ids):
+        if len(set(self.outcome_ids)) != len(self.outcome_ids):
             raise ValueError("clean validation block record ids must be unique")
-        for record_id in self.record_ids:
-            _require_sha256(record_id, "record_id")
+        for outcome_id in self.outcome_ids:
+            _require_sha256(outcome_id, "outcome_id")
         if not self.mean_net_r.is_finite():
             raise ValueError("block mean_net_r must be finite")
 
     def to_dict(self) -> dict[str, object]:
         return {
             "block_index": self.block_index,
-            "record_ids": self.record_ids,
-            "trade_count": len(self.record_ids),
+            "outcome_ids": self.outcome_ids,
+            "trade_count": len(self.outcome_ids),
             "mean_net_r": str(self.mean_net_r),
         }
 
@@ -88,7 +88,7 @@ class LearningCleanValidationScore:
     clean_evidence_state_digest: str
     eligible_settled_trade_count: int
     target_settled_trades: int
-    selected_record_ids: tuple[str, ...]
+    selected_outcome_ids: tuple[str, ...]
     status: str
     overall_mean_net_r: Decimal | None
     blocks: tuple[LearningCleanValidationBlock, ...]
@@ -114,19 +114,19 @@ class LearningCleanValidationScore:
             raise ValueError("eligible_settled_trade_count must be non-negative")
         if self.target_settled_trades <= 0:
             raise ValueError("target_settled_trades must be positive")
-        if len(self.selected_record_ids) > self.target_settled_trades:
+        if len(self.selected_outcome_ids) > self.target_settled_trades:
             raise ValueError("selected records cannot exceed frozen target")
-        if len(set(self.selected_record_ids)) != len(self.selected_record_ids):
+        if len(set(self.selected_outcome_ids)) != len(self.selected_outcome_ids):
             raise ValueError("selected record ids must be unique")
-        for record_id in self.selected_record_ids:
-            _require_sha256(record_id, "selected_record_id")
+        for outcome_id in self.selected_outcome_ids:
+            _require_sha256(outcome_id, "selected_outcome_id")
         if self.status not in {"collecting", "complete"}:
             raise ValueError("unsupported clean validation score status")
 
         if self.status == "collecting":
             if self.eligible_settled_trade_count >= self.target_settled_trades:
                 raise ValueError("collecting score must remain below target")
-            if len(self.selected_record_ids) != self.eligible_settled_trade_count:
+            if len(self.selected_outcome_ids) != self.eligible_settled_trade_count:
                 raise ValueError("collecting score must expose all eligible record ids")
             if self.overall_mean_net_r is not None or self.blocks:
                 raise ValueError("collecting score must remain economically blind")
@@ -135,7 +135,7 @@ class LearningCleanValidationScore:
         else:
             if self.eligible_settled_trade_count < self.target_settled_trades:
                 raise ValueError("complete score requires target trade capacity")
-            if len(self.selected_record_ids) != self.target_settled_trades:
+            if len(self.selected_outcome_ids) != self.target_settled_trades:
                 raise ValueError("complete score must freeze exactly target trades")
             if self.overall_mean_net_r is None or not self.overall_mean_net_r.is_finite():
                 raise ValueError("complete score requires finite overall mean")
@@ -162,7 +162,7 @@ class LearningCleanValidationScore:
             "clean_evidence_state_digest": self.clean_evidence_state_digest,
             "eligible_settled_trade_count": self.eligible_settled_trade_count,
             "target_settled_trades": self.target_settled_trades,
-            "selected_record_ids": self.selected_record_ids,
+            "selected_outcome_ids": self.selected_outcome_ids,
             "status": self.status,
             "overall_mean_net_r": (
                 None if self.overall_mean_net_r is None else str(self.overall_mean_net_r)
@@ -239,7 +239,7 @@ def score_learning_clean_validation(
             clean_evidence_state_digest=evidence.state_digest,
             eligible_settled_trade_count=len(eligible),
             target_settled_trades=spec.target_settled_trades,
-            selected_record_ids=selected_ids,
+            selected_outcome_ids=selected_ids,
             status="collecting",
             overall_mean_net_r=None,
             blocks=(),
@@ -257,7 +257,7 @@ def score_learning_clean_validation(
         blocks.append(
             LearningCleanValidationBlock(
                 block_index=block_index + 1,
-                record_ids=tuple(outcome.outcome_id for outcome in block_outcomes),
+                outcome_ids=tuple(outcome.outcome_id for outcome in block_outcomes),
                 mean_net_r=_mean(block_values),
             )
         )
@@ -274,7 +274,7 @@ def score_learning_clean_validation(
         clean_evidence_state_digest=evidence.state_digest,
         eligible_settled_trade_count=len(eligible),
         target_settled_trades=spec.target_settled_trades,
-        selected_record_ids=selected_ids,
+        selected_outcome_ids=selected_ids,
         status="complete",
         overall_mean_net_r=overall,
         blocks=tuple(blocks),
