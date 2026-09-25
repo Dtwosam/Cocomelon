@@ -4,8 +4,10 @@ import hashlib
 import importlib
 import json
 import math
+import os
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, cast
 
 from cocomelon.research.learning_challenger_run import LearningChallengerRunManifest
@@ -625,3 +627,27 @@ def evaluate_learning_tree(
         blocks=blocks,
         qualifies_development=overall_qualifies and blocks_qualify,
     )
+
+
+
+def write_learning_tree_evaluation(
+    path: Path,
+    evaluation: LearningTreeEvaluation,
+) -> Path:
+    payload = (_canonical_json(evaluation.to_dict()) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if path.read_bytes() != payload:
+            raise LearningTreeError("LEARNING_TREE_EVALUATION_CONFLICT")
+        return path
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return path
