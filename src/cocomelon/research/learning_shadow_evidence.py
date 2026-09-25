@@ -10,7 +10,10 @@ from typing import cast
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
-from cocomelon.research.learning_shadow_admission import LearningShadowAdmission
+from cocomelon.research.learning_shadow_admission import (
+    LearningShadowAdmission,
+    verify_learning_shadow_admission,
+)
 from cocomelon.research.outcome_learning import (
     LearningEvidenceKind,
     LearningEvidenceLedger,
@@ -65,6 +68,12 @@ def _optional_string(value: object, field: str) -> str | None:
 def _integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise LearningShadowEvidenceError(f"{field} must be a non-negative integer")
+    return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise LearningShadowEvidenceError(f"{field} must be boolean")
     return value
 
 
@@ -301,10 +310,10 @@ class LearningShadowEvidenceStore:
                     raw.get("source_evidence_class"),
                     "source_evidence_class",
                 ),
-                paper_only=bool(raw.get("paper_only")),
-                research_only=bool(raw.get("research_only")),
-                promotion_eligible=bool(raw.get("promotion_eligible")),
-                execution_ready=bool(raw.get("execution_ready")),
+                paper_only=_boolean(raw.get("paper_only"), "paper_only"),
+                research_only=_boolean(raw.get("research_only"), "research_only"),
+                promotion_eligible=_boolean(raw.get("promotion_eligible"), "promotion_eligible"),
+                execution_ready=_boolean(raw.get("execution_ready"), "execution_ready"),
                 schema_version=_integer(raw.get("schema_version"), "schema_version"),
             )
         except ValueError as exc:
@@ -395,3 +404,30 @@ class LearningShadowEvidenceStore:
             raise LearningShadowEvidenceError(
                 "LEARNING_SHADOW_EVIDENCE_FILE_SET_INVALID"
             )
+
+
+def open_verified_learning_shadow_evidence_store(
+    root: Path,
+    *,
+    shadow_admission_path: Path,
+    review_decision_path: Path,
+    review_dossier_path: Path,
+    package_root: Path,
+    validation_spec_path: Path,
+    validation_score_path: Path,
+    finalization_path: Path,
+    clean_evidence_root: Path,
+) -> LearningShadowEvidenceStore:
+    admission = verify_learning_shadow_admission(
+        shadow_admission_path,
+        review_decision_path=review_decision_path,
+        review_dossier_path=review_dossier_path,
+        package_root=package_root,
+        validation_spec_path=validation_spec_path,
+        validation_score_path=validation_score_path,
+        finalization_path=finalization_path,
+        evidence_root=clean_evidence_root,
+    )
+    store = LearningShadowEvidenceStore(root, admission=admission)
+    store.verify()
+    return store
