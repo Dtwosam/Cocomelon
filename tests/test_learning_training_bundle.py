@@ -17,6 +17,7 @@ from cocomelon.research.learning_dataset_bundle import (
 from cocomelon.research.learning_training_bundle import (
     LearningTrainingBundleError,
     load_verified_learning_training_bundle,
+    verify_learning_training_bundle,
     write_learning_training_bundle,
 )
 from cocomelon.research.learning_training_rows import build_learning_training_set
@@ -66,11 +67,11 @@ def _training_set(tmp_path):
         decision_policy={"threshold": "0.001"},
         implementation_commit_sha="a" * 40,
     )
-    return build_learning_training_set(bundle, manifest)
+    return bundle, manifest, build_learning_training_set(bundle, manifest)
 
 
 def test_training_bundle_round_trips_with_authenticated_rows(tmp_path) -> None:
-    training_set = _training_set(tmp_path)
+    _bundle, manifest, training_set = _training_set(tmp_path)
     output_dir = tmp_path / "training"
 
     payload = write_learning_training_bundle(
@@ -78,8 +79,13 @@ def test_training_bundle_round_trips_with_authenticated_rows(tmp_path) -> None:
         output_dir=output_dir,
     )
     verified = load_verified_learning_training_bundle(output_dir=output_dir)
+    bound = verify_learning_training_bundle(
+        output_dir=output_dir,
+        manifest=manifest,
+    )
 
     assert verified.training_set == training_set
+    assert bound.training_set == training_set
     assert payload["training_set_id"] == training_set.training_set_id
     assert len(verified.manifest_sha256) == 64
     assert len(verified.rows_sha256) == 64
@@ -87,7 +93,7 @@ def test_training_bundle_round_trips_with_authenticated_rows(tmp_path) -> None:
 
 
 def test_training_bundle_rejects_tampered_rows(tmp_path) -> None:
-    training_set = _training_set(tmp_path)
+    _bundle, _manifest, training_set = _training_set(tmp_path)
     output_dir = tmp_path / "training"
     write_learning_training_bundle(training_set, output_dir=output_dir)
 
@@ -108,10 +114,35 @@ def test_training_bundle_rejects_tampered_rows(tmp_path) -> None:
 
 
 def test_training_bundle_refuses_conflicting_output_directory(tmp_path) -> None:
-    training_set = _training_set(tmp_path)
+    _bundle, _manifest, training_set = _training_set(tmp_path)
     output_dir = tmp_path / "training"
     output_dir.mkdir()
     (output_dir / "existing").write_text("do not overwrite", encoding="utf-8")
 
     with pytest.raises(LearningTrainingBundleError, match="must be empty"):
         write_learning_training_bundle(training_set, output_dir=output_dir)
+
+
+
+def test_training_bundle_rejects_different_challenger_run(tmp_path) -> None:
+    bundle, manifest, training_set = _training_set(tmp_path)
+    output_dir = tmp_path / "training"
+    write_learning_training_bundle(training_set, output_dir=output_dir)
+    other_manifest = build_learning_challenger_run_manifest(
+        bundle,
+        input_kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        feature_registry=manifest.feature_registry,
+        model_family=manifest.model_family,
+        model_config=manifest.model_config,
+        decision_policy={"threshold": "0.009"},
+        implementation_commit_sha=manifest.implementation_commit_sha,
+    )
+
+    with pytest.raises(
+        LearningTrainingBundleError,
+        match="RUN_ID_MISMATCH",
+    ):
+        verify_learning_training_bundle(
+            output_dir=output_dir,
+            manifest=other_manifest,
+        )
