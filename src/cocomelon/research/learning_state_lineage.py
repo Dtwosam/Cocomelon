@@ -436,6 +436,23 @@ def append_learning_state_lineage(
         previous.upstream_run_attempt,
     ):
         raise LearningStateLineageError("LINEAGE_UPSTREAM_ORDER_INVALID")
+    if (
+        previous is not None
+        and (
+            entry.upstream_run_id,
+            entry.upstream_run_attempt,
+        )
+        == (
+            previous.upstream_run_id,
+            previous.upstream_run_attempt,
+        )
+        and (
+            entry.upstream_head_sha != previous.upstream_head_sha
+            or entry.upstream_artifact_id != previous.upstream_artifact_id
+            or entry.upstream_artifact_digest != previous.upstream_artifact_digest
+        )
+    ):
+        raise LearningStateLineageError("LINEAGE_UPSTREAM_IDENTITY_CHANGED")
 
     entries_root = _entries_root(state_root)
     entries_root.mkdir(parents=True, exist_ok=True)
