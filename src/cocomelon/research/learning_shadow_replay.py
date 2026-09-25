@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evidence.bundle import load_baseline_replay_bundle
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.cohort import run_baseline_replay_payload
@@ -25,6 +26,7 @@ from cocomelon.research.outcome_learning import (
     LearningEvidenceRecord,
 )
 from cocomelon.research.strategy_seam import (
+    StrategyEvaluator,
     build_candidate_strategy_decisions,
     strategy_context_from_payload,
     strategy_decision_to_payload,
@@ -220,7 +222,7 @@ class LearningShadowReplayReceipt:
 
 def _strategy_evaluator(
     evaluator: LearningShadowStrategyEvaluator,
-):
+) -> StrategyEvaluator:
     def evaluate(request: dict[str, object]) -> dict[str, object]:
         context = strategy_context_from_payload(request.get("context"))
         decision = evaluator.evaluate(context)
@@ -230,16 +232,12 @@ def _strategy_evaluator(
 
 
 def _shadow_record(
-    trade,
+    trade: TradeJournalEntry,
     *,
     store: LearningShadowEvidenceStore,
     shadow_campaign_id: str,
     evidence_eligible_at_ms: int,
 ) -> LearningEvidenceRecord:
-    verified = None
-    # Snapshot verification happens before this helper is called; the local
-    # variable exists only to keep this conversion intentionally data-only.
-    del verified
     return LearningEvidenceRecord(
         kind=LearningEvidenceKind.PAPER_EXECUTION,
         source_record_id=trade.trade_id,
