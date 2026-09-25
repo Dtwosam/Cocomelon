@@ -17,6 +17,9 @@ from cocomelon.research.learning_dataset_bundle import (
 from cocomelon.research.learning_training_input import (
     LearningTrainingInputError,
     build_learning_training_table,
+    load_verified_learning_training_bundle,
+    verify_learning_training_bundle,
+    write_learning_training_bundle,
 )
 from cocomelon.research.outcome_learning import (
     LearningEvidenceKind,
@@ -198,3 +201,119 @@ def test_training_table_rejects_unavailable_feature_registry(tmp_path) -> None:
         match="FEATURE_REGISTRY_UNSUPPORTED",
     ):
         build_learning_training_table(bundle, manifest)
+
+
+
+def test_training_bundle_round_trips_and_reverifies_source_lineage(tmp_path) -> None:
+    source_bundle = _bundle(
+        tmp_path / "source",
+        (_paper_record(),),
+        as_of_ms=40_000,
+    )
+    manifest = _manifest(
+        source_bundle,
+        kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        features=("market", "direction"),
+    )
+    table = build_learning_training_table(source_bundle, manifest)
+    output_dir = tmp_path / "training"
+
+    payload = write_learning_training_bundle(table, output_dir=output_dir)
+    loaded = load_verified_learning_training_bundle(output_dir=output_dir)
+    verified = verify_learning_training_bundle(
+        output_dir=output_dir,
+        source_bundle=source_bundle,
+        run_manifest=manifest,
+    )
+
+    assert payload["table_id"] == table.table_id
+    assert payload["row_count"] == 1
+    assert loaded.table == table
+    assert verified.table == table
+    assert len(loaded.manifest_sha256) == 64
+    assert len(loaded.rows_file_sha256) == 64
+
+
+def test_training_bundle_rejects_tampered_rows(tmp_path) -> None:
+    source_bundle = _bundle(
+        tmp_path / "source",
+        (_paper_record(),),
+        as_of_ms=40_000,
+    )
+    manifest = _manifest(
+        source_bundle,
+        kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        features=("market", "direction"),
+    )
+    table = build_learning_training_table(source_bundle, manifest)
+    output_dir = tmp_path / "training"
+    write_learning_training_bundle(table, output_dir=output_dir)
+
+    rows_path = output_dir / "rows.jsonl"
+    rows_path.write_text(
+        rows_path.read_text(encoding="utf-8").replace(
+            '"target_value":"0.44"',
+            '"target_value":"9"',
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        LearningTrainingInputError,
+        match="ROWS_DIGEST_MISMATCH",
+    ):
+        load_verified_learning_training_bundle(output_dir=output_dir)
+
+
+def test_training_bundle_refuses_nonempty_output_directory(tmp_path) -> None:
+    source_bundle = _bundle(
+        tmp_path / "source",
+        (_paper_record(),),
+        as_of_ms=40_000,
+    )
+    manifest = _manifest(
+        source_bundle,
+        kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        features=("market", "direction"),
+    )
+    table = build_learning_training_table(source_bundle, manifest)
+    output_dir = tmp_path / "training"
+    output_dir.mkdir()
+    (output_dir / "existing").write_text("do not overwrite", encoding="utf-8")
+
+    with pytest.raises(
+        LearningTrainingInputError,
+        match="output directory must be empty",
+    ):
+        write_learning_training_bundle(table, output_dir=output_dir)
+
+
+def test_training_bundle_rejects_different_source_lineage(tmp_path) -> None:
+    first_bundle = _bundle(
+        tmp_path / "first",
+        (_paper_record(),),
+        as_of_ms=40_000,
+    )
+    second_bundle = _bundle(
+        tmp_path / "second",
+        (_paper_record(),),
+        as_of_ms=50_000,
+    )
+    manifest = _manifest(
+        first_bundle,
+        kinds=(LearningEvidenceKind.PAPER_EXECUTION,),
+        features=("market", "direction"),
+    )
+    table = build_learning_training_table(first_bundle, manifest)
+    output_dir = tmp_path / "training"
+    write_learning_training_bundle(table, output_dir=output_dir)
+
+    with pytest.raises(
+        LearningTrainingInputError,
+        match="RUN_LINEAGE_MISMATCH",
+    ):
+        verify_learning_training_bundle(
+            output_dir=output_dir,
+            source_bundle=second_bundle,
+            run_manifest=manifest,
+        )
