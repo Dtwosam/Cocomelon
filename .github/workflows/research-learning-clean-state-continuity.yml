@@ -10,7 +10,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: research-learning-clean-state-continuity
+  group: research-learning-clean-state-lineage-mutator
   cancel-in-progress: false
 
 env:
