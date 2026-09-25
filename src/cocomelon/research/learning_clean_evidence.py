@@ -483,6 +483,10 @@ class LearningCleanEvidenceStore:
         return path
 
     def _load_prediction_path(self, path: Path) -> LearningCandidatePrediction:
+        if path.is_symlink():
+            raise LearningCleanEvidenceError(
+                "LEARNING_CLEAN_PREDICTION_SYMLINK_FORBIDDEN"
+            )
         try:
             payload = path.read_bytes()
             raw = _mapping(json.loads(payload), "learning clean prediction")
@@ -586,6 +590,14 @@ class LearningCleanEvidenceStore:
     ) -> Path:
         prediction = self._prediction_for_outcome(outcome.prediction_id)
         self._validate_outcome(outcome, prediction)
+        for existing in self.iter_outcomes():
+            if (
+                existing.source_trade_id == outcome.source_trade_id
+                and existing.prediction_id != outcome.prediction_id
+            ):
+                raise LearningCleanEvidenceError(
+                    "LEARNING_CLEAN_SOURCE_TRADE_DUPLICATE"
+                )
         path = self.outcomes_root / f"{outcome.prediction_id}.json"
         _write_consistent(
             path,
@@ -594,6 +606,10 @@ class LearningCleanEvidenceStore:
         return path
 
     def _load_outcome_path(self, path: Path) -> LearningCleanTradeOutcome:
+        if path.is_symlink():
+            raise LearningCleanEvidenceError(
+                "LEARNING_CLEAN_OUTCOME_SYMLINK_FORBIDDEN"
+            )
         try:
             payload = path.read_bytes()
             raw = _mapping(json.loads(payload), "learning clean outcome")
