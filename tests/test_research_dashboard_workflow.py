@@ -17,6 +17,8 @@ def test_research_dashboard_refreshes_from_trusted_producers_and_on_main_push() 
     assert "workflow_run:" in workflow
     assert '"Scheduled Research Mainnet Replay Campaign"' in workflow
     assert '"Research V4 Acquisition Authority Sync"' in workflow
+    assert '"Research Learning Evidence Sync"' in workflow
+    assert '"Research Autonomous Learning Cycle"' in workflow
     assert "types: [completed]" in workflow
     assert "schedule:" in workflow
     assert "workflow_dispatch:" in workflow
@@ -77,3 +79,16 @@ def test_research_dashboard_publishes_safe_bootstrap_state_without_registry() ->
     assert "No trusted research registry has been published yet." in workflow
     assert "Research economics are unavailable until" in workflow
     assert 'exit 65' not in workflow
+
+
+def test_research_dashboard_includes_non_economic_learning_operations() -> None:
+    workflow = _workflow()
+
+    assert "research-learning-state" in workflow
+    assert "research-learning-cycle-" in workflow
+    assert "cocomelon-learning-ops-status" in workflow
+    assert "dashboard/learning-status.md" in workflow
+    assert "Continuous Learning Operations" in workflow
+    assert "learning-state/last-sync.json" not in workflow
+    assert "api.hyperliquid" not in workflow
+    assert "live_execution" not in workflow
