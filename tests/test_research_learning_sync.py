@@ -51,6 +51,7 @@ def _campaign(tmp_path):
             "feature_snapshot_state_digest": source_features.state_digest,
         },
     )
+    (output / "trigger-head.txt").write_text("a" * 40 + "\n", encoding="utf-8")
     _write_json(
         output / "runner.json",
         {
@@ -88,6 +89,7 @@ def _verified(trade):
     return SimpleNamespace(
         replay_run_id="run-1",
         trade_ids=(trade.trade_id,),
+        interval=SimpleNamespace(end_ms=20_000),
     )
 
 
