@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.learning_challenger_run import (
@@ -14,6 +15,7 @@ from cocomelon.research.learning_dataset_bundle import (
     load_verified_learning_dataset_bundle,
     write_learning_dataset_bundle,
 )
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.learning_training_rows import build_learning_training_set
 from cocomelon.research.outcome_learning import (
     LearningEvidenceKind,
@@ -22,7 +24,11 @@ from cocomelon.research.outcome_learning import (
 )
 
 
-def _paper_record(*, source_record_id: str = "paper-1") -> LearningEvidenceRecord:
+def _paper_record(
+    *,
+    source_record_id: str = "paper-1",
+    feature_snapshot_id: str = "feature-paper",
+) -> LearningEvidenceRecord:
     return LearningEvidenceRecord(
         kind=LearningEvidenceKind.PAPER_EXECUTION,
         source_record_id=source_record_id,
@@ -34,7 +40,7 @@ def _paper_record(*, source_record_id: str = "paper-1") -> LearningEvidenceRecor
         direction=Direction.LONG,
         opened_at_ms=10_000,
         closed_at_ms=20_000,
-        feature_snapshot_id="feature-paper",
+        feature_snapshot_id=feature_snapshot_id,
         research_eligible_at_ms=20_000,
         gross_realized_pnl=Decimal("10"),
         entry_fees=Decimal("0.5"),
@@ -152,3 +158,134 @@ def test_training_set_rejects_unbound_dataset_lineage(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="dataset_id does not match"):
         build_learning_training_set(second, manifest)
+
+
+
+def _feature_snapshot(
+    *,
+    market: str = "HYPE",
+    as_of_ms: int = 9_000,
+) -> FeatureSnapshot:
+    return FeatureSnapshot(
+        market=MarketId("", market),
+        as_of_ms=as_of_ms,
+        source_received_at_ms=as_of_ms - 100,
+        schema_version=1,
+        day_return=Decimal("0.04"),
+        funding=Decimal("0.0001"),
+        open_interest=Decimal("1000000"),
+        day_notional_volume=Decimal("5000000"),
+        oi_change_fraction=Decimal("0.03"),
+        funding_change=Decimal("0.00001"),
+        mark_oracle_dislocation_bps=Decimal("1.5"),
+        return_5m=Decimal("0.01"),
+        return_15m=Decimal("0.02"),
+        return_1h=Decimal("0.03"),
+        return_4h=Decimal("0.05"),
+        realized_vol_15m=Decimal("0.008"),
+        range_expansion_15m=Decimal("1.2"),
+        relative_volume_15m=Decimal("1.4"),
+        spread_bps=Decimal("2"),
+        bid_depth_25bps=Decimal("250000"),
+        ask_depth_25bps=Decimal("230000"),
+        book_imbalance=Decimal("0.04"),
+        book_age_ms=50,
+        trend_regime=TrendRegime.UP,
+        volatility_regime=VolatilityRegime.NORMAL,
+        provenance=("hyperliquid-mainnet-info",),
+    )
+
+
+def test_training_set_resolves_authenticated_numeric_snapshot_features(tmp_path) -> None:
+    snapshot = _feature_snapshot()
+    bundle = _bundle(
+        tmp_path,
+        _paper_record(feature_snapshot_id=snapshot.snapshot_id),
+    )
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    store.record(snapshot)
+    manifest = _manifest(
+        bundle,
+        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        features=(
+            "return_5m",
+            "funding",
+            "spread_bps",
+            "book_age_ms",
+            "trend_regime",
+        ),
+    )
+
+    training = build_learning_training_set(
+        bundle,
+        manifest,
+        feature_store=store,
+    )
+
+    assert training.rows[0].feature_values == (
+        "0.01",
+        "0.0001",
+        "2",
+        "50",
+        "up",
+    )
+
+
+def test_training_set_requires_store_for_snapshot_backed_features(tmp_path) -> None:
+    snapshot = _feature_snapshot()
+    bundle = _bundle(
+        tmp_path,
+        _paper_record(feature_snapshot_id=snapshot.snapshot_id),
+    )
+    manifest = _manifest(
+        bundle,
+        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        features=("return_5m",),
+    )
+
+    with pytest.raises(ValueError, match="snapshot store is required"):
+        build_learning_training_set(bundle, manifest)
+
+
+def test_training_set_rejects_snapshot_after_trade_open(tmp_path) -> None:
+    snapshot = _feature_snapshot(as_of_ms=11_000)
+    bundle = _bundle(
+        tmp_path,
+        _paper_record(feature_snapshot_id=snapshot.snapshot_id),
+    )
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    store.record(snapshot)
+    manifest = _manifest(
+        bundle,
+        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        features=("return_5m",),
+    )
+
+    with pytest.raises(ValueError, match="after trade open"):
+        build_learning_training_set(
+            bundle,
+            manifest,
+            feature_store=store,
+        )
+
+
+def test_training_set_rejects_snapshot_market_mismatch(tmp_path) -> None:
+    snapshot = _feature_snapshot(market="BTC")
+    bundle = _bundle(
+        tmp_path,
+        _paper_record(feature_snapshot_id=snapshot.snapshot_id),
+    )
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    store.record(snapshot)
+    manifest = _manifest(
+        bundle,
+        kind=LearningEvidenceKind.PAPER_EXECUTION,
+        features=("return_5m",),
+    )
+
+    with pytest.raises(ValueError, match="market does not match"):
+        build_learning_training_set(
+            bundle,
+            manifest,
+            feature_store=store,
+        )
