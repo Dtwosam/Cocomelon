@@ -15,9 +15,13 @@ def test_research_learning_workflow_follows_completed_research_campaigns() -> No
     assert "Research Learning Evidence Sync" in source
     assert 'workflows: ["Scheduled Research Mainnet Replay Campaign"]' in source
     assert "types: [completed]" in source
+    assert "workflow_dispatch:" in source
+    assert "upstream_run_id:" in source
     assert "\n  schedule:" not in source
     assert "github.event.workflow_run.conclusion == 'success'" in source
     assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event_name == 'workflow_dispatch'" in source
+    assert 'inputs.upstream_run_id' in source
 
 
 def test_research_learning_workflow_restores_and_publishes_cumulative_state() -> None:
@@ -29,6 +33,8 @@ def test_research_learning_workflow_restores_and_publishes_cumulative_state() ->
     assert "learning-state/ledger" in source
     assert "learning-state/features" in source
     assert "research-campaign-${RUN_ID}-${RUN_ATTEMPT}" in source
+    assert 'run.get("id") != int(os.environ["RUN_ID"])' in source
+    assert 'run.get("head_sha")' in source
 
 
 def test_research_learning_workflow_remains_observational_and_paper_only() -> None:
