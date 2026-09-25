@@ -102,7 +102,8 @@ def test_research_dashboard_includes_non_economic_learning_operations() -> None:
 def test_research_dashboard_restores_only_trusted_clean_state_lineages() -> None:
     workflow = _workflow()
 
-    assert "--paginate --slurp" in workflow
+    assert '"--paginate",' in workflow
+    assert '"--slurp",' in workflow
     assert "research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*" in workflow
     assert ".github/workflows/research-learning-clean-state-bootstrap.yml" in workflow
     assert ".github/workflows/research-learning-clean-state-sync.yml" in workflow
