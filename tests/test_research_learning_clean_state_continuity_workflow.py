@@ -48,6 +48,9 @@ def test_clean_state_continuity_reverifies_complete_lineage_before_copy() -> Non
     assert "LearningCleanCampaignSyncResult" in source
     assert "verify_learning_clean_validation_score" in source
     assert "verify_learning_clean_finalization" in source
+    assert "verify_learning_clean_review_dossier" in source
+    assert "review-eligible finalization is missing review dossier" in source
+    assert "non-review-eligible candidate carries review dossier" in source
     assert '"bootstrap_id"' in source
     assert '"generation_id"' in source
     assert "clean campaign sync identity mismatch" in source
