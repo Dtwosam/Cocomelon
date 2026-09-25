@@ -65,6 +65,7 @@ cocomelon-learning-candidate-freeze = "cocomelon.learning_candidate_freeze_cli:m
 cocomelon-learning-candidate-package = "cocomelon.learning_candidate_package_cli:main"
 cocomelon-learning-clean-validation-spec = "cocomelon.learning_clean_validation_spec_cli:main"
 cocomelon-learning-clean-validation-score = "cocomelon.learning_clean_validation_score_cli:main"
+cocomelon-learning-clean-finalize = "cocomelon.learning_clean_finalize_cli:main"
 cocomelon-learning-clean-state = "cocomelon.learning_clean_state_cli:main"
 cocomelon-learning-clean-evidence = "cocomelon.learning_clean_evidence_cli:main"
 cocomelon-learning-clean-campaign-sync = "cocomelon.learning_clean_campaign_sync_cli:main"
