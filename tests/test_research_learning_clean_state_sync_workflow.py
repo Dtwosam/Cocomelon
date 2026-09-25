@@ -56,6 +56,13 @@ def test_clean_state_follower_verifies_and_versions_candidate_state() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert "verify_learning_clean_state" in source
+    assert "cocomelon-learning-clean-sequence" in source
+    assert "--paginate --slurp" in source
+    assert 'if [ "$ACTION" = "gap" ]; then' in source
+    assert "clean campaign gap detected" in source
+    assert "skip_already_processed" in source
+    assert "skip_predates_bootstrap" in source
+    assert "steps.sequence.outputs.action == 'process'" in source
     assert "cocomelon-learning-clean-campaign-sync" in source
     assert "state-history/$PRIOR_STATE_ID.json" in source
     assert "conflicting clean-state history entry" in source

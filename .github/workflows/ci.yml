@@ -117,6 +117,8 @@ jobs:
           tests/test_learning_clean_evidence_cli.py
           tests/test_learning_clean_campaign_sync.py
           tests/test_learning_clean_campaign_sync_cli.py
+          tests/test_learning_clean_campaign_sequence.py
+          tests/test_learning_clean_campaign_sequence_cli.py
           tests/test_learning_state_lineage.py
           tests/test_execution_learning_sync.py
           tests/test_research_learning_sync.py
@@ -133,6 +135,7 @@ jobs:
           tests/test_research_learning_clean_admission_workflow.py
           tests/test_research_learning_clean_state_bootstrap_workflow.py
           tests/test_research_learning_clean_state_sync_workflow.py
+          tests/test_research_learning_clean_catchup_workflow.py
           tests/test_learning_dashboard.py
           tests/test_learning_dashboard_cli.py
           tests/test_research_dashboard_workflow.py

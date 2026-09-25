@@ -317,9 +317,40 @@ jobs:
           test -d prior-state/candidates
           cp -a prior-state next-state
 
+      - name: Enforce contiguous paper-campaign sequence
+        id: sequence
+        if: ${{ matrix.skip != true }}
+        env:
+          CURRENT_CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/runs?branch=main&per_page=100" \
+            > /tmp/clean-campaign-history.json
+          cocomelon-learning-clean-sequence \
+            --state-root prior-state \
+            --campaign-history /tmp/clean-campaign-history.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --current-run-id "$CURRENT_CAMPAIGN_RUN_ID" \
+            > /tmp/clean-campaign-sequence.json
+          ACTION="$(jq -r '.action' /tmp/clean-campaign-sequence.json)"
+          EXPECTED_RUN_ID="$(jq -r '.next_required_run_id // empty' /tmp/clean-campaign-sequence.json)"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "expected_run_id=$EXPECTED_RUN_ID" >> "$GITHUB_OUTPUT"
+          if [ "$ACTION" = "gap" ]; then
+            echo "clean campaign gap detected; expected run $EXPECTED_RUN_ID before $CURRENT_CAMPAIGN_RUN_ID" >&2
+            exit 73
+          fi
+          if [ "$ACTION" != "process" ] \
+             && [ "$ACTION" != "skip_already_processed" ] \
+             && [ "$ACTION" != "skip_predates_bootstrap" ]; then
+            echo "unexpected clean campaign sequence action: $ACTION" >&2
+            exit 74
+          fi
+
       - name: Advance every verified clean candidate
         id: advance
-        if: ${{ matrix.skip != true }}
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
         env:
           CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
           CAMPAIGN_RUN_ATTEMPT: ${{ needs.prepare.outputs.campaign_run_attempt }}
@@ -446,7 +477,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Persist non-economic campaign generation receipt
-        if: ${{ matrix.skip != true }}
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
         env:
           CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
           CAMPAIGN_RUN_ATTEMPT: ${{ needs.prepare.outputs.campaign_run_attempt }}
@@ -554,7 +585,7 @@ jobs:
           PY
 
       - name: Render blind clean-state progress summary
-        if: ${{ matrix.skip != true }}
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
         run: |
           {
             echo "## Learning clean-state campaign follower"
@@ -569,7 +600,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish next durable clean-state generation
-        if: ${{ matrix.skip != true }}
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact_name }}
