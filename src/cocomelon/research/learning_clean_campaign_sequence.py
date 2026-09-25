@@ -376,13 +376,6 @@ def build_learning_clean_campaign_sequence_status(
     )
     by_id = {item.run_id: item for item in campaigns}
 
-    unknown_processed = tuple(sorted(processed - set(by_id)))
-    if unknown_processed:
-        raise LearningCleanCampaignSequenceError(
-            "LEARNING_CLEAN_PROCESSED_CAMPAIGN_NOT_IN_HISTORY:"
-            + ",".join(str(item) for item in unknown_processed)
-        )
-
     required = tuple(
         item
         for item in campaigns
