@@ -12,6 +12,10 @@ from cocomelon.research.execution_learning_sync import (
     sync_execution_learning_evidence,
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.learning_state_lineage import (
+    append_learning_state_lineage,
+    verify_learning_state_lineage,
+)
 from cocomelon.research.outcome_learning import (
     LearningEvidenceKind,
     LearningEvidenceLedger,
@@ -104,6 +108,8 @@ class ResearchLearningSyncReceipt:
     learning_state_digest: str
     feature_snapshot_count: int
     feature_state_digest: str
+    lineage_sequence: int
+    lineage_entry_id: str
     research_only: bool = True
     promotion_eligible: bool = False
     execution_ready: bool = False
@@ -121,6 +127,8 @@ class ResearchLearningSyncReceipt:
             "learning_state_digest": self.learning_state_digest,
             "feature_snapshot_count": self.feature_snapshot_count,
             "feature_state_digest": self.feature_state_digest,
+            "lineage_sequence": self.lineage_sequence,
+            "lineage_entry_id": self.lineage_entry_id,
             "research_only": self.research_only,
             "promotion_eligible": self.promotion_eligible,
             "execution_ready": self.execution_ready,
@@ -234,6 +242,20 @@ def sync_research_campaign_learning(
     ledger = LearningEvidenceLedger(state / "ledger")
     destination_features = LearningFeatureSnapshotStore(state / "features")
 
+    before_records = ledger.iter_records()
+    before_feature_snapshots = destination_features.iter_verified()
+    before_learning_record_count = len(before_records)
+    before_learning_state_digest = ledger.state_digest
+    before_feature_snapshot_count = len(before_feature_snapshots)
+    before_feature_state_digest = destination_features.state_digest
+    verify_learning_state_lineage(
+        state,
+        learning_record_count=before_learning_record_count,
+        learning_state_digest=before_learning_state_digest,
+        feature_snapshot_count=before_feature_snapshot_count,
+        feature_state_digest=before_feature_state_digest,
+    )
+
     scanned_trades = 0
     created_records = 0
     existing_records = 0
@@ -296,6 +318,30 @@ def sync_research_campaign_learning(
 
     records = ledger.iter_records()
     feature_snapshots = destination_features.iter_verified()
+    learning_state_digest = ledger.state_digest
+    feature_state_digest = destination_features.state_digest
+    lineage = append_learning_state_lineage(
+        state,
+        upstream_run_id=upstream_run_id,
+        upstream_run_attempt=upstream_run_attempt,
+        upstream_head_sha=upstream_head_sha,
+        upstream_artifact_id=upstream_artifact_id,
+        upstream_artifact_digest=upstream_artifact_digest,
+        required_candidate_ids=tuple(candidate_ids),
+        scanned_trades=scanned_trades,
+        created_records=created_records,
+        existing_records=existing_records,
+        created_feature_snapshots=created_features,
+        existing_feature_snapshots=existing_features,
+        before_learning_record_count=before_learning_record_count,
+        before_learning_state_digest=before_learning_state_digest,
+        before_feature_snapshot_count=before_feature_snapshot_count,
+        before_feature_state_digest=before_feature_state_digest,
+        after_learning_record_count=len(records),
+        after_learning_state_digest=learning_state_digest,
+        after_feature_snapshot_count=len(feature_snapshots),
+        after_feature_state_digest=feature_state_digest,
+    )
     return ResearchLearningSyncReceipt(
         upstream_run_id=upstream_run_id,
         upstream_run_attempt=upstream_run_attempt,
@@ -309,7 +355,9 @@ def sync_research_campaign_learning(
         created_feature_snapshots=created_features,
         existing_feature_snapshots=existing_features,
         learning_record_count=len(records),
-        learning_state_digest=ledger.state_digest,
+        learning_state_digest=learning_state_digest,
         feature_snapshot_count=len(feature_snapshots),
-        feature_state_digest=destination_features.state_digest,
+        feature_state_digest=feature_state_digest,
+        lineage_sequence=lineage.sequence,
+        lineage_entry_id=lineage.entry_id,
     )
