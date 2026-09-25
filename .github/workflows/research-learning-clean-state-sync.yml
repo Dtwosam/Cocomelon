@@ -331,6 +331,7 @@ jobs:
           set -euo pipefail
           PROCESSED=0
           READY=0
+          FINALIZED=0
           for CANDIDATE_ROOT in next-state/candidates/*; do
             if [ ! -d "$CANDIDATE_ROOT" ]; then
               continue
@@ -396,9 +397,38 @@ jobs:
 
             STATUS="$(jq -r '.status' "$STATE_PATH")"
             if [ "$STATUS" = "ready_to_score" ]; then
-              mkdir -p "$CANDIDATE_ROOT/score"
-              cocomelon-learning-clean-validation-score                 --evidence-root "$EVIDENCE_ROOT"                 --package-root "$PACKAGE_ROOT"                 --validation-spec "$SPEC_PATH"                 --output-root "$CANDIDATE_ROOT/score"                 --as-of-ms "$AS_OF_MS"                 > "/tmp/clean-score-command-$LABEL.json"
+              SCORE_ROOT="$CANDIDATE_ROOT/score"
+              SCORE_PATH="$SCORE_ROOT/candidate-validation-score.json"
+              FINAL_ROOT="$CANDIDATE_ROOT/finalization"
+              FINAL_PATH="$FINAL_ROOT/candidate-finalization.json"
+              mkdir -p "$SCORE_ROOT"
+              cocomelon-learning-clean-validation-score                 --evidence-root "$EVIDENCE_ROOT"                 --package-root "$PACKAGE_ROOT"                 --validation-spec "$SPEC_PATH"                 --output-root "$SCORE_ROOT"                 --as-of-ms "$AS_OF_MS"                 > "/tmp/clean-score-command-$LABEL.json"
+
+              if [ -f "$FINAL_PATH" ]; then
+                PACKAGE_ROOT="$PACKAGE_ROOT"                 SPEC_PATH="$SPEC_PATH"                 SCORE_PATH="$SCORE_PATH"                 EVIDENCE_ROOT="$EVIDENCE_ROOT"                 FINAL_PATH="$FINAL_PATH"                 python - <<'PY'
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.learning_clean_finalization import (
+              verify_learning_clean_finalization,
+          )
+
+          finalization = verify_learning_clean_finalization(
+              Path(os.environ["FINAL_PATH"]),
+              package_root=Path(os.environ["PACKAGE_ROOT"]),
+              validation_spec_path=Path(os.environ["SPEC_PATH"]),
+              validation_score_path=Path(os.environ["SCORE_PATH"]),
+              evidence_root=Path(os.environ["EVIDENCE_ROOT"]),
+          )
+          if finalization.promotion_eligible or finalization.execution_ready:
+              raise SystemExit("clean finalization carries invalid authority")
+          PY
+              else
+                mkdir -p "$FINAL_ROOT"
+                cocomelon-learning-clean-finalize                   --package-root "$PACKAGE_ROOT"                   --validation-spec "$SPEC_PATH"                   --validation-score "$SCORE_PATH"                   --evidence-root "$EVIDENCE_ROOT"                   --output-root "$FINAL_ROOT"                   --finalized-at-ms "$AS_OF_MS"                   > "/tmp/clean-finalization-command-$LABEL.json"
+              fi
               READY=$((READY + 1))
+              FINALIZED=$((FINALIZED + 1))
             fi
 
             PROCESSED=$((PROCESSED + 1))
@@ -412,6 +442,7 @@ jobs:
           {
             echo "candidate_count=$PROCESSED"
             echo "ready_count=$READY"
+            echo "finalized_count=$FINALIZED"
           } >> "$GITHUB_OUTPUT"
 
       - name: Persist non-economic campaign generation receipt
@@ -467,6 +498,9 @@ jobs:
                   ).read_text(encoding="utf-8")
               )
               score_path = root / "score" / "candidate-validation-score.json"
+              finalization_path = (
+                  root / "finalization" / "candidate-finalization.json"
+              )
               rows.append(
                   {
                       "label": root.name,
@@ -476,6 +510,7 @@ jobs:
                       "status": state["status"],
                       "sync_id": sync["sync_id"],
                       "score_materialized": score_path.is_file(),
+                      "finalization_materialized": finalization_path.is_file(),
                   }
               )
 
@@ -526,6 +561,7 @@ jobs:
             echo "- state lineage: ${{ matrix.artifact_name }}"
             echo "- clean candidates: ${{ steps.advance.outputs.candidate_count }}"
             echo "- ready to score: ${{ steps.advance.outputs.ready_count }}"
+            echo "- terminal review artifacts: ${{ steps.advance.outputs.finalized_count }}"
             echo "- paper-only: true"
             echo "- research-only: true"
             echo "- promotion authorized: false"
