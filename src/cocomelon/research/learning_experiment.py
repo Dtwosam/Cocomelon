@@ -5,10 +5,12 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from cocomelon.research.learning_challenger_run import (
     LearningChallengerRunManifest,
     build_learning_challenger_run_manifest,
+    load_learning_challenger_run_manifest,
     write_learning_challenger_run_manifest,
 )
 from cocomelon.research.learning_dataset import build_learning_dataset_snapshot
@@ -75,6 +77,24 @@ def _atomic_write(path: Path, data: bytes) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise LearningExperimentError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise LearningExperimentError(f"{field} must be a non-empty string")
+    return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise LearningExperimentError(f"{field} must be boolean")
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,5 +265,158 @@ def run_learning_experiment(
         training_bundle_id=verified_training.bundle_id,
         evaluation_id=evaluation_id,
         model_family=model_family,
+        qualifies_development=qualifies_development,
+    )
+
+
+
+def verify_learning_experiment(
+    *,
+    output_root: Path,
+) -> LearningExperimentResult:
+    summary_path = output_root / "experiment.json"
+    try:
+        summary_bytes = summary_path.read_bytes()
+        summary = _mapping(
+            json.loads(summary_bytes),
+            "learning experiment manifest",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_MANIFEST_INVALID"
+        ) from exc
+
+    stored_experiment_id = _string(
+        summary.get("experiment_id"),
+        "experiment_id",
+    )
+    identity_payload = dict(summary)
+    identity_payload.pop("experiment_id", None)
+    if _sha256_bytes(_canonical_json(identity_payload).encode("utf-8")) != (
+        stored_experiment_id
+    ):
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_IDENTITY_MISMATCH"
+        )
+    if summary_bytes != (_canonical_json(summary) + "\n").encode("utf-8"):
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_MANIFEST_NON_CANONICAL"
+        )
+    if summary.get("schema_version") != LEARNING_EXPERIMENT_SCHEMA_VERSION:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_SCHEMA_UNSUPPORTED"
+        )
+    if (
+        not _boolean(summary.get("research_only"), "research_only")
+        or _boolean(summary.get("promotion_eligible"), "promotion_eligible")
+        or _boolean(summary.get("execution_ready"), "execution_ready")
+    ):
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_AUTHORITY_INVALID"
+        )
+
+    dataset = load_verified_learning_dataset_bundle(
+        output_dir=output_root / "dataset",
+    )
+    manifest = load_learning_challenger_run_manifest(
+        output_root / "challenger-run.json"
+    )
+    training = verify_learning_training_bundle(
+        output_dir=output_root / "training",
+        manifest=manifest,
+    )
+
+    evaluation_path = output_root / "evaluation.json"
+    try:
+        evaluation_bytes = evaluation_path.read_bytes()
+        evaluation = _mapping(
+            json.loads(evaluation_bytes),
+            "learning experiment evaluation",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_INVALID"
+        ) from exc
+    evaluation_id = _string(
+        evaluation.get("evaluation_id"),
+        "evaluation_id",
+    )
+    evaluation_identity = dict(evaluation)
+    evaluation_identity.pop("evaluation_id", None)
+    if _sha256_bytes(
+        _canonical_json(evaluation_identity).encode("utf-8")
+    ) != evaluation_id:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_IDENTITY_MISMATCH"
+        )
+    if evaluation_bytes != (_canonical_json(evaluation) + "\n").encode("utf-8"):
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_NON_CANONICAL"
+        )
+    if (
+        not _boolean(evaluation.get("research_only"), "evaluation research_only")
+        or _boolean(
+            evaluation.get("promotion_eligible"),
+            "evaluation promotion_eligible",
+        )
+        or _boolean(evaluation.get("execution_ready"), "evaluation execution_ready")
+    ):
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_AUTHORITY_INVALID"
+        )
+
+    expected = {
+        "dataset_id": dataset.snapshot.manifest.dataset_id,
+        "dataset_lineage_id": dataset.lineage_id,
+        "dataset_manifest_sha256": dataset.manifest_sha256,
+        "dataset_records_sha256": dataset.records_sha256,
+        "learning_state_digest": dataset.snapshot.manifest.ledger_state_digest,
+        "run_id": manifest.run_id,
+        "feature_registry_id": manifest.feature_registry_id,
+        "model_config_id": manifest.model_config_id,
+        "decision_policy_id": manifest.decision_policy_id,
+        "implementation_commit_sha": manifest.implementation_commit_sha,
+        "training_set_id": training.training_set.training_set_id,
+        "training_bundle_id": training.bundle_id,
+        "evaluation_id": evaluation_id,
+        "model_family": manifest.model_family,
+    }
+    for field, value in expected.items():
+        if summary.get(field) != value:
+            raise LearningExperimentError(
+                f"LEARNING_EXPERIMENT_LINEAGE_MISMATCH:{field}"
+            )
+    if evaluation.get("run_id") != manifest.run_id:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_RUN_MISMATCH"
+        )
+    if evaluation.get("training_bundle_id") != training.bundle_id:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_BUNDLE_MISMATCH"
+        )
+    if evaluation.get("model_family") != manifest.model_family:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_EVALUATION_MODEL_MISMATCH"
+        )
+
+    qualifies_development = _boolean(
+        evaluation.get("qualifies_development"),
+        "qualifies_development",
+    )
+    if summary.get("qualifies_development") is not qualifies_development:
+        raise LearningExperimentError(
+            "LEARNING_EXPERIMENT_QUALIFICATION_MISMATCH"
+        )
+
+    return LearningExperimentResult(
+        output_root=output_root,
+        experiment_id=stored_experiment_id,
+        dataset_id=dataset.snapshot.manifest.dataset_id,
+        dataset_lineage_id=dataset.lineage_id,
+        run_id=manifest.run_id,
+        training_set_id=training.training_set.training_set_id,
+        training_bundle_id=training.bundle_id,
+        evaluation_id=evaluation_id,
+        model_family=manifest.model_family,
         qualifies_development=qualifies_development,
     )
