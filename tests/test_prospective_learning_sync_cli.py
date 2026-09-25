@@ -20,6 +20,8 @@ def test_empty_v3_learning_sync_creates_no_records(tmp_path) -> None:
     assert payload["created_records"] == 0
     assert payload["existing_records"] == 0
     assert payload["learning_record_count"] == 0
+    assert isinstance(payload["learning_state_digest"], str)
+    assert len(payload["learning_state_digest"]) == 64
     assert (
         payload["research_eligible_at_ms"]
         == HYPE_PROSPECTIVE_VALIDATION_V3.finalization_not_before_ms
