@@ -69,7 +69,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             feature_values=values,
             observed_at_ms=args.observed_at_ms,
         )
-    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
             stream=sys.stderr,
