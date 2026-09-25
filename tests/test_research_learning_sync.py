@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -168,10 +169,7 @@ def test_research_learning_sync_rejects_pre_feature-store_campaign(
 ) -> None:
     campaign, _snapshot_value, trade = _campaign(tmp_path)
     output = campaign / "audit" / "evaluated" / "root-key" / "output"
-    for path in (output / "learning-features").rglob("*"):
-        if path.is_file():
-            path.unlink()
-    (output / "learning-features").rmdir()
+    shutil.rmtree(output / "learning-features")
     monkeypatch.setattr(
         research_learning_sync,
         "verify_research_batch_artifact",
