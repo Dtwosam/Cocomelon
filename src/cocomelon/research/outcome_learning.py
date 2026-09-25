@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -238,24 +237,17 @@ class LearningEvidenceLedger:
                     f"conflicting learning evidence record: {record.record_id}"
                 )
             return False
-        temporary = path.with_name(f".{path.name}.tmp")
         try:
-            with temporary.open("wb") as handle:
+            with path.open("xb") as handle:
                 handle.write(encoded)
                 handle.flush()
-                os.fsync(handle.fileno())
-            try:
-                os.link(temporary, path)
-            except FileExistsError:
-                if path.read_bytes() != encoded:
-                    raise LearningEvidenceError(
-                        f"conflicting learning evidence record: {record.record_id}"
-                    ) from None
-                return False
-            return True
-        finally:
-            if temporary.exists():
-                temporary.unlink()
+        except FileExistsError:
+            if path.read_bytes() != encoded:
+                raise LearningEvidenceError(
+                    f"conflicting learning evidence record: {record.record_id}"
+                ) from None
+            return False
+        return True
 
     def iter_records(self) -> tuple[LearningEvidenceRecord, ...]:
         records: list[LearningEvidenceRecord] = []
@@ -369,8 +361,14 @@ def prospective_learning_record(
         raise ValueError("outcome does not match prospective observation")
     if observation.effective_direction not in {Direction.LONG, Direction.SHORT}:
         raise ValueError("prospective learning requires an effective directional trade")
+    if outcome.market != observation.market:
+        raise ValueError("prospective outcome market does not match observation")
     if outcome.direction is not observation.effective_direction:
         raise ValueError("prospective outcome direction does not match observation")
+    if outcome.entry_px != observation.entry_px:
+        raise ValueError("prospective outcome entry price does not match observation")
+    if outcome.modeled_cost_fraction != observation.modeled_cost_fraction:
+        raise ValueError("prospective outcome modeled cost does not match observation")
     if outcome.anchor_end_ms != observation.anchor_end_ms:
         raise ValueError("prospective outcome anchor does not match observation")
     if outcome.target_end_ms != observation.target_end_ms:
