@@ -82,7 +82,7 @@ class LearningStateLineageEntry:
         _require_positive(self.upstream_run_id, "upstream_run_id")
         _require_positive(self.upstream_run_attempt, "upstream_run_attempt")
         _require_positive(self.upstream_artifact_id, "upstream_artifact_id")
-        for field, value in (
+        for field, count_value in (
             ("scanned_trades", self.scanned_trades),
             ("created_records", self.created_records),
             ("existing_records", self.existing_records),
@@ -93,20 +93,20 @@ class LearningStateLineageEntry:
             ("after_learning_record_count", self.after_learning_record_count),
             ("after_feature_snapshot_count", self.after_feature_snapshot_count),
         ):
-            _require_non_negative(value, field)
+            _require_non_negative(count_value, field)
         if self.previous_entry_id is not None and not _is_sha256(self.previous_entry_id):
             raise ValueError("previous_entry_id must be a lowercase sha256 hex digest")
         if not _is_commit_sha(self.upstream_head_sha):
             raise ValueError("upstream_head_sha must be a lowercase 40-character git SHA")
         if not _is_artifact_digest(self.upstream_artifact_digest):
             raise ValueError("upstream_artifact_digest must be sha256:<lowercase hex>")
-        for field, value in (
+        for field, digest_value in (
             ("before_learning_state_digest", self.before_learning_state_digest),
             ("before_feature_state_digest", self.before_feature_state_digest),
             ("after_learning_state_digest", self.after_learning_state_digest),
             ("after_feature_state_digest", self.after_feature_state_digest),
         ):
-            if not _is_sha256(value):
+            if not _is_sha256(digest_value):
                 raise ValueError(f"{field} must be a lowercase sha256 hex digest")
         if not self.required_candidate_ids:
             raise ValueError("required_candidate_ids must not be empty")
@@ -221,7 +221,7 @@ class LearningStateLineageEntry:
         try:
             entry = cls(
                 sequence=cast(int, raw["sequence"]),
-                previous_entry_id=cast(str | None, previous_entry_id),
+                previous_entry_id=previous_entry_id,
                 upstream_run_id=cast(int, raw["upstream_run_id"]),
                 upstream_run_attempt=cast(int, raw["upstream_run_attempt"]),
                 upstream_head_sha=cast(str, raw["upstream_head_sha"]),
@@ -302,16 +302,16 @@ def verify_learning_state_lineage(
     feature_state_digest: str,
     require_entry: bool = False,
 ) -> LearningStateLineageEntry | None:
-    for field, value in (
+    for field, count_value in (
         ("learning_record_count", learning_record_count),
         ("feature_snapshot_count", feature_snapshot_count),
     ):
-        _require_non_negative(value, field)
-    for field, value in (
+        _require_non_negative(count_value, field)
+    for field, digest_value in (
         ("learning_state_digest", learning_state_digest),
         ("feature_state_digest", feature_state_digest),
     ):
-        if not _is_sha256(value):
+        if not _is_sha256(digest_value):
             raise ValueError(f"{field} must be a lowercase sha256 hex digest")
 
     entries = _load_entries(state_root)
