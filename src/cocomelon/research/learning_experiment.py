@@ -140,13 +140,19 @@ def _evaluate(
         manifest=manifest,
     )
     if model_family == GROUPED_MEAN_MODEL_FAMILY:
-        evaluation = evaluate_learning_grouped_mean(verified, manifest)
-        write_learning_grouped_mean_evaluation(output_path, evaluation)
-        return evaluation.evaluation_id, evaluation.qualifies_development
+        grouped_evaluation = evaluate_learning_grouped_mean(verified, manifest)
+        write_learning_grouped_mean_evaluation(
+            output_path,
+            grouped_evaluation,
+        )
+        return (
+            grouped_evaluation.evaluation_id,
+            grouped_evaluation.qualifies_development,
+        )
     if model_family == TREE_MODEL_FAMILY:
-        evaluation = evaluate_learning_tree(verified, manifest)
-        write_learning_tree_evaluation(output_path, evaluation)
-        return evaluation.evaluation_id, evaluation.qualifies_development
+        tree_evaluation = evaluate_learning_tree(verified, manifest)
+        write_learning_tree_evaluation(output_path, tree_evaluation)
+        return tree_evaluation.evaluation_id, tree_evaluation.qualifies_development
     raise LearningExperimentError(
         f"unsupported learning experiment model family: {model_family}"
     )
