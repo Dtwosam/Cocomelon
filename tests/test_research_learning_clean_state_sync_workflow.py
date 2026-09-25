@@ -45,9 +45,9 @@ def test_clean_state_follower_restores_only_trusted_latest_generations() -> None
     assert ".github/workflows/research-learning-clean-state-sync.yml" in source
     assert '"Research Learning Clean State Bootstrap"' in source
     assert '"Research Learning Clean State Campaign Follower"' in source
-    assert 'run.get("head_branch") == "main"' in source
-    assert 'run.get("status") == "completed"' in source
-    assert 'run.get("conclusion") == "success"' in source
+    assert 'or run.get("head_branch") != "main"' in source
+    assert 'or run.get("status") != "completed"' in source
+    assert 'or run.get("conclusion") != "success"' in source
     assert "name in selected" in source
     assert "trusted clean-state artifact digest is missing" in source
 
