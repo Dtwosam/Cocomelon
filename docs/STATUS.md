@@ -481,3 +481,26 @@ Next action for this lane:
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous-learning readiness gate — 2026-09-25
+
+PR #410 implementation head `3fefce79ce13a5bb609e0b9e441ac03f8c274b76` passed CI run `36151628931`: the full test job and the research job both completed successfully, including compile, Ruff, strict mypy, full pytest, and the new readiness regressions.
+
+The new `cocomelon-learning-readiness` surface is observational and research-only:
+
+- freezes the evidence view at an explicit `as_of_ms`;
+- separates eligible records from still-quarantined records for one evidence kind;
+- reuses the exact training feature resolver instead of maintaining a weaker audit implementation;
+- requires authenticated point-in-time feature coverage for every eligible record selected by the requested feature registry;
+- reports valid-but-not-ready evidence separately from malformed/corrupt evidence;
+- never trains, promotes, changes risk, mutates the frozen V3 campaign, or enables execution.
+
+Next action for this lane:
+
+1. Continue accumulating and syncing authenticated ordinary paper-execution outcomes and settled prospective outcomes under their existing eligibility boundaries.
+2. Run the readiness audit against the real cumulative learning ledger and authenticated feature store at an explicit `as_of_ms`.
+3. If zero eligible records or any required feature coverage is missing/late/mismatched, preserve the block and do not start challenger training.
+4. When a selected evidence family is structurally ready, run the already-merged reproducible learning experiment with the transparent grouped-mean baseline and fixed shallow-tree challenger.
+5. Treat any qualifying result as touched development evidence only; NO_TRADE remains the fallback and V3 remains quarantined until its frozen finalization boundary.
+
+**LIVE TRADING: DISABLED.**
+
