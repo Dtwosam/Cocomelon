@@ -271,3 +271,16 @@ This file records decisions that should not be casually re-litigated in later ch
 **Metric separation:** Modeled prospective return fractions and actual execution PnL fields are mutually exclusive record families. The system must not silently treat modeled return, account return, net-R, and realized cash PnL as interchangeable targets.
 
 **Evolution consequence:** Learning is continuous at the evidence layer, not by mutating a running candidate after each trade. Eligible evidence may train or select a future challenger; that challenger must receive a new identity and pass its own chronological and prospective gates before any promotion decision.
+
+
+## D-031 — Challenger training snapshots must exclude quarantined learning evidence
+
+**Decision:** Future model fitting and challenger selection must consume a deterministic learning-dataset snapshot, not the raw outcome ledger directly.
+
+**Eligibility boundary:** A snapshot includes only records whose `research_eligible_at_ms <= as_of_ms`. Records still under prospective or execution quarantine remain excluded from all training partitions.
+
+**Audit boundary:** Every snapshot binds the full ledger state digest, eligible record IDs, quarantined record IDs, candidate IDs, and separate prospective-paper, paper-execution, and live-execution partitions. Adding even a still-quarantined record changes the dataset identity, so later research can prove exactly what was known and what was excluded.
+
+**Metric consequence:** Prospective modeled-return evidence, paper execution evidence, and live execution evidence remain separate typed partitions. Downstream research must explicitly choose how to use them rather than silently pooling incomparable targets.
+
+**Evolution consequence:** A challenger may learn only from an eligible snapshot and must retain that snapshot ID in its lineage. The active candidate remains immutable during its own clean campaign.
