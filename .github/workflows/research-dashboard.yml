@@ -7,6 +7,9 @@ on:
       - "Research V4 Acquisition Authority Sync"
       - "Research Learning Evidence Sync"
       - "Research Autonomous Learning Cycle"
+      - "Research Learning Clean State Bootstrap"
+      - "Research Learning Clean State Campaign Follower"
+      - "Research Learning Clean State Continuity"
     types: [completed]
   schedule:
     - cron: "23 * * * *"
@@ -18,6 +21,8 @@ on:
       - "src/cocomelon/research_dashboard_cli.py"
       - "src/cocomelon/research/learning_dashboard.py"
       - "src/cocomelon/learning_dashboard_cli.py"
+      - "src/cocomelon/research/learning_clean_review_queue.py"
+      - "src/cocomelon/learning_clean_review_queue_cli.py"
       - "pyproject.toml"
   workflow_dispatch: {}
 
@@ -283,6 +288,156 @@ jobs:
             printf 'true\n' > dashboard/cycle-available.txt
           fi
 
+      - name: Restore latest trusted learned clean-state lineages
+        run: |
+          set -euo pipefail
+          mkdir -p dashboard/clean-lineages
+          printf 'false\n' > dashboard/clean-available.txt
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import zipfile
+          from pathlib import Path
+
+          fetched = subprocess.run(
+              [
+                  "/usr/bin/gh",
+                  "api",
+                  "--paginate",
+                  "--slurp",
+                  f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts?per_page=100",
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
+          )
+          pages = json.loads(fetched.stdout)
+          artifacts = []
+          for page in pages:
+              artifacts.extend(page.get("artifacts", []))
+
+          pattern = re.compile(
+              r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          trusted = {
+              ".github/workflows/research-learning-clean-state-bootstrap.yml": {
+                  "name": "Research Learning Clean State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-sync.yml": {
+                  "name": "Research Learning Clean State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-continuity.yml": {
+                  "name": "Research Learning Clean State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
+          }
+          candidates = sorted(
+              (
+                  item
+                  for item in artifacts
+                  if item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and pattern.fullmatch(item["name"])
+                  and isinstance(item.get("workflow_run"), dict)
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          selected = {}
+          for artifact in candidates:
+              name = artifact["name"]
+              if name in selected:
+                  continue
+              workflow_run = artifact["workflow_run"]
+              run_id = workflow_run.get("id")
+              if not isinstance(run_id, int):
+                  continue
+              run_result = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(run_result.stdout)
+              contract = trusted.get(run.get("path"))
+              if contract is None:
+                  continue
+              if (
+                  run.get("name") != contract["name"]
+                  or run.get("event") not in contract["events"]
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("head_branch") != "main"
+                  or run.get("head_sha") != workflow_run.get("head_sha")
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit("trusted clean-state artifact digest is missing")
+              selected[name] = artifact
+
+          root = Path("dashboard/clean-lineages")
+          for name, artifact in sorted(selected.items()):
+              zip_path = Path("/tmp") / f"{name}.zip"
+              with zip_path.open("wb") as handle:
+                  subprocess.run(
+                      [
+                          "/usr/bin/gh",
+                          "api",
+                          f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip",
+                      ],
+                      check=True,
+                      stdout=handle,
+                  )
+              destination = root / name
+              destination.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(zip_path) as archive:
+                  archive.extractall(destination)
+
+          if selected:
+              Path("dashboard/clean-available.txt").write_text(
+                  "true\n",
+                  encoding="utf-8",
+              )
+          PY
+
+      - name: Render learned clean candidate review queue
+        run: |
+          set -euo pipefail
+          if [ "$(cat dashboard/clean-available.txt)" = "true" ]; then
+            ARGS=()
+            while IFS= read -r ROOT; do
+              ARGS+=(--state-root "$ROOT")
+            done < <(
+              find dashboard/clean-lineages -mindepth 1 -maxdepth 1 \
+                -type d -print | sort
+            )
+            cocomelon-learning-clean-review-queue \
+              "${ARGS[@]}" \
+              --format markdown \
+              > dashboard/clean-review.md
+          else
+            cat > dashboard/clean-review.md <<'EOF'
+          ## Learned Clean Candidate Review Queue
+
+          **RESEARCH ONLY / HUMAN REVIEW REQUIRED / NO EXECUTION**
+
+          No authenticated learned clean-validation lineage has been published yet.
+
+          Terminal review eligibility will appear here only after a frozen candidate completes its precommitted clean paper-validation sample.
+          EOF
+          fi
+
       - name: Render continuous learning operations status
         run: |
           set -euo pipefail
@@ -338,6 +493,8 @@ jobs:
             cat dashboard/status.md
             printf '\n\n'
             cat dashboard/learning-status.md
+            printf '\n\n'
+            cat dashboard/clean-review.md
             printf '\n---\n\n'
             printf 'This dashboard is **TOUCHED / NON-PROMOTIONAL** research evidence only. '
             printf 'It cannot establish verified edge, advance Phase 10, mutate the frozen V4 corpus, or enable live orders.\n'

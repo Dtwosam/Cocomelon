@@ -19,6 +19,9 @@ def test_research_dashboard_refreshes_from_trusted_producers_and_on_main_push() 
     assert '"Research V4 Acquisition Authority Sync"' in workflow
     assert '"Research Learning Evidence Sync"' in workflow
     assert '"Research Autonomous Learning Cycle"' in workflow
+    assert '"Research Learning Clean State Bootstrap"' in workflow
+    assert '"Research Learning Clean State Campaign Follower"' in workflow
+    assert '"Research Learning Clean State Continuity"' in workflow
     assert "types: [completed]" in workflow
     assert "schedule:" in workflow
     assert "workflow_dispatch:" in workflow
@@ -94,3 +97,44 @@ def test_research_dashboard_includes_non_economic_learning_operations() -> None:
     assert "learning-state/last-sync.json" not in workflow
     assert "api.hyperliquid" not in workflow
     assert "live_execution" not in workflow
+
+
+def test_research_dashboard_restores_only_trusted_clean_state_lineages() -> None:
+    workflow = _workflow()
+
+    assert '"--paginate",' in workflow
+    assert '"--slurp",' in workflow
+    assert "research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*" in workflow
+    assert ".github/workflows/research-learning-clean-state-bootstrap.yml" in workflow
+    assert ".github/workflows/research-learning-clean-state-sync.yml" in workflow
+    assert ".github/workflows/research-learning-clean-state-continuity.yml" in workflow
+    assert '"Research Learning Clean State Bootstrap"' in workflow
+    assert '"Research Learning Clean State Campaign Follower"' in workflow
+    assert '"Research Learning Clean State Continuity"' in workflow
+    assert 'run.get("status") == "completed"' in workflow
+    assert 'run.get("conclusion") == "success"' in workflow
+    assert 'run.get("head_branch") == "main"' in workflow
+    assert "trusted clean-state artifact digest is missing" in workflow
+
+
+def test_research_dashboard_renders_blind_learned_clean_review_queue() -> None:
+    workflow = _workflow()
+
+    assert "cocomelon-learning-clean-review-queue" in workflow
+    assert "dashboard/clean-review.md" in workflow
+    assert "cat dashboard/clean-review.md" in workflow
+    assert "Learned Clean Candidate Review Queue" in workflow
+    assert "HUMAN REVIEW REQUIRED" in workflow
+    assert "No authenticated learned clean-validation lineage" in workflow
+    clean_section = workflow.split(
+        "- name: Render learned clean candidate review queue",
+        1,
+    )[1].split(
+        "- name: Render continuous learning operations status",
+        1,
+    )[0].lower()
+    assert "overall_mean_net_r" not in clean_section
+    assert "predicted_net_r" not in clean_section
+    assert "qualifies_clean_validation" not in clean_section
+    assert "api.hyperliquid" not in clean_section
+    assert "live_execution" not in clean_section
