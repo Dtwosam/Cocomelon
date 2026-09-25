@@ -120,6 +120,8 @@ jobs:
           tests/test_learning_shadow_evidence.py
           tests/test_learning_shadow_evidence_cli.py
           tests/test_learning_shadow_strategy.py
+          tests/test_learning_shadow_replay.py
+          tests/test_learning_shadow_replay_cli.py
           tests/test_learning_clean_state.py
           tests/test_learning_clean_state_cli.py
           tests/test_learning_candidate_predictor.py
