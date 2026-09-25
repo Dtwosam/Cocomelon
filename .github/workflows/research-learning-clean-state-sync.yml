@@ -16,7 +16,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: research-learning-clean-state-campaign-follower
+  group: research-learning-clean-state-lineage-mutator
   cancel-in-progress: false
 
 env:
