@@ -1,0 +1,339 @@
+name: Research Learning Clean Admission
+
+on:
+  workflow_run:
+    workflows: ["Research Autonomous Learning Cycle"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful autonomous learning cycle run ID to recover
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-learning-clean-admission
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  admit:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current trusted admission implementation
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Authenticate exact autonomous learning cycle artifact
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "autonomous learning cycle run id is invalid" >&2
+            exit 64
+          fi
+
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/learning-cycle-run.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/learning-cycle-run.json").read_text(encoding="utf-8")
+          )
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("learning cycle run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("learning cycle run is not from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("learning cycle run did not complete successfully")
+          if run.get("event") not in {"workflow_run", "workflow_dispatch"}:
+              raise SystemExit("learning cycle run event is invalid")
+          if run.get("path") != ".github/workflows/research-learning-cycle.yml":
+              raise SystemExit("learning cycle workflow path is invalid")
+          if run.get("name") != "Research Autonomous Learning Cycle":
+              raise SystemExit("learning cycle workflow name is invalid")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("learning cycle head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("learning cycle run attempt is invalid")
+          repository = run.get("head_repository") or {}
+          if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("learning cycle run is from another repository")
+          PY
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/learning-cycle-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/learning-cycle-run.json)"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/learning-cycle-artifacts.json
+
+          ARTIFACT_ROW="$(
+            python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/learning-cycle-artifacts.json").read_text(encoding="utf-8")
+          )
+          pattern = re.compile(r"^research-learning-cycle-[1-9][0-9]*-[1-9][0-9]*$")
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("expired") is False
+              and isinstance(item.get("name"), str)
+              and pattern.fullmatch(item["name"])
+          ]
+          if len(matches) > 1:
+              raise SystemExit("multiple autonomous learning cycle artifacts found")
+          if not matches:
+              print("")
+          else:
+              artifact = matches[0]
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit("learning cycle artifact digest is missing")
+              print(
+                  str(artifact["id"])
+                  + "\t"
+                  + artifact["name"]
+                  + "\t"
+                  + digest
+              )
+          PY
+          )"
+
+          if [ -z "$ARTIFACT_ROW" ]; then
+            {
+              echo "artifact_exists=false"
+              echo "run_id=$RUN_ID"
+              echo "run_attempt=$RUN_ATTEMPT"
+              echo "head_sha=$HEAD_SHA"
+              echo "artifact_id="
+              echo "artifact_name="
+              echo "artifact_digest="
+            } >> "$GITHUB_OUTPUT"
+            echo "successful learning cycle run published no cycle artifact"
+            exit 0
+          fi
+
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_NAME ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          mkdir -p learning-cycle
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/learning-cycle.zip
+          unzip -q /tmp/learning-cycle.zip -d learning-cycle
+
+          {
+            echo "artifact_exists=true"
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_name=$ARTIFACT_NAME"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build verified clean-validation admissions
+        id: admission
+        if: ${{ steps.source.outputs.artifact_exists == 'true' }}
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          test -f learning-cycle/cycle.json
+          CYCLE_STATUS="$(jq -r '.status' learning-cycle/cycle.json)"
+          mkdir -p admission/candidates
+          ADMITTED_COUNT=0
+
+          if [ "$CYCLE_STATUS" = "completed" ]; then
+            for LABEL in baseline tree; do
+              FIELD="${LABEL}_qualifies_development"
+              QUALIFIES="$(jq -r --arg field "$FIELD" '.[$field]' learning-cycle/cycle.json)"
+              FREEZE_ROOT="learning-cycle/frozen-candidates/$LABEL"
+              case "$QUALIFIES" in
+                true)
+                  test -f "$FREEZE_ROOT/candidate-freeze.json"
+                  test -f "learning-cycle/$LABEL/experiment.json"
+                  OUTPUT_ROOT="admission/candidates/$LABEL"
+                  PACKAGE_ROOT="$OUTPUT_ROOT/package"
+                  mkdir -p "$OUTPUT_ROOT"
+
+                  cocomelon-learning-candidate-package                     --experiment-root "learning-cycle/$LABEL"                     --candidate-freeze "$FREEZE_ROOT/candidate-freeze.json"                     --package-root "$PACKAGE_ROOT"                     > "$OUTPUT_ROOT/package-command.json"
+
+                  cocomelon-learning-clean-validation-spec                     --package-root "$PACKAGE_ROOT"                     --output-root "$OUTPUT_ROOT"                     > "$OUTPUT_ROOT/spec-command.json"
+
+                  FREEZE_CANDIDATE_ID="$(jq -r '.candidate_id' "$FREEZE_ROOT/candidate-freeze.json")"
+                  PACKAGE_CANDIDATE_ID="$(jq -r '.candidate_id' "$PACKAGE_ROOT/candidate-package.json")"
+                  SPEC_CANDIDATE_ID="$(jq -r '.candidate_id' "$OUTPUT_ROOT/candidate-validation-spec.json")"
+                  if [ "$FREEZE_CANDIDATE_ID" != "$PACKAGE_CANDIDATE_ID" ] ||                      [ "$FREEZE_CANDIDATE_ID" != "$SPEC_CANDIDATE_ID" ]; then
+                    echo "$LABEL candidate identity changed during admission" >&2
+                    exit 67
+                  fi
+
+                  jq -e                     '.prospective_only == true
+                     and .research_only == true
+                     and .promotion_eligible == false
+                     and .execution_ready == false'                     "$PACKAGE_ROOT/candidate-package.json" > /dev/null
+                  jq -e                     '.paper_only == true
+                     and .prospective_only == true
+                     and .research_only == true
+                     and .promotion_eligible == false
+                     and .execution_ready == false'                     "$OUTPUT_ROOT/candidate-validation-spec.json" > /dev/null
+                  ADMITTED_COUNT=$((ADMITTED_COUNT + 1))
+                  ;;
+                false)
+                  if [ -e "$FREEZE_ROOT/candidate-freeze.json" ]; then
+                    echo "$LABEL has a freeze despite failing development qualification" >&2
+                    exit 68
+                  fi
+                  ;;
+                *)
+                  echo "$LABEL development qualification is invalid: $QUALIFIES" >&2
+                  exit 69
+                  ;;
+              esac
+            done
+          elif [ "$CYCLE_STATUS" = "not_ready" ]; then
+            if [ -d learning-cycle/frozen-candidates ] &&                find learning-cycle/frozen-candidates -type f -print -quit | grep -q .; then
+              echo "not-ready learning cycle unexpectedly contains frozen candidates" >&2
+              exit 70
+            fi
+          else
+            echo "unsupported learning cycle status: $CYCLE_STATUS" >&2
+            exit 71
+          fi
+
+          ADMITTED_COUNT="$ADMITTED_COUNT" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          candidates = []
+          root = Path("admission/candidates")
+          for label_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+              package = json.loads(
+                  (label_dir / "package" / "candidate-package.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              spec = json.loads(
+                  (label_dir / "candidate-validation-spec.json").read_text(
+                      encoding="utf-8"
+                  )
+              )
+              if package["candidate_id"] != spec["candidate_id"]:
+                  raise SystemExit("candidate package/spec identity mismatch")
+              candidates.append(
+                  {
+                      "label": label_dir.name,
+                      "candidate_id": package["candidate_id"],
+                      "candidate_package_id": package["package_id"],
+                      "validation_spec_id": spec["spec_id"],
+                      "validation_start_ms": spec["validation_start_ms"],
+                      "model_family": package["model_family"],
+                  }
+              )
+
+          admitted_count = int(os.environ["ADMITTED_COUNT"])
+          if len(candidates) != admitted_count:
+              raise SystemExit("admitted candidate count does not reconcile")
+
+          payload = {
+              "schema_version": 1,
+              "source_cycle_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_cycle_run_attempt": int(os.environ["SOURCE_RUN_ATTEMPT"]),
+              "source_cycle_head_sha": os.environ["SOURCE_HEAD_SHA"],
+              "source_cycle_artifact_id": int(os.environ["SOURCE_ARTIFACT_ID"]),
+              "source_cycle_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
+              "source_cycle_artifact_digest": os.environ["SOURCE_ARTIFACT_DIGEST"],
+              "candidate_count": len(candidates),
+              "candidates": candidates,
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+          }
+          admission_id = hashlib.sha256(canonical(payload).encode("utf-8")).hexdigest()
+          persisted = {**payload, "admission_id": admission_id}
+          Path("admission/admission.json").write_text(
+              canonical(persisted) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          echo "candidate_count=$ADMITTED_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Render clean admission summary
+        if: ${{ steps.source.outputs.artifact_exists == 'true' }}
+        run: |
+          {
+            echo "## Learning clean-validation admission"
+            echo "- admitted candidates: ${{ steps.admission.outputs.candidate_count }}"
+            echo "- source cycle run: ${{ steps.source.outputs.run_id }}"
+            echo "- research-only: true"
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish immutable clean admission artifact
+        if: ${{ steps.source.outputs.artifact_exists == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: >-
+            research-learning-clean-admission-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: admission/
+          if-no-files-found: error
+          retention-days: 90
