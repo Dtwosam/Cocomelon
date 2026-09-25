@@ -392,3 +392,26 @@ Verified bootstrap evidence:
 - maximum final capture coverage: `1`.
 
 The exact next operational check is the first real scheduled V2 transport cycle: confirm that an off-peak `:43/:48/:53` schedule starts, pre-warms toward minute `:03`, restores artifact `10726571181` or its latest descendant, and republishes the same campaign/runtime/control-plane identities without creating a pre-cutover observation. After 2026-09-25 00:00 UTC, the first eligible hourly anchor is 2026-09-25 00:59:59.999 UTC and must be captured only through the frozen V2 transport; no backfill is allowed.
+
+
+### Prospective HYPE V3 transport frontier — 2026-09-25
+
+V2 remains immutable and continues to fail or recover under its frozen D-028 rules. Its scheduled run `36103594834` was created at 06:36 UTC and failed before evidence collection with `PREWARM_SCHEDULE_TOO_LATE_FOR_FRESH_CAPTURE`, confirming that delayed GitHub schedule creation can land outside the frozen freshness-safe phase.
+
+V3 is now frozen for a new clean boundary at **2026-09-26 00:00:00 UTC**. The economic hypothesis and thresholds are unchanged from V2. The pinned V3 runtime revision is `298723c52d6a3b09839d05451d3d7db9753815bf`.
+
+The V3 control-plane implementation under review removes `schedule` entirely and uses a bounded rolling `workflow_dispatch` queue:
+
+- merge-push bootstrap seeds the next four UTC minute-03 capture targets;
+- targets are created hours ahead rather than depending on schedule-event delivery;
+- duplicate targets elect one deterministic leader before campaign state can be touched;
+- each target releases the observer ten minutes before capture and the observer waits to the exact protected target when early;
+- the unchanged 15-minute entry-candle freshness ceiling fails closed;
+- each target replenishes only the next four missing targets, preventing recursive queue explosion;
+- transient dispatch failures retry only GitHub 500/502/503/504 responses;
+- queue visibility is re-verified before the transport step succeeds;
+- transport receipts are non-economic and cannot become promotion evidence;
+- V3 state is isolated at `artifacts/prospective-hype-v3-clean` / `prospective-hype-v3-clean-state`;
+- execution is paper-only and live trading remains disabled.
+
+The first expected V3 anchor is **2026-09-26 00:59:59.999 UTC**, intended for the pre-created **01:03 UTC** capture run. No V1/V2 evidence is copied into V3 and no missed anchor may be backfilled.

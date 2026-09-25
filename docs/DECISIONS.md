@@ -239,3 +239,22 @@ This file records decisions that should not be casually re-litigated in later ch
 **Continuity consequence:** V2 state is independent from V1. Runtime and control-plane attestations must exist before V2 cutover. After cutover, missing state/runtime/control-plane identity fails closed. Duplicate redundant attempts may be idempotent, but no historical anchor backfill is allowed.
 
 **Interpretation:** The transport change is not evidence that the economic hypothesis improved. V2 must earn its own clean result. `eligible_for_candidate_review` remains non-promotional; all >=500-paper-trade, >=45-day-shadow, risk/integrity, and explicit live-authorization gates remain mandatory.
+
+
+## D-029 — HYPE V3 moves clean capture off GitHub schedule delivery
+
+**Decision:** V1 and V2 remain immutable evidence campaigns under D-027/D-028. V2 is not rewritten or backfilled. After V2 cutover, GitHub created scheduled run `36103594834` at 2026-09-25 06:36 UTC, well outside its frozen off-peak pre-warm phases; the workflow correctly failed `PREWARM_SCHEDULE_TOO_LATE_FOR_FRESH_CAPTURE` before touching evidence. That operational failure is preserved as transport evidence, not interpreted as candidate economics.
+
+**V3 identity:** `hype-down-bearish-near-basket-long-4h-v3` preserves the same HYPE economic hypothesis, discovery lineage, direction, 4h horizon, one-position-per-market occupancy, modeled costs, and qualification thresholds. V3 has a fresh campaign/spec/plan identity solely because its capture transport and clean boundary are different.
+
+**V3 validation freeze:** V3 begins 2026-09-26 00:00:00 UTC and runs through 2026-11-10 00:00:00 UTC, with finalization no earlier than 2026-11-10 04:00:00 UTC. It still requires 1,080 expected hourly anchors, >=90% capture, >=80 settled executable trades, four chronological stability blocks with >=15 settled trades each, positive overall mean modeled net return, and positive block means.
+
+**Source freeze:** V3 observer/report/evidence/dispatch-queue source is pinned to merged revision `298723c52d6a3b09839d05451d3d7db9753815bf`, which contains the V3 primitives plus the tested pure rolling-dispatch queue logic. Moving `main` source is not an acceptable substitute.
+
+**Transport freeze:** V3 has no scheduled trigger. A pre-cutover push bootstrap creates a bounded queue of four future `workflow_dispatch` capture runs. Every capture target is exactly UTC minute 03. Future runs are created hours ahead, elect the lowest covering run ID as duplicate leader, hand off ten minutes before target, enforce the unchanged 15-minute source-age ceiling at execution, and replenish the next four targets only when their own turn arrives. Dispatch creation retries only transient GitHub 500/502/503/504 failures and verifies that the future queue is visible before proceeding.
+
+**Continuity consequence:** Transport preparation is separated from economic evidence. Queue receipts are explicitly non-economic. Only the leader may reach the observer job. Cumulative V3 state, runtime attestation, control-plane identity, exact source revision, candidate identity, and validation plan remain fail-closed. There is no anchor backfill.
+
+**Permission consequence:** V3 requires `actions: write` only so its frozen workflow can create future `workflow_dispatch` runs. Repository contents remain read-only, execution remains paper-only, Hyperliquid endpoints remain canonical mainnet, and live trading remains disabled.
+
+**Interpretation:** V3 is a capture-reliability restart, not a retune. V1/V2 operational outcomes remain auditable, and no prospective interim economics are used to choose or modify V3.
