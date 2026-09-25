@@ -49,7 +49,12 @@ jobs:
           python -m pytest tests/test_prospective_hype_v3_audit_workflow.py -q
 
   audit:
-    if: ${{ github.event_name != 'pull_request' }}
+    if: >-
+      ${{ github.event_name != 'pull_request'
+          && (github.event_name != 'workflow_run'
+              || (github.event.workflow_run.head_branch == 'main'
+                  && (github.event.workflow_run.event == 'push'
+                      || github.event.workflow_run.event == 'workflow_dispatch'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
@@ -436,6 +441,7 @@ jobs:
               and str(run.get("id")) == os.environ["PRODUCER_RUN_ID"]
               and run.get("head_branch") == "main"
               and run.get("path") == os.environ["OBSERVER_WORKFLOW_PATH"]
+              and run.get("event") in {"push", "workflow_dispatch"}
               and run.get("conclusion") == "success"
               and run.get("repository", {}).get("full_name")
               == os.environ["GITHUB_REPOSITORY"]
@@ -472,6 +478,7 @@ jobs:
                   and previous_workflow.get("head_branch") == "main"
                   and previous_run.get("head_branch") == "main"
                   and previous_run.get("path") == os.environ["OBSERVER_WORKFLOW_PATH"]
+                  and previous_run.get("event") in {"push", "workflow_dispatch"}
                   and previous_run.get("conclusion") == "success"
                   and previous_run.get("repository", {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
