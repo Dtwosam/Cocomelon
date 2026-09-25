@@ -229,6 +229,9 @@ jobs:
           from cocomelon.research.learning_clean_finalization import (
               verify_learning_clean_finalization,
           )
+          from cocomelon.research.learning_clean_review_dossier import (
+              verify_learning_clean_review_dossier,
+          )
           from cocomelon.research.learning_clean_state import (
               load_learning_clean_state,
               verify_learning_clean_state,
@@ -428,6 +431,12 @@ jobs:
                   / "finalization"
                   / "candidate-finalization.json"
               )
+              dossier_path = (
+                  candidate_root
+                  / "review-dossier"
+                  / "candidate-review-dossier.json"
+              )
+              finalization = None
               if finalization_path.is_file():
                   if not score_path.is_file():
                       raise SystemExit("clean finalization exists without score")
@@ -443,6 +452,31 @@ jobs:
                       or finalization.execution_ready
                   ):
                       raise SystemExit("clean finalization carries invalid authority")
+
+              if (
+                  finalization is not None
+                  and finalization.eligible_for_candidate_review
+              ):
+                  if not dossier_path.is_file():
+                      raise SystemExit(
+                          "review-eligible finalization is missing review dossier"
+                      )
+                  dossier = verify_learning_clean_review_dossier(
+                      dossier_path,
+                      package_root=package_root,
+                      validation_spec_path=spec_path,
+                      validation_score_path=score_path,
+                      finalization_path=finalization_path,
+                      evidence_root=evidence_root,
+                  )
+                  if dossier.finalization_id != finalization.finalization_id:
+                      raise SystemExit("review dossier finalization mismatch")
+                  if dossier.promotion_eligible or dossier.execution_ready:
+                      raise SystemExit("review dossier carries invalid authority")
+              elif dossier_path.exists():
+                  raise SystemExit(
+                      "non-review-eligible candidate carries review dossier"
+                  )
 
           generations_root = root / "generations"
           if generations_root.exists():
