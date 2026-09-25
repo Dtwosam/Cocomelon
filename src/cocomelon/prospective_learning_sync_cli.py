@@ -70,6 +70,7 @@ def prospective_learning_sync_payload(
         "created_records": result.created_records,
         "existing_records": result.existing_records,
         "learning_record_count": len(records),
+        "learning_state_digest": ledger.state_digest,
         "source_root": str(source_root),
         "learning_root": str(learning_root),
     }
