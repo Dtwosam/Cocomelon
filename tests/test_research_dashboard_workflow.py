@@ -110,7 +110,6 @@ def test_research_dashboard_restores_only_trusted_clean_state_lineages() -> None
     assert '"Research Learning Clean State Bootstrap"' in workflow
     assert '"Research Learning Clean State Campaign Follower"' in workflow
     assert '"Research Learning Clean State Continuity"' in workflow
-    assert 'run.get("status") != "completed"' not in workflow
     assert 'run.get("status") == "completed"' in workflow
     assert 'run.get("conclusion") == "success"' in workflow
     assert 'run.get("head_branch") == "main"' in workflow
@@ -122,6 +121,7 @@ def test_research_dashboard_renders_blind_learned_clean_review_queue() -> None:
 
     assert "cocomelon-learning-clean-review-queue" in workflow
     assert "dashboard/clean-review.md" in workflow
+    assert "cat dashboard/clean-review.md" in workflow
     assert "Learned Clean Candidate Review Queue" in workflow
     assert "HUMAN REVIEW REQUIRED" in workflow
     assert "No authenticated learned clean-validation lineage" in workflow
