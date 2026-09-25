@@ -374,6 +374,22 @@ def _outcome_from_payload(raw: dict[str, object]) -> LearningCleanTradeOutcome:
     return outcome
 
 
+def parse_learning_clean_prediction_payload(
+    value: object,
+) -> LearningCandidatePrediction:
+    return _prediction_from_payload(
+        _mapping(value, "learning clean prediction")
+    )
+
+
+def parse_learning_clean_outcome_payload(
+    value: object,
+) -> LearningCleanTradeOutcome:
+    return _outcome_from_payload(
+        _mapping(value, "learning clean outcome")
+    )
+
+
 class LearningCleanEvidenceStore:
     def __init__(
         self,
