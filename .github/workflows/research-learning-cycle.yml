@@ -282,7 +282,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: >-
-            research-learning-cycle-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+            research-learning-cycle-${{ steps.state.outputs.run_id }}-${{ steps.state.outputs.run_attempt }}
           path: learning-cycle/
           if-no-files-found: error
           retention-days: 90
