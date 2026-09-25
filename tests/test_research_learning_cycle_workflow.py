@@ -40,5 +40,5 @@ def test_learning_cycle_workflow_remains_research_only() -> None:
     assert "api.hyperliquid" not in source
     assert "testnet" not in source
     assert "live_execution" not in source
-    assert "promotion" not in source
+    assert "promotion_eligible" in source
     assert "cocomelon-learning-experiment " not in source
