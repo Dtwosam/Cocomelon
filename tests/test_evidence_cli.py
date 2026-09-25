@@ -237,3 +237,72 @@ def test_run_baseline_replay_cli_is_offline_and_routes_all_stores(
     }
     assert payload["network_access"] is False
     assert payload["live_orders"] is False
+
+
+
+def test_run_baseline_replay_cli_routes_learning_feature_snapshot_store(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    bundle = tmp_path / "bundle.json"
+    journal = tmp_path / "journal.sqlite3"
+    execution = tmp_path / "execution.sqlite3"
+    facts = tmp_path / "facts.sqlite3"
+    feature_snapshots = tmp_path / "learning-features"
+    observed: dict[str, object] = {}
+
+    def replay_payload(
+        bundle_arg,
+        journal_arg,
+        execution_arg,
+        facts_arg,
+        *,
+        feature_snapshots_path=None,
+    ):  # type: ignore[no-untyped-def]
+        observed.update(
+            bundle=bundle_arg,
+            journal=journal_arg,
+            execution=execution_arg,
+            facts=facts_arg,
+            feature_snapshots=feature_snapshots_path,
+        )
+        return {
+            "bundle_id": "bundle-1",
+            "manifest_id": "manifest-1",
+            "run_id": "run-1",
+            "result_digest": "a" * 64,
+            "feature_snapshots": str(feature_snapshots_path),
+            "feature_snapshot_state_digest": "b" * 64,
+            "network_access": False,
+            "live_orders": False,
+        }
+
+    monkeypatch.setattr(
+        cli_module,
+        "run_baseline_replay_payload",
+        replay_payload,
+        raising=False,
+    )
+
+    cli_module.main(
+        [
+            "run-baseline-replay",
+            "--bundle",
+            str(bundle),
+            "--journal",
+            str(journal),
+            "--execution",
+            str(execution),
+            "--facts",
+            str(facts),
+            "--feature-snapshots",
+            str(feature_snapshots),
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert observed["feature_snapshots"] == feature_snapshots
+    assert payload["feature_snapshot_state_digest"] == "b" * 64
+    assert payload["network_access"] is False
+    assert payload["live_orders"] is False
