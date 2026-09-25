@@ -7,7 +7,11 @@ import pytest
 from cocomelon import execution_learning_sync_cli
 from cocomelon.domain import features, journal, market, replay, strategy
 from cocomelon.journal import store as journal_store
-from cocomelon.research import learning_feature_snapshots, outcome_learning
+from cocomelon.research import (
+    execution_learning_sync,
+    learning_feature_snapshots,
+    outcome_learning,
+)
 
 MARKET = market.MarketId("", "HYPE")
 
@@ -201,3 +205,50 @@ def test_execution_learning_sync_rejects_feature_after_trade_open(tmp_path) -> N
             research_eligible_at_ms=30_000,
             expected_replay_run_id="run-1",
         )
+
+
+def test_execution_learning_sync_copies_only_trade_features_to_destination(
+    tmp_path,
+) -> None:
+    snapshot = _snapshot()
+    journal_path, feature_store_dir = _source(tmp_path, snapshot=snapshot)
+    source_store = learning_feature_snapshots.LearningFeatureSnapshotStore(
+        feature_store_dir
+    )
+    unused = _snapshot(as_of_ms=8_000)
+    source_store.record(unused)
+    destination = learning_feature_snapshots.LearningFeatureSnapshotStore(
+        tmp_path / "cumulative-features"
+    )
+    ledger = outcome_learning.LearningEvidenceLedger(tmp_path / "learning")
+    journal = journal_store.JournalStore(journal_path)
+    try:
+        first = execution_learning_sync.sync_execution_learning_evidence(
+            journal,
+            source_store,
+            ledger,
+            candidate_id="candidate-paper-v1",
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
+            research_eligible_at_ms=30_000,
+            expected_replay_run_id="run-1",
+            destination_feature_store=destination,
+        )
+        second = execution_learning_sync.sync_execution_learning_evidence(
+            journal,
+            source_store,
+            ledger,
+            candidate_id="candidate-paper-v1",
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
+            research_eligible_at_ms=30_000,
+            expected_replay_run_id="run-1",
+            destination_feature_store=destination,
+        )
+    finally:
+        journal.close()
+
+    assert first.created_feature_snapshots == 1
+    assert first.existing_feature_snapshots == 0
+    assert second.created_feature_snapshots == 0
+    assert second.existing_feature_snapshots == 1
+    assert destination.load(snapshot.snapshot_id) is not None
+    assert destination.load(unused.snapshot_id) is None
