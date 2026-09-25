@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import cast
 
+from cocomelon.research.learning_candidate_freeze import (
+    verify_learning_candidate_freeze,
+)
 from cocomelon.research.learning_cycle import MIN_TRAIN_ROWS, VALIDATION_ROWS
 
 
@@ -129,9 +132,11 @@ def build_learning_operations_status(
     train_shortfall: int | None = None
     validation_shortfall: int | None = None
     cycle_id: str | None = None
+    frozen_candidates: list[dict[str, object]] = []
 
     if cycle_root is not None:
-        cycle = _mapping(Path(cycle_root) / "cycle.json", "cycle")
+        resolved_cycle_root = Path(cycle_root)
+        cycle = _mapping(resolved_cycle_root / "cycle.json", "cycle")
         _authority(cycle, "cycle")
         if _sha256(cycle, "learning_state_digest") != learning_digest:
             raise LearningDashboardError("CYCLE_LEARNING_STATE_DIGEST_MISMATCH")
@@ -151,6 +156,54 @@ def build_learning_operations_status(
             VALIDATION_ROWS - validation_record_count,
         )
         cycle_id = _sha256(cycle, "cycle_id")
+        if cycle_status == "completed":
+            for label in ("baseline", "tree"):
+                experiment_id = _sha256(cycle, f"{label}_experiment_id")
+                qualifies = _boolean(cycle, f"{label}_qualifies_development")
+                freeze_path = (
+                    resolved_cycle_root
+                    / "frozen-candidates"
+                    / label
+                    / "candidate-freeze.json"
+                )
+                if not qualifies:
+                    if freeze_path.exists():
+                        raise LearningDashboardError(
+                            f"UNQUALIFIED_FROZEN_CANDIDATE:{label}"
+                        )
+                    continue
+                if not freeze_path.is_file():
+                    raise LearningDashboardError(
+                        f"QUALIFIED_CANDIDATE_FREEZE_MISSING:{label}"
+                    )
+                try:
+                    freeze = verify_learning_candidate_freeze(
+                        freeze_path,
+                        experiment_root=resolved_cycle_root / label,
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise LearningDashboardError(
+                        f"FROZEN_CANDIDATE_INVALID:{label}"
+                    ) from exc
+                if freeze.experiment_id != experiment_id:
+                    raise LearningDashboardError(
+                        f"FROZEN_CANDIDATE_EXPERIMENT_MISMATCH:{label}"
+                    )
+                frozen_candidates.append(
+                    {
+                        "label": label,
+                        "candidate_id": freeze.candidate_id,
+                        "experiment_id": freeze.experiment_id,
+                        "model_family": freeze.model_family,
+                        "validation_not_before_ms": freeze.validation_not_before_ms,
+                    }
+                )
+        else:
+            frozen_root = resolved_cycle_root / "frozen-candidates"
+            if frozen_root.exists() and any(frozen_root.rglob("candidate-freeze.json")):
+                raise LearningDashboardError(
+                    "NOT_READY_CYCLE_CANNOT_HAVE_FROZEN_CANDIDATES"
+                )
         state_name = _cycle_state(
             cycle_status=cycle_status,
             structurally_ready=structurally_ready,
@@ -184,6 +237,8 @@ def build_learning_operations_status(
         "feature_state_digest": feature_digest,
         "sync_receipt_id": receipt_id,
         "cycle_id": cycle_id,
+        "frozen_candidate_count": len(frozen_candidates),
+        "frozen_candidates": tuple(frozen_candidates),
         "research_only": True,
         "promotion_eligible": False,
         "execution_ready": False,
@@ -213,7 +268,28 @@ def render_learning_operations_markdown(status: dict[str, object]) -> str:
         f"- Latest source campaign run: {status['upstream_run_id']}",
         f"- New records in latest sync: {status['created_records_last_sync']}",
         f"- Autonomous cycle: `{status['cycle_status']}`",
+        f"- Frozen development candidates: {status['frozen_candidate_count']}",
     ]
+    frozen = status.get("frozen_candidates")
+    if isinstance(frozen, (tuple, list)):
+        for candidate in frozen:
+            if not isinstance(candidate, dict):
+                raise LearningDashboardError("FROZEN_CANDIDATE_STATUS_INVALID")
+            label = candidate.get("label")
+            candidate_id = candidate.get("candidate_id")
+            validation_not_before_ms = candidate.get("validation_not_before_ms")
+            if (
+                not isinstance(label, str)
+                or not isinstance(candidate_id, str)
+                or isinstance(validation_not_before_ms, bool)
+                or not isinstance(validation_not_before_ms, int)
+            ):
+                raise LearningDashboardError("FROZEN_CANDIDATE_STATUS_INVALID")
+            lines.append(
+                f"- Frozen {label} candidate: `{candidate_id}`; "
+                "clean validation not before "
+                f"`{validation_not_before_ms}`"
+            )
     settled = status.get("settled_train_record_count")
     validation = status.get("validation_record_count")
     if isinstance(settled, int) and isinstance(validation, int):
