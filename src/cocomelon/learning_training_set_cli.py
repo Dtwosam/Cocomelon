@@ -13,6 +13,7 @@ from cocomelon.research.learning_challenger_run import (
 from cocomelon.research.learning_dataset_bundle import (
     load_verified_learning_dataset_bundle,
 )
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.learning_training_bundle import (
     write_learning_training_bundle,
 )
@@ -43,6 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--bundle-dir", required=True, type=Path)
     parser.add_argument("--run-manifest", required=True, type=Path)
+    parser.add_argument("--feature-store-dir", type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     return parser
 
@@ -57,7 +59,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.run_manifest,
             bundle=bundle,
         )
-        training_set = build_learning_training_set(bundle, manifest)
+        feature_store = (
+            None
+            if args.feature_store_dir is None
+            else LearningFeatureSnapshotStore(args.feature_store_dir)
+        )
+        training_set = build_learning_training_set(
+            bundle,
+            manifest,
+            feature_store=feature_store,
+        )
         written = write_learning_training_bundle(
             training_set,
             output_dir=args.output_dir,
