@@ -32,9 +32,9 @@ from cocomelon.research.learning_training_rows import LearningTrainingRow
 from cocomelon.research.learning_tree import TREE_MODEL_FAMILY, LearningTreeEncoder
 from cocomelon.research.learning_tree import (
     _config_from_manifest as _tree_config_from_manifest,
-    _encoder as _tree_encoder,
-    _fit_estimator as _fit_tree_estimator,
 )
+from cocomelon.research.learning_tree import _encoder as _tree_encoder
+from cocomelon.research.learning_tree import _fit_estimator as _fit_tree_estimator
 
 LEARNING_CANDIDATE_PREDICTION_SCHEMA_VERSION = 1
 
