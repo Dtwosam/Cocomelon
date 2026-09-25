@@ -189,3 +189,21 @@ def test_challenger_run_manifest_refuses_conflicting_overwrite(tmp_path) -> None
         match="MANIFEST_CONFLICT",
     ):
         write_learning_challenger_run_manifest(path, second)
+
+
+def test_challenger_run_rejects_mixed_economic_target_families(tmp_path) -> None:
+    bundle = _verified_bundle(tmp_path)
+
+    with pytest.raises(ValueError, match="exactly one evidence kind"):
+        build_learning_challenger_run_manifest(
+            bundle,
+            input_kinds=(
+                LearningEvidenceKind.PAPER_EXECUTION,
+                LearningEvidenceKind.LIVE_EXECUTION,
+            ),
+            feature_registry=("direction",),
+            model_family="fixed_shallow_tree",
+            model_config={"max_leaf_nodes": 7},
+            decision_policy={"threshold": "0.001"},
+            implementation_commit_sha="a" * 40,
+        )

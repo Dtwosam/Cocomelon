@@ -99,12 +99,8 @@ class LearningChallengerRunManifest:
         _require_commit_sha(self.implementation_commit_sha)
         if not self.model_family.strip():
             raise ValueError("model_family must not be empty")
-        if not self.input_kinds:
-            raise ValueError("input_kinds must not be empty")
-        if len(set(self.input_kinds)) != len(self.input_kinds):
-            raise ValueError("input_kinds must be unique")
-        if tuple(sorted(self.input_kinds)) != self.input_kinds:
-            raise ValueError("input_kinds must be sorted")
+        if len(self.input_kinds) != 1:
+            raise ValueError("challenger run requires exactly one evidence kind")
         valid_kinds = {kind.value for kind in LearningEvidenceKind}
         if any(kind not in valid_kinds for kind in self.input_kinds):
             raise ValueError("input_kinds contains unsupported evidence kind")
@@ -186,10 +182,8 @@ def build_learning_challenger_run_manifest(
     decision_policy: dict[str, object],
     implementation_commit_sha: str,
 ) -> LearningChallengerRunManifest:
-    if not input_kinds:
-        raise ValueError("input_kinds must not be empty")
-    if len(set(input_kinds)) != len(input_kinds):
-        raise ValueError("input_kinds must be unique")
+    if len(input_kinds) != 1:
+        raise ValueError("challenger run requires exactly one evidence kind")
 
     records_by_kind = {
         LearningEvidenceKind.PROSPECTIVE_PAPER: bundle.snapshot.prospective_records,
