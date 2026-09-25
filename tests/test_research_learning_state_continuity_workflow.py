@@ -27,6 +27,9 @@ def test_continuity_workflow_reauthenticates_state_before_republishing() -> None
     assert "LearningFeatureSnapshotStore" in source
     assert 'sync.get("learning_state_digest") != ledger.state_digest' in source
     assert 'sync.get("feature_state_digest") != features.state_digest' in source
+    assert "verify_learning_state_lineage" in source
+    assert 'sync.get("lineage_sequence") != lineage.sequence' in source
+    assert 'sync.get("lineage_entry_id") != lineage.entry_id' in source
     assert 'sync.get("learning_record_count") != len(records)' in source
     assert 'sync.get("feature_snapshot_count") != len(snapshots)' in source
     assert "eligible + quarantined != len(records)" in source
