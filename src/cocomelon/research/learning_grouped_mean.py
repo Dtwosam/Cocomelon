@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 
 from cocomelon.research.learning_challenger_run import LearningChallengerRunManifest
@@ -478,3 +480,29 @@ def evaluate_learning_grouped_mean(
         blocks=blocks,
         qualifies_development=overall_qualifies and blocks_qualify,
     )
+
+
+
+def write_learning_grouped_mean_evaluation(
+    path: Path,
+    evaluation: LearningGroupedMeanEvaluation,
+) -> Path:
+    payload = (_canonical_json(evaluation.to_dict()) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if path.read_bytes() != payload:
+            raise LearningGroupedMeanError(
+                "LEARNING_GROUPED_MEAN_EVALUATION_CONFLICT"
+            )
+        return path
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+    return path
