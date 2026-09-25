@@ -103,6 +103,8 @@ jobs:
           tests/test_learning_candidate_freeze_cli.py
           tests/test_learning_candidate_package.py
           tests/test_learning_candidate_package_cli.py
+          tests/test_learning_clean_validation_spec.py
+          tests/test_learning_clean_validation_spec_cli.py
           tests/test_learning_state_lineage.py
           tests/test_execution_learning_sync.py
           tests/test_research_learning_sync.py
