@@ -113,6 +113,8 @@ jobs:
           tests/test_learning_clean_review_queue_cli.py
           tests/test_learning_clean_review_dossier.py
           tests/test_learning_clean_review_dossier_cli.py
+          tests/test_learning_clean_review_decision.py
+          tests/test_learning_clean_review_decision_cli.py
           tests/test_learning_clean_state.py
           tests/test_learning_clean_state_cli.py
           tests/test_learning_candidate_predictor.py
