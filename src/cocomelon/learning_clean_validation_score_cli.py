@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
             "for one learned candidate"
         ),
     )
-    parser.add_argument("--ledger-root", required=True, type=Path)
+    parser.add_argument("--evidence-root", required=True, type=Path)
     parser.add_argument("--package-root", required=True, type=Path)
     parser.add_argument("--validation-spec", required=True, type=Path)
     parser.add_argument("--output-root", required=True, type=Path)
@@ -48,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         score = score_learning_clean_validation(
-            ledger_root=args.ledger_root,
+            evidence_root=args.evidence_root,
             package_root=args.package_root,
             validation_spec_path=args.validation_spec,
             as_of_ms=args.as_of_ms,
@@ -56,7 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         path = write_learning_clean_validation_score(args.output_root, score)
         verified = verify_learning_clean_validation_score(
             path,
-            ledger_root=args.ledger_root,
+            evidence_root=args.evidence_root,
             package_root=args.package_root,
             validation_spec_path=args.validation_spec,
         )
