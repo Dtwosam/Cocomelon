@@ -577,3 +577,30 @@ Next action for this lane:
 
 **LIVE TRADING: DISABLED.**
 
+
+
+### Continuous-learning state continuity — 2026-09-25
+
+PR #417 hardens cumulative research-learning state against long producer gaps without changing strategy economics or execution authority.
+
+Merged implementation:
+
+- #417 adds `research-learning-state-continuity.yml`, a daily research-only continuity checkpoint with manual recovery support.
+- The checkpoint trusts only successful main-branch state artifacts produced by either `research-learning-evidence.yml` or the continuity workflow itself, with event-class, repository, branch, head-SHA, and workflow-path checks.
+- Before republishing any state, it re-opens the append-only learning ledger and authenticated feature store, recomputes their state digests, verifies persisted record/snapshot counts, checks readiness count reconciliation, and reasserts `research_only=true`, `promotion_eligible=false`, and `execution_ready=false`.
+- Normal scheduled refresh happens only when the newest trusted state is at least **14 days old**. Manual dispatch may force an earlier re-verification.
+- Both newly synced cumulative state and continuity checkpoints now retain `research-learning-state` for **90 days**. The 14-day refresh window keeps a recoverable trusted checkpoint alive through prolonged periods with no admissible paper campaign while avoiding daily duplicate artifacts.
+- Evidence sync, catch-up recovery, and the research dashboard now accept continuity-produced state only under the same explicit trusted-workflow checks.
+- The dedicated research CI lane now includes the autonomous learning-cycle, learning-dashboard, and continuity workflow regressions in addition to the full-suite coverage.
+
+Verification evidence:
+
+- #417 exact head `99ecbcd16ba848bfa5dd739b9bc7a8a337205500` passed CI run `36160662153`; both the full test job and the expanded research job completed successfully before merge `06484be5754f27624e25fe26332bfeb3d7631d5a`.
+
+Current evidence boundary:
+
+- No new admissible post-activation paper campaign has appeared yet. The 2026-09-25 completed paper campaign still predates authenticated decision-time feature capture and remains outside continuous learning.
+- The continuity workflow preserves already-authenticated cumulative state; it cannot invent evidence, backfill legacy trades, lower the frozen 200/20 capacity gate, train a challenger, promote a model, or enable orders.
+- The next genuine successful research campaign with authenticated `learning-features/` remains the required source of the first continuous-learning records.
+
+**LIVE TRADING: DISABLED.**
