@@ -123,7 +123,6 @@ def test_training_bundle_refuses_conflicting_output_directory(tmp_path) -> None:
         write_learning_training_bundle(training_set, output_dir=output_dir)
 
 
-
 def test_training_bundle_rejects_different_challenger_run(tmp_path) -> None:
     bundle, manifest, training_set = _training_set(tmp_path)
     output_dir = tmp_path / "training"
