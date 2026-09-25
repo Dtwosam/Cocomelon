@@ -66,3 +66,43 @@ def test_learning_cycle_artifact_uses_authenticated_upstream_identity() -> None:
     ) in publish
     assert "github.event.workflow_run.id" not in publish
     assert "github.event.workflow_run.run_attempt" not in publish
+
+
+def test_learning_cycle_freezes_every_development_qualified_candidate() -> None:
+    source = _source()
+    freeze = source.split(
+        "- name: Freeze development-qualified learning candidates",
+        1,
+    )[1].split(
+        "- name: Render research cycle summary",
+        1,
+    )[0]
+
+    assert 'for LABEL in baseline tree; do' in freeze
+    assert 'FIELD="${LABEL}_qualifies_development"' in freeze
+    assert 'cocomelon-learning-candidate-freeze' in freeze
+    assert '--experiment-root "learning-cycle/$LABEL"' in freeze
+    assert '--output-root "$OUTPUT_ROOT"' in freeze
+    assert 'OUTPUT_ROOT="learning-cycle/frozen-candidates/$LABEL"' in freeze
+    assert 'FROZEN_AT_MS="$(date +%s%3N)"' in freeze
+    assert '--frozen-at-ms "$FROZEN_AT_MS"' in freeze
+    assert ".prospective_only == true" in freeze
+    assert ".research_only == true" in freeze
+    assert ".promotion_eligible == false" in freeze
+    assert ".execution_ready == false" in freeze
+    assert "winner" not in freeze.lower()
+
+
+def test_learning_cycle_skips_freeze_when_cycle_is_not_completed() -> None:
+    source = _source()
+    freeze = source.split(
+        "- name: Freeze development-qualified learning candidates",
+        1,
+    )[1].split(
+        "- name: Render research cycle summary",
+        1,
+    )[0]
+
+    assert "CYCLE_STATUS=\"$(jq -r '.status' learning-cycle/cycle.json)\"" in freeze
+    assert 'if [ "$CYCLE_STATUS" != "completed" ]; then' in freeze
+    assert 'echo "frozen_count=0" >> "$GITHUB_OUTPUT"' in freeze
