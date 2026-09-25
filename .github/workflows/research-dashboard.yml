@@ -293,22 +293,27 @@ jobs:
           set -euo pipefail
           mkdir -p dashboard/clean-lineages
           printf 'false\n' > dashboard/clean-available.txt
-          /usr/bin/gh api --paginate --slurp \
-            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
-            > dashboard/clean-artifact-pages.json
-
-          python - <<'PY' > dashboard/clean-artifacts.tsv
+          python - <<'PY'
           import json
           import os
           import re
           import subprocess
+          import zipfile
           from pathlib import Path
 
-          pages = json.loads(
-              Path("dashboard/clean-artifact-pages.json").read_text(
-                  encoding="utf-8"
-              )
+          fetched = subprocess.run(
+              [
+                  "/usr/bin/gh",
+                  "api",
+                  "--paginate",
+                  "--slurp",
+                  f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts?per_page=100",
+              ],
+              check=True,
+              capture_output=True,
+              text=True,
           )
+          pages = json.loads(fetched.stdout)
           artifacts = []
           for page in pages:
               artifacts.extend(page.get("artifacts", []))
@@ -347,10 +352,11 @@ jobs:
               name = artifact["name"]
               if name in selected:
                   continue
-              run_id = artifact["workflow_run"].get("id")
+              workflow_run = artifact["workflow_run"]
+              run_id = workflow_run.get("id")
               if not isinstance(run_id, int):
                   continue
-              fetched = subprocess.run(
+              run_result = subprocess.run(
                   [
                       "/usr/bin/gh",
                       "api",
@@ -360,7 +366,7 @@ jobs:
                   capture_output=True,
                   text=True,
               )
-              run = json.loads(fetched.stdout)
+              run = json.loads(run_result.stdout)
               contract = trusted.get(run.get("path"))
               if contract is None:
                   continue
@@ -370,8 +376,7 @@ jobs:
                   or run.get("status") != "completed"
                   or run.get("conclusion") != "success"
                   or run.get("head_branch") != "main"
-                  or run.get("head_sha")
-                  != artifact["workflow_run"].get("head_sha")
+                  or run.get("head_sha") != workflow_run.get("head_sha")
                   or (run.get("head_repository") or {}).get("full_name")
                   != os.environ["GITHUB_REPOSITORY"]
               ):
@@ -381,136 +386,30 @@ jobs:
                   raise SystemExit("trusted clean-state artifact digest is missing")
               selected[name] = artifact
 
+          root = Path("dashboard/clean-lineages")
           for name, artifact in sorted(selected.items()):
-              print(str(artifact["id"]) + "\t" + name)
+              zip_path = Path("/tmp") / f"{name}.zip"
+              with zip_path.open("wb") as handle:
+                  subprocess.run(
+                      [
+                          "/usr/bin/gh",
+                          "api",
+                          f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip",
+                      ],
+                      check=True,
+                      stdout=handle,
+                  )
+              destination = root / name
+              destination.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(zip_path) as archive:
+                  archive.extractall(destination)
+
+          if selected:
+              Path("dashboard/clean-available.txt").write_text(
+                  "true\n",
+                  encoding="utf-8",
+              )
           PY
-
-          RESTORED=0
-          while IFS=        run: |
-          set -euo pipefail
-          if [ "$(cat dashboard/learning-available.txt)" = "true" ]; then
-            ARGS=(
-              --state-root dashboard/learning
-              --format markdown
-            )
-            if [ "$(cat dashboard/cycle-available.txt)" = "true" ]; then
-              ARGS+=(--cycle-root dashboard/cycle)
-            fi
-            cocomelon-learning-ops-status "${ARGS[@]}"               > dashboard/learning-status.md
-          else
-            cat > dashboard/learning-status.md <<'EOF'
-          ## Continuous Learning Operations
-
-          **RESEARCH ONLY / NO EXECUTION**
-
-          No authenticated post-activation continuous-learning state has been published yet.
-
-          The system is waiting for a successful research campaign produced with authenticated decision-time feature capture. Pre-activation evidence is not backfilled.
-          EOF
-          fi
-
-      - name: Render authenticated research status
-        run: |
-          set -euo pipefail
-          if [ "$(cat dashboard/registry-available.txt)" = "true" ]; then
-            cocomelon-research-status \
-              --registry dashboard/research.sqlite3 \
-              --format markdown \
-              > dashboard/status.md
-            grep -Fq "TOUCHED / NON-PROMOTIONAL" dashboard/status.md
-          else
-            cat > dashboard/status.md <<'EOF'
-          # Research Status
-
-          **TOUCHED / NON-PROMOTIONAL**
-
-          No trusted research registry has been published yet.
-
-          Research economics are unavailable until the first provenance-validated authority sync or research campaign publishes `research-authoritative-registry`.
-          EOF
-          fi
-
-      - name: Build dashboard issue body
-        run: |
-          set -euo pipefail
-          UPDATED_AT="$(date -u '+%Y-%m-%d %H:%M UTC')"
-          {
-            printf '# Cocomelon Research Dashboard\n\n'
-            printf '> Auto-refreshed from the latest provenance-validated research state. Last updated **%s**.\n\n' "$UPDATED_AT"
-            cat dashboard/status.md
-            printf '\n\n'
-            cat dashboard/learning-status.md
-            printf '\n\n'
-            cat dashboard/clean-review.md
-            printf '\n---\n\n'
-            printf 'This dashboard is **TOUCHED / NON-PROMOTIONAL** research evidence only. '
-            printf 'It cannot establish verified edge, advance Phase 10, mutate the frozen V4 corpus, or enable live orders.\n'
-          } > dashboard/body.md
-
-      - name: Create or update one research dashboard issue
-        run: |
-          set -euo pipefail
-          ISSUE_NUMBERS_TEXT="$(
-            /usr/bin/gh api \
-              "/repos/$GITHUB_REPOSITORY/issues?state=all&per_page=100" \
-              --paginate \
-              --jq ".[] | select((has(\"pull_request\") | not) and .title == \"$DASHBOARD_TITLE\") | .number"
-          )"
-          ISSUE_NUMBERS=()
-          if [ -n "$ISSUE_NUMBERS_TEXT" ]; then
-            while IFS= read -r ISSUE_NUMBER; do
-              if [ -n "$ISSUE_NUMBER" ]; then
-                ISSUE_NUMBERS+=("$ISSUE_NUMBER")
-              fi
-            done <<< "$ISSUE_NUMBERS_TEXT"
-          fi
-          if [ "${#ISSUE_NUMBERS[@]}" -gt 1 ]; then
-            echo "multiple matching research dashboard issues found" >&2
-            exit 67
-          fi
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          body = Path("dashboard/body.md").read_text(encoding="utf-8")
-          title = os.environ["DASHBOARD_TITLE"]
-          Path("dashboard/create-issue.json").write_text(
-              json.dumps({"title": title, "body": body}),
-              encoding="utf-8",
-          )
-          Path("dashboard/update-issue.json").write_text(
-              json.dumps({"title": title, "body": body, "state": "open"}),
-              encoding="utf-8",
-          )
-          PY
-          if [ "${#ISSUE_NUMBERS[@]}" -eq 0 ]; then
-            /usr/bin/gh api --method POST \
-              "repos/$GITHUB_REPOSITORY/issues" \
-              --input dashboard/create-issue.json \
-              > dashboard/issue-result.json
-          else
-            /usr/bin/gh api --method PATCH \
-              "repos/$GITHUB_REPOSITORY/issues/${ISSUE_NUMBERS[0]}" \
-              --input dashboard/update-issue.json \
-              > dashboard/issue-result.json
-          fi
-\t' read -r ARTIFACT_ID ARTIFACT_NAME; do
-            if [ -z "$ARTIFACT_ID" ] || [ -z "$ARTIFACT_NAME" ]; then
-              continue
-            fi
-            DEST="dashboard/clean-lineages/$ARTIFACT_NAME"
-            mkdir -p "$DEST"
-            /usr/bin/gh api \
-              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
-              > "/tmp/$ARTIFACT_NAME.zip"
-            unzip -q "/tmp/$ARTIFACT_NAME.zip" -d "$DEST"
-            RESTORED=$((RESTORED + 1))
-          done < dashboard/clean-artifacts.tsv
-
-          if [ "$RESTORED" -gt 0 ]; then
-            printf 'true\n' > dashboard/clean-available.txt
-          fi
 
       - name: Render learned clean candidate review queue
         run: |
@@ -594,6 +493,8 @@ jobs:
             cat dashboard/status.md
             printf '\n\n'
             cat dashboard/learning-status.md
+            printf '\n\n'
+            cat dashboard/clean-review.md
             printf '\n---\n\n'
             printf 'This dashboard is **TOUCHED / NON-PROMOTIONAL** research evidence only. '
             printf 'It cannot establish verified edge, advance Phase 10, mutate the frozen V4 corpus, or enable live orders.\n'
