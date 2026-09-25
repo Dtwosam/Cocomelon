@@ -13,10 +13,8 @@ def test_learning_clean_validation_score_cli_materializes_verified_score(
 ) -> None:
     freeze, package_root, spec, spec_path, evidence_root = _setup(tmp_path)
     _append(
-        ledger_root,
-        candidate_id=freeze.candidate_id,
-        spec_id=spec.spec_id,
-        validation_start_ms=spec.validation_start_ms,
+        evidence_root,
+        spec=spec,
         values=[Decimal("0.1")] * 20,
     )
     output_root = tmp_path / "score"
@@ -24,7 +22,7 @@ def test_learning_clean_validation_score_cli_materializes_verified_score(
     status = main(
         [
             "--evidence-root",
-            str(ledger_root),
+            str(evidence_root),
             "--package-root",
             str(package_root),
             "--validation-spec",
