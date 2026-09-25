@@ -12,7 +12,11 @@ from cocomelon.research import learning_feature_snapshots, outcome_learning
 MARKET = market.MarketId("", "HYPE")
 
 
-def _snapshot(*, as_of_ms: int = 9_000, market: market.MarketId = MARKET) -> features.FeatureSnapshot:
+def _snapshot(
+    *,
+    as_of_ms: int = 9_000,
+    market: market.MarketId = MARKET,
+) -> features.FeatureSnapshot:
     return features.FeatureSnapshot(
         market=market,
         as_of_ms=as_of_ms,
@@ -43,7 +47,11 @@ def _snapshot(*, as_of_ms: int = 9_000, market: market.MarketId = MARKET) -> fea
     )
 
 
-def _trade(snapshot: features.FeatureSnapshot, *, run_id: str = "run-1") -> journal.TradeJournalEntry:
+def _trade(
+    snapshot: features.FeatureSnapshot,
+    *,
+    run_id: str = "run-1",
+) -> journal.TradeJournalEntry:
     return journal.TradeJournalEntry(
         market=MARKET,
         direction=strategy.Direction.LONG,
