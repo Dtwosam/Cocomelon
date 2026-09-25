@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -226,7 +227,16 @@ def write_learning_challenger_run_manifest(
                 "LEARNING_CHALLENGER_RUN_MANIFEST_CONFLICT"
             )
         return path
-    path.write_bytes(payload)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
     return path
 
 
