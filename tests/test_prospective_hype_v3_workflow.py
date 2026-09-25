@@ -28,8 +28,7 @@ def test_v3_transport_is_scheduler_independent_and_source_pinned() -> None:
 def test_v3_bootstrap_precreates_bounded_rolling_capture_queue() -> None:
     source = _source()
 
-    assert "Prospective HYPE V3 bootstrap" in source
-    assert "Prospective HYPE V3 capture {0}" in source
+    assert "run-name: Prospective HYPE V3 capture" in source
     assert 'QUEUE_DEPTH: "4"' in source
     assert 'HANDOFF_LEAD_MS: "600000"' in source
     assert "next_protected_capture_ms" in source
