@@ -3,6 +3,11 @@ name: Research Learning Catch-up
 on:
   schedule:
     - cron: "*/10 * * * *"
+  workflow_run:
+    workflows:
+      - "Scheduled Research Mainnet Replay Campaign"
+      - "Research Learning Evidence Sync"
+    types: [completed]
   workflow_dispatch:
 
 permissions:
