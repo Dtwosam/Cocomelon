@@ -105,6 +105,8 @@ jobs:
           tests/test_learning_candidate_package_cli.py
           tests/test_learning_clean_validation_spec.py
           tests/test_learning_clean_validation_spec_cli.py
+          tests/test_learning_clean_validation_score.py
+          tests/test_learning_clean_validation_score_cli.py
           tests/test_learning_candidate_predictor.py
           tests/test_learning_candidate_predictor_cli.py
           tests/test_learning_state_lineage.py
