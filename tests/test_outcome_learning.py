@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -195,6 +196,19 @@ def test_prospective_adapter_rejects_mismatched_outcome() -> None:
             campaign_id="campaign-1",
             observation=observation,
             outcome=wrong,
+        )
+
+
+def test_prospective_adapter_binds_entry_economics() -> None:
+    observation, outcome = _prospective_trade()
+
+    with pytest.raises(ValueError, match="entry price"):
+        prospective_learning_record(
+            SPEC,
+            PLAN,
+            campaign_id="campaign-1",
+            observation=observation,
+            outcome=replace(outcome, entry_px=Decimal("51")),
         )
 
 
