@@ -177,12 +177,16 @@ def _required_candidates(campaign_root: Path) -> tuple[dict[str, object], ...]:
 
 def _verified_feature_store(
     output_root: Path,
+    *,
+    expected_replay_run_id: str,
 ) -> LearningFeatureSnapshotStore:
     feature_root = output_root / "learning-features"
     if not feature_root.is_dir():
         raise ResearchLearningSyncError("FEATURE_STORE_MISSING")
 
     replay = _mapping(output_root / "replay.json", "replay")
+    if _string(replay, "run_id") != expected_replay_run_id:
+        raise ResearchLearningSyncError("FEATURE_STORE_REPLAY_MISMATCH")
     expected_count = _integer(replay, "feature_snapshot_count")
     expected_digest = _string(replay, "feature_snapshot_state_digest")
     if len(expected_digest) != 64:
@@ -249,8 +253,21 @@ def sync_research_campaign_learning(
             batch_id=batch_id,
             source_id=source_id,
         )
-        source_features = _verified_feature_store(output)
+        trigger_head_path = output / "trigger-head.txt"
+        try:
+            trigger_head = trigger_head_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ResearchLearningSyncError("UPSTREAM_HEAD_BINDING_MISSING") from exc
+        if trigger_head != upstream_head_sha:
+            raise ResearchLearningSyncError("UPSTREAM_HEAD_MISMATCH")
+
+        source_features = _verified_feature_store(
+            output,
+            expected_replay_run_id=verified_batch.replay_run_id,
+        )
         eligible_at_ms = _runner_end_ms(output)
+        if eligible_at_ms < verified_batch.interval.end_ms:
+            raise ResearchLearningSyncError("RESEARCH_ELIGIBILITY_BOUNDARY_INVALID")
 
         journal = JournalStore(output / "journal.sqlite3")
         try:
