@@ -9,12 +9,14 @@ from pathlib import Path
 import pytest
 
 from cocomelon.evaluation.mainnet_evidence import verify_mainnet_evidence_cohort_payload
+from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.bundle import load_baseline_replay_bundle, resolve_code_revision
 from cocomelon.evidence.recording import load_recording_session
 from cocomelon.replay.source import validate_recording
 from cocomelon.research.artifact import ResearchArtifactError, verify_research_batch_artifact
 from cocomelon.research.contracts import ResearchCandidateManifest, ResearchCandidateState
 from cocomelon.research.evaluator import ResearchArtifactBatch, evaluate_research_checkpoint
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.registry import ResearchRegistry
 from cocomelon.research.strategy_seam import CandidateStrategyDecisionArtifact
 from tests.test_evidence_bridge_pipeline import _recording
