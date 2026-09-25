@@ -672,3 +672,91 @@ Current evidence boundary:
 
 **LIVE TRADING: DISABLED.**
 
+### Learned-candidate clean-validation pipeline — 2026-09-25
+
+PRs #427–#445 move continuous learning from authenticated development evidence through a complete, fail-closed, prospective clean-validation path while keeping live execution disabled.
+
+#### CI control-plane efficiency
+
+- #427 keeps CI on every pull request and on pushes to `main`, but stops duplicate feature-branch push CI.
+- #428 adds per-PR/ref concurrency with `cancel-in-progress: true`, so superseded heads stop consuming Actions time while the newest head must still pass both the full and dedicated research jobs.
+- The policy was exercised repeatedly during the clean-validation build: obsolete PR-head runs were cancelled while the latest head remained mandatory.
+
+#### Leakage-safe development and immutable candidate freeze
+
+- #429 adds deterministic chronological walk-forward partitions with explicit embargo/settlement checks for authenticated learning rows. This is a research utility and does not change the frozen autonomous 200-train / 20-validation capacity gate.
+- #430 adds a canonical authenticated freeze for any development-qualified learning experiment. The freeze binds the exact experiment/data/training/evaluation identities and preserves the six-hour prospective embargo before clean validation.
+- #431 fixes recovered autonomous-cycle artifact identity so manual catch-up uses the authenticated upstream sync run/attempt rather than absent `workflow_run` fields.
+- #432 makes completed autonomous cycles freeze every independently qualified baseline/tree experiment. It does not rank them or select a winner.
+- #433 packages a frozen candidate plus the exact known experiment artifact set into a self-contained, byte-hashed artifact that re-verifies even after the mutable development directory is removed.
+- #434 exposes verified frozen candidate identity and validation-not-before timing operationally without exposing learner economics.
+
+#### Frozen prospective clean protocol
+
+- #435 freezes clean validation before evidence arrives: the first **20 settled candidate paper trades** after the embargo boundary, split chronologically into **four contiguous blocks of five**.
+- Qualification requires overall mean realized net-R **strictly above zero** and every block mean realized net-R **strictly above zero**. The sample size, block structure, metric, threshold, candidate/package identity, and validation start are immutable.
+- #436 reconstructs the frozen learner deterministically from its self-contained package, fitting only the same settled pre-validation training prefix used by the qualified development experiment. It supports the transparent grouped-mean family and the fixed shallow-tree family.
+- #437 adds the append-only, spec-bound clean evidence store. It persists canonical predictions and one settled paper outcome per trade-eligible prediction, rejects outcomes for NO_TRADE predictions, reconciles candidate/spec/package/market/direction lineage, rejects reused source trades, and fails closed on tampering or unexpected files.
+- #438 adds blind scoring. Before trade 20, the score exposes no mean-R, stability-block economics, or pass/fail. At trade 20, the first 20 settled outcomes, score timestamp, and selected-evidence digest freeze permanently; later trades cannot change that decision sample or score.
+
+#### Autonomous admission and durable clean state
+
+- #439 authenticates successful autonomous learning-cycle runs and admits every verified frozen development-qualified candidate into clean validation by packaging it and precommitting its validation spec.
+- #440 bootstraps a 90-day durable clean-state lineage for each admitted candidate. Operational state is economically blind and reports only `waiting_for_validation_start`, `collecting`, or `ready_to_score` plus evidence counts.
+- #441 exposes spec-bound prediction/outcome ingestion and verification without emitting prediction values, net-R, PnL, or clean pass/fail on the operator surface.
+- #442 bridges authenticated scheduled paper campaigns into clean evidence. It reuses the existing campaign verifier, exact decision-time feature snapshots, and frozen candidate reconstruction; pre-boundary source trades are skipped, NO_TRADE predictions stay outcome-free, and accepted predictions can receive only their authenticated realized paper outcome.
+- #443 adds the durable campaign follower. Every successful scheduled paper campaign can advance each trusted clean-state lineage, archive prior state receipts, persist a non-economic campaign-sync receipt, rebuild blind state at a stable campaign-completion boundary, and materialize the frozen score only once `ready_to_score`.
+- #444 adds immutable terminal finalization. A verified complete score becomes either `eligible_for_candidate_review` or `validation_failed`; later follower passes re-verify the same finalization instead of rewriting it. **Candidate-review eligibility is not promotion authority and is not live readiness.**
+- #445 closes the campaign-omission hole: clean-state ingestion now refuses a newer successful paper campaign while an earlier post-bootstrap successful campaign is missing. `Research Learning Clean Catch-up` checks every active trusted lineage, reauthenticates the globally oldest missing campaign and its exact artifact, avoids duplicate active followers, and repairs at most one gap per pass.
+
+The resulting learning path is now:
+
+`Scheduled paper campaign`
+→ `authenticated cumulative learning evidence`
+→ `autonomous development cycle`
+→ `qualified candidate freeze`
+→ `clean admission`
+→ `durable clean-state bootstrap`
+→ `contiguous authenticated paper-campaign sync`
+→ `spec-bound clean predictions/outcomes`
+→ `blind frozen first-20 score`
+→ `immutable review-only finalization`.
+
+#### Verification evidence
+
+Every implementation PR in this sequence passed exact-head CI before merge:
+
+| PR | Exact head | CI run | Merge |
+| --- | --- | --- | --- |
+| #427 | `954646d684345f0f8b1c9eb285616006546df4fa` | `36170262518` | `fab13839de3cf1c3027c6bdc8161d096f3ca5031` |
+| #428 | `3258ef878ad19cc0671085ec2c58bf54229c344a` | `36170655247` | `90f63d7fc47ab411668cd7b423b50b4f3badcbf9` |
+| #429 | `c96a5927f028b0349d8c0d4860d4e491752920fb` | `36170929221` | `3a333ea2ce24d60ccddc92326ee4f671f292775b` |
+| #430 | `491055b08cb49dc811abb1c7c3ba78eb9b8a25d4` | `36171493862` | `f1669abe19dfe2d2a5ea03e98fbfb26a20107d0e` |
+| #431 | `e5b1da83b11d534d1ca21d174dab0cb61e543b87` | `36171750161` | `100b78d91750a5a0e20ae8e887aa0fe518859f3c` |
+| #432 | `4d0ddc6dc4c0b622887406f59655eab8e2c4f254` | `36172145753` | `617eb5e93ca4fb39f22835f27ca1db4c8c6bc4f3` |
+| #433 | `e73c8ced4fee39af5b863398d5956df305f4fbcc` | `36172388846` | `f73781bdd3aa8d420fd02b5aad3f690f69133cb2` |
+| #434 | `4e18c53c2d0c9474951ccf5f3ae632198b4118ea` | `36172643501` | `fb6c43c420a27198ce3d187da18d34fd43a950d1` |
+| #435 | `cfc1a994c174bd0de41973625e3e7ebd7a594d7f` | `36172809951` | `5cd0eb0565fd8704e35ae42e8037375587a58ffc` |
+| #436 | `3ea966ac39b8ab7b669bf7d311cfa70e4f36f73c` | `36173852933` | `6e809c116f3ced445efc9fd537ca93a8dcaeb9d2` |
+| #437 | `be1ffd4430f83b20d91f1195899ddc9f0eca1778` | `36174482352` | `7079cfa46756693062af471a7f964f2dad538a21` |
+| #438 | `c1f79f10734efb7017bce8763cc8b0f2ec816bd0` | `36175284890` | `86bd949575289372082517fe999639513a28c6ea` |
+| #439 | `6b655e1c41190b1fc6d8720f004bf9ee5e06a64b` | `36175839617` | `c01c08940e12199412d5fce416f856d280f5f740` |
+| #440 | `598b61da4e6fc93279ddb2eca2a600f5b49a68f7` | `36176660056` | `337f9f5cf7ea74d431aea6ed4c40a3b3af3999fd` |
+| #441 | `3b3768152e7bf6df6dadb2b10e01eeddff16df3a` | `36177350098` | `34f2467a7e6713a57c3a5aca39f6e617c2943518` |
+| #442 | `c0e16329b026901b9e3ff8bbcca5602c04e0ed7e` | `36185630347` | `646c7d6d4c9032f38347e2f494c9543bb723aa41` |
+| #443 | `e311deb1b1558d1ca5e91660030b1c84f79980b6` | `36186495027` | `2a05e3e1dcd3d1fe5ab797168195671f4303d108` |
+| #444 | `2a35ddae83a8143eabf063ca4672bcd73a4fa32c` | `36189397079` | `8461ead1871bff4103240316423e1cee4ff0db96` |
+| #445 | `6de6bc3efe9dbb66c23a507ff6d8c8fb9a4ce9ba` | `36190467786` | `4f8fd7ef08a50750e057aa09c2b42dedca57cd07` |
+
+Post-merge CI for #445 also passed on `main` in run `36190660934`.
+
+#### Current evidence boundary
+
+- A direct GitHub Actions check on 2026-09-25 still finds only one successful `Scheduled Research Mainnet Replay Campaign`: run `36075560252`, created at 00:01 UTC on pre-feature-store head `d200b2d4b3ea8d11ce6992fec2d121cf2a1c1b80`.
+- That campaign is legacy touched paper evidence and is **not backfilled** into cumulative learning or learned clean validation.
+- Therefore the continuous-learning and clean-validation machinery is operationally complete but still waiting for its first genuine post-activation campaign with authenticated `learning-features/`.
+- No clean candidate can become review-eligible until real authenticated post-freeze paper evidence reaches the frozen 20-trade protocol.
+- Even `eligible_for_candidate_review` is review-only. It does not satisfy the source-of-truth promotion gates, does not authorize Phase 10, and cannot enable orders.
+
+**LIVE TRADING: DISABLED.**
+
