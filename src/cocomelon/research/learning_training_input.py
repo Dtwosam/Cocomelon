@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
+from typing import cast
 
 from cocomelon.research.learning_challenger_run import (
     LearningChallengerRunManifest,
@@ -13,6 +16,7 @@ from cocomelon.research.learning_dataset_bundle import VerifiedLearningDatasetBu
 from cocomelon.research.outcome_learning import LearningEvidenceKind, LearningEvidenceRecord
 
 TRAINING_INPUT_SCHEMA_VERSION = 1
+TRAINING_BUNDLE_SCHEMA_VERSION = 1
 SUPPORTED_FEATURES = (
     "market",
     "direction",
@@ -37,6 +41,64 @@ def _canonical_json(value: object) -> str:
 
 def _sha256_json(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _digest_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise LearningTrainingInputError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise LearningTrainingInputError(f"{field} must be a non-empty string")
+    return value
+
+
+def _optional_string(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    return _string(value, field)
+
+
+def _strings(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise LearningTrainingInputError(f"{field} must be a string array")
+    return tuple(value)
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LearningTrainingInputError(f"{field} must be an integer")
+    return value
+
+
+def _features(value: object) -> dict[str, str | None]:
+    raw = _mapping(value, "features")
+    resolved: dict[str, str | None] = {}
+    for key, item in raw.items():
+        if item is not None and not isinstance(item, str):
+            raise LearningTrainingInputError("feature values must be strings or null")
+        resolved[key] = item
+    return resolved
 
 
 def _require_sha256(value: str, field: str) -> None:
@@ -296,3 +358,203 @@ def build_learning_training_table(
             )
         ),
     )
+
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedLearningTrainingBundle:
+    table: LearningTrainingTable
+    manifest_sha256: str
+    rows_file_sha256: str
+
+
+def _row_from_payload(raw: dict[str, object]) -> LearningTrainingRow:
+    try:
+        target_value = Decimal(_string(raw.get("target_value"), "target_value"))
+    except ArithmeticError as exc:
+        raise LearningTrainingInputError("target_value must be a decimal string") from exc
+    return LearningTrainingRow(
+        run_id=_string(raw.get("run_id"), "run_id"),
+        record_id=_string(raw.get("record_id"), "record_id"),
+        evidence_kind=_string(raw.get("evidence_kind"), "evidence_kind"),
+        source_record_id=_string(raw.get("source_record_id"), "source_record_id"),
+        candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+        candidate_spec_id=_optional_string(
+            raw.get("candidate_spec_id"),
+            "candidate_spec_id",
+        ),
+        campaign_id=_optional_string(raw.get("campaign_id"), "campaign_id"),
+        feature_snapshot_id=_string(
+            raw.get("feature_snapshot_id"),
+            "feature_snapshot_id",
+        ),
+        opened_at_ms=_integer(raw.get("opened_at_ms"), "opened_at_ms"),
+        closed_at_ms=_integer(raw.get("closed_at_ms"), "closed_at_ms"),
+        features=_features(raw.get("features")),
+        target_name=_string(raw.get("target_name"), "target_name"),
+        target_value=target_value,
+        schema_version=_integer(raw.get("schema_version"), "schema_version"),
+    )
+
+
+def write_learning_training_bundle(
+    table: LearningTrainingTable,
+    *,
+    output_dir: Path,
+) -> dict[str, object]:
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise LearningTrainingInputError(
+            "learning training bundle output directory must be empty"
+        )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    rows_bytes = (
+        "".join(_canonical_json(row.to_dict()) + "\n" for row in table.rows)
+    ).encode("utf-8")
+    rows_path = output_dir / "rows.jsonl"
+    _atomic_write(rows_path, rows_bytes)
+
+    manifest_payload = {
+        **table.to_dict(),
+        "bundle_schema_version": TRAINING_BUNDLE_SCHEMA_VERSION,
+        "rows_file": rows_path.name,
+        "rows_file_sha256": _digest_bytes(rows_bytes),
+    }
+    manifest_bytes = (_canonical_json(manifest_payload) + "\n").encode("utf-8")
+    manifest_path = output_dir / "manifest.json"
+    _atomic_write(manifest_path, manifest_bytes)
+    return {
+        **manifest_payload,
+        "manifest_sha256": _digest_bytes(manifest_bytes),
+        "output_dir": str(output_dir),
+    }
+
+
+def load_verified_learning_training_bundle(
+    *,
+    output_dir: Path,
+) -> VerifiedLearningTrainingBundle:
+    manifest_path = output_dir / "manifest.json"
+    try:
+        manifest_bytes = manifest_path.read_bytes()
+        raw_manifest = _mapping(
+            json.loads(manifest_bytes),
+            "learning training bundle manifest",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_MANIFEST_INVALID"
+        ) from exc
+
+    if (
+        _integer(
+            raw_manifest.get("bundle_schema_version"),
+            "bundle_schema_version",
+        )
+        != TRAINING_BUNDLE_SCHEMA_VERSION
+    ):
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_SCHEMA_UNSUPPORTED"
+        )
+    if raw_manifest.get("rows_file") != "rows.jsonl":
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_ROWS_FILENAME_MISMATCH"
+        )
+
+    rows_path = output_dir / "rows.jsonl"
+    try:
+        rows_bytes = rows_path.read_bytes()
+    except OSError as exc:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_ROWS_MISSING"
+        ) from exc
+    rows_file_sha256 = _digest_bytes(rows_bytes)
+    if raw_manifest.get("rows_file_sha256") != rows_file_sha256:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_ROWS_DIGEST_MISMATCH"
+        )
+
+    rows: list[LearningTrainingRow] = []
+    try:
+        for line in rows_bytes.splitlines():
+            if not line:
+                continue
+            raw_row = _mapping(
+                json.loads(line),
+                "learning training row",
+            )
+            stored_row_id = raw_row.pop("row_id", None)
+            row = _row_from_payload(raw_row)
+            if stored_row_id != row.row_id:
+                raise LearningTrainingInputError(
+                    "LEARNING_TRAINING_BUNDLE_ROW_IDENTITY_MISMATCH"
+                )
+            rows.append(row)
+    except json.JSONDecodeError as exc:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_ROW_INVALID"
+        ) from exc
+
+    try:
+        table = LearningTrainingTable(
+            run_id=_string(raw_manifest.get("run_id"), "run_id"),
+            dataset_lineage_id=_string(
+                raw_manifest.get("dataset_lineage_id"),
+                "dataset_lineage_id",
+            ),
+            evidence_kind=_string(
+                raw_manifest.get("evidence_kind"),
+                "evidence_kind",
+            ),
+            target_name=_string(raw_manifest.get("target_name"), "target_name"),
+            feature_registry=_strings(
+                raw_manifest.get("feature_registry"),
+                "feature_registry",
+            ),
+            rows=tuple(rows),
+            schema_version=_integer(
+                raw_manifest.get("schema_version"),
+                "schema_version",
+            ),
+        )
+    except ValueError as exc:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_TABLE_INVALID"
+        ) from exc
+
+    expected_manifest = {
+        **table.to_dict(),
+        "bundle_schema_version": TRAINING_BUNDLE_SCHEMA_VERSION,
+        "rows_file": "rows.jsonl",
+        "rows_file_sha256": rows_file_sha256,
+    }
+    if _canonical_json(raw_manifest) != _canonical_json(expected_manifest):
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_MANIFEST_IDENTITY_MISMATCH"
+        )
+    canonical_manifest = (_canonical_json(expected_manifest) + "\n").encode("utf-8")
+    if manifest_bytes != canonical_manifest:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_MANIFEST_NON_CANONICAL"
+        )
+
+    return VerifiedLearningTrainingBundle(
+        table=table,
+        manifest_sha256=_digest_bytes(manifest_bytes),
+        rows_file_sha256=rows_file_sha256,
+    )
+
+
+def verify_learning_training_bundle(
+    *,
+    output_dir: Path,
+    source_bundle: VerifiedLearningDatasetBundle,
+    run_manifest: LearningChallengerRunManifest,
+) -> VerifiedLearningTrainingBundle:
+    loaded = load_verified_learning_training_bundle(output_dir=output_dir)
+    expected = build_learning_training_table(source_bundle, run_manifest)
+    if loaded.table != expected:
+        raise LearningTrainingInputError(
+            "LEARNING_TRAINING_BUNDLE_SOURCE_LINEAGE_MISMATCH"
+        )
+    return loaded
