@@ -6,13 +6,13 @@ from decimal import Decimal
 from typing import Protocol
 
 from cocomelon.domain.evaluation import EquityFactKind
-from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     PaperFill,
     PaperOrderPlan,
     PositionAction,
 )
+from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
