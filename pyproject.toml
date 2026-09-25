@@ -64,6 +64,7 @@ cocomelon-learning-experiment-verify = "cocomelon.learning_experiment_verify_cli
 cocomelon-learning-candidate-freeze = "cocomelon.learning_candidate_freeze_cli:main"
 cocomelon-learning-candidate-package = "cocomelon.learning_candidate_package_cli:main"
 cocomelon-learning-clean-validation-spec = "cocomelon.learning_clean_validation_spec_cli:main"
+cocomelon-learning-clean-validation-score = "cocomelon.learning_clean_validation_score_cli:main"
 cocomelon-learning-candidate-predict = "cocomelon.learning_candidate_predictor_cli:main"
 cocomelon-prospective-hype-readiness = "cocomelon.prospective_hype_readiness_cli:main"
 cocomelon-prospective-hype-readiness-failure = "cocomelon.prospective_hype_readiness_failure_cli:main"
