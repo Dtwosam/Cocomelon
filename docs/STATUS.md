@@ -540,3 +540,40 @@ Next action for this lane:
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous-learning recovery and operator visibility — 2026-09-25
+
+The continuous-learning control plane now has bounded recovery for missed follower events and a provenance-safe operator surface.
+
+Merged implementation:
+
+- #414 adds authenticated `workflow_dispatch` recovery to both `research-learning-evidence.yml` and `research-learning-cycle.yml`. Recovery accepts only an upstream run ID; run attempt, head SHA, branch, repository, workflow path/name, event class, and successful conclusion are re-derived from GitHub before any artifact is admitted.
+- #414 adds `research-learning-catchup.yml`, scheduled every ten minutes with activation boundary `2026-09-25T15:28:46Z` (the #411 cumulative-learning activation). It considers only the newest successful post-activation research campaign, repairs at most one missing stage per pass, refuses duplicate active followers, and therefore cannot sweep the pre-feature-store 2026-09-25 campaign into learning.
+- Catch-up repairs evidence sync first and exits. A later pass may repair the autonomous cycle only after trusted cumulative state exists and only when the latest sync created new records. A zero-new-record sync intentionally does not create a cycle.
+- #415 adds `cocomelon-learning-ops-status` and a strict non-economic learning-status renderer. It validates sync/readiness/cycle authority and digest continuity before rendering authenticated record/snapshot counts, eligibility/quarantine/blocker counts, structural readiness, and the frozen 200/20 chronological capacity.
+- #415 integrates this section into the existing `Cocomelon Research Dashboard` issue. Learning status exposes no PnL, net-R, protected V3 interim observations, promotion authority, or execution authority.
+
+Verification evidence:
+
+- #414 exact implementation head `490e610aecf189a416b76477eb09093e6960e18f` passed CI run `36156844941` with both full test and research jobs green before merge `5c006044f93564e5b88f5db76e5b114cc32a7cdf`.
+- #415 exact implementation head `a397b046252a3a6b58f18708503fdbb24f97a94f` passed CI run `36157475911` with both full test and research jobs green before merge `dd0e9582c175f3022ffad0635af40920b3f3073d`.
+- The first real post-merge dashboard refresh, run `36157710812`, completed successfully on `main`. Issue #124 rendered the new learning section at 2026-09-25 15:58 UTC with the correct state: no authenticated post-activation continuous-learning state has been published yet, and pre-activation evidence is not backfilled.
+
+Current operational chain:
+
+`Research Daily Gap Dispatcher`
+→ `Scheduled Research Mainnet Replay Campaign`
+→ `Research Learning Evidence Sync`
+→ `Research Autonomous Learning Cycle`
+
+`Research Learning Catch-up` independently repairs a missing sync or cycle one stage at a time. The existing research dashboard refreshes after trusted learning producers and reports operational state without granting economic or execution authority.
+
+Next action for this lane:
+
+1. Preserve the one-safe-successful-research-campaign-per-UTC-day producer rule.
+2. Admit only the first future campaign that carries authenticated decision-time feature snapshots and passes the #411 provenance checks.
+3. Expect the learning cycle to remain `not_ready` until genuine settled chronological capacity reaches 200 train + 20 validation records.
+4. Use catch-up only to repair missed control-plane followers; never use it to backfill pre-activation campaigns or weaken eligibility.
+5. Keep all learning results touched/research-only until a separately frozen candidate passes a future clean validation protocol.
+
+**LIVE TRADING: DISABLED.**
+
