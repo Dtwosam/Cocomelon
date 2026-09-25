@@ -74,6 +74,17 @@ def test_v3_audit_binds_every_state_producer_to_frozen_workflow_bytes() -> None:
     assert '"observer_workflow_blob_sha": os.environ["WORKFLOW_BLOB_SHA"]' in source
 
 
+def test_v3_audit_passes_verified_workflow_blob_to_receipt_builder() -> None:
+    source = _source()
+    audit_start = source.index("Run independent V3 audit")
+    audit_end = source.index("Preserve V3 audit failure receipt")
+    audit_section = source[audit_start:audit_end]
+
+    assert "WORKFLOW_BLOB_SHA:" in audit_section
+    assert "steps.provenance.outputs.workflow_blob_sha" in audit_section
+    assert '"observer_workflow_blob_sha": os.environ["WORKFLOW_BLOB_SHA"]' in audit_section
+
+
 def test_v3_audit_verifies_four_future_dispatch_targets() -> None:
     source = _source()
 

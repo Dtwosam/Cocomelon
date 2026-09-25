@@ -530,7 +530,6 @@ jobs:
           STATE_ID: ${{ steps.discover.outputs.state_id }}
           PREVIOUS_STATE_ID: ${{ steps.discover.outputs.previous_state_id }}
           HEALTH_ID: ${{ steps.provenance.outputs.health_id }}
-          WORKFLOW_BLOB_SHA: ${{ steps.provenance.outputs.workflow_blob_sha }}
         run: |
           set -euo pipefail
           mkdir -p "$AUDIT_ROOT/state" "$AUDIT_ROOT/health"
@@ -606,6 +605,7 @@ jobs:
           PRODUCER_RUN_ID: ${{ steps.discover.outputs.producer_run_id }}
           PREVIOUS_PRODUCER_RUN_ID: ${{ steps.provenance.outputs.previous_producer_run_id }}
           HEALTH_ID: ${{ steps.provenance.outputs.health_id }}
+          WORKFLOW_BLOB_SHA: ${{ steps.provenance.outputs.workflow_blob_sha }}
         run: |
           set -euo pipefail
           mkdir -p "$AUDIT_ROOT"
