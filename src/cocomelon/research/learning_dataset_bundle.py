@@ -53,10 +53,10 @@ def _record_from_payload(raw: dict[str, object]) -> LearningEvidenceRecord:
         campaign_id=None if raw.get("campaign_id") is None else str(raw["campaign_id"]),
         market=_market_from_canonical(str(raw["market"])),
         direction=Direction(str(raw["direction"])),
-        opened_at_ms=int(raw["opened_at_ms"]),
-        closed_at_ms=int(raw["closed_at_ms"]),
+        opened_at_ms=_int_value(raw["opened_at_ms"], "opened_at_ms"),
+        closed_at_ms=_int_value(raw["closed_at_ms"], "closed_at_ms"),
         feature_snapshot_id=str(raw["feature_snapshot_id"]),
-        research_eligible_at_ms=int(raw["research_eligible_at_ms"]),
+        research_eligible_at_ms=_int_value(raw["research_eligible_at_ms"], "research_eligible_at_ms"),
         context_state_1h=(
             None if raw.get("context_state_1h") is None else str(raw["context_state_1h"])
         ),
@@ -71,7 +71,7 @@ def _record_from_payload(raw: dict[str, object]) -> LearningEvidenceRecord:
         exit_slippage_fraction=_optional_decimal(raw.get("exit_slippage_fraction")),
         net_pnl=_optional_decimal(raw.get("net_pnl")),
         net_r=_optional_decimal(raw.get("net_r")),
-        schema_version=int(raw["schema_version"]),
+        schema_version=_int_value(raw["schema_version"], "schema_version"),
     )
 
 
@@ -83,7 +83,7 @@ def _manifest_from_payload(raw: dict[str, object]) -> LearningDatasetManifest:
         return tuple(str(item) for item in value)
 
     return LearningDatasetManifest(
-        as_of_ms=int(raw["as_of_ms"]),
+        as_of_ms=_int_value(raw["as_of_ms"], "as_of_ms"),
         ledger_state_digest=str(raw["ledger_state_digest"]),
         eligible_record_ids=values("eligible_record_ids"),
         quarantined_record_ids=values("quarantined_record_ids"),
@@ -91,7 +91,7 @@ def _manifest_from_payload(raw: dict[str, object]) -> LearningDatasetManifest:
         paper_execution_record_ids=values("paper_execution_record_ids"),
         live_execution_record_ids=values("live_execution_record_ids"),
         candidate_ids=values("candidate_ids"),
-        schema_version=int(raw["schema_version"]),
+        schema_version=_int_value(raw["schema_version"], "schema_version"),
     )
 
 
@@ -150,7 +150,7 @@ def load_verified_learning_dataset_bundle(
     raw_manifest = json.loads(manifest_bytes)
     if not isinstance(raw_manifest, dict):
         raise ValueError("learning dataset manifest must be an object")
-    if int(raw_manifest.get("bundle_schema_version", -1)) != BUNDLE_SCHEMA_VERSION:
+    if _int_value(raw_manifest.get("bundle_schema_version", -1), "bundle_schema_version") != BUNDLE_SCHEMA_VERSION:
         raise ValueError("unsupported learning dataset bundle schema")
     if raw_manifest.get("records_file") != "records.jsonl":
         raise ValueError("learning dataset records filename mismatch")
@@ -186,7 +186,7 @@ def load_verified_learning_dataset_bundle(
         "live_execution_record_count": len(manifest.live_execution_record_ids),
     }
     for field, expected in count_fields.items():
-        if int(raw_manifest.get(field, -1)) != expected:
+        if _int_value(raw_manifest.get(field, -1), field) != expected:
             raise ValueError(f"learning dataset manifest {field} mismatch")
 
     by_kind = {
