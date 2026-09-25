@@ -1,0 +1,222 @@
+name: Research Autonomous Learning Cycle
+
+on:
+  workflow_run:
+    workflows: ["Research Learning Evidence Sync"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-autonomous-learning-cycle
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  cycle:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current learning implementation
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Authenticate exact cumulative learning state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p learning-state
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/learning-sync-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/learning-sync-run.json").read_text(encoding="utf-8")
+          )
+          expected = {
+              "id": int(os.environ["RUN_ID"]),
+              "run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "head_branch": "main",
+              "head_sha": os.environ["HEAD_SHA"],
+              "conclusion": "success",
+              "event": "workflow_run",
+              "path": ".github/workflows/research-learning-evidence.yml",
+              "name": "Research Learning Evidence Sync",
+          }
+          for key, value in expected.items():
+              if run.get(key) != value:
+                  raise SystemExit(f"untrusted learning sync run: {key}")
+          repository = run.get("head_repository") or {}
+          if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("learning sync run is from another repository")
+          PY
+
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/learning-sync-artifacts.json
+          ARTIFACT_ROW="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/learning-sync-artifacts.json").read_text(encoding="utf-8")
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == "research-learning-state"
+              and item.get("expired") is False
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  "expected exactly one cumulative research learning state artifact"
+              )
+          artifact = matches[0]
+          digest = artifact.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("learning state artifact digest is missing")
+          print(str(artifact["id"]) + "\t" + digest)
+          PY
+          )"
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/research-learning-state.zip
+          unzip -q /tmp/research-learning-state.zip -d learning-state
+          {
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate cumulative learning state authority
+        id: metadata
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/learning-cycle-metadata.env
+          import json
+          from pathlib import Path
+
+          sync = json.loads(
+              Path("learning-state/last-sync.json").read_text(encoding="utf-8")
+          )
+          readiness = json.loads(
+              Path("learning-state/readiness.json").read_text(encoding="utf-8")
+          )
+          for payload, label in ((sync, "sync"), (readiness, "readiness")):
+              if payload.get("research_only") is not True:
+                  raise SystemExit(f"{label} is not research-only")
+              if payload.get("promotion_eligible") is not False:
+                  raise SystemExit(f"{label} unexpectedly authorizes promotion")
+              if payload.get("execution_ready") is not False:
+                  raise SystemExit(f"{label} unexpectedly authorizes execution")
+
+          if readiness.get("command") != "learning-readiness":
+              raise SystemExit("learning readiness command identity is invalid")
+          if readiness.get("evidence_kind") != "paper_execution":
+              raise SystemExit("learning readiness evidence kind is invalid")
+          learning_digest = sync.get("learning_state_digest")
+          feature_digest = sync.get("feature_state_digest")
+          if readiness.get("ledger_state_digest") != learning_digest:
+              raise SystemExit("learning state digest does not match readiness")
+          if readiness.get("feature_store_state_digest") != feature_digest:
+              raise SystemExit("feature state digest does not match readiness")
+
+          created = sync.get("created_records")
+          as_of_ms = readiness.get("as_of_ms")
+          if isinstance(created, bool) or not isinstance(created, int) or created < 0:
+              raise SystemExit("created record count is invalid")
+          if isinstance(as_of_ms, bool) or not isinstance(as_of_ms, int) or as_of_ms < 0:
+              raise SystemExit("learning readiness as_of_ms is invalid")
+          if not isinstance(learning_digest, str) or len(learning_digest) != 64:
+              raise SystemExit("learning state digest is invalid")
+          if not isinstance(feature_digest, str) or len(feature_digest) != 64:
+              raise SystemExit("feature state digest is invalid")
+
+          print(f"new_records={created}")
+          print(f"as_of_ms={as_of_ms}")
+          print(f"learning_state_digest={learning_digest}")
+          print(f"feature_state_digest={feature_digest}")
+          PY
+          cat /tmp/learning-cycle-metadata.env >> "$GITHUB_OUTPUT"
+
+      - name: Run frozen research learning cycle
+        if: ${{ steps.metadata.outputs.new_records != '0' }}
+        id: cycle
+        run: |
+          set -euo pipefail
+          IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
+          set +e
+          cocomelon-learning-cycle             --learning-root learning-state/ledger             --feature-store-dir learning-state/features             --output-root learning-cycle             --as-of-ms "${{ steps.metadata.outputs.as_of_ms }}"             --implementation-commit-sha "$IMPLEMENTATION_SHA"             --expected-learning-state-digest               "${{ steps.metadata.outputs.learning_state_digest }}"             --expected-feature-state-digest               "${{ steps.metadata.outputs.feature_state_digest }}"             > /tmp/learning-cycle-command.json             2> /tmp/learning-cycle-command.err
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 3 ]; then
+            cat /tmp/learning-cycle-command.err >&2
+            exit "$STATUS"
+          fi
+          cp /tmp/learning-cycle-command.json learning-cycle/command.json
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Render research cycle summary
+        if: ${{ steps.metadata.outputs.new_records != '0' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          cycle = json.loads(
+              Path("learning-cycle/cycle.json").read_text(encoding="utf-8")
+          )
+          print("## Autonomous research learning cycle")
+          print(f"- status: {cycle['status']}")
+          print(f"- eligible records: {cycle['eligible_record_count']}")
+          print(
+              "- settled chronological train records: "
+              f"{cycle['settled_train_record_count']}"
+          )
+          print(f"- validation records: {cycle['validation_record_count']}")
+          if cycle["status"] == "completed":
+              print(
+                  "- transparent baseline development gate: "
+                  f"{cycle['baseline_qualifies_development']}"
+              )
+              print(
+                  "- shallow-tree development gate: "
+                  f"{cycle['tree_qualifies_development']}"
+              )
+          print("- research-only: true")
+          print("- execution enabled: false")
+          PY
+
+      - name: Publish immutable learning cycle artifact
+        if: ${{ steps.metadata.outputs.new_records != '0' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: >-
+            research-learning-cycle-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: learning-cycle/
+          if-no-files-found: error
+          retention-days: 90
