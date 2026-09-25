@@ -1,0 +1,373 @@
+name: Research Learning Clean Catch-up
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_run:
+    workflows:
+      - Research Learning Clean State Bootstrap
+      - Research Learning Clean State Campaign Follower
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: research-learning-clean-catchup
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current trusted clean recovery control
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Fetch successful paper-campaign history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/runs?branch=main&per_page=100" \
+            > /tmp/clean-campaign-history.json
+
+      - name: Discover latest trusted clean-state lineage artifacts
+        id: states
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/clean-state-artifact-pages.json
+          python - <<'PY' > /tmp/clean-state-lineages.json
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          pages = json.loads(
+              Path("/tmp/clean-state-artifact-pages.json").read_text(encoding="utf-8")
+          )
+          artifacts = []
+          for page in pages:
+              artifacts.extend(page.get("artifacts", []))
+
+          pattern = re.compile(
+              r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          trusted = {
+              ".github/workflows/research-learning-clean-state-bootstrap.yml": {
+                  "name": "Research Learning Clean State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-sync.yml": {
+                  "name": "Research Learning Clean State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+          }
+          candidates = sorted(
+              (
+                  item
+                  for item in artifacts
+                  if item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and pattern.fullmatch(item["name"])
+                  and isinstance(item.get("workflow_run"), dict)
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          selected = {}
+          for artifact in candidates:
+              name = artifact["name"]
+              if name in selected:
+                  continue
+              run_id = artifact["workflow_run"].get("id")
+              if not isinstance(run_id, int):
+                  continue
+              fetched = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(fetched.stdout)
+              contract = trusted.get(run.get("path"))
+              if contract is None:
+                  continue
+              if (
+                  run.get("name") != contract["name"]
+                  or run.get("event") not in contract["events"]
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("head_branch") != "main"
+                  or run.get("head_sha")
+                  != artifact["workflow_run"].get("head_sha")
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit("trusted clean-state artifact digest is missing")
+              selected[name] = {
+                  "artifact_id": artifact["id"],
+                  "artifact_name": name,
+                  "artifact_digest": digest,
+                  "producer_run_id": run_id,
+                  "producer_run_attempt": run["run_attempt"],
+                  "producer_head_sha": run["head_sha"],
+              }
+
+          print(
+              json.dumps(
+                  list(selected.values()),
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+          )
+          PY
+          COUNT="$(jq 'length' /tmp/clean-state-lineages.json)"
+          echo "lineage_count=$COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Download trusted clean-state lineages
+        if: ${{ steps.states.outputs.lineage_count != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p catchup/states
+          INDEX=0
+          while IFS= read -r ROW; do
+            ARTIFACT_ID="$(jq -r '.artifact_id' <<< "$ROW")"
+            mkdir -p "catchup/states/$INDEX"
+            /usr/bin/gh api \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+              > "/tmp/clean-state-$INDEX.zip"
+            unzip -q "/tmp/clean-state-$INDEX.zip" -d "catchup/states/$INDEX"
+            INDEX=$((INDEX + 1))
+          done < <(jq -c '.[]' /tmp/clean-state-lineages.json)
+
+      - name: Resolve oldest missing campaign across lineages
+        id: gap
+        if: ${{ steps.states.outputs.lineage_count != '0' }}
+        run: |
+          set -euo pipefail
+          mkdir -p catchup/status
+          INDEX=0
+          while [ "$INDEX" -lt "${{ steps.states.outputs.lineage_count }}" ]; do
+            cocomelon-learning-clean-sequence \
+              --state-root "catchup/states/$INDEX" \
+              --campaign-history /tmp/clean-campaign-history.json \
+              --repository "$GITHUB_REPOSITORY" \
+              > "catchup/status/$INDEX.json"
+            INDEX=$((INDEX + 1))
+          done
+
+          python - <<'PY' > /tmp/clean-gap.json
+          import json
+          from pathlib import Path
+
+          missing = []
+          for path in sorted(Path("catchup/status").glob("*.json")):
+              payload = json.loads(path.read_text(encoding="utf-8"))
+              if payload.get("action") == "missing_campaign":
+                  missing.append(
+                      (
+                          int(payload["next_required_created_at_ms"]),
+                          int(payload["next_required_run_id"]),
+                          int(payload["next_required_run_attempt"]),
+                      )
+                  )
+          if not missing:
+              print(
+                  json.dumps(
+                      {"repair_needed": False},
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  )
+              )
+          else:
+              created_ms, run_id, run_attempt = min(missing)
+              print(
+                  json.dumps(
+                      {
+                          "repair_needed": True,
+                          "run_id": run_id,
+                          "run_attempt": run_attempt,
+                          "created_at_ms": created_ms,
+                      },
+                      sort_keys=True,
+                      separators=(",", ":"),
+                  )
+              )
+          PY
+
+          REPAIR_NEEDED="$(jq -r '.repair_needed' /tmp/clean-gap.json)"
+          RUN_ID="$(jq -r '.run_id // empty' /tmp/clean-gap.json)"
+          RUN_ATTEMPT="$(jq -r '.run_attempt // empty' /tmp/clean-gap.json)"
+          {
+            echo "repair_needed=$REPAIR_NEEDED"
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Reauthenticate missing paper campaign and artifact
+        if: ${{ steps.gap.outputs.repair_needed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.gap.outputs.run_id }}
+          EXPECTED_ATTEMPT: ${{ steps.gap.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" \
+            > /tmp/missing-clean-campaign-run.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/missing-clean-campaign-run.json").read_text(encoding="utf-8")
+          )
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("missing campaign run id changed")
+          if run.get("run_attempt") != int(os.environ["EXPECTED_ATTEMPT"]):
+              raise SystemExit("missing campaign run attempt changed")
+          if (
+              run.get("status") != "completed"
+              or run.get("conclusion") != "success"
+              or run.get("head_branch") != "main"
+              or run.get("event") != "workflow_dispatch"
+              or run.get("path")
+              != ".github/workflows/research-campaign-scheduled.yml"
+              or run.get("name")
+              != "Scheduled Research Mainnet Replay Campaign"
+              or (run.get("head_repository") or {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+          ):
+              raise SystemExit("missing campaign is no longer trusted")
+          PY
+
+          ARTIFACT_NAME="research-campaign-$RUN_ID-$EXPECTED_ATTEMPT"
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+            > /tmp/missing-clean-campaign-artifacts.json
+          MATCH_COUNT="$(
+            jq --arg name "$ARTIFACT_NAME" \
+              '[.artifacts[] | select(.name == $name and .expired == false)] | length' \
+              /tmp/missing-clean-campaign-artifacts.json
+          )"
+          if [ "$MATCH_COUNT" -ne 1 ]; then
+            echo "missing campaign artifact is unavailable or ambiguous" >&2
+            exit 65
+          fi
+          DIGEST="$(
+            jq -r --arg name "$ARTIFACT_NAME" \
+              '.artifacts[] | select(.name == $name and .expired == false) | .digest' \
+              /tmp/missing-clean-campaign-artifacts.json
+          )"
+          if [[ "$DIGEST" != sha256:* ]]; then
+            echo "missing campaign artifact digest is invalid" >&2
+            exit 66
+          fi
+
+      - name: Check for active clean-state follower
+        id: active
+        if: ${{ steps.gap.outputs.repair_needed == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-clean-state-sync.yml/runs?per_page=100" \
+            > /tmp/clean-follower-runs.json
+          ACTIVE_COUNT="$(
+            jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length' \
+              /tmp/clean-follower-runs.json
+          )"
+          if [ "$ACTIVE_COUNT" -gt 0 ]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "clean-state follower already active; deferring repair"
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch one oldest missing clean campaign
+        if: >-
+          ${{ steps.gap.outputs.repair_needed == 'true' &&
+              steps.active.outputs.active == 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.gap.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/clean-follower-dispatch.json
+          import json
+          import os
+
+          print(
+              json.dumps(
+                  {
+                      "ref": "main",
+                      "inputs": {
+                          "upstream_run_id": os.environ["RUN_ID"],
+                      },
+                  },
+                  separators=(",", ":"),
+              )
+          )
+          PY
+          /usr/bin/gh api --method POST \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-clean-state-sync.yml/dispatches" \
+            --input /tmp/clean-follower-dispatch.json
+          {
+            echo "## Learning clean catch-up"
+            echo "- dispatched missing paper campaign: $RUN_ID"
+            echo "- repaired stages this pass: 1"
+            echo "- research-only: true"
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render caught-up summary
+        if: >-
+          ${{ steps.states.outputs.lineage_count == '0' ||
+              steps.gap.outputs.repair_needed == 'false' }}
+        run: |
+          {
+            echo "## Learning clean catch-up"
+            echo "- missing campaign gap: none"
+            echo "- research-only: true"
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
