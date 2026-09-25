@@ -197,12 +197,19 @@ class LearningTreeEncoder:
     def category_map(self) -> dict[str, tuple[str, ...]]:
         return dict(self.categories)
 
-    def vector(self, row: LearningTrainingRow) -> tuple[float, ...]:
+    def vector_values(
+        self,
+        feature_values: tuple[str, ...],
+    ) -> tuple[float, ...]:
+        if len(feature_values) != len(self.feature_registry):
+            raise LearningTreeError(
+                "tree feature values must align with frozen registry"
+            )
         category_map = self.category_map
         output: list[float] = []
         for feature, value in zip(
-            row.feature_registry,
-            row.feature_values,
+            self.feature_registry,
+            feature_values,
             strict=True,
         ):
             categories = category_map.get(feature)
@@ -211,6 +218,13 @@ class LearningTreeEncoder:
                 continue
             output.extend(1.0 if value == category else 0.0 for category in categories)
         return tuple(output)
+
+    def vector(self, row: LearningTrainingRow) -> tuple[float, ...]:
+        if row.feature_registry != self.feature_registry:
+            raise LearningTreeError(
+                "tree row feature registry does not match encoder"
+            )
+        return self.vector_values(row.feature_values)
 
     def to_dict(self) -> dict[str, object]:
         return {
