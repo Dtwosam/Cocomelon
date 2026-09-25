@@ -1,0 +1,467 @@
+name: Research Learning Clean Catch-up
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_run:
+    workflows:
+      - "Research Autonomous Learning Cycle"
+      - "Research Learning Clean Admission"
+      - "Research Learning Clean State Bootstrap"
+      - "Scheduled Research Mainnet Replay Campaign"
+      - "Research Learning Clean State Campaign Follower"
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: research-learning-clean-catchup
+  cancel-in-progress: false
+
+env:
+  CLEAN_CANDIDATE_ACTIVATED_AT_UTC: "2026-09-25T18:15:42Z"
+  CLEAN_STATE_FOLLOWER_ACTIVATED_AT_UTC: "2026-09-25T20:35:05Z"
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout trusted clean catch-up control
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Allow normal workflow_run followers to register
+        if: \${{ github.event_name == 'workflow_run' }}
+        run: sleep 10
+
+      - name: Repair at most one missing clean-learning stage
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import tempfile
+          import zipfile
+          from pathlib import Path
+          from typing import Any
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          candidate_activation = os.environ["CLEAN_CANDIDATE_ACTIVATED_AT_UTC"]
+          follower_activation = os.environ["CLEAN_STATE_FOLLOWER_ACTIVATED_AT_UTC"]
+
+          def gh_json(endpoint: str) -> dict[str, Any]:
+              completed = subprocess.run(
+                  ["/usr/bin/gh", "api", f"/repos/{repository}{endpoint}"],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              value = json.loads(completed.stdout)
+              if not isinstance(value, dict):
+                  raise SystemExit(f"GitHub response is not an object: {endpoint}")
+              return value
+
+          def paged(endpoint: str, key: str, *, max_pages: int = 10) -> list[dict[str, Any]]:
+              rows: list[dict[str, Any]] = []
+              separator = "&" if "?" in endpoint else "?"
+              for page in range(1, max_pages + 1):
+                  payload = gh_json(
+                      f"{endpoint}{separator}per_page=100&page={page}"
+                  )
+                  batch = payload.get(key)
+                  if not isinstance(batch, list):
+                      raise SystemExit(f"GitHub response has no {key}: {endpoint}")
+                  typed = [item for item in batch if isinstance(item, dict)]
+                  rows.extend(typed)
+                  if len(batch) < 100:
+                      break
+              return rows
+
+          def workflow_runs(workflow: str) -> list[dict[str, Any]]:
+              return paged(
+                  f"/actions/workflows/{workflow}/runs?",
+                  "workflow_runs",
+                  max_pages=5,
+              )
+
+          def run_by_id(run_id: int) -> dict[str, Any]:
+              return gh_json(f"/actions/runs/{run_id}")
+
+          def run_is_trusted(
+              run: dict[str, Any],
+              *,
+              path: str,
+              name: str,
+              events: set[str],
+          ) -> bool:
+              repository_payload = run.get("head_repository") or {}
+              return (
+                  run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and run.get("head_branch") == "main"
+                  and run.get("path") == path
+                  and run.get("name") == name
+                  and run.get("event") in events
+                  and isinstance(run.get("run_attempt"), int)
+                  and not isinstance(run.get("run_attempt"), bool)
+                  and int(run["run_attempt"]) > 0
+                  and isinstance(run.get("head_sha"), str)
+                  and len(run["head_sha"]) == 40
+                  and repository_payload.get("full_name") == repository
+              )
+
+          def artifacts_for_run(run_id: int) -> list[dict[str, Any]]:
+              return paged(
+                  f"/actions/runs/{run_id}/artifacts?",
+                  "artifacts",
+                  max_pages=3,
+              )
+
+          def artifact_digest_valid(artifact: dict[str, Any]) -> bool:
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  return False
+              hex_digest = digest.removeprefix("sha256:")
+              return (
+                  len(hex_digest) == 64
+                  and all(char in "0123456789abcdef" for char in hex_digest)
+              )
+
+          def exact_artifact_for_run(
+              run: dict[str, Any],
+              *,
+              exact_name: str | None = None,
+              name_pattern: re.Pattern[str] | None = None,
+          ) -> dict[str, Any] | None:
+              matches = []
+              for artifact in artifacts_for_run(int(run["id"])):
+                  if artifact.get("expired") is not False:
+                      continue
+                  name = artifact.get("name")
+                  if not isinstance(name, str):
+                      continue
+                  if exact_name is not None and name != exact_name:
+                      continue
+                  if name_pattern is not None and name_pattern.fullmatch(name) is None:
+                      continue
+                  if not artifact_digest_valid(artifact):
+                      raise SystemExit(f"artifact digest is invalid: {name}")
+                  matches.append(artifact)
+              if len(matches) > 1:
+                  raise SystemExit(
+                      f"multiple matching artifacts found for run {run['id']}"
+                  )
+              return None if not matches else matches[0]
+
+          def all_artifacts() -> list[dict[str, Any]]:
+              return paged("/actions/artifacts?", "artifacts", max_pages=10)
+
+          def trusted_named_artifact(
+              artifact_name: str,
+              *,
+              producers: dict[str, tuple[str, set[str]]],
+              artifacts: list[dict[str, Any]] | None = None,
+          ) -> dict[str, Any] | None:
+              candidates = [
+                  artifact
+                  for artifact in (all_artifacts() if artifacts is None else artifacts)
+                  if artifact.get("name") == artifact_name
+                  and artifact.get("expired") is False
+                  and isinstance(artifact.get("workflow_run"), dict)
+              ]
+              candidates.sort(
+                  key=lambda item: str(item.get("created_at", "")),
+                  reverse=True,
+              )
+              for artifact in candidates:
+                  workflow_run = artifact["workflow_run"]
+                  run_id = workflow_run.get("id")
+                  if not isinstance(run_id, int):
+                      continue
+                  run = run_by_id(run_id)
+                  contract = producers.get(str(run.get("path")))
+                  if contract is None:
+                      continue
+                  expected_name, events = contract
+                  if (
+                      run_is_trusted(
+                          run,
+                          path=str(run.get("path")),
+                          name=expected_name,
+                          events=events,
+                      )
+                      and run.get("head_sha") == workflow_run.get("head_sha")
+                      and artifact_digest_valid(artifact)
+                  ):
+                      return artifact
+              return None
+
+          def archive_names(artifact_id: int) -> set[str]:
+              with tempfile.NamedTemporaryFile(suffix=".zip") as handle:
+                  subprocess.run(
+                      [
+                          "/usr/bin/gh",
+                          "api",
+                          f"/repos/{repository}/actions/artifacts/{artifact_id}/zip",
+                      ],
+                      check=True,
+                      stdout=handle,
+                  )
+                  handle.flush()
+                  with zipfile.ZipFile(handle.name) as archive:
+                      return set(archive.namelist())
+
+          def active_run(workflow: str) -> bool:
+              for run in workflow_runs(workflow):
+                  if (
+                      run.get("head_branch") == "main"
+                      and run.get("status") != "completed"
+                  ):
+                      print(
+                          f"{workflow} already active: "
+                          f"{run.get('id')} {run.get('status')}"
+                      )
+                      return True
+              return False
+
+          def dispatch(workflow: str, upstream_run_id: int) -> None:
+              subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      "--method",
+                      "POST",
+                      f"/repos/{repository}/actions/workflows/{workflow}/dispatches",
+                      "-f",
+                      "ref=main",
+                      "-f",
+                      f"upstream_run_id={upstream_run_id}",
+                  ],
+                  check=True,
+              )
+
+          cycle_pattern = re.compile(
+              r"^research-learning-cycle-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          admission_pattern = re.compile(
+              r"^research-learning-clean-admission-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          state_pattern = re.compile(
+              r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+
+          admission_producers = {
+              ".github/workflows/research-learning-clean-admission.yml": (
+                  "Research Learning Clean Admission",
+                  {"workflow_run", "workflow_dispatch"},
+              ),
+          }
+          state_producers = {
+              ".github/workflows/research-learning-clean-state-bootstrap.yml": (
+                  "Research Learning Clean State Bootstrap",
+                  {"workflow_run", "workflow_dispatch"},
+              ),
+              ".github/workflows/research-learning-clean-state-sync.yml": (
+                  "Research Learning Clean State Campaign Follower",
+                  {"workflow_run", "workflow_dispatch"},
+              ),
+          }
+
+          artifacts = all_artifacts()
+
+          # Stage 1: recover the oldest qualified cycle that has no clean admission.
+          cycles = [
+              run
+              for run in workflow_runs("research-learning-cycle.yml")
+              if run_is_trusted(
+                  run,
+                  path=".github/workflows/research-learning-cycle.yml",
+                  name="Research Autonomous Learning Cycle",
+                  events={"workflow_run", "workflow_dispatch"},
+              )
+              and isinstance(run.get("created_at"), str)
+              and str(run["created_at"]) >= candidate_activation
+          ]
+          cycles.sort(key=lambda run: (str(run.get("created_at")), int(run["id"])))
+          for cycle in cycles:
+              cycle_artifact = exact_artifact_for_run(
+                  cycle,
+                  name_pattern=cycle_pattern,
+              )
+              if cycle_artifact is None:
+                  continue
+              names = archive_names(int(cycle_artifact["id"]))
+              has_frozen_candidate = any(
+                  name.startswith("frozen-candidates/")
+                  and name.endswith("/candidate-freeze.json")
+                  for name in names
+              )
+              if not has_frozen_candidate:
+                  continue
+
+              expected_admission_name = (
+                  f"research-learning-clean-admission-"
+                  f"{cycle['id']}-{cycle['run_attempt']}"
+              )
+              existing = trusted_named_artifact(
+                  expected_admission_name,
+                  producers=admission_producers,
+                  artifacts=artifacts,
+              )
+              if existing is not None:
+                  continue
+              if active_run("research-learning-clean-admission.yml"):
+                  raise SystemExit(0)
+              dispatch("research-learning-clean-admission.yml", int(cycle["id"]))
+              print(
+                  "dispatched missing clean admission for qualified cycle "
+                  f"{cycle['id']}"
+              )
+              raise SystemExit(0)
+
+          # Stage 2: recover the oldest admission artifact with no clean-state bootstrap.
+          admissions = [
+              run
+              for run in workflow_runs("research-learning-clean-admission.yml")
+              if run_is_trusted(
+                  run,
+                  path=".github/workflows/research-learning-clean-admission.yml",
+                  name="Research Learning Clean Admission",
+                  events={"workflow_run", "workflow_dispatch"},
+              )
+              and isinstance(run.get("created_at"), str)
+              and str(run["created_at"]) >= candidate_activation
+          ]
+          admissions.sort(
+              key=lambda run: (str(run.get("created_at")), int(run["id"]))
+          )
+          for admission in admissions:
+              admission_artifact = exact_artifact_for_run(
+                  admission,
+                  name_pattern=admission_pattern,
+              )
+              if admission_artifact is None:
+                  continue
+              expected_state_name = (
+                  f"research-learning-clean-state-"
+                  f"{admission['id']}-{admission['run_attempt']}"
+              )
+              existing_state = trusted_named_artifact(
+                  expected_state_name,
+                  producers=state_producers,
+                  artifacts=artifacts,
+              )
+              if existing_state is not None:
+                  continue
+              if active_run("research-learning-clean-state-bootstrap.yml"):
+                  raise SystemExit(0)
+              dispatch(
+                  "research-learning-clean-state-bootstrap.yml",
+                  int(admission["id"]),
+              )
+              print(
+                  "dispatched missing clean-state bootstrap for admission "
+                  f"{admission['id']}"
+              )
+              raise SystemExit(0)
+
+          # Stage 3: recover the oldest post-follower campaign missing from any
+          # active clean-state lineage. The follower updates every lineage in one run.
+          latest_states: dict[str, dict[str, Any]] = {}
+          state_candidates = [
+              artifact
+              for artifact in artifacts
+              if artifact.get("expired") is False
+              and isinstance(artifact.get("name"), str)
+              and state_pattern.fullmatch(str(artifact["name"]))
+              and isinstance(artifact.get("workflow_run"), dict)
+          ]
+          state_candidates.sort(
+              key=lambda item: str(item.get("created_at", "")),
+              reverse=True,
+          )
+          for artifact in state_candidates:
+              name = str(artifact["name"])
+              if name in latest_states:
+                  continue
+              trusted = trusted_named_artifact(
+                  name,
+                  producers=state_producers,
+                  artifacts=artifacts,
+              )
+              if trusted is not None and trusted.get("id") == artifact.get("id"):
+                  latest_states[name] = artifact
+
+          if not latest_states:
+              print("no active trusted clean-state lineage exists yet")
+              raise SystemExit(0)
+
+          campaigns = [
+              run
+              for run in workflow_runs("research-campaign-scheduled.yml")
+              if run_is_trusted(
+                  run,
+                  path=".github/workflows/research-campaign-scheduled.yml",
+                  name="Scheduled Research Mainnet Replay Campaign",
+                  events={"workflow_dispatch"},
+              )
+              and isinstance(run.get("created_at"), str)
+              and str(run["created_at"]) >= follower_activation
+          ]
+          campaigns.sort(
+              key=lambda run: (str(run.get("created_at")), int(run["id"]))
+          )
+
+          state_names = {
+              name: archive_names(int(artifact["id"]))
+              for name, artifact in latest_states.items()
+          }
+          for campaign in campaigns:
+              campaign_name = (
+                  f"research-campaign-{campaign['id']}-{campaign['run_attempt']}"
+              )
+              campaign_artifact = exact_artifact_for_run(
+                  campaign,
+                  exact_name=campaign_name,
+              )
+              if campaign_artifact is None:
+                  raise SystemExit(
+                      "successful post-activation campaign is missing its "
+                      f"exact artifact: {campaign['id']}"
+                  )
+              generation = (
+                  f"generations/{campaign['id']}-{campaign['run_attempt']}.json"
+              )
+              missing_lineages = [
+                  name
+                  for name, names in state_names.items()
+                  if generation not in names
+              ]
+              if not missing_lineages:
+                  continue
+              if active_run("research-learning-clean-state-sync.yml"):
+                  raise SystemExit(0)
+              dispatch(
+                  "research-learning-clean-state-sync.yml",
+                  int(campaign["id"]),
+              )
+              print(
+                  "dispatched missing clean-state campaign follower for campaign "
+                  f"{campaign['id']}; missing lineages: "
+                  + ",".join(sorted(missing_lineages))
+              )
+              raise SystemExit(0)
+
+          print("clean-learning recovery found no missing stage")
+          PY
