@@ -21,22 +21,23 @@ def _campaign(
     tmp_path,
     *,
     spec,
-    market: MarketId = MarketId("", "HYPE"),
+    market: MarketId | None = None,
     snapshot_offset_ms: int = 1_000,
 ) -> tuple[object, object, object, object]:
-    campaign = tmp_path / f"campaign-{market.canonical}-{snapshot_offset_ms}"
+    resolved_market = MarketId("", "HYPE") if market is None else market
+    campaign = tmp_path / f"campaign-{resolved_market.canonical}-{snapshot_offset_ms}"
     output = campaign / "audit" / "evaluated" / "root-key" / "output"
     output.mkdir(parents=True)
 
     snapshot = _snapshot(
         as_of_ms=spec.validation_start_ms + snapshot_offset_ms,
-        market=market,
+        market=resolved_market,
     )
     opened_at_ms = snapshot.as_of_ms + 100
     closed_at_ms = opened_at_ms + 1_000
     trade = replace(
         _trade(snapshot, run_id="run-clean-1"),
-        market=market,
+        market=resolved_market,
         opened_at_ms=opened_at_ms,
         closed_at_ms=closed_at_ms,
         holding_duration_ms=closed_at_ms - opened_at_ms,
