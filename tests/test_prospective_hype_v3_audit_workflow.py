@@ -4,6 +4,7 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/prospective-hype-v3-audit.yml")
 PINNED_REVISION = "298723c52d6a3b09839d05451d3d7db9753815bf"
+PINNED_WORKFLOW_BLOB = "e00502dacb925d03bd90328f6ea39f6d195d0fa5"
 
 
 def _source() -> str:
@@ -18,6 +19,16 @@ def test_v3_audit_is_event_driven_and_has_no_schedule_dependency() -> None:
     assert "workflow_dispatch:" in source
     assert "\n  schedule:" not in source
     assert "cron:" not in source
+
+
+def test_v3_audit_ignores_pr_validation_workflow_completions() -> None:
+    source = _source()
+
+    assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event.workflow_run.event == 'push'" in source
+    assert "github.event.workflow_run.event == 'workflow_dispatch'" in source
+    assert 'run.get("event") in {"push", "workflow_dispatch"}' in source
+    assert 'previous_run.get("event") in {"push", "workflow_dispatch"}' in source
 
 
 def test_v3_audit_is_read_only_and_uses_frozen_source() -> None:
@@ -50,6 +61,17 @@ def test_v3_audit_authenticates_exact_campaign_runtime_and_control_plane() -> No
     assert '"observe_job_timeout_minutes": 30' in source
     assert '"actions_permission": "write"' in source
     assert '"schema_version": 3' in source
+
+
+def test_v3_audit_binds_every_state_producer_to_frozen_workflow_bytes() -> None:
+    source = _source()
+
+    assert f"OBSERVER_WORKFLOW_BLOB_SHA: {PINNED_WORKFLOW_BLOB}" in source
+    assert "PRODUCER_WORKFLOW_BLOB_METADATA_FAILED" in source
+    assert "PREVIOUS_PRODUCER_WORKFLOW_BLOB_METADATA_FAILED" in source
+    assert "PRODUCER_WORKFLOW_BLOB_DRIFT" in source
+    assert "PREVIOUS_PRODUCER_WORKFLOW_BLOB_DRIFT" in source
+    assert '"observer_workflow_blob_sha": os.environ["WORKFLOW_BLOB_SHA"]' in source
 
 
 def test_v3_audit_verifies_four_future_dispatch_targets() -> None:
