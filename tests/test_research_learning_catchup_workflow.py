@@ -17,7 +17,7 @@ def test_learning_catchup_is_bounded_and_post_activation_only() -> None:
     assert "workflow_dispatch:" in source
     assert 'LEARNING_PIPELINE_ACTIVATED_AT_UTC: "2026-09-25T15:28:46Z"' in source
     assert "research-campaign-scheduled.yml" in source
-    assert "created_at >= activation" in source
+    assert 'run["created_at"] >= activation' in source
     assert "newest successful post-activation research campaign" in source
 
 
