@@ -51,3 +51,18 @@ def test_learning_cycle_workflow_remains_research_only() -> None:
     assert "live_execution" not in source
     assert "promotion_eligible" in source
     assert "cocomelon-learning-experiment " not in source
+
+
+def test_learning_cycle_artifact_uses_authenticated_upstream_identity() -> None:
+    source = _source()
+    publish = source.split(
+        "- name: Publish immutable learning cycle artifact",
+        1,
+    )[1]
+
+    assert (
+        "research-learning-cycle-${{ steps.state.outputs.run_id }}-"
+        "${{ steps.state.outputs.run_attempt }}"
+    ) in publish
+    assert "github.event.workflow_run.id" not in publish
+    assert "github.event.workflow_run.run_attempt" not in publish
