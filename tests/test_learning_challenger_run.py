@@ -85,7 +85,6 @@ def test_challenger_run_binds_verified_dataset_and_recipe(tmp_path) -> None:
     assert len(manifest.model_config_id) == 64
     assert len(manifest.decision_policy_id) == 64
     assert manifest.input_kinds == (LearningEvidenceKind.PAPER_EXECUTION.value,)
-    assert manifest.input_record_count if False else True
     payload = manifest.to_dict()
     assert payload["input_record_count"] == 1
     assert payload["research_only"] is True
