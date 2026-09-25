@@ -184,11 +184,26 @@ jobs:
                   text=True,
               )
               run = json.loads(completed.stdout)
+              path = run.get("path")
+              trusted_events = {
+                  ".github/workflows/research-learning-evidence.yml": {
+                      "workflow_run",
+                      "workflow_dispatch",
+                  },
+                  ".github/workflows/research-learning-state-continuity.yml": {
+                      "schedule",
+                      "workflow_dispatch",
+                  },
+              }.get(path)
               if (
-                  run.get("conclusion") == "success"
-                  and run.get("path")
-                  == ".github/workflows/research-learning-evidence.yml"
+                  trusted_events is not None
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
                   and run.get("head_branch") == "main"
+                  and run.get("event") in trusted_events
+                  and run.get("head_sha") == artifact["workflow_run"].get("head_sha")
+                  and (run.get("head_repository") or {}).get("full_name")
+                  == os.environ["GITHUB_REPOSITORY"]
               ):
                   print(artifact["id"])
                   break
@@ -247,4 +262,4 @@ jobs:
           name: research-learning-state
           path: learning-state/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90

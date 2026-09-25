@@ -172,13 +172,26 @@ jobs:
                   text=True,
               )
               run = json.loads(fetched.stdout)
+              path = run.get("path")
+              trusted_events = {
+                  ".github/workflows/research-learning-evidence.yml": {
+                      "workflow_run",
+                      "workflow_dispatch",
+                  },
+                  ".github/workflows/research-learning-state-continuity.yml": {
+                      "schedule",
+                      "workflow_dispatch",
+                  },
+              }.get(path)
               if (
-                  run.get("status") == "completed"
+                  trusted_events is not None
+                  and run.get("status") == "completed"
                   and run.get("conclusion") == "success"
                   and run.get("head_branch") == "main"
-                  and run.get("path")
-                  == ".github/workflows/research-learning-evidence.yml"
-                  and run.get("event") in {"workflow_run", "workflow_dispatch"}
+                  and run.get("event") in trusted_events
+                  and run.get("head_sha") == artifact["workflow_run"].get("head_sha")
+                  and (run.get("head_repository") or {}).get("full_name")
+                  == os.environ["GITHUB_REPOSITORY"]
               ):
                   print(
                       str(artifact["id"])
