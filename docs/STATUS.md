@@ -443,3 +443,41 @@ The outcome-learning ledger now has a deterministic dataset-snapshot layer:
 - candidate IDs and exact record IDs remain auditable for future challenger lineage.
 
 This is the next step toward continuous model improvement without leaking the running V3 test into its own successor research.
+
+### Authenticated continuous-learning implementation frontier — 2026-09-25
+
+The learning path is now end-to-end reproducible while remaining isolated from the frozen V3 campaign.
+
+Merged implementation:
+
+- #388 materializes immutable learning dataset bundles and authenticates eligible JSONL rows with SHA-256 lineage.
+- #389 verifies bundle digests/record identities before reconstructing typed snapshots and freezes research-only challenger run manifests that bind exact input records, feature registry, model config, decision policy, and implementation revision.
+- #390–#398 add target-isolated training sets, authenticated training bundles, grouped-mean and fixed-output research evaluation surfaces, plus atomic artifact persistence.
+- #399 adds an authenticated point-in-time `FeatureSnapshot` store.
+- #401 captures the exact decision-time feature snapshot used by trusted research replay and fails closed unless every decision fact has authenticated feature coverage.
+- #402 lets frozen training registries consume authenticated numeric market features while rejecting missing stores, missing snapshots, market mismatches, or snapshots observed after trade open.
+- #403/#404 add the fixed shallow nonlinear tree filter and reproducible CLI under chronological holdout, settled-before-cutoff training, explicit NO_TRADE thresholding, and per-block stability gates.
+- #406 syncs authoritative paper/live execution journal outcomes into the append-only learning ledger with explicit candidate identity and research-eligibility timing while preserving realized fees, funding, slippage, net PnL, and net-R.
+- #407 materializes a complete clean-root learning experiment: authenticated dataset -> frozen challenger run -> authenticated training bundle -> grouped-mean or fixed shallow-tree evaluation -> `experiment.json`. Its verifier re-authenticates child artifacts, lineage, evaluation identity, and research-only authority.
+- #408 exposes that complete experiment verifier as a standalone audit command.
+
+Current economic status:
+
+- These merges establish trustworthy feature/outcome capture and reproducible challenger evaluation; they do **not** themselves demonstrate profitable edge.
+- No continuous-learning challenger is promotion-eligible from implementation tests or touched research alone.
+- Synthetic regression fixtures are engineering evidence only and must never be read as economic performance.
+- V3 evidence remains quarantined from successor-challenger research until its frozen finalization boundary.
+- Live trading remains disabled.
+
+Next action for this lane:
+
+1. Accumulate authenticated ordinary paper execution outcomes and settled prospective outcomes without changing the active producer.
+2. Sync each source into the append-only ledger with its explicit research-eligibility boundary; never backdate eligibility.
+3. Materialize a fresh authenticated dataset snapshot at an explicit `as_of_ms`.
+4. Freeze challenger feature/model/policy/implementation identities before evaluation.
+5. Run the reproducible experiment command on eligible evidence only, with grouped-mean as a transparent baseline and the fixed shallow tree as the nonlinear challenger.
+6. Require positive overall and chronological-block results with adequate trade counts; otherwise NO_TRADE remains the decision.
+7. Treat qualifying results as touched development evidence only. Freeze a separate candidate before any future clean validation campaign.
+
+**LIVE TRADING: DISABLED.**
+
