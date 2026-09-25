@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
+from cocomelon.research.learning_challenger_run import LearningChallengerRunManifest
 from cocomelon.research.learning_training_rows import (
     LearningTrainingRow,
     LearningTrainingSet,
@@ -263,3 +264,39 @@ def load_verified_learning_training_bundle(
         manifest_sha256=_sha256_bytes(manifest_bytes),
         rows_sha256=rows_sha256,
     )
+
+
+
+def verify_learning_training_bundle(
+    *,
+    output_dir: Path,
+    manifest: LearningChallengerRunManifest,
+) -> VerifiedLearningTrainingBundle:
+    verified = load_verified_learning_training_bundle(output_dir=output_dir)
+    training_set = verified.training_set
+    if training_set.run_id != manifest.run_id:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_RUN_ID_MISMATCH"
+        )
+    if training_set.dataset_id != manifest.dataset_id:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_DATASET_ID_MISMATCH"
+        )
+    if training_set.dataset_lineage_id != manifest.dataset_lineage_id:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_DATASET_LINEAGE_MISMATCH"
+        )
+    if training_set.feature_registry != manifest.feature_registry:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_FEATURE_REGISTRY_MISMATCH"
+        )
+    if training_set.evidence_kind != manifest.input_kinds[0]:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_EVIDENCE_KIND_MISMATCH"
+        )
+    source_record_ids = tuple(row.source_record_id for row in training_set.rows)
+    if source_record_ids != manifest.input_record_ids:
+        raise LearningTrainingBundleError(
+            "LEARNING_TRAINING_INPUT_RECORDS_MISMATCH"
+        )
+    return verified
