@@ -293,7 +293,7 @@ def load_learning_challenger_run_manifest(
             "LEARNING_CHALLENGER_RUN_MANIFEST_INVALID"
         ) from exc
 
-    if raw != manifest.to_dict():
+    if _canonical_json(raw) != _canonical_json(manifest.to_dict()):
         raise LearningChallengerRunManifestError(
             "LEARNING_CHALLENGER_RUN_MANIFEST_IDENTITY_MISMATCH"
         )
