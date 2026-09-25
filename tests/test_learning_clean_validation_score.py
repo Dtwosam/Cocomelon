@@ -115,7 +115,7 @@ def test_clean_validation_score_stays_economically_blind_until_complete(
     )
 
     assert score.status == "collecting"
-    assert score.eligible_settled_trade_count == 19
+    assert score.selected_settled_trade_count == 19
     assert len(score.selected_outcome_ids) == 19
     assert score.overall_mean_net_r is None
     assert score.blocks == ()
@@ -146,7 +146,7 @@ def test_clean_validation_score_counts_only_settled_trade_predictions(
 
     assert unsettled.prediction_id in store.unsettled_trade_prediction_ids
     assert score.status == "collecting"
-    assert score.eligible_settled_trade_count == 19
+    assert score.selected_settled_trade_count == 19
     assert score.qualifies_clean_validation is None
 
 
@@ -184,10 +184,11 @@ def test_clean_validation_score_freezes_first_twenty_settled_trades(
         as_of_ms=spec.validation_start_ms + 100_000,
     )
 
-    assert later.eligible_settled_trade_count == 21
+    assert later.selected_settled_trade_count == 20
     assert later.selected_outcome_ids == selected
     assert later.overall_mean_net_r == Decimal("0.1")
     assert later.qualifies_clean_validation is True
+    assert later == first
 
 
 def test_clean_validation_requires_every_stability_block_to_clear_floor(
