@@ -14,6 +14,7 @@ def test_gap_dispatcher_uses_actual_run_state_and_caps_daily_success() -> None:
     assert "name: Research Daily Gap Dispatcher" in source
     assert "workflow_run:" in source
     assert "Scheduled Genuine Mainnet Evidence Campaign V4" in source
+    assert "Research V4 Acquisition Authority Sync" in source
     assert "types: [completed]" in source
     assert "workflow_dispatch:" in source
     assert "actions: write" in source

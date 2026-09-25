@@ -97,6 +97,7 @@ jobs:
           tests/test_research_learning_sync.py
           tests/test_research_learning_workflow.py
           tests/test_research_learning_producer_contract.py
+          tests/test_research_daily_gap_dispatcher.py
           tests/test_research_runner_workflow.py
           tests/test_research_cohort.py
           tests/test_research_learning_catchup_workflow.py
