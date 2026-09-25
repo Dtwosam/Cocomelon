@@ -107,6 +107,8 @@ jobs:
           tests/test_learning_clean_validation_spec_cli.py
           tests/test_learning_clean_validation_score.py
           tests/test_learning_clean_validation_score_cli.py
+          tests/test_learning_clean_state.py
+          tests/test_learning_clean_state_cli.py
           tests/test_learning_candidate_predictor.py
           tests/test_learning_candidate_predictor_cli.py
           tests/test_learning_clean_evidence.py
@@ -124,6 +126,7 @@ jobs:
           tests/test_learning_cycle_cli.py
           tests/test_research_learning_cycle_workflow.py
           tests/test_research_learning_clean_admission_workflow.py
+          tests/test_research_learning_clean_state_bootstrap_workflow.py
           tests/test_learning_dashboard.py
           tests/test_learning_dashboard_cli.py
           tests/test_research_dashboard_workflow.py
