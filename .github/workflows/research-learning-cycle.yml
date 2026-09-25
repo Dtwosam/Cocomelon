@@ -294,6 +294,45 @@ jobs:
           done
           echo "frozen_count=$FROZEN_COUNT" >> "$GITHUB_OUTPUT"
 
+      - name: Package frozen learning candidates
+        if: ${{ steps.metadata.outputs.new_records != '0' }}
+        id: package
+        run: |
+          set -euo pipefail
+          PACKAGE_COUNT=0
+          for LABEL in baseline tree; do
+            FREEZE_PATH="learning-cycle/frozen-candidates/$LABEL/candidate-freeze.json"
+            if [ ! -f "$FREEZE_PATH" ]; then
+              continue
+            fi
+            PACKAGE_ROOT="learning-cycle/candidate-packages/$LABEL"
+            mkdir -p "$PACKAGE_ROOT"
+            cocomelon-learning-candidate-package \
+              --experiment-root "learning-cycle/$LABEL" \
+              --candidate-freeze "$FREEZE_PATH" \
+              --package-root "$PACKAGE_ROOT" \
+              > "$PACKAGE_ROOT/command.json"
+            PACKAGE_ID="$(jq -r '.package_id' "$PACKAGE_ROOT/candidate-package.json")"
+            CANDIDATE_ID="$(jq -r '.candidate_id' "$FREEZE_PATH")"
+            jq -e \
+              --arg package_id "$PACKAGE_ID" \
+              --arg candidate_id "$CANDIDATE_ID" \
+              '.package_id == $package_id
+               and .candidate_id == $candidate_id
+               and .local_lineage_reverified == true
+               and .prospective_only == true
+               and .research_only == true
+               and .promotion_eligible == false
+               and .execution_ready == false' \
+              "$PACKAGE_ROOT/command.json" > /dev/null
+            PACKAGE_COUNT=$((PACKAGE_COUNT + 1))
+          done
+          if [ "$PACKAGE_COUNT" != "${{ steps.freeze.outputs.frozen_count }}" ]; then
+            echo "candidate package count does not match frozen candidate count" >&2
+            exit 68
+          fi
+          echo "package_count=$PACKAGE_COUNT" >> "$GITHUB_OUTPUT"
+
       - name: Render research cycle summary
         if: ${{ steps.metadata.outputs.new_records != '0' }}
         run: |
@@ -315,6 +354,10 @@ jobs:
           print(
               "- frozen development candidates: "
               "${{ steps.freeze.outputs.frozen_count }}"
+          )
+          print(
+              "- self-contained candidate packages: "
+              "${{ steps.package.outputs.package_count }}"
           )
           if cycle["status"] == "completed":
               print(
