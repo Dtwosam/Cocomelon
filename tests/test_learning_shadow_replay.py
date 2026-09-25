@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from cocomelon.research import learning_shadow_replay
+from cocomelon.research.learning_shadow_admission import load_learning_shadow_admission
 from cocomelon.research.learning_shadow_evidence import LearningShadowEvidenceStore
 from cocomelon.research.learning_shadow_replay import (
     load_learning_shadow_replay_receipt,
@@ -90,17 +91,12 @@ def test_shadow_replay_real_admission_refuses_pre_review_recording(tmp_path) -> 
     assert receipt.execution_ready is False
     assert receipt.live_promotion_authorized is False
 
-    path = Path(cast_path(kwargs["output_root"])) / "shadow-replay-receipt.json"
+    path = Path(str(kwargs["output_root"])) / "shadow-replay-receipt.json"
     assert load_learning_shadow_replay_receipt(path) == receipt
     assert verify_learning_shadow_replay_receipt(
         path,
         **_verify_kwargs(kwargs),
     ) == receipt
-
-
-def cast_path(value: object) -> str:
-    return str(value)
-
 
 def _verify_kwargs(kwargs: dict[str, object]) -> dict[str, Path]:
     keys = (
@@ -124,9 +120,10 @@ def test_shadow_replay_candidate_decisions_drive_real_paper_trade_and_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     kwargs = _run_kwargs(tmp_path)
-    lineage = _lineage(tmp_path)
     early_admission = replace(
-        lineage["admission"],
+        load_learning_shadow_admission(
+            Path(str(kwargs["shadow_admission_path"]))
+        ),
         reviewed_at_ms=0,
         shadow_start_ms=0,
     )
