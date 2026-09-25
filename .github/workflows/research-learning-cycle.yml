@@ -151,6 +151,14 @@ jobs:
           import json
           from pathlib import Path
 
+          from cocomelon.research.learning_feature_snapshots import (
+              LearningFeatureSnapshotStore,
+          )
+          from cocomelon.research.learning_state_lineage import (
+              verify_learning_state_lineage,
+          )
+          from cocomelon.research.outcome_learning import LearningEvidenceLedger
+
           sync = json.loads(
               Path("learning-state/last-sync.json").read_text(encoding="utf-8")
           )
@@ -186,6 +194,33 @@ jobs:
               raise SystemExit("learning state digest is invalid")
           if not isinstance(feature_digest, str) or len(feature_digest) != 64:
               raise SystemExit("feature state digest is invalid")
+
+          ledger = LearningEvidenceLedger(Path("learning-state/ledger"))
+          feature_store = LearningFeatureSnapshotStore(Path("learning-state/features"))
+          records = ledger.iter_records()
+          snapshots = feature_store.iter_verified()
+          if sync.get("learning_record_count") != len(records):
+              raise SystemExit("learning record count does not match persisted ledger")
+          if sync.get("feature_snapshot_count") != len(snapshots):
+              raise SystemExit("feature snapshot count does not match persisted store")
+          if ledger.state_digest != learning_digest:
+              raise SystemExit("persisted learning ledger digest changed")
+          if feature_store.state_digest != feature_digest:
+              raise SystemExit("persisted learning feature-store digest changed")
+          lineage = verify_learning_state_lineage(
+              Path("learning-state"),
+              learning_record_count=len(records),
+              learning_state_digest=ledger.state_digest,
+              feature_snapshot_count=len(snapshots),
+              feature_state_digest=feature_store.state_digest,
+              require_entry=True,
+          )
+          if lineage is None:
+              raise SystemExit("learning lineage is unexpectedly empty")
+          if sync.get("lineage_sequence") != lineage.sequence:
+              raise SystemExit("learning lineage sequence does not match sync receipt")
+          if sync.get("lineage_entry_id") != lineage.entry_id:
+              raise SystemExit("learning lineage entry does not match sync receipt")
 
           print(f"new_records={created}")
           print(f"as_of_ms={as_of_ms}")

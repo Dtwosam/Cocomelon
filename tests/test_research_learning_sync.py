@@ -120,6 +120,8 @@ def test_research_learning_sync_ingests_required_candidate_and_copies_features(
     assert receipt.existing_records == 0
     assert receipt.created_feature_snapshots == 1
     assert receipt.existing_feature_snapshots == 0
+    assert receipt.lineage_sequence == 1
+    assert len(receipt.lineage_entry_id) == 64
     assert receipt.research_only is True
     assert receipt.promotion_eligible is False
     assert receipt.execution_ready is False
@@ -163,6 +165,10 @@ def test_research_learning_sync_is_idempotent_for_same_campaign(
     assert second.existing_feature_snapshots == 1
     assert first.learning_state_digest == second.learning_state_digest
     assert first.feature_state_digest == second.feature_state_digest
+    assert first.lineage_sequence == 1
+    assert second.lineage_sequence == 2
+    lineage_entries = sorted((tmp_path / "state" / "lineage" / "entries").glob("*.json"))
+    assert len(lineage_entries) == 2
 
 
 def test_research_learning_sync_rejects_pre_feature_store_campaign(
@@ -221,3 +227,29 @@ def test_research_learning_sync_rejects_feature_store_digest_mismatch(
             upstream_artifact_id=456,
             upstream_artifact_digest="sha256:" + "b" * 64,
         )
+
+
+def test_research_learning_sync_rejects_nonempty_state_without_lineage(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    campaign, _snapshot_value, trade = _campaign(tmp_path)
+    monkeypatch.setattr(
+        research_learning_sync,
+        "verify_research_batch_artifact",
+        lambda *_args, **_kwargs: _verified(trade),
+    )
+    kwargs = {
+        "state_root": tmp_path / "state",
+        "upstream_run_id": 123,
+        "upstream_run_attempt": 1,
+        "upstream_head_sha": "a" * 40,
+        "upstream_artifact_id": 456,
+        "upstream_artifact_digest": "sha256:" + "b" * 64,
+    }
+
+    research_learning_sync.sync_research_campaign_learning(campaign, **kwargs)
+    shutil.rmtree(tmp_path / "state" / "lineage")
+
+    with pytest.raises(RuntimeError, match="LINEAGE_MISSING"):
+        research_learning_sync.sync_research_campaign_learning(campaign, **kwargs)

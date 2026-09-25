@@ -191,6 +191,9 @@ jobs:
           from cocomelon.research.learning_feature_snapshots import (
               LearningFeatureSnapshotStore,
           )
+          from cocomelon.research.learning_state_lineage import (
+              verify_learning_state_lineage,
+          )
           from cocomelon.research.outcome_learning import LearningEvidenceLedger
 
           root = Path("learning-state")
@@ -223,6 +226,21 @@ jobs:
               raise SystemExit("learning ledger digest mismatch")
           if sync.get("feature_state_digest") != features.state_digest:
               raise SystemExit("learning feature-store digest mismatch")
+
+          lineage = verify_learning_state_lineage(
+              root,
+              learning_record_count=len(records),
+              learning_state_digest=ledger.state_digest,
+              feature_snapshot_count=len(snapshots),
+              feature_state_digest=features.state_digest,
+              require_entry=True,
+          )
+          if lineage is None:
+              raise SystemExit("learning lineage is unexpectedly empty")
+          if sync.get("lineage_sequence") != lineage.sequence:
+              raise SystemExit("learning lineage sequence does not match sync receipt")
+          if sync.get("lineage_entry_id") != lineage.entry_id:
+              raise SystemExit("learning lineage entry does not match sync receipt")
 
           eligible = readiness.get("eligible_record_count")
           quarantined = readiness.get("quarantined_record_count")

@@ -34,6 +34,9 @@ def test_learning_cycle_workflow_binds_exact_state_artifact_and_protocol() -> No
     assert "git rev-parse HEAD" in source
     assert "expected-learning-state-digest" in source
     assert "expected-feature-state-digest" in source
+    assert "verify_learning_state_lineage" in source
+    assert 'sync.get("lineage_sequence") != lineage.sequence' in source
+    assert 'sync.get("lineage_entry_id") != lineage.entry_id' in source
     assert 'run.get("id") != int(os.environ["RUN_ID"])' in source
     assert 'run.get("head_sha")' in source
 
