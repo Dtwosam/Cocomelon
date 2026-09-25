@@ -645,3 +645,30 @@ Current evidence boundary:
 - The next admissible paper campaign with authenticated `learning-features/` remains the required source of the first continuous-learning records.
 
 **LIVE TRADING: DISABLED.**
+
+### Continuous-learning and paper-producer wakeups — 2026-09-25
+
+PRs #424 and #425 reduce dependence on GitHub cron delivery without weakening evidence or execution boundaries.
+
+Merged implementation:
+
+- #424 makes `Research Learning Catch-up` wake on completion of either `Scheduled Research Mainnet Replay Campaign` or `Research Learning Evidence Sync`, while preserving its ten-minute schedule and manual recovery paths.
+- Those `workflow_run` events are wakeups only: catch-up still re-discovers the newest successful post-activation campaign and latest trusted cumulative state from GitHub, authenticates them under the existing provenance rules, and repairs at most one missing stage per pass.
+- #424 keeps duplicate-active-run checks and adds a short grace window so the normal follower can register before catch-up decides whether recovery is needed.
+- #425 makes `Research Daily Gap Dispatcher` also wake when `Research V4 Acquisition Authority Sync` completes. The authority sync already runs shortly after UTC-day rollover, giving the paper producer an independent trusted wakeup if the dispatcher's own five-minute cron is delayed.
+- #425 does not dispatch blindly: the existing active-V4, active-research, and successful-research-today checks remain unchanged, and the scheduled paper campaign itself still independently refuses a second successful cohort in the same UTC day.
+- The daily-gap dispatcher contract now runs in the dedicated research CI shard as well as the full suite.
+
+Verification evidence:
+
+- #424 exact head `05e9085ae622e9637f6520f7e92a7ab88423eebb` passed CI run `36163232675` before merge `ab1fff95a624cbc88e70d86b510d1099a45995ed`.
+- #425 exact head `cc445ac3878458487e8b24a0a5e2dd49499475e2` passed CI run `36168962249` with both full and research jobs green before merge `dd7e557b62e733f2f423d58221b326ca399a8263`.
+
+Current evidence boundary:
+
+- No new admissible post-activation paper campaign exists yet; the 2026-09-25 successful campaign still predates authenticated decision-time feature capture and is not backfilled.
+- These wakeups improve control-plane reliability only. They do not create evidence, increase the one-successful-cohort-per-UTC-day cap, relax the frozen 200/20 learning gate, change strategy/risk/sizing, promote a challenger, or enable orders.
+- The next genuine successful paper campaign produced with authenticated `learning-features/` remains the required source of the first cumulative-learning lineage entry.
+
+**LIVE TRADING: DISABLED.**
+
