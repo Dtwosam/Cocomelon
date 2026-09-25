@@ -22,10 +22,7 @@ on:
         default: "manual"
         type: string
 
-run-name: >-
-  ${{ github.event_name == 'workflow_dispatch'
-      && format('Prospective HYPE V3 capture {0}', inputs.target_capture_ms)
-      || 'Prospective HYPE V3 bootstrap' }}
+run-name: Prospective HYPE V3 capture ${{ inputs.target_capture_ms }}
 
 permissions:
   contents: read
