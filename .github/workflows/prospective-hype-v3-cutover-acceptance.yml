@@ -251,6 +251,29 @@ jobs:
           import os
           from pathlib import Path
 
+          from cocomelon.research.historical_discovery_freeze import (
+              HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3,
+          )
+          from cocomelon.research.prospective_context_evidence import (
+              MAX_ENTRY_CANDLE_AGE_MS,
+          )
+          from cocomelon.research.prospective_context_report import (
+              HYPE_PROSPECTIVE_VALIDATION_V3,
+          )
+          from cocomelon.research.prospective_dispatch_queue import HOUR_MS, MINUTE_MS
+          from cocomelon.research.prospective_runtime_attestation import (
+              ProspectiveRuntimeAttestation,
+          )
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
           meta = json.loads(
               Path("/tmp/v3-cutover-existing-meta.json").read_text(encoding="utf-8")
           )
@@ -268,14 +291,51 @@ jobs:
               if key != "receipt_id"
           }
           expected_id = hashlib.sha256(
-              json.dumps(
-                  identity,
-                  sort_keys=True,
-                  separators=(",", ":"),
-                  ensure_ascii=False,
-                  allow_nan=False,
-              ).encode("utf-8")
+              canonical(identity).encode("utf-8")
           ).hexdigest()
+
+          spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3
+          plan = HYPE_PROSPECTIVE_VALIDATION_V3
+          runtime = ProspectiveRuntimeAttestation(
+              candidate_spec_id=spec.spec_id,
+              validation_plan_id=plan.plan_id,
+              observer_source_revision=os.environ["PINNED_SOURCE_REVISION"],
+          )
+          control = {
+              "kind": "prospective-hype-v3-clean-control-plane",
+              "candidate_spec_id": spec.spec_id,
+              "validation_plan_id": plan.plan_id,
+              "observer_source_revision": os.environ["PINNED_SOURCE_REVISION"],
+              "protected_capture_minute_utc": 3,
+              "capture_transport": "rolling_workflow_dispatch_queue_v3",
+              "queue_depth": 4,
+              "queue_horizon_ms": 14_400_000,
+              "prepare_handoff_lead_ms": 600_000,
+              "duplicate_policy": "lowest_covering_run_id",
+              "bootstrap_event": "push",
+              "capture_event": "workflow_dispatch",
+              "concurrency_mode": "target_leader_election",
+              "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
+              "state_artifact_name": "prospective-hype-v3-clean-state",
+              "evidence_root": "artifacts/prospective-hype-v3-clean",
+              "prepare_job_timeout_minutes": 270,
+              "observe_job_timeout_minutes": 30,
+              "execution_mode": "paper",
+              "api_url": "https://api.hyperliquid.xyz",
+              "ws_url": "wss://api.hyperliquid.xyz/ws",
+              "contents_permission": "read",
+              "actions_permission": "write",
+              "artifact_retention_days": 90,
+              "schema_version": 3,
+          }
+          control["control_plane_id"] = hashlib.sha256(
+              canonical(control).encode("utf-8")
+          ).hexdigest()
+          first_clean_capture_ms = (
+              plan.first_expected_anchor_ms + 1 + 3 * MINUTE_MS
+          )
+          acceptance_not_before_ms = first_clean_capture_ms - 4 * HOUR_MS
+
           workflow = meta.get("workflow_run")
           if (
               str(meta.get("id")) != os.environ["EXISTING_ID"]
@@ -299,6 +359,22 @@ jobs:
               != os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
               or receipt.get("audit_workflow_blob_sha")
               != os.environ["AUDIT_WORKFLOW_BLOB_SHA"]
+              or receipt.get("candidate_spec_id") != spec.spec_id
+              or receipt.get("validation_plan_id") != plan.plan_id
+              or receipt.get("runtime_attestation_id") != runtime.attestation_id
+              or receipt.get("control_plane_id") != control["control_plane_id"]
+              or receipt.get("validation_start_ms") != plan.validation_start_ms
+              or receipt.get("first_expected_anchor_ms")
+              != plan.first_expected_anchor_ms
+              or receipt.get("first_clean_capture_ms") != first_clean_capture_ms
+              or receipt.get("acceptance_not_before_ms")
+              != acceptance_not_before_ms
+              or not isinstance(receipt.get("accepted_at_ms"), int)
+              or receipt["accepted_at_ms"] >= plan.validation_start_ms
+              or receipt.get("dispatch_queue_depth") != 4
+              or receipt.get("first_clean_capture_queued") is not True
+              or first_clean_capture_ms
+              not in receipt.get("dispatch_queue_targets", [])
               or receipt.get("pre_cutover_observation_count") != 0
               or receipt.get("pre_cutover_outcome_count") != 0
               or receipt.get("interim_economics_redacted") is not True
