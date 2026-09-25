@@ -319,6 +319,14 @@ class LearningEvidenceLedger:
             )
         )
 
+    @property
+    def state_digest(self) -> str:
+        payload = {
+            "schema_version": LEARNING_SCHEMA_VERSION,
+            "records": tuple(item.identity_payload() for item in self.iter_records()),
+        }
+        return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
     def eligible_records(self, *, as_of_ms: int) -> tuple[LearningEvidenceRecord, ...]:
         if as_of_ms < 0:
             raise ValueError("as_of_ms must be non-negative")
@@ -403,6 +411,8 @@ def execution_learning_record(
         LearningEvidenceKind.LIVE_EXECUTION,
     }:
         raise ValueError("execution trade requires paper_execution or live_execution kind")
+    if kind is LearningEvidenceKind.LIVE_EXECUTION and trade.replay_run_id is not None:
+        raise ValueError("live execution evidence cannot come from a replay-backed trade")
     return LearningEvidenceRecord(
         kind=kind,
         source_record_id=trade.trade_id,
