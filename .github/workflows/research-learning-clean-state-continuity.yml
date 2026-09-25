@@ -1,0 +1,497 @@
+name: Research Learning Clean State Continuity
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-learning-clean-state-continuity
+  cancel-in-progress: false
+
+env:
+  MAX_STATE_AGE_DAYS: "14"
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.states.outputs.matrix }}
+    steps:
+      - name: Discover trusted clean-state lineages needing refresh
+        id: states
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/clean-state-artifact-pages.json
+
+          MATRIX="$(
+            python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          pages = json.loads(
+              Path("/tmp/clean-state-artifact-pages.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = []
+          for page in pages:
+              artifacts.extend(page.get("artifacts", []))
+
+          pattern = re.compile(
+              r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
+          )
+          trusted = {
+              ".github/workflows/research-learning-clean-state-bootstrap.yml": {
+                  "name": "Research Learning Clean State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-sync.yml": {
+                  "name": "Research Learning Clean State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-clean-state-continuity.yml": {
+                  "name": "Research Learning Clean State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
+          }
+          candidates = sorted(
+              (
+                  item
+                  for item in artifacts
+                  if item.get("expired") is False
+                  and isinstance(item.get("name"), str)
+                  and pattern.fullmatch(item["name"])
+                  and isinstance(item.get("workflow_run"), dict)
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          selected = {}
+          for artifact in candidates:
+              name = artifact["name"]
+              if name in selected:
+                  continue
+              run_id = artifact["workflow_run"].get("id")
+              if not isinstance(run_id, int):
+                  continue
+              fetched = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(fetched.stdout)
+              contract = trusted.get(run.get("path"))
+              if contract is None:
+                  continue
+              if (
+                  run.get("name") != contract["name"]
+                  or run.get("event") not in contract["events"]
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("head_branch") != "main"
+                  or run.get("head_sha")
+                  != artifact["workflow_run"].get("head_sha")
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              created_at = artifact.get("created_at")
+              if not isinstance(created_at, str) or not created_at:
+                  raise SystemExit("trusted clean-state artifact is missing created_at")
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  raise SystemExit("trusted clean-state artifact digest is missing")
+              selected[name] = {
+                  "artifact_id": artifact["id"],
+                  "artifact_name": name,
+                  "artifact_digest": digest,
+                  "created_at": created_at,
+                  "producer_run_id": run_id,
+                  "producer_run_attempt": run["run_attempt"],
+                  "producer_head_sha": run["head_sha"],
+              }
+
+          now = datetime.now(timezone.utc)
+          max_age_seconds = int(os.environ["MAX_STATE_AGE_DAYS"]) * 86400
+          forced = os.environ["EVENT_NAME"] == "workflow_dispatch"
+          include = []
+          for row in selected.values():
+              created = datetime.fromisoformat(
+                  row["created_at"].replace("Z", "+00:00")
+              )
+              if created.tzinfo is None:
+                  raise SystemExit("clean-state artifact created_at is not timezone-aware")
+              age_seconds = (
+                  now - created.astimezone(timezone.utc)
+              ).total_seconds()
+              if age_seconds < 0:
+                  raise SystemExit("clean-state artifact is from the future")
+              if forced or age_seconds >= max_age_seconds:
+                  include.append({"skip": False, **row})
+
+          if not include:
+              include = [
+                  {
+                      "skip": True,
+                      "artifact_id": 0,
+                      "artifact_name": "none",
+                  }
+              ]
+          print(json.dumps({"include": include}, separators=(",", ":")))
+          PY
+          )"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  checkpoint:
+    needs: discover
+    if: ${{ needs.discover.outputs.matrix != '' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Skip when no lineage needs refresh
+        if: ${{ matrix.skip == true }}
+        run: echo "No trusted clean-state lineage requires continuity refresh."
+
+      - name: Checkout trusted continuity implementation
+        if: ${{ matrix.skip != true }}
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        if: ${{ matrix.skip != true }}
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        if: ${{ matrix.skip != true }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Download exact trusted clean-state lineage
+        if: ${{ matrix.skip != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ matrix.artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p clean-state
+          /usr/bin/gh api \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/clean-state.zip
+          unzip -q /tmp/clean-state.zip -d clean-state
+
+      - name: Re-verify complete clean-state lineage
+        if: ${{ matrix.skip != true }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          from cocomelon.research.learning_candidate_package import (
+              verify_learning_candidate_package,
+          )
+          from cocomelon.research.learning_clean_campaign_sync import (
+              LearningCleanCampaignSyncResult,
+          )
+          from cocomelon.research.learning_clean_evidence import (
+              LearningCleanEvidenceStore,
+          )
+          from cocomelon.research.learning_clean_finalization import (
+              verify_learning_clean_finalization,
+          )
+          from cocomelon.research.learning_clean_state import (
+              load_learning_clean_state,
+              verify_learning_clean_state,
+          )
+          from cocomelon.research.learning_clean_validation_score import (
+              verify_learning_clean_validation_score,
+          )
+          from cocomelon.research.learning_clean_validation_spec import (
+              verify_learning_clean_validation_spec,
+          )
+
+          root = Path("clean-state")
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          def load_identity(path: Path, identity_field: str) -> dict[str, object]:
+              raw_bytes = path.read_bytes()
+              raw = json.loads(raw_bytes)
+              if not isinstance(raw, dict):
+                  raise SystemExit(f"{path} is not a JSON object")
+              identity = raw.get(identity_field)
+              if (
+                  not isinstance(identity, str)
+                  or len(identity) != 64
+                  or any(char not in "0123456789abcdef" for char in identity)
+              ):
+                  raise SystemExit(f"{path} has invalid {identity_field}")
+              payload = dict(raw)
+              payload.pop(identity_field)
+              expected = hashlib.sha256(
+                  canonical(payload).encode("utf-8")
+              ).hexdigest()
+              if identity != expected:
+                  raise SystemExit(f"{path} identity mismatch")
+              if raw_bytes != (canonical(raw) + "\n").encode("utf-8"):
+                  raise SystemExit(f"{path} is not canonical JSON")
+              for field, expected_value in (
+                  ("research_only", True),
+                  ("promotion_eligible", False),
+                  ("execution_ready", False),
+              ):
+                  if field in raw and raw[field] is not expected_value:
+                      raise SystemExit(f"{path} carries invalid authority")
+              return raw
+
+          for path in root.rglob("*"):
+              if path.is_symlink():
+                  raise SystemExit(f"symlink forbidden in clean state: {path}")
+
+          source_admission = load_identity(
+              root / "source-admission.json",
+              "admission_id",
+          )
+          bootstrap = load_identity(root / "bootstrap.json", "bootstrap_id")
+          if bootstrap.get("source_admission_id") != source_admission.get("admission_id"):
+              raise SystemExit("bootstrap source admission identity mismatch")
+
+          candidate_roots = sorted(
+              path
+              for path in (root / "candidates").iterdir()
+              if path.is_dir()
+          )
+          if bootstrap.get("candidate_count") != len(candidate_roots):
+              raise SystemExit("bootstrap candidate count does not reconcile")
+
+          for candidate_root in candidate_roots:
+              package_root = candidate_root / "package"
+              spec_path = candidate_root / "candidate-validation-spec.json"
+              evidence_root = candidate_root / "evidence"
+              state_path = candidate_root / "state.json"
+
+              package = verify_learning_candidate_package(package_root)
+              spec = verify_learning_clean_validation_spec(
+                  spec_path,
+                  package_root=package_root,
+              )
+              evidence = LearningCleanEvidenceStore(evidence_root, spec=spec)
+              evidence.verify()
+              state = verify_learning_clean_state(
+                  state_path,
+                  package_root=package_root,
+                  validation_spec_path=spec_path,
+                  evidence_root=evidence_root,
+              )
+              if (
+                  package.candidate_id != state.candidate_id
+                  or spec.candidate_id != state.candidate_id
+              ):
+                  raise SystemExit("clean candidate identity mismatch")
+              if state.promotion_eligible or state.execution_ready:
+                  raise SystemExit("clean state carries invalid authority")
+
+              history_root = candidate_root / "state-history"
+              if history_root.exists():
+                  for history_path in sorted(history_root.glob("*.json")):
+                      history = load_learning_clean_state(history_path)
+                      if history_path.name != f"{history.state_id}.json":
+                          raise SystemExit("clean state-history filename mismatch")
+                      if (
+                          history.candidate_id != state.candidate_id
+                          or history.validation_spec_id != state.validation_spec_id
+                      ):
+                          raise SystemExit("clean state-history lineage mismatch")
+
+              sync_root = candidate_root / "campaign-syncs"
+              if sync_root.exists():
+                  for sync_path in sorted(sync_root.glob("*.json")):
+                      raw_bytes = sync_path.read_bytes()
+                      raw = json.loads(raw_bytes)
+                      try:
+                          receipt = LearningCleanCampaignSyncResult(
+                              candidate_id=raw["candidate_id"],
+                              validation_spec_id=raw["validation_spec_id"],
+                              candidate_package_id=raw["candidate_package_id"],
+                              model_family=raw["model_family"],
+                              upstream_run_id=raw["upstream_run_id"],
+                              upstream_run_attempt=raw["upstream_run_attempt"],
+                              upstream_head_sha=raw["upstream_head_sha"],
+                              upstream_artifact_id=raw["upstream_artifact_id"],
+                              upstream_artifact_digest=raw["upstream_artifact_digest"],
+                              source_learning_receipt_id=raw["source_learning_receipt_id"],
+                              source_required_candidate_ids=tuple(
+                                  raw["source_required_candidate_ids"]
+                              ),
+                              source_trade_count=raw["source_trade_count"],
+                              pre_validation_source_trade_count=raw[
+                                  "pre_validation_source_trade_count"
+                              ],
+                              clean_prediction_ids=tuple(raw["clean_prediction_ids"]),
+                              clean_outcome_ids=tuple(raw["clean_outcome_ids"]),
+                              clean_trade_prediction_count=raw[
+                                  "clean_trade_prediction_count"
+                              ],
+                              clean_no_trade_prediction_count=raw[
+                                  "clean_no_trade_prediction_count"
+                              ],
+                              prediction_count_after=raw["prediction_count_after"],
+                              settled_outcome_count_after=raw[
+                                  "settled_outcome_count_after"
+                              ],
+                              unsettled_trade_prediction_count_after=raw[
+                                  "unsettled_trade_prediction_count_after"
+                              ],
+                              clean_evidence_state_digest=raw[
+                                  "clean_evidence_state_digest"
+                              ],
+                              paper_only=raw["paper_only"],
+                              prospective_only=raw["prospective_only"],
+                              research_only=raw["research_only"],
+                              promotion_eligible=raw["promotion_eligible"],
+                              execution_ready=raw["execution_ready"],
+                              schema_version=raw["schema_version"],
+                          )
+                      except (KeyError, TypeError, ValueError) as exc:
+                          raise SystemExit(
+                              f"invalid clean campaign sync receipt: {sync_path}"
+                          ) from exc
+                      if raw.get("sync_id") != receipt.sync_id:
+                          raise SystemExit("clean campaign sync identity mismatch")
+                      if raw_bytes != (
+                          canonical(receipt.to_dict()) + "\n"
+                      ).encode("utf-8"):
+                          raise SystemExit("clean campaign sync is not canonical")
+                      if sync_path.name != (
+                          f"{receipt.upstream_run_id}-"
+                          f"{receipt.upstream_run_attempt}.json"
+                      ):
+                          raise SystemExit("clean campaign sync filename mismatch")
+                      if (
+                          receipt.candidate_id != state.candidate_id
+                          or receipt.validation_spec_id != state.validation_spec_id
+                          or receipt.candidate_package_id
+                          != state.candidate_package_id
+                      ):
+                          raise SystemExit("clean campaign sync lineage mismatch")
+
+              score_path = (
+                  candidate_root / "score" / "candidate-validation-score.json"
+              )
+              if score_path.is_file():
+                  verify_learning_clean_validation_score(
+                      score_path,
+                      evidence_root=evidence_root,
+                      package_root=package_root,
+                      validation_spec_path=spec_path,
+                  )
+
+              finalization_path = (
+                  candidate_root
+                  / "finalization"
+                  / "candidate-finalization.json"
+              )
+              if finalization_path.is_file():
+                  if not score_path.is_file():
+                      raise SystemExit("clean finalization exists without score")
+                  finalization = verify_learning_clean_finalization(
+                      finalization_path,
+                      package_root=package_root,
+                      validation_spec_path=spec_path,
+                      validation_score_path=score_path,
+                      evidence_root=evidence_root,
+                  )
+                  if (
+                      finalization.promotion_eligible
+                      or finalization.execution_ready
+                  ):
+                      raise SystemExit("clean finalization carries invalid authority")
+
+          generations_root = root / "generations"
+          if generations_root.exists():
+              for generation_path in sorted(generations_root.glob("*.json")):
+                  generation = load_identity(
+                      generation_path,
+                      "generation_id",
+                  )
+                  run_id = generation.get("campaign_run_id")
+                  attempt = generation.get("campaign_run_attempt")
+                  if (
+                      isinstance(run_id, bool)
+                      or not isinstance(run_id, int)
+                      or run_id <= 0
+                      or isinstance(attempt, bool)
+                      or not isinstance(attempt, int)
+                      or attempt <= 0
+                  ):
+                      raise SystemExit("clean generation run identity is invalid")
+                  if generation_path.name != f"{run_id}-{attempt}.json":
+                      raise SystemExit("clean generation filename mismatch")
+                  if generation.get("candidate_count") != len(candidate_roots):
+                      raise SystemExit("clean generation candidate count mismatch")
+                  rows = generation.get("candidates")
+                  if not isinstance(rows, list) or len(rows) != len(candidate_roots):
+                      raise SystemExit("clean generation candidate rows mismatch")
+
+          print(f"verified {len(candidate_roots)} clean candidates")
+          PY
+
+      - name: Render continuity summary
+        if: ${{ matrix.skip != true }}
+        run: |
+          {
+            echo "## Learning clean-state continuity"
+            echo "- lineage: ${{ matrix.artifact_name }}"
+            echo "- source run: ${{ matrix.producer_run_id }}"
+            echo "- content re-verified: true"
+            echo "- state mutated: false"
+            echo "- research-only: true"
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Republish verified clean-state lineage
+        if: ${{ matrix.skip != true }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: clean-state/
+          if-no-files-found: error
+          retention-days: 90

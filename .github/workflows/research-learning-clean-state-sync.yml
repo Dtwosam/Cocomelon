@@ -179,7 +179,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100"             > /tmp/clean-state-artifacts.json
+          /usr/bin/gh api --paginate --slurp \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+            > /tmp/clean-state-artifact-pages.json
 
           MATRIX="$(
             python - <<'PY'
@@ -189,9 +191,14 @@ jobs:
           import subprocess
           from pathlib import Path
 
-          payload = json.loads(
-              Path("/tmp/clean-state-artifacts.json").read_text(encoding="utf-8")
+          pages = json.loads(
+              Path("/tmp/clean-state-artifact-pages.json").read_text(
+                  encoding="utf-8"
+              )
           )
+          artifacts = []
+          for page in pages:
+              artifacts.extend(page.get("artifacts", []))
           pattern = re.compile(
               r"^research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*$"
           )
@@ -204,11 +211,15 @@ jobs:
                   "name": "Research Learning Clean State Campaign Follower",
                   "events": {"workflow_run", "workflow_dispatch"},
               },
+              ".github/workflows/research-learning-clean-state-continuity.yml": {
+                  "name": "Research Learning Clean State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
           }
           candidates = sorted(
               (
                   item
-                  for item in payload.get("artifacts", [])
+                  for item in artifacts
                   if item.get("expired") is False
                   and isinstance(item.get("name"), str)
                   and pattern.fullmatch(item["name"])

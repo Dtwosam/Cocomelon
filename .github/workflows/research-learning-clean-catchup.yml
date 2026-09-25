@@ -88,6 +88,10 @@ jobs:
                   "name": "Research Learning Clean State Campaign Follower",
                   "events": {"workflow_run", "workflow_dispatch"},
               },
+              ".github/workflows/research-learning-clean-state-continuity.yml": {
+                  "name": "Research Learning Clean State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
           }
           candidates = sorted(
               (

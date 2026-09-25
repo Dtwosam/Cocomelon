@@ -43,6 +43,9 @@ def test_clean_state_follower_restores_only_trusted_latest_generations() -> None
     assert "research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*" in source
     assert ".github/workflows/research-learning-clean-state-bootstrap.yml" in source
     assert ".github/workflows/research-learning-clean-state-sync.yml" in source
+    assert ".github/workflows/research-learning-clean-state-continuity.yml" in source
+    assert '"Research Learning Clean State Continuity"' in source
+    assert "--paginate --slurp" in source
     assert '"Research Learning Clean State Bootstrap"' in source
     assert '"Research Learning Clean State Campaign Follower"' in source
     assert 'or run.get("head_branch") != "main"' in source
