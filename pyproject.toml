@@ -71,6 +71,7 @@ cocomelon-learning-clean-review-dossier = "cocomelon.learning_clean_review_dossi
 cocomelon-learning-clean-review-decision = "cocomelon.learning_clean_review_decision_cli:main"
 cocomelon-learning-shadow-admission = "cocomelon.learning_shadow_admission_cli:main"
 cocomelon-learning-shadow-evidence = "cocomelon.learning_shadow_evidence_cli:main"
+cocomelon-learning-shadow-replay = "cocomelon.learning_shadow_replay_cli:main"
 cocomelon-learning-clean-state = "cocomelon.learning_clean_state_cli:main"
 cocomelon-learning-clean-evidence = "cocomelon.learning_clean_evidence_cli:main"
 cocomelon-learning-clean-campaign-sync = "cocomelon.learning_clean_campaign_sync_cli:main"
