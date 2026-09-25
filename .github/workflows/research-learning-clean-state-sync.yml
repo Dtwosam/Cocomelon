@@ -472,12 +472,11 @@ jobs:
 
               REVIEW_ROOT="$CANDIDATE_ROOT/review-dossier"
               REVIEW_PATH="$REVIEW_ROOT/candidate-review-dossier.json"
-              REVIEW_ELIGIBLE="$(jq -r '.eligible_for_candidate_review' "$FINAL_PATH")"
-              if [ "$REVIEW_ELIGIBLE" = "true" ]; then
+              if jq -e '.reason_codes | length == 0' "$FINAL_PATH" > /dev/null; then
                 mkdir -p "$REVIEW_ROOT"
                 cocomelon-learning-clean-review-dossier                   --package-root "$PACKAGE_ROOT"                   --validation-spec "$SPEC_PATH"                   --validation-score "$SCORE_PATH"                   --finalization "$FINAL_PATH"                   --evidence-root "$EVIDENCE_ROOT"                   --output-root "$REVIEW_ROOT"                   > "/tmp/clean-review-dossier-command-$LABEL.json"
               elif [ -e "$REVIEW_ROOT" ]; then
-                echo "non-review-eligible candidate carries review dossier" >&2
+                echo "failed clean candidate carries review dossier" >&2
                 exit 73
               fi
 
