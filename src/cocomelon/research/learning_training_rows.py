@@ -7,10 +7,11 @@ from decimal import Decimal
 
 from cocomelon.research.learning_challenger_run import LearningChallengerRunManifest
 from cocomelon.research.learning_dataset_bundle import VerifiedLearningDatasetBundle
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.outcome_learning import LearningEvidenceKind, LearningEvidenceRecord
 
 TRAINING_ROWS_SCHEMA_VERSION = 1
-SUPPORTED_FEATURES = frozenset(
+RECORD_FEATURES = frozenset(
     {
         "market",
         "direction",
@@ -21,6 +22,32 @@ SUPPORTED_FEATURES = frozenset(
         "campaign_id",
     }
 )
+SNAPSHOT_FEATURES = frozenset(
+    {
+        "day_return",
+        "funding",
+        "open_interest",
+        "day_notional_volume",
+        "oi_change_fraction",
+        "funding_change",
+        "mark_oracle_dislocation_bps",
+        "return_5m",
+        "return_15m",
+        "return_1h",
+        "return_4h",
+        "realized_vol_15m",
+        "range_expansion_15m",
+        "relative_volume_15m",
+        "spread_bps",
+        "bid_depth_25bps",
+        "ask_depth_25bps",
+        "book_imbalance",
+        "book_age_ms",
+        "trend_regime",
+        "volatility_regime",
+    }
+)
+SUPPORTED_FEATURES = RECORD_FEATURES | SNAPSHOT_FEATURES
 TARGET_BY_KIND = {
     LearningEvidenceKind.PROSPECTIVE_PAPER: "modeled_net_return_fraction",
     LearningEvidenceKind.PAPER_EXECUTION: "realized_net_r",
@@ -42,7 +69,7 @@ def _sha256_json(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def _feature_value(record: LearningEvidenceRecord, feature: str) -> str:
+def _record_feature_value(record: LearningEvidenceRecord, feature: str) -> str:
     if feature == "market":
         return record.market.canonical
     if feature == "direction":
@@ -67,7 +94,62 @@ def _feature_value(record: LearningEvidenceRecord, feature: str) -> str:
         if record.campaign_id is None:
             raise ValueError(f"record {record.record_id} has no campaign_id feature")
         return record.campaign_id
-    raise ValueError(f"unsupported learning training feature: {feature}")
+    raise ValueError(f"unsupported record feature: {feature}")
+
+
+def _snapshot_feature_value(snapshot: object, feature: str) -> str:
+    value = getattr(snapshot, feature)
+    if value is None:
+        raise ValueError(f"feature snapshot has no value for {feature}")
+    if feature in {"trend_regime", "volatility_regime"}:
+        return str(value.value)
+    return str(value)
+
+
+def _feature_values(
+    record: LearningEvidenceRecord,
+    feature_registry: tuple[str, ...],
+    *,
+    feature_store: LearningFeatureSnapshotStore | None,
+) -> tuple[str, ...]:
+    snapshot = None
+    if any(feature in SNAPSHOT_FEATURES for feature in feature_registry):
+        if feature_store is None:
+            raise ValueError(
+                "feature snapshot store is required for snapshot-backed features"
+            )
+        verified = feature_store.load(record.feature_snapshot_id)
+        if verified is None:
+            raise ValueError(
+                f"missing feature snapshot for record {record.record_id}: "
+                f"{record.feature_snapshot_id}"
+            )
+        snapshot = verified.snapshot
+        if snapshot.market != record.market:
+            raise ValueError(
+                f"feature snapshot market does not match record {record.record_id}"
+            )
+        if snapshot.as_of_ms > record.opened_at_ms:
+            raise ValueError(
+                f"feature snapshot is after trade open for record {record.record_id}"
+            )
+        if snapshot.source_received_at_ms > record.opened_at_ms:
+            raise ValueError(
+                f"feature snapshot source is after trade open for record {record.record_id}"
+            )
+
+    values: list[str] = []
+    for feature in feature_registry:
+        if feature in RECORD_FEATURES:
+            values.append(_record_feature_value(record, feature))
+            continue
+        if feature in SNAPSHOT_FEATURES:
+            if snapshot is None:
+                raise ValueError("feature snapshot resolution failed")
+            values.append(_snapshot_feature_value(snapshot, feature))
+            continue
+        raise ValueError(f"unsupported learning training feature: {feature}")
+    return tuple(values)
 
 
 def _target(record: LearningEvidenceRecord) -> tuple[str, Decimal]:
@@ -233,6 +315,8 @@ def _records_for_kind(
 def build_learning_training_set(
     bundle: VerifiedLearningDatasetBundle,
     manifest: LearningChallengerRunManifest,
+    *,
+    feature_store: LearningFeatureSnapshotStore | None = None,
 ) -> LearningTrainingSet:
     if manifest.dataset_id != bundle.snapshot.manifest.dataset_id:
         raise ValueError("challenger run dataset_id does not match verified bundle")
@@ -265,9 +349,10 @@ def build_learning_training_set(
                     closed_at_ms=record.closed_at_ms,
                     feature_snapshot_id=record.feature_snapshot_id,
                     feature_registry=manifest.feature_registry,
-                    feature_values=tuple(
-                        _feature_value(record, feature)
-                        for feature in manifest.feature_registry
+                    feature_values=_feature_values(
+                        record,
+                        manifest.feature_registry,
+                        feature_store=feature_store,
                     ),
                     target_name=_target(record)[0],
                     target_value=_target(record)[1],
