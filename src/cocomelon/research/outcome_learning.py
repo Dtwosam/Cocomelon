@@ -145,7 +145,9 @@ class LearningEvidenceRecord:
             if gross_return is None or modeled_cost is None or net_return is None:
                 raise ValueError("prospective learning evidence requires return fractions")
             if any(getattr(self, field) is not None for field in execution_fields):
-                raise ValueError(\n                    "prospective learning evidence cannot contain execution PnL fields"\n                )
+                raise ValueError(
+                    "prospective learning evidence cannot contain execution PnL fields"
+                )
             if modeled_cost < ZERO:
                 raise ValueError("modeled_cost_fraction must be non-negative")
             if net_return != gross_return - modeled_cost:
