@@ -72,7 +72,7 @@ def _prospective_trade() -> tuple[ProspectiveObservation, ProspectiveOutcome]:
     return observation, outcome
 
 
-def _journal_trade() -> TradeJournalEntry:
+def _journal_trade(*, replay_run_id: str | None = None) -> TradeJournalEntry:
     return TradeJournalEntry(
         market=MarketId("", "SOL"),
         direction=Direction.SHORT,
@@ -111,7 +111,7 @@ def _journal_trade() -> TradeJournalEntry:
         exit_reason="exit_thesis",
         health_refs=("execution-healthy",),
         evidence_class=EvidenceClass.MICROSTRUCTURE,
-        replay_run_id="run-live-1",
+        replay_run_id=replay_run_id,
     )
 
 
@@ -162,9 +162,12 @@ def test_prospective_sync_is_idempotent(tmp_path: Path) -> None:
     second = sync_prospective_learning_evidence(source, ledger, spec=SPEC, plan=PLAN)
 
     assert first.created_records == 1
+    first_digest = ledger.state_digest
     assert second.created_records == 0
     assert second.existing_records == 1
     assert len(ledger.iter_records()) == 1
+    assert len(first_digest) == 64
+    assert ledger.state_digest == first_digest
 
 
 def test_prospective_adapter_rejects_mismatched_outcome() -> None:
@@ -233,5 +236,18 @@ def test_execution_learning_requires_explicit_future_or_close_eligibility() -> N
             trade,
             candidate_id="future-sol-short",
             kind=LearningEvidenceKind.PROSPECTIVE_PAPER,
+            research_eligible_at_ms=trade.closed_at_ms,
+        )
+
+
+
+def test_live_learning_rejects_replay_backed_trade() -> None:
+    trade = _journal_trade(replay_run_id="replay-run")
+
+    with pytest.raises(ValueError, match="cannot come from a replay-backed trade"):
+        execution_learning_record(
+            trade,
+            candidate_id="future-sol-short",
+            kind=LearningEvidenceKind.LIVE_EXECUTION,
             research_eligible_at_ms=trade.closed_at_ms,
         )
