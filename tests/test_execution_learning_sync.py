@@ -4,26 +4,15 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.features import (
-    FeatureSnapshot,
-    TrendRegime,
-    VolatilityRegime,
-)
+from cocomelon.domain.features import FeatureSnapshot, TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
-from cocomelon.execution_learning_sync_cli import (
-    execution_learning_sync_payload,
-)
+from cocomelon.execution_learning_sync_cli import execution_learning_sync_payload
 from cocomelon.journal.store import JournalStore
-from cocomelon.research.learning_feature_snapshots import (
-    LearningFeatureSnapshotStore,
-)
-from cocomelon.research.outcome_learning import (
-    LearningEvidenceKind,
-    LearningEvidenceLedger,
-)
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.outcome_learning import LearningEvidenceKind, LearningEvidenceLedger
 
 
 MARKET = MarketId("", "HYPE")
