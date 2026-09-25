@@ -429,3 +429,17 @@ A separate learning-evidence layer is being added without modifying the frozen V
 - the running strategy is never self-retuned trade-by-trade; eligible evidence is used only to develop separately identified challengers.
 
 This creates the feedback path for continuous improvement while preserving the validity of active paper/shadow tests. Live trading remains disabled.
+
+
+### Leakage-safe learning dataset frontier — 2026-09-25
+
+The outcome-learning ledger now has a deterministic dataset-snapshot layer:
+
+- raw ledger records are never handed directly to challenger training;
+- only records past their explicit research-eligibility boundary enter the training snapshot;
+- quarantined records remain named in the manifest but are excluded from model inputs;
+- prospective modeled-return, paper-execution, and live-execution evidence are separate partitions;
+- the dataset ID binds the complete ledger digest and therefore changes even when new evidence is still quarantined;
+- candidate IDs and exact record IDs remain auditable for future challenger lineage.
+
+This is the next step toward continuous model improvement without leaking the running V3 test into its own successor research.
