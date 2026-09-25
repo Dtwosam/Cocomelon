@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+import cocomelon.research.learning_training_bundle as training_bundle
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.learning_challenger_run import (
@@ -145,3 +146,24 @@ def test_training_bundle_rejects_different_challenger_run(tmp_path) -> None:
             output_dir=output_dir,
             manifest=other_manifest,
         )
+
+
+
+def test_training_bundle_atomic_write_cleans_temp_on_replace_failure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _bundle, _manifest, training_set = _training_set(tmp_path)
+    output_dir = tmp_path / "training"
+
+    def fail_replace(_source, _target) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(training_bundle.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        write_learning_training_bundle(training_set, output_dir=output_dir)
+
+    assert not (output_dir / ".rows.jsonl.tmp").exists()
+    assert not (output_dir / "rows.jsonl").exists()
+    assert not (output_dir / "manifest.json").exists()

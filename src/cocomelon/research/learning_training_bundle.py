@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -34,6 +35,19 @@ def _canonical_json(value: object) -> str:
 
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
 
 
 def _mapping(value: object, field: str) -> dict[str, object]:
@@ -145,7 +159,7 @@ def write_learning_training_bundle(
         for row in training_set.rows
     ).encode("utf-8")
     rows_path = output_dir / ROWS_FILENAME
-    rows_path.write_bytes(rows_bytes)
+    _atomic_write(rows_path, rows_bytes)
 
     manifest_payload = {
         **training_set.to_dict(),
@@ -154,7 +168,7 @@ def write_learning_training_bundle(
         "rows_sha256": _sha256_bytes(rows_bytes),
     }
     manifest_bytes = (_canonical_json(manifest_payload) + "\n").encode("utf-8")
-    (output_dir / MANIFEST_FILENAME).write_bytes(manifest_bytes)
+    _atomic_write(output_dir / MANIFEST_FILENAME, manifest_bytes)
 
     return {
         **manifest_payload,
