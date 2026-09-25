@@ -41,7 +41,6 @@ def _campaign(
         opened_at_ms=opened_at_ms,
         closed_at_ms=closed_at_ms,
         holding_duration_ms=closed_at_ms - opened_at_ms,
-        net_r=Decimal("0.25"),
         replay_run_id="run-clean-1",
     )
 
@@ -150,7 +149,7 @@ def test_clean_campaign_sync_appends_accepted_trade_and_is_idempotent(
     assert len(predictions) == 1
     assert len(outcomes) == 1
     assert outcomes[0].source_trade_id == trade.trade_id
-    assert outcomes[0].net_r == Decimal("0.25")
+    assert outcomes[0].net_r == Decimal("0.36382")
 
 
 def test_clean_campaign_sync_records_no_trade_without_outcome(
