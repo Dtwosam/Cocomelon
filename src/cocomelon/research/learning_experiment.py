@@ -575,6 +575,10 @@ def materialize_learning_experiment(
                 raise LearningExperimentError(
                     "snapshot-backed experiment requires a feature store"
                 )
+            if not feature_store_dir.is_dir():
+                raise LearningExperimentError(
+                    "feature store directory must already exist"
+                )
             source_store = LearningFeatureSnapshotStore(feature_store_dir)
             feature_store = _copy_feature_subset(
                 source_store,
@@ -632,10 +636,11 @@ def materialize_learning_experiment(
             temporary / EXPERIMENT_FILENAME,
             (_canonical_json(manifest.to_dict()) + "\n").encode("utf-8"),
         )
+        verified = load_verified_learning_experiment(temporary)
         os.replace(temporary, output_dir)
     except Exception:
         if temporary.exists():
             shutil.rmtree(temporary)
         raise
 
-    return load_verified_learning_experiment(output_dir)
+    return verified
