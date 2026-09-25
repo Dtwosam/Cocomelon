@@ -26,6 +26,7 @@ def _append(
     existing_features: int = 0,
     after_learning_digest: str = "c" * 64,
     after_feature_digest: str = "d" * 64,
+    artifact_id: int | None = None,
 ):
     scanned = created_records + existing_records
     assert scanned == created_features + existing_features
@@ -34,7 +35,7 @@ def _append(
         upstream_run_id=run_id,
         upstream_run_attempt=attempt,
         upstream_head_sha="a" * 40,
-        upstream_artifact_id=456 + run_id,
+        upstream_artifact_id=456 + run_id if artifact_id is None else artifact_id,
         upstream_artifact_digest="sha256:" + "b" * 64,
         required_candidate_ids=("scheduled-research-root",),
         scanned_trades=scanned,
@@ -134,49 +135,10 @@ def test_learning_state_lineage_rejects_changed_identity_for_same_upstream(
         before_features=0,
         before_feature_digest="2" * 64,
     )
-    entries_root = tmp_path / "lineage" / "entries"
-    previous_path = next(entries_root.glob("*.json"))
-    previous = json.loads(previous_path.read_text(encoding="utf-8"))
-    previous["upstream_artifact_id"] = 999
-    previous["entry_id"] = ""
-    previous_path.unlink()
-
-    from cocomelon.research.learning_state_lineage import LearningStateLineageEntry
-
-    changed = LearningStateLineageEntry.from_dict(
-        {
-            **previous,
-            "entry_id": LearningStateLineageEntry(
-                sequence=1,
-                previous_entry_id=None,
-                upstream_run_id=100,
-                upstream_run_attempt=1,
-                upstream_head_sha="a" * 40,
-                upstream_artifact_id=999,
-                upstream_artifact_digest="sha256:" + "b" * 64,
-                required_candidate_ids=("scheduled-research-root",),
-                scanned_trades=1,
-                created_records=1,
-                existing_records=0,
-                created_feature_snapshots=1,
-                existing_feature_snapshots=0,
-                before_learning_record_count=0,
-                before_learning_state_digest="1" * 64,
-                before_feature_snapshot_count=0,
-                before_feature_state_digest="2" * 64,
-                after_learning_record_count=1,
-                after_learning_state_digest=first.after_learning_state_digest,
-                after_feature_snapshot_count=1,
-                after_feature_state_digest=first.after_feature_state_digest,
-            ).entry_id,
-        }
-    )
-    changed_path = entries_root / f"{changed.sequence:08d}-{changed.entry_id}.json"
-    changed_path.write_text(json.dumps(changed.to_dict()) + "\n", encoding="utf-8")
 
     with pytest.raises(
         LearningStateLineageError,
-        match="LINEAGE_TAIL_STATE_MISMATCH|LINEAGE_UPSTREAM_IDENTITY_CHANGED",
+        match="LINEAGE_UPSTREAM_IDENTITY_CHANGED",
     ):
         _append(
             tmp_path,
@@ -192,7 +154,10 @@ def test_learning_state_lineage_rejects_changed_identity_for_same_upstream(
             existing_features=1,
             after_learning_digest=first.after_learning_state_digest,
             after_feature_digest=first.after_feature_state_digest,
+            artifact_id=999,
         )
+
+    assert len(list((tmp_path / "lineage" / "entries").glob("*.json"))) == 1
 
 
 def test_learning_state_lineage_rejects_regressed_upstream_order(tmp_path) -> None:
