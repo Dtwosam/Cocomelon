@@ -24,6 +24,8 @@ def test_clean_catchup_restores_only_trusted_latest_lineages() -> None:
     assert "research-learning-clean-state-[1-9][0-9]*-[1-9][0-9]*" in source
     assert ".github/workflows/research-learning-clean-state-bootstrap.yml" in source
     assert ".github/workflows/research-learning-clean-state-sync.yml" in source
+    assert ".github/workflows/research-learning-clean-state-continuity.yml" in source
+    assert '"Research Learning Clean State Continuity"' in source
     assert 'run.get("status") != "completed"' in source
     assert 'run.get("name") != contract["name"]' in source
     assert 'run.get("conclusion") != "success"' in source
