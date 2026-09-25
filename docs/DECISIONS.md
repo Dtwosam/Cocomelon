@@ -258,3 +258,16 @@ This file records decisions that should not be casually re-litigated in later ch
 **Permission consequence:** V3 requires `actions: write` only so its frozen workflow can create future `workflow_dispatch` runs. Repository contents remain read-only, execution remains paper-only, Hyperliquid endpoints remain canonical mainnet, and live trading remains disabled.
 
 **Interpretation:** V3 is a capture-reliability restart, not a retune. V1/V2 operational outcomes remain auditable, and no prospective interim economics are used to choose or modify V3.
+
+
+## D-030 — Settled trades feed future challengers through a quarantined learning ledger
+
+**Decision:** Settled paper and eventual live execution outcomes may be copied into an append-only learning-evidence ledger as soon as they exist, but the active strategy being evaluated must never be retuned from its own still-open validation campaign.
+
+**Prospective quarantine:** A prospective campaign outcome is bound to its exact candidate spec, campaign, observation, feature snapshot, context, modeled cost, and settled net return. Its `research_eligible_at_ms` is the campaign's predeclared `finalization_not_before_ms`. The record may exist before then for provenance and continuity, but challenger research must not consume it before that boundary.
+
+**Execution feedback:** Closed paper/live execution trades may also enter the same ledger, preserving actual gross PnL, fees, funding cash PnL, entry/exit slippage, net PnL, and net-R. Every execution record requires an explicit research-eligibility timestamp no earlier than trade close. Live execution evidence does not automatically rewrite the strategy controlling capital.
+
+**Metric separation:** Modeled prospective return fractions and actual execution PnL fields are mutually exclusive record families. The system must not silently treat modeled return, account return, net-R, and realized cash PnL as interchangeable targets.
+
+**Evolution consequence:** Learning is continuous at the evidence layer, not by mutating a running candidate after each trade. Eligible evidence may train or select a future challenger; that challenger must receive a new identity and pass its own chronological and prospective gates before any promotion decision.

@@ -415,3 +415,17 @@ The V3 control-plane implementation under review removes `schedule` entirely and
 - execution is paper-only and live trading remains disabled.
 
 The first expected V3 anchor is **2026-09-26 00:59:59.999 UTC**, intended for the pre-created **01:03 UTC** capture run. No V1/V2 evidence is copied into V3 and no missed anchor may be backfilled.
+
+
+### Continuous outcome-learning frontier — 2026-09-25
+
+A separate learning-evidence layer is being added without modifying the frozen V3 economics or producer workflow.
+
+- settled V1/V2/V3 prospective outcomes can be harvested into an append-only learning ledger;
+- V3 outcomes are quarantined from challenger research until the frozen campaign finalization boundary;
+- future ordinary paper/live execution trades can preserve actual fees, funding, slippage, net PnL, and net-R with an explicit research-eligibility boundary;
+- modeled prospective returns and realized execution PnL remain separate metric families;
+- duplicate learning ingestion is idempotent and conflicting evidence fails closed;
+- the running strategy is never self-retuned trade-by-trade; eligible evidence is used only to develop separately identified challengers.
+
+This creates the feedback path for continuous improvement while preserving the validity of active paper/shadow tests. Live trading remains disabled.
