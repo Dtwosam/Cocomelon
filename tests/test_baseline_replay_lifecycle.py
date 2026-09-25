@@ -25,6 +25,7 @@ from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.replay.engine import ReplayInvariantError
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 
 MARKET = MarketId("", "BTC")
 RUN_ID = "phase9-lifecycle-run"
@@ -240,6 +241,7 @@ def _pipeline(
     *,
     config: BaselineReplayConfig | None = None,
     suffix: str = "first",
+    feature_snapshot_recorder: LearningFeatureSnapshotStore | None = None,
 ) -> tuple[BaselineReplayPipeline, PaperExecutionAdapter, EvaluationFactStore]:
     replay_config = config or _config()
     execution = PaperExecutionAdapter(
@@ -257,6 +259,7 @@ def _pipeline(
         replay_run_id=RUN_ID,
         evidence_class=EvidenceClass.MICROSTRUCTURE,
         decision_engine=_ScriptedDecisionEngine(replay_config),
+        feature_snapshot_recorder=feature_snapshot_recorder,
     )
     return pipeline, execution, facts
 
@@ -407,6 +410,38 @@ def test_lifecycle_raises_replay_invariant_on_journal_inconsistency(
             pipeline,
             (_book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),),
         )
+
+    execution.close()
+    facts.close()
+
+
+
+def test_replay_pipeline_captures_exact_decision_feature_snapshot(
+    tmp_path: Path,
+) -> None:
+    feature_store = LearningFeatureSnapshotStore(tmp_path / "learning-features")
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="feature-capture",
+        feature_snapshot_recorder=feature_store,
+    )
+
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+        ),
+    )
+
+    expected = _feature()
+    loaded = feature_store.load(expected.snapshot_id)
+    assert loaded is not None
+    assert loaded.snapshot == expected
+    decision_facts = tuple(facts.iter_decision_facts())
+    assert len(decision_facts) == 1
+    assert decision_facts[0].feature_snapshot_id == expected.snapshot_id
+    assert len(feature_store.state_digest) == 64
 
     execution.close()
     facts.close()
