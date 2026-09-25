@@ -246,6 +246,54 @@ jobs:
           cp /tmp/learning-cycle-command.json learning-cycle/command.json
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
 
+      - name: Freeze development-qualified learning candidates
+        if: ${{ steps.metadata.outputs.new_records != '0' }}
+        id: freeze
+        run: |
+          set -euo pipefail
+          CYCLE_STATUS="$(jq -r '.status' learning-cycle/cycle.json)"
+          if [ "$CYCLE_STATUS" != "completed" ]; then
+            echo "learning cycle is not completed; no candidate can be frozen"
+            echo "frozen_count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FROZEN_AT_MS="$(date +%s%3N)"
+          FROZEN_COUNT=0
+          for LABEL in baseline tree; do
+            FIELD="${LABEL}_qualifies_development"
+            QUALIFIES="$(jq -r --arg field "$FIELD" '.[$field]' learning-cycle/cycle.json)"
+            case "$QUALIFIES" in
+              true)
+                OUTPUT_ROOT="learning-cycle/frozen-candidates/$LABEL"
+                mkdir -p "$OUTPUT_ROOT"
+                cocomelon-learning-candidate-freeze \
+                  --experiment-root "learning-cycle/$LABEL" \
+                  --output-root "$OUTPUT_ROOT" \
+                  --frozen-at-ms "$FROZEN_AT_MS" \
+                  > "$OUTPUT_ROOT/command.json"
+                CANDIDATE_ID="$(jq -r '.candidate_id' "$OUTPUT_ROOT/candidate-freeze.json")"
+                jq -e \
+                  --arg candidate_id "$CANDIDATE_ID" \
+                  '.candidate_id == $candidate_id
+                   and .prospective_only == true
+                   and .research_only == true
+                   and .promotion_eligible == false
+                   and .execution_ready == false' \
+                  "$OUTPUT_ROOT/command.json" > /dev/null
+                FROZEN_COUNT=$((FROZEN_COUNT + 1))
+                ;;
+              false)
+                echo "$LABEL did not qualify development; no freeze created"
+                ;;
+              *)
+                echo "$LABEL development qualification is invalid: $QUALIFIES" >&2
+                exit 67
+                ;;
+            esac
+          done
+          echo "frozen_count=$FROZEN_COUNT" >> "$GITHUB_OUTPUT"
+
       - name: Render research cycle summary
         if: ${{ steps.metadata.outputs.new_records != '0' }}
         run: |
@@ -264,6 +312,10 @@ jobs:
               f"{cycle['settled_train_record_count']}"
           )
           print(f"- validation records: {cycle['validation_record_count']}")
+          print(
+              "- frozen development candidates: "
+              "${{ steps.freeze.outputs.frozen_count }}"
+          )
           if cycle["status"] == "completed":
               print(
                   "- transparent baseline development gate: "
