@@ -20,8 +20,8 @@ from cocomelon.research.learning_clean_validation_spec import (
     LearningCleanValidationSpec,
     verify_learning_clean_validation_spec,
 )
+from cocomelon.research.learning_grouped_mean import GROUPED_MEAN_MODEL_FAMILY
 from cocomelon.research.learning_grouped_mean import (
-    GROUPED_MEAN_MODEL_FAMILY,
     _config_from_manifest as _grouped_config_from_manifest,
 )
 from cocomelon.research.learning_training_bundle import (
@@ -29,9 +29,8 @@ from cocomelon.research.learning_training_bundle import (
     verify_learning_training_bundle,
 )
 from cocomelon.research.learning_training_rows import LearningTrainingRow
+from cocomelon.research.learning_tree import TREE_MODEL_FAMILY, LearningTreeEncoder
 from cocomelon.research.learning_tree import (
-    TREE_MODEL_FAMILY,
-    LearningTreeEncoder,
     _config_from_manifest as _tree_config_from_manifest,
     _encoder as _tree_encoder,
     _fit_estimator as _fit_tree_estimator,
@@ -145,15 +144,24 @@ def _verify_runtime_partition(
         raise LearningCandidatePredictorError(
             "LEARNING_CANDIDATE_PREDICTOR_BUNDLE_MISMATCH"
         )
-    if _string(raw.get("model_family"), "evaluation model_family") != package.model_family:
+    if (
+        _string(raw.get("model_family"), "evaluation model_family")
+        != package.model_family
+    ):
         raise LearningCandidatePredictorError(
             "LEARNING_CANDIDATE_PREDICTOR_MODEL_MISMATCH"
         )
-    if _integer(raw.get("train_row_count"), "evaluation train_row_count") != train_row_count:
+    if (
+        _integer(raw.get("train_row_count"), "evaluation train_row_count")
+        != train_row_count
+    ):
         raise LearningCandidatePredictorError(
             "LEARNING_CANDIDATE_PREDICTOR_TRAIN_PARTITION_MISMATCH"
         )
-    if _integer(raw.get("validation_row_count"), "evaluation validation_row_count") != validation_rows:
+    if (
+        _integer(raw.get("validation_row_count"), "evaluation validation_row_count")
+        != validation_rows
+    ):
         raise LearningCandidatePredictorError(
             "LEARNING_CANDIDATE_PREDICTOR_VALIDATION_PARTITION_MISMATCH"
         )
