@@ -3,11 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
 
 from cocomelon.research.learning_dataset_bundle import VerifiedLearningDatasetBundle
 from cocomelon.research.outcome_learning import LearningEvidenceKind
 
 RUN_MANIFEST_SCHEMA_VERSION = 1
+
+
+class LearningChallengerRunManifestError(RuntimeError):
+    pass
 
 
 def _canonical_json(value: object) -> str:
@@ -32,6 +38,36 @@ def _require_sha256(value: str, field: str) -> None:
 def _require_commit_sha(value: str) -> None:
     if len(value) != 40 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError("implementation_commit_sha must be lowercase 40-character git SHA")
+
+
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise LearningChallengerRunManifestError(f"{field} must be an object")
+    return cast(dict[str, object], value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise LearningChallengerRunManifestError(f"{field} must be a non-empty string")
+    return value
+
+
+def _strings(value: object, field: str) -> tuple[str, ...]:
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise LearningChallengerRunManifestError(f"{field} must be a string array")
+    return tuple(value)
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise LearningChallengerRunManifestError(f"{field} must be boolean")
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise LearningChallengerRunManifestError(f"{field} must be an integer")
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +103,8 @@ class LearningChallengerRunManifest:
             raise ValueError("input_kinds must not be empty")
         if len(set(self.input_kinds)) != len(self.input_kinds):
             raise ValueError("input_kinds must be unique")
+        if tuple(sorted(self.input_kinds)) != self.input_kinds:
+            raise ValueError("input_kinds must be sorted")
         valid_kinds = {kind.value for kind in LearningEvidenceKind}
         if any(kind not in valid_kinds for kind in self.input_kinds):
             raise ValueError("input_kinds contains unsupported evidence kind")
@@ -171,7 +209,7 @@ def build_learning_challenger_run_manifest(
         dataset_lineage_id=bundle.lineage_id,
         dataset_manifest_sha256=bundle.manifest_sha256,
         dataset_records_sha256=bundle.records_sha256,
-        input_kinds=tuple(kind.value for kind in input_kinds),
+        input_kinds=tuple(sorted(kind.value for kind in input_kinds)),
         input_record_ids=tuple(sorted(record.record_id for record in selected_records)),
         feature_registry=feature_registry,
         model_family=model_family,
@@ -179,3 +217,110 @@ def build_learning_challenger_run_manifest(
         decision_policy=decision_policy,
         implementation_commit_sha=implementation_commit_sha,
     )
+
+
+
+def write_learning_challenger_run_manifest(
+    path: Path,
+    manifest: LearningChallengerRunManifest,
+) -> Path:
+    payload = (_canonical_json(manifest.to_dict()) + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if path.read_bytes() != payload:
+            raise LearningChallengerRunManifestError(
+                "LEARNING_CHALLENGER_RUN_MANIFEST_CONFLICT"
+            )
+        return path
+    path.write_bytes(payload)
+    return path
+
+
+def load_learning_challenger_run_manifest(
+    path: Path,
+) -> LearningChallengerRunManifest:
+    try:
+        raw = _mapping(
+            json.loads(path.read_text(encoding="utf-8")),
+            "learning challenger run manifest",
+        )
+        manifest = LearningChallengerRunManifest(
+            dataset_id=_string(raw.get("dataset_id"), "dataset_id"),
+            dataset_lineage_id=_string(
+                raw.get("dataset_lineage_id"),
+                "dataset_lineage_id",
+            ),
+            dataset_manifest_sha256=_string(
+                raw.get("dataset_manifest_sha256"),
+                "dataset_manifest_sha256",
+            ),
+            dataset_records_sha256=_string(
+                raw.get("dataset_records_sha256"),
+                "dataset_records_sha256",
+            ),
+            input_kinds=_strings(raw.get("input_kinds"), "input_kinds"),
+            input_record_ids=_strings(
+                raw.get("input_record_ids"),
+                "input_record_ids",
+            ),
+            feature_registry=_strings(
+                raw.get("feature_registry"),
+                "feature_registry",
+            ),
+            model_family=_string(raw.get("model_family"), "model_family"),
+            model_config=_mapping(raw.get("model_config"), "model_config"),
+            decision_policy=_mapping(
+                raw.get("decision_policy"),
+                "decision_policy",
+            ),
+            implementation_commit_sha=_string(
+                raw.get("implementation_commit_sha"),
+                "implementation_commit_sha",
+            ),
+            research_only=_boolean(raw.get("research_only"), "research_only"),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            schema_version=_integer(raw.get("schema_version"), "schema_version"),
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise LearningChallengerRunManifestError(
+            "LEARNING_CHALLENGER_RUN_MANIFEST_INVALID"
+        ) from exc
+
+    if raw != manifest.to_dict():
+        raise LearningChallengerRunManifestError(
+            "LEARNING_CHALLENGER_RUN_MANIFEST_IDENTITY_MISMATCH"
+        )
+    if path.read_text(encoding="utf-8") != _canonical_json(manifest.to_dict()) + "\n":
+        raise LearningChallengerRunManifestError(
+            "LEARNING_CHALLENGER_RUN_MANIFEST_NON_CANONICAL"
+        )
+    return manifest
+
+
+def verify_learning_challenger_run_manifest(
+    path: Path,
+    *,
+    bundle: VerifiedLearningDatasetBundle,
+) -> LearningChallengerRunManifest:
+    manifest = load_learning_challenger_run_manifest(path)
+    expected = build_learning_challenger_run_manifest(
+        bundle,
+        input_kinds=tuple(LearningEvidenceKind(kind) for kind in manifest.input_kinds),
+        feature_registry=manifest.feature_registry,
+        model_family=manifest.model_family,
+        model_config=manifest.model_config,
+        decision_policy=manifest.decision_policy,
+        implementation_commit_sha=manifest.implementation_commit_sha,
+    )
+    if manifest != expected:
+        raise LearningChallengerRunManifestError(
+            "LEARNING_CHALLENGER_RUN_DATASET_LINEAGE_MISMATCH"
+        )
+    return manifest
