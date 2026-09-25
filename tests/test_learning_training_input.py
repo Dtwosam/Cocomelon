@@ -116,7 +116,7 @@ def test_prospective_training_table_uses_modeled_net_return_target(tmp_path) -> 
     assert table.rows[0].target_value == Decimal("0.010")
     assert table.rows[0].features == {
         "market": "HYPE",
-        "direction": "LONG",
+        "direction": "long",
         "context_state_1h": "bearish_near_basket",
     }
     assert len(table.table_id) == 64
@@ -138,31 +138,27 @@ def test_execution_training_table_uses_realized_net_r_target(tmp_path) -> None:
     assert table.rows[0].target_value == Decimal("0.44")
     assert table.rows[0].features == {
         "market": "HYPE",
-        "direction": "SHORT",
+        "direction": "short",
         "source_evidence_class": "paper",
     }
 
 
-def test_training_table_rejects_mixed_evidence_kinds(tmp_path) -> None:
+def test_challenger_manifest_rejects_mixed_evidence_kinds(tmp_path) -> None:
     bundle = _bundle(
         tmp_path,
         (_prospective_record(), _paper_record()),
         as_of_ms=40_000,
     )
-    manifest = _manifest(
-        bundle,
-        kinds=(
-            LearningEvidenceKind.PROSPECTIVE_PAPER,
-            LearningEvidenceKind.PAPER_EXECUTION,
-        ),
-        features=("market", "direction"),
-    )
 
-    with pytest.raises(
-        LearningTrainingInputError,
-        match="REQUIRES_ONE_EVIDENCE_KIND",
-    ):
-        build_learning_training_table(bundle, manifest)
+    with pytest.raises(ValueError, match="exactly one evidence kind"):
+        _manifest(
+            bundle,
+            kinds=(
+                LearningEvidenceKind.PROSPECTIVE_PAPER,
+                LearningEvidenceKind.PAPER_EXECUTION,
+            ),
+            features=("market", "direction"),
+        )
 
 
 def test_training_table_rejects_run_from_different_bundle_lineage(tmp_path) -> None:
