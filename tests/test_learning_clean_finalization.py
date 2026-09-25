@@ -157,7 +157,7 @@ def test_learning_clean_finalization_write_verify_and_tamper_detection(
     assert write_learning_clean_finalization(tmp_path / "final", finalization) == path
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["verdict"] = VERDICT_FAILED
+    payload["finalization_id"] = "0" * 64
     path.write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
