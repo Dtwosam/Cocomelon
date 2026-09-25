@@ -26,18 +26,45 @@ from cocomelon.research.learning_clean_validation_spec import (
 LEARNING_CLEAN_REVIEW_DOSSIER_SCHEMA_VERSION = 1
 PROMOTION_GATE_STATUS = "not_asserted_by_review_dossier"
 PROMOTION_REQUIREMENTS = (
-    ("closed_mainnet_paper_trades", "at least 500 closed mainnet paper trades under the candidate champion"),
-    ("shadow_calendar_days", "at least 45 calendar days of live mainnet shadow operation"),
-    ("positive_net_expectancy_after_costs", "positive net expectancy after modeled fees, funding, and slippage"),
+    (
+        "closed_mainnet_paper_trades",
+        "at least 500 closed mainnet paper trades under the candidate champion",
+    ),
+    (
+        "shadow_calendar_days",
+        "at least 45 calendar days of live mainnet shadow operation",
+    ),
+    (
+        "positive_net_expectancy_after_costs",
+        "positive net expectancy after modeled fees, funding, and slippage",
+    ),
     ("positive_untouched_oos", "positive untouched out-of-sample results"),
-    ("walk_forward_stability", "stable walk-forward performance rather than one lucky window"),
+    (
+        "walk_forward_stability",
+        "stable walk-forward performance rather than one lucky window",
+    ),
     ("profit_factor", "profit factor of at least 1.20 overall"),
-    ("maximum_paper_drawdown", "maximum paper drawdown no worse than 8% under the locked risk model"),
-    ("market_concentration", "no single market contributes more than 35% of total positive net PnL"),
-    ("seven_day_concentration", "no single seven-day period contributes more than 50% of total positive net PnL"),
+    (
+        "maximum_paper_drawdown",
+        "maximum paper drawdown no worse than 8% under the locked risk model",
+    ),
+    (
+        "market_concentration",
+        "no single market contributes more than 35% of total positive net PnL",
+    ),
+    (
+        "seven_day_concentration",
+        "no single seven-day period contributes more than 50% of total positive net PnL",
+    ),
     ("risk_invariants", "zero unresolved risk-invariant violations"),
-    ("recovery_reconciliation", "successful restart, recovery, and reconciliation tests"),
-    ("explicit_live_authorization", "explicit user live-promotion authorization and capital amount"),
+    (
+        "recovery_reconciliation",
+        "successful restart, recovery, and reconciliation tests",
+    ),
+    (
+        "explicit_live_authorization",
+        "explicit user live-promotion authorization and capital amount",
+    ),
 )
 
 
