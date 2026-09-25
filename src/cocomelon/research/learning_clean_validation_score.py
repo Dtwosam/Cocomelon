@@ -84,8 +84,8 @@ class LearningCleanValidationScore:
     validation_spec_id: str
     candidate_package_id: str
     as_of_ms: int
-    clean_evidence_state_digest: str
-    eligible_settled_trade_count: int
+    selected_evidence_digest: str
+    selected_settled_trade_count: int
     target_settled_trades: int
     selected_outcome_ids: tuple[str, ...]
     status: str
@@ -104,13 +104,13 @@ class LearningCleanValidationScore:
             "candidate_id",
             "validation_spec_id",
             "candidate_package_id",
-            "clean_evidence_state_digest",
+            "selected_evidence_digest",
         ):
             _require_sha256(getattr(self, field), field)
         if self.as_of_ms < 0:
             raise ValueError("as_of_ms must be non-negative")
-        if self.eligible_settled_trade_count < 0:
-            raise ValueError("eligible_settled_trade_count must be non-negative")
+        if self.selected_settled_trade_count < 0:
+            raise ValueError("selected_settled_trade_count must be non-negative")
         if self.target_settled_trades <= 0:
             raise ValueError("target_settled_trades must be positive")
         if len(self.selected_outcome_ids) > self.target_settled_trades:
@@ -123,16 +123,16 @@ class LearningCleanValidationScore:
             raise ValueError("unsupported clean validation score status")
 
         if self.status == "collecting":
-            if self.eligible_settled_trade_count >= self.target_settled_trades:
+            if self.selected_settled_trade_count >= self.target_settled_trades:
                 raise ValueError("collecting score must remain below target")
-            if len(self.selected_outcome_ids) != self.eligible_settled_trade_count:
+            if len(self.selected_outcome_ids) != self.selected_settled_trade_count:
                 raise ValueError("collecting score must expose all eligible outcome ids")
             if self.overall_mean_net_r is not None or self.blocks:
                 raise ValueError("collecting score must remain economically blind")
             if self.qualifies_clean_validation is not None:
                 raise ValueError("collecting score cannot qualify candidate")
         else:
-            if self.eligible_settled_trade_count < self.target_settled_trades:
+            if self.selected_settled_trade_count < self.target_settled_trades:
                 raise ValueError("complete score requires target trade capacity")
             if len(self.selected_outcome_ids) != self.target_settled_trades:
                 raise ValueError("complete score must freeze exactly target trades")
@@ -158,8 +158,8 @@ class LearningCleanValidationScore:
             "validation_spec_id": self.validation_spec_id,
             "candidate_package_id": self.candidate_package_id,
             "as_of_ms": self.as_of_ms,
-            "clean_evidence_state_digest": self.clean_evidence_state_digest,
-            "eligible_settled_trade_count": self.eligible_settled_trade_count,
+            "selected_evidence_digest": self.selected_evidence_digest,
+            "selected_settled_trade_count": self.selected_settled_trade_count,
             "target_settled_trades": self.target_settled_trades,
             "selected_outcome_ids": self.selected_outcome_ids,
             "status": self.status,
@@ -190,6 +190,16 @@ def _settled_outcomes_as_of(
     as_of_ms: int,
 ) -> tuple[LearningCleanTradeOutcome, ...]:
     return tuple(outcome for outcome in outcomes if outcome.closed_at_ms <= as_of_ms)
+
+
+def _selected_evidence_digest(
+    outcomes: tuple[LearningCleanTradeOutcome, ...],
+) -> str:
+    return _sha256_json(
+        {
+            "outcomes": tuple(outcome.to_dict() for outcome in outcomes),
+        }
+    )
 
 
 def score_learning_clean_validation(
@@ -235,8 +245,8 @@ def score_learning_clean_validation(
             validation_spec_id=spec.spec_id,
             candidate_package_id=spec.candidate_package_id,
             as_of_ms=as_of_ms,
-            clean_evidence_state_digest=evidence.state_digest,
-            eligible_settled_trade_count=len(eligible),
+            selected_evidence_digest=_selected_evidence_digest(selected),
+            selected_settled_trade_count=len(selected),
             target_settled_trades=spec.target_settled_trades,
             selected_outcome_ids=selected_ids,
             status="collecting",
@@ -269,9 +279,9 @@ def score_learning_clean_validation(
         candidate_id=spec.candidate_id,
         validation_spec_id=spec.spec_id,
         candidate_package_id=spec.candidate_package_id,
-        as_of_ms=as_of_ms,
-        clean_evidence_state_digest=evidence.state_digest,
-        eligible_settled_trade_count=len(eligible),
+        as_of_ms=selected[-1].closed_at_ms,
+        selected_evidence_digest=_selected_evidence_digest(selected),
+        selected_settled_trade_count=len(selected),
         target_settled_trades=spec.target_settled_trades,
         selected_outcome_ids=selected_ids,
         status="complete",
@@ -411,13 +421,13 @@ def _score_from_payload(raw: dict[str, object]) -> LearningCleanValidationScore:
                 "candidate_package_id",
             ),
             as_of_ms=_integer(raw.get("as_of_ms"), "as_of_ms"),
-            clean_evidence_state_digest=_string(
-                raw.get("clean_evidence_state_digest"),
-                "clean_evidence_state_digest",
+            selected_evidence_digest=_string(
+                raw.get("selected_evidence_digest"),
+                "selected_evidence_digest",
             ),
-            eligible_settled_trade_count=_integer(
-                raw.get("eligible_settled_trade_count"),
-                "eligible_settled_trade_count",
+            selected_settled_trade_count=_integer(
+                raw.get("selected_settled_trade_count"),
+                "selected_settled_trade_count",
             ),
             target_settled_trades=_integer(
                 raw.get("target_settled_trades"),
