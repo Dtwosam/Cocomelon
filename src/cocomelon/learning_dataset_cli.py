@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TextIO
 
 from cocomelon.research.learning_dataset import build_learning_dataset_snapshot
+from cocomelon.research.learning_dataset_bundle import write_learning_dataset_bundle
 from cocomelon.research.outcome_learning import LearningEvidenceLedger
 from cocomelon.util.time import utc_now_ms
 
@@ -33,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--root", required=True, type=Path)
     parser.add_argument("--as-of-ms", type=int)
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Materialize an immutable authenticated training bundle into an empty directory",
+    )
     return parser
 
 
@@ -40,6 +46,7 @@ def learning_dataset_payload(
     *,
     root: Path,
     as_of_ms: int | None = None,
+    output_dir: Path | None = None,
 ) -> dict[str, object]:
     resolved_as_of_ms = utc_now_ms() if as_of_ms is None else as_of_ms
     ledger = LearningEvidenceLedger(root)
@@ -47,11 +54,17 @@ def learning_dataset_payload(
         ledger,
         as_of_ms=resolved_as_of_ms,
     )
-    return {
+    payload: dict[str, object] = {
         "command": "learning-dataset",
         **snapshot.manifest.to_dict(),
         "root": str(root),
     }
+    if output_dir is not None:
+        payload["bundle"] = write_learning_dataset_bundle(
+            snapshot,
+            output_dir=output_dir,
+        )
+    return payload
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -60,6 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         payload = learning_dataset_payload(
             root=args.root,
             as_of_ms=args.as_of_ms,
+            output_dir=args.output_dir,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
