@@ -19,11 +19,12 @@ def test_heartbeat_has_no_schedule_dependency() -> None:
     assert "Prospective HYPE V3 heartbeat" in source
 
 
-def test_heartbeat_serializes_and_precreates_four_future_targets() -> None:
+def test_heartbeat_precreates_four_future_targets_without_global_concurrency() -> None:
     source = _source()
 
-    assert "group: prospective-hype-v3-control-heartbeat" in source
-    assert "cancel-in-progress: false" in source
+    header = source.split("jobs:", 1)[0]
+    assert "\nconcurrency:" not in header
+    assert "group: prospective-hype-v3-control-heartbeat" not in source
     assert 'QUEUE_DEPTH: "4"' in source
     assert 'HEARTBEAT_MINUTE_UTC: "10"' in source
     assert "V3_HEARTBEAT_TARGET_PHASE_INVALID" in source

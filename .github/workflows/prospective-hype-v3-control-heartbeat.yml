@@ -28,10 +28,6 @@ permissions:
   contents: read
   actions: write
 
-concurrency:
-  group: prospective-hype-v3-control-heartbeat
-  cancel-in-progress: false
-
 jobs:
   validate:
     if: ${{ github.event_name == 'pull_request' }}
