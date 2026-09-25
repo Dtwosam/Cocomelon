@@ -262,11 +262,7 @@ def test_learning_experiment_copies_only_bound_authenticated_feature_subset(
     feature_store = LearningFeatureSnapshotStore(tmp_path / "feature-source")
     for feature in snapshots:
         feature_store.record(feature)
-    unrelated = FeatureSnapshot(
-        **{
-            **_feature_snapshot(20).__dict__,
-        }
-    ) if False else _feature_snapshot(20)
+    unrelated = _feature_snapshot(20)
     feature_store.record(unrelated)
 
     run_manifest = build_learning_challenger_run_manifest(
