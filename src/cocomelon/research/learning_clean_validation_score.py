@@ -11,13 +11,12 @@ from typing import cast
 from cocomelon.research.learning_candidate_package import (
     verify_learning_candidate_package,
 )
-from cocomelon.research.learning_clean_validation_spec import (
-    LearningCleanValidationSpec,
-    verify_learning_clean_validation_spec,
-)
 from cocomelon.research.learning_clean_evidence import (
     LearningCleanEvidenceStore,
     LearningCleanTradeOutcome,
+)
+from cocomelon.research.learning_clean_validation_spec import (
+    verify_learning_clean_validation_spec,
 )
 
 LEARNING_CLEAN_VALIDATION_SCORE_SCHEMA_VERSION = 1
