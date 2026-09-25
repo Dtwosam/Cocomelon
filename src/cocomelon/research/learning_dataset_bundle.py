@@ -101,6 +101,18 @@ class VerifiedLearningDatasetBundle:
     manifest_sha256: str
     records_sha256: str
 
+    @property
+    def lineage_payload(self) -> dict[str, object]:
+        return {
+            "dataset_id": self.snapshot.manifest.dataset_id,
+            "manifest_sha256": self.manifest_sha256,
+            "records_sha256": self.records_sha256,
+        }
+
+    @property
+    def lineage_id(self) -> str:
+        return _digest_bytes(_canonical_json(self.lineage_payload).encode("utf-8"))
+
 
 def write_learning_dataset_bundle(
     snapshot: LearningDatasetSnapshot,
