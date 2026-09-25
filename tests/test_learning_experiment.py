@@ -7,7 +7,11 @@ import pytest
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
-from cocomelon.research.learning_experiment import run_learning_experiment
+from cocomelon.research.learning_experiment import (
+    LearningExperimentError,
+    run_learning_experiment,
+    verify_learning_experiment,
+)
 from cocomelon.research.learning_grouped_mean import GROUPED_MEAN_MODEL_FAMILY
 from cocomelon.research.outcome_learning import (
     LearningEvidenceKind,
@@ -111,6 +115,9 @@ def test_learning_experiment_materializes_fully_bound_artifact_chain(tmp_path) -
     assert summary["execution_ready"] is False
     assert result.qualifies_development is True
 
+    verified = verify_learning_experiment(output_root=output_root)
+    assert verified == result
+
 
 def test_learning_experiment_refuses_nonempty_output_root(tmp_path) -> None:
     learning_root = _ledger(tmp_path)
@@ -144,3 +151,28 @@ def test_learning_experiment_refuses_nonempty_output_root(tmp_path) -> None:
             },
             implementation_commit_sha="a" * 40,
         )
+
+
+
+def test_learning_experiment_verifier_rejects_tampered_evaluation(tmp_path) -> None:
+    _result, output_root = _run(tmp_path)
+    evaluation_path = output_root / "evaluation.json"
+    evaluation = json.loads(evaluation_path.read_text(encoding="utf-8"))
+    evaluation["overall"]["mean_target"] = "9"
+    evaluation_path.write_text(
+        json.dumps(
+            evaluation,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        LearningExperimentError,
+        match="EVALUATION_IDENTITY_MISMATCH",
+    ):
+        verify_learning_experiment(output_root=output_root)
