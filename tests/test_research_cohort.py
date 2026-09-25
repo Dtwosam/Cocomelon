@@ -266,6 +266,28 @@ def test_builder_emits_verified_genuine_mainnet_research_cohort(tmp_path: Path) 
     assert mainnet["network_access"] is False
     assert mainnet["live_orders"] is False
 
+    feature_store = LearningFeatureSnapshotStore(output_root / "learning-features")
+    verified_features = feature_store.iter_verified()
+    assert replay["features"] == str(output_root / "learning-features")
+    assert replay["feature_snapshot_count"] == len(verified_features)
+    assert replay["feature_snapshot_count"] > 0
+    assert replay["feature_snapshot_state_digest"] == feature_store.state_digest
+
+    facts = EvaluationFactStore(output_root / "facts.sqlite3")
+    try:
+        decision_facts = tuple(
+            fact
+            for fact in facts.iter_decision_facts()
+            if fact.replay_run_id == result.replay_run_id
+        )
+    finally:
+        facts.close()
+    assert decision_facts
+    assert all(
+        feature_store.load(fact.feature_snapshot_id) is not None
+        for fact in decision_facts
+    )
+
 
 def test_research_replay_has_precommitted_entry_and_exit_horizon(tmp_path: Path) -> None:
     recording_root, output_root, session = _cohort_roots(tmp_path)
