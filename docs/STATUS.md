@@ -504,3 +504,39 @@ Next action for this lane:
 
 **LIVE TRADING: DISABLED.**
 
+### Autonomous cumulative-learning operations — 2026-09-25
+
+The research-only continuous-learning lane is now wired to real future campaign evidence without weakening active validation boundaries.
+
+Merged implementation:
+
+- #411 adds cumulative research-learning ingestion from successful required-candidate paper campaigns. It preserves only settled paper trades plus the authenticated decision-time feature snapshots those trades actually reference, binds ingestion to the exact upstream campaign revision/artifact lineage, and rejects legacy campaigns that predate authenticated feature capture instead of retrofitting them.
+- #411 also adds `research-learning-evidence.yml`: successful main-branch research campaigns restore the latest trusted cumulative learning state, ingest new authenticated paper outcomes idempotently, run the fail-closed readiness audit, and republish `research-learning-state`.
+- #412 adds `cocomelon-learning-cycle` plus `research-learning-cycle.yml`. The cycle is triggered only after a successful cumulative learning-state sync with newly created records.
+- The frozen cycle requires at least **200 settled chronological training trades + 20 validation trades**, with **4 chronological stability blocks** and **5 validation trades per block** before any model experiment may run.
+- The nonlinear challenger reuses the frozen historical archive tree settings: max leaf nodes `7`, min samples per leaf `100`, learning rate `0.05`, max iterations `100`, and L2 regularization `1`.
+- The transparent grouped-mean baseline and fixed shallow tree remain separate research experiments; every child experiment is re-verified before the cycle can complete.
+- A valid but undersized or structurally incomplete evidence set produces a persisted `not_ready` cycle receipt rather than lowering thresholds or starting training anyway.
+- All cycle outputs remain `research_only=true`, `promotion_eligible=false`, and `execution_ready=false`.
+
+Verification evidence:
+
+- #411 exact implementation head `ebcd25ad58b642f2d45ff45c6ca12386eb561bde` passed CI run `36153241838` with both the full test job and research job green before merge `e432b6c51674ae4247cf1db05040ddeac78af2aa`.
+- #412 exact implementation head `8e5311f375f49ac59f4e5e3fcae5b6fe9164dded` passed CI run `36155603300` with both the full test job and research job green before merge `069e2ca546a5c6b1261b2c0868ccd9e86a47f517`.
+
+Current evidence boundary:
+
+- The latest completed daily research campaign from 2026-09-25 was inspected and contains no `learning-features/` store. Its settled trades therefore remain outside the new authenticated learner; they are not backfilled or approximated.
+- The existing daily research gap dispatcher already enforces at most one safe successful campaign per UTC day. The first future successful campaign produced with authenticated feature capture can become the first admissible cumulative-learning source.
+- The frozen V3 prospective campaign remains isolated and quarantined from successor-challenger learning until its own finalization boundary.
+
+Next action for this lane:
+
+1. Let the existing daily research producer generate the next genuine mainnet paper campaign under its current one-per-day controls.
+2. Require #411 ingestion to authenticate that campaign and copy only its trade-linked feature snapshots into cumulative learning state.
+3. Let #412 emit `not_ready` until the 200/20 chronological capacity and both feature-readiness checks are satisfied.
+4. Once the gate is genuinely satisfied, allow the automated research cycle to materialize and verify the transparent baseline plus fixed shallow-tree challenger.
+5. Treat any `qualifies_development=true` result as touched development evidence only; freeze a separate candidate and future clean validation before any promotion decision.
+
+**LIVE TRADING: DISABLED.**
+
