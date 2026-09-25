@@ -9,9 +9,11 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
 from pathlib import Path
+from typing import Protocol
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.execution import PaperExecutionConfig
+from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.bundle import (
     freeze_baseline_replay_bundle,
@@ -39,6 +41,17 @@ RecordCommandRunner = Callable[
     Mapping[str, object],
 ]
 AsyncSleep = Callable[[float], Awaitable[None]]
+
+
+class ReplayFeatureSnapshotStore(Protocol):
+    def record(self, snapshot: FeatureSnapshot) -> bool: ...
+
+    def load(self, snapshot_id: str) -> object | None: ...
+
+    @property
+    def state_digest(self) -> str: ...
+
+
 SOURCE_ROOT_FIELD = "source_root_relative"
 SOURCE_LOCATOR_BUNDLE_ID_FIELD = "source_locator_bundle_id"
 WS_CONNECT_SPACING_ENV = "COCOMELON_WS_CONNECT_SPACING_SECONDS"
@@ -409,11 +422,32 @@ def _completed_replay_is_consistent(
         raise ValueError("completed replay decision facts do not match journal result")
 
 
+def _replay_feature_snapshots_are_complete(
+    *,
+    run_id: str,
+    facts: EvaluationFactStore,
+    feature_snapshots: ReplayFeatureSnapshotStore,
+) -> None:
+    missing = tuple(
+        fact.feature_snapshot_id
+        for fact in facts.iter_decision_facts()
+        if fact.replay_run_id == run_id
+        and feature_snapshots.load(fact.feature_snapshot_id) is None
+    )
+    if missing:
+        raise ValueError(
+            "completed replay feature snapshot evidence is incomplete; "
+            "fresh replay required"
+        )
+
+
 def run_baseline_replay_payload(
     bundle_path: str | Path,
     journal_path: str | Path,
     execution_path: str | Path,
     facts_path: str | Path,
+    *,
+    feature_snapshots_path: str | Path | None = None,
 ) -> dict[str, object]:
     resolved_bundle_path = Path(bundle_path)
     bundle = load_baseline_replay_bundle(resolved_bundle_path)
@@ -440,6 +474,13 @@ def run_baseline_replay_payload(
         startup_timestamp_ms=bundle.manifest.start_ms,
     )
     facts = EvaluationFactStore(facts_path)
+    feature_snapshots: ReplayFeatureSnapshotStore | None = None
+    if feature_snapshots_path is not None:
+        from cocomelon.research.learning_feature_snapshots import (
+            LearningFeatureSnapshotStore,
+        )
+
+        feature_snapshots = LearningFeatureSnapshotStore(feature_snapshots_path)
     try:
         existing = journal.load_replay_result(run_id)
         if existing is not None:
@@ -462,6 +503,7 @@ def run_baseline_replay_payload(
                 replay_run_id=run_id,
                 evidence_class=bundle.manifest.evidence_class,
                 new_exposure_cutoff_ms=new_exposure_cutoff_ms,
+                feature_snapshot_recorder=feature_snapshots,
             )
             result = ReplayEngine(
                 JsonlReplaySource(source_root),
@@ -470,6 +512,13 @@ def run_baseline_replay_payload(
             ).run(bundle.manifest)
             if execution.account.state_id != result.final_account_state_id:
                 raise ValueError("baseline replay final account state did not reconcile")
+
+        if feature_snapshots is not None:
+            _replay_feature_snapshots_are_complete(
+                run_id=result.run_id,
+                facts=facts,
+                feature_snapshots=feature_snapshots,
+            )
 
         return {
             "bundle_id": bundle.bundle_id,
@@ -499,6 +548,16 @@ def run_baseline_replay_payload(
             "journal": str(Path(journal_path)),
             "execution": str(Path(execution_path)),
             "facts": str(Path(facts_path)),
+            "feature_snapshots": (
+                None
+                if feature_snapshots_path is None
+                else str(Path(feature_snapshots_path))
+            ),
+            "feature_snapshot_state_digest": (
+                None
+                if feature_snapshots is None
+                else feature_snapshots.state_digest
+            ),
             "network_access": False,
             "live_orders": False,
         }
