@@ -21,6 +21,16 @@ def test_v3_audit_is_event_driven_and_has_no_schedule_dependency() -> None:
     assert "cron:" not in source
 
 
+def test_v3_audit_ignores_pr_validation_workflow_completions() -> None:
+    source = _source()
+
+    assert "github.event.workflow_run.head_branch == 'main'" in source
+    assert "github.event.workflow_run.event == 'push'" in source
+    assert "github.event.workflow_run.event == 'workflow_dispatch'" in source
+    assert 'run.get("event") in {"push", "workflow_dispatch"}' in source
+    assert 'previous_run.get("event") in {"push", "workflow_dispatch"}' in source
+
+
 def test_v3_audit_is_read_only_and_uses_frozen_source() -> None:
     source = _source()
 
