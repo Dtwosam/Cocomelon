@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import subprocess
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/prospective-hype-v3-clean.yml")
@@ -122,6 +122,11 @@ def test_v3_remains_paper_only_and_non_promotional() -> None:
 
 
 def test_v3_frozen_producer_workflow_bytes_cannot_drift() -> None:
-    payload = WORKFLOW.read_bytes()
-    identity = b"blob " + str(len(payload)).encode("ascii") + b"\\0" + payload
-    assert hashlib.sha1(identity).hexdigest() == FROZEN_WORKFLOW_BLOB_SHA
+    blob_sha = subprocess.run(
+        ["git", "rev-parse", f"HEAD:{WORKFLOW.as_posix()}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    assert blob_sha == FROZEN_WORKFLOW_BLOB_SHA
