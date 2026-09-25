@@ -7,10 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
-from cocomelon.research.research_learning_sync import (
-    ResearchLearningSyncError,
-    sync_research_campaign_learning,
-)
+from cocomelon.research.research_learning_sync import sync_research_campaign_learning
 
 
 def _emit(payload: dict[str, object], *, stream: TextIO | None = None) -> None:
@@ -57,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             upstream_artifact_id=args.upstream_artifact_id,
             upstream_artifact_digest=args.upstream_artifact_digest,
         )
-    except (OSError, RuntimeError, ValueError, ResearchLearningSyncError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         _emit(
             {"error": str(exc), "error_type": type(exc).__name__},
             stream=sys.stderr,
