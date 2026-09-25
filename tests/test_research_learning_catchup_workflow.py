@@ -14,7 +14,13 @@ def test_learning_catchup_is_bounded_and_post_activation_only() -> None:
 
     assert "Research Learning Catch-up" in source
     assert 'cron: "*/10 * * * *"' in source
+    assert "workflow_run:" in source
+    assert '"Scheduled Research Mainnet Replay Campaign"' in source
+    assert '"Research Learning Evidence Sync"' in source
+    assert "types: [completed]" in source
     assert "workflow_dispatch:" in source
+    assert "github.event_name == 'workflow_run'" in source
+    assert "run: sleep 10" in source
     assert 'LEARNING_PIPELINE_ACTIVATED_AT_UTC: "2026-09-25T15:28:46Z"' in source
     assert "research-campaign-scheduled.yml" in source
     assert 'run["created_at"] >= activation' in source
@@ -56,3 +62,13 @@ def test_learning_catchup_is_control_plane_only() -> None:
     assert "live_execution" not in source
     assert "cocomelon-learning-experiment" not in source
     assert "cocomelon-learning-cycle " not in source
+
+
+def test_learning_catchup_event_triggers_are_wakeups_not_trusted_inputs() -> None:
+    source = _source()
+
+    assert "github.event.workflow_run.id" not in source
+    assert "github.event.workflow_run.head_sha" not in source
+    assert "Find newest successful post-activation research campaign" in source
+    assert "/actions/workflows/research-learning-evidence.yml/dispatches" in source
+    assert "/actions/workflows/research-learning-cycle.yml/dispatches" in source
