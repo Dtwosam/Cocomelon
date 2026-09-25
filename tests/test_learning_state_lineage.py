@@ -100,14 +100,32 @@ def test_learning_state_lineage_accepts_noop_idempotent_transition(tmp_path) -> 
         before_learning_digest="1" * 64,
         before_features=0,
         before_feature_digest="2" * 64,
+    )
+    second = _append(
+        tmp_path,
+        run_id=100,
+        attempt=1,
+        before_records=1,
+        before_learning_digest=first.after_learning_state_digest,
+        before_features=1,
+        before_feature_digest=first.after_feature_state_digest,
         created_records=0,
         existing_records=1,
         created_features=0,
         existing_features=1,
-        after_learning_digest="1" * 64,
-        after_feature_digest="2" * 64,
+        after_learning_digest=first.after_learning_state_digest,
+        after_feature_digest=first.after_feature_state_digest,
     )
-    second = _append(
+
+    assert first.sequence == 1
+    assert second.sequence == 2
+    assert second.previous_entry_id == first.entry_id
+
+
+def test_learning_state_lineage_rejects_changed_identity_for_same_upstream(
+    tmp_path,
+) -> None:
+    first = _append(
         tmp_path,
         run_id=100,
         attempt=1,
@@ -115,17 +133,66 @@ def test_learning_state_lineage_accepts_noop_idempotent_transition(tmp_path) -> 
         before_learning_digest="1" * 64,
         before_features=0,
         before_feature_digest="2" * 64,
-        created_records=0,
-        existing_records=1,
-        created_features=0,
-        existing_features=1,
-        after_learning_digest="1" * 64,
-        after_feature_digest="2" * 64,
     )
+    entries_root = tmp_path / "lineage" / "entries"
+    previous_path = next(entries_root.glob("*.json"))
+    previous = json.loads(previous_path.read_text(encoding="utf-8"))
+    previous["upstream_artifact_id"] = 999
+    previous["entry_id"] = ""
+    previous_path.unlink()
 
-    assert first.sequence == 1
-    assert second.sequence == 2
-    assert second.previous_entry_id == first.entry_id
+    from cocomelon.research.learning_state_lineage import LearningStateLineageEntry
+
+    changed = LearningStateLineageEntry.from_dict(
+        {
+            **previous,
+            "entry_id": LearningStateLineageEntry(
+                sequence=1,
+                previous_entry_id=None,
+                upstream_run_id=100,
+                upstream_run_attempt=1,
+                upstream_head_sha="a" * 40,
+                upstream_artifact_id=999,
+                upstream_artifact_digest="sha256:" + "b" * 64,
+                required_candidate_ids=("scheduled-research-root",),
+                scanned_trades=1,
+                created_records=1,
+                existing_records=0,
+                created_feature_snapshots=1,
+                existing_feature_snapshots=0,
+                before_learning_record_count=0,
+                before_learning_state_digest="1" * 64,
+                before_feature_snapshot_count=0,
+                before_feature_state_digest="2" * 64,
+                after_learning_record_count=1,
+                after_learning_state_digest=first.after_learning_state_digest,
+                after_feature_snapshot_count=1,
+                after_feature_state_digest=first.after_feature_state_digest,
+            ).entry_id,
+        }
+    )
+    changed_path = entries_root / f"{changed.sequence:08d}-{changed.entry_id}.json"
+    changed_path.write_text(json.dumps(changed.to_dict()) + "\n", encoding="utf-8")
+
+    with pytest.raises(
+        LearningStateLineageError,
+        match="LINEAGE_TAIL_STATE_MISMATCH|LINEAGE_UPSTREAM_IDENTITY_CHANGED",
+    ):
+        _append(
+            tmp_path,
+            run_id=100,
+            attempt=1,
+            before_records=1,
+            before_learning_digest=first.after_learning_state_digest,
+            before_features=1,
+            before_feature_digest=first.after_feature_state_digest,
+            created_records=0,
+            existing_records=1,
+            created_features=0,
+            existing_features=1,
+            after_learning_digest=first.after_learning_state_digest,
+            after_feature_digest=first.after_feature_state_digest,
+        )
 
 
 def test_learning_state_lineage_rejects_regressed_upstream_order(tmp_path) -> None:
