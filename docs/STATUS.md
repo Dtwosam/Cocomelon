@@ -760,3 +760,36 @@ Post-merge CI for #445 also passed on `main` in run `36190660934`.
 
 **LIVE TRADING: DISABLED.**
 
+### Learned clean-state durability and terminal review handoff — 2026-09-25
+
+PRs #447–#451 harden the learned clean-validation lineage after campaign ingestion and add a terminal, authority-negative review handoff.
+
+Merged implementation:
+
+- #447 adds a daily clean-state continuity checkpoint with a 14-day freshness window and 90-day artifact retention. It re-verifies candidate package/spec/evidence/state, score/finalization, campaign receipts, state history, and generation lineage before republishing stale-but-valid state. Continuity creates no predictions, trades, scores, or economic evidence.
+- #448 adds a verified non-economic review queue. The dashboard may surface lifecycle counts and terminal review-ready candidate identities, but it does not expose interim prediction values, PnL, net-R, rankings, promotion authority, or execution authority.
+- #449 serializes clean-state campaign-follower and continuity writers under one non-cancelling concurrency group, preventing an older continuity snapshot from finishing after a newer campaign generation and becoming the apparent latest artifact.
+- #450 adds an immutable terminal review dossier that can exist only after a verified `eligible_for_candidate_review` finalization. The dossier binds the exact frozen 20-trade sample, terminal score economics, package/spec/score/finalization identities, and selected outcome provenance.
+- The #450 dossier explicitly records every current live-promotion requirement as `not_asserted_by_review_dossier`. It preserves `human_review_required=true`, `promotion_eligible=false`, and `execution_ready=false`.
+- #451 materializes that dossier automatically inside durable clean state only for terminal review-ready candidates. Validation-failed candidates are forbidden from carrying a dossier, generation receipts bind dossier presence/identity, and continuity re-verifies the dossier before preserving state.
+- The campaign follower remains economically blind: it gates dossier creation from the finalization reason-code invariant and does not expose the review verdict field or terminal economics in workflow summaries.
+
+Verification evidence:
+
+| PR | Exact head | CI run | Merge |
+| --- | --- | --- | --- |
+| #447 | `fba9726deae23b1faa8ac07b176338b1dd343cf5` | `36192454066` | `9558dfae3b8ae62fc709cebae923f44c4267de58` |
+| #448 | `54ec46f2bd864e7f0310eb98e1385cd5daf169e9` | `36193569473` | `bf25f5fa0720f977ee55494a4ac4758fc35cb279` |
+| #449 | `c32469b16b2b0cef3d4e38361526b8ad8b7325f4` | `36194020349` | `ec97f58e320d6e551017b875d866d9c9e6d4aa23` |
+| #450 | `579d3f38c592f586225be3300d9fa82b2cd8a46c` | `36195380305` | `bb72d78fcf2a5449e149ec57c03415efd92193e6` |
+| #451 | `82ae71c78389f0cb90fe631a88e0f07023446f1a` | `36195860998` | `dfeea1393b167d7fd8d61a4f3b04c199bf4929ed` |
+
+Current evidence and promotion boundary:
+
+- The only successful `Scheduled Research Mainnet Replay Campaign` on 2026-09-25 remains legacy run `36075560252`, produced before authenticated decision-time `learning-features/` capture and therefore not backfilled.
+- Current HYPE V3 prospective workflow activity is a separate frozen evidence campaign and is not mixed into learned-candidate clean validation.
+- A 20-trade clean pass can produce only `eligible_for_candidate_review` and a review dossier. It does **not** establish the live-promotion gates in `MASTER_SPEC.md`.
+- Live promotion still requires at least 500 closed mainnet paper trades, at least 45 calendar days of shadow operation, positive cost-complete expectancy and untouched OOS evidence, walk-forward stability, profit factor >= 1.20, paper drawdown <= 8%, concentration/risk/recovery gates, and explicit user authorization with a capital amount.
+
+**LIVE TRADING: DISABLED.**
+
