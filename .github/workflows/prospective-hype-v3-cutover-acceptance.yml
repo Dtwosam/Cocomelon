@@ -1,0 +1,808 @@
+name: Prospective HYPE V3 Cutover Acceptance
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/prospective-hype-v3-cutover-acceptance.yml"
+      - "tests/test_prospective_hype_v3_cutover_workflow.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-hype-v3-cutover-acceptance.yml"
+  workflow_run:
+    workflows:
+      - "Prospective HYPE V3 Independent Audit"
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: prospective-hype-v3-cutover-acceptance
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install validation runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Verify V3 cutover workflow contract
+        run: |
+          set -euo pipefail
+          python -m pytest tests/test_prospective_hype_v3_cutover_workflow.py -q
+
+  accept:
+    if: >-
+      ${{ github.event_name != 'pull_request'
+          && (github.event_name != 'workflow_run'
+              || (github.event.workflow_run.head_branch == 'main'
+                  && github.event.workflow_run.event != 'pull_request')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CUTOVER_ROOT: artifacts/prospective-hype-v3-cutover
+      CUTOVER_ARTIFACT_NAME: prospective-hype-v3-cutover-acceptance
+      AUDIT_ARTIFACT_PREFIX: prospective-hype-v3-audit-
+      AUDIT_WORKFLOW_PATH: .github/workflows/prospective-hype-v3-audit.yml
+      AUDIT_WORKFLOW_BLOB_SHA: db11fb4b99915625694a38f901e009afa16a0526
+      OBSERVER_WORKFLOW_BLOB_SHA: e00502dacb925d03bd90328f6ea39f6d195d0fa5
+      PINNED_SOURCE_REVISION: 298723c52d6a3b09839d05451d3d7db9753815bf
+      UPSTREAM_RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || '' }}
+      UPSTREAM_CONCLUSION: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion || '' }}
+
+    steps:
+      - name: Checkout frozen V3 source
+        uses: actions/checkout@v7
+        with:
+          ref: 298723c52d6a3b09839d05451d3d7db9753815bf
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify frozen V3 source revision
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$PINNED_SOURCE_REVISION"
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install cutover audit runtime
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Capture cutover clock
+        id: clock
+        run: |
+          set -euo pipefail
+          now_ms="$(python - <<'PY'
+          import time
+          print(time.time_ns() // 1_000_000)
+          PY
+          )"
+          echo "now_ms=$now_ms" >> "$GITHUB_OUTPUT"
+
+      - name: Discover canonical receipt or source audit
+        id: discover
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CUTOVER_ROOT"
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$CUTOVER_ARTIFACT_NAME&per_page=100" \
+            > /tmp/v3-cutover-existing.json
+
+          if [[ -n "$UPSTREAM_RUN_ID" ]]; then
+            if [[ "$UPSTREAM_CONCLUSION" != "success" ]]; then
+              {
+                echo "status=failure"
+                echo "reason_code=UPSTREAM_AUDIT_NOT_SUCCESSFUL"
+                echo "audit_artifact_id=none"
+                echo "existing_artifact_id=none"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/runs/$UPSTREAM_RUN_ID/artifacts?per_page=100" \
+              > /tmp/v3-cutover-audits.json
+          else
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+              > /tmp/v3-cutover-audits.json
+          fi
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          existing_raw = json.loads(
+              Path("/tmp/v3-cutover-existing.json").read_text(encoding="utf-8")
+          )
+          audit_raw = json.loads(
+              Path("/tmp/v3-cutover-audits.json").read_text(encoding="utf-8")
+          )
+          existing = [
+              item
+              for item in existing_raw.get("artifacts", [])
+              if isinstance(item, dict)
+              and item.get("expired") is False
+              and item.get("name") == os.environ["CUTOVER_ARTIFACT_NAME"]
+              and isinstance(item.get("workflow_run"), dict)
+              and item["workflow_run"].get("head_branch") == "main"
+          ]
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a", encoding="utf-8") as handle:
+              if len(existing) > 1:
+                  handle.write("status=failure\n")
+                  handle.write("reason_code=CANONICAL_CUTOVER_RECEIPT_DUPLICATED\n")
+                  handle.write("audit_artifact_id=none\n")
+                  handle.write("existing_artifact_id=none\n")
+                  raise SystemExit(0)
+              if len(existing) == 1:
+                  handle.write("status=existing\n")
+                  handle.write("reason_code=none\n")
+                  handle.write("audit_artifact_id=none\n")
+                  handle.write(f"existing_artifact_id={existing[0]['id']}\n")
+                  raise SystemExit(0)
+
+              upstream = os.environ.get("UPSTREAM_RUN_ID", "").strip()
+              audits = [
+                  item
+                  for item in audit_raw.get("artifacts", [])
+                  if isinstance(item, dict)
+                  and item.get("expired") is False
+                  and str(item.get("name", "")).startswith(
+                      os.environ["AUDIT_ARTIFACT_PREFIX"]
+                  )
+                  and isinstance(item.get("workflow_run"), dict)
+                  and item["workflow_run"].get("head_branch") == "main"
+                  and (
+                      not upstream
+                      or str(item["workflow_run"].get("id")) == upstream
+                  )
+              ]
+              if not audits:
+                  handle.write("status=failure\n")
+                  handle.write("reason_code=V3_AUDIT_ARTIFACT_MISSING\n")
+                  handle.write("audit_artifact_id=none\n")
+                  handle.write("existing_artifact_id=none\n")
+                  raise SystemExit(0)
+              selected = max(
+                  audits,
+                  key=lambda item: (str(item["created_at"]), int(item["id"])),
+              )
+              handle.write("status=ok\n")
+              handle.write("reason_code=none\n")
+              handle.write(f"audit_artifact_id={selected['id']}\n")
+              handle.write("existing_artifact_id=none\n")
+          PY
+
+      - name: Verify existing canonical cutover receipt
+        id: existing
+        continue-on-error: true
+        if: ${{ steps.discover.outputs.status == 'existing' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXISTING_ID: ${{ steps.discover.outputs.existing_artifact_id }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$EXISTING_ID" \
+            > /tmp/v3-cutover-existing-meta.json
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$EXISTING_ID/zip" \
+            > /tmp/v3-cutover-existing.zip
+          mkdir -p "$CUTOVER_ROOT/existing"
+          unzip -q /tmp/v3-cutover-existing.zip -d "$CUTOVER_ROOT/existing"
+          test -f "$CUTOVER_ROOT/existing/cutover.json"
+
+          run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/v3-cutover-existing-meta.json").read_text(encoding="utf-8")
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$run_id" \
+            > /tmp/v3-cutover-existing-run.json
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_discovery_freeze import (
+              HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3,
+          )
+          from cocomelon.research.prospective_context_evidence import (
+              MAX_ENTRY_CANDLE_AGE_MS,
+          )
+          from cocomelon.research.prospective_context_report import (
+              HYPE_PROSPECTIVE_VALIDATION_V3,
+          )
+          from cocomelon.research.prospective_dispatch_queue import HOUR_MS, MINUTE_MS
+          from cocomelon.research.prospective_runtime_attestation import (
+              ProspectiveRuntimeAttestation,
+          )
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          meta = json.loads(
+              Path("/tmp/v3-cutover-existing-meta.json").read_text(encoding="utf-8")
+          )
+          run = json.loads(
+              Path("/tmp/v3-cutover-existing-run.json").read_text(encoding="utf-8")
+          )
+          receipt = json.loads(
+              Path(
+                  "artifacts/prospective-hype-v3-cutover/existing/cutover.json"
+              ).read_text(encoding="utf-8")
+          )
+          identity = {
+              key: value
+              for key, value in receipt.items()
+              if key != "receipt_id"
+          }
+          expected_id = hashlib.sha256(
+              canonical(identity).encode("utf-8")
+          ).hexdigest()
+
+          spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3
+          plan = HYPE_PROSPECTIVE_VALIDATION_V3
+          runtime = ProspectiveRuntimeAttestation(
+              candidate_spec_id=spec.spec_id,
+              validation_plan_id=plan.plan_id,
+              observer_source_revision=os.environ["PINNED_SOURCE_REVISION"],
+          )
+          control = {
+              "kind": "prospective-hype-v3-clean-control-plane",
+              "candidate_spec_id": spec.spec_id,
+              "validation_plan_id": plan.plan_id,
+              "observer_source_revision": os.environ["PINNED_SOURCE_REVISION"],
+              "protected_capture_minute_utc": 3,
+              "capture_transport": "rolling_workflow_dispatch_queue_v3",
+              "queue_depth": 4,
+              "queue_horizon_ms": 14_400_000,
+              "prepare_handoff_lead_ms": 600_000,
+              "duplicate_policy": "lowest_covering_run_id",
+              "bootstrap_event": "push",
+              "capture_event": "workflow_dispatch",
+              "concurrency_mode": "target_leader_election",
+              "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
+              "state_artifact_name": "prospective-hype-v3-clean-state",
+              "evidence_root": "artifacts/prospective-hype-v3-clean",
+              "prepare_job_timeout_minutes": 270,
+              "observe_job_timeout_minutes": 30,
+              "execution_mode": "paper",
+              "api_url": "https://api.hyperliquid.xyz",
+              "ws_url": "wss://api.hyperliquid.xyz/ws",
+              "contents_permission": "read",
+              "actions_permission": "write",
+              "artifact_retention_days": 90,
+              "schema_version": 3,
+          }
+          control["control_plane_id"] = hashlib.sha256(
+              canonical(control).encode("utf-8")
+          ).hexdigest()
+          first_clean_capture_ms = (
+              plan.first_expected_anchor_ms + 1 + 3 * MINUTE_MS
+          )
+          acceptance_not_before_ms = first_clean_capture_ms - 4 * HOUR_MS
+
+          workflow = meta.get("workflow_run")
+          if (
+              str(meta.get("id")) != os.environ["EXISTING_ID"]
+              or meta.get("name") != os.environ["CUTOVER_ARTIFACT_NAME"]
+              or meta.get("expired") is not False
+              or not isinstance(workflow, dict)
+              or workflow.get("head_branch") != "main"
+              or run.get("id") != workflow.get("id")
+              or run.get("head_branch") != "main"
+              or run.get("path")
+              != ".github/workflows/prospective-hype-v3-cutover-acceptance.yml"
+              or run.get("conclusion") != "success"
+              or run.get("repository", {}).get("full_name")
+              != os.environ["GITHUB_REPOSITORY"]
+              or receipt.get("kind") != "prospective-hype-v3-cutover-acceptance"
+              or receipt.get("cutover_status") != "ready_for_cutover"
+              or receipt.get("receipt_id") != expected_id
+              or receipt.get("observer_source_revision")
+              != os.environ["PINNED_SOURCE_REVISION"]
+              or receipt.get("observer_workflow_blob_sha")
+              != os.environ["OBSERVER_WORKFLOW_BLOB_SHA"]
+              or receipt.get("audit_workflow_blob_sha")
+              != os.environ["AUDIT_WORKFLOW_BLOB_SHA"]
+              or receipt.get("candidate_spec_id") != spec.spec_id
+              or receipt.get("validation_plan_id") != plan.plan_id
+              or receipt.get("runtime_attestation_id") != runtime.attestation_id
+              or receipt.get("control_plane_id") != control["control_plane_id"]
+              or receipt.get("validation_start_ms") != plan.validation_start_ms
+              or receipt.get("first_expected_anchor_ms")
+              != plan.first_expected_anchor_ms
+              or receipt.get("first_clean_capture_ms") != first_clean_capture_ms
+              or receipt.get("acceptance_not_before_ms")
+              != acceptance_not_before_ms
+              or not isinstance(receipt.get("accepted_at_ms"), int)
+              or receipt["accepted_at_ms"] >= plan.validation_start_ms
+              or receipt.get("dispatch_queue_depth") != 4
+              or receipt.get("first_clean_capture_queued") is not True
+              or first_clean_capture_ms
+              not in receipt.get("dispatch_queue_targets", [])
+              or receipt.get("pre_cutover_observation_count") != 0
+              or receipt.get("pre_cutover_outcome_count") != 0
+              or receipt.get("interim_economics_redacted") is not True
+              or receipt.get("promotion_eligible") is not False
+          ):
+              raise SystemExit("V3_CANONICAL_CUTOVER_RECEIPT_INVALID")
+          PY
+
+      - name: Verify source audit provenance
+        id: provenance
+        continue-on-error: true
+        if: ${{ steps.discover.outputs.status == 'ok' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_ID: ${{ steps.discover.outputs.audit_artifact_id }}
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$AUDIT_ID" \
+            > /tmp/v3-cutover-audit-meta.json
+          audit_run_id="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/v3-cutover-audit-meta.json").read_text(encoding="utf-8")
+          )
+          print(payload["workflow_run"]["id"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/runs/$audit_run_id" \
+            > /tmp/v3-cutover-audit-run.json
+          head_sha="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/v3-cutover-audit-run.json").read_text(encoding="utf-8")
+          )
+          print(payload["head_sha"])
+          PY
+          )"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/contents/$AUDIT_WORKFLOW_PATH?ref=$head_sha" \
+            > /tmp/v3-cutover-audit-workflow.json
+
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          meta = json.loads(
+              Path("/tmp/v3-cutover-audit-meta.json").read_text(encoding="utf-8")
+          )
+          run = json.loads(
+              Path("/tmp/v3-cutover-audit-run.json").read_text(encoding="utf-8")
+          )
+          workflow_file = json.loads(
+              Path("/tmp/v3-cutover-audit-workflow.json").read_text(encoding="utf-8")
+          )
+          workflow = meta.get("workflow_run")
+          valid = (
+              str(meta.get("id")) == os.environ["AUDIT_ID"]
+              and str(meta.get("name", "")).startswith(
+                  os.environ["AUDIT_ARTIFACT_PREFIX"]
+              )
+              and meta.get("expired") is False
+              and isinstance(workflow, dict)
+              and workflow.get("head_branch") == "main"
+              and run.get("id") == workflow.get("id")
+              and run.get("head_branch") == "main"
+              and run.get("path") == os.environ["AUDIT_WORKFLOW_PATH"]
+              and run.get("event") in {"push", "workflow_run", "workflow_dispatch"}
+              and run.get("conclusion") == "success"
+              and run.get("repository", {}).get("full_name")
+              == os.environ["GITHUB_REPOSITORY"]
+              and workflow_file.get("sha") == os.environ["AUDIT_WORKFLOW_BLOB_SHA"]
+          )
+          if not valid:
+              raise SystemExit("V3_CUTOVER_AUDIT_PROVENANCE_INVALID")
+          PY
+
+      - name: Download source audit
+        id: download
+        continue-on-error: true
+        if: >-
+          ${{ steps.discover.outputs.status == 'ok'
+              && steps.provenance.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_ID: ${{ steps.discover.outputs.audit_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CUTOVER_ROOT/audit"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/artifacts/$AUDIT_ID/zip" \
+            > /tmp/v3-cutover-audit.zip
+          unzip -q /tmp/v3-cutover-audit.zip -d "$CUTOVER_ROOT/audit"
+          test -f "$CUTOVER_ROOT/audit/audit.json"
+          test ! -f "$CUTOVER_ROOT/audit/failure.json"
+
+      - name: Evaluate V3 cutover readiness
+        id: decision
+        continue-on-error: true
+        if: >-
+          ${{ steps.discover.outputs.status == 'ok'
+              && steps.provenance.outcome == 'success'
+              && steps.download.outcome == 'success' }}
+        env:
+          NOW_MS: ${{ steps.clock.outputs.now_ms }}
+          AUDIT_ID: ${{ steps.discover.outputs.audit_artifact_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from cocomelon.research.historical_discovery_freeze import (
+              HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3,
+          )
+          from cocomelon.research.prospective_context_evidence import (
+              MAX_ENTRY_CANDLE_AGE_MS,
+          )
+          from cocomelon.research.prospective_context_report import (
+              HYPE_PROSPECTIVE_VALIDATION_V3,
+          )
+          from cocomelon.research.prospective_dispatch_queue import HOUR_MS, MINUTE_MS
+          from cocomelon.research.prospective_runtime_attestation import (
+              ProspectiveRuntimeAttestation,
+          )
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          now_ms = int(os.environ["NOW_MS"])
+          audit = json.loads(
+              Path(
+                  "artifacts/prospective-hype-v3-cutover/audit/audit.json"
+              ).read_text(encoding="utf-8")
+          )
+          audit_identity = {
+              key: value for key, value in audit.items() if key != "audit_id"
+          }
+          if audit.get("audit_id") != hashlib.sha256(
+              canonical(audit_identity).encode("utf-8")
+          ).hexdigest():
+              raise SystemExit("V3_CUTOVER_AUDIT_ID_MISMATCH")
+
+          spec = HYPE_DOWN_BEARISH_NEAR_BASKET_LONG_4H_V3
+          plan = HYPE_PROSPECTIVE_VALIDATION_V3
+          runtime = ProspectiveRuntimeAttestation(
+              candidate_spec_id=spec.spec_id,
+              validation_plan_id=plan.plan_id,
+              observer_source_revision=os.environ["PINNED_SOURCE_REVISION"],
+          )
+          control = {
+              "kind": "prospective-hype-v3-clean-control-plane",
+              "candidate_spec_id": spec.spec_id,
+              "validation_plan_id": plan.plan_id,
+              "observer_source_revision": os.environ["PINNED_SOURCE_REVISION"],
+              "protected_capture_minute_utc": 3,
+              "capture_transport": "rolling_workflow_dispatch_queue_v3",
+              "queue_depth": 4,
+              "queue_horizon_ms": 14_400_000,
+              "prepare_handoff_lead_ms": 600_000,
+              "duplicate_policy": "lowest_covering_run_id",
+              "bootstrap_event": "push",
+              "capture_event": "workflow_dispatch",
+              "concurrency_mode": "target_leader_election",
+              "max_entry_candle_age_ms": MAX_ENTRY_CANDLE_AGE_MS,
+              "state_artifact_name": "prospective-hype-v3-clean-state",
+              "evidence_root": "artifacts/prospective-hype-v3-clean",
+              "prepare_job_timeout_minutes": 270,
+              "observe_job_timeout_minutes": 30,
+              "execution_mode": "paper",
+              "api_url": "https://api.hyperliquid.xyz",
+              "ws_url": "wss://api.hyperliquid.xyz/ws",
+              "contents_permission": "read",
+              "actions_permission": "write",
+              "artifact_retention_days": 90,
+              "schema_version": 3,
+          }
+          control["control_plane_id"] = hashlib.sha256(
+              canonical(control).encode("utf-8")
+          ).hexdigest()
+
+          expected = {
+              "candidate_spec_id": spec.spec_id,
+              "validation_plan_id": plan.plan_id,
+              "runtime_attestation_id": runtime.attestation_id,
+              "control_plane_id": control["control_plane_id"],
+              "observer_workflow_blob_sha": os.environ["OBSERVER_WORKFLOW_BLOB_SHA"],
+          }
+          for key, value in expected.items():
+              if audit.get(key) != value:
+                  raise SystemExit(f"V3_CUTOVER_{key.upper()}_MISMATCH")
+          if (
+              audit.get("interim_economics_redacted") is not True
+              or audit.get("promotion_eligible") is not False
+              or audit.get("dispatch_queue_status") != "covered"
+              or audit.get("dispatch_queue_depth") != 4
+              or audit.get("dispatch_queue_missing_targets") != []
+              or audit.get("observation_count") != 0
+              or audit.get("outcome_count") != 0
+              or audit.get("expected_anchor_count_to_date") != 0
+              or audit.get("observation_count_to_date") != 0
+              or audit.get("missed_anchor_count_to_date") != 0
+              or audit.get("audit_status") != "pre_validation"
+          ):
+              raise SystemExit("V3_CUTOVER_PRESTART_AUDIT_INVALID")
+
+          first_clean_capture_ms = (
+              plan.first_expected_anchor_ms + 1 + 3 * MINUTE_MS
+          )
+          acceptance_not_before_ms = first_clean_capture_ms - 4 * HOUR_MS
+          audited_at_ms = int(audit["audited_at_ms"])
+          targets = [int(value) for value in audit["dispatch_queue_targets"]]
+
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          if now_ms >= plan.validation_start_ms:
+              raise SystemExit("V3_CUTOVER_PRESTART_ACCEPTANCE_WINDOW_CLOSED")
+          if now_ms < acceptance_not_before_ms:
+              status = {
+                  "kind": "prospective-hype-v3-cutover-status",
+                  "cutover_status": "waiting_for_queue_horizon",
+                  "checked_at_ms": now_ms,
+                  "acceptance_not_before_ms": acceptance_not_before_ms,
+                  "validation_start_ms": plan.validation_start_ms,
+                  "first_clean_capture_ms": first_clean_capture_ms,
+                  "source_audit_id": audit["audit_id"],
+                  "source_audit_artifact_id": os.environ["AUDIT_ID"],
+                  "interim_economics_redacted": True,
+                  "promotion_eligible": False,
+                  "schema_version": 1,
+              }
+              status["status_id"] = hashlib.sha256(
+                  canonical(status).encode("utf-8")
+              ).hexdigest()
+              Path(os.environ["CUTOVER_ROOT"], "status.json").write_text(
+                  canonical(status) + "\n",
+                  encoding="utf-8",
+              )
+              with output.open("a", encoding="utf-8") as handle:
+                  handle.write("status=waiting\n")
+                  handle.write("reason_code=none\n")
+              raise SystemExit(0)
+
+          if audited_at_ms < acceptance_not_before_ms:
+              raise SystemExit("V3_CUTOVER_AUDIT_NOT_REFRESHED_IN_ACCEPTANCE_WINDOW")
+          if first_clean_capture_ms not in targets:
+              raise SystemExit("V3_CUTOVER_FIRST_CLEAN_CAPTURE_NOT_QUEUED")
+
+          receipt = {
+              "kind": "prospective-hype-v3-cutover-acceptance",
+              "cutover_status": "ready_for_cutover",
+              "accepted_at_ms": now_ms,
+              "validation_start_ms": plan.validation_start_ms,
+              "first_expected_anchor_ms": plan.first_expected_anchor_ms,
+              "first_clean_capture_ms": first_clean_capture_ms,
+              "acceptance_not_before_ms": acceptance_not_before_ms,
+              "source_audit_id": audit["audit_id"],
+              "source_audit_artifact_id": os.environ["AUDIT_ID"],
+              "producer_run_id": audit["producer_run_id"],
+              "state_artifact_id": audit["state_artifact_id"],
+              "campaign_id": audit["campaign_id"],
+              "candidate_spec_id": spec.spec_id,
+              "validation_plan_id": plan.plan_id,
+              "runtime_attestation_id": runtime.attestation_id,
+              "control_plane_id": control["control_plane_id"],
+              "observer_source_revision": os.environ["PINNED_SOURCE_REVISION"],
+              "observer_workflow_blob_sha": os.environ["OBSERVER_WORKFLOW_BLOB_SHA"],
+              "audit_workflow_blob_sha": os.environ["AUDIT_WORKFLOW_BLOB_SHA"],
+              "dispatch_queue_depth": 4,
+              "dispatch_queue_targets": targets,
+              "first_clean_capture_queued": True,
+              "pre_cutover_observation_count": 0,
+              "pre_cutover_outcome_count": 0,
+              "interim_economics_redacted": True,
+              "promotion_eligible": False,
+              "schema_version": 1,
+          }
+          receipt["receipt_id"] = hashlib.sha256(
+              canonical(receipt).encode("utf-8")
+          ).hexdigest()
+          Path(os.environ["CUTOVER_ROOT"], "cutover.json").write_text(
+              canonical(receipt) + "\n",
+              encoding="utf-8",
+          )
+          with output.open("a", encoding="utf-8") as handle:
+              handle.write("status=ready\n")
+              handle.write("reason_code=none\n")
+          PY
+
+      - name: Upload waiting cutover status
+        if: ${{ steps.decision.outputs.status == 'waiting' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-v3-cutover-waiting-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-v3-cutover/status.json
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 9
+
+      - name: Upload one canonical V3 cutover receipt
+        id: upload
+        continue-on-error: true
+        if: ${{ steps.decision.outputs.status == 'ready' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-v3-cutover-acceptance
+          path: artifacts/prospective-hype-v3-cutover/cutover.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve redacted V3 cutover failure receipt
+        if: >-
+          ${{ always()
+              && steps.discover.outputs.status != 'existing'
+              && (steps.discover.outcome == 'failure'
+                  || steps.discover.outputs.status == 'failure'
+                  || steps.provenance.outcome == 'failure'
+                  || steps.download.outcome == 'failure'
+                  || steps.decision.outcome == 'failure'
+                  || steps.upload.outcome == 'failure') }}
+        env:
+          NOW_MS: ${{ steps.clock.outputs.now_ms }}
+          DISCOVERY_STATUS: ${{ steps.discover.outputs.status }}
+          DISCOVERY_REASON: ${{ steps.discover.outputs.reason_code }}
+          AUDIT_ID: ${{ steps.discover.outputs.audit_artifact_id }}
+          PROVENANCE_OUTCOME: ${{ steps.provenance.outcome }}
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          DECISION_OUTCOME: ${{ steps.decision.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CUTOVER_ROOT"
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value):
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          reason = os.environ.get("DISCOVERY_REASON", "none")
+          stage = "discovery"
+          if os.environ.get("DISCOVERY_STATUS") == "ok":
+              if os.environ.get("PROVENANCE_OUTCOME") != "success":
+                  stage = "provenance"
+                  reason = "V3_CUTOVER_AUDIT_PROVENANCE_FAILED"
+              elif os.environ.get("DOWNLOAD_OUTCOME") != "success":
+                  stage = "download"
+                  reason = "V3_CUTOVER_AUDIT_DOWNLOAD_FAILED"
+              elif os.environ.get("DECISION_OUTCOME") != "success":
+                  stage = "decision"
+                  reason = "V3_CUTOVER_READINESS_DECISION_FAILED"
+              elif os.environ.get("UPLOAD_OUTCOME") == "failure":
+                  stage = "upload"
+                  reason = "V3_CUTOVER_CANONICAL_UPLOAD_FAILED"
+          if not reason or reason == "none":
+              reason = "V3_CUTOVER_ACCEPTANCE_FAILED"
+
+          payload = {
+              "kind": "prospective-hype-v3-cutover-failure",
+              "audited_at_ms": int(os.environ["NOW_MS"]),
+              "stage": stage,
+              "reason_code": reason,
+              "source_audit_artifact_id": os.environ.get("AUDIT_ID") or "none",
+              "interim_economics_redacted": True,
+              "promotion_eligible": False,
+              "schema_version": 1,
+          }
+          payload["failure_id"] = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          Path(os.environ["CUTOVER_ROOT"], "failure.json").write_text(
+              canonical(payload) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Upload V3 cutover failure receipt
+        if: >-
+          ${{ always()
+              && steps.discover.outputs.status != 'existing'
+              && (steps.discover.outcome == 'failure'
+                  || steps.discover.outputs.status == 'failure'
+                  || steps.provenance.outcome == 'failure'
+                  || steps.download.outcome == 'failure'
+                  || steps.decision.outcome == 'failure'
+                  || steps.upload.outcome == 'failure') }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prospective-hype-v3-cutover-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/prospective-hype-v3-cutover/failure.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 9
+
+      - name: Preserve V3 cutover failure status
+        if: >-
+          ${{ always()
+              && steps.discover.outputs.status != 'existing'
+              && (steps.discover.outcome == 'failure'
+                  || steps.discover.outputs.status == 'failure'
+                  || steps.provenance.outcome == 'failure'
+                  || steps.download.outcome == 'failure'
+                  || steps.decision.outcome == 'failure'
+                  || steps.upload.outcome == 'failure') }}
+        run: exit 1
