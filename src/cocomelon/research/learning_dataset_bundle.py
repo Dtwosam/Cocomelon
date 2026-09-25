@@ -65,7 +65,10 @@ def _record_from_payload(raw: dict[str, object]) -> LearningEvidenceRecord:
         opened_at_ms=_int_value(raw["opened_at_ms"], "opened_at_ms"),
         closed_at_ms=_int_value(raw["closed_at_ms"], "closed_at_ms"),
         feature_snapshot_id=str(raw["feature_snapshot_id"]),
-        research_eligible_at_ms=_int_value(raw["research_eligible_at_ms"], "research_eligible_at_ms"),
+        research_eligible_at_ms=_int_value(
+            raw["research_eligible_at_ms"],
+            "research_eligible_at_ms",
+        ),
         context_state_1h=(
             None if raw.get("context_state_1h") is None else str(raw["context_state_1h"])
         ),
@@ -171,7 +174,13 @@ def load_verified_learning_dataset_bundle(
     raw_manifest = json.loads(manifest_bytes)
     if not isinstance(raw_manifest, dict):
         raise ValueError("learning dataset manifest must be an object")
-    if _int_value(raw_manifest.get("bundle_schema_version", -1), "bundle_schema_version") != BUNDLE_SCHEMA_VERSION:
+    if (
+        _int_value(
+            raw_manifest.get("bundle_schema_version", -1),
+            "bundle_schema_version",
+        )
+        != BUNDLE_SCHEMA_VERSION
+    ):
         raise ValueError("unsupported learning dataset bundle schema")
     if raw_manifest.get("records_file") != "records.jsonl":
         raise ValueError("learning dataset records filename mismatch")
