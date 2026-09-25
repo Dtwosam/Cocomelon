@@ -398,11 +398,11 @@ def build_learning_candidate_predictor(
         )
 
     if package.model_family == GROUPED_MEAN_MODEL_FAMILY:
-        config, policy = _grouped_config_from_manifest(manifest)
+        grouped_config, grouped_policy = _grouped_config_from_manifest(manifest)
         train, validation_start = _training_partition(
             bundle,
-            validation_rows=config.validation_rows,
-            min_train_rows=config.min_train_rows,
+            validation_rows=grouped_config.validation_rows,
+            min_train_rows=grouped_config.min_train_rows,
         )
         grouped_targets: dict[tuple[str, ...], list[Decimal]] = {}
         for row in train:
@@ -410,44 +410,44 @@ def build_learning_candidate_predictor(
         group_means = {
             values_key: sum(values, Decimal("0")) / Decimal(len(values))
             for values_key, values in grouped_targets.items()
-            if len(values) >= config.min_group_train_rows
+            if len(values) >= grouped_config.min_group_train_rows
         }
         _verify_runtime_partition(
             experiment_root=experiment_root,
             package=package,
             train_row_count=len(train),
-            validation_rows=config.validation_rows,
+            validation_rows=grouped_config.validation_rows,
             validation_start_ms=validation_start,
         )
         return LearningCandidatePredictor(
             package=package,
             spec=spec,
             manifest=manifest,
-            prediction_threshold=policy.prediction_threshold,
+            prediction_threshold=grouped_policy.prediction_threshold,
             grouped_means=group_means,
         )
 
     if package.model_family == TREE_MODEL_FAMILY:
-        config, policy = _tree_config_from_manifest(manifest)
+        tree_config, tree_policy = _tree_config_from_manifest(manifest)
         train, validation_start = _training_partition(
             bundle,
-            validation_rows=config.validation_rows,
-            min_train_rows=config.min_train_rows,
+            validation_rows=tree_config.validation_rows,
+            min_train_rows=tree_config.min_train_rows,
         )
         encoder = _tree_encoder(train, bundle.training_set.feature_registry)
-        estimator = _fit_tree_estimator(train, encoder, config)
+        estimator = _fit_tree_estimator(train, encoder, tree_config)
         _verify_runtime_partition(
             experiment_root=experiment_root,
             package=package,
             train_row_count=len(train),
-            validation_rows=config.validation_rows,
+            validation_rows=tree_config.validation_rows,
             validation_start_ms=validation_start,
         )
         return LearningCandidatePredictor(
             package=package,
             spec=spec,
             manifest=manifest,
-            prediction_threshold=policy.prediction_threshold,
+            prediction_threshold=tree_policy.prediction_threshold,
             tree_encoder=encoder,
             tree_estimator=estimator,
         )
