@@ -615,6 +615,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_baseline.add_argument("--journal", required=True, type=Path)
     run_baseline.add_argument("--execution", required=True, type=Path)
     run_baseline.add_argument("--facts", required=True, type=Path)
+    run_baseline.add_argument("--feature-snapshots", type=Path)
 
     replay = subparsers.add_parser("replay")
     replay.add_argument("--manifest", required=True, type=Path)
@@ -667,12 +668,21 @@ def main(argv: Sequence[str] | None = None) -> None:
             args.starting_cash,
         )
     elif args.command == "run-baseline-replay":
-        payload = run_baseline_replay_payload(
-            args.bundle,
-            args.journal,
-            args.execution,
-            args.facts,
-        )
+        if args.feature_snapshots is None:
+            payload = run_baseline_replay_payload(
+                args.bundle,
+                args.journal,
+                args.execution,
+                args.facts,
+            )
+        else:
+            payload = run_baseline_replay_payload(
+                args.bundle,
+                args.journal,
+                args.execution,
+                args.facts,
+                feature_snapshots_path=args.feature_snapshots,
+            )
     elif args.command == "replay":
         payload = replay_payload(args.manifest, args.journal)
     elif args.command == "inspect-journal":
