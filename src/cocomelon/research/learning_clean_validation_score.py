@@ -308,6 +308,204 @@ def score_learning_clean_validation(
     )
 
 
+def _mapping(value: object, field: str) -> dict[str, object]:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise LearningCleanValidationScoreError(f"{field} must be a JSON object")
+    return cast(dict[str, object], value)
+
+
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise LearningCleanValidationScoreError(
+            f"{field} must be a non-empty string"
+        )
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise LearningCleanValidationScoreError(
+            f"{field} must be a non-negative integer"
+        )
+    return value
+
+
+def _boolean(value: object, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise LearningCleanValidationScoreError(f"{field} must be boolean")
+    return value
+
+
+def _optional_boolean(value: object, field: str) -> bool | None:
+    if value is None:
+        return None
+    return _boolean(value, field)
+
+
+def _optional_decimal(value: object, field: str) -> Decimal | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise LearningCleanValidationScoreError(
+            f"{field} must be a decimal string or null"
+        )
+    try:
+        resolved = Decimal(value)
+    except Exception as exc:
+        raise LearningCleanValidationScoreError(
+            f"{field} must be a decimal string or null"
+        ) from exc
+    if not resolved.is_finite():
+        raise LearningCleanValidationScoreError(f"{field} must be finite")
+    return resolved
+
+
+def _score_from_payload(raw: dict[str, object]) -> LearningCleanValidationScore:
+    raw_record_ids = raw.get("selected_record_ids")
+    if not isinstance(raw_record_ids, list) or not all(
+        isinstance(item, str) for item in raw_record_ids
+    ):
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_RECORD_IDS_INVALID"
+        )
+    raw_blocks = raw.get("blocks")
+    if not isinstance(raw_blocks, list):
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_BLOCKS_INVALID"
+        )
+    blocks: list[LearningCleanValidationBlock] = []
+    for index, raw_block in enumerate(raw_blocks):
+        block = _mapping(raw_block, f"blocks[{index}]")
+        record_ids = block.get("record_ids")
+        if not isinstance(record_ids, list) or not all(
+            isinstance(item, str) for item in record_ids
+        ):
+            raise LearningCleanValidationScoreError(
+                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCKS_INVALID"
+            )
+        trade_count = _integer(block.get("trade_count"), "block trade_count")
+        if trade_count != len(record_ids):
+            raise LearningCleanValidationScoreError(
+                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCK_COUNT_MISMATCH"
+            )
+        mean = _optional_decimal(block.get("mean_net_r"), "block mean_net_r")
+        if mean is None:
+            raise LearningCleanValidationScoreError(
+                "LEARNING_CLEAN_VALIDATION_SCORE_BLOCK_MEAN_REQUIRED"
+            )
+        blocks.append(
+            LearningCleanValidationBlock(
+                block_index=_integer(block.get("block_index"), "block_index"),
+                record_ids=tuple(record_ids),
+                mean_net_r=mean,
+            )
+        )
+
+    try:
+        score = LearningCleanValidationScore(
+            candidate_id=_string(raw.get("candidate_id"), "candidate_id"),
+            validation_spec_id=_string(
+                raw.get("validation_spec_id"),
+                "validation_spec_id",
+            ),
+            candidate_package_id=_string(
+                raw.get("candidate_package_id"),
+                "candidate_package_id",
+            ),
+            as_of_ms=_integer(raw.get("as_of_ms"), "as_of_ms"),
+            ledger_state_digest=_string(
+                raw.get("ledger_state_digest"),
+                "ledger_state_digest",
+            ),
+            eligible_settled_trade_count=_integer(
+                raw.get("eligible_settled_trade_count"),
+                "eligible_settled_trade_count",
+            ),
+            target_settled_trades=_integer(
+                raw.get("target_settled_trades"),
+                "target_settled_trades",
+            ),
+            selected_record_ids=tuple(raw_record_ids),
+            status=_string(raw.get("status"), "status"),
+            overall_mean_net_r=_optional_decimal(
+                raw.get("overall_mean_net_r"),
+                "overall_mean_net_r",
+            ),
+            blocks=tuple(blocks),
+            qualifies_clean_validation=_optional_boolean(
+                raw.get("qualifies_clean_validation"),
+                "qualifies_clean_validation",
+            ),
+            paper_only=_boolean(raw.get("paper_only"), "paper_only"),
+            prospective_only=_boolean(
+                raw.get("prospective_only"),
+                "prospective_only",
+            ),
+            research_only=_boolean(raw.get("research_only"), "research_only"),
+            promotion_eligible=_boolean(
+                raw.get("promotion_eligible"),
+                "promotion_eligible",
+            ),
+            execution_ready=_boolean(
+                raw.get("execution_ready"),
+                "execution_ready",
+            ),
+            schema_version=_integer(raw.get("schema_version"), "schema_version"),
+        )
+    except ValueError as exc:
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_INVALID"
+        ) from exc
+    if raw.get("score_id") != score.score_id:
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_ID_MISMATCH"
+        )
+    return score
+
+
+def load_learning_clean_validation_score(
+    path: Path,
+) -> LearningCleanValidationScore:
+    try:
+        stored_bytes = path.read_bytes()
+        raw = _mapping(
+            json.loads(stored_bytes),
+            "learning clean validation score",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_INVALID"
+        ) from exc
+    score = _score_from_payload(raw)
+    canonical = (_canonical_json(score.to_dict()) + "\n").encode("utf-8")
+    if stored_bytes != canonical:
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_NON_CANONICAL"
+        )
+    return score
+
+
+def verify_learning_clean_validation_score(
+    path: Path,
+    *,
+    ledger_root: Path,
+    package_root: Path,
+    validation_spec_path: Path,
+) -> LearningCleanValidationScore:
+    stored = load_learning_clean_validation_score(path)
+    expected = score_learning_clean_validation(
+        ledger_root=ledger_root,
+        package_root=package_root,
+        validation_spec_path=validation_spec_path,
+        as_of_ms=stored.as_of_ms,
+    )
+    if stored != expected:
+        raise LearningCleanValidationScoreError(
+            "LEARNING_CLEAN_VALIDATION_SCORE_EVIDENCE_MISMATCH"
+        )
+    return stored
+
+
 def write_learning_clean_validation_score(
     output_root: Path,
     score: LearningCleanValidationScore,
