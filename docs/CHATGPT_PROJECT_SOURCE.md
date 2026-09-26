@@ -57,6 +57,15 @@ The replacement operational path is the ordinary continuous paper trader:
 
 GitHub scheduling/dispatch is infrastructure continuity only. It is not the trading decision cadence.
 
+### Reading the current live paper state
+
+While a worker is active, read its latest job log and find the newest line prefixed:
+
+`COCOMELON_PAPER_HEARTBEAT `
+
+That JSON payload is the near-real-time paper-only operational status. It reports current selected markets, processed records, paper cash/equity, open positions, entry price, stop, latest mark, unrealized gross PnL, risk amount, fees/funding, execution health, and the latest journal observation. Use this before answering whether the trader currently has a position.
+
+Do not substitute Issue #82, Issue #124, retired Prospective HYPE artifacts, or an old completed continuous-paper artifact for a newer active heartbeat. If the worker is active but has not emitted a heartbeat yet, say it is still starting. Completed state artifacts and journal databases remain the durable audit source after a worker finishes.
 
 ---
 ## 1. Authority and continuation rule
