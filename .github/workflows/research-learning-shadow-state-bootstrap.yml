@@ -1,0 +1,470 @@
+name: Research Learning Shadow State Bootstrap
+
+on:
+  workflow_run:
+    workflows: ["Research Learning Shadow Review Admission"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful shadow-review workflow run ID to recover
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-learning-shadow-state-lineage-mutator
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  bootstrap:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout trusted shadow-state implementation
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Authenticate exact human-review artifact
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "shadow review run id is invalid" >&2
+            exit 64
+          fi
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/review-run.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(Path("/tmp/review-run.json").read_text(encoding="utf-8"))
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("shadow review run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("shadow review run is not from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("shadow review run is not successful")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("shadow review run was not a human dispatch")
+          if run.get("path") != ".github/workflows/research-learning-shadow-review.yml":
+              raise SystemExit("shadow review workflow path is invalid")
+          if run.get("name") != "Research Learning Shadow Review Admission":
+              raise SystemExit("shadow review workflow name is invalid")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ[
+              "GITHUB_REPOSITORY"
+          ]:
+              raise SystemExit("shadow review run is from another repository")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("shadow review head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("shadow review run attempt is invalid")
+          PY
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/review-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/review-run.json)"
+          /usr/bin/gh api --paginate --slurp             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/review-artifact-pages.json
+          ARTIFACT_ROW="$(
+            python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          pages = json.loads(
+              Path("/tmp/review-artifact-pages.json").read_text(encoding="utf-8")
+          )
+          pattern = re.compile(r"^research-learning-shadow-review-[0-9a-f]{64}$")
+          matches = [
+              item
+              for page in pages
+              for item in page.get("artifacts", [])
+              if item.get("expired") is False
+              and isinstance(item.get("name"), str)
+              and pattern.fullmatch(item["name"])
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one shadow review artifact, found {len(matches)}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if (
+              not isinstance(digest, str)
+              or not digest.startswith("sha256:")
+              or len(digest) != 71
+          ):
+              raise SystemExit("shadow review artifact digest is invalid")
+          print(
+              str(item["id"])
+              + "\t"
+              + item["name"]
+              + "\t"
+              + digest
+          )
+          PY
+          )"
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_NAME ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          rm -rf review-source
+          mkdir -p review-source
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/shadow-review.zip
+          unzip -q /tmp/shadow-review.zip -d review-source
+          if [ -n "$(find review-source -type l -print -quit)" ]; then
+            echo "shadow review artifact contains a symlink" >&2
+            exit 65
+          fi
+          {
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_name=$ARTIFACT_NAME"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Re-verify human decision and optional admission
+        id: review
+        run: |
+          set -euo pipefail
+          test -f review-source/review-provenance.json
+          test -f review-source/review-decision/candidate-review-decision.json
+          test -d review-source/candidate
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          from cocomelon.research.learning_clean_review_decision import (
+              verify_learning_clean_review_decision,
+          )
+          from cocomelon.research.learning_shadow_admission import (
+              verify_learning_shadow_admission,
+          )
+
+          provenance_path = Path("review-source/review-provenance.json")
+          stored = provenance_path.read_bytes()
+          raw = json.loads(stored)
+          if not isinstance(raw, dict):
+              raise SystemExit("review provenance is invalid")
+          receipt_id = raw.pop("receipt_id", None)
+          canonical = json.dumps(
+              raw,
+              sort_keys=True,
+              separators=(",", ":"),
+              ensure_ascii=False,
+              allow_nan=False,
+          )
+          expected_id = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+          if receipt_id != expected_id:
+              raise SystemExit("review provenance identity mismatch")
+          if stored != (
+              json.dumps(
+                  {**raw, "receipt_id": expected_id},
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+              + "\n"
+          ).encode("utf-8"):
+              raise SystemExit("review provenance is non-canonical")
+
+          root = Path("review-source/candidate")
+          decision_path = Path(
+              "review-source/review-decision/candidate-review-decision.json"
+          )
+          decision = verify_learning_clean_review_decision(
+              decision_path,
+              review_dossier_path=(
+                  root / "review-dossier" / "candidate-review-dossier.json"
+              ),
+              package_root=root / "package",
+              validation_spec_path=root / "candidate-validation-spec.json",
+              validation_score_path=(
+                  root / "score" / "candidate-validation-score.json"
+              ),
+              finalization_path=(
+                  root / "finalization" / "candidate-finalization.json"
+              ),
+              evidence_root=root / "evidence",
+          )
+          if (
+              decision.candidate_id != raw.get("candidate_id")
+              or decision.review_decision_id != raw.get("review_decision_id")
+              or decision.decision != raw.get("decision")
+              or decision.reviewer != raw.get("reviewer")
+              or decision.reviewed_at_ms != raw.get("reviewed_at_ms")
+              or decision.shadow_evaluation_authorized
+              != raw.get("shadow_evaluation_authorized")
+          ):
+              raise SystemExit("review decision does not match provenance")
+          if (
+              decision.promotion_eligible
+              or decision.execution_ready
+              or decision.live_promotion_authorized
+          ):
+              raise SystemExit("review decision carries invalid authority")
+
+          admission_path = Path("review-source/shadow-admission/shadow-admission.json")
+          if decision.shadow_evaluation_authorized:
+              if not admission_path.is_file():
+                  raise SystemExit("approved review is missing shadow admission")
+              admission = verify_learning_shadow_admission(
+                  admission_path,
+                  review_decision_path=decision_path,
+                  review_dossier_path=(
+                      root / "review-dossier" / "candidate-review-dossier.json"
+                  ),
+                  package_root=root / "package",
+                  validation_spec_path=root / "candidate-validation-spec.json",
+                  validation_score_path=(
+                      root / "score" / "candidate-validation-score.json"
+                  ),
+                  finalization_path=(
+                      root / "finalization" / "candidate-finalization.json"
+                  ),
+                  evidence_root=root / "evidence",
+              )
+              if admission.shadow_admission_id != raw.get("shadow_admission_id"):
+                  raise SystemExit("shadow admission does not match provenance")
+              if (
+                  admission.promotion_eligible
+                  or admission.execution_ready
+                  or admission.live_promotion_authorized
+              ):
+                  raise SystemExit("shadow admission carries invalid authority")
+          else:
+              if admission_path.exists() or raw.get("shadow_admission_id") is not None:
+                  raise SystemExit("rejected review unexpectedly carries shadow admission")
+
+          Path("/tmp/review-status.json").write_text(
+              json.dumps(
+                  {
+                      "candidate_id": decision.candidate_id,
+                      "review_decision_id": decision.review_decision_id,
+                      "authorized": decision.shadow_evaluation_authorized,
+                      "shadow_admission_id": raw.get("shadow_admission_id"),
+                  },
+                  sort_keys=True,
+                  separators=(",", ":"),
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+          {
+            echo "candidate_id=$(jq -r '.candidate_id' /tmp/review-status.json)"
+            echo "review_decision_id=$(jq -r '.review_decision_id' /tmp/review-status.json)"
+            echo "authorized=$(jq -r '.authorized' /tmp/review-status.json)"
+            echo "shadow_admission_id=$(jq -r '.shadow_admission_id // empty' /tmp/review-status.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Refuse duplicate shadow-state bootstrap
+        if: ${{ steps.review.outputs.authorized == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ID: ${{ steps.review.outputs.candidate_id }}
+        run: |
+          set -euo pipefail
+          ARTIFACT_NAME="research-learning-shadow-state-$CANDIDATE_ID"
+          /usr/bin/gh api --paginate --slurp             "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100"             > /tmp/prior-shadow-state-pages.json
+          ARTIFACT_NAME="$ARTIFACT_NAME" python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          pages = json.loads(
+              Path("/tmp/prior-shadow-state-pages.json").read_text(encoding="utf-8")
+          )
+          trusted_paths = {
+              ".github/workflows/research-learning-shadow-state-bootstrap.yml",
+              ".github/workflows/research-learning-shadow-state-sync.yml",
+              ".github/workflows/research-learning-shadow-state-continuity.yml",
+          }
+          for page in pages:
+              for artifact in page.get("artifacts", []):
+                  if (
+                      artifact.get("expired") is not False
+                      or artifact.get("name") != os.environ["ARTIFACT_NAME"]
+                      or not isinstance(artifact.get("workflow_run"), dict)
+                  ):
+                      continue
+                  run_id = artifact["workflow_run"].get("id")
+                  if isinstance(run_id, bool) or not isinstance(run_id, int):
+                      continue
+                  response = subprocess.run(
+                      [
+                          "/usr/bin/gh",
+                          "api",
+                          f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                      ],
+                      check=True,
+                      capture_output=True,
+                      text=True,
+                  )
+                  run = json.loads(response.stdout)
+                  if (
+                      run.get("status") == "completed"
+                      and run.get("conclusion") == "success"
+                      and run.get("head_branch") == "main"
+                      and run.get("path") in trusted_paths
+                      and (run.get("head_repository") or {}).get("full_name")
+                      == os.environ["GITHUB_REPOSITORY"]
+                  ):
+                      raise SystemExit(
+                          "approved candidate already has a durable shadow-state lineage"
+                      )
+          PY
+
+      - name: Bootstrap approved candidate shadow state
+        id: state
+        if: ${{ steps.review.outputs.authorized == 'true' }}
+        run: |
+          set -euo pipefail
+          rm -rf shadow-state
+          mkdir -p shadow-state
+          cp -a review-source/candidate shadow-state/candidate
+          cp -a review-source/review-decision shadow-state/review-decision
+          cp -a review-source/shadow-admission shadow-state/shadow-admission
+          cp review-source/review-provenance.json shadow-state/source-review-provenance.json
+          mkdir -p shadow-state/shadow-evidence
+
+          SHADOW_START_MS="$(jq -r '.shadow_start_ms' shadow-state/shadow-admission/shadow-admission.json)"
+          AS_OF_MS="$(date +%s%3N)"
+          if [ "$AS_OF_MS" -lt "$SHADOW_START_MS" ]; then
+            AS_OF_MS="$SHADOW_START_MS"
+          fi
+          cocomelon-learning-shadow-state             --shadow-evidence-root shadow-state/shadow-evidence             --shadow-admission shadow-state/shadow-admission/shadow-admission.json             --review-decision shadow-state/review-decision/candidate-review-decision.json             --review-dossier shadow-state/candidate/review-dossier/candidate-review-dossier.json             --package-root shadow-state/candidate/package             --validation-spec shadow-state/candidate/candidate-validation-spec.json             --validation-score shadow-state/candidate/score/candidate-validation-score.json             --finalization shadow-state/candidate/finalization/candidate-finalization.json             --clean-evidence-root shadow-state/candidate/evidence             --output-root shadow-state             --as-of-ms "$AS_OF_MS"             > /tmp/shadow-state-command.json
+          jq -e             '.closed_paper_trade_count == 0
+             and .campaign_count == 0
+             and .paper_only == true
+             and .research_only == true
+             and .promotion_eligible == false
+             and .execution_ready == false
+             and .live_promotion_authorized == false'             shadow-state/shadow-state.json > /dev/null
+          {
+            echo "as_of_ms=$AS_OF_MS"
+            echo "state_id=$(jq -r '.state_id' shadow-state/shadow-state.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Persist shadow-state bootstrap provenance
+        if: ${{ steps.review.outputs.authorized == 'true' }}
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+          CANDIDATE_ID: ${{ steps.review.outputs.candidate_id }}
+          REVIEW_DECISION_ID: ${{ steps.review.outputs.review_decision_id }}
+          SHADOW_ADMISSION_ID: ${{ steps.review.outputs.shadow_admission_id }}
+          AS_OF_MS: ${{ steps.state.outputs.as_of_ms }}
+          STATE_ID: ${{ steps.state.outputs.state_id }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          payload = {
+              "schema_version": 1,
+              "source_review_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_review_run_attempt": int(os.environ["SOURCE_RUN_ATTEMPT"]),
+              "source_review_head_sha": os.environ["SOURCE_HEAD_SHA"],
+              "source_review_artifact_id": int(os.environ["SOURCE_ARTIFACT_ID"]),
+              "source_review_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
+              "source_review_artifact_digest": os.environ["SOURCE_ARTIFACT_DIGEST"],
+              "candidate_id": os.environ["CANDIDATE_ID"],
+              "review_decision_id": os.environ["REVIEW_DECISION_ID"],
+              "shadow_admission_id": os.environ["SHADOW_ADMISSION_ID"],
+              "as_of_ms": int(os.environ["AS_OF_MS"]),
+              "state_id": os.environ["STATE_ID"],
+              "paper_only": True,
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "live_promotion_authorized": False,
+          }
+          bootstrap_id = hashlib.sha256(canonical(payload).encode("utf-8")).hexdigest()
+          Path("shadow-state/bootstrap.json").write_text(
+              canonical({**payload, "bootstrap_id": bootstrap_id}) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Render shadow-state bootstrap summary
+        run: |
+          {
+            echo "## Learned shadow-state bootstrap"
+            echo "- candidate: ${{ steps.review.outputs.candidate_id }}"
+            echo "- shadow evaluation authorized: ${{ steps.review.outputs.authorized }}"
+            if [ "${{ steps.review.outputs.authorized }}" = "true" ]; then
+              echo "- closed shadow paper trades: 0"
+              echo "- durable shadow state published: true"
+            else
+              echo "- durable shadow state published: false"
+            fi
+            echo "- live promotion authorized: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish durable approved shadow state
+        if: ${{ steps.review.outputs.authorized == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: research-learning-shadow-state-${{ steps.review.outputs.candidate_id }}
+          path: shadow-state/
+          if-no-files-found: error
+          retention-days: 90
