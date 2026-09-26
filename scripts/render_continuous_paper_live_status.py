@@ -34,6 +34,9 @@ def render_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    entry_timing = payload.get("entry_timing", {})
+    if not isinstance(entry_timing, dict):
+        entry_timing = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -141,6 +144,25 @@ def render_live_status(
                 "- opening execution attempts / fills: "
                 f"`{payload.get('session_opening_execution_attempts', 0)} / "
                 f"{payload.get('session_opening_fills', 0)}`"
+            ),
+            (
+                "- entry timing policy: "
+                f"`{payload.get('entry_timing_policy', 'legacy_first_book')}`"
+            ),
+            (
+                "- pending / expired / superseded setups: "
+                f"`{entry_timing.get('pending_candidates', 0)} / "
+                f"{entry_timing.get('expired_candidates', 0)} / "
+                f"{entry_timing.get('superseded_candidates', 0)}`"
+            ),
+            (
+                "- order-flow trigger waits / approvals: "
+                f"`{entry_timing.get('trigger_waits', 0)} / "
+                f"{entry_timing.get('trigger_approvals', 0)}`"
+            ),
+            (
+                "- entry wait reasons: "
+                f"`{_reason_summary(entry_timing.get('wait_reason_counts', {}))}`"
             ),
             (
                 "- strategy reasons: "
