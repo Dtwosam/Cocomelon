@@ -71,6 +71,10 @@ jobs:
                   "workflow_run",
                   "workflow_dispatch",
               },
+              ".github/workflows/continuous-paper-learning-evidence.yml": {
+                  "workflow_run",
+                  "workflow_dispatch",
+              },
               ".github/workflows/research-learning-state-continuity.yml": {
                   "schedule",
                   "workflow_dispatch",
