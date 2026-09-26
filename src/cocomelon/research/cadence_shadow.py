@@ -337,7 +337,7 @@ class CadenceShadowComparator:
 
     def _settle_candle(self, candle: Candle) -> None:
         key = (candle.market.canonical, candle.end_ms)
-        samples = self._pending.pop(key, ())
+        samples = tuple(self._pending.pop(key, []))
         for sample in samples:
             self._outcomes.append(
                 settle_shadow_decision(
@@ -456,6 +456,7 @@ class CadenceShadowComparator:
         return {
             "shadow_only": True,
             "execution_authority": False,
+            "session_only": True,
             "primary_execution_cadence_ms": FIFTEEN_MINUTES_MS,
             "candidate_cadence_ms": FIVE_MINUTES_MS,
             "horizons_ms": list(self._horizons_ms),
