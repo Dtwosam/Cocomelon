@@ -60,7 +60,11 @@ def render_live_status(
         f"- realized gross PnL: `{payload['realized_gross_pnl']}`",
         f"- cumulative fees: `{payload['cumulative_fees']}`",
         f"- cumulative funding: `{payload['cumulative_funding']}`",
-        f"- closed trades: `{payload['closed_trades']}`",
+        f"- cumulative closed trades: `{payload['closed_trades']}`",
+        (
+            "- closed trades this worker: "
+            f"`{payload.get('session_closed_trades', 0)}`"
+        ),
         f"- open planned risk: `{payload.get('open_planned_risk', '0')}`",
         (
             "- open planned risk / equity: "
