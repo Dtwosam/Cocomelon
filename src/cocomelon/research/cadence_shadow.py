@@ -527,6 +527,7 @@ class CadenceShadowComparator:
         off_primary_only: bool,
         lead_strategy: str | None = None,
         score_band: str | None = None,
+        direction: Direction | None = None,
     ) -> dict[str, object]:
         outcomes = tuple(
             item
@@ -544,6 +545,10 @@ class CadenceShadowComparator:
             and (
                 score_band is None
                 or _score_band(item.sample.score) == score_band
+            )
+            and (
+                direction is None
+                or item.sample.direction is direction
             )
         )
         net_sum = sum(
@@ -618,6 +623,26 @@ class CadenceShadowComparator:
                 )
                 for label in order
                 if label in score_labels
+            }
+        if field == "direction":
+            directions = (
+                Direction.LONG,
+                Direction.SHORT,
+            )
+            return {
+                direction.value: self._outcome_summary(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    off_primary_only=False,
+                    direction=direction,
+                )
+                for direction in directions
+                if any(
+                    item.sample.cadence_ms == cadence_ms
+                    and item.sample.horizon_ms == horizon_ms
+                    and item.sample.direction is direction
+                    for item in self._outcomes
+                )
             }
         raise ValueError("unsupported grouped shadow outcome field")
 
@@ -874,6 +899,7 @@ class CadenceShadowComparator:
             off_cycle_by_horizon: dict[str, object] = {}
             outcomes_by_lead_strategy: dict[str, object] = {}
             outcomes_by_score_band: dict[str, object] = {}
+            outcomes_by_direction: dict[str, object] = {}
             for horizon_ms in self._horizons_ms:
                 key = str(horizon_ms)
                 outcomes_by_horizon[key] = self._outcome_summary(
@@ -895,6 +921,11 @@ class CadenceShadowComparator:
                     cadence_ms=cadence_ms,
                     horizon_ms=horizon_ms,
                     field="score_band",
+                )
+                outcomes_by_direction[key] = self._grouped_outcomes(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    field="direction",
                 )
             cadence_payload[str(cadence_ms)] = {
                 "decision_counts": {
@@ -928,6 +959,9 @@ class CadenceShadowComparator:
                 ),
                 "outcomes_by_score_band_by_horizon_ms": (
                     outcomes_by_score_band
+                ),
+                "outcomes_by_direction_by_horizon_ms": (
+                    outcomes_by_direction
                 ),
             }
 
