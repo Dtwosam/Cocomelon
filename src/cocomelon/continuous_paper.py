@@ -26,7 +26,11 @@ from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKin
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.evidence.lifecycle import BaselineReplayPipeline, OpenLifecycleCheckpoint
+from cocomelon.evidence.lifecycle import (
+    BaselineReplayPipeline,
+    OpenLifecycleCheckpoint,
+    OpenLifecycleMarkPath,
+)
 from cocomelon.evidence.recording import (
     RecordedPublicEvent,
     _startup_ranks,
@@ -55,7 +59,6 @@ from cocomelon.research.continuous_paper_learning import (
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
-    continuous_paper_trade_path,
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.util.time import utc_now_ms
@@ -99,6 +102,25 @@ class _ContinuousTradePathSink:
         self._store = store
         self.error: str | None = None
 
+    def _capture_error(self, exc: Exception) -> None:
+        if self.error is None:
+            self.error = f"{type(exc).__name__}: {exc}"
+
+    def checkpoint(
+        self,
+        open_paths: Sequence[OpenLifecycleMarkPath],
+    ) -> None:
+        for path in open_paths:
+            try:
+                self._store.checkpoint_open_path(
+                    opening_plan_id=path.opening_plan_id,
+                    market=path.market,
+                    opened_at_ms=path.opened_at_ms,
+                    mark_observations=path.mark_observations,
+                )
+            except Exception as exc:
+                self._capture_error(exc)
+
     def record(
         self,
         trade: TradeJournalEntry,
@@ -106,18 +128,14 @@ class _ContinuousTradePathSink:
         known_gap_intervals: Sequence[tuple[int, int | None]],
     ) -> bool:
         try:
-            created = self._store.record(
-                continuous_paper_trade_path(
-                    trade,
-                    mark_observations,
-                    known_gap_intervals,
-                )
+            return self._store.finalize_trade(
+                trade,
+                mark_observations,
+                known_gap_intervals,
             )
         except Exception as exc:
-            if self.error is None:
-                self.error = f"{type(exc).__name__}: {exc}"
+            self._capture_error(exc)
             return False
-        return created
 
 
 class _ContinuousOpeningLineageSink:
@@ -158,6 +176,7 @@ class ContinuousPaperSummary:
     opening_lineage_count: int
     opening_lineage_state_digest: str
     trade_path_count: int
+    trade_path_open_count: int
     trade_path_state_digest: str
     trade_path_capture_error: str | None
     open_positions: int
@@ -182,6 +201,7 @@ class ContinuousPaperSummary:
             "opening_lineage_count": self.opening_lineage_count,
             "opening_lineage_state_digest": self.opening_lineage_state_digest,
             "trade_path_count": self.trade_path_count,
+            "trade_path_open_count": self.trade_path_open_count,
             "trade_path_state_digest": self.trade_path_state_digest,
             "trade_path_capture_error": self.trade_path_capture_error,
             "open_positions": self.open_positions,
@@ -1402,6 +1422,7 @@ async def run_continuous_paper_session(
         await refresh_funding()
 
         def persist_checkpoint() -> None:
+            trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
             _write_json_atomic(
                 checkpoint_path,
                 _checkpoint_payload(
@@ -1589,6 +1610,7 @@ async def run_continuous_paper_session(
             opening_lineage_count=opening_lineage_store.record_count,
             opening_lineage_state_digest=opening_lineage_store.state_digest,
             trade_path_count=trade_path_store.record_count,
+            trade_path_open_count=trade_path_store.open_path_count,
             trade_path_state_digest=trade_path_store.state_digest,
             trade_path_capture_error=trade_path_sink.error,
             open_positions=len(execution.account.positions),
