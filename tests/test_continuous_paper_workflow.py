@@ -2,7 +2,6 @@ from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
-
 def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert 'duration-seconds 19800' in source
@@ -23,7 +22,6 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert "SOURCE_RUN_ID" in source
     assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
 
-
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     source = WORKFLOW.read_text(encoding="utf-8").lower()
     assert "cocomelon_execution_mode: paper" in source
@@ -33,7 +31,6 @@ def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     assert "private_key" not in source
     assert "withdraw" not in source
     assert "transfer" not in source
-
 
 
 def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None:
@@ -48,7 +45,6 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "new continuous-paper runtime code detected on main" in source
 
 
-
 def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert '"src/cocomelon/continuous_paper.py"' in source
@@ -57,3 +53,12 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/strategies/**"' in source
     assert '"src/cocomelon/hyperliquid/**"' in source
     assert '"scripts/render_continuous_paper_live_status.py"' in source
+
+
+def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert '--worker-run-id "$GITHUB_RUN_ID"' in source
+    assert '--worker-run-attempt "$GITHUB_RUN_ATTEMPT"' in source
+    assert '--worker-head-sha "$GITHUB_SHA"' in source
+    assert "opening lineage records:" in source
+    assert "opening_lineage_state_digest" in source
