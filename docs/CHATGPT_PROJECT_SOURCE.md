@@ -42,6 +42,22 @@ For any question about the "current paper trade":
 
 The retired Prospective HYPE experiment must not be restarted, rescheduled, or treated as the primary paper trader unless the user explicitly reverses this directive.
 
+### Continuous ordinary paper runtime (D-031)
+
+The replacement operational path is the ordinary continuous paper trader:
+
+- fresh native-mainnet universe scan and opportunity ranking;
+- dynamic deep shortlist, default 20, with open positions pinned;
+- continuous active-asset context/L2/trades/candles;
+- deterministic 15-minute strategy decisions with LONG/SHORT/NO_TRADE;
+- independent risk veto and existing realistic paper IOC execution;
+- continuous position management on fresh books/marks;
+- durable paper account, journal, evaluation facts, funding and restart lifecycle state;
+- rolling long-lived workers rather than one economic observation per hour.
+
+GitHub scheduling/dispatch is infrastructure continuity only. It is not the trading decision cadence.
+
+
 ---
 ## 1. Authority and continuation rule
 
