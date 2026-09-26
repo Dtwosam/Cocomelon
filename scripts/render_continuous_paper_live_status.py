@@ -183,6 +183,100 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _profit_lock_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Fixed profit-lock counterfactual",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No profit-lock telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- complete paths evaluated: "
+                f"`{raw.get('evaluated_trade_count', 0)} / "
+                f"{raw.get('path_record_count', 0)}`"
+            ),
+            (
+                "- incomplete paths skipped: "
+                f"`{raw.get('skipped_incomplete_paths', 0)}`"
+            ),
+            f"- fill model: `{raw.get('fill_model', 'unknown')}`",
+        ]
+    )
+    rules = raw.get("rules", [])
+    if not isinstance(rules, list):
+        rules = []
+    if rules:
+        lines.extend(
+            [
+                "",
+                (
+                    "| Rule | N | Armed | Triggered | Actual + | Est + | "
+                    "Actual PnL | Est PnL | Δ PnL | Actual mean R | "
+                    "Est mean R | Δ mean R |"
+                ),
+                (
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: | ---: | ---: |"
+                ),
+            ]
+        )
+        for rule in rules:
+            if not isinstance(rule, dict):
+                raise ValueError("profit-lock rule must be an object")
+            lines.append(
+                (
+                    "| {rule_id} | {n} | {armed} | {triggered} | "
+                    "{actual_pos} | {candidate_pos} | {actual_pnl} | "
+                    "{candidate_pnl} | {delta_pnl} | {actual_r} | "
+                    "{candidate_r} | {delta_r} |"
+                ).format(
+                    rule_id=rule.get("rule_id", "unknown"),
+                    n=rule.get("evaluated_trades", 0),
+                    armed=rule.get("activated_trades", 0),
+                    triggered=rule.get("triggered_trades", 0),
+                    actual_pos=rule.get("actual_positive_trades", 0),
+                    candidate_pos=rule.get(
+                        "candidate_positive_trades_estimate",
+                        0,
+                    ),
+                    actual_pnl=rule.get("actual_net_pnl", "0"),
+                    candidate_pnl=rule.get(
+                        "candidate_net_pnl_estimate",
+                        "0",
+                    ),
+                    delta_pnl=rule.get("delta_net_pnl_estimate", "0"),
+                    actual_r=rule.get("actual_mean_net_r"),
+                    candidate_r=rule.get(
+                        "candidate_mean_net_r_estimate"
+                    ),
+                    delta_r=rule.get("delta_mean_net_r_estimate"),
+                )
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "_Mark-path estimate using first crossing mark plus frozen "
+                "research costs; not an executable fill claim._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -290,10 +384,11 @@ def render_live_status(
             "- capture error: "
             f"`{trade_path_evidence.get('capture_error')}`"
         ),
-        "",
-        "### Open positions",
-        "",
     ]
+    lines.extend(
+        _profit_lock_lines(payload.get("profit_lock_counterfactual"))
+    )
+    lines.extend(["", "### Open positions", ""])
 
     if positions_raw:
         lines.extend(

@@ -207,6 +207,35 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "staged_open_path_count": 1,
             "capture_error": None,
         },
+        "profit_lock_counterfactual": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "error": None,
+            "evidence_class": "research_only_mark_path_counterfactual",
+            "fill_model": "first_crossing_mark_minus_frozen_cost_reserve",
+            "path_record_count": 3,
+            "evaluated_trade_count": 2,
+            "skipped_incomplete_paths": 1,
+            "rules": [
+                {
+                    "rule_id": "lock_0_5r_after_1r",
+                    "activate_at_r": "1",
+                    "lock_at_r": "0.5",
+                    "evaluated_trades": 2,
+                    "activated_trades": 2,
+                    "triggered_trades": 1,
+                    "actual_positive_trades": 0,
+                    "candidate_positive_trades_estimate": 1,
+                    "actual_net_pnl": "-12",
+                    "candidate_net_pnl_estimate": "4",
+                    "delta_net_pnl_estimate": "16",
+                    "actual_mean_net_r": "-0.6",
+                    "candidate_mean_net_r_estimate": "0.2",
+                    "delta_mean_net_r_estimate": "0.8",
+                }
+            ],
+        },
         "cadence_shadow": {
             "enabled": True,
             "error": None,
@@ -368,6 +397,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "staged open trade paths" in output
     assert "`3`" in output
     assert "`1`" in output
+    assert "### Fixed profit-lock counterfactual" in output
+    assert "complete paths evaluated" in output
+    assert "`2 / 3`" in output
+    assert "lock_0_5r_after_1r" in output
+    assert "| lock_0_5r_after_1r | 2 | 2 | 1 | 0 | 1 | -12 | 4 | 16 | -0.6 | 0.2 | 0.8 |" in output
+    assert "not an executable fill claim" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "5m cadence shadow diagnostic" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output

@@ -17,6 +17,7 @@ from cocomelon.continuous_paper import (
     _position_action_from_payload,
     _position_action_payload,
     _position_protection_metrics,
+    _profit_lock_counterfactual_payload,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
@@ -112,6 +113,30 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"closed_path_count": trade_path_store.record_count' in source
     assert '"staged_open_path_count": trade_path_store.open_path_count' in source
     assert '"capture_error": trade_path_capture_error' in source
+    assert '"profit_lock_counterfactual": profit_lock_counterfactual' in source
+    assert "evaluate_profit_lock_state(journal, trade_path_store)" in source
+
+
+def test_profit_lock_counterfactual_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object) -> object:
+        raise RuntimeError("counterfactual boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.evaluate_profit_lock_state",
+        fail,
+    )
+
+    payload = _profit_lock_counterfactual_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["error"] == "RuntimeError: counterfactual boom"
 
 
 def test_position_protection_metrics_handle_long_and_short_stops() -> None:
