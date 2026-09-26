@@ -21,6 +21,7 @@ def _trade(
     side: str,
     reason: str,
     feature_id: str,
+    decision_id: str,
     hold_ms: int,
     mfe_r: str = "0",
     mae_r: str = "0",
@@ -32,6 +33,8 @@ def _trade(
         direction=SimpleNamespace(value=side),
         exit_reason=reason,
         feature_snapshot_id=feature_id,
+        strategy_decision_id=decision_id,
+        replay_run_id="continuous-paper-mainnet-v1",
         holding_duration_ms=hold_ms,
         mfe=_excursion("mfe", mfe_r, complete=excursion_complete),
         mae=_excursion("mae", mae_r, complete=excursion_complete),
@@ -41,8 +44,8 @@ def _trade(
 class _FeatureStore:
     def load(self, snapshot_id: str) -> SimpleNamespace | None:
         regimes = {
-            "feature-up": ("uptrend", "normal"),
-            "feature-down": ("downtrend", "high"),
+            "feature-up": ("up", "normal"),
+            "feature-down": ("down", "high"),
         }
         resolved = regimes.get(snapshot_id)
         if resolved is None:
@@ -56,6 +59,30 @@ class _FeatureStore:
         )
 
 
+class _FactStore:
+    def load_decision_by_strategy_id(
+        self,
+        strategy_decision_id: str,
+        replay_run_id: str,
+    ) -> SimpleNamespace | None:
+        if replay_run_id != "continuous-paper-mainnet-v1":
+            return None
+        facts = {
+            "decision-1": ("trend", "68", "up", "normal"),
+            "decision-2": ("breakout", "76", "down", "high"),
+        }
+        resolved = facts.get(strategy_decision_id)
+        if resolved is None:
+            return None
+        lead_strategy, score, trend, volatility = resolved
+        return SimpleNamespace(
+            lead_strategy=lead_strategy,
+            score=Decimal(score),
+            trend_regime=SimpleNamespace(value=trend),
+            volatility_regime=SimpleNamespace(value=volatility),
+        )
+
+
 def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     trades = (
         _trade(
@@ -64,6 +91,7 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             side="long",
             reason="OPPOSITE_FRESH_THESIS",
             feature_id="feature-up",
+            decision_id="decision-1",
             hold_ms=60_000,
             mfe_r="1.2",
             mae_r="0.3",
@@ -74,6 +102,7 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             side="long",
             reason="OPPOSITE_FRESH_THESIS",
             feature_id="feature-down",
+            decision_id="decision-2",
             hold_ms=120_000,
             mfe_r="0.6",
             mae_r="0.8",
@@ -84,6 +113,7 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             side="short",
             reason="MARK_STOP_TRIGGERED",
             feature_id="feature-missing",
+            decision_id="decision-missing",
             hold_ms=180_000,
             mfe_r="0.1",
             mae_r="1.1",
@@ -93,6 +123,7 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     result = _closed_trade_performance(  # type: ignore[arg-type]
         trades,
         _FeatureStore(),  # type: ignore[arg-type]
+        _FactStore(),  # type: ignore[arg-type]
     )
 
     assert result["trades"] == 3
@@ -104,6 +135,10 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     assert result["gross_loss_abs"] == "12"
     assert Decimal(str(result["profit_factor"])) == Decimal("5") / Decimal("12")
     assert result["average_holding_ms"] == 120_000
+    assert result["decision_fact_attributed_trades"] == 2
+    assert result["decision_fact_attribution_misses"] == 1
+    assert result["feature_snapshot_fallback_trades"] == 0
+    assert result["regime_attribution_misses"] == 1
     assert result["unattributed_feature_trades"] == 1
 
     assert result["complete_excursion_trades"] == 3
@@ -147,10 +182,22 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
         "mean_peak_to_close_giveback_r"
     ] == "1.1"
 
+    by_strategy = result["by_lead_strategy"]
+    assert isinstance(by_strategy, dict)
+    assert by_strategy["trend"]["net_pnl"] == "5"
+    assert by_strategy["breakout"]["net_pnl"] == "-2"
+    assert by_strategy["unknown"]["net_pnl"] == "-10"
+
+    by_score = result["by_decision_score_band"]
+    assert isinstance(by_score, dict)
+    assert by_score["65-<70"]["net_pnl"] == "5"
+    assert by_score["75-<80"]["net_pnl"] == "-2"
+    assert by_score["unknown"]["net_pnl"] == "-10"
+
     by_trend = result["by_trend_regime"]
     assert isinstance(by_trend, dict)
-    assert by_trend["uptrend"]["net_pnl"] == "5"
-    assert by_trend["downtrend"]["net_pnl"] == "-2"
+    assert by_trend["up"]["net_pnl"] == "5"
+    assert by_trend["down"]["net_pnl"] == "-2"
     assert by_trend["unknown"]["net_pnl"] == "-10"
 
     by_vol = result["by_volatility_regime"]
@@ -167,6 +214,7 @@ def test_closed_trade_performance_excludes_incomplete_excursions() -> None:
         side="long",
         reason="MARK_STOP_TRIGGERED",
         feature_id="feature-up",
+        decision_id="decision-1",
         hold_ms=60_000,
         mfe_r="2",
         mae_r="2",
@@ -176,6 +224,7 @@ def test_closed_trade_performance_excludes_incomplete_excursions() -> None:
     result = _closed_trade_performance(  # type: ignore[arg-type]
         (trade,),
         _FeatureStore(),  # type: ignore[arg-type]
+        _FactStore(),  # type: ignore[arg-type]
     )
 
     assert result["complete_excursion_trades"] == 0

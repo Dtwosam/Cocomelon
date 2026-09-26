@@ -283,8 +283,16 @@ def render_live_status(
                     average_holding_ms=performance.get("average_holding_ms", "n/a"),
                 ),
                 (
-                    "- feature-attribution misses: "
-                    f"`{performance.get('unattributed_feature_trades', 0)}`"
+                    "- decision-fact attribution: "
+                    f"`{performance.get('decision_fact_attributed_trades', 0)} / "
+                    f"{performance.get('trades', 0)}` trades"
+                ),
+                (
+                    "- decision-fact misses / feature-regime fallbacks / "
+                    "unattributed regimes: "
+                    f"`{performance.get('decision_fact_attribution_misses', 0)} / "
+                    f"{performance.get('feature_snapshot_fallback_trades', 0)} / "
+                    f"{performance.get('regime_attribution_misses', 0)}`"
                 ),
                 "",
                 "#### Excursion diagnostics",
@@ -392,6 +400,8 @@ def render_live_status(
                 )
 
         dimension_labels = (
+            ("by_lead_strategy", "Lead strategy"),
+            ("by_decision_score_band", "Decision score band"),
             ("by_side", "Side"),
             ("by_trend_regime", "Entry trend regime"),
             ("by_volatility_regime", "Entry volatility regime"),
