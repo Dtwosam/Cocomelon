@@ -34,7 +34,16 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
             "- authority: `RESEARCH ONLY / NO EXECUTION` · "
             f"enabled: `{str(enabled).lower()}`"
         ),
+        (
+            "- durable across workers: "
+            f"`{str(bool(raw.get('durable_state'))).lower()}` · "
+            f"restored this worker: "
+            f"`{str(bool(raw.get('state_restored'))).lower()}`"
+        ),
     ]
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
     if error:
         lines.append(f"- diagnostic error: `{error}`")
         return lines

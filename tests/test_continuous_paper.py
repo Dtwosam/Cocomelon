@@ -20,11 +20,13 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
+    _restore_cadence_shadow,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
+from cocomelon.evidence.contracts import BaselineReplayConfig
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
@@ -95,6 +97,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"net_pnl": str(trade.net_pnl)' in source
     assert '"net_r": str(trade.net_r)' in source
     assert '"exit_reason": trade.exit_reason' in source
+    assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
+    assert "pump.cadence_shadow.state_payload()" in source
 
 
 def test_record_pump_counts_each_closed_trade_once() -> None:
@@ -198,6 +202,22 @@ def test_record_pump_disables_failing_cadence_shadow() -> None:
     assert payload["enabled"] is False
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: diagnostic boom"
+
+
+def test_cadence_shadow_restore_failure_is_fail_open(tmp_path: Path) -> None:
+    path = tmp_path / "cadence-shadow-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    shadow = _restore_cadence_shadow(
+        path,
+        (MarketId("", "BTC"),),
+        replay_config=BaselineReplayConfig(),
+    )
+
+    payload = shadow.summary_payload()
+    assert payload["state_restored"] is False
+    assert payload["durable_state"] is True
+    assert "JSONDecodeError" in str(payload["state_restore_error"])
 
 
 def test_position_action_checkpoint_round_trip() -> None:

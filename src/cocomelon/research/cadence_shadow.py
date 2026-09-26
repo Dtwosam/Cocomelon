@@ -29,6 +29,7 @@ DEFAULT_COSTS: Final = ExecutionCostAssumptions(
     funding_reserve_fraction_per_hour=Decimal("0.0001"),
 )
 ZERO: Final = Decimal("0")
+CADENCE_SHADOW_STATE_SCHEMA_VERSION: Final = 1
 
 
 def _score_band(score: Decimal) -> str:
@@ -207,6 +208,96 @@ class ShadowCadenceOutcome:
             raise ValueError("net_return does not match gross minus costs")
 
 
+def _market_from_canonical(value: str) -> MarketId:
+    if ":" in value:
+        dex = value.split(":", 1)[0]
+        return MarketId.from_wire_name(dex, value)
+    return MarketId.from_wire_name("", value)
+
+
+def _sample_key(sample: ShadowCadenceDecision) -> tuple[int, str, int]:
+    return sample.cadence_ms, sample.decision_id, sample.horizon_ms
+
+
+def _sample_payload(sample: ShadowCadenceDecision) -> dict[str, object]:
+    return {
+        "cadence_ms": sample.cadence_ms,
+        "boundary_ms": sample.boundary_ms,
+        "evaluated_at_ms": sample.evaluated_at_ms,
+        "market": sample.market.canonical,
+        "direction": sample.direction.value,
+        "score": str(sample.score),
+        "lead_strategy": sample.lead_strategy,
+        "decision_id": sample.decision_id,
+        "feature_snapshot_id": sample.feature_snapshot_id,
+        "entry_px": str(sample.entry_px),
+        "horizon_ms": sample.horizon_ms,
+        "target_end_ms": sample.target_end_ms,
+        "cost_fraction": str(sample.cost_fraction),
+        "off_primary_boundary": sample.off_primary_boundary,
+    }
+
+
+def _sample_from_payload(raw: object) -> ShadowCadenceDecision:
+    if not isinstance(raw, dict):
+        raise ValueError("cadence shadow sample state must be an object")
+    off_primary_boundary = raw.get("off_primary_boundary")
+    if not isinstance(off_primary_boundary, bool):
+        raise ValueError(
+            "cadence shadow off_primary_boundary must be boolean"
+        )
+    return ShadowCadenceDecision(
+        cadence_ms=int(raw["cadence_ms"]),
+        boundary_ms=int(raw["boundary_ms"]),
+        evaluated_at_ms=int(raw["evaluated_at_ms"]),
+        market=_market_from_canonical(str(raw["market"])),
+        direction=Direction(str(raw["direction"])),
+        score=Decimal(str(raw["score"])),
+        lead_strategy=str(raw["lead_strategy"]),
+        decision_id=str(raw["decision_id"]),
+        feature_snapshot_id=str(raw["feature_snapshot_id"]),
+        entry_px=Decimal(str(raw["entry_px"])),
+        horizon_ms=int(raw["horizon_ms"]),
+        target_end_ms=int(raw["target_end_ms"]),
+        cost_fraction=Decimal(str(raw["cost_fraction"])),
+        off_primary_boundary=off_primary_boundary,
+    )
+
+
+def _outcome_payload(outcome: ShadowCadenceOutcome) -> dict[str, object]:
+    return {
+        "sample": _sample_payload(outcome.sample),
+        "exit_px": str(outcome.exit_px),
+        "gross_return": str(outcome.gross_return),
+        "net_return": str(outcome.net_return),
+    }
+
+
+def _outcome_from_payload(raw: object) -> ShadowCadenceOutcome:
+    if not isinstance(raw, dict):
+        raise ValueError("cadence shadow outcome state must be an object")
+    return ShadowCadenceOutcome(
+        sample=_sample_from_payload(raw["sample"]),
+        exit_px=Decimal(str(raw["exit_px"])),
+        gross_return=Decimal(str(raw["gross_return"])),
+        net_return=Decimal(str(raw["net_return"])),
+    )
+
+
+def _counter_from_payload(raw: object) -> Counter[str]:
+    if not isinstance(raw, dict):
+        raise ValueError("cadence shadow counter state must be an object")
+    counter: Counter[str] = Counter()
+    for key, value in raw.items():
+        if not isinstance(key, str) or isinstance(value, bool):
+            raise ValueError("cadence shadow counter state is invalid")
+        count = int(value)
+        if count < 0:
+            raise ValueError("cadence shadow counter values must be non-negative")
+        counter[key] = count
+    return counter
+
+
 def settle_shadow_decision(
     sample: ShadowCadenceDecision,
     *,
@@ -299,6 +390,9 @@ class CadenceShadowComparator:
         self._censored_count = 0
         self._skipped_missing_entry_px = 0
         self._skipped_missing_lead_strategy = 0
+        self._seen_decisions: set[tuple[int, str]] = set()
+        self._state_restored = False
+        self._state_restore_error: str | None = None
 
     def reconcile_markets(
         self,
@@ -326,6 +420,13 @@ class CadenceShadowComparator:
     ) -> None:
         counts = self._decision_counts[cadence_ms]
         for evaluation in epoch.markets:
+            decision_key = (
+                cadence_ms,
+                evaluation.decision.decision_id,
+            )
+            if decision_key in self._seen_decisions:
+                continue
+            self._seen_decisions.add(decision_key)
             direction = evaluation.decision.direction
             counts[direction.value] += 1
             if direction is Direction.NO_TRADE:
@@ -544,6 +645,227 @@ class CadenceShadowComparator:
             for label in labels
         }
 
+    def state_payload(self) -> dict[str, object]:
+        pending = sorted(
+            (
+                sample
+                for samples in self._pending.values()
+                for sample in samples
+            ),
+            key=lambda item: (
+                item.target_end_ms,
+                item.market.canonical,
+                item.cadence_ms,
+                item.decision_id,
+                item.horizon_ms,
+            ),
+        )
+        outcomes = sorted(
+            self._outcomes,
+            key=lambda item: (
+                item.sample.target_end_ms,
+                item.sample.market.canonical,
+                item.sample.cadence_ms,
+                item.sample.decision_id,
+                item.sample.horizon_ms,
+            ),
+        )
+        return {
+            "schema_version": CADENCE_SHADOW_STATE_SCHEMA_VERSION,
+            "horizons_ms": list(self._horizons_ms),
+            "costs": {
+                "round_trip_fee_fraction": str(
+                    self._costs.round_trip_fee_fraction
+                ),
+                "round_trip_slippage_fraction": str(
+                    self._costs.round_trip_slippage_fraction
+                ),
+                "funding_reserve_fraction_per_hour": str(
+                    self._costs.funding_reserve_fraction_per_hour
+                ),
+            },
+            "decision_counts": {
+                str(cadence_ms): dict(self._decision_counts[cadence_ms])
+                for cadence_ms in SUPPORTED_CADENCES_MS
+            },
+            "directional_counts_by_lead_strategy": {
+                str(cadence_ms): {
+                    label: dict(counter)
+                    for label, counter in sorted(
+                        self._directional_counts_by_lead_strategy[
+                            cadence_ms
+                        ].items()
+                    )
+                }
+                for cadence_ms in SUPPORTED_CADENCES_MS
+            },
+            "directional_counts_by_score_band": {
+                str(cadence_ms): {
+                    label: dict(counter)
+                    for label, counter in sorted(
+                        self._directional_counts_by_score_band[
+                            cadence_ms
+                        ].items()
+                    )
+                }
+                for cadence_ms in SUPPORTED_CADENCES_MS
+            },
+            "seen_decisions": [
+                [cadence_ms, decision_id]
+                for cadence_ms, decision_id in sorted(self._seen_decisions)
+            ],
+            "pending": [_sample_payload(sample) for sample in pending],
+            "outcomes": [_outcome_payload(outcome) for outcome in outcomes],
+            "censored_count": self._censored_count,
+            "skipped_missing_entry_px": self._skipped_missing_entry_px,
+            "skipped_missing_lead_strategy": (
+                self._skipped_missing_lead_strategy
+            ),
+        }
+
+    def restore_state(self, raw: object) -> None:
+        if not isinstance(raw, dict):
+            raise ValueError("cadence shadow state must be an object")
+        if raw.get("schema_version") != CADENCE_SHADOW_STATE_SCHEMA_VERSION:
+            raise ValueError("cadence shadow state schema is unsupported")
+        horizons_raw = raw.get("horizons_ms")
+        if not isinstance(horizons_raw, list):
+            raise ValueError("cadence shadow state horizons are invalid")
+        horizons = tuple(int(value) for value in horizons_raw)
+        if horizons != self._horizons_ms:
+            raise ValueError("cadence shadow state horizons do not match runtime")
+
+        costs_raw = raw.get("costs")
+        if not isinstance(costs_raw, dict):
+            raise ValueError("cadence shadow state costs are invalid")
+        expected_costs = {
+            "round_trip_fee_fraction": str(
+                self._costs.round_trip_fee_fraction
+            ),
+            "round_trip_slippage_fraction": str(
+                self._costs.round_trip_slippage_fraction
+            ),
+            "funding_reserve_fraction_per_hour": str(
+                self._costs.funding_reserve_fraction_per_hour
+            ),
+        }
+        if costs_raw != expected_costs:
+            raise ValueError("cadence shadow state costs do not match runtime")
+
+        decision_raw = raw.get("decision_counts")
+        lead_raw = raw.get("directional_counts_by_lead_strategy")
+        score_raw = raw.get("directional_counts_by_score_band")
+        if not isinstance(decision_raw, dict):
+            raise ValueError("cadence shadow decision counts are invalid")
+        if not isinstance(lead_raw, dict) or not isinstance(score_raw, dict):
+            raise ValueError("cadence shadow grouped counts are invalid")
+
+        decision_counts: dict[int, Counter[str]] = {}
+        lead_counts: dict[int, dict[str, Counter[str]]] = {}
+        score_counts: dict[int, dict[str, Counter[str]]] = {}
+        for cadence_ms in SUPPORTED_CADENCES_MS:
+            key = str(cadence_ms)
+            decision_counts[cadence_ms] = _counter_from_payload(
+                decision_raw.get(key, {})
+            )
+            raw_lead_groups = lead_raw.get(key, {})
+            raw_score_groups = score_raw.get(key, {})
+            if not isinstance(raw_lead_groups, dict):
+                raise ValueError("cadence shadow lead groups are invalid")
+            if not isinstance(raw_score_groups, dict):
+                raise ValueError("cadence shadow score groups are invalid")
+            lead_counts[cadence_ms] = defaultdict(
+                Counter,
+                {
+                    str(label): _counter_from_payload(counter)
+                    for label, counter in raw_lead_groups.items()
+                },
+            )
+            score_counts[cadence_ms] = defaultdict(
+                Counter,
+                {
+                    str(label): _counter_from_payload(counter)
+                    for label, counter in raw_score_groups.items()
+                },
+            )
+
+        seen_raw = raw.get("seen_decisions")
+        pending_raw = raw.get("pending")
+        outcomes_raw = raw.get("outcomes")
+        if not isinstance(seen_raw, list):
+            raise ValueError("cadence shadow seen decisions are invalid")
+        if not isinstance(pending_raw, list) or not isinstance(
+            outcomes_raw,
+            list,
+        ):
+            raise ValueError("cadence shadow evidence arrays are invalid")
+
+        seen: set[tuple[int, str]] = set()
+        for item in seen_raw:
+            if not isinstance(item, list) or len(item) != 2:
+                raise ValueError("cadence shadow seen decision is invalid")
+            cadence_ms = int(item[0])
+            decision_id = str(item[1])
+            if cadence_ms not in SUPPORTED_CADENCES_MS or not decision_id:
+                raise ValueError("cadence shadow seen decision is invalid")
+            seen.add((cadence_ms, decision_id))
+
+        pending_samples = tuple(_sample_from_payload(item) for item in pending_raw)
+        outcomes = tuple(_outcome_from_payload(item) for item in outcomes_raw)
+        seen.update(
+            (sample.cadence_ms, sample.decision_id)
+            for sample in pending_samples
+        )
+        seen.update(
+            (outcome.sample.cadence_ms, outcome.sample.decision_id)
+            for outcome in outcomes
+        )
+        all_keys = [_sample_key(sample) for sample in pending_samples]
+        all_keys.extend(_sample_key(outcome.sample) for outcome in outcomes)
+        if len(all_keys) != len(set(all_keys)):
+            raise ValueError("cadence shadow state contains duplicate evidence")
+        if any(sample.horizon_ms not in self._horizons_ms for sample in pending_samples):
+            raise ValueError("cadence shadow pending horizon is unsupported")
+        if any(
+            outcome.sample.horizon_ms not in self._horizons_ms
+            for outcome in outcomes
+        ):
+            raise ValueError("cadence shadow outcome horizon is unsupported")
+
+        pending: dict[
+            tuple[str, int],
+            list[ShadowCadenceDecision],
+        ] = defaultdict(list)
+        for sample in pending_samples:
+            pending[(sample.market.canonical, sample.target_end_ms)].append(
+                sample
+            )
+
+        censored_count = int(raw.get("censored_count", 0))
+        skipped_entry = int(raw.get("skipped_missing_entry_px", 0))
+        skipped_strategy = int(
+            raw.get("skipped_missing_lead_strategy", 0)
+        )
+        if min(censored_count, skipped_entry, skipped_strategy) < 0:
+            raise ValueError("cadence shadow state counters must be non-negative")
+
+        self._decision_counts = decision_counts
+        self._directional_counts_by_lead_strategy = lead_counts
+        self._directional_counts_by_score_band = score_counts
+        self._seen_decisions = seen
+        self._pending = pending
+        self._outcomes = list(outcomes)
+        self._censored_count = censored_count
+        self._skipped_missing_entry_px = skipped_entry
+        self._skipped_missing_lead_strategy = skipped_strategy
+        self._state_restored = True
+        self._state_restore_error = None
+
+    def mark_state_restore_error(self, error: str) -> None:
+        if not error.strip():
+            raise ValueError("cadence shadow restore error must not be empty")
+        self._state_restore_error = error
+
     def summary_payload(self) -> dict[str, object]:
         cadence_payload: dict[str, object] = {}
         for cadence_ms in SUPPORTED_CADENCES_MS:
@@ -617,7 +939,11 @@ class CadenceShadowComparator:
         return {
             "shadow_only": True,
             "execution_authority": False,
-            "session_only": True,
+            "session_only": False,
+            "durable_state": True,
+            "state_restored": self._state_restored,
+            "state_restore_error": self._state_restore_error,
+            "state_schema_version": CADENCE_SHADOW_STATE_SCHEMA_VERSION,
             "primary_execution_cadence_ms": FIFTEEN_MINUTES_MS,
             "candidate_cadence_ms": FIVE_MINUTES_MS,
             "horizons_ms": list(self._horizons_ms),
