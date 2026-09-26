@@ -44,7 +44,8 @@ def sync_execution_learning_evidence(
     *,
     candidate_id: str,
     kind: LearningEvidenceKind,
-    research_eligible_at_ms: int,
+    research_eligible_at_ms: int | None,
+    research_eligible_at_trade_close: bool = False,
     expected_replay_run_id: str | None = None,
     candidate_spec_id: str | None = None,
     campaign_id: str | None = None,
@@ -52,7 +53,12 @@ def sync_execution_learning_evidence(
 ) -> ExecutionLearningSyncResult:
     if not candidate_id.strip():
         raise ValueError("candidate_id must not be empty")
-    if research_eligible_at_ms < 0:
+    if research_eligible_at_trade_close:
+        if research_eligible_at_ms is not None:
+            raise ValueError(
+                "research_eligible_at_ms must be omitted when using trade-close eligibility"
+            )
+    elif research_eligible_at_ms is None or research_eligible_at_ms < 0:
         raise ValueError("research_eligible_at_ms must be non-negative")
     if expected_replay_run_id is not None and not expected_replay_run_id.strip():
         raise ValueError("expected_replay_run_id must not be empty when present")
@@ -101,11 +107,18 @@ def sync_execution_learning_evidence(
             else:
                 existing_features += 1
 
+        eligible_at_ms = (
+            trade.closed_at_ms
+            if research_eligible_at_trade_close
+            else research_eligible_at_ms
+        )
+        if eligible_at_ms is None:
+            raise AssertionError("execution learning eligibility is unresolved")
         record = execution_learning_record(
             trade,
             candidate_id=candidate_id,
             kind=kind,
-            research_eligible_at_ms=research_eligible_at_ms,
+            research_eligible_at_ms=eligible_at_ms,
             candidate_spec_id=candidate_spec_id,
             campaign_id=campaign_id,
         )
