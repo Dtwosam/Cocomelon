@@ -979,3 +979,29 @@ The purpose is to support honest counterfactual exit research such as fixed prof
 Operational verification immediately before this addition: continuous-paper worker #34 restored the durable cadence-shadow state from worker #31 with `state_restored=true` while preserving the open paper positions. The accumulated 5-minute off-cycle shadow sample was still research-only and did not modify production cadence.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed profit-lock mark-path counterfactual — 2026-09-26
+
+The first exit challenger over continuous-paper path evidence is deliberately frozen before results are read.
+
+Only two rules are admitted in this protocol:
+
+- `breakeven_after_0_5r`: once exact mark-path favorable excursion first reaches +0.5R gross, arm a gross-breakeven mark stop at 0R;
+- `lock_0_5r_after_1r`: once exact mark-path favorable excursion first reaches +1R gross, arm a mark stop that locks +0.5R gross.
+
+There is no threshold grid, optimizer, adaptive tuning, or winner selection inside this study. These thresholds match the +0.5R and +1R excursion diagnostics already published by the live paper runtime before the challenger was implemented.
+
+Counterfactual rules:
+
+- only prospectively captured complete trade paths are evaluated; incomplete path evidence is skipped rather than repaired or guessed;
+- path identity, market, direction, timestamps, entry/exit, quantity, stop, and initial risk must exactly match the durable journal or the study fails closed;
+- activation and trigger order is resolved only from the authenticated mark sequence;
+- when a candidate stop is crossed, the estimate uses the first observed crossing mark, not the ideal stop price, so mark gaps are not erased;
+- triggered counterfactuals subtract the same frozen research cost reserve used by the cadence shadow: 0.09% round-trip fee, 0.05% round-trip slippage, plus 0.01% funding reserve per elapsed hour;
+- if the candidate never triggers, the observed journal close is retained unchanged;
+- outputs are research-only mark-based estimates, not executable fill claims, because the sidecar does not preserve the full L2 book required to reproduce a market-order fill at the counterfactual trigger.
+
+This challenger has no execution authority and cannot change live paper stops, entries, exits, cadence, risk, or sizing.
+
+**LIVE TRADING: DISABLED.**
