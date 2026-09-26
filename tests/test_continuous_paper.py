@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -71,9 +72,7 @@ def test_stream_record_round_trip_is_canonical() -> None:
 
 
 def test_runtime_source_exposes_structured_live_heartbeat() -> None:
-    source = __import__(
-        "pathlib"
-    ).Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
     assert "COCOMELON_PAPER_HEARTBEAT " in source
     assert '"paper_only": True' in source
     assert '"live_orders": False' in source
