@@ -53,12 +53,17 @@ from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperRuntimeIdentity,
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.profit_protection_shadow import (
+    ProfitProtectionShadowComparator,
+    historical_profit_protection_summary,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
+PROFIT_PROTECTION_SHADOW_FILENAME = "profit-protection-shadow-summary.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -482,11 +487,17 @@ class _RecordPump:
         *,
         last_available_at_ms: int,
         cadence_shadow: CadenceShadowComparator | None = None,
+        execution: PaperExecutionAdapter | None = None,
+        profit_protection_shadow: ProfitProtectionShadowComparator | None = None,
+        profit_protection_shadow_error: str | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
         self.cadence_shadow = cadence_shadow
         self.cadence_shadow_error: str | None = None
+        self.execution = execution
+        self.profit_protection_shadow = profit_protection_shadow
+        self.profit_protection_shadow_error = profit_protection_shadow_error
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
@@ -516,6 +527,21 @@ class _RecordPump:
                     payload_json=record.payload_json,
                     event_kind=record.event_kind,
                 )
+            if (
+                self.profit_protection_shadow is not None
+                and self.execution is not None
+            ):
+                try:
+                    self.profit_protection_shadow.observe(
+                        record,
+                        tuple(self.execution.account.positions),
+                    )
+                except Exception as exc:
+                    self.profit_protection_shadow_error = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    self.profit_protection_shadow = None
+
             observations: tuple[JournalObservation, ...] = self.pipeline.on_record(
                 record,
                 available,
@@ -532,6 +558,19 @@ class _RecordPump:
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
                 self.session_closed_trades += 1
+            if (
+                self.profit_protection_shadow is not None
+                and self.execution is not None
+            ):
+                try:
+                    self.profit_protection_shadow.reconcile_positions(
+                        tuple(self.execution.account.positions)
+                    )
+                except Exception as exc:
+                    self.profit_protection_shadow_error = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    self.profit_protection_shadow = None
             if self.cadence_shadow is not None:
                 try:
                     self.cadence_shadow.observe(record, available)
@@ -583,6 +622,35 @@ class _RecordPump:
                 f"{type(exc).__name__}: {exc}"
             )
             self.cadence_shadow = None
+
+    def profit_protection_shadow_payload(self) -> dict[str, object]:
+        historical = historical_profit_protection_summary(
+            tuple(self.journal.iter_trades())
+        )
+        if self.profit_protection_shadow_error is not None:
+            live: dict[str, object] = {
+                "enabled": False,
+                "error": self.profit_protection_shadow_error,
+                "shadow_only": True,
+                "execution_authority": False,
+            }
+        elif self.profit_protection_shadow is None:
+            live = {
+                "enabled": False,
+                "error": None,
+                "shadow_only": True,
+                "execution_authority": False,
+            }
+        else:
+            live = dict(self.profit_protection_shadow.summary_payload())
+            live["enabled"] = True
+            live["error"] = None
+        return {
+            "shadow_only": True,
+            "execution_authority": False,
+            "live": live,
+            "retrospective": historical,
+        }
 
 
 def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
@@ -1027,6 +1095,7 @@ def _live_status_payload(
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
+        "profit_protection_shadow": pump.profit_protection_shadow_payload(),
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1213,6 +1282,33 @@ async def run_continuous_paper_session(
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
+        profit_protection_shadow = ProfitProtectionShadowComparator()
+        profit_protection_shadow_error: str | None = None
+        try:
+            positions_by_market = {
+                position.market.canonical: position
+                for position in execution.account.positions
+            }
+            for checkpoint in checkpoints:
+                position = positions_by_market.get(
+                    checkpoint.market.canonical
+                )
+                if position is None:
+                    continue
+                for mark_record in sorted(
+                    checkpoint.mark_observations,
+                    key=lambda item: item.available_at_ms,
+                ):
+                    profit_protection_shadow.observe(
+                        mark_record,
+                        (position,),
+                    )
+        except Exception as exc:
+            profit_protection_shadow_error = (
+                f"{type(exc).__name__}: {exc}"
+            )
+            profit_protection_shadow = None
+
         pump = _RecordPump(
             pipeline,
             journal,
@@ -1221,6 +1317,9 @@ async def run_continuous_paper_session(
                 selected,
                 replay_config=replay_config,
             ),
+            execution=execution,
+            profit_protection_shadow=profit_protection_shadow,
+            profit_protection_shadow_error=profit_protection_shadow_error,
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -1275,6 +1374,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / CADENCE_SHADOW_FILENAME,
                 pump.cadence_shadow_payload(),
+            )
+            _write_json_atomic(
+                root / PROFIT_PROTECTION_SHADOW_FILENAME,
+                pump.profit_protection_shadow_payload(),
             )
 
         persist_checkpoint()
