@@ -28,7 +28,11 @@ from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
-from cocomelon.hyperliquid.normalize import normalize_candles, normalize_funding_history, normalize_meta_and_asset_ctxs
+from cocomelon.hyperliquid.normalize import (
+    normalize_candles,
+    normalize_funding_history,
+    normalize_meta_and_asset_ctxs,
+)
 from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
@@ -550,7 +554,10 @@ async def run_continuous_paper_session(
         for market in selected:
             snapshot = snapshots.get(market.canonical)
             if snapshot is None:
-                raise RuntimeError(f"selected market missing from native registry: {market.canonical}")
+                raise RuntimeError(
+                    "selected market missing from native registry: "
+                    f"{market.canonical}"
+                )
             await pump.process(_record_from_public(market_snapshot_record_event(snapshot)))
         for market in selected:
             for candle in await _warmup_market(
