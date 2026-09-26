@@ -11,7 +11,13 @@ from pathlib import Path
 from typing import Any
 
 from cocomelon.config import ExecutionMode, Settings
-from cocomelon.domain.execution import ExecutionAttempt, PaperFill, PaperOrderPlan
+from cocomelon.domain.execution import (
+    ExecutionAttempt,
+    PaperFill,
+    PaperOrderPlan,
+    PositionAction,
+    PositionActionType,
+)
 from cocomelon.domain.journal import JournalObservation
 from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
@@ -223,6 +229,38 @@ def _record_from_payload(raw: object) -> ReplayRecord:
     )
 
 
+def _position_action_payload(action: PositionAction) -> dict[str, object]:
+    return {
+        "action_type": action.action_type.value,
+        "market": action.market.canonical,
+        "quantity": None if action.quantity is None else str(action.quantity),
+        "new_stop_price": (
+            None if action.new_stop_price is None else str(action.new_stop_price)
+        ),
+        "reason_codes": list(action.reason_codes),
+        "timestamp_ms": action.timestamp_ms,
+    }
+
+
+def _position_action_from_payload(raw: object) -> PositionAction:
+    if not isinstance(raw, dict):
+        raise ValueError("position action checkpoint must be an object")
+    reason_codes = raw.get("reason_codes")
+    if not isinstance(reason_codes, list) or not all(
+        isinstance(value, str) for value in reason_codes
+    ):
+        raise ValueError("position action reason_codes are invalid")
+    quantity_raw = raw.get("quantity")
+    stop_raw = raw.get("new_stop_price")
+    return PositionAction(
+        action_type=PositionActionType(str(raw["action_type"])),
+        market=_market_from_canonical(str(raw["market"])),
+        quantity=None if quantity_raw is None else Decimal(str(quantity_raw)),
+        new_stop_price=None if stop_raw is None else Decimal(str(stop_raw)),
+        reason_codes=tuple(reason_codes),
+        timestamp_ms=int(raw["timestamp_ms"]),
+    )
+
 def _checkpoint_payload(
     pipeline: BaselineReplayPipeline,
     *,
@@ -238,6 +276,10 @@ def _checkpoint_payload(
                 "feature_snapshot_id": item.feature_snapshot_id,
                 "equity_before": str(item.equity_before),
                 "exit_plan_ids": list(item.exit_plan_ids),
+                "position_actions": [
+                    _position_action_payload(action)
+                    for action in item.position_actions
+                ],
                 "mark_observations": [
                     _record_payload(record) for record in item.mark_observations
                 ],
@@ -292,9 +334,12 @@ def _load_checkpoint(path: Path) -> tuple[
         if not isinstance(item, dict):
             raise ValueError("continuous paper lifecycle checkpoint is invalid")
         exit_ids = item.get("exit_plan_ids")
+        actions = item.get("position_actions", [])
         marks = item.get("mark_observations")
         if not isinstance(exit_ids, list) or not all(isinstance(v, str) for v in exit_ids):
             raise ValueError("continuous paper exit_plan_ids are invalid")
+        if not isinstance(actions, list):
+            raise ValueError("continuous paper position actions are invalid")
         if not isinstance(marks, list):
             raise ValueError("continuous paper mark observations are invalid")
         checkpoints.append(
@@ -304,6 +349,9 @@ def _load_checkpoint(path: Path) -> tuple[
                 feature_snapshot_id=str(item["feature_snapshot_id"]),
                 equity_before=Decimal(str(item["equity_before"])),
                 exit_plan_ids=tuple(exit_ids),
+                position_actions=tuple(
+                    _position_action_from_payload(action) for action in actions
+                ),
                 mark_observations=tuple(_record_from_payload(record) for record in marks),
             )
         )
