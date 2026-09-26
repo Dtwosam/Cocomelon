@@ -167,6 +167,11 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
         "15m decision-score forward outcomes",
         preferred_order=("<65", "65-<70", "70-<75", "75-<80", "80+"),
     )
+    grouped_quality_table(
+        "outcomes_by_direction_by_horizon_ms",
+        "15m direction forward outcomes",
+        preferred_order=("long", "short"),
+    )
     lines.extend(
         [
             (
