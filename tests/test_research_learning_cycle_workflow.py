@@ -13,7 +13,8 @@ def test_learning_cycle_workflow_follows_successful_learning_sync() -> None:
     source = _source()
 
     assert "Research Autonomous Learning Cycle" in source
-    assert 'workflows: ["Research Learning Evidence Sync"]' in source
+    assert '"Research Learning Evidence Sync"' in source
+    assert '"Continuous Paper Learning Evidence Sync"' in source
     assert "types: [completed]" in source
     assert "workflow_dispatch:" in source
     assert "upstream_run_id:" in source
@@ -39,6 +40,7 @@ def test_learning_cycle_workflow_binds_exact_state_artifact_and_protocol() -> No
     assert 'sync.get("lineage_entry_id") != lineage.entry_id' in source
     assert 'run.get("id") != int(os.environ["RUN_ID"])' in source
     assert 'run.get("head_sha")' in source
+    assert ".github/workflows/continuous-paper-learning-evidence.yml" in source
 
 
 def test_learning_cycle_workflow_remains_research_only() -> None:
