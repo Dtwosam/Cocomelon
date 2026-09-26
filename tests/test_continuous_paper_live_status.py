@@ -200,6 +200,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "by_volatility_regime": {},
         },
+        "trade_path_evidence": {
+            "research_only": True,
+            "durable_across_workers": True,
+            "closed_path_count": 3,
+            "staged_open_path_count": 1,
+            "capture_error": None,
+        },
         "cadence_shadow": {
             "enabled": True,
             "error": None,
@@ -356,6 +363,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "Stop-lock R" in output
     assert "| BTC | long | 0.01 | 65000 | 64000 | 65200 | 2 | 0.2 | 4 | 0.4 | yes | 10 |" in output
     assert "gross open notional" in output
+    assert "### Trade-path evidence" in output
+    assert "completed exact trade paths" in output
+    assert "staged open trade paths" in output
+    assert "`3`" in output
+    assert "`1`" in output
+    assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "5m cadence shadow diagnostic" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "durable across workers" in output
