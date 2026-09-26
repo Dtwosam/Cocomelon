@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   actions: write
+  issues: write
 
 jobs:
   paper:
@@ -33,6 +34,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       COCOMELON_EXECUTION_MODE: paper
       STATE_ROOT: continuous-paper-state
+      LIVE_STATUS_ISSUE: "469"
     steps:
       - name: Skip bootstrap/watchdog when a continuous paper run is already active
         id: guard
@@ -187,7 +189,38 @@ jobs:
         if: ${{ steps.guard.outputs.skip != 'true' }}
         run: |
           set -euo pipefail
-          cocomelon-continuous-paper             --state-root "$STATE_ROOT"             --duration-seconds 19800             --deep-limit 20             --context-poll-seconds 60             --selection-refresh-seconds 300             --checkpoint-seconds 30             | tee continuous-paper-session.json
+          last_status_publish=0
+          cocomelon-continuous-paper \
+            --state-root "$STATE_ROOT" \
+            --duration-seconds 19800 \
+            --deep-limit 20 \
+            --context-poll-seconds 60 \
+            --selection-refresh-seconds 300 \
+            --checkpoint-seconds 30 \
+            | while IFS= read -r line; do
+                printf '%s\n' "$line"
+                if [[ "$line" != COCOMELON_PAPER_HEARTBEAT\ * ]]; then
+                  continue
+                fi
+                now="$(date +%s)"
+                if (( now - last_status_publish < 60 )); then
+                  continue
+                fi
+                heartbeat="${line#COCOMELON_PAPER_HEARTBEAT }"
+                if HEARTBEAT_JSON="$heartbeat" \
+                  python scripts/render_continuous_paper_live_status.py \
+                  > /tmp/continuous-paper-live.md; then
+                  if gh issue edit "$LIVE_STATUS_ISSUE" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --body-file /tmp/continuous-paper-live.md >/dev/null; then
+                    last_status_publish="$now"
+                  else
+                    echo "::warning::failed to publish continuous paper live status"
+                  fi
+                else
+                  echo "::warning::failed to render continuous paper live status"
+                fi
+              done | tee continuous-paper-session.json
 
       - name: Upload durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
