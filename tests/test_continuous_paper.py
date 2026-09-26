@@ -26,6 +26,7 @@ from cocomelon.continuous_paper import (
     _RecordPump,
     _restore_cadence_shadow,
     _restore_profit_lock_execution_shadow,
+    _restore_prospective_entry_filter,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
@@ -131,6 +132,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "profit_lock_execution_readiness(payload)" in source
     assert '"min_economically_evaluated_trades_per_rule"' in source
     assert '"min_simulated_full_closes_per_rule"' in source
+    assert (
+        'PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (' in source
+    )
+    assert '"prospective_entry_filter": prospective_entry_filter' in source
+    assert "prospective_entry_filter_state.payload()" in source
 
 
 def test_profit_lock_counterfactual_telemetry_fails_open(
@@ -198,6 +204,22 @@ def test_profit_lock_execution_shadow_restore_failure_is_fail_open(
     assert payload["execution_authority"] is False
     assert payload["state_restored"] is False
     assert "JSONDecodeError" in str(payload["state_restore_error"])
+
+
+def test_prospective_entry_filter_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "prospective-entry-filter-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_prospective_entry_filter(
+        path,
+        started_at_ms=456,
+    )
+
+    assert state.started_at_ms == 456
+    assert error is not None
+    assert "JSONDecodeError" in error
 
 
 def test_position_protection_metrics_handle_long_and_short_stops() -> None:
