@@ -38,8 +38,9 @@ def test_learning_catchup_repairs_one_stage_at_a_time() -> None:
     )
     assert sync_dispatch < cycle_dispatch
     assert "exit 0" in source[sync_dispatch:cycle_dispatch]
-    assert '-f upstream_run_id="$LATEST_CAMPAIGN_RUN_ID"' in source
-    assert '-f upstream_run_id="$LATEST_SYNC_RUN_ID"' in source
+    assert '-f "inputs[upstream_run_id]=$LATEST_CAMPAIGN_RUN_ID"' in source
+    assert '-f "inputs[upstream_run_id]=$LATEST_SYNC_RUN_ID"' in source
+    assert '-f upstream_run_id=' not in source
 
 
 def test_learning_catchup_uses_cumulative_state_and_skips_zero_new_records() -> None:
