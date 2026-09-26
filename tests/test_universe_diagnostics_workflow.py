@@ -17,3 +17,9 @@ def test_universe_diagnostics_workflow_is_non_economic_and_publishes_issue() -> 
     assert "private_key" not in lowered
     assert "live_ack" not in lowered
     assert "exchange endpoint" not in lowered
+
+
+def test_universe_diagnostics_uses_real_actions_token_expression() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "GH_TOKEN: ${{ github.token }}" in source
+    assert r"GH_TOKEN: \\${{ github.token }}" not in source

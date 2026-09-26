@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GH_TOKEN: \${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
       COCOMELON_EXECUTION_MODE: paper
       DIAGNOSTICS_ISSUE: "483"
     steps:
