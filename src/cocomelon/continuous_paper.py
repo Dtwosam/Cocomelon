@@ -1002,6 +1002,7 @@ async def run_continuous_paper_session(
             processed_records=pump.processed_records,
             journal_observations=pump.journal_observations,
             closed_trades=len(closed_trades),
+            session_closed_trades=pump.session_closed_trades,
             open_positions=len(execution.account.positions),
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
