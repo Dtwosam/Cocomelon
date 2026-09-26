@@ -11,7 +11,10 @@ SCRIPT = "scripts/render_continuous_paper_live_status.py"
 def test_live_status_renderer_exposes_current_position_and_paper_only_state() -> None:
     payload = {
         "timestamp_ms": 1_700_000_000_000,
+        "starting_cash": "10000",
         "equity": "10002.5",
+        "total_account_pnl": "2.5",
+        "total_return_fraction": "0.00025",
         "cash": "9990",
         "unrealized_pnl": "12.5",
         "realized_gross_pnl": "0",
@@ -22,6 +25,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "open_planned_risk": "10",
         "open_planned_risk_fraction_of_equity": "0.0009997500624843789052736815796",
         "gross_open_notional": "650",
+        "gross_open_notional_fraction_of_equity": "0.06498375406148462884278930267",
         "available_margin": "9500",
         "execution_healthy": True,
         "selected_market_count": 20,
@@ -69,6 +73,56 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "exit_reason": "thesis_exit",
             }
         ],
+        "closed_trade_performance": {
+            "trades": 3,
+            "wins": 1,
+            "losses": 2,
+            "breakeven": 0,
+            "net_pnl": "-7",
+            "mean_net_pnl": "-2.333333333333333333333333333",
+            "mean_net_r": "-0.2333333333333333333333333333",
+            "average_holding_ms": 120000,
+            "gross_profit": "5",
+            "gross_loss_abs": "12",
+            "profit_factor": "0.4166666666666666666666666667",
+            "unattributed_feature_trades": 0,
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_pnl": "1.5",
+                    "mean_net_r": "0.15",
+                    "average_holding_ms": 90000,
+                },
+                "short": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-10",
+                    "mean_net_pnl": "-10",
+                    "mean_net_r": "-1",
+                    "average_holding_ms": 180000,
+                },
+            },
+            "by_exit_reason": {},
+            "by_trend_regime": {
+                "downtrend": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "breakeven": 0,
+                    "net_pnl": "-12",
+                    "mean_net_pnl": "-6",
+                    "mean_net_r": "-0.6",
+                    "average_holding_ms": 150000,
+                }
+            },
+            "by_volatility_regime": {},
+        },
         "positions": [
             {
                 "market": "BTC",
@@ -130,3 +184,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`2`" in output
     assert "open planned risk" in output
     assert "gross open notional" in output
+    assert "starting cash" in output
+    assert "total account PnL" in output
+    assert "2.5" in output
+    assert "total return fraction" in output
+    assert "gross open notional / equity" in output
+    assert "### Closed trade performance" in output
+    assert "| 3 | 1 | 2 | 0 | -7 | 5 | 12 |" in output
+    assert "#### Side attribution" in output
+    assert "| long | 2 | 1 | 1 | 0 | 3 |" in output
+    assert "#### Entry trend regime attribution" in output
+    assert "| downtrend | 2 | 0 | 2 | 0 | -12 |" in output
