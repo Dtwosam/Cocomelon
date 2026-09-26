@@ -245,6 +245,19 @@ def render_live_status(
             "- open planned risk / equity: "
             f"`{payload.get('open_planned_risk_fraction_of_equity', '0')}`"
         ),
+        (
+            "- stop-trigger gross PnL at current stops: "
+            f"`{payload.get('open_stop_trigger_gross_pnl', '0')}`"
+        ),
+        (
+            "- stop-trigger gross R / planned risk: "
+            f"`{payload.get('open_stop_trigger_gross_r')}`"
+        ),
+        (
+            "- positions with profit-protecting stop: "
+            f"`{payload.get('open_positions_with_profit_protected_stop', 0)} / "
+            f"{payload.get('open_position_count', len(positions_raw))}`"
+        ),
         f"- gross open notional: `{payload.get('gross_open_notional', '0')}`",
         (
             "- gross open notional / equity: "
@@ -265,9 +278,13 @@ def render_live_status(
             [
                 (
                     "| Market | Side | Qty | Entry | Stop | Mark | "
-                    "Unrealized gross PnL | Planned risk |"
+                    "Unrealized gross PnL | Current R | Stop-lock PnL | "
+                    "Stop-lock R | Protected? | Planned risk |"
                 ),
-                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+                (
+                    "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: | --- | ---: |"
+                ),
             ]
         )
         for raw in positions_raw:
@@ -275,7 +292,8 @@ def render_live_status(
                 raise ValueError("position must be an object")
             lines.append(
                 "| {market} | {side} | {quantity} | {entry} | {stop} | "
-                "{mark} | {pnl} | {risk} |".format(
+                "{mark} | {pnl} | {current_r} | {stop_pnl} | {stop_r} | "
+                "{protected} | {risk} |".format(
                     market=raw["market"],
                     side=raw["side"],
                     quantity=raw["quantity"],
@@ -283,6 +301,14 @@ def render_live_status(
                     stop=raw["stop_price"],
                     mark=raw["latest_mark"],
                     pnl=raw["unrealized_gross_pnl"],
+                    current_r=raw.get("current_gross_r") or "n/a",
+                    stop_pnl=raw.get("stop_trigger_gross_pnl", "n/a"),
+                    stop_r=raw.get("stop_trigger_gross_r", "n/a"),
+                    protected=(
+                        "yes"
+                        if raw.get("stop_protects_profit") is True
+                        else "no"
+                    ),
                     risk=raw["planned_risk"],
                 )
             )

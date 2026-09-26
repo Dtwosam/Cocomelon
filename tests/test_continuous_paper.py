@@ -15,6 +15,7 @@ from cocomelon.continuous_paper import (
     _load_checkpoint,
     _position_action_from_payload,
     _position_action_payload,
+    _position_protection_metrics,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
@@ -99,6 +100,71 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"exit_reason": trade.exit_reason' in source
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
     assert "pump.cadence_shadow.state_payload()" in source
+
+
+def test_position_protection_metrics_handle_long_and_short_stops() -> None:
+    long = _position_protection_metrics(
+        side="long",
+        quantity=Decimal("2"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("102"),
+        latest_mark=Decimal("104"),
+        planned_risk=Decimal("10"),
+    )
+    short = _position_protection_metrics(
+        side="short",
+        quantity=Decimal("2"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("98"),
+        latest_mark=Decimal("96"),
+        planned_risk=Decimal("10"),
+    )
+
+    assert long["unrealized_gross_pnl"] == "8"
+    assert long["current_gross_r"] == "0.8"
+    assert long["stop_trigger_gross_pnl"] == "4"
+    assert long["stop_trigger_gross_r"] == "0.4"
+    assert long["stop_protects_profit"] is True
+
+    assert short["unrealized_gross_pnl"] == "8"
+    assert short["current_gross_r"] == "0.8"
+    assert short["stop_trigger_gross_pnl"] == "4"
+    assert short["stop_trigger_gross_r"] == "0.4"
+    assert short["stop_protects_profit"] is True
+
+
+def test_position_protection_metrics_allow_legacy_zero_planned_risk() -> None:
+    metrics = _position_protection_metrics(
+        side="long",
+        quantity=Decimal("1"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("99"),
+        latest_mark=Decimal("101"),
+        planned_risk=Decimal("0"),
+    )
+
+    assert metrics["unrealized_gross_pnl"] == "1"
+    assert metrics["current_gross_r"] is None
+    assert metrics["stop_trigger_gross_pnl"] == "-1"
+    assert metrics["stop_trigger_gross_r"] is None
+    assert metrics["stop_protects_profit"] is False
+
+
+def test_position_protection_metrics_keep_unprotected_stop_negative() -> None:
+    metrics = _position_protection_metrics(
+        side="short",
+        quantity=Decimal("5"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("102"),
+        latest_mark=None,
+        planned_risk=Decimal("10"),
+    )
+
+    assert metrics["unrealized_gross_pnl"] is None
+    assert metrics["current_gross_r"] is None
+    assert metrics["stop_trigger_gross_pnl"] == "-10"
+    assert metrics["stop_trigger_gross_r"] == "-1"
+    assert metrics["stop_protects_profit"] is False
 
 
 def test_record_pump_counts_each_closed_trade_once() -> None:
