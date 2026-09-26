@@ -144,6 +144,10 @@ def render_live_status(
             "",
             f"- selected markets: `{payload['selected_market_count']}`",
             f"- processed records: `{payload['processed_records']}`",
+            (
+                "- duplicate records dropped: "
+                f"`{payload.get('duplicate_records_dropped', 0)}`"
+            ),
             f"- journal observations: `{payload['journal_observations']}`",
             "",
             "<details><summary>Full heartbeat JSON</summary>",
