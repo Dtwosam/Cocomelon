@@ -562,6 +562,24 @@ def _live_status_payload(
         if execution.account.equity == 0
         else open_planned_risk / execution.account.equity
     )
+    realized_net_pnl = (
+        execution.account.realized_gross_pnl
+        - execution.account.cumulative_fees
+        + execution.account.cumulative_funding
+    )
+    total_account_pnl = (
+        execution.account.equity - execution.account.starting_cash
+    )
+    total_return_fraction = (
+        Decimal("0")
+        if execution.account.starting_cash == 0
+        else total_account_pnl / execution.account.starting_cash
+    )
+    gross_open_notional_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else execution.account.gross_open_notional / execution.account.equity
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -601,6 +619,9 @@ def _live_status_payload(
             open_planned_risk_fraction
         ),
         "gross_open_notional": str(execution.account.gross_open_notional),
+        "gross_open_notional_fraction_of_equity": str(
+            gross_open_notional_fraction
+        ),
         "available_margin": str(execution.account.available_margin),
         "session_decision_epochs": activity.decision_epochs,
         "last_decision_boundary_ms": activity.last_decision_boundary_ms,
@@ -621,10 +642,14 @@ def _live_status_payload(
         "session_opening_fills": activity.opening_fills,
         "open_position_count": len(positions),
         "positions": positions,
+        "starting_cash": str(execution.account.starting_cash),
         "cash": str(execution.account.cash),
         "equity": str(execution.account.equity),
+        "total_account_pnl": str(total_account_pnl),
+        "total_return_fraction": str(total_return_fraction),
         "unrealized_pnl": str(execution.account.unrealized_pnl),
         "realized_gross_pnl": str(execution.account.realized_gross_pnl),
+        "realized_net_pnl": str(realized_net_pnl),
         "cumulative_fees": str(execution.account.cumulative_fees),
         "cumulative_funding": str(execution.account.cumulative_funding),
         "execution_healthy": execution.health.healthy_for_new_exposure,

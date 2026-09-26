@@ -11,18 +11,23 @@ SCRIPT = "scripts/render_continuous_paper_live_status.py"
 def test_live_status_renderer_exposes_current_position_and_paper_only_state() -> None:
     payload = {
         "timestamp_ms": 1_700_000_000_000,
+        "starting_cash": "10000",
         "equity": "10002.5",
+        "total_account_pnl": "2.5",
+        "total_return_fraction": "0.00025",
         "cash": "9990",
         "unrealized_pnl": "12.5",
         "realized_gross_pnl": "0",
+        "realized_net_pnl": "-0.4",
         "cumulative_fees": "0.5",
         "cumulative_funding": "0",
         "closed_trades": 0,
         "open_planned_risk": "10",
         "open_planned_risk_fraction_of_equity": "0.0009997500624843789052736815796",
-        "gross_open_notional": "650",
-        "available_margin": "9500",
+        "gross_open_notional": "1200",
         "execution_healthy": True,
+        "gross_open_notional_fraction_of_equity": "0.11997",
+        "available_margin": "8800",
         "selected_market_count": 20,
         "processed_records": 123,
         "journal_observations": 7,
@@ -107,6 +112,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "64000" in output
     assert "65200" in output
     assert "12345" in output
+    assert "total account PnL" in output
+    assert "2.5" in output
+    assert "total return fraction" in output
+    assert "0.00025" in output
+    assert "realized net PnL" in output
+    assert "-0.4" in output
+    assert "gross open notional / equity" in output
     assert "Recent closed trades" in output
     assert "ETH" in output
     assert "8.5" in output

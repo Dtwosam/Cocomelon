@@ -90,6 +90,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"session_risk"' in source
     assert '"open_planned_risk"' in source
     assert '"open_planned_risk_fraction_of_equity"' in source
+    assert '"realized_net_pnl"' in source
+    assert '"total_account_pnl"' in source
+    assert '"total_return_fraction"' in source
+    assert '"gross_open_notional_fraction_of_equity"' in source
     assert '"recent_closed_trades"' in source
     assert '"net_pnl": str(trade.net_pnl)' in source
     assert '"net_r": str(trade.net_r)' in source
