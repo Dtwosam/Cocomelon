@@ -16,6 +16,7 @@ from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline, OpenLifecycleCheckpoint
 from cocomelon.evidence.recording import (
     RecordedPublicEvent,
@@ -24,7 +25,6 @@ from cocomelon.evidence.recording import (
     funding_rate_record_event,
     market_snapshot_record_event,
 )
-from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
