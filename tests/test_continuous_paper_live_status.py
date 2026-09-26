@@ -18,6 +18,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "cumulative_fees": "0.5",
         "cumulative_funding": "0",
         "closed_trades": 0,
+        "open_planned_risk": "10",
+        "open_planned_risk_fraction_of_equity": "0.0009997500624843789052736815796",
+        "gross_open_notional": "650",
+        "available_margin": "9500",
         "execution_healthy": True,
         "selected_market_count": 20,
         "processed_records": 123,
@@ -84,3 +88,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1 / 0 / 19`" in output
     assert "risk evaluations / approvals / rejections" in output
     assert "opening execution attempts / fills" in output
+    assert "strategy reasons:" in output
+    assert "NO_SIGNAL=19" in output
+    assert "risk reasons:" in output
+    assert "APPROVED=1" in output
+    assert "open planned risk" in output
+    assert "gross open notional" in output
