@@ -70,6 +70,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "funding_cash_pnl": "0.1",
                 "net_pnl": "8.5",
                 "net_r": "0.85",
+                "mfe_r": "1.4",
+                "mae_r": "0.25",
+                "excursion_complete": True,
                 "exit_reason": "thesis_exit",
             }
         ],
@@ -95,6 +98,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "losses_with_mfe_lt_0_25r": 1,
             "losses_after_mfe_ge_0_5r": 1,
             "losses_after_mfe_ge_1r": 0,
+            "mean_peak_to_close_giveback_r": "0.8666666666666666666666666667",
+            "mean_giveback_after_mfe_ge_0_5r": "0.75",
+            "mean_giveback_after_mfe_ge_1r": "0.7",
+            "positive_closes_after_mfe_ge_0_5r": 1,
+            "positive_closes_after_mfe_ge_1r": 1,
+            "mean_final_net_r_after_mfe_ge_0_5r": "0.15",
+            "mean_final_net_r_after_mfe_ge_1r": "0.5",
             "by_side": {
                 "long": {
                     "trades": 2,
@@ -117,7 +127,34 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "average_holding_ms": 180000,
                 },
             },
-            "by_exit_reason": {},
+            "by_exit_reason": {
+                "OPPOSITE_FRESH_THESIS": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_pnl": "1.5",
+                    "mean_net_r": "0.15",
+                    "average_holding_ms": 90000,
+                    "complete_excursion_trades": 2,
+                    "incomplete_or_missing_excursion_trades": 0,
+                    "mean_mfe_r": "0.9",
+                    "mean_mae_r": "0.55",
+                    "mfe_ge_0_5r": 2,
+                    "mfe_ge_1r": 1,
+                    "losses_with_mfe_lt_0_25r": 0,
+                    "losses_after_mfe_ge_0_5r": 1,
+                    "losses_after_mfe_ge_1r": 0,
+                    "mean_peak_to_close_giveback_r": "0.75",
+                    "mean_giveback_after_mfe_ge_0_5r": "0.75",
+                    "mean_giveback_after_mfe_ge_1r": "0.7",
+                    "positive_closes_after_mfe_ge_0_5r": 1,
+                    "positive_closes_after_mfe_ge_1r": 1,
+                    "mean_final_net_r_after_mfe_ge_0_5r": "0.15",
+                    "mean_final_net_r_after_mfe_ge_1r": "0.5",
+                }
+            },
             "by_trend_regime": {
                 "downtrend": {
                     "trades": 2,
@@ -245,6 +282,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "0.6333333333333333333333333333" in output
     assert "losses that never reached +0.25R MFE" in output
     assert "losses after reaching +0.5R / +1R MFE" in output
+    assert "MFE R | MAE R" in output
+    assert "1.4" in output
+    assert "0.25" in output
+    assert "#### Exit giveback diagnostics" in output
+    assert "mean peak-to-close giveback" in output
+    assert "0.8666666666666666666666666667" in output
+    assert "positive closes after reaching +0.5R / +1R" in output
+    assert "#### Exit-path giveback attribution" in output
+    assert "| OPPOSITE_FRESH_THESIS | 2 | 2 | 1 | 1 | 0.75 | 0.75 | 0.15 |" in output
     assert "| 3 | 1 | 2 | 0 | -7 | 5 | 12 |" in output
     assert "#### Side attribution" in output
     assert "| long | 2 | 1 | 1 | 0 | 3 |" in output
