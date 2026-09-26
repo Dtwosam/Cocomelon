@@ -1,0 +1,71 @@
+name: Universe Opportunity Coverage Diagnostics
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/universe-opportunity-diagnostics.yml"
+      - "src/cocomelon/universe_diagnostics.py"
+      - "src/cocomelon/universe_diagnostics_cli.py"
+      - "scripts/render_universe_opportunity_diagnostics.py"
+      - "pyproject.toml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17,47 * * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: \${{ github.token }}
+      COCOMELON_EXECUTION_MODE: paper
+      DIAGNOSTICS_ISSUE: "483"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install runtime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Collect native and HIP-3 opportunity coverage
+        run: |
+          set -euo pipefail
+          cocomelon-universe-diagnostics \
+            --output universe-opportunity-diagnostics.json \
+            --deep-limit 20 \
+            --top-hip3-limit 10
+
+      - name: Render diagnostics
+        run: |
+          python scripts/render_universe_opportunity_diagnostics.py \
+            --input universe-opportunity-diagnostics.json \
+            > universe-opportunity-diagnostics.md
+
+      - name: Publish live diagnostics
+        run: |
+          gh issue edit "$DIAGNOSTICS_ISSUE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Universe Opportunity Coverage — Live Diagnostics" \
+            --body-file universe-opportunity-diagnostics.md
+
+      - name: Upload diagnostic snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: universe-opportunity-diagnostics-\${{ github.run_id }}-\${{ github.run_attempt }}
+          path: |
+            universe-opportunity-diagnostics.json
+            universe-opportunity-diagnostics.md
+          if-no-files-found: error
+          retention-days: 30
