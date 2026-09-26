@@ -2,7 +2,9 @@ name: Research Autonomous Learning Cycle
 
 on:
   workflow_run:
-    workflows: ["Research Learning Evidence Sync"]
+    workflows:
+      - "Research Learning Evidence Sync"
+      - "Continuous Paper Learning Evidence Sync"
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -85,9 +87,16 @@ jobs:
               raise SystemExit("learning sync run did not succeed")
           if run.get("event") not in {"workflow_run", "workflow_dispatch"}:
               raise SystemExit("learning sync run event is invalid")
-          if run.get("path") != ".github/workflows/research-learning-evidence.yml":
+          trusted_syncs = {
+              ".github/workflows/research-learning-evidence.yml":
+                  "Research Learning Evidence Sync",
+              ".github/workflows/continuous-paper-learning-evidence.yml":
+                  "Continuous Paper Learning Evidence Sync",
+          }
+          expected_name = trusted_syncs.get(run.get("path"))
+          if expected_name is None:
               raise SystemExit("learning sync workflow path is invalid")
-          if run.get("name") != "Research Learning Evidence Sync":
+          if run.get("name") != expected_name:
               raise SystemExit("learning sync workflow name is invalid")
           head_sha = run.get("head_sha")
           if (
