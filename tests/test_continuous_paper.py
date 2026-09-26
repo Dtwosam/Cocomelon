@@ -217,3 +217,13 @@ def test_runtime_persists_authenticated_learning_features() -> None:
         '"feature_snapshot_state_digest": self.feature_snapshot_state_digest'
         in source
     )
+
+
+def test_runtime_persists_opening_runtime_lineage() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    assert "ContinuousPaperOpeningLineageStore(" in source
+    assert 'root / "opening-lineage"' in source
+    assert "_ContinuousOpeningLineageSink" in source
+    assert "opening_lifecycle_sink=" in source
+    assert '"opening_lineage_count": self.opening_lineage_count' in source
+    assert '"opening_lineage_state_digest": self.opening_lineage_state_digest' in source
