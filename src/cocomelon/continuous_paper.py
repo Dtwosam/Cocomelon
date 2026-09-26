@@ -1804,13 +1804,14 @@ async def run_continuous_paper_session(
             received_at_ms=initial_received_at_ms,
         )
         pinned = tuple(position.market for position in execution.account.positions)
+        initial_rank_observed_at_ms = utc_now_ms()
         _initial_features, initial_ranks = _startup_ranks(
             snapshots,
-            as_of_ms=initial_received_at_ms,
+            as_of_ms=initial_rank_observed_at_ms,
         )
         rank_tracker.update(
             initial_ranks,
-            observed_at_ms=initial_received_at_ms,
+            observed_at_ms=initial_rank_observed_at_ms,
         )
         selected = _ranked_selection(
             snapshots,
@@ -2019,13 +2020,14 @@ async def run_continuous_paper_session(
                         await pump.process(
                             _record_from_public(market_snapshot_record_event(snapshot))
                         )
+                rank_observed_at_ms = utc_now_ms()
                 _refreshed_features, refreshed_ranks = _startup_ranks(
                     refreshed,
-                    as_of_ms=now_ms,
+                    as_of_ms=rank_observed_at_ms,
                 )
                 rank_tracker.update(
                     refreshed_ranks,
-                    observed_at_ms=now_ms,
+                    observed_at_ms=rank_observed_at_ms,
                 )
                 await refresh_funding()
 
