@@ -40,6 +40,8 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert 'git diff --name-only "$GITHUB_SHA" FETCH_HEAD --' in source
     assert "src/cocomelon/continuous_paper.py" in source
     assert "src/cocomelon/risk" in source
+    assert "src/cocomelon/research/cadence_shadow.py" in source
+    assert "src/cocomelon/research/continuous_paper_trade_paths.py" in source
     assert "src/cocomelon/strategies" in source
     assert "touch /tmp/continuous-paper-upgrade-requested" in source
     assert "new continuous-paper runtime code detected on main" in source
@@ -50,6 +52,8 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/continuous_paper.py"' in source
     assert '"src/cocomelon/execution/**"' in source
     assert '"src/cocomelon/risk/**"' in source
+    assert '"src/cocomelon/research/cadence_shadow.py"' in source
+    assert '"src/cocomelon/research/continuous_paper_trade_paths.py"' in source
     assert '"src/cocomelon/strategies/**"' in source
     assert '"src/cocomelon/hyperliquid/**"' in source
     assert '"scripts/render_continuous_paper_live_status.py"' in source
@@ -62,3 +66,6 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert '--worker-head-sha "$GITHUB_SHA"' in source
     assert "opening lineage records:" in source
     assert "opening_lineage_state_digest" in source
+    assert "closed trade paths:" in source
+    assert "trade_path_state_digest" in source
+    assert "trade_path_capture_error" in source
