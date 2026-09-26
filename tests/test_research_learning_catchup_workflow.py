@@ -20,9 +20,9 @@ def test_learning_catchup_is_bounded_and_post_activation_only() -> None:
     assert "types: [completed]" in source
     assert "workflow_dispatch:" in source
     assert "push:" in source
-    assert '"research-learning-catchup.yml"' in source
-    assert '"research-learning-evidence.yml"' in source
-    assert '"research-learning-cycle.yml"' in source
+    assert '".github/workflows/research-learning-catchup.yml"' in source
+    assert '".github/workflows/research-learning-evidence.yml"' in source
+    assert '".github/workflows/research-learning-cycle.yml"' in source
     assert "github.event_name == 'workflow_run'" in source
     assert "run: sleep 10" in source
     assert 'LEARNING_PIPELINE_ACTIVATED_AT_UTC: "2026-09-25T15:28:46Z"' in source
