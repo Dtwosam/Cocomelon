@@ -89,12 +89,10 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
         if not isinstance(outcome, dict):
             outcome = {}
         lines.append(
-            (
-                f"- off-cycle 5m signals → {label}: "
-                f"settled=`{outcome.get('settled_count', 0)}`, "
-                f"mean net=`{outcome.get('mean_net_return')}`, "
-                f"positive=`{outcome.get('positive_net_count', 0)}`"
-            )
+            f"- off-cycle 5m signals → {label}: "
+            f"settled=`{outcome.get('settled_count', 0)}`, "
+            f"mean net=`{outcome.get('mean_net_return')}`, "
+            f"positive=`{outcome.get('positive_net_count', 0)}`"
         )
     lines.extend(
         [
