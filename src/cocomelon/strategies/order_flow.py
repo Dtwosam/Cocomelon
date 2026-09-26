@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from cocomelon.domain.strategy import (
@@ -40,74 +41,85 @@ def _signal(
     )
 
 
-def evaluate_order_flow(context: StrategyContext) -> StrategySignal:
-    window = context.microstructure
+@dataclass(frozen=True, slots=True)
+class OrderFlowAssessment:
+    direction: Direction
+    score: Decimal
+    reason_codes: tuple[str, ...]
+    veto_directions: tuple[Direction, ...] = ()
+
+
+def assess_order_flow(
+    window: MicrostructureWindow | None,
+) -> OrderFlowAssessment:
     if window is None:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.NO_TRADE,
             score=ZERO,
-            reasons=("missing_microstructure",),
+            reason_codes=("missing_microstructure",),
         )
     if window.latest_event_age_ms is None or window.latest_event_age_ms > MAX_EVENT_AGE_MS:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.NO_TRADE,
             score=ZERO,
-            reasons=("stale_microstructure",),
+            reason_codes=("stale_microstructure",),
         )
     if window.trade_count < MIN_TRADE_COUNT:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.NO_TRADE,
             score=ZERO,
-            reasons=("insufficient_trade_count",),
+            reason_codes=("insufficient_trade_count",),
         )
 
     flow = window.trade_flow_imbalance
     book = window.latest_book_imbalance
     if flow is None or book is None:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.NO_TRADE,
             score=ZERO,
-            reasons=("missing_flow_or_book_imbalance",),
+            reason_codes=("missing_flow_or_book_imbalance",),
         )
 
     if flow >= VETO_FLOW and book >= VETO_BOOK:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.LONG,
             score=Decimal("100"),
-            reasons=("strong_buy_flow", "strong_bid_book"),
+            reason_codes=("strong_buy_flow", "strong_bid_book"),
             veto_directions=(Direction.SHORT,),
         )
     if flow <= -VETO_FLOW and book <= -VETO_BOOK:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.SHORT,
             score=Decimal("100"),
-            reasons=("strong_sell_flow", "strong_ask_book"),
+            reason_codes=("strong_sell_flow", "strong_ask_book"),
             veto_directions=(Direction.LONG,),
         )
     if flow >= SUPPORT_FLOW and book >= SUPPORT_BOOK:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.LONG,
             score=Decimal("75"),
-            reasons=("buy_flow_support", "bid_book_support"),
+            reason_codes=("buy_flow_support", "bid_book_support"),
         )
     if flow <= -SUPPORT_FLOW and book <= -SUPPORT_BOOK:
-        return _signal(
-            context,
+        return OrderFlowAssessment(
             direction=Direction.SHORT,
             score=Decimal("75"),
-            reasons=("sell_flow_support", "ask_book_support"),
+            reason_codes=("sell_flow_support", "ask_book_support"),
         )
 
-    return _signal(
-        context,
+    return OrderFlowAssessment(
         direction=Direction.NO_TRADE,
         score=ZERO,
-        reasons=("neutral_order_flow",),
+        reason_codes=("neutral_order_flow",),
+    )
+
+
+def evaluate_order_flow(context: StrategyContext) -> StrategySignal:
+    assessment = assess_order_flow(context.microstructure)
+    return _signal(
+        context,
+        direction=assessment.direction,
+        score=assessment.score,
+        reasons=assessment.reason_codes,
+        veto_directions=assessment.veto_directions,
     )
