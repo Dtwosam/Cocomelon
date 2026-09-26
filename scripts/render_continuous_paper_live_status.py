@@ -131,8 +131,14 @@ def render_live_status(
                 f"`{payload.get('session_opening_execution_attempts', 0)} / "
                 f"{payload.get('session_opening_fills', 0)}`"
             ),
-               f"- strategy reasons: `{_reason_summary(payload.get('session_decision_reason_counts', {}))}`",
-            f"- risk reasons: `{_reason_summary(risk.get('reason_counts', {}))}`",
+            (
+                "- strategy reasons: "
+                f"`{_reason_summary(payload.get('session_decision_reason_counts', {}))}`"
+            ),
+            (
+                "- risk reasons: "
+                f"`{_reason_summary(risk.get('reason_counts', {}))}`"
+            ),
             "",
             "### Runtime",
             "",
