@@ -215,6 +215,24 @@ def _profit_lock_lines(raw: object) -> list[str]:
             f"- fill model: `{raw.get('fill_model', 'unknown')}`",
         ]
     )
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    lines.extend(
+        [
+            (
+                "- evidence gate (paths / armed / triggered): "
+                f"`{readiness.get('min_complete_paths', 0)} / "
+                f"{readiness.get('min_activated_trades_per_rule', 0)} / "
+                f"{readiness.get('min_triggered_trades_per_rule', 0)}`"
+            ),
+            (
+                "- all rules ready for review: "
+                f"`{str(bool(readiness.get('all_rules_ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
     rules = raw.get("rules", [])
     if not isinstance(rules, list):
         rules = []
@@ -223,13 +241,13 @@ def _profit_lock_lines(raw: object) -> list[str]:
             [
                 "",
                 (
-                    "| Rule | N | Armed | Triggered | Actual + | Est + | "
-                    "Actual PnL | Est PnL | Δ PnL | Actual mean R | "
-                    "Est mean R | Δ mean R |"
+                    "| Rule | Status | N | Armed | Triggered | Need P/A/T | "
+                    "Actual + | Est + | Actual PnL | Est PnL | Δ PnL | "
+                    "Actual mean R | Est mean R | Δ mean R |"
                 ),
                 (
-                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
-                    "---: | ---: | ---: | ---: | ---: |"
+                    "| --- | --- | ---: | ---: | ---: | --- | ---: | "
+                    "---: | ---: | ---: | ---: | ---: | ---: | ---: |"
                 ),
             ]
         )
@@ -238,13 +256,18 @@ def _profit_lock_lines(raw: object) -> list[str]:
                 raise ValueError("profit-lock rule must be an object")
             lines.append(
                 (
-                    "| {rule_id} | {n} | {armed} | {triggered} | "
+                    "| {rule_id} | {status} | {n} | {armed} | {triggered} | "
+                    "{missing_paths}/{missing_armed}/{missing_triggered} | "
                     "{actual_pos} | {candidate_pos} | {actual_pnl} | "
                     "{candidate_pnl} | {delta_pnl} | {actual_r} | "
                     "{candidate_r} | {delta_r} |"
                 ).format(
                     rule_id=rule.get("rule_id", "unknown"),
+                    status=rule.get("readiness_status", "collecting"),
                     n=rule.get("evaluated_trades", 0),
+                    missing_paths=rule.get("missing_complete_paths", 0),
+                    missing_armed=rule.get("missing_activated_trades", 0),
+                    missing_triggered=rule.get("missing_triggered_trades", 0),
                     armed=rule.get("activated_trades", 0),
                     triggered=rule.get("triggered_trades", 0),
                     actual_pos=rule.get("actual_positive_trades", 0),

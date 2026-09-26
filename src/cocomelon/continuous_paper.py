@@ -62,6 +62,12 @@ from cocomelon.research.continuous_paper_trade_paths import (
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
+from cocomelon.research.profit_lock_readiness import (
+    MIN_ACTIVATED_TRADES_PER_RULE,
+    MIN_COMPLETE_PATHS,
+    MIN_TRIGGERED_TRADES_PER_RULE,
+    profit_lock_readiness,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -1044,15 +1050,35 @@ def _profit_lock_counterfactual_payload(
             "enabled": False,
             "research_only": True,
             "execution_authority": False,
+            "promotion_authority": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
+
+    readiness = profit_lock_readiness(study)
+    readiness_by_rule = {
+        rule.rule_id: rule
+        for rule in readiness.rules
+    }
 
     return {
         "enabled": True,
         "research_only": True,
         "execution_authority": False,
+        "promotion_authority": False,
         "error": None,
         "evidence_class": study.evidence_class,
+        "readiness": {
+            "all_rules_ready_for_review": (
+                readiness.all_rules_ready_for_review
+            ),
+            "min_complete_paths": MIN_COMPLETE_PATHS,
+            "min_activated_trades_per_rule": (
+                MIN_ACTIVATED_TRADES_PER_RULE
+            ),
+            "min_triggered_trades_per_rule": (
+                MIN_TRIGGERED_TRADES_PER_RULE
+            ),
+        },
         "fill_model": study.fill_model,
         "path_record_count": study.path_record_count,
         "evaluated_trade_count": study.evaluated_trade_count,
@@ -1088,6 +1114,18 @@ def _profit_lock_counterfactual_payload(
                     None
                     if rule.delta_mean_net_r_estimate is None
                     else str(rule.delta_mean_net_r_estimate)
+                ),
+                "readiness_status": (
+                    readiness_by_rule[rule.rule_id].status.value
+                ),
+                "missing_complete_paths": (
+                    readiness_by_rule[rule.rule_id].missing_complete_paths
+                ),
+                "missing_activated_trades": (
+                    readiness_by_rule[rule.rule_id].missing_activated_trades
+                ),
+                "missing_triggered_trades": (
+                    readiness_by_rule[rule.rule_id].missing_triggered_trades
                 ),
             }
             for rule in study.rules
