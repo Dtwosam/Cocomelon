@@ -45,6 +45,7 @@ from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.continuous_paper_learning import (
     CONTINUOUS_PAPER_REPLAY_RUN_ID,
     ContinuousPaperOpeningLineage,
@@ -57,6 +58,7 @@ from cocomelon.util.time import utc_now_ms
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
+CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,9 +481,12 @@ class _RecordPump:
         journal: JournalStore,
         *,
         last_available_at_ms: int,
+        cadence_shadow: CadenceShadowComparator | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
+        self.cadence_shadow = cadence_shadow
+        self.cadence_shadow_error: str | None = None
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
@@ -527,6 +532,14 @@ class _RecordPump:
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
                 self.session_closed_trades += 1
+            if self.cadence_shadow is not None:
+                try:
+                    self.cadence_shadow.observe(record, available)
+                except Exception as exc:
+                    self.cadence_shadow_error = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    self.cadence_shadow = None
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
@@ -534,6 +547,42 @@ class _RecordPump:
     @property
     def recent_closed_trades(self) -> tuple[TradeJournalEntry, ...]:
         return tuple(self._recent_closed_trades)
+
+    def cadence_shadow_payload(self) -> dict[str, object]:
+        if self.cadence_shadow_error is not None:
+            return {
+                "shadow_only": True,
+                "execution_authority": False,
+                "session_only": True,
+                "enabled": False,
+                "error": self.cadence_shadow_error,
+            }
+        if self.cadence_shadow is None:
+            return {
+                "shadow_only": True,
+                "execution_authority": False,
+                "session_only": True,
+                "enabled": False,
+                "error": None,
+            }
+        payload = dict(self.cadence_shadow.summary_payload())
+        payload["enabled"] = True
+        payload["error"] = None
+        return payload
+
+    def reconcile_cadence_shadow(
+        self,
+        selected_markets: tuple[MarketId, ...],
+    ) -> None:
+        if self.cadence_shadow is None:
+            return
+        try:
+            self.cadence_shadow.reconcile_markets(selected_markets)
+        except Exception as exc:
+            self.cadence_shadow_error = (
+                f"{type(exc).__name__}: {exc}"
+            )
+            self.cadence_shadow = None
 
 
 def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
@@ -766,6 +815,7 @@ def _live_status_payload(
         },
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
+        "cadence_shadow": pump.cadence_shadow_payload(),
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -930,8 +980,9 @@ async def run_continuous_paper_session(
         if not selected:
             raise RuntimeError("continuous paper scan produced no rankable native markets")
 
+        replay_config = BaselineReplayConfig()
         pipeline = BaselineReplayPipeline(
-            BaselineReplayConfig(),
+            replay_config,
             execution,
             facts,
             selected_markets=selected,
@@ -953,6 +1004,10 @@ async def run_continuous_paper_session(
             pipeline,
             journal,
             last_available_at_ms=restored_available_at_ms,
+            cadence_shadow=CadenceShadowComparator(
+                selected,
+                replay_config=replay_config,
+            ),
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -1003,6 +1058,10 @@ async def run_continuous_paper_session(
                     last_available_at_ms=pump.last_available_at_ms,
                     selected_markets=selected,
                 ),
+            )
+            _write_json_atomic(
+                root / CADENCE_SHADOW_FILENAME,
+                pump.cadence_shadow_payload(),
             )
 
         persist_checkpoint()
@@ -1125,6 +1184,7 @@ async def run_continuous_paper_session(
                         selected = desired
                         selected_keys = desired_keys
                         pipeline.reconcile_markets(selected)
+                        pump.reconcile_cadence_shadow(selected)
                         _supervisors, supervisor_tasks = await start_supervisors(selected)
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
