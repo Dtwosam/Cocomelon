@@ -1024,3 +1024,23 @@ The readiness gate does **not** inspect PnL direction, choose a winning rule, fr
 Current live evidence was still far below this boundary when the policy was frozen.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Execution-aware profit-lock shadow — 2026-09-26
+
+A stricter prospective exit-research layer now shadows the two frozen profit-lock rules against the same live L2 evidence and deterministic IOC simulator used by paper execution.
+
+- the rules remain unchanged: breakeven after +0.5R and lock +0.5R after +1R;
+- mark evidence arms and triggers each candidate, but candidate exits are simulated against actual subsequent visible L2 depth using the existing paper latency, slippage, size-quantum, notional, and taker-fee semantics;
+- the shadow supports latency rejection, no-fill, and partial-fill continuation without mutating the authoritative paper account;
+- simulated candidate economics use the actual journal entry fee, simulated exit fees, and the frozen funding reserve; they remain research estimates rather than claims about real executable venue fills;
+- positions already open when the execution shadow first starts are excluded from execution-aware economic claims because their earlier L2 history was not captured by this observer;
+- new positions are tracked prospectively end-to-end and the shadow state survives continuous-paper worker handoffs;
+- a triggered candidate that cannot fully simulate its close before the actual paper trade closes is recorded as `triggered_incomplete` with no invented candidate PnL;
+- state/config/rule mismatches fail closed inside the research layer, while runtime observer failures fail open with respect to the paper trader and disable only this shadow;
+- Issue #469 reports eligible/excluded open positions, completed outcomes, IOC full closes, incomplete triggers, and per-rule estimated deltas;
+- the existing 30 complete paths / 15 activations / 10 triggers readiness boundary remains a review gate only. This execution-aware layer does not weaken that boundary and cannot promote itself.
+
+The authoritative paper strategy, current stops, 15-minute decision cadence, risk engine, fills, accounting, and live-order lock remain unchanged.
+
+**LIVE TRADING: DISABLED.**
