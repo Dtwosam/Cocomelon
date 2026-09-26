@@ -300,6 +300,115 @@ def _profit_lock_lines(raw: object) -> list[str]:
     return lines
 
 
+def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Profit-lock execution shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No execution-shadow telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    lines.append(
+        "- durable across workers: "
+        f"`{str(bool(raw.get('durable_state'))).lower()}` · "
+        "restored this worker: "
+        f"`{str(bool(raw.get('state_restored'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- fill model: `{raw.get('fill_model', 'unknown')}`",
+            (
+                "- eligible / excluded open positions: "
+                f"`{raw.get('eligible_open_positions', 0)} / "
+                f"{raw.get('excluded_pre_observer_open_positions', 0)}`"
+            ),
+            (
+                "- closed shadow outcomes / excluded closes: "
+                f"`{raw.get('closed_outcome_count', 0)} / "
+                f"{raw.get('excluded_closed_trades', 0)}`"
+            ),
+        ]
+    )
+    rules = raw.get("rules", [])
+    if not isinstance(rules, list):
+        rules = []
+    if rules:
+        lines.extend(
+            [
+                "",
+                (
+                    "| Rule | Closed eligible | Econ N | Armed | Triggered | "
+                    "IOC full | Triggered incomplete | Actual + | Est + | "
+                    "Actual PnL | IOC-est PnL | Δ PnL | Actual mean R | "
+                    "IOC-est mean R | Δ mean R |"
+                ),
+                (
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+                ),
+            ]
+        )
+        for rule in rules:
+            if not isinstance(rule, dict):
+                raise ValueError("execution-shadow rule must be an object")
+            lines.append(
+                (
+                    "| {rule_id} | {closed} | {evaluated} | {armed} | "
+                    "{triggered} | {full} | {incomplete} | {actual_pos} | "
+                    "{candidate_pos} | {actual_pnl} | {candidate_pnl} | "
+                    "{delta_pnl} | {actual_r} | {candidate_r} | {delta_r} |"
+                ).format(
+                    rule_id=rule.get("rule_id", "unknown"),
+                    closed=rule.get("closed_eligible_trades", 0),
+                    evaluated=rule.get("economically_evaluated_trades", 0),
+                    armed=rule.get("activated_trades", 0),
+                    triggered=rule.get("triggered_trades", 0),
+                    full=rule.get("simulated_full_closes", 0),
+                    incomplete=rule.get("triggered_incomplete", 0),
+                    actual_pos=rule.get("actual_positive_trades", 0),
+                    candidate_pos=rule.get(
+                        "candidate_positive_trades_estimate",
+                        0,
+                    ),
+                    actual_pnl=rule.get("actual_net_pnl", "0"),
+                    candidate_pnl=rule.get(
+                        "candidate_net_pnl_estimate",
+                        "0",
+                    ),
+                    delta_pnl=rule.get("delta_net_pnl_estimate", "0"),
+                    actual_r=rule.get("actual_mean_net_r"),
+                    candidate_r=rule.get(
+                        "candidate_mean_net_r_estimate"
+                    ),
+                    delta_r=rule.get("delta_mean_net_r_estimate"),
+                )
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "_Visible-book IOC research shadow using the same paper "
+                "latency/slippage/fee model; it never mutates the paper "
+                "position or submits an order._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -410,6 +519,11 @@ def render_live_status(
     ]
     lines.extend(
         _profit_lock_lines(payload.get("profit_lock_counterfactual"))
+    )
+    lines.extend(
+        _profit_lock_execution_shadow_lines(
+            payload.get("profit_lock_execution_shadow")
+        )
     )
     lines.extend(["", "### Open positions", ""])
 
