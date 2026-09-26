@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -100,7 +101,7 @@ class ProspectiveEntryFilterState:
 def _fact_for_trade(
     trade: TradeJournalEntry,
     fact_store: EvaluationFactStore,
-):
+) -> DecisionEvaluationFact | None:
     fact = fact_store.load_decision_by_strategy_id(
         trade.strategy_decision_id,
         trade.replay_run_id,
