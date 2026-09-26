@@ -275,6 +275,11 @@ jobs:
               "- closed paper trades this worker: "
               f"{payload.get('session_closed_trades', 0)}"
           )
+          print(f"- feature snapshots: {payload.get('feature_snapshot_count', 0)}")
+          print(
+              "- feature snapshot state digest: "
+              f"{payload.get('feature_snapshot_state_digest', 'missing')}"
+          )
           print(f"- open paper positions: {payload['open_positions']}")
           print(f"- paper equity: {payload['equity']}")
           print(f"- execution healthy: {str(payload['execution_healthy']).lower()}")
