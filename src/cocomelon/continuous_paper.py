@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -18,7 +19,7 @@ from cocomelon.domain.execution import (
     PositionAction,
     PositionActionType,
 )
-from cocomelon.domain.journal import JournalObservation
+from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent
@@ -446,6 +447,10 @@ class _RecordPump:
         self.journal_observations = 0
         existing_trades = tuple(journal.iter_trades())
         self._known_trade_ids = {trade.trade_id for trade in existing_trades}
+        self._recent_closed_trades: deque[TradeJournalEntry] = deque(
+            existing_trades[-10:],
+            maxlen=10,
+        )
         self.closed_trades = len(self._known_trade_ids)
         self.last_observation: JournalObservation | None = None
         self._lock = asyncio.Lock()
@@ -478,10 +483,38 @@ class _RecordPump:
                     continue
                 self.journal.record_trade(trade)
                 self._known_trade_ids.add(trade.trade_id)
+                self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
+
+    @property
+    def recent_closed_trades(self) -> tuple[TradeJournalEntry, ...]:
+        return tuple(self._recent_closed_trades)
+
+
+def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
+    return {
+        "trade_id": trade.trade_id,
+        "market": trade.market.canonical,
+        "direction": trade.direction.value,
+        "opened_at_ms": trade.opened_at_ms,
+        "closed_at_ms": trade.closed_at_ms,
+        "holding_duration_ms": trade.holding_duration_ms,
+        "entry_price": str(trade.entry_price),
+        "exit_price": str(trade.exit_price),
+        "filled_quantity": str(trade.filled_quantity),
+        "initial_stop": str(trade.initial_stop),
+        "initial_risk_amount": str(trade.initial_risk_amount),
+        "gross_realized_pnl": str(trade.gross_realized_pnl),
+        "entry_fees": str(trade.entry_fees),
+        "exit_fees": str(trade.exit_fees),
+        "funding_cash_pnl": str(trade.funding_cash_pnl),
+        "net_pnl": str(trade.net_pnl),
+        "net_r": str(trade.net_r),
+        "exit_reason": trade.exit_reason,
+    }
 
 
 def _live_status_payload(
@@ -559,6 +592,10 @@ def _live_status_payload(
         "processed_records": pump.processed_records,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
+        "recent_closed_trades": [
+            _closed_trade_status_payload(trade)
+            for trade in reversed(pump.recent_closed_trades)
+        ],
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(
             open_planned_risk_fraction

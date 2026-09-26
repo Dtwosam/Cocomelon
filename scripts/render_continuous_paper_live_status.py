@@ -4,6 +4,7 @@ import json
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 
@@ -104,6 +105,48 @@ def render_live_status(
             )
     else:
         lines.append("_No open paper positions in this heartbeat._")
+
+    recent_closed = payload.get("recent_closed_trades", [])
+    if not isinstance(recent_closed, list):
+        raise ValueError("recent_closed_trades must be a list")
+    lines.extend(["", "### Recent closed trades", ""])
+    if recent_closed:
+        lines.extend(
+            [
+                (
+                    "| Market | Side | Entry | Exit | Net PnL | Net R | "
+                    "Fees | Funding | Hold | Exit reason |"
+                ),
+                (
+                    "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | --- |"
+                ),
+            ]
+        )
+        for raw in recent_closed:
+            if not isinstance(raw, dict):
+                raise ValueError("recent closed trade must be an object")
+            fees = str(
+                Decimal(str(raw["entry_fees"]))
+                + Decimal(str(raw["exit_fees"]))
+            )
+            lines.append(
+                "| {market} | {direction} | {entry} | {exit} | {net_pnl} | "
+                "{net_r} | {fees} | {funding} | {hold}ms | {reason} |".format(
+                    market=raw["market"],
+                    direction=raw["direction"],
+                    entry=raw["entry_price"],
+                    exit=raw["exit_price"],
+                    net_pnl=raw["net_pnl"],
+                    net_r=raw["net_r"],
+                    fees=fees,
+                    funding=raw["funding_cash_pnl"],
+                    hold=raw["holding_duration_ms"],
+                    reason=raw["exit_reason"],
+                )
+            )
+    else:
+        lines.append("_No closed paper trades in durable state yet._")
 
     lines.extend(
         [
