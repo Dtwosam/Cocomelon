@@ -324,3 +324,23 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **Safety:** the runtime must fail closed on corrupted/missing restart lineage, stale/inconsistent execution state, or non-paper execution configuration. Live trading remains disabled and still requires every locked promotion gate plus explicit user live authorization and capital amount.
 
+## D-032 — Attribute continuous paper learning at entry time
+
+**Date:** 2026-09-26
+
+**Decision:** Continuous-paper execution outcomes may feed a research-only learning state only when the trade carries immutable entry-time runtime lineage. Attribution is recorded when the opening fill creates the paper position, not when a later worker exports or closes the trade.
+
+**Lineage:** Every new lineage-capable opening binds its opening plan, feature snapshot, market, opened-at timestamp, exact GitHub Actions run ID, run attempt, and worker head SHA. The worker SHA is used as the candidate-spec lineage and the exact worker run/attempt as the campaign lineage. The stable candidate family is `continuous-paper-ensemble-v1`.
+
+**Legacy boundary:** Existing/restored trades that predate this entry-time lineage are not backfilled or guessed. They are explicitly skipped by the continuous-paper learning sync. A trade whose market, feature snapshot, replay identity, or opened-at timestamp conflicts with its opening lineage fails closed.
+
+**Feature boundary:** A learning record requires the authenticated decision-time `FeatureSnapshot` used by the opening. The snapshot must match the trade market and must have been known no later than the trade open. Only the matched snapshot is copied into the durable learning feature store.
+
+**Economic target:** The learning record uses the existing typed `paper_execution` family and preserves actual realized gross PnL, entry/exit fees, funding cash PnL, entry/exit slippage, net PnL, and net-R. Research eligibility begins no earlier than the authenticated trade close.
+
+**Producer boundary:** Completed lineage-capable continuous-paper workers are authenticated by exact run identity and exact artifact digest before ingestion. Their learning evidence is initially kept in a separate 90-day `continuous-paper-learning-state`; it is not silently merged into scheduled-research learning lineage.
+
+**Authority:** This is evidence capture only. The sync may audit structural learning readiness, but it does not train in the producer workflow, does not mutate the active trading strategy, does not grant promotion authority, and cannot enable execution.
+
+**LIVE TRADING: DISABLED.**
+
