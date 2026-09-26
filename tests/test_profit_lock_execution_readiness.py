@@ -82,7 +82,8 @@ def test_execution_readiness_only_grants_review_not_authority() -> None:
     assert readiness.execution_authority is False
 
 
-def test_execution_readiness_accepts_incomplete_triggered_evidence_without_counting_it_as_economic() -> None:
+def test_execution_readiness_accepts_incomplete_triggered_evidence_without_counting_it_as_economic(
+) -> None:
     readiness = profit_lock_execution_readiness(
         _summary(
             evaluated=20,
