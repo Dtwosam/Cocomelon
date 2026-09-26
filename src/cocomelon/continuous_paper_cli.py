@@ -26,7 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
     config = ContinuousPaperConfig(
         duration_seconds=args.duration_seconds,
         deep_limit=args.deep_limit,
