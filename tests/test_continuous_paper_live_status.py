@@ -4,10 +4,9 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 
-SCRIPT = Path("scripts/render_continuous_paper_live_status.py")
+SCRIPT = "scripts/render_continuous_paper_live_status.py"
 
 
 def test_live_status_renderer_exposes_current_position_and_paper_only_state() -> None:
@@ -54,7 +53,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     env["HEARTBEAT_JSON"] = json.dumps(payload)
     env["GITHUB_RUN_ID"] = "12345"
     completed = subprocess.run(
-        [sys.executable, str(SCRIPT)],
+        [sys.executable, SCRIPT],
         env=env,
         check=True,
         capture_output=True,
