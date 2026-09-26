@@ -193,3 +193,91 @@ def test_shadow_settlement_uses_hyperliquid_close_boundary_not_raw_T() -> None:
     by_score = cadence["outcomes_by_score_band_by_horizon_ms"]["900000"]
     assert by_score["70-<75"]["settled_count"] == 1
     assert by_score["70-<75"]["positive_net_count"] == 1
+
+
+def test_shadow_state_round_trip_preserves_pending_and_settled_evidence() -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+    pending = _sample(Direction.LONG)
+    settled_sample = _sample(Direction.SHORT)
+    settled = settle_shadow_decision(
+        settled_sample,
+        exit_px=Decimal("99"),
+    )
+
+    comparator._pending[
+        (pending.market.canonical, pending.target_end_ms)
+    ].append(pending)
+    comparator._outcomes.append(settled)
+    comparator._decision_counts[FIVE_MINUTES_MS][Direction.LONG.value] = 1
+    comparator._decision_counts[FIVE_MINUTES_MS][Direction.SHORT.value] = 1
+    comparator._directional_counts_by_lead_strategy[FIVE_MINUTES_MS][
+        "trend"
+    ][Direction.LONG.value] = 1
+    comparator._directional_counts_by_lead_strategy[FIVE_MINUTES_MS][
+        "trend"
+    ][Direction.SHORT.value] = 1
+    comparator._directional_counts_by_score_band[FIVE_MINUTES_MS][
+        "70-<75"
+    ][Direction.LONG.value] = 1
+    comparator._directional_counts_by_score_band[FIVE_MINUTES_MS][
+        "70-<75"
+    ][Direction.SHORT.value] = 1
+    comparator._seen_decisions.update(
+        {
+            (FIVE_MINUTES_MS, pending.decision_id),
+            (FIVE_MINUTES_MS, settled_sample.decision_id),
+        }
+    )
+
+    state = comparator.state_payload()
+    restored = CadenceShadowComparator((MARKET,))
+    restored.restore_state(state)
+    summary = restored.summary_payload()
+
+    assert summary["session_only"] is False
+    assert summary["durable_state"] is True
+    assert summary["state_restored"] is True
+    assert summary["state_restore_error"] is None
+    assert summary["pending_outcome_count"] == 1
+    cadence = summary["cadences"]["300000"]
+    assert cadence["decision_counts"]["long"] == 1
+    assert cadence["decision_counts"]["short"] == 1
+    outcome = cadence["outcomes_by_horizon_ms"]["900000"]
+    assert outcome["settled_count"] == 1
+    assert outcome["mean_net_return"] == "0.0085"
+
+    target_start = pending.target_end_ms - FIVE_MINUTES_MS
+    restored._settle_candle(
+        Candle(
+            market=MARKET,
+            interval="5m",
+            start_ms=target_start,
+            end_ms=pending.target_end_ms - 1,
+            open_px=Decimal("100"),
+            high_px=Decimal("102"),
+            low_px=Decimal("99"),
+            close_px=Decimal("101"),
+            volume=Decimal("10"),
+            trade_count=5,
+            source="hyperliquid-mainnet",
+            received_at_ms=pending.target_end_ms + 1_000,
+            schema_version=1,
+        )
+    )
+    after = restored.summary_payload()
+    assert after["pending_outcome_count"] == 0
+    assert after["cadences"]["300000"]["outcomes_by_horizon_ms"]["900000"][
+        "settled_count"
+    ] == 2
+
+
+def test_shadow_state_rejects_runtime_cost_mismatch() -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+    state = comparator.state_payload()
+    costs = state["costs"]
+    assert isinstance(costs, dict)
+    costs["round_trip_fee_fraction"] = "0.5"
+
+    restored = CadenceShadowComparator((MARKET,))
+    with pytest.raises(ValueError, match="costs do not match"):
+        restored.restore_state(state)
