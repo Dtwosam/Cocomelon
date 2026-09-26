@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-replay-run-id")
     parser.add_argument("--candidate-spec-id")
     parser.add_argument("--campaign-id")
+    parser.add_argument("--opened-at-or-after-ms", type=int)
     return parser
 
 
@@ -88,6 +89,7 @@ def execution_learning_sync_payload(
     expected_replay_run_id: str | None = None,
     candidate_spec_id: str | None = None,
     campaign_id: str | None = None,
+    opened_at_or_after_ms: int | None = None,
 ) -> dict[str, object]:
     journal = JournalStore(journal_path)
     try:
@@ -103,6 +105,7 @@ def execution_learning_sync_payload(
             expected_replay_run_id=expected_replay_run_id,
             candidate_spec_id=candidate_spec_id,
             campaign_id=campaign_id,
+            opened_at_or_after_ms=opened_at_or_after_ms,
         )
         records = ledger.iter_records()
         return {
@@ -116,6 +119,8 @@ def execution_learning_sync_payload(
             "scanned_trades": result.scanned_trades,
             "created_records": result.created_records,
             "existing_records": result.existing_records,
+            "skipped_pre_activation_trades": result.skipped_pre_activation_trades,
+            "opened_at_or_after_ms": opened_at_or_after_ms,
             "learning_record_count": len(records),
             "learning_state_digest": ledger.state_digest,
             "feature_store_state_digest": feature_store.state_digest,
@@ -140,6 +145,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_replay_run_id=args.expected_replay_run_id,
             candidate_spec_id=args.candidate_spec_id,
             campaign_id=args.campaign_id,
+            opened_at_or_after_ms=args.opened_at_or_after_ms,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
