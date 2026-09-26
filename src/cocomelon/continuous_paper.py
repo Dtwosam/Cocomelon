@@ -92,6 +92,7 @@ class ContinuousPaperSummary:
     session_closed_trades: int
     feature_snapshot_count: int
     feature_snapshot_state_digest: str
+    learning_feature_capture_started_at_ms: int
     open_positions: int
     equity: Decimal
     execution_healthy: bool
@@ -111,6 +112,9 @@ class ContinuousPaperSummary:
             "session_closed_trades": self.session_closed_trades,
             "feature_snapshot_count": self.feature_snapshot_count,
             "feature_snapshot_state_digest": self.feature_snapshot_state_digest,
+            "learning_feature_capture_started_at_ms": (
+                self.learning_feature_capture_started_at_ms
+            ),
             "open_positions": self.open_positions,
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
@@ -276,6 +280,7 @@ def _checkpoint_payload(
     *,
     last_available_at_ms: int,
     selected_markets: tuple[MarketId, ...],
+    learning_feature_capture_started_at_ms: int,
 ) -> dict[str, object]:
     checkpoints = []
     for item in pipeline.open_lifecycle_checkpoints:
@@ -305,6 +310,9 @@ def _checkpoint_payload(
             [started_ms, ended_ms]
             for started_ms, ended_ms in pipeline.known_gap_intervals
         ],
+        "learning_feature_capture_started_at_ms": (
+            learning_feature_capture_started_at_ms
+        ),
         "execution_mode": "paper",
         "live_orders": False,
     }
@@ -325,9 +333,10 @@ def _load_checkpoint(path: Path) -> tuple[
     tuple[OpenLifecycleCheckpoint, ...],
     tuple[tuple[int, int | None], ...],
     int,
+    int | None,
 ]:
     if not path.exists():
-        return (), (), 0
+        return (), (), 0, None
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or raw.get("schema_version") != 1:
         raise ValueError("continuous paper checkpoint is invalid")
@@ -370,7 +379,21 @@ def _load_checkpoint(path: Path) -> tuple[
         if not isinstance(item, list) or len(item) != 2:
             raise ValueError("continuous paper gap interval is invalid")
         gaps.append((int(item[0]), None if item[1] is None else int(item[1])))
-    return tuple(checkpoints), tuple(gaps), int(raw.get("last_available_at_ms", 0))
+    activation_raw = raw.get("learning_feature_capture_started_at_ms")
+    if activation_raw is None:
+        activation_ms = None
+    elif isinstance(activation_raw, bool) or not isinstance(activation_raw, int):
+        raise ValueError("continuous paper feature activation timestamp is invalid")
+    elif activation_raw < 0:
+        raise ValueError("continuous paper feature activation timestamp is invalid")
+    else:
+        activation_ms = activation_raw
+    return (
+        tuple(checkpoints),
+        tuple(gaps),
+        int(raw.get("last_available_at_ms", 0)),
+        activation_ms,
+    )
 
 
 def _native_market_snapshots(
@@ -748,7 +771,17 @@ async def run_continuous_paper_session(
         stop_path.unlink()
     started_at_ms = utc_now_ms()
     checkpoint_path = root / CHECKPOINT_FILENAME
-    checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
+    (
+        checkpoints,
+        gap_intervals,
+        restored_available_at_ms,
+        restored_feature_activation_ms,
+    ) = _load_checkpoint(checkpoint_path)
+    learning_feature_capture_started_at_ms = (
+        started_at_ms
+        if restored_feature_activation_ms is None
+        else restored_feature_activation_ms
+    )
 
     reader = InfoClient(settings)
     execution = PaperExecutionAdapter(
@@ -848,6 +881,9 @@ async def run_continuous_paper_session(
                     pipeline,
                     last_available_at_ms=pump.last_available_at_ms,
                     selected_markets=selected,
+                    learning_feature_capture_started_at_ms=(
+                        learning_feature_capture_started_at_ms
+                    ),
                 ),
             )
 
@@ -1012,6 +1048,9 @@ async def run_continuous_paper_session(
             session_closed_trades=pump.session_closed_trades,
             feature_snapshot_count=len(feature_store.iter_verified()),
             feature_snapshot_state_digest=feature_store.state_digest,
+            learning_feature_capture_started_at_ms=(
+                learning_feature_capture_started_at_ms
+            ),
             open_positions=len(execution.account.positions),
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
