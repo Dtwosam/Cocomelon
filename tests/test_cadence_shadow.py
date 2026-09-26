@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.market import MarketId
+from cocomelon.domain.market import Candle, MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction
 from cocomelon.evidence.contracts import BaselineReplayConfig
@@ -14,6 +14,7 @@ from cocomelon.research.cadence_shadow import (
     CadenceShadowComparator,
     ShadowCadenceDecision,
     ShadowCadenceDecisionEngine,
+    _five_minute_close_boundary_ms,
     _initial_boundary_for_interval,
     settle_shadow_decision,
 )
@@ -134,3 +135,51 @@ def test_comparator_is_explicitly_non_economic_before_evidence() -> None:
     assert payload["primary_execution_cadence_ms"] == FIFTEEN_MINUTES_MS
     assert payload["candidate_cadence_ms"] == FIVE_MINUTES_MS
     assert payload["pending_outcome_count"] == 0
+
+
+
+def test_hyperliquid_inclusive_candle_end_maps_to_exact_boundary() -> None:
+    candle = Candle(
+        market=MARKET,
+        interval="5m",
+        start_ms=0,
+        end_ms=FIVE_MINUTES_MS - 1,
+        open_px=Decimal("100"),
+        high_px=Decimal("101"),
+        low_px=Decimal("99"),
+        close_px=Decimal("100.5"),
+        volume=Decimal("10"),
+        trade_count=5,
+        source="hyperliquid-mainnet",
+        received_at_ms=FIVE_MINUTES_MS + 1_000,
+        schema_version=1,
+    )
+    assert _five_minute_close_boundary_ms(candle) == FIVE_MINUTES_MS
+
+
+def test_shadow_settlement_uses_hyperliquid_close_boundary_not_raw_T() -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+    sample = _sample(Direction.LONG)
+    comparator._pending[(MARKET.canonical, sample.target_end_ms)].append(sample)
+
+    target_start = sample.target_end_ms - FIVE_MINUTES_MS
+    candle = Candle(
+        market=MARKET,
+        interval="5m",
+        start_ms=target_start,
+        end_ms=sample.target_end_ms - 1,
+        open_px=Decimal("100"),
+        high_px=Decimal("102"),
+        low_px=Decimal("99"),
+        close_px=Decimal("101"),
+        volume=Decimal("10"),
+        trade_count=5,
+        source="hyperliquid-mainnet",
+        received_at_ms=sample.target_end_ms + 1_000,
+        schema_version=1,
+    )
+    comparator._settle_candle(candle)
+    payload = comparator.summary_payload()
+    horizon = payload["cadences"]["300000"]["outcomes_by_horizon_ms"]["900000"]
+    assert horizon["settled_count"] == 1
+    assert horizon["mean_net_return"] == "0.0085"
