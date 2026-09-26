@@ -320,8 +320,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Re-verify terminal review dossier
-        env:
-          CANDIDATE_ROOT: ${{ steps.candidate.outputs.root }}
         run: |
           set -euo pipefail
           python - <<'PY'
