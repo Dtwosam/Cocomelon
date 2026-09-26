@@ -88,6 +88,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "gross_profit": "5",
             "gross_loss_abs": "12",
             "profit_factor": "0.4166666666666666666666666667",
+            "decision_fact_attributed_trades": 3,
+            "decision_fact_attribution_misses": 0,
+            "feature_snapshot_fallback_trades": 0,
+            "regime_attribution_misses": 0,
             "unattributed_feature_trades": 0,
             "complete_excursion_trades": 3,
             "incomplete_or_missing_excursion_trades": 0,
@@ -105,6 +109,30 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "positive_closes_after_mfe_ge_1r": 1,
             "mean_final_net_r_after_mfe_ge_0_5r": "0.15",
             "mean_final_net_r_after_mfe_ge_1r": "0.5",
+            "by_lead_strategy": {
+                "trend": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_pnl": "1.5",
+                    "mean_net_r": "0.15",
+                    "average_holding_ms": 90000,
+                }
+            },
+            "by_decision_score_band": {
+                "65-<70": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_pnl": "1.5",
+                    "mean_net_r": "0.15",
+                    "average_holding_ms": 90000,
+                }
+            },
             "by_side": {
                 "long": {
                     "trades": 2,
@@ -277,6 +305,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
     assert "### Closed trade performance" in output
+    assert "decision-fact attribution" in output
+    assert "`3 / 3` trades" in output
+    assert "decision-fact misses / feature-regime fallbacks" in output
+    assert "#### Lead strategy attribution" in output
+    assert "| trend | 2 | 1 | 1 | 0 | 3 |" in output
+    assert "#### Decision score band attribution" in output
+    assert "| 65-<70 | 2 | 1 | 1 | 0 | 3 |" in output
     assert "#### Excursion diagnostics" in output
     assert "complete MFE/MAE evidence" in output
     assert "0.6333333333333333333333333333" in output
