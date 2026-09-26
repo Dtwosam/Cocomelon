@@ -114,9 +114,9 @@ class _ContinuousTradePathSink:
                 )
             )
         except Exception as exc:
-            self.error = f"{type(exc).__name__}: {exc}"
+            if self.error is None:
+                self.error = f"{type(exc).__name__}: {exc}"
             return False
-        self.error = None
         return created
 
 
