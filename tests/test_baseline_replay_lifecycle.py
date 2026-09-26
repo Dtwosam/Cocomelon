@@ -241,6 +241,7 @@ def _pipeline(
     *,
     config: BaselineReplayConfig | None = None,
     suffix: str = "first",
+    closed_lifecycle_sink: object | None = None,
 ) -> tuple[BaselineReplayPipeline, PaperExecutionAdapter, EvaluationFactStore]:
     replay_config = config or _config()
     execution = PaperExecutionAdapter(
@@ -258,6 +259,7 @@ def _pipeline(
         replay_run_id=RUN_ID,
         evidence_class=EvidenceClass.MICROSTRUCTURE,
         decision_engine=_ScriptedDecisionEngine(replay_config),
+        closed_lifecycle_sink=closed_lifecycle_sink,  # type: ignore[arg-type]
     )
     return pipeline, execution, facts
 
@@ -315,6 +317,58 @@ def test_long_lifecycle_applies_funding_closes_and_records_evaluation_facts(
     assert EquityFactKind.FILL in equity_kinds
     assert EquityFactKind.MARK in equity_kinds
     assert EquityFactKind.FUNDING in equity_kinds
+
+    execution.close()
+    facts.close()
+
+
+def test_closed_lifecycle_sink_receives_full_mark_path(
+    tmp_path: Path,
+) -> None:
+    captured: list[tuple[object, tuple[ReplayRecord, ...], tuple[tuple[int, int | None], ...]]] = []
+
+    class Sink:
+        def record(
+            self,
+            trade: object,
+            mark_observations: tuple[ReplayRecord, ...],
+            known_gap_intervals: tuple[tuple[int, int | None], ...],
+        ) -> bool:
+            captured.append(
+                (trade, tuple(mark_observations), tuple(known_gap_intervals))
+            )
+            return True
+
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="path-sink",
+        closed_lifecycle_sink=Sink(),
+    )
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            _asset_ctx(ORACLE_MS, mark="100", oracle="100"),
+            _funding(),
+            _asset_ctx(STOP_MARK_MS, mark="94", oracle="94"),
+            _book(CLOSE_BOOK_MS, bid="93.9", ask="94.0"),
+        ),
+    )
+
+    assert len(captured) == 1
+    trade, marks, gaps = captured[0]
+    assert getattr(trade, "market") == MARKET
+    assert tuple(record.market for record in marks) == (
+        MARKET.canonical,
+        MARKET.canonical,
+    )
+    assert tuple(record.available_at_ms for record in marks) == (
+        ORACLE_MS,
+        STOP_MARK_MS,
+    )
+    assert gaps == ()
 
     execution.close()
     facts.close()
