@@ -88,6 +88,7 @@ class ContinuousPaperSummary:
     processed_records: int
     journal_observations: int
     closed_trades: int
+    session_closed_trades: int
     open_positions: int
     equity: Decimal
     execution_healthy: bool
@@ -104,6 +105,7 @@ class ContinuousPaperSummary:
             "processed_records": self.processed_records,
             "journal_observations": self.journal_observations,
             "closed_trades": self.closed_trades,
+            "session_closed_trades": self.session_closed_trades,
             "open_positions": self.open_positions,
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
@@ -452,6 +454,7 @@ class _RecordPump:
             maxlen=10,
         )
         self.closed_trades = len(self._known_trade_ids)
+        self.session_closed_trades = 0
         self.last_observation: JournalObservation | None = None
         self._lock = asyncio.Lock()
 
@@ -485,6 +488,7 @@ class _RecordPump:
                 self._known_trade_ids.add(trade.trade_id)
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
+                self.session_closed_trades += 1
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
@@ -592,6 +596,7 @@ def _live_status_payload(
         "processed_records": pump.processed_records,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
+        "session_closed_trades": pump.session_closed_trades,
         "recent_closed_trades": [
             _closed_trade_status_payload(trade)
             for trade in reversed(pump.recent_closed_trades)
