@@ -7,8 +7,10 @@ from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
+from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathMark,
+    ContinuousPaperTradePathStore,
 )
 from cocomelon.research.historical_baselines import ExecutionCostAssumptions
 
@@ -462,4 +464,19 @@ def evaluate_profit_lock_study(
                 key=lambda item: (item.rule_id, item.trade_id),
             )
         ),
+    )
+
+
+def evaluate_profit_lock_state(
+    journal: JournalStore,
+    path_store: ContinuousPaperTradePathStore,
+    *,
+    rules: Sequence[ProfitLockRule] = DEFAULT_PROFIT_LOCK_RULES,
+    costs: ExecutionCostAssumptions = DEFAULT_PROFIT_LOCK_COSTS,
+) -> ProfitLockStudy:
+    return evaluate_profit_lock_study(
+        tuple(journal.iter_trades()),
+        path_store.iter_payloads(),
+        rules=rules,
+        costs=costs,
     )
