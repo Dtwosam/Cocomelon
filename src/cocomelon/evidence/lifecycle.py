@@ -67,6 +67,8 @@ class DecisionEpochEngine(Protocol):
     @property
     def state_book(self) -> RecordedStateBook: ...
 
+    def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None: ...
+
     def observe(self, record: ReplayRecord, now_ms: int) -> tuple[DecisionEpoch, ...]: ...
 
     def flush(self, end_ms: int) -> tuple[DecisionEpoch, ...]: ...
@@ -170,6 +172,9 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
+        self._decision_engine.reconcile_markets(selected_markets)
 
     @property
     def open_lifecycle_checkpoints(self) -> tuple[OpenLifecycleCheckpoint, ...]:
