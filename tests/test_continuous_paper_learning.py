@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from decimal import Decimal
 
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_learning import (
