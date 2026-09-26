@@ -184,7 +184,7 @@ def test_shadow_replay_receipt_rejects_decision_tampering(tmp_path) -> None:
 
     with pytest.raises(
         RuntimeError,
-        match="decision|candidate strategy",
+        match="LEARNING_SHADOW_REPLAY_RECEIPT_DECISION_ARTIFACT_INVALID",
     ):
         verify_learning_shadow_replay_receipt(
             output_root / "shadow-replay-receipt.json",
