@@ -377,6 +377,32 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                             },
                         },
                     },
+                    "outcomes_by_direction_by_horizon_ms": {
+                        "900000": {
+                            "long": {
+                                "settled_count": 2,
+                                "mean_net_return": "-0.003",
+                                "positive_net_count": 0,
+                            },
+                            "short": {
+                                "settled_count": 1,
+                                "mean_net_return": "0.005",
+                                "positive_net_count": 1,
+                            },
+                        },
+                        "3600000": {
+                            "long": {
+                                "settled_count": 1,
+                                "mean_net_return": "-0.002",
+                                "positive_net_count": 0,
+                            },
+                            "short": {
+                                "settled_count": 1,
+                                "mean_net_return": "0.006",
+                                "positive_net_count": 1,
+                            },
+                        },
+                    },
                 },
             },
         },
@@ -491,6 +517,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### 15m decision-score forward outcomes" in output
     assert "| 65-<70 | 1 | -0.004 | 0 | 1 | -0.003 | 0 |" in output
     assert "| 80+ | 2 | 0.0005 | 1 | 1 | 0.007 | 1 |" in output
+    assert "#### 15m direction forward outcomes" in output
+    assert "| long | 2 | -0.003 | 0 | 1 | -0.002 | 0 |" in output
+    assert "| short | 1 | 0.005 | 1 | 1 | 0.006 | 1 |" in output
     assert "skipped directional signals missing lead strategy" in output
     assert "starting cash" in output
     assert "total account PnL" in output
