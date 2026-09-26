@@ -394,7 +394,9 @@ class _RecordPump:
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
-        self.closed_trades = sum(1 for _ in journal.iter_trades())
+        existing_trades = tuple(journal.iter_trades())
+        self._known_trade_ids = {trade.trade_id for trade in existing_trades}
+        self.closed_trades = len(self._known_trade_ids)
         self.last_observation: JournalObservation | None = None
         self._lock = asyncio.Lock()
 
@@ -421,10 +423,12 @@ class _RecordPump:
                 self.journal.record_observation(observation)
             if observations:
                 self.last_observation = observations[-1]
-            closed = self.pipeline.finalize(available)
-            for trade in closed:
+            for trade in self.pipeline.finalize(available):
+                if trade.trade_id in self._known_trade_ids:
+                    continue
                 self.journal.record_trade(trade)
-            self.closed_trades += len(closed)
+                self._known_trade_ids.add(trade.trade_id)
+                self.closed_trades += 1
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
@@ -466,6 +470,19 @@ def _live_status_payload(
                 "opening_plan_id": position.opening_plan_id,
             }
         )
+    open_planned_risk = sum(
+        (position.planned_risk for position in execution.account.positions),
+        Decimal("0"),
+    )
+    open_planned_risk_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else open_planned_risk / execution.account.equity
+    )
+    activity = pump.pipeline.session_decision_activity
+    decision_reason_counts = dict(activity.decision_reason_counts)
+    risk_reason_counts = dict(activity.risk_reason_counts)
+
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
     if observation is not None:
@@ -492,6 +509,29 @@ def _live_status_payload(
         "processed_records": pump.processed_records,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
+        "open_planned_risk": str(open_planned_risk),
+        "open_planned_risk_fraction_of_equity": str(
+            open_planned_risk_fraction
+        ),
+        "gross_open_notional": str(execution.account.gross_open_notional),
+        "available_margin": str(execution.account.available_margin),
+        "session_decision_epochs": activity.decision_epochs,
+        "last_decision_boundary_ms": activity.last_decision_boundary_ms,
+        "last_decision_evaluated_at_ms": activity.last_decision_evaluated_at_ms,
+        "session_decisions": {
+            "long": activity.long_decisions,
+            "short": activity.short_decisions,
+            "no_trade": activity.no_trade_decisions,
+        },
+        "session_decision_reason_counts": decision_reason_counts,
+        "session_risk": {
+            "evaluations": activity.risk_evaluations,
+            "approvals": activity.risk_approvals,
+            "rejections": activity.risk_rejections,
+            "reason_counts": risk_reason_counts,
+        },
+        "session_opening_execution_attempts": activity.opening_execution_attempts,
+        "session_opening_fills": activity.opening_fills,
         "open_position_count": len(positions),
         "positions": positions,
         "cash": str(execution.account.cash),

@@ -94,6 +94,23 @@ class OpenLifecycleCheckpoint:
             raise ValueError("exit_plan_ids must not contain empty values")
 
 
+@dataclass(frozen=True, slots=True)
+class SessionDecisionActivity:
+    decision_epochs: int
+    last_decision_boundary_ms: int | None
+    last_decision_evaluated_at_ms: int | None
+    long_decisions: int
+    short_decisions: int
+    no_trade_decisions: int
+    decision_reason_counts: tuple[tuple[str, int], ...]
+    risk_evaluations: int
+    risk_approvals: int
+    risk_rejections: int
+    risk_reason_counts: tuple[tuple[str, int], ...]
+    opening_execution_attempts: int
+    opening_fills: int
+
+
 @dataclass(slots=True)
 class _OpenTradeLifecycle:
     feature_snapshot_id: str
@@ -166,6 +183,21 @@ class BaselineReplayPipeline:
         self._gap_intervals: list[tuple[int, int | None]] = []
         self._recorded_account_states: set[str] = set()
         self._initial_observation_emitted = False
+        self._decision_epochs = 0
+        self._last_decision_boundary_ms: int | None = None
+        self._last_decision_evaluated_at_ms: int | None = None
+        self._decision_counts: dict[str, int] = {
+            "long": 0,
+            "short": 0,
+            "no_trade": 0,
+        }
+        self._decision_reason_counts: dict[str, int] = {}
+        self._risk_evaluations = 0
+        self._risk_approvals = 0
+        self._risk_rejections = 0
+        self._risk_reason_counts: dict[str, int] = {}
+        self._opening_execution_attempts = 0
+        self._opening_fills = 0
 
     @property
     def funding_inconsistent(self) -> bool:
@@ -174,6 +206,24 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    @property
+    def session_decision_activity(self) -> SessionDecisionActivity:
+        return SessionDecisionActivity(
+            decision_epochs=self._decision_epochs,
+            last_decision_boundary_ms=self._last_decision_boundary_ms,
+            last_decision_evaluated_at_ms=self._last_decision_evaluated_at_ms,
+            long_decisions=self._decision_counts["long"],
+            short_decisions=self._decision_counts["short"],
+            no_trade_decisions=self._decision_counts["no_trade"],
+            decision_reason_counts=tuple(sorted(self._decision_reason_counts.items())),
+            risk_evaluations=self._risk_evaluations,
+            risk_approvals=self._risk_approvals,
+            risk_rejections=self._risk_rejections,
+            risk_reason_counts=tuple(sorted(self._risk_reason_counts.items())),
+            opening_execution_attempts=self._opening_execution_attempts,
+            opening_fills=self._opening_fills,
+        )
 
     def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
         if not isinstance(self._decision_engine, BaselineDecisionEngine):
@@ -350,9 +400,20 @@ class BaselineReplayPipeline:
         return (self._account_observation(EquityFactKind.ACCOUNT_UPDATE),)
 
     def _process_epoch(self, epoch: DecisionEpoch) -> tuple[JournalObservation, ...]:
+        self._decision_epochs += 1
+        self._last_decision_boundary_ms = epoch.boundary_ms
+        self._last_decision_evaluated_at_ms = epoch.evaluated_at_ms
         observations: list[JournalObservation] = []
         for evaluation in epoch.markets:
             decision = evaluation.decision
+            direction = decision.direction.value
+            if direction not in self._decision_counts:
+                raise ReplayInvariantError("unexpected strategy direction")
+            self._decision_counts[direction] += 1
+            for reason in decision.reason_codes:
+                self._decision_reason_counts[reason] = (
+                    self._decision_reason_counts.get(reason, 0) + 1
+                )
             self._latest_evaluation[decision.market.canonical] = evaluation
             if self._feature_snapshot_sink is not None:
                 self._feature_snapshot_sink.record(evaluation.feature)
@@ -485,6 +546,16 @@ class BaselineReplayPipeline:
         trace: BaselineOpeningTrace,
     ) -> tuple[JournalObservation, ...]:
         submission = trace.submission
+        self._risk_evaluations += 1
+        if submission.risk_decision.approved:
+            self._risk_approvals += 1
+        else:
+            self._risk_rejections += 1
+        for reason in submission.risk_decision.reason_codes:
+            self._risk_reason_counts[reason] = self._risk_reason_counts.get(reason, 0) + 1
+        if submission.simulation is not None:
+            self._opening_execution_attempts += 1
+            self._opening_fills += len(submission.simulation.fills)
         observations: list[JournalObservation] = [
             observation_from_risk(
                 submission.risk_decision,

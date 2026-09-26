@@ -7,6 +7,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+def _reason_summary(raw: object) -> str:
+    if not isinstance(raw, dict) or not raw:
+        return "none"
+    counts = sorted(
+        ((str(reason), int(count)) for reason, count in raw.items()),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -17,6 +26,12 @@ def render_live_status(
     positions_raw = payload.get("positions", [])
     if not isinstance(positions_raw, list):
         raise ValueError("positions must be a list")
+    decisions = payload.get("session_decisions", {})
+    if not isinstance(decisions, dict):
+        decisions = {}
+    risk = payload.get("session_risk", {})
+    if not isinstance(risk, dict):
+        risk = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -34,6 +49,13 @@ def render_live_status(
         f"- cumulative fees: `{payload['cumulative_fees']}`",
         f"- cumulative funding: `{payload['cumulative_funding']}`",
         f"- closed trades: `{payload['closed_trades']}`",
+        f"- open planned risk: `{payload.get('open_planned_risk', '0')}`",
+        (
+            "- open planned risk / equity: "
+            f"`{payload.get('open_planned_risk_fraction_of_equity', '0')}`"
+        ),
+        f"- gross open notional: `{payload.get('gross_open_notional', '0')}`",
+        f"- available margin: `{payload.get('available_margin', '0')}`",
         (
             "- execution healthy: "
             f"`{str(payload['execution_healthy']).lower()}`"
@@ -80,6 +102,43 @@ def render_live_status(
             "```json",
             json.dumps(payload.get("last_observation"), indent=2, sort_keys=True),
             "```",
+            "",
+            "### Decision path",
+            "",
+            f"- session decision epochs: `{payload.get('session_decision_epochs', 0)}`",
+            (
+                "- last decision boundary ms: "
+                f"`{payload.get('last_decision_boundary_ms')}`"
+            ),
+            (
+                "- last decision evaluated ms: "
+                f"`{payload.get('last_decision_evaluated_at_ms')}`"
+            ),
+            (
+                "- LONG / SHORT / NO_TRADE: "
+                f"`{decisions.get('long', 0)} / "
+                f"{decisions.get('short', 0)} / "
+                f"{decisions.get('no_trade', 0)}`"
+            ),
+            (
+                "- risk evaluations / approvals / rejections: "
+                f"`{risk.get('evaluations', 0)} / "
+                f"{risk.get('approvals', 0)} / "
+                f"{risk.get('rejections', 0)}`"
+            ),
+            (
+                "- opening execution attempts / fills: "
+                f"`{payload.get('session_opening_execution_attempts', 0)} / "
+                f"{payload.get('session_opening_fills', 0)}`"
+            ),
+            (
+                "- strategy reasons: "
+                f"`{_reason_summary(payload.get('session_decision_reason_counts', {}))}`"
+            ),
+            (
+                "- risk reasons: "
+                f"`{_reason_summary(risk.get('reason_counts', {}))}`"
+            ),
             "",
             "### Runtime",
             "",

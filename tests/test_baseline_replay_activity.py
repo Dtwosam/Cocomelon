@@ -221,6 +221,19 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
         assert activity.fills == 1
         assert activity.opened_positions == 1
         assert activity.closed_positions == 0
+        decision_activity = pipeline.session_decision_activity
+        assert decision_activity.decision_epochs == 1
+        assert decision_activity.long_decisions == 1
+        assert decision_activity.short_decisions == 0
+        assert decision_activity.no_trade_decisions == 0
+        assert decision_activity.decision_reason_counts == (
+            ("fixture-directional", 1),
+        )
+        assert decision_activity.risk_evaluations == 1
+        assert decision_activity.risk_approvals == 1
+        assert decision_activity.risk_rejections == 0
+        assert decision_activity.opening_execution_attempts == 1
+        assert decision_activity.opening_fills == 1
     finally:
         execution.close()
         facts.close()

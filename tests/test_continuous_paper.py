@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,9 +15,10 @@ from cocomelon.continuous_paper import (
     _record_from_payload,
     _record_from_stream,
     _record_payload,
+    _RecordPump,
 )
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import SourceRecordKind
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 
 
@@ -77,3 +80,55 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"live_orders": False' in source
     assert '"positions": positions' in source
     assert '"stop_price": str(position.stop_price)' in source
+    assert '"session_decision_epochs"' in source
+    assert '"session_decisions"' in source
+    assert '"session_risk"' in source
+    assert '"open_planned_risk"' in source
+    assert '"open_planned_risk_fraction_of_equity"' in source
+
+
+def test_record_pump_counts_each_closed_trade_once() -> None:
+    trade = SimpleNamespace(trade_id="trade-1")
+
+    class Pipeline:
+        def on_record(self, _record: ReplayRecord, _now_ms: int) -> tuple[object, ...]:
+            return ()
+
+        def finalize(self, _end_ms: int) -> tuple[SimpleNamespace, ...]:
+            return (trade,)
+
+    class Journal:
+        def __init__(self) -> None:
+            self.recorded: list[str] = []
+
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(self, _observation: object) -> None:
+            raise AssertionError("no observations expected")
+
+        def record_trade(self, item: SimpleNamespace) -> None:
+            self.recorded.append(item.trade_id)
+
+    journal = Journal()
+    pump = _RecordPump(
+        Pipeline(),  # type: ignore[arg-type]
+        journal,  # type: ignore[arg-type]
+        last_available_at_ms=0,
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=1,
+        source="fixture",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key="gap-1",
+        payload_json='{"started_ms":1,"ended_ms":1,"reason":"fixture","stream_id":"x"}',
+        event_kind=None,
+    )
+    asyncio.run(pump.process(record))
+    asyncio.run(pump.process(record))
+
+    assert journal.recorded == ["trade-1"]
+    assert pump.closed_trades == 1
