@@ -23,3 +23,9 @@ def test_universe_diagnostics_uses_real_actions_token_expression() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "GH_TOKEN: ${{ github.token }}" in source
     assert r"GH_TOKEN: \\${{ github.token }}" not in source
+
+
+def test_universe_diagnostics_has_no_escaped_actions_expressions() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert r"\\${{" not in source
+    assert "universe-opportunity-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}" in source
