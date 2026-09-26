@@ -17,7 +17,7 @@ def _rank(market: MarketId, ordinal: int, score: str) -> OpportunityRank:
     )
 
 
-def test_universe_diagnostics_quantifies_hip3_displacement() -> None:
+def test_universe_diagnostics_reports_hip3_presence_and_native_set_change() -> None:
     combined_ranks = (
         _rank(MarketId("xyz", "ABC"), 1, "0.95"),
         _rank(MarketId("", "BTC"), 2, "0.90"),
@@ -45,7 +45,7 @@ def test_universe_diagnostics_quantifies_hip3_displacement() -> None:
     assert report.hip3_in_combined_top_n == 1
     assert tuple(row.market for row in report.combined_top_n) == ("xyz:ABC", "BTC")
     assert tuple(row.market for row in report.current_native_top_n) == ("BTC", "ETH")
-    assert report.displaced_native_markets == ("ETH",)
+    assert report.native_only_top_n_absent_from_combined == ("ETH",)
     assert report.paper_trading_policy == "native_only"
     assert report.economic_authority is False
     assert report.live_orders is False
@@ -81,3 +81,28 @@ def test_universe_diagnostics_rejects_non_native_baseline() -> None:
         assert "native_ranks" in str(exc)
     else:
         raise AssertionError("expected non-native baseline to fail")
+
+
+def test_native_set_change_can_exist_without_hip3_top_n_presence() -> None:
+    combined_ranks = (
+        _rank(MarketId("", "BTC"), 1, "0.95"),
+        _rank(MarketId("", "SOL"), 2, "0.90"),
+        _rank(MarketId("xyz", "ABC"), 3, "0.85"),
+    )
+    native_ranks = (
+        _rank(MarketId("", "BTC"), 1, "0.96"),
+        _rank(MarketId("", "ETH"), 2, "0.91"),
+        _rank(MarketId("", "SOL"), 3, "0.89"),
+    )
+
+    report = build_universe_opportunity_diagnostics(
+        combined_ranks,
+        native_ranks,
+        observed_at_ms=1,
+        dex_count=1,
+        market_count=4,
+        deep_limit=2,
+    )
+
+    assert report.hip3_in_combined_top_n == 0
+    assert report.native_only_top_n_absent_from_combined == ("ETH",)

@@ -37,7 +37,7 @@ def test_universe_diagnostics_renderer_marks_report_non_economic(tmp_path) -> No
                 "reason_codes": ["ELIGIBLE"],
             }
         ],
-        "displaced_native_markets": ["ETH"],
+        "native_only_top_n_absent_from_combined": ["ETH"],
         "paper_trading_policy": "native_only",
         "economic_authority": False,
         "live_orders": False,
@@ -60,4 +60,5 @@ def test_universe_diagnostics_renderer_marks_report_non_economic(tmp_path) -> No
     assert "`3`" in output
     assert "xyz:ABC" in output
     assert "`ETH`" in output
+    assert "not a direct HIP-3 displacement count" in output
     assert "does not change trading eligibility" in output
