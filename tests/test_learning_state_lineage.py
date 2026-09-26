@@ -186,6 +186,51 @@ def test_learning_state_lineage_accepts_authenticated_late_backfill(tmp_path) ->
     assert second.previous_entry_id == first.entry_id
 
 
+def test_learning_state_lineage_rejects_nonadjacent_changed_identity(
+    tmp_path,
+) -> None:
+    first = _append(
+        tmp_path,
+        run_id=100,
+        attempt=1,
+        before_records=0,
+        before_learning_digest="1" * 64,
+        before_features=0,
+        before_feature_digest="2" * 64,
+    )
+    second = _append(
+        tmp_path,
+        run_id=101,
+        attempt=1,
+        before_records=1,
+        before_learning_digest=first.after_learning_state_digest,
+        before_features=1,
+        before_feature_digest=first.after_feature_state_digest,
+        after_learning_digest="e" * 64,
+        after_feature_digest="f" * 64,
+    )
+    with pytest.raises(
+        LearningStateLineageError,
+        match="LINEAGE_UPSTREAM_IDENTITY_CHANGED",
+    ):
+        _append(
+            tmp_path,
+            run_id=100,
+            attempt=1,
+            before_records=2,
+            before_learning_digest=second.after_learning_state_digest,
+            before_features=2,
+            before_feature_digest=second.after_feature_state_digest,
+            created_records=0,
+            existing_records=1,
+            created_features=0,
+            existing_features=1,
+            after_learning_digest=second.after_learning_state_digest,
+            after_feature_digest=second.after_feature_state_digest,
+            artifact_id=999,
+        )
+
+
 def test_learning_state_lineage_rejects_tampered_entry(tmp_path) -> None:
     entry = _append(
         tmp_path,
