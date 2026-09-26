@@ -133,6 +133,23 @@ def test_position_protection_metrics_handle_long_and_short_stops() -> None:
     assert short["stop_protects_profit"] is True
 
 
+def test_position_protection_metrics_allow_legacy_zero_planned_risk() -> None:
+    metrics = _position_protection_metrics(
+        side="long",
+        quantity=Decimal("1"),
+        entry_price=Decimal("100"),
+        stop_price=Decimal("99"),
+        latest_mark=Decimal("101"),
+        planned_risk=Decimal("0"),
+    )
+
+    assert metrics["unrealized_gross_pnl"] == "1"
+    assert metrics["current_gross_r"] is None
+    assert metrics["stop_trigger_gross_pnl"] == "-1"
+    assert metrics["stop_trigger_gross_r"] is None
+    assert metrics["stop_protects_profit"] is False
+
+
 def test_position_protection_metrics_keep_unprotected_stop_negative() -> None:
     metrics = _position_protection_metrics(
         side="short",
