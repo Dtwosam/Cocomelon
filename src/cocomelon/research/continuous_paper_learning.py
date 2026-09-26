@@ -50,6 +50,18 @@ def _require_nonempty(value: str, field: str) -> None:
         raise ValueError(f"{field} must not be empty")
 
 
+def _string(value: object, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    return value
+
+
+def _integer(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class ContinuousPaperRuntimeIdentity:
     worker_run_id: int
@@ -144,18 +156,33 @@ class ContinuousPaperOpeningLineage:
             )
         try:
             lineage = cls(
-                opening_plan_id=str(raw["opening_plan_id"]),
-                feature_snapshot_id=str(raw["feature_snapshot_id"]),
-                market=str(raw["market"]),
-                opened_at_ms=int(raw["opened_at_ms"]),
-                runtime=ContinuousPaperRuntimeIdentity(
-                    worker_run_id=int(raw["worker_run_id"]),
-                    worker_run_attempt=int(raw["worker_run_attempt"]),
-                    worker_head_sha=str(raw["worker_head_sha"]),
+                opening_plan_id=_string(raw["opening_plan_id"], "opening_plan_id"),
+                feature_snapshot_id=_string(
+                    raw["feature_snapshot_id"],
+                    "feature_snapshot_id",
                 ),
-                candidate_id=str(raw["candidate_id"]),
-                replay_run_id=str(raw["replay_run_id"]),
-                schema_version=int(raw["schema_version"]),
+                market=_string(raw["market"], "market"),
+                opened_at_ms=_integer(raw["opened_at_ms"], "opened_at_ms"),
+                runtime=ContinuousPaperRuntimeIdentity(
+                    worker_run_id=_integer(
+                        raw["worker_run_id"],
+                        "worker_run_id",
+                    ),
+                    worker_run_attempt=_integer(
+                        raw["worker_run_attempt"],
+                        "worker_run_attempt",
+                    ),
+                    worker_head_sha=_string(
+                        raw["worker_head_sha"],
+                        "worker_head_sha",
+                    ),
+                ),
+                candidate_id=_string(raw["candidate_id"], "candidate_id"),
+                replay_run_id=_string(raw["replay_run_id"], "replay_run_id"),
+                schema_version=_integer(
+                    raw["schema_version"],
+                    "schema_version",
+                ),
             )
         except (TypeError, ValueError) as exc:
             raise ContinuousPaperLearningError(
