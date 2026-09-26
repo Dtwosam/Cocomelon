@@ -60,6 +60,11 @@ from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperOpeningLineageStore,
     ContinuousPaperRuntimeIdentity,
 )
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankStore,
+    LatestCoarseRankTracker,
+    opening_rank_attribution,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
@@ -306,14 +311,20 @@ class _ContinuousOpeningLineageSink:
         self,
         store: ContinuousPaperOpeningLineageStore,
         runtime: ContinuousPaperRuntimeIdentity,
+        *,
+        rank_store: ContinuousPaperOpeningRankStore,
+        rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
         self._runtime = runtime
+        self._rank_store = rank_store
+        self._rank_tracker = rank_tracker
+        self.rank_error: str | None = None
 
     def record(self, checkpoint: OpenLifecycleCheckpoint) -> bool:
         if checkpoint.opened_at_ms is None:
             raise ValueError("fresh paper opening is missing opened_at_ms")
-        return self._store.record(
+        created = self._store.record(
             ContinuousPaperOpeningLineage(
                 opening_plan_id=checkpoint.opening_plan_id,
                 feature_snapshot_id=checkpoint.feature_snapshot_id,
@@ -322,6 +333,18 @@ class _ContinuousOpeningLineageSink:
                 runtime=self._runtime,
             )
         )
+        try:
+            evidence = self._rank_tracker.evidence_for_opening(
+                opening_plan_id=checkpoint.opening_plan_id,
+                market=checkpoint.market,
+                opened_at_ms=checkpoint.opened_at_ms,
+            )
+            if evidence is not None:
+                self._rank_store.record(evidence)
+        except Exception as exc:
+            if self.rank_error is None:
+                self.rank_error = f"{type(exc).__name__}: {exc}"
+        return created
 
 
 @dataclass(frozen=True, slots=True)
@@ -338,6 +361,9 @@ class ContinuousPaperSummary:
     feature_snapshot_state_digest: str
     opening_lineage_count: int
     opening_lineage_state_digest: str
+    opening_rank_count: int
+    opening_rank_state_digest: str
+    opening_rank_capture_error: str | None
     trade_path_count: int
     trade_path_open_count: int
     trade_path_state_digest: str
@@ -363,6 +389,9 @@ class ContinuousPaperSummary:
             "feature_snapshot_state_digest": self.feature_snapshot_state_digest,
             "opening_lineage_count": self.opening_lineage_count,
             "opening_lineage_state_digest": self.opening_lineage_state_digest,
+            "opening_rank_count": self.opening_rank_count,
+            "opening_rank_state_digest": self.opening_rank_state_digest,
+            "opening_rank_capture_error": self.opening_rank_capture_error,
             "trade_path_count": self.trade_path_count,
             "trade_path_open_count": self.trade_path_open_count,
             "trade_path_state_digest": self.trade_path_state_digest,
@@ -1370,6 +1399,32 @@ def _profit_lock_counterfactual_payload(
     }
 
 
+def _opening_rank_attribution_payload(
+    journal: JournalStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    *,
+    capture_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = opening_rank_attribution(
+            tuple(journal.iter_trades()),
+            rank_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "capture_error": capture_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["capture_error"] = capture_error
+    payload["error"] = None
+    return payload
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -1377,10 +1432,12 @@ def _live_status_payload(
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
+    opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -1466,6 +1523,11 @@ def _live_status_payload(
         prospective_entry_filter_state,
         restore_error=prospective_entry_filter_restore_error,
     )
+    opening_rank = _opening_rank_attribution_payload(
+        pump.journal,
+        opening_rank_store,
+        capture_error=opening_rank_capture_error,
+    )
 
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
@@ -1545,6 +1607,7 @@ def _live_status_payload(
             profit_lock_execution_shadow.summary_payload()
         ),
         "prospective_entry_filter": prospective_entry_filter,
+        "opening_scanner_rank": opening_rank,
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1569,10 +1632,12 @@ def _emit_live_status(
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
+    opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> None:
@@ -1583,9 +1648,11 @@ def _emit_live_status(
         feature_store,
         fact_store,
         trade_path_store,
+        opening_rank_store,
         profit_lock_execution_shadow,
         prospective_entry_filter_state,
         trade_path_capture_error=trade_path_capture_error,
+        opening_rank_capture_error=opening_rank_capture_error,
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
         ),
@@ -1699,6 +1766,10 @@ async def run_continuous_paper_session(
     opening_lineage_store = ContinuousPaperOpeningLineageStore(
         root / "opening-lineage"
     )
+    opening_rank_store = ContinuousPaperOpeningRankStore(
+        root / "opening-ranks"
+    )
+    rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
     replay_config = BaselineReplayConfig()
@@ -1733,6 +1804,14 @@ async def run_continuous_paper_session(
             received_at_ms=initial_received_at_ms,
         )
         pinned = tuple(position.market for position in execution.account.positions)
+        _initial_features, initial_ranks = _startup_ranks(
+            snapshots,
+            as_of_ms=initial_received_at_ms,
+        )
+        rank_tracker.update(
+            initial_ranks,
+            observed_at_ms=initial_received_at_ms,
+        )
         selected = _ranked_selection(
             snapshots,
             as_of_ms=initial_received_at_ms,
@@ -1756,6 +1835,8 @@ async def run_continuous_paper_session(
                 else _ContinuousOpeningLineageSink(
                     opening_lineage_store,
                     runtime_identity,
+                    rank_store=opening_rank_store,
+                    rank_tracker=rank_tracker,
                 )
             ),
             closed_lifecycle_sink=trade_path_sink,
@@ -1854,9 +1935,15 @@ async def run_continuous_paper_session(
             feature_store,
             facts,
             trade_path_store,
+            opening_rank_store,
             profit_lock_execution_shadow,
             prospective_entry_filter_state,
             trade_path_capture_error=trade_path_sink.error,
+            opening_rank_capture_error=(
+                None
+                if runtime_identity is None
+                else pipeline._opening_lifecycle_sink.rank_error
+            ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
             ),
@@ -1931,6 +2018,14 @@ async def run_continuous_paper_session(
                         await pump.process(
                             _record_from_public(market_snapshot_record_event(snapshot))
                         )
+                _refreshed_features, refreshed_ranks = _startup_ranks(
+                    refreshed,
+                    as_of_ms=now_ms,
+                )
+                rank_tracker.update(
+                    refreshed_ranks,
+                    observed_at_ms=now_ms,
+                )
                 await refresh_funding()
 
                 if now_ms >= next_selection_refresh_ms:
@@ -1987,9 +2082,15 @@ async def run_continuous_paper_session(
                     feature_store,
                     facts,
                     trade_path_store,
+                    opening_rank_store,
                     profit_lock_execution_shadow,
                     prospective_entry_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
+                    opening_rank_capture_error=(
+                        None
+                        if runtime_identity is None
+                        else pipeline._opening_lifecycle_sink.rank_error
+                    ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
                     ),
@@ -2028,6 +2129,13 @@ async def run_continuous_paper_session(
             feature_snapshot_state_digest=feature_store.state_digest,
             opening_lineage_count=opening_lineage_store.record_count,
             opening_lineage_state_digest=opening_lineage_store.state_digest,
+            opening_rank_count=opening_rank_store.record_count,
+            opening_rank_state_digest=opening_rank_store.state_digest,
+            opening_rank_capture_error=(
+                None
+                if runtime_identity is None
+                else pipeline._opening_lifecycle_sink.rank_error
+            ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,
             trade_path_state_digest=trade_path_store.state_digest,
