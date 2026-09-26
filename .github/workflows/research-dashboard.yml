@@ -6,6 +6,7 @@ on:
       - "Scheduled Research Mainnet Replay Campaign"
       - "Research V4 Acquisition Authority Sync"
       - "Research Learning Evidence Sync"
+      - "Continuous Paper Learning Evidence Sync"
       - "Research Autonomous Learning Cycle"
       - "Research Learning Clean State Bootstrap"
       - "Research Learning Clean State Campaign Follower"
