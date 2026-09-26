@@ -158,7 +158,7 @@ def test_closed_trade_attribution_groups_rank_buckets(
     )
 
     assert result["attributed_closed_trades"] == 4
-    assert result["attribution_misses"] == 1
+    assert result["closed_trades_without_rank_evidence"] == 1
     assert result["mean_rank_age_ms"] == 500
     groups = result["by_rank_bucket"]
     assert isinstance(groups, dict)
