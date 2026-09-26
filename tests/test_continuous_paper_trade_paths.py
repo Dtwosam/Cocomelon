@@ -12,6 +12,7 @@ from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKin
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathError,
+    ContinuousPaperTradePathMark,
     ContinuousPaperTradePathStore,
     continuous_paper_trade_path,
 )
@@ -62,7 +63,7 @@ def _trade() -> TradeJournalEntry:
     )
 
 
-def _mark(
+def _record(
     available_at_ms: int,
     mark_px: str,
     event_key: str,
@@ -77,6 +78,19 @@ def _mark(
         event_key=event_key,
         payload_json=f'{{"mark_px":"{mark_px}"}}',
         event_kind="activeAssetCtx",
+    )
+
+
+def _mark(
+    available_at_ms: int,
+    mark_px: str,
+    event_key: str,
+) -> ContinuousPaperTradePathMark:
+    return ContinuousPaperTradePathMark(
+        available_at_ms=available_at_ms,
+        exchange_time_ms=available_at_ms - 1,
+        event_key=event_key,
+        mark_px=Decimal(mark_px),
     )
 
 
@@ -133,6 +147,76 @@ def test_trade_path_store_is_idempotent_and_conflict_detecting(
         match="CONTINUOUS_PAPER_TRADE_PATH_CONFLICT",
     ):
         store.record(conflict)
+
+
+def test_open_path_checkpoint_survives_store_restart_and_finalizes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "trade-paths"
+    first = ContinuousPaperTradePathStore(root)
+
+    assert first.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(
+            _record(1_200, "101", "mark-1"),
+            _record(1_500, "103", "mark-2"),
+        ),
+    ) == 2
+    assert first.open_path_count == 1
+
+    restored = ContinuousPaperTradePathStore(root)
+    assert restored.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(
+            _record(1_500, "103", "mark-2"),
+            _record(1_800, "102.5", "mark-3"),
+        ),
+    ) == 1
+
+    assert restored.finalize_trade(
+        _trade(),
+        (_record(1_900, "102", "mark-4"),),
+        (),
+    ) is True
+
+    assert restored.open_path_count == 0
+    assert restored.record_count == 1
+    payload = restored.iter_payloads()[0]
+    marks = payload["marks"]
+    assert isinstance(marks, list)
+    assert [mark["event_key"] for mark in marks] == [
+        "mark-1",
+        "mark-2",
+        "mark-3",
+        "mark-4",
+    ]
+
+
+def test_open_path_checkpoint_rejects_identity_drift(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(_record(1_200, "101", "mark-1"),),
+    )
+
+    with pytest.raises(
+        ContinuousPaperTradePathError,
+        match="OPEN_IDENTITY_MISMATCH",
+    ):
+        store.checkpoint_open_path(
+            opening_plan_id="plan-open",
+            market=MARKET,
+            opened_at_ms=999,
+            mark_observations=(),
+        )
 
 
 def test_trade_path_rejects_mark_outside_lifecycle() -> None:
