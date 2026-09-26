@@ -1,6 +1,10 @@
 name: Continuous Paper Learning Catch-up
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/continuous-paper-learning-catchup.yml"
   schedule:
     - cron: "*/15 * * * *"
   workflow_run:
