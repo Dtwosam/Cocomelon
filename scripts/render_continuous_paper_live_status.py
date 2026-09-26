@@ -40,6 +40,13 @@ def render_live_status(
         f"- cumulative fees: `{payload['cumulative_fees']}`",
         f"- cumulative funding: `{payload['cumulative_funding']}`",
         f"- closed trades: `{payload['closed_trades']}`",
+        f"- open planned risk: `{payload.get('open_planned_risk', '0')}`",
+        (
+            "- open planned risk / equity: "
+            f"`{payload.get('open_planned_risk_fraction_of_equity', '0')}`"
+        ),
+        f"- gross open notional: `{payload.get('gross_open_notional', '0')}`",
+        f"- available margin: `{payload.get('available_margin', '0')}`",
         (
             "- execution healthy: "
             f"`{str(payload['execution_healthy']).lower()}`"
