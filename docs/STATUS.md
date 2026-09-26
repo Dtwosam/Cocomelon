@@ -1062,3 +1062,29 @@ Triggered candidates that cannot complete their simulated close before the actua
 Meeting these thresholds changes status only to `ready_for_review`. It does not grant promotion authority or execution authority, does not modify paper stops, and does not weaken the existing mark-path readiness boundary.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective LONG-trend entry filter study — 2026-09-27
+
+A single entry-quality hypothesis is frozen prospectively before future outcomes are observed:
+
+- candidate ID: `prospective-reject-long-trend-v1`;
+- frozen rule: reject a paper trade only when its entry decision is `LONG` and its lead strategy is `trend`;
+- all other directions and lead strategies remain admitted by the research candidate;
+- the study begins at its durable `started_at_ms` and ignores earlier trades, including trades that were already open before the study started;
+- the durable start state survives continuous-paper worker handoffs and cannot silently move after results appear;
+- every prospective closed trade must match its persisted decision fact by market, direction, feature lineage, strategy-decision ID, and replay run;
+- missing decision attribution prevents review readiness rather than being guessed or silently dropped.
+
+The reported economic delta is intentionally limited to **closed-trade contribution**: blocked trades contribute zero and allowed trades retain their observed paper net PnL. It is not a portfolio counterfactual because skipping a trade can alter later risk capacity, cooldowns, position concurrency, and replacement opportunities.
+
+The study remains `collecting` until all three volume gates are satisfied prospectively:
+
+- 30 prospective closed trades;
+- 10 blocked LONG+trend trades;
+- 10 allowed trades;
+- zero attribution misses.
+
+Meeting the evidence gate means only `ready_for_review`. It grants no execution or promotion authority and cannot mutate the paper strategy.
+
+**LIVE TRADING: DISABLED.**
