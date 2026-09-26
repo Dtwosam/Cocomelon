@@ -98,12 +98,8 @@ async def _wait_supervisor_group_ready(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
     while True:
-        for task in group.tasks:
-            if task.done():
-                if task.cancelled():
-                    return False
-                if task.exception() is not None:
-                    return False
+        if any(task.done() for task in group.tasks):
+            return False
         if all(ready.is_set() for ready in group.ready_lanes):
             return True
         if loop.time() >= deadline:
