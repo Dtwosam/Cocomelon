@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      GH_TOKEN: \${{ github.token }}
+      GH_TOKEN: ${{ github.token }}
       COCOMELON_EXECUTION_MODE: paper
       DIAGNOSTICS_ISSUE: "483"
     steps:
@@ -61,9 +61,10 @@ jobs:
             --body-file universe-opportunity-diagnostics.md
 
       - name: Upload diagnostic snapshot
+        if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: universe-opportunity-diagnostics-\${{ github.run_id }}-\${{ github.run_attempt }}
+          name: universe-opportunity-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             universe-opportunity-diagnostics.json
             universe-opportunity-diagnostics.md
