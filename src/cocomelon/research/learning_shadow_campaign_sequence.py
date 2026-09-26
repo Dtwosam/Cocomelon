@@ -404,7 +404,10 @@ def build_learning_shadow_campaign_sequence_status(
     )
     next_required = None if not required else required[0]
 
-    def status(action: str, current: ShadowCampaignRef | None) -> LearningShadowCampaignSequenceStatus:
+    def status(
+        action: str,
+        current: ShadowCampaignRef | None,
+    ) -> LearningShadowCampaignSequenceStatus:
         return LearningShadowCampaignSequenceStatus(
             action=action,
             bootstrap_as_of_ms=bootstrap_as_of_ms,
