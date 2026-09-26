@@ -272,7 +272,7 @@ def test_execution_shadow_partial_fill_survives_restart_and_completes() -> None:
     assert rule["simulated_full_closes"] == 1
     assert rule["triggered_incomplete"] == 0
     outcome = restored.state_payload()["outcomes"][0]
-    assert outcome["simulated_filled_quantity"] == "2"
+    assert Decimal(str(outcome["simulated_filled_quantity"])) == Decimal("2")
     assert Decimal(str(outcome["simulated_exit_fees"])) > Decimal("0")
 
 
