@@ -115,6 +115,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"capture_error": trade_path_capture_error' in source
     assert '"profit_lock_counterfactual": profit_lock_counterfactual' in source
     assert "evaluate_profit_lock_state(journal, trade_path_store)" in source
+    assert "profit_lock_readiness(study)" in source
+    assert '"min_complete_paths": MIN_COMPLETE_PATHS' in source
+    assert '"min_activated_trades_per_rule"' in source
+    assert '"min_triggered_trades_per_rule"' in source
+    assert '"readiness_status"' in source
 
 
 def test_profit_lock_counterfactual_telemetry_fails_open(
@@ -136,6 +141,7 @@ def test_profit_lock_counterfactual_telemetry_fails_open(
     assert payload["enabled"] is False
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: counterfactual boom"
 
 
