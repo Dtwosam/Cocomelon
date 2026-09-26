@@ -665,7 +665,29 @@ class BaselineReplayPipeline:
         observations = list(self._ensure_initial_account_observation())
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
-            self._gap_intervals.append((record.available_at_ms, None))
+            payload = record.payload
+            if not isinstance(payload, dict):
+                raise ReplayInvariantError("data-gap payload must be an object")
+            started_raw = payload.get("started_ms")
+            ended_raw = payload.get("ended_ms")
+            if isinstance(started_raw, bool) or not isinstance(started_raw, int):
+                raise ReplayInvariantError("data-gap started_ms must be an integer")
+            if ended_raw is not None and (
+                isinstance(ended_raw, bool) or not isinstance(ended_raw, int)
+            ):
+                raise ReplayInvariantError("data-gap ended_ms must be an integer or null")
+            interval = (started_raw, ended_raw)
+            if ended_raw is None:
+                if interval not in self._gap_intervals:
+                    self._gap_intervals.append(interval)
+            else:
+                open_interval = (started_raw, None)
+                if open_interval in self._gap_intervals:
+                    self._gap_intervals[
+                        self._gap_intervals.index(open_interval)
+                    ] = interval
+                elif interval not in self._gap_intervals:
+                    self._gap_intervals.append(interval)
 
         for epoch in self._decision_engine.observe(record, now_ms):
             observations.extend(self._process_epoch(epoch))
