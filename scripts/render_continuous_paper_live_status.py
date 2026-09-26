@@ -17,6 +17,12 @@ def render_live_status(
     positions_raw = payload.get("positions", [])
     if not isinstance(positions_raw, list):
         raise ValueError("positions must be a list")
+    decisions = payload.get("session_decisions", {})
+    if not isinstance(decisions, dict):
+        decisions = {}
+    risk = payload.get("session_risk", {})
+    if not isinstance(risk, dict):
+        risk = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -80,6 +86,35 @@ def render_live_status(
             "```json",
             json.dumps(payload.get("last_observation"), indent=2, sort_keys=True),
             "```",
+            "",
+            "### Decision path",
+            "",
+            f"- session decision epochs: `{payload.get('session_decision_epochs', 0)}`",
+            (
+                "- last decision boundary ms: "
+                f"`{payload.get('last_decision_boundary_ms')}`"
+            ),
+            (
+                "- last decision evaluated ms: "
+                f"`{payload.get('last_decision_evaluated_at_ms')}`"
+            ),
+            (
+                "- LONG / SHORT / NO_TRADE: "
+                f"`{decisions.get('long', 0)} / "
+                f"{decisions.get('short', 0)} / "
+                f"{decisions.get('no_trade', 0)}`"
+            ),
+            (
+                "- risk evaluations / approvals / rejections: "
+                f"`{risk.get('evaluations', 0)} / "
+                f"{risk.get('approvals', 0)} / "
+                f"{risk.get('rejections', 0)}`"
+            ),
+            (
+                "- opening execution attempts / fills: "
+                f"`{payload.get('session_opening_execution_attempts', 0)} / "
+                f"{payload.get('session_opening_fills', 0)}`"
+            ),
             "",
             "### Runtime",
             "",
