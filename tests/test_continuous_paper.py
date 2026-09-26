@@ -83,6 +83,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"session_decision_epochs"' in source
     assert '"session_decisions"' in source
     assert '"session_risk"' in source
+    assert '"open_planned_risk"' in source
+    assert '"open_planned_risk_fraction_of_equity"' in source
 
 
 def test_record_pump_counts_each_closed_trade_once() -> None:
