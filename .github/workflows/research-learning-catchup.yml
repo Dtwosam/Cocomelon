@@ -236,7 +236,7 @@ jobs:
               printf '%s\n' "$ACTIVE_SYNC"
               exit 0
             fi
-            /usr/bin/gh api               --method POST               "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-evidence.yml/dispatches"               -f ref=main               -f upstream_run_id="$LATEST_CAMPAIGN_RUN_ID"
+            /usr/bin/gh api               --method POST               "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-evidence.yml/dispatches"               -f ref=main               -f "inputs[upstream_run_id]=$LATEST_CAMPAIGN_RUN_ID"
             echo "dispatched missing learning evidence sync for $LATEST_CAMPAIGN_RUN_ID"
             exit 0
           fi
@@ -325,5 +325,5 @@ jobs:
             exit 0
           fi
 
-          /usr/bin/gh api             --method POST             "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-cycle.yml/dispatches"             -f ref=main             -f upstream_run_id="$LATEST_SYNC_RUN_ID"
+          /usr/bin/gh api             --method POST             "/repos/$GITHUB_REPOSITORY/actions/workflows/research-learning-cycle.yml/dispatches"             -f ref=main             -f "inputs[upstream_run_id]=$LATEST_SYNC_RUN_ID"
           echo "dispatched missing autonomous learning cycle for sync $LATEST_SYNC_RUN_ID"
