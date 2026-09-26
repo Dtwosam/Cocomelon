@@ -503,6 +503,7 @@ class ProfitLockExecutionShadow:
         self._outcomes: list[ProfitLockExecutionOutcome] = []
         self._excluded_closed_trades = 0
         self._state_restored = False
+        self._state_restore_error: str | None = None
 
     @property
     def started_at_ms(self) -> int:
@@ -1007,6 +1008,7 @@ class ProfitLockExecutionShadow:
             "enabled": True,
             "durable_state": True,
             "state_restored": self._state_restored,
+            "state_restore_error": self._state_restore_error,
             "state_schema_version": (
                 EXECUTION_SHADOW_STATE_SCHEMA_VERSION
             ),
@@ -1399,3 +1401,9 @@ class ProfitLockExecutionShadow:
         self._outcomes = outcomes
         self._excluded_closed_trades = excluded_closed
         self._state_restored = True
+        self._state_restore_error = None
+
+    def mark_state_restore_error(self, error: str) -> None:
+        if not error.strip():
+            raise ValueError("restore error must not be empty")
+        self._state_restore_error = error
