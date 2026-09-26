@@ -1821,6 +1821,16 @@ async def run_continuous_paper_session(
         if not selected:
             raise RuntimeError("continuous paper scan produced no rankable native markets")
 
+        opening_lineage_sink = (
+            None
+            if runtime_identity is None
+            else _ContinuousOpeningLineageSink(
+                opening_lineage_store,
+                runtime_identity,
+                rank_store=opening_rank_store,
+                rank_tracker=rank_tracker,
+            )
+        )
         pipeline = BaselineReplayPipeline(
             replay_config,
             execution,
@@ -1829,16 +1839,7 @@ async def run_continuous_paper_session(
             replay_run_id=RUN_ID,
             evidence_class=EvidenceClass.MICROSTRUCTURE,
             feature_snapshot_sink=feature_store,
-            opening_lifecycle_sink=(
-                None
-                if runtime_identity is None
-                else _ContinuousOpeningLineageSink(
-                    opening_lineage_store,
-                    runtime_identity,
-                    rank_store=opening_rank_store,
-                    rank_tracker=rank_tracker,
-                )
-            ),
+            opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
             position_research_observer=(
                 profit_lock_execution_shadow
@@ -1941,8 +1942,8 @@ async def run_continuous_paper_session(
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
                 None
-                if runtime_identity is None
-                else pipeline._opening_lifecycle_sink.rank_error
+                if opening_lineage_sink is None
+                else opening_lineage_sink.rank_error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -2088,8 +2089,8 @@ async def run_continuous_paper_session(
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
                         None
-                        if runtime_identity is None
-                        else pipeline._opening_lifecycle_sink.rank_error
+                        if opening_lineage_sink is None
+                        else opening_lineage_sink.rank_error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
@@ -2133,8 +2134,8 @@ async def run_continuous_paper_session(
             opening_rank_state_digest=opening_rank_store.state_digest,
             opening_rank_capture_error=(
                 None
-                if runtime_identity is None
-                else pipeline._opening_lifecycle_sink.rank_error
+                if opening_lineage_sink is None
+                else opening_lineage_sink.rank_error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,
