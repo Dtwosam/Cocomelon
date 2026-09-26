@@ -43,6 +43,7 @@ def test_shadow_state_bootstrap_reverifies_decision_admission_and_provenance() -
     assert "review provenance is non-canonical" in source
     assert "verify_learning_clean_review_decision" in source
     assert "verify_learning_shadow_admission" in source
+    assert "shadow review artifact name does not match candidate" in source
     assert "review decision does not match provenance" in source
     assert "approved review is missing shadow admission" in source
     assert "rejected review unexpectedly carries shadow admission" in source
@@ -57,6 +58,10 @@ def test_shadow_state_bootstrap_refuses_duplicate_durable_lineage() -> None:
     assert ".github/workflows/research-learning-shadow-state-bootstrap.yml" in source
     assert ".github/workflows/research-learning-shadow-state-sync.yml" in source
     assert ".github/workflows/research-learning-shadow-state-continuity.yml" in source
+    assert "Research Learning Shadow State Bootstrap" in source
+    assert "Research Learning Shadow State Campaign Follower" in source
+    assert "Research Learning Shadow State Continuity" in source
+    assert "run.get(\"event\") in config[\"events\"]" in source
     assert "approved candidate already has a durable shadow-state lineage" in source
 
 
