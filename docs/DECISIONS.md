@@ -344,3 +344,21 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **LIVE TRADING: DISABLED.**
 
+## D-033 — Continuous paper outcomes use an isolated frozen research learning cycle
+
+**Date:** 2026-09-26
+
+**Decision:** Authenticated continuous-paper execution outcomes remain in their separate `continuous-paper-learning-state` and may run the existing frozen research learning cycle without being merged into the scheduled-research learning lineage.
+
+**Training gate:** The cycle inherits the existing immutable chronological capacity requirements: at least 200 settled training records followed by exactly 20 validation records, with the existing stability-block and feature-completeness checks. Before that capacity exists, the correct result is `not_ready`, not relaxed thresholds or synthetic evidence.
+
+**Model boundary:** The cycle may evaluate the existing transparent grouped-mean baseline and fixed shallow-tree challenger against authenticated continuous-paper features and realized paper net-R. It may not rewrite the active continuous-paper strategy, alter risk limits, select a live strategy, or place orders.
+
+**Promotion boundary:** Continuous-paper cycle artifacts are research-only and non-promotional. Even a development-qualified model receives no automatic candidate freeze, clean-validation admission, shadow admission, or execution authority from this workflow. Any later promotion path must preserve a new immutable candidate identity and the existing prospective/clean gates.
+
+**Lineage boundary:** The cycle authenticates the exact successful continuous-paper learning-sync run and exact state artifact digest, re-verifies persisted ledger/feature counts and state digests, and binds its own artifact name to the exact upstream sync run/attempt.
+
+**Legacy boundary:** Trades without D-032 entry-time attribution remain excluded. No historical or restored position is backfilled merely to increase sample size.
+
+**LIVE TRADING: DISABLED.**
+
