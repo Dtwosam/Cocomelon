@@ -11,6 +11,10 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert "gh workflow run continuous-paper.yml" in source
     assert 'source_run_id' in source
     assert '7,37 * * * *' in source
+    assert "push:" in source
+    assert "branches:" in source
+    assert "- main" in source
+    assert 'github.event_name }}" = "workflow_dispatch"' in source
 
 
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
