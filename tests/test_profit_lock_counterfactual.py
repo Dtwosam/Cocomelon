@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -8,14 +9,18 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
+    ContinuousPaperTradePath,
     ContinuousPaperTradePathMark,
+    ContinuousPaperTradePathStore,
 )
 from cocomelon.research.profit_lock_counterfactual import (
     DEFAULT_PROFIT_LOCK_RULES,
     ProfitLockCounterfactualError,
     ProfitLockRule,
     evaluate_profit_lock_rule,
+    evaluate_profit_lock_state,
     evaluate_profit_lock_study,
 )
 
@@ -233,3 +238,43 @@ def test_study_fails_closed_on_path_journal_lineage_mismatch() -> None:
         match="entry_price does not match journal",
     ):
         evaluate_profit_lock_study((trade,), (payload,))
+
+
+def test_durable_state_wrapper_reads_journal_and_path_store(
+    tmp_path: Path,
+) -> None:
+    trade = _trade()
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    path_store = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    try:
+        journal.record_trade(trade)
+        path_store.record(
+            ContinuousPaperTradePath(
+                trade_id=trade.trade_id,
+                market=trade.market.canonical,
+                direction=trade.direction.value,
+                opened_at_ms=trade.opened_at_ms,
+                closed_at_ms=trade.closed_at_ms,
+                entry_price=trade.entry_price,
+                exit_price=trade.exit_price,
+                initial_stop=trade.initial_stop,
+                initial_risk_amount=trade.initial_risk_amount,
+                filled_quantity=trade.filled_quantity,
+                excursion_complete=True,
+                health_refs=trade.health_refs,
+                marks=(
+                    _mark(2_000, "110", "activate"),
+                    _mark(3_000, "104", "trigger"),
+                ),
+                known_gap_intervals=(),
+            )
+        )
+
+        study = evaluate_profit_lock_state(journal, path_store)
+    finally:
+        journal.close()
+
+    assert study.path_record_count == 1
+    assert study.evaluated_trade_count == 1
+    assert study.rules[1].triggered_trades == 1
+    assert study.rules[1].candidate_net_pnl_estimate > Decimal("3.8")
