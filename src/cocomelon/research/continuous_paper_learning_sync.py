@@ -285,7 +285,9 @@ def sync_continuous_paper_learning(
         upstream_artifact_id=upstream_artifact_id,
         upstream_artifact_digest=upstream_artifact_digest,
         required_candidate_ids=(CONTINUOUS_PAPER_LEARNING_CANDIDATE_ID,),
-        scanned_trades=result.scanned_trades,
+        scanned_trades=(
+            result.scanned_trades - result.skipped_pre_activation_trades
+        ),
         created_records=result.created_records,
         existing_records=result.existing_records,
         created_feature_snapshots=result.created_feature_snapshots,
