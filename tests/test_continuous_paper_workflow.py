@@ -12,6 +12,10 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'source_run_id' in source
     assert '7,37 * * * *' in source
     assert "push:" in source
+    assert "issues: write" in source
+    assert 'LIVE_STATUS_ISSUE: "469"' in source
+    assert 'gh issue edit "$LIVE_STATUS_ISSUE"' in source
+    assert "COCOMELON_PAPER_HEARTBEAT" in source
     assert '".github/workflows/continuous-paper.yml"' in source
     assert 'EVENT_NAME: ${{ github.event_name }}' in source
     assert "SOURCE_RUN_ID" in source
