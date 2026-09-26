@@ -18,6 +18,7 @@ from cocomelon.domain.journal import JournalObservation
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyDecision
+from cocomelon.evaluation.facts import account_equity_fact
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
@@ -410,3 +411,45 @@ def test_lifecycle_raises_replay_invariant_on_journal_inconsistency(
 
     execution.close()
     facts.close()
+
+
+
+def test_restart_reuses_persisted_equity_fact_for_restored_account_state(
+    tmp_path: Path,
+) -> None:
+    replay_config = _config()
+    execution = PaperExecutionAdapter(
+        tmp_path / "execution-restart-state.sqlite3",
+        replay_config.execution,
+        starting_cash=replay_config.starting_cash,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    facts = EvaluationFactStore(tmp_path / "facts-restart-state.sqlite3")
+    original = account_equity_fact(
+        execution.account,
+        replay_run_id=RUN_ID,
+        kind=EquityFactKind.MARK,
+    )
+    facts.record_equity_fact(original)
+
+    pipeline = BaselineReplayPipeline(
+        replay_config,
+        execution,
+        facts,
+        selected_markets=(MARKET,),
+        replay_run_id=RUN_ID,
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        decision_engine=_ScriptedDecisionEngine(replay_config),
+    )
+    try:
+        snapshot = _snapshot_record()
+        observations = pipeline.on_record(snapshot, snapshot.available_at_ms)
+        equity_facts = tuple(facts.iter_equity_facts(RUN_ID))
+
+        assert observations
+        assert len(equity_facts) == 1
+        assert equity_facts[0].fact_id == original.fact_id
+        assert equity_facts[0].kind is EquityFactKind.MARK
+    finally:
+        execution.close()
+        facts.close()
