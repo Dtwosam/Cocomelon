@@ -73,6 +73,7 @@ cocomelon-learning-shadow-admission = "cocomelon.learning_shadow_admission_cli:m
 cocomelon-learning-shadow-evidence = "cocomelon.learning_shadow_evidence_cli:main"
 cocomelon-learning-shadow-replay = "cocomelon.learning_shadow_replay_cli:main"
 cocomelon-learning-shadow-state = "cocomelon.learning_shadow_state_cli:main"
+cocomelon-learning-shadow-sequence = "cocomelon.learning_shadow_campaign_sequence_cli:main"
 cocomelon-learning-clean-state = "cocomelon.learning_clean_state_cli:main"
 cocomelon-learning-clean-evidence = "cocomelon.learning_clean_evidence_cli:main"
 cocomelon-learning-clean-campaign-sync = "cocomelon.learning_clean_campaign_sync_cli:main"
