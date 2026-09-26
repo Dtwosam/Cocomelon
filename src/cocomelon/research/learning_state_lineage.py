@@ -321,6 +321,7 @@ def verify_learning_state_lineage(
         return None
 
     previous: LearningStateLineageEntry | None = None
+    seen_upstream: dict[tuple[int, int], tuple[str, int, str]] = {}
     for expected_sequence, entry in enumerate(entries, start=1):
         if entry.sequence != expected_sequence:
             raise LearningStateLineageError("LINEAGE_SEQUENCE_INVALID")
@@ -341,19 +342,16 @@ def verify_learning_state_lineage(
                 != previous.after_feature_state_digest
             ):
                 raise LearningStateLineageError("LINEAGE_STATE_TRANSITION_MISMATCH")
-            if (
-                entry.upstream_run_id,
-                entry.upstream_run_attempt,
-            ) == (
-                previous.upstream_run_id,
-                previous.upstream_run_attempt,
-            ) and (
-                entry.upstream_head_sha != previous.upstream_head_sha
-                or entry.upstream_artifact_id != previous.upstream_artifact_id
-                or entry.upstream_artifact_digest
-                != previous.upstream_artifact_digest
-            ):
-                raise LearningStateLineageError("LINEAGE_UPSTREAM_IDENTITY_CHANGED")
+        upstream_key = (entry.upstream_run_id, entry.upstream_run_attempt)
+        upstream_identity = (
+            entry.upstream_head_sha,
+            entry.upstream_artifact_id,
+            entry.upstream_artifact_digest,
+        )
+        prior_identity = seen_upstream.get(upstream_key)
+        if prior_identity is not None and prior_identity != upstream_identity:
+            raise LearningStateLineageError("LINEAGE_UPSTREAM_IDENTITY_CHANGED")
+        seen_upstream[upstream_key] = upstream_identity
         previous = entry
 
     tail = entries[-1]
