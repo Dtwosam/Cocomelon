@@ -20,6 +20,8 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
+    _SupervisorGroup,
+    _wait_supervisor_group_ready,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
@@ -92,6 +94,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"open_planned_risk_fraction_of_equity"' in source
     assert '"recent_closed_trades"' in source
     assert '"session_closed_trades"' in source
+    assert '"session_eligibility"' in source
+    assert '"duplicate_records_dropped"' in source
     assert '"net_pnl": str(trade.net_pnl)' in source
     assert '"net_r": str(trade.net_r)' in source
     assert '"exit_reason": trade.exit_reason' in source
@@ -227,3 +231,125 @@ def test_runtime_persists_opening_runtime_lineage() -> None:
     assert "opening_lifecycle_sink=" in source
     assert '"opening_lineage_count": self.opening_lineage_count' in source
     assert '"opening_lineage_state_digest": self.opening_lineage_state_digest' in source
+
+
+def test_record_pump_drops_duplicate_event_keys() -> None:
+    class Pipeline:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_record(
+            self,
+            _record: ReplayRecord,
+            _now_ms: int,
+        ) -> tuple[object, ...]:
+            self.calls += 1
+            return ()
+
+        def finalize(self, _end_ms: int) -> tuple[object, ...]:
+            return ()
+
+    class Journal:
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(self, _observation: object) -> None:
+            raise AssertionError("no observations expected")
+
+        def record_trade(self, _trade: object) -> None:
+            raise AssertionError("no trades expected")
+
+    pipeline = Pipeline()
+    pump = _RecordPump(
+        pipeline,  # type: ignore[arg-type]
+        Journal(),  # type: ignore[arg-type]
+        last_available_at_ms=0,
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.NORMALIZED_EVENT,
+        available_at_ms=1,
+        source="hyperliquid-mainnet-ws",
+        schema_version=1,
+        market="BTC",
+        exchange_time_ms=1,
+        event_key="duplicate-key",
+        payload_json='{"mark_px":"100"}',
+        event_kind="active_asset_ctx",
+    )
+
+    asyncio.run(pump.process(record))
+    asyncio.run(pump.process(record))
+
+    assert pipeline.calls == 1
+    assert pump.processed_records == 1
+    assert pump.duplicate_records_dropped == 1
+
+
+def test_supervisor_group_readiness_requires_every_lane_event() -> None:
+    async def scenario() -> bool:
+        lane_a = asyncio.Event()
+        lane_b = asyncio.Event()
+        lane_a.set()
+        lane_b.set()
+        sleeper = asyncio.create_task(asyncio.sleep(60))
+        group = _SupervisorGroup(
+            supervisors=(),
+            tasks=(sleeper,),
+            forward_gaps=asyncio.Event(),
+            ready_lanes=(lane_a, lane_b),
+        )
+        try:
+            return await _wait_supervisor_group_ready(
+                group,
+                timeout_seconds=0.1,
+                poll_seconds=0.01,
+            )
+        finally:
+            sleeper.cancel()
+            await asyncio.gather(sleeper, return_exceptions=True)
+
+    assert asyncio.run(scenario()) is True
+
+
+def test_supervisor_group_readiness_rejects_completed_task() -> None:
+    async def scenario() -> bool:
+        lane_a = asyncio.Event()
+        lane_b = asyncio.Event()
+        lane_a.set()
+        lane_b.set()
+        completed = asyncio.create_task(asyncio.sleep(0))
+        await completed
+        group = _SupervisorGroup(
+            supervisors=(),
+            tasks=(completed,),
+            forward_gaps=asyncio.Event(),
+            ready_lanes=(lane_a, lane_b),
+        )
+        return await _wait_supervisor_group_ready(
+            group,
+            timeout_seconds=0.1,
+            poll_seconds=0.01,
+        )
+
+    assert asyncio.run(scenario()) is False
+
+
+def test_rotation_promotes_replacement_before_retiring_previous() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    start_index = source.index("replacement_group = await start_supervisors(")
+    readiness_index = source.index(
+        "replacement_ready = await _wait_supervisor_group_ready(",
+        start_index,
+    )
+    promote_index = source.index(
+        "supervisor_group = replacement_group",
+        readiness_index,
+    )
+    retire_index = source.index(
+        "await _cancel_supervisor_group(previous_group)",
+        promote_index,
+    )
+
+    assert start_index < readiness_index < promote_index < retire_index
+    assert "forward_gaps=False" in source[start_index : readiness_index + 300]
+    assert "ready_lanes[lane].set()" in source
