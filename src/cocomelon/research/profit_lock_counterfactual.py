@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -194,7 +194,7 @@ def _require_decimal(value: object, field: str) -> Decimal:
         raise ProfitLockCounterfactualError(f"{field} must be a decimal string")
     try:
         resolved = Decimal(value)
-    except Exception as exc:
+    except InvalidOperation as exc:
         raise ProfitLockCounterfactualError(f"{field} must be a decimal string") from exc
     if not resolved.is_finite():
         raise ProfitLockCounterfactualError(f"{field} must be finite")
