@@ -145,9 +145,14 @@ jobs:
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/continuous-paper.zip
           unzip -q /tmp/continuous-paper.zip -d incoming/continuous
 
-          if [ ! -d incoming/continuous/learning-features/records ] ||              [ ! -d incoming/continuous/opening-lineage/records ]; then
+          if [ ! -d incoming/continuous/learning-features/records ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "Worker predates authenticated continuous-paper learning lineage."
+            echo "Worker predates authenticated decision-time feature capture."
+            exit 0
+          fi
+          if [ ! -d incoming/continuous/opening-lineage/records ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "Worker produced no post-D-032 lineage-capable openings; nothing attributable to ingest."
             exit 0
           fi
 

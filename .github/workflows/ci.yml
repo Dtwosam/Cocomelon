@@ -142,6 +142,7 @@ jobs:
           tests/test_continuous_paper_learning_sync_cli.py
           tests/test_continuous_paper_learning_workflow.py
           tests/test_continuous_paper_learning_catchup_workflow.py
+          tests/test_continuous_paper_learning_cycle_workflow.py
           tests/test_research_learning_sync.py
           tests/test_research_learning_workflow.py
           tests/test_research_learning_producer_contract.py
