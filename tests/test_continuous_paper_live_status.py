@@ -202,7 +202,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "error": None,
             "shadow_only": True,
             "execution_authority": False,
-            "session_only": True,
+            "session_only": False,
+            "durable_state": True,
+            "state_restored": True,
+            "state_restore_error": None,
+            "state_schema_version": 1,
             "pending_outcome_count": 3,
             "censored_due_to_unsubscribe": 1,
             "skipped_missing_lead_strategy": 0,
@@ -340,6 +344,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "gross open notional" in output
     assert "5m cadence shadow diagnostic" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
+    assert "durable across workers" in output
+    assert "restored this worker: `true`" in output
     assert "2 / 1 / 7" in output
     assert "mean net=`0.003`" in output
     assert "#### 15m lead-strategy forward outcomes" in output
