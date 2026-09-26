@@ -222,4 +222,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api             --method POST             "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/dispatches"             -f ref=main             -f "inputs[source_run_id]=$GITHUB_RUN_ID"             -f "inputs[source_run_attempt]=$GITHUB_RUN_ATTEMPT"
+          gh workflow run continuous-paper.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
