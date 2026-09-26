@@ -233,25 +233,6 @@ def _profit_lock_lines(raw: object) -> list[str]:
             "- promotion authority: `false`",
         ]
     )
-    readiness = raw.get("readiness", {})
-    if not isinstance(readiness, dict):
-        readiness = {}
-    lines.extend(
-        [
-            (
-                "- evidence gate (economic / armed / triggered / IOC full): "
-                f"`{readiness.get('min_economically_evaluated_trades_per_rule', 0)} / "
-                f"{readiness.get('min_activated_trades_per_rule', 0)} / "
-                f"{readiness.get('min_triggered_trades_per_rule', 0)} / "
-                f"{readiness.get('min_simulated_full_closes_per_rule', 0)}`"
-            ),
-            (
-                "- all rules ready for review: "
-                f"`{str(bool(readiness.get('all_rules_ready_for_review'))).lower()}`"
-            ),
-            "- promotion authority: `false`",
-        ]
-    )
     rules = raw.get("rules", [])
     if not isinstance(rules, list):
         rules = []
@@ -359,6 +340,25 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
                 f"`{raw.get('closed_outcome_count', 0)} / "
                 f"{raw.get('excluded_closed_trades', 0)}`"
             ),
+        ]
+    )
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    lines.extend(
+        [
+            (
+                "- evidence gate (economic / armed / triggered / IOC full): "
+                f"`{readiness.get('min_economically_evaluated_trades_per_rule', 0)} / "
+                f"{readiness.get('min_activated_trades_per_rule', 0)} / "
+                f"{readiness.get('min_triggered_trades_per_rule', 0)} / "
+                f"{readiness.get('min_simulated_full_closes_per_rule', 0)}`"
+            ),
+            (
+                "- all rules ready for review: "
+                f"`{str(bool(readiness.get('all_rules_ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
         ]
     )
     rules = raw.get("rules", [])
