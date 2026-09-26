@@ -415,7 +415,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`30 / 15 / 10`" in output
     assert "all rules ready for review: `false`" in output
     assert "promotion authority: `false`" in output
-    assert "| lock_0_5r_after_1r | collecting | 2 | 2 | 1 | 28/13/9 | 0 | 1 | -12 | 4 | 16 | -0.6 | 0.2 | 0.8 |" in output
+    assert (
+        "| lock_0_5r_after_1r | collecting | 2 | 2 | 1 | 28/13/9 | "
+        "0 | 1 | -12 | 4 | 16 | -0.6 | 0.2 | 0.8 |"
+    ) in output
     assert "not an executable fill claim" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "5m cadence shadow diagnostic" in output
