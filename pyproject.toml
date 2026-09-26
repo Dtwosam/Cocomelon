@@ -57,6 +57,7 @@ cocomelon-prospective-learning-sync = "cocomelon.prospective_learning_sync_cli:m
 cocomelon-execution-learning-sync = "cocomelon.execution_learning_sync_cli:main"
 cocomelon-research-learning-sync = "cocomelon.research_learning_sync_cli:main"
 cocomelon-learning-readiness = "cocomelon.learning_readiness_cli:main"
+cocomelon-learning-ops-status = "cocomelon.learning_dashboard_cli:main"
 cocomelon-learning-dataset = "cocomelon.learning_dataset_cli:main"
 cocomelon-learning-challenger-run = "cocomelon.learning_challenger_run_cli:main"
 cocomelon-learning-training-set = "cocomelon.learning_training_set_cli:main"
