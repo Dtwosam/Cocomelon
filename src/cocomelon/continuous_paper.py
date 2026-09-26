@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -79,6 +80,47 @@ class ContinuousPaperConfig:
 
 
 @dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
+class _SupervisorGroup:
+    supervisors: tuple[WebSocketSupervisor, ...]
+    tasks: tuple[asyncio.Task[None], ...]
+    forward_gaps: asyncio.Event
+
+
+async def _wait_supervisor_group_ready(
+    group: _SupervisorGroup,
+    *,
+    timeout_seconds: float = 15.0,
+    poll_seconds: float = 0.05,
+) -> bool:
+    if timeout_seconds <= 0 or poll_seconds <= 0:
+        raise ValueError("supervisor readiness timings must be positive")
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while True:
+        for task in group.tasks:
+            if task.done():
+                if task.cancelled():
+                    return False
+                if task.exception() is not None:
+                    return False
+        if all(
+            supervisor.health.connected
+            and supervisor.health.last_server_message_ms is not None
+            for supervisor in group.supervisors
+        ):
+            return True
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(poll_seconds)
+
+
+async def _cancel_supervisor_group(group: _SupervisorGroup) -> None:
+    for task in group.tasks:
+        task.cancel()
+    await asyncio.gather(*group.tasks, return_exceptions=True)
+
+
 class ContinuousPaperSummary:
     started_at_ms: int
     ended_at_ms: int
@@ -446,10 +488,18 @@ class _RecordPump:
         self._known_trade_ids = {trade.trade_id for trade in existing_trades}
         self.closed_trades = len(self._known_trade_ids)
         self.last_observation: JournalObservation | None = None
+        self.duplicate_records_dropped = 0
+        self._recent_record_keys: deque[str] = deque()
+        self._recent_record_key_set: set[str] = set()
+        self._record_dedup_size = 131_072
         self._lock = asyncio.Lock()
 
     async def process(self, record: ReplayRecord) -> None:
         async with self._lock:
+            record_key = record.event_key
+            if record_key is not None and record_key in self._recent_record_key_set:
+                self.duplicate_records_dropped += 1
+                return
             available = max(self.last_available_at_ms, record.available_at_ms)
             if available != record.available_at_ms:
                 record = ReplayRecord(
@@ -480,6 +530,12 @@ class _RecordPump:
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
+            if record_key is not None:
+                self._recent_record_key_set.add(record_key)
+                self._recent_record_keys.append(record_key)
+                while len(self._recent_record_keys) > self._record_dedup_size:
+                    oldest = self._recent_record_keys.popleft()
+                    self._recent_record_key_set.discard(oldest)
 
 
 def _live_status_payload(
@@ -555,6 +611,7 @@ def _live_status_payload(
             market.canonical for market in selected_markets
         ],
         "processed_records": pump.processed_records,
+        "duplicate_records_dropped": pump.duplicate_records_dropped,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "open_planned_risk": str(open_planned_risk),
@@ -809,13 +866,19 @@ async def run_continuous_paper_session(
 
         async def start_supervisors(
             markets: tuple[MarketId, ...],
-        ) -> tuple[tuple[WebSocketSupervisor, ...], tuple[asyncio.Task[None], ...]]:
+            *,
+            forward_gaps: bool,
+        ) -> _SupervisorGroup:
             plan = DeepWatchlistManager().reconcile(markets)
+            gap_gate = asyncio.Event()
+            if forward_gaps:
+                gap_gate.set()
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
 
             async def gap_sink(gap: DataGap) -> None:
-                await pump.process(_record_from_gap(gap))
+                if gap_gate.is_set():
+                    await pump.process(_record_from_gap(gap))
 
             mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
             supervisors: list[WebSocketSupervisor] = []
@@ -837,9 +900,19 @@ async def run_continuous_paper_session(
                 )
                 supervisors.append(supervisor)
                 tasks.append(asyncio.create_task(supervisor.run()))
-            return tuple(supervisors), tuple(tasks)
+            return _SupervisorGroup(
+                supervisors=tuple(supervisors),
+                tasks=tuple(tasks),
+                forward_gaps=gap_gate,
+            )
 
-        _supervisors, supervisor_tasks = await start_supervisors(selected)
+        supervisor_group = await start_supervisors(
+            selected,
+            forward_gaps=True,
+        )
+        if not await _wait_supervisor_group_ready(supervisor_group):
+            await _cancel_supervisor_group(supervisor_group)
+            raise RuntimeError("initial continuous paper websocket lanes failed readiness")
         deadline_ms = started_at_ms + config.duration_seconds * 1000
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
@@ -902,13 +975,23 @@ async def run_continuous_paper_session(
                                 _record_from_public(candle_record_event(candle))
                             )
                     if desired_keys != selected_keys:
-                        for task in supervisor_tasks:
-                            task.cancel()
-                        await asyncio.gather(*supervisor_tasks, return_exceptions=True)
-                        selected = desired
-                        selected_keys = desired_keys
-                        pipeline.reconcile_markets(selected)
-                        _supervisors, supervisor_tasks = await start_supervisors(selected)
+                        replacement_group = await start_supervisors(
+                            desired,
+                            forward_gaps=False,
+                        )
+                        replacement_ready = await _wait_supervisor_group_ready(
+                            replacement_group
+                        )
+                        if replacement_ready:
+                            replacement_group.forward_gaps.set()
+                            selected = desired
+                            selected_keys = desired_keys
+                            pipeline.reconcile_markets(selected)
+                            previous_group = supervisor_group
+                            supervisor_group = replacement_group
+                            await _cancel_supervisor_group(previous_group)
+                        else:
+                            await _cancel_supervisor_group(replacement_group)
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
@@ -925,16 +1008,16 @@ async def run_continuous_paper_session(
                     next_checkpoint_ms = now_ms + config.checkpoint_seconds * 1000
 
                 failed = tuple(
-                    task for task in supervisor_tasks if task.done() and not task.cancelled()
+                    task
+                    for task in supervisor_group.tasks
+                    if task.done() and not task.cancelled()
                 )
                 for task in failed:
                     exc = task.exception()
                     if exc is not None:
                         raise exc
         finally:
-            for task in supervisor_tasks:
-                task.cancel()
-            await asyncio.gather(*supervisor_tasks, return_exceptions=True)
+            await _cancel_supervisor_group(supervisor_group)
 
         persist_checkpoint()
         ended_at_ms = utc_now_ms()
