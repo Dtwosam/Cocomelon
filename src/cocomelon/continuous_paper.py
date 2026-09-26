@@ -65,6 +65,13 @@ from cocomelon.research.continuous_paper_trade_paths import (
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
+from cocomelon.research.profit_lock_execution_readiness import (
+    MIN_ACTIVATED_TRADES_PER_RULE as EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE,
+    MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE,
+    MIN_SIMULATED_FULL_CLOSES_PER_RULE,
+    MIN_TRIGGERED_TRADES_PER_RULE as EXECUTION_MIN_TRIGGERED_TRADES_PER_RULE,
+    profit_lock_execution_readiness,
+)
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionShadow,
 )
@@ -228,6 +235,57 @@ class _ContinuousProfitLockExecutionShadowSink:
                 "error": self.error,
             }
         payload = dict(self.shadow.summary_payload())
+        readiness = profit_lock_execution_readiness(payload)
+        readiness_by_rule = {
+            rule.rule_id: rule
+            for rule in readiness.rules
+        }
+        raw_rules = payload.get("rules", [])
+        if not isinstance(raw_rules, list):
+            raise ValueError(
+                "execution shadow rules must be a list"
+            )
+        payload["rules"] = [
+            {
+                **rule,
+                "readiness_status": readiness_by_rule[
+                    str(rule["rule_id"])
+                ].status.value,
+                "missing_evaluated_trades": readiness_by_rule[
+                    str(rule["rule_id"])
+                ].missing_evaluated_trades,
+                "missing_activated_trades": readiness_by_rule[
+                    str(rule["rule_id"])
+                ].missing_activated_trades,
+                "missing_triggered_trades": readiness_by_rule[
+                    str(rule["rule_id"])
+                ].missing_triggered_trades,
+                "missing_simulated_full_closes": readiness_by_rule[
+                    str(rule["rule_id"])
+                ].missing_simulated_full_closes,
+            }
+            for rule in raw_rules
+            if isinstance(rule, dict)
+        ]
+        payload["readiness"] = {
+            "all_rules_ready_for_review": (
+                readiness.all_rules_ready_for_review
+            ),
+            "min_economically_evaluated_trades_per_rule": (
+                MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE
+            ),
+            "min_activated_trades_per_rule": (
+                EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE
+            ),
+            "min_triggered_trades_per_rule": (
+                EXECUTION_MIN_TRIGGERED_TRADES_PER_RULE
+            ),
+            "min_simulated_full_closes_per_rule": (
+                MIN_SIMULATED_FULL_CLOSES_PER_RULE
+            ),
+            "promotion_authority": False,
+            "execution_authority": False,
+        }
         payload["error"] = self.error
         return payload
 
