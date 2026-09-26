@@ -170,7 +170,10 @@ def render_live_status(
         profit_factor = performance.get("profit_factor")
         lines.extend(
             [
-                "| Trades | Wins | Losses | BE | Net PnL | Gross profit | Gross loss | Profit factor | Mean R | Avg hold |",
+                (
+                    "| Trades | Wins | Losses | BE | Net PnL | Gross profit | "
+                    "Gross loss | Profit factor | Mean R | Avg hold |"
+                ),
                 "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
                 (
                     "| {trades} | {wins} | {losses} | {breakeven} | {net_pnl} | "
