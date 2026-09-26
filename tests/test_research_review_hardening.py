@@ -150,7 +150,7 @@ def test_final_audit_retains_capture_and_candidate_failure_evidence_independentl
     assert "research-campaign/audit/decisions" in decisions
     audit = finalization.split("- name: Upload complete research campaign audit trail", 1)[1]
     assert "path: research-campaign/" in audit
-    assert "retention-days: 30" in audit
+    assert "retention-days: 90" in audit
 
 
 def test_trusted_v4_registry_sync_producer_exists_before_research_schedule_can_run() -> None:
