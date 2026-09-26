@@ -189,9 +189,10 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
         encoding="utf-8",
     )
 
-    checkpoints, gaps, last_available_at_ms = _load_checkpoint(path)
+    checkpoints, gaps, last_available_at_ms, activation_ms = _load_checkpoint(path)
 
     assert last_available_at_ms == 123
+    assert activation_ms is None
     assert gaps == ()
     assert len(checkpoints) == 1
     assert checkpoints[0].position_actions == ()
@@ -217,3 +218,4 @@ def test_runtime_persists_authenticated_learning_features() -> None:
         '"feature_snapshot_state_digest": self.feature_snapshot_state_digest'
         in source
     )
+    assert '"learning_feature_capture_started_at_ms"' in source
