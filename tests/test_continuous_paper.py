@@ -156,7 +156,7 @@ def test_opening_rank_telemetry_fails_open(
         fail,
     )
     payload = _opening_rank_attribution_payload(
-        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
         SimpleNamespace(),  # type: ignore[arg-type]
         capture_error=None,
     )
