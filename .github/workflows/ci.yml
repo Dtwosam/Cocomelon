@@ -124,6 +124,8 @@ jobs:
           tests/test_learning_shadow_replay_cli.py
           tests/test_learning_shadow_state.py
           tests/test_learning_shadow_state_cli.py
+          tests/test_learning_shadow_campaign_sequence.py
+          tests/test_learning_shadow_campaign_sequence_cli.py
           tests/test_research_learning_shadow_state_bootstrap_workflow.py
           tests/test_research_learning_shadow_review_workflow.py
           tests/test_learning_clean_state.py
