@@ -467,7 +467,7 @@ def _live_status_payload(
             }
         )
     observation = pump.last_observation
-    last_observation = None
+    last_observation: dict[str, object] | None = None
     if observation is not None:
         last_observation = {
             "kind": observation.kind.value,
