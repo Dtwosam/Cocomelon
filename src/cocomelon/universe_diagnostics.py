@@ -79,7 +79,8 @@ def _row(rank: OpportunityRank) -> UniverseRankRow:
 
 
 def build_universe_opportunity_diagnostics(
-    ranks: tuple[OpportunityRank, ...],
+    combined_ranks: tuple[OpportunityRank, ...],
+    native_ranks: tuple[OpportunityRank, ...],
     *,
     observed_at_ms: int,
     dex_count: int,
@@ -94,10 +95,13 @@ def build_universe_opportunity_diagnostics(
     if deep_limit <= 0 or top_hip3_limit <= 0:
         raise ValueError("diagnostic limits must be positive")
 
-    native = tuple(rank for rank in ranks if rank.market.dex == "")
-    hip3 = tuple(rank for rank in ranks if rank.market.dex != "")
-    combined_top = ranks[:deep_limit]
-    current_native_top = native[:deep_limit]
+    if any(rank.market.dex != "" for rank in native_ranks):
+        raise ValueError("native_ranks must contain only native markets")
+    hip3 = tuple(
+        rank for rank in combined_ranks if rank.market.dex != ""
+    )
+    combined_top = combined_ranks[:deep_limit]
+    current_native_top = native_ranks[:deep_limit]
     combined_native_markets = {
         rank.market.canonical
         for rank in combined_top
@@ -113,8 +117,8 @@ def build_universe_opportunity_diagnostics(
         observed_at_ms=observed_at_ms,
         dex_count=dex_count,
         market_count=market_count,
-        rankable_count=len(ranks),
-        native_rankable_count=len(native),
+        rankable_count=len(combined_ranks),
+        native_rankable_count=len(native_ranks),
         hip3_rankable_count=len(hip3),
         current_native_deep_limit=deep_limit,
         hip3_in_combined_top_n=sum(
@@ -140,12 +144,22 @@ def collect_universe_opportunity_diagnostics(
         )
 
     registry = MarketRegistry(InfoClient(settings)).refresh()
-    _features, ranks = _startup_ranks(
+    _features, combined_ranks = _startup_ranks(
         registry.markets,
         as_of_ms=registry.received_at_ms,
     )
+    native_markets = {
+        key: value
+        for key, value in registry.markets.items()
+        if value.meta.market.dex == ""
+    }
+    _native_features, native_ranks = _startup_ranks(
+        native_markets,
+        as_of_ms=registry.received_at_ms,
+    )
     return build_universe_opportunity_diagnostics(
-        ranks,
+        combined_ranks,
+        native_ranks,
         observed_at_ms=registry.received_at_ms,
         dex_count=len(registry.dexs),
         market_count=len(registry.markets),
