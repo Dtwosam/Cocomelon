@@ -912,3 +912,23 @@ This changes evidence provenance only. It does not retune the active strategy, l
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous paper isolated research cycle — 2026-09-26
+
+The continuous-paper evidence path now has a dedicated research-cycle handoff while remaining separate from scheduled-research learning state.
+
+The cycle:
+
+- consumes only authenticated `continuous-paper-learning-state` artifacts;
+- validates the exact upstream sync run, artifact digest, ledger count/digest, feature count/digest, readiness identity, and research-only authority;
+- runs only when a sync created new attributed paper-execution records;
+- reuses the frozen learning protocol requiring 200 settled chronological training records plus 20 validation records;
+- publishes `not_ready` honestly before that capacity exists;
+- may evaluate the existing grouped-mean and fixed shallow-tree research challengers once the capacity gate is met;
+- does not automatically freeze, promote, shadow-admit, or execute any challenger.
+
+The generic `cocomelon-learning-cycle` CLI is also registered as an installed package entry point, closing a latent packaging gap shared by the scheduled-research learning workflow.
+
+Continuous-paper workers with decision-time feature capture but zero post-D-032 opening-lineage records are now reported as having no attributable openings rather than incorrectly described as pre-lineage workers.
+
+**LIVE TRADING: DISABLED.**
+
