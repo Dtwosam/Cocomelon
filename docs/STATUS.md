@@ -872,3 +872,13 @@ Live trading remains disabled. Existing risk and promotion gates are unchanged.
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous paper legacy-heartbeat caveat — 2026-09-26
+
+The first continuous worker launched from #468 (`073a016a62a79e53fe290cc39281beee0d156cae`) exposed a telemetry-only closed-trade counting defect: `BaselineReplayPipeline.finalize()` returns the cumulative completed-trade set, and the initial heartbeat counter added that full set again on every market event.
+
+The durable journal did **not** duplicate those trades because `JournalStore.record_trade()` is idempotent on canonical `trade_id`. Therefore very large `closed_trades` values emitted by that legacy worker are not economic evidence and must not be quoted as real trade counts.
+
+#470 (`641b2858f10f5aa041fd14548f4b087f7a978333`) corrected the runtime to track unique trade IDs and only journal newly completed trades. #473 added worker-SHA/predecessor lineage to live status. A heartbeat lacking those newer lineage/decision fields should be treated as legacy telemetry until the worker hands off.
+
+Open-position/account telemetry from the legacy worker remains usable as point-in-time paper state when tied to its exact run, but closed-trade count must come from the corrected worker or durable journal/artifact.
+

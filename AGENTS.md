@@ -189,6 +189,8 @@ For the active `Continuous Mainnet Paper Trader`, read GitHub Issue #469 (`Conti
 
 If an active worker has not emitted its first heartbeat yet, report that it is still starting rather than inferring either "no trade" or "trade open" from old dashboards.
 
+Legacy-heartbeat rule: if Issue #469 does not contain `Worker head SHA` and the decision/risk diagnostic section, it was emitted by the pre-hardening worker family. In that case, do **not** trust its `closed_trades` number: the pre-#470 telemetry counter re-counted the cumulative completed-trade set on every market event. This affected the displayed count only; `JournalStore.record_trade()` remained idempotent by canonical `trade_id`. Verify the active Actions run head SHA and treat the durable journal/artifact as the closed-trade authority. Open-position/account fields may still be reported as point-in-time telemetry, clearly noting the legacy worker.
+
 ## 9. Current official references
 
 Use official Hyperliquid documentation as the primary external reference:

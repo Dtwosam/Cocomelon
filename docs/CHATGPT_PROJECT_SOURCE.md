@@ -63,6 +63,8 @@ Read GitHub Issue #469, `Continuous Paper Trader — Live Status`, first. The ac
 
 The raw job-log heartbeat is a fallback when available. Do not substitute Issue #82, Issue #124, retired Prospective HYPE artifacts, or an old completed continuous-paper artifact for a newer Issue #469 heartbeat. If the worker is active but Issue #469 still says bootstrap/starting, say it is still starting. Completed state artifacts and journal databases remain the durable audit source after a worker finishes.
 
+**Legacy heartbeat detection:** a #469 body that lacks both `Worker head SHA` and the decision/risk diagnostics was written by the initial #468 worker. Its `closed_trades` field is not reliable because that worker's telemetry counter re-added the cumulative completed-trade set for every processed event. The underlying journal insert was idempotent, so this is a display/counter defect rather than evidence of hundreds of thousands of real trades. The corrected unique-trade counter landed in #470 (`641b2858f10f5aa041fd14548f4b087f7a978333`). For a legacy worker, verify the Actions run SHA and do not quote `closed_trades` as an economic fact.
+
 ---
 ## 1. Authority and continuation rule
 
