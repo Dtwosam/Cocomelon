@@ -1507,7 +1507,7 @@ jobs:
           name: research-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: research-campaign/
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 90
 
       - name: Publish authoritative research registry
         if: ${{ always() && hashFiles('research-campaign/state/research.sqlite3') != '' && needs.evaluate-research.outputs.registry_published != 'success' && steps.rebase-fallback-authority.outcome == 'success' && (needs.evaluate-research.result != 'success' || steps.verify-rollout-final.outcome == 'success') }}
