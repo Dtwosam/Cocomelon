@@ -41,7 +41,7 @@ class UniverseOpportunityDiagnostics:
     combined_top_n: tuple[UniverseRankRow, ...]
     current_native_top_n: tuple[UniverseRankRow, ...]
     top_hip3: tuple[UniverseRankRow, ...]
-    displaced_native_markets: tuple[str, ...]
+    native_only_top_n_absent_from_combined: tuple[str, ...]
     paper_trading_policy: str = "native_only"
     economic_authority: bool = False
     live_orders: bool = False
@@ -61,7 +61,9 @@ class UniverseOpportunityDiagnostics:
                 item.payload() for item in self.current_native_top_n
             ],
             "top_hip3": [item.payload() for item in self.top_hip3],
-            "displaced_native_markets": list(self.displaced_native_markets),
+            "native_only_top_n_absent_from_combined": list(
+                self.native_only_top_n_absent_from_combined
+            ),
             "paper_trading_policy": self.paper_trading_policy,
             "economic_authority": self.economic_authority,
             "live_orders": self.live_orders,
@@ -107,7 +109,7 @@ def build_universe_opportunity_diagnostics(
         for rank in combined_top
         if rank.market.dex == ""
     }
-    displaced = tuple(
+    native_set_changes = tuple(
         rank.market.canonical
         for rank in current_native_top
         if rank.market.canonical not in combined_native_markets
@@ -127,7 +129,7 @@ def build_universe_opportunity_diagnostics(
         combined_top_n=tuple(_row(rank) for rank in combined_top),
         current_native_top_n=tuple(_row(rank) for rank in current_native_top),
         top_hip3=tuple(_row(rank) for rank in hip3[:top_hip3_limit]),
-        displaced_native_markets=displaced,
+        native_only_top_n_absent_from_combined=native_set_changes,
     )
 
 
