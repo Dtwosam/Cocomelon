@@ -394,6 +394,8 @@ class _RecordPump:
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
+        self.closed_trades = sum(1 for _ in journal.iter_trades())
+        self.last_observation: JournalObservation | None = None
         self._lock = asyncio.Lock()
 
     async def process(self, record: ReplayRecord) -> None:
@@ -417,11 +419,116 @@ class _RecordPump:
             )
             for observation in observations:
                 self.journal.record_observation(observation)
-            for trade in self.pipeline.finalize(available):
+            if observations:
+                self.last_observation = observations[-1]
+            closed = self.pipeline.finalize(available)
+            for trade in closed:
                 self.journal.record_trade(trade)
+            self.closed_trades += len(closed)
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
+
+
+def _live_status_payload(
+    execution: PaperExecutionAdapter,
+    pump: _RecordPump,
+    selected_markets: tuple[MarketId, ...],
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    positions: list[dict[str, object]] = []
+    for position in execution.account.positions:
+        latest_mark = position.latest_mark
+        unrealized = Decimal("0")
+        if latest_mark is not None:
+            if position.side.value == "long":
+                unrealized = (
+                    latest_mark - position.average_entry_price
+                ) * position.quantity
+            else:
+                unrealized = (
+                    position.average_entry_price - latest_mark
+                ) * position.quantity
+        positions.append(
+            {
+                "market": position.market.canonical,
+                "side": position.side.value,
+                "quantity": str(position.quantity),
+                "average_entry_price": str(position.average_entry_price),
+                "stop_price": str(position.stop_price),
+                "latest_mark": (
+                    None if latest_mark is None else str(latest_mark)
+                ),
+                "unrealized_gross_pnl": str(unrealized),
+                "planned_risk": str(position.planned_risk),
+                "opened_at_ms": position.opened_at_ms,
+                "opening_plan_id": position.opening_plan_id,
+            }
+        )
+    observation = pump.last_observation
+    last_observation: dict[str, object] | None = None
+    if observation is not None:
+        last_observation = {
+            "kind": observation.kind.value,
+            "timestamp_ms": observation.timestamp_ms,
+            "market": (
+                None
+                if observation.market is None
+                else observation.market.canonical
+            ),
+            "reason_codes": list(observation.reason_codes),
+            "plan_id": observation.plan_id,
+        }
+    return {
+        "kind": "continuous-paper-heartbeat",
+        "timestamp_ms": timestamp_ms,
+        "paper_only": True,
+        "live_orders": False,
+        "selected_market_count": len(selected_markets),
+        "selected_markets": [
+            market.canonical for market in selected_markets
+        ],
+        "processed_records": pump.processed_records,
+        "journal_observations": pump.journal_observations,
+        "closed_trades": pump.closed_trades,
+        "open_position_count": len(positions),
+        "positions": positions,
+        "cash": str(execution.account.cash),
+        "equity": str(execution.account.equity),
+        "unrealized_pnl": str(execution.account.unrealized_pnl),
+        "realized_gross_pnl": str(execution.account.realized_gross_pnl),
+        "cumulative_fees": str(execution.account.cumulative_fees),
+        "cumulative_funding": str(execution.account.cumulative_funding),
+        "execution_healthy": execution.health.healthy_for_new_exposure,
+        "execution_reason_codes": list(execution.health.reason_codes),
+        "last_observation": last_observation,
+    }
+
+
+def _emit_live_status(
+    execution: PaperExecutionAdapter,
+    pump: _RecordPump,
+    selected_markets: tuple[MarketId, ...],
+    *,
+    timestamp_ms: int,
+) -> None:
+    payload = _live_status_payload(
+        execution,
+        pump,
+        selected_markets,
+        timestamp_ms=timestamp_ms,
+    )
+    print(
+        "COCOMELON_PAPER_HEARTBEAT "
+        + json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
 
 
 def _restore_open_lifecycles(
@@ -602,6 +709,12 @@ async def run_continuous_paper_session(
             )
 
         persist_checkpoint()
+        _emit_live_status(
+            execution,
+            pump,
+            selected,
+            timestamp_ms=utc_now_ms(),
+        )
 
         async def connection_factory() -> Any:
             return await connect_mainnet_ws(settings)
@@ -711,6 +824,13 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
+
+                _emit_live_status(
+                    execution,
+                    pump,
+                    selected,
+                    timestamp_ms=now_ms,
+                )
 
                 if now_ms >= next_checkpoint_ms:
                     persist_checkpoint()
