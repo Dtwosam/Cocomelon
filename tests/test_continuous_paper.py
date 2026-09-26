@@ -77,3 +77,6 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"live_orders": False' in source
     assert '"positions": positions' in source
     assert '"stop_price": str(position.stop_price)' in source
+    assert '"session_decision_epochs"' in source
+    assert '"session_decisions"' in source
+    assert '"session_risk"' in source
