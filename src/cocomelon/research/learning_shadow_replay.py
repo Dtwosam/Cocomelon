@@ -613,10 +613,15 @@ def verify_learning_shadow_replay_receipt(
         )
 
     decisions_path = output_root / "strategy-decisions.json"
-    decisions = load_candidate_strategy_decisions(
-        decisions_path,
-        bundle_path=bundle_path,
-    )
+    try:
+        decisions = load_candidate_strategy_decisions(
+            decisions_path,
+            bundle_path=bundle_path,
+        )
+    except ValueError as exc:
+        raise LearningShadowReplayError(
+            "LEARNING_SHADOW_REPLAY_RECEIPT_DECISION_ARTIFACT_INVALID"
+        ) from exc
     if _sha256_bytes(decisions_path.read_bytes()) != receipt.candidate_decisions_sha256:
         raise LearningShadowReplayError(
             "LEARNING_SHADOW_REPLAY_RECEIPT_DECISION_DIGEST_MISMATCH"
