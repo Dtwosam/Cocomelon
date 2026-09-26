@@ -54,6 +54,7 @@ cocomelon-prospective-hype-observer = "cocomelon.prospective_hype_observer_cli:m
 cocomelon-prospective-hype-report = "cocomelon.prospective_hype_report_cli:main"
 cocomelon-prospective-learning-sync = "cocomelon.prospective_learning_sync_cli:main"
 cocomelon-execution-learning-sync = "cocomelon.execution_learning_sync_cli:main"
+cocomelon-continuous-paper-learning-sync = "cocomelon.continuous_paper_learning_sync_cli:main"
 cocomelon-research-learning-sync = "cocomelon.research_learning_sync_cli:main"
 cocomelon-learning-readiness = "cocomelon.learning_readiness_cli:main"
 cocomelon-learning-dataset = "cocomelon.learning_dataset_cli:main"
