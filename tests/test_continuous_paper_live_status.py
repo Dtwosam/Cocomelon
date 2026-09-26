@@ -17,7 +17,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "realized_gross_pnl": "0",
         "cumulative_fees": "0.5",
         "cumulative_funding": "0",
-        "closed_trades": 0,
+        "closed_trades": 12,
+        "session_closed_trades": 2,
         "open_planned_risk": "10",
         "open_planned_risk_fraction_of_equity": "0.0009997500624843789052736815796",
         "gross_open_notional": "650",
@@ -123,5 +124,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "NO_SIGNAL=19" in output
     assert "risk reasons:" in output
     assert "APPROVED=1" in output
+    assert "cumulative closed trades" in output
+    assert "closed trades this worker" in output
+    assert "`12`" in output
+    assert "`2`" in output
     assert "open planned risk" in output
     assert "gross open notional" in output

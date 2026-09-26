@@ -91,6 +91,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"open_planned_risk"' in source
     assert '"open_planned_risk_fraction_of_equity"' in source
     assert '"recent_closed_trades"' in source
+    assert '"session_closed_trades"' in source
     assert '"net_pnl": str(trade.net_pnl)' in source
     assert '"net_r": str(trade.net_r)' in source
     assert '"exit_reason": trade.exit_reason' in source
@@ -141,6 +142,7 @@ def test_record_pump_counts_each_closed_trade_once() -> None:
 
     assert journal.recorded == ["trade-1"]
     assert pump.closed_trades == 1
+    assert pump.session_closed_trades == 1
 
 
 def test_position_action_checkpoint_round_trip() -> None:

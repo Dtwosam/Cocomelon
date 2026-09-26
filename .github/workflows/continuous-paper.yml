@@ -270,7 +270,11 @@ jobs:
           print(f"- exit reason: {payload['exit_reason']}")
           print(f"- selected markets: {len(payload['selected_markets'])}")
           print(f"- processed records: {payload['processed_records']}")
-          print(f"- closed paper trades: {payload['closed_trades']}")
+          print(f"- cumulative closed paper trades: {payload['closed_trades']}")
+          print(
+              "- closed paper trades this worker: "
+              f"{payload.get('session_closed_trades', 0)}"
+          )
           print(f"- open paper positions: {payload['open_positions']}")
           print(f"- paper equity: {payload['equity']}")
           print(f"- execution healthy: {str(payload['execution_healthy']).lower()}")
