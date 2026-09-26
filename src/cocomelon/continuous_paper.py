@@ -59,6 +59,7 @@ RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
+CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -408,6 +409,33 @@ def _load_checkpoint(path: Path) -> tuple[
     return tuple(checkpoints), tuple(gaps), int(raw.get("last_available_at_ms", 0))
 
 
+def _restore_cadence_shadow(
+    path: Path,
+    selected_markets: tuple[MarketId, ...],
+    *,
+    replay_config: BaselineReplayConfig,
+) -> CadenceShadowComparator:
+    shadow = CadenceShadowComparator(
+        selected_markets,
+        replay_config=replay_config,
+    )
+    if not path.exists():
+        return shadow
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        shadow.restore_state(raw)
+        shadow.reconcile_markets(selected_markets)
+    except Exception as exc:
+        shadow = CadenceShadowComparator(
+            selected_markets,
+            replay_config=replay_config,
+        )
+        shadow.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+    return shadow
+
+
 def _native_market_snapshots(
     reader: InfoClient,
     *,
@@ -553,7 +581,8 @@ class _RecordPump:
             return {
                 "shadow_only": True,
                 "execution_authority": False,
-                "session_only": True,
+                "session_only": False,
+                "durable_state": True,
                 "enabled": False,
                 "error": self.cadence_shadow_error,
             }
@@ -561,7 +590,8 @@ class _RecordPump:
             return {
                 "shadow_only": True,
                 "execution_authority": False,
-                "session_only": True,
+                "session_only": False,
+                "durable_state": True,
                 "enabled": False,
                 "error": None,
             }
@@ -1213,14 +1243,16 @@ async def run_continuous_paper_session(
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
+        cadence_shadow = _restore_cadence_shadow(
+            root / CADENCE_SHADOW_STATE_FILENAME,
+            selected,
+            replay_config=replay_config,
+        )
         pump = _RecordPump(
             pipeline,
             journal,
             last_available_at_ms=restored_available_at_ms,
-            cadence_shadow=CadenceShadowComparator(
-                selected,
-                replay_config=replay_config,
-            ),
+            cadence_shadow=cadence_shadow,
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -1276,6 +1308,11 @@ async def run_continuous_paper_session(
                 root / CADENCE_SHADOW_FILENAME,
                 pump.cadence_shadow_payload(),
             )
+            if pump.cadence_shadow is not None:
+                _write_json_atomic(
+                    root / CADENCE_SHADOW_STATE_FILENAME,
+                    pump.cadence_shadow.state_payload(),
+                )
 
         persist_checkpoint()
         _emit_live_status(
