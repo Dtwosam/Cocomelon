@@ -645,14 +645,18 @@ def _closed_trade_performance(
             and trade.mfe.r_multiple is not None
             and trade.mae.r_multiple is not None
         )
-        mfe_sum = sum(
-            (trade.mfe.r_multiple for trade in complete_excursions if trade.mfe),
-            Decimal("0"),
+        mfe_values = tuple(
+            trade.mfe.r_multiple
+            for trade in complete_excursions
+            if trade.mfe is not None and trade.mfe.r_multiple is not None
         )
-        mae_sum = sum(
-            (trade.mae.r_multiple for trade in complete_excursions if trade.mae),
-            Decimal("0"),
+        mae_values = tuple(
+            trade.mae.r_multiple
+            for trade in complete_excursions
+            if trade.mae is not None and trade.mae.r_multiple is not None
         )
+        mfe_sum = sum(mfe_values, Decimal("0"))
+        mae_sum = sum(mae_values, Decimal("0"))
         excursion_count = len(complete_excursions)
         return {
             "trades": count,
