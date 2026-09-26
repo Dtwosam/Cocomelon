@@ -54,10 +54,17 @@ def render_live_status(
         "",
         "### Account",
         "",
+        f"- starting cash: `{payload.get('starting_cash', 'unknown')}`",
         f"- equity: `{payload['equity']}`",
+        f"- total account PnL: `{payload.get('total_account_pnl', 'unknown')}`",
+        (
+            "- total return fraction: "
+            f"`{payload.get('total_return_fraction', 'unknown')}`"
+        ),
         f"- cash: `{payload['cash']}`",
         f"- unrealized PnL: `{payload['unrealized_pnl']}`",
         f"- realized gross PnL: `{payload['realized_gross_pnl']}`",
+        f"- realized net PnL: `{payload.get('realized_net_pnl', 'unknown')}`",
         f"- cumulative fees: `{payload['cumulative_fees']}`",
         f"- cumulative funding: `{payload['cumulative_funding']}`",
         f"- closed trades: `{payload['closed_trades']}`",
@@ -67,6 +74,10 @@ def render_live_status(
             f"`{payload.get('open_planned_risk_fraction_of_equity', '0')}`"
         ),
         f"- gross open notional: `{payload.get('gross_open_notional', '0')}`",
+        (
+            "- gross open notional / equity: "
+            f"`{payload.get('gross_open_notional_fraction_of_equity', '0')}`"
+        ),
         f"- available margin: `{payload.get('available_margin', '0')}`",
         (
             "- execution healthy: "
