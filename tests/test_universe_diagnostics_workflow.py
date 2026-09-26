@@ -28,4 +28,8 @@ def test_universe_diagnostics_uses_real_actions_token_expression() -> None:
 def test_universe_diagnostics_has_no_escaped_actions_expressions() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert r"\\${{" not in source
-    assert "universe-opportunity-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}" in source
+    expected = (
+        "universe-opportunity-diagnostics-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert expected in source
