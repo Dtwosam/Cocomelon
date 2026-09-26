@@ -115,6 +115,15 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     assert result["losses_with_mfe_lt_0_25r"] == 1
     assert result["losses_after_mfe_ge_0_5r"] == 1
     assert result["losses_after_mfe_ge_1r"] == 0
+    assert Decimal(str(result["mean_peak_to_close_giveback_r"])) == (
+        Decimal("2.6") / Decimal("3")
+    )
+    assert result["mean_giveback_after_mfe_ge_0_5r"] == "0.75"
+    assert result["mean_giveback_after_mfe_ge_1r"] == "0.7"
+    assert result["positive_closes_after_mfe_ge_0_5r"] == 1
+    assert result["positive_closes_after_mfe_ge_1r"] == 1
+    assert result["mean_final_net_r_after_mfe_ge_0_5r"] == "0.15"
+    assert result["mean_final_net_r_after_mfe_ge_1r"] == "0.5"
 
     by_side = result["by_side"]
     assert isinstance(by_side, dict)
@@ -126,7 +135,17 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     by_reason = result["by_exit_reason"]
     assert isinstance(by_reason, dict)
     assert by_reason["OPPOSITE_FRESH_THESIS"]["trades"] == 2
+    assert by_reason["OPPOSITE_FRESH_THESIS"]["mfe_ge_0_5r"] == 2
+    assert by_reason["OPPOSITE_FRESH_THESIS"][
+        "positive_closes_after_mfe_ge_0_5r"
+    ] == 1
+    assert by_reason["OPPOSITE_FRESH_THESIS"][
+        "mean_giveback_after_mfe_ge_0_5r"
+    ] == "0.75"
     assert by_reason["MARK_STOP_TRIGGERED"]["net_pnl"] == "-10"
+    assert by_reason["MARK_STOP_TRIGGERED"][
+        "mean_peak_to_close_giveback_r"
+    ] == "1.1"
 
     by_trend = result["by_trend_regime"]
     assert isinstance(by_trend, dict)
@@ -165,3 +184,6 @@ def test_closed_trade_performance_excludes_incomplete_excursions() -> None:
     assert result["mean_mae_r"] is None
     assert result["mfe_ge_0_5r"] == 0
     assert result["losses_after_mfe_ge_0_5r"] == 0
+    assert result["mean_peak_to_close_giveback_r"] is None
+    assert result["mean_giveback_after_mfe_ge_0_5r"] is None
+    assert result["mean_final_net_r_after_mfe_ge_0_5r"] is None
