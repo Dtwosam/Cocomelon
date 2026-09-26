@@ -19,6 +19,7 @@ on:
       - "src/cocomelon/journal/**"
       - "src/cocomelon/risk/**"
       - "src/cocomelon/research/cadence_shadow.py"
+      - "src/cocomelon/research/continuous_paper_trade_paths.py"
       - "src/cocomelon/scanner/**"
       - "src/cocomelon/strategies/**"
   workflow_dispatch:
@@ -229,7 +230,7 @@ jobs:
                 heartbeat="${line#COCOMELON_PAPER_HEARTBEAT }"
                 git fetch --quiet --depth=1 origin main
                 changed_runtime="$(
-                  git diff --name-only "$GITHUB_SHA" FETCH_HEAD --                     .github/workflows/continuous-paper.yml                     pyproject.toml                     scripts/render_continuous_paper_live_status.py                     src/cocomelon/config.py                     src/cocomelon/continuous_paper.py                     src/cocomelon/continuous_paper_cli.py                     src/cocomelon/domain                     src/cocomelon/evaluation                     src/cocomelon/evidence                     src/cocomelon/execution                     src/cocomelon/hyperliquid                     src/cocomelon/journal                     src/cocomelon/risk                     src/cocomelon/scanner                     src/cocomelon/strategies
+                  git diff --name-only "$GITHUB_SHA" FETCH_HEAD --                     .github/workflows/continuous-paper.yml                     pyproject.toml                     scripts/render_continuous_paper_live_status.py                     src/cocomelon/config.py                     src/cocomelon/continuous_paper.py                     src/cocomelon/continuous_paper_cli.py                     src/cocomelon/domain                     src/cocomelon/evaluation                     src/cocomelon/evidence                     src/cocomelon/execution                     src/cocomelon/hyperliquid                     src/cocomelon/journal                     src/cocomelon/risk                     src/cocomelon/research/cadence_shadow.py                     src/cocomelon/research/continuous_paper_trade_paths.py                     src/cocomelon/scanner                     src/cocomelon/strategies
                 )"
                 if [ -n "$changed_runtime" ]; then
                   echo "::notice::new continuous-paper runtime code detected on main; requesting graceful handoff"
@@ -288,6 +289,19 @@ jobs:
           print(
               "- opening lineage state digest: "
               f"{payload.get('opening_lineage_state_digest', 'missing')}"
+          )
+          print(f"- closed trade paths: {payload.get('trade_path_count', 0)}")
+          print(
+              "- staged open trade paths: "
+              f"{payload.get('trade_path_open_count', 0)}"
+          )
+          print(
+              "- closed trade path state digest: "
+              f"{payload.get('trade_path_state_digest', 'missing')}"
+          )
+          print(
+              "- closed trade path capture error: "
+              f"{payload.get('trade_path_capture_error')}"
           )
           print(f"- open paper positions: {payload['open_positions']}")
           print(f"- paper equity: {payload['equity']}")

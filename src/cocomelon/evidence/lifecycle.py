@@ -80,6 +80,15 @@ class OpenLifecycleSink(Protocol):
     def record(self, checkpoint: OpenLifecycleCheckpoint) -> bool: ...
 
 
+class ClosedLifecycleSink(Protocol):
+    def record(
+        self,
+        trade: TradeJournalEntry,
+        mark_observations: Sequence[ReplayRecord],
+        known_gap_intervals: Sequence[tuple[int, int | None]],
+    ) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class OpenLifecycleCheckpoint:
     market: MarketId
@@ -102,6 +111,14 @@ class OpenLifecycleCheckpoint:
             raise ValueError("exit_plan_ids must not contain empty values")
         if any(action.market != self.market for action in self.position_actions):
             raise ValueError("position_actions must match checkpoint market")
+
+
+@dataclass(frozen=True, slots=True)
+class OpenLifecycleMarkPath:
+    market: MarketId
+    opening_plan_id: str
+    opened_at_ms: int
+    mark_observations: tuple[ReplayRecord, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +175,7 @@ class BaselineReplayPipeline:
         new_exposure_cutoff_ms: int | None = None,
         feature_snapshot_sink: FeatureSnapshotSink | None = None,
         opening_lifecycle_sink: OpenLifecycleSink | None = None,
+        closed_lifecycle_sink: ClosedLifecycleSink | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -179,6 +197,7 @@ class BaselineReplayPipeline:
         self._new_exposure_cutoff_ms = new_exposure_cutoff_ms
         self._feature_snapshot_sink = feature_snapshot_sink
         self._opening_lifecycle_sink = opening_lifecycle_sink
+        self._closed_lifecycle_sink = closed_lifecycle_sink
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
             replay_config=replay_config,
@@ -274,6 +293,26 @@ class BaselineReplayPipeline:
         extrema = {low.event_key: low, high.event_key: high}
         return tuple(
             sorted(extrema.values(), key=lambda record: record.sort_key)
+        )
+
+    @property
+    def open_lifecycle_mark_paths(self) -> tuple[OpenLifecycleMarkPath, ...]:
+        return tuple(
+            OpenLifecycleMarkPath(
+                market=item.market,
+                opening_plan_id=item.opening_plan.plan_id,
+                opened_at_ms=item.opened_at_ms,
+                mark_observations=tuple(
+                    sorted(
+                        item.marks.values(),
+                        key=lambda record: record.sort_key,
+                    )
+                ),
+            )
+            for item in sorted(
+                self._lifecycles.values(),
+                key=lambda lifecycle: lifecycle.market.canonical,
+            )
         )
 
     @property
@@ -755,6 +794,12 @@ class BaselineReplayPipeline:
                 else type(assembled).__name__
             )
             raise ReplayInvariantError(f"journal lifecycle inconsistent: {detail}")
+        if self._closed_lifecycle_sink is not None:
+            self._closed_lifecycle_sink.record(
+                assembled,
+                tuple(lifecycle.marks.values()),
+                tuple(self._gap_intervals),
+            )
         self._completed[assembled.trade_id] = assembled
         del self._lifecycles[market.canonical]
 
