@@ -85,6 +85,7 @@ class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
     tasks: tuple[asyncio.Task[None], ...]
     forward_gaps: asyncio.Event
+    ready_lanes: tuple[asyncio.Event, ...]
 
 
 async def _wait_supervisor_group_ready(
@@ -104,11 +105,7 @@ async def _wait_supervisor_group_ready(
                     return False
                 if task.exception() is not None:
                     return False
-        if all(
-            supervisor.health.connected
-            and supervisor.health.last_server_message_ms is not None
-            for supervisor in group.supervisors
-        ):
+        if all(ready.is_set() for ready in group.ready_lanes):
             return True
         if loop.time() >= deadline:
             return False
@@ -873,6 +870,8 @@ async def run_continuous_paper_session(
             gap_gate = asyncio.Event()
             if forward_gaps:
                 gap_gate.set()
+            ready_lanes = tuple(asyncio.Event() for _ in range(2))
+
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
 
@@ -885,6 +884,7 @@ async def run_continuous_paper_session(
             tasks: list[asyncio.Task[None]] = []
             for lane in range(2):
                 async def lane_event_sink(event: StreamEvent, lane: int = lane) -> None:
+                    ready_lanes[lane].set()
                     await mux.on_event(lane, event)
 
                 async def lane_gap_sink(gap: DataGap, lane: int = lane) -> None:
@@ -904,6 +904,7 @@ async def run_continuous_paper_session(
                 supervisors=tuple(supervisors),
                 tasks=tuple(tasks),
                 forward_gaps=gap_gate,
+                ready_lanes=ready_lanes,
             )
 
         supervisor_group = await start_supervisors(
