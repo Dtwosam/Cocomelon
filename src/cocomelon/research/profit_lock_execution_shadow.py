@@ -1368,6 +1368,33 @@ class ProfitLockExecutionShadow:
                 raise ProfitLockExecutionShadowError(
                     "restored position economics are invalid"
                 )
+            if state.eligible != (state.exclusion_reason is None):
+                raise ProfitLockExecutionShadowError(
+                    "restored position eligibility is inconsistent"
+                )
+            for rule_state in state.rules.values():
+                if (
+                    rule_state.remaining_quantity
+                    + rule_state.filled_quantity
+                    != state.initial_quantity
+                ):
+                    raise ProfitLockExecutionShadowError(
+                        "restored rule quantity does not reconcile"
+                    )
+                if (
+                    rule_state.completed_at_ms is not None
+                    and rule_state.filled_quantity
+                    != state.initial_quantity
+                ):
+                    raise ProfitLockExecutionShadowError(
+                        "restored completed rule quantity is invalid"
+                    )
+                if len(set(rule_state.book_event_keys)) != len(
+                    rule_state.book_event_keys
+                ):
+                    raise ProfitLockExecutionShadowError(
+                        "restored book event keys contain duplicates"
+                    )
             if opening_plan_id in positions:
                 raise ProfitLockExecutionShadowError(
                     "duplicate restored opening plan"
