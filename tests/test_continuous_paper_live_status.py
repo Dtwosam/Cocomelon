@@ -207,6 +207,42 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "staged_open_path_count": 1,
             "capture_error": None,
         },
+        "profit_lock_execution_shadow": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "durable_state": True,
+            "state_restored": True,
+            "state_restore_error": None,
+            "state_schema_version": 1,
+            "fill_model": "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve",
+            "eligible_open_positions": 1,
+            "excluded_pre_observer_open_positions": 0,
+            "excluded_closed_trades": 1,
+            "closed_outcome_count": 2,
+            "error": None,
+            "rules": [
+                {
+                    "rule_id": "breakeven_after_0_5r",
+                    "activate_at_r": "0.5",
+                    "lock_at_r": "0",
+                    "closed_eligible_trades": 2,
+                    "economically_evaluated_trades": 2,
+                    "activated_trades": 2,
+                    "triggered_trades": 1,
+                    "simulated_full_closes": 1,
+                    "triggered_incomplete": 0,
+                    "actual_positive_trades": 0,
+                    "candidate_positive_trades_estimate": 1,
+                    "actual_net_pnl": "-12",
+                    "candidate_net_pnl_estimate": "3",
+                    "delta_net_pnl_estimate": "15",
+                    "actual_mean_net_r": "-0.6",
+                    "candidate_mean_net_r_estimate": "0.15",
+                    "delta_mean_net_r_estimate": "0.75",
+                }
+            ],
+        },
         "profit_lock_counterfactual": {
             "enabled": True,
             "research_only": True,
@@ -408,6 +444,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`3`" in output
     assert "`1`" in output
     assert "### Fixed profit-lock counterfactual" in output
+    assert "### Profit-lock execution shadow" in output
+    assert "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve" in output
+    assert "eligible / excluded open positions" in output
+    assert "IOC full" in output
+    assert "breakeven_after_0_5r" in output
     assert "complete paths evaluated" in output
     assert "`2 / 3`" in output
     assert "lock_0_5r_after_1r" in output
