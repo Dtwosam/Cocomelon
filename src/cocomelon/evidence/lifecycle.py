@@ -203,7 +203,10 @@ class BaselineReplayPipeline:
 
         low = min(records, key=lambda record: (mark_price(record), record.sort_key))
         high = max(records, key=lambda record: (mark_price(record), record.sort_key))
-        return tuple(sorted({low.event_key: low, high.event_key: high}.values(), key=lambda record: record.sort_key))
+        extrema = {low.event_key: low, high.event_key: high}
+        return tuple(
+            sorted(extrema.values(), key=lambda record: record.sort_key)
+        )
 
     @property
     def open_lifecycle_checkpoints(self) -> tuple[OpenLifecycleCheckpoint, ...]:
@@ -256,7 +259,10 @@ class BaselineReplayPipeline:
             for fill in fills
         ):
             raise ReplayInvariantError("restored opening fills mismatch")
-        if not any(position.market == checkpoint.market for position in self._execution.account.positions):
+        if not any(
+            position.market == checkpoint.market
+            for position in self._execution.account.positions
+        ):
             raise ReplayInvariantError("restored lifecycle has no matching open position")
         lifecycle = _OpenTradeLifecycle(
             feature_snapshot_id=checkpoint.feature_snapshot_id,
