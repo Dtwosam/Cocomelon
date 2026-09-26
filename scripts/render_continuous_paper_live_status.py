@@ -105,6 +105,165 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+
+def _profit_protection_shadow_lines(raw: object) -> list[str]:
+    if not isinstance(raw, dict):
+        return [
+            "### Profit protection shadow",
+            "",
+            "_No profit-protection shadow telemetry in this heartbeat._",
+        ]
+
+    live = raw.get("live", {})
+    retrospective = raw.get("retrospective", {})
+    if not isinstance(live, dict):
+        live = {}
+    if not isinstance(retrospective, dict):
+        retrospective = {}
+
+    enabled = bool(live.get("enabled"))
+    lines = [
+        "### Profit protection shadow",
+        "",
+        (
+            "- authority: `RESEARCH ONLY / NO EXECUTION` · "
+            f"enabled: `{str(enabled).lower()}`"
+        ),
+    ]
+    if live.get("error"):
+        lines.append(f"- live shadow error: `{live.get('error')}`")
+    lines.append(
+        "- tracked open positions: "
+        f"`{live.get('tracked_open_positions', 0)}`"
+    )
+
+    live_rules = live.get("rules", {})
+    if isinstance(live_rules, dict) and live_rules:
+        lines.extend(
+            [
+                "",
+                "#### Live rule state",
+                "",
+                (
+                    "| Rule | Arm at | Protect | Armed open | "
+                    "Shadow-triggered open |"
+                ),
+                "| --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for rule_id, rule_raw in sorted(live_rules.items()):
+            if not isinstance(rule_raw, dict):
+                continue
+            lines.append(
+                (
+                    "| {rule} | {activation}R | {protected}R | "
+                    "{armed} | {triggered} |"
+                ).format(
+                    rule=rule_id,
+                    activation=rule_raw.get("activation_r"),
+                    protected=rule_raw.get("protected_r"),
+                    armed=rule_raw.get("armed_open_positions", 0),
+                    triggered=rule_raw.get("triggered_open_positions", 0),
+                )
+            )
+
+    live_positions = live.get("positions", [])
+    if isinstance(live_positions, list) and live_positions:
+        lines.extend(
+            [
+                "",
+                "#### Live shadow positions",
+                "",
+                (
+                    "| Market | Side | Current gross R | Max favorable R | "
+                    "0.5R→BE | 1R→+0.5R |"
+                ),
+                "| --- | --- | ---: | ---: | --- | --- |",
+            ]
+        )
+
+        def rule_status(position_raw: dict[str, object], rule_id: str) -> str:
+            rules = position_raw.get("rules", {})
+            if not isinstance(rules, dict):
+                return "inactive"
+            rule = rules.get(rule_id, {})
+            if not isinstance(rule, dict):
+                return "inactive"
+            if rule.get("triggered_at_ms") is not None:
+                trigger_r = rule.get("modeled_net_trigger_r")
+                return f"triggered ({trigger_r}R net-model)"
+            if rule.get("armed_at_ms") is not None:
+                return "armed"
+            return "inactive"
+
+        for position_raw in live_positions:
+            if not isinstance(position_raw, dict):
+                continue
+            lines.append(
+                (
+                    "| {market} | {side} | {current} | {maximum} | "
+                    "{breakeven} | {half} |"
+                ).format(
+                    market=position_raw.get("market"),
+                    side=position_raw.get("side"),
+                    current=position_raw.get("latest_gross_r"),
+                    maximum=position_raw.get("max_favorable_r"),
+                    breakeven=rule_status(
+                        position_raw,
+                        "breakeven_after_0_5r",
+                    ),
+                    half=rule_status(
+                        position_raw,
+                        "half_r_after_1r",
+                    ),
+                )
+            )
+
+    historical_rules = retrospective.get("rules", {})
+    if isinstance(historical_rules, dict) and historical_rules:
+        lines.extend(
+            [
+                "",
+                "#### Retrospective counterfactual",
+                "",
+                (
+                    "| Rule | Eligible | Would trigger | Improved losses | "
+                    "Actual net R | Modeled net R | ΔR |"
+                ),
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for rule_id, rule_raw in sorted(historical_rules.items()):
+            if not isinstance(rule_raw, dict):
+                continue
+            lines.append(
+                (
+                    "| {rule} | {eligible} | {triggered} | {improved} | "
+                    "{actual} | {counterfactual} | {delta} |"
+                ).format(
+                    rule=rule_id,
+                    eligible=rule_raw.get("eligible_trades", 0),
+                    triggered=rule_raw.get("would_trigger_trades", 0),
+                    improved=rule_raw.get("improved_losing_trades", 0),
+                    actual=rule_raw.get("actual_net_r_sum"),
+                    counterfactual=rule_raw.get(
+                        "modeled_counterfactual_net_r_sum"
+                    ),
+                    delta=rule_raw.get("modeled_delta_r_sum"),
+                )
+            )
+        lines.extend(
+            [
+                "",
+                (
+                    "_Retrospective path-constrained diagnostic with frozen "
+                    "fee/slippage costs. It is not promotion evidence._"
+                ),
+            ]
+        )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -489,6 +648,12 @@ def render_live_status(
         ]
     )
     lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
+    lines.extend([""])
+    lines.extend(
+        _profit_protection_shadow_lines(
+            payload.get("profit_protection_shadow")
+        )
+    )
     lines.extend(
         [
             "",
