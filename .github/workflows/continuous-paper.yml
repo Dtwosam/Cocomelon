@@ -18,6 +18,7 @@ on:
       - "src/cocomelon/hyperliquid/**"
       - "src/cocomelon/journal/**"
       - "src/cocomelon/risk/**"
+      - "src/cocomelon/research/cadence_shadow.py"
       - "src/cocomelon/scanner/**"
       - "src/cocomelon/strategies/**"
   workflow_dispatch:
