@@ -45,10 +45,16 @@ from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.continuous_paper_learning import (
+    CONTINUOUS_PAPER_REPLAY_RUN_ID,
+    ContinuousPaperOpeningLineage,
+    ContinuousPaperOpeningLineageStore,
+    ContinuousPaperRuntimeIdentity,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.util.time import utc_now_ms
 
-RUN_ID = "continuous-paper-mainnet-v1"
+RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 
@@ -80,6 +86,29 @@ class ContinuousPaperConfig:
             raise ValueError("warmup bar counts must be positive")
 
 
+class _ContinuousOpeningLineageSink:
+    def __init__(
+        self,
+        store: ContinuousPaperOpeningLineageStore,
+        runtime: ContinuousPaperRuntimeIdentity,
+    ) -> None:
+        self._store = store
+        self._runtime = runtime
+
+    def record(self, checkpoint: OpenLifecycleCheckpoint) -> bool:
+        if checkpoint.opened_at_ms is None:
+            raise ValueError("fresh paper opening is missing opened_at_ms")
+        return self._store.record(
+            ContinuousPaperOpeningLineage(
+                opening_plan_id=checkpoint.opening_plan_id,
+                feature_snapshot_id=checkpoint.feature_snapshot_id,
+                market=checkpoint.market.canonical,
+                opened_at_ms=checkpoint.opened_at_ms,
+                runtime=self._runtime,
+            )
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ContinuousPaperSummary:
     started_at_ms: int
@@ -92,6 +121,8 @@ class ContinuousPaperSummary:
     session_closed_trades: int
     feature_snapshot_count: int
     feature_snapshot_state_digest: str
+    opening_lineage_count: int
+    opening_lineage_state_digest: str
     open_positions: int
     equity: Decimal
     execution_healthy: bool
@@ -111,6 +142,8 @@ class ContinuousPaperSummary:
             "session_closed_trades": self.session_closed_trades,
             "feature_snapshot_count": self.feature_snapshot_count,
             "feature_snapshot_state_digest": self.feature_snapshot_state_digest,
+            "opening_lineage_count": self.opening_lineage_count,
+            "opening_lineage_state_digest": self.opening_lineage_state_digest,
             "open_positions": self.open_positions,
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
@@ -736,6 +769,7 @@ async def run_continuous_paper_session(
     *,
     settings: Settings | None = None,
     stop_file: str | Path | None = None,
+    runtime_identity: ContinuousPaperRuntimeIdentity | None = None,
 ) -> ContinuousPaperSummary:
     settings = settings or Settings.from_env()
     if settings.execution_mode is not ExecutionMode.PAPER:
@@ -760,6 +794,9 @@ async def run_continuous_paper_session(
     journal = JournalStore(root / "journal.sqlite3")
     facts = EvaluationFactStore(root / "facts.sqlite3")
     feature_store = LearningFeatureSnapshotStore(root / "learning-features")
+    opening_lineage_store = ContinuousPaperOpeningLineageStore(
+        root / "opening-lineage"
+    )
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -792,6 +829,14 @@ async def run_continuous_paper_session(
             replay_run_id=RUN_ID,
             evidence_class=EvidenceClass.MICROSTRUCTURE,
             feature_snapshot_sink=feature_store,
+            opening_lifecycle_sink=(
+                None
+                if runtime_identity is None
+                else _ContinuousOpeningLineageSink(
+                    opening_lineage_store,
+                    runtime_identity,
+                )
+            ),
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
@@ -1012,6 +1057,8 @@ async def run_continuous_paper_session(
             session_closed_trades=pump.session_closed_trades,
             feature_snapshot_count=len(feature_store.iter_verified()),
             feature_snapshot_state_digest=feature_store.state_digest,
+            opening_lineage_count=opening_lineage_store.record_count,
+            opening_lineage_state_digest=opening_lineage_store.state_digest,
             open_positions=len(execution.account.positions),
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
