@@ -244,13 +244,15 @@ def sync_continuous_paper_learning(
         destination_features = LearningFeatureSnapshotStore(state / "features")
         before_records = ledger.iter_records()
         before_features = destination_features.iter_verified()
+        before_learning_state_digest = ledger.state_digest
+        before_feature_state_digest = destination_features.state_digest
 
         verify_learning_state_lineage(
             state,
             learning_record_count=len(before_records),
-            learning_state_digest=ledger.state_digest,
+            learning_state_digest=before_learning_state_digest,
             feature_snapshot_count=len(before_features),
-            feature_state_digest=destination_features.state_digest,
+            feature_state_digest=before_feature_state_digest,
         )
 
         result = sync_execution_learning_evidence(
@@ -289,13 +291,9 @@ def sync_continuous_paper_learning(
         created_feature_snapshots=result.created_feature_snapshots,
         existing_feature_snapshots=result.existing_feature_snapshots,
         before_learning_record_count=len(before_records),
-        before_learning_state_digest=(
-            LearningEvidenceLedger(state / "ledger").state_digest
-            if False
-            else ""
-        ),
+        before_learning_state_digest=before_learning_state_digest,
         before_feature_snapshot_count=len(before_features),
-        before_feature_state_digest="",
+        before_feature_state_digest=before_feature_state_digest,
         after_learning_record_count=len(after_records),
         after_learning_state_digest=learning_state_digest,
         after_feature_snapshot_count=len(after_features),
