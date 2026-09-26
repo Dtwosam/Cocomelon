@@ -84,12 +84,16 @@ class OpenLifecycleCheckpoint:
     opening_plan_id: str
     feature_snapshot_id: str
     equity_before: Decimal
+    exit_plan_ids: tuple[str, ...] = ()
+    mark_observations: tuple[ReplayRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.opening_plan_id.strip() or not self.feature_snapshot_id.strip():
             raise ValueError("open lifecycle checkpoint identity must not be empty")
         if not self.equity_before.is_finite() or self.equity_before <= ZERO:
             raise ValueError("open lifecycle checkpoint equity must be positive and finite")
+        if any(not value.strip() for value in self.exit_plan_ids):
+            raise ValueError("exit_plan_ids must not contain empty values")
 
 
 @dataclass(slots=True)
@@ -184,6 +188,16 @@ class BaselineReplayPipeline:
                 opening_plan_id=item.opening_plan.plan_id,
                 feature_snapshot_id=item.feature_snapshot_id,
                 equity_before=item.equity_before,
+                exit_plan_ids=tuple(
+                    plan.plan_id
+                    for plan in sorted(
+                        item.exit_plans.values(),
+                        key=lambda plan: (plan.created_at_ms, plan.plan_id),
+                    )
+                ),
+                mark_observations=tuple(
+                    sorted(item.marks.values(), key=lambda record: record.sort_key)
+                ),
             )
             for item in sorted(
                 self._lifecycles.values(),
@@ -198,6 +212,9 @@ class BaselineReplayPipeline:
         opening_plan: PaperOrderPlan,
         opening_attempt: ExecutionAttempt,
         opening_fills: Sequence[PaperFill],
+        exit_plans: Sequence[PaperOrderPlan] = (),
+        exit_attempts: Sequence[ExecutionAttempt] = (),
+        exit_fills: Sequence[PaperFill] = (),
         funding_accruals: Sequence[FundingAccrual] = (),
     ) -> None:
         market_key = checkpoint.market.canonical
@@ -226,12 +243,54 @@ class BaselineReplayPipeline:
         )
         for fill in fills:
             lifecycle.fills[fill.fill_id] = fill
+        restored_exit_plans = tuple(exit_plans)
+        if tuple(plan.plan_id for plan in restored_exit_plans) != checkpoint.exit_plan_ids:
+            raise ReplayInvariantError("restored exit-plan checkpoint mismatch")
+        for plan in restored_exit_plans:
+            if (
+                not plan.reduce_only
+                or plan.market != checkpoint.market
+                or plan.risk_decision_id != opening_plan.risk_decision_id
+                or plan.strategy_decision_id != opening_plan.strategy_decision_id
+            ):
+                raise ReplayInvariantError("restored exit-plan lineage mismatch")
+            lifecycle.exit_plans[plan.plan_id] = plan
+        known_exit_plans = set(checkpoint.exit_plan_ids)
+        for attempt in exit_attempts:
+            if attempt.plan_id not in known_exit_plans:
+                raise ReplayInvariantError("restored exit attempt plan mismatch")
+            lifecycle.exit_attempts[attempt.attempt_id] = attempt
+        for fill in exit_fills:
+            if fill.plan_id not in known_exit_plans:
+                raise ReplayInvariantError("restored exit fill plan mismatch")
+            lifecycle.fills[fill.fill_id] = fill
+        for record in checkpoint.mark_observations:
+            if record.market != checkpoint.market.canonical:
+                raise ReplayInvariantError("restored mark observation market mismatch")
+            if record.event_key is None:
+                raise ReplayInvariantError("restored mark observation key missing")
+            lifecycle.marks[record.event_key] = record
         for accrual in funding_accruals:
             if accrual.market != checkpoint.market:
                 raise ReplayInvariantError("restored funding market mismatch")
             lifecycle.funding[accrual.accrual_id] = accrual
             self._funding_resolved.add((checkpoint.market.canonical, accrual.boundary_ms))
         self._lifecycles[market_key] = lifecycle
+
+    @property
+    def known_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
+        return tuple(self._gap_intervals)
+
+    def restore_gap_intervals(
+        self,
+        intervals: Sequence[tuple[int, int | None]],
+    ) -> None:
+        restored: list[tuple[int, int | None]] = []
+        for started_ms, ended_ms in intervals:
+            if started_ms < 0 or (ended_ms is not None and ended_ms < started_ms):
+                raise ReplayInvariantError("restored gap interval is invalid")
+            restored.append((started_ms, ended_ms))
+        self._gap_intervals = restored
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
