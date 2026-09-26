@@ -940,8 +940,8 @@ def _position_protection_metrics(
     latest_mark: Decimal | None,
     planned_risk: Decimal,
 ) -> dict[str, object]:
-    if planned_risk <= 0:
-        raise ValueError("planned_risk must be positive")
+    if planned_risk < 0:
+        raise ValueError("planned_risk must be non-negative")
     if side == "long":
         stop_pnl = (stop_price - entry_price) * quantity
         unrealized = (
@@ -963,10 +963,14 @@ def _position_protection_metrics(
             None if unrealized is None else str(unrealized)
         ),
         "current_gross_r": (
-            None if unrealized is None else str(unrealized / planned_risk)
+            None
+            if unrealized is None or planned_risk == 0
+            else str(unrealized / planned_risk)
         ),
         "stop_trigger_gross_pnl": str(stop_pnl),
-        "stop_trigger_gross_r": str(stop_pnl / planned_risk),
+        "stop_trigger_gross_r": (
+            None if planned_risk == 0 else str(stop_pnl / planned_risk)
+        ),
         "stop_protects_profit": stop_pnl > 0,
     }
 
