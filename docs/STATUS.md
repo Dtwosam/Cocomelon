@@ -795,37 +795,29 @@ Current evidence and promotion boundary:
 
 ### Current paper-trade status interpretation guardrail — 2026-09-26
 
-A current-state reporting ambiguity was identified and corrected in the documentation.
+The current paper trader is the **Continuous Mainnet Paper Trader**, not a Prospective HYPE experiment.
 
-Paper evidence currently exists in several independent families:
+Paper evidence exists in separate families and must not be conflated:
 
-- the retired/touched V4 corpus, which has historical closed paper trades and must not be presented as the newly started campaign;
-- touched research replay lanes (`scheduled-research-root`, r1, r2), which have their own checkpoint/trade accounting;
-- the frozen prospective HYPE V3 clean campaign under D-029;
-- learned-candidate clean/shadow evidence, which is a separate later lifecycle.
+- **active continuous ordinary paper runtime** — current simulated orders/fills/positions from the scanner -> strategy -> risk -> paper-execution stack;
+- **scheduled research replay lanes** — touched/non-promotional research campaign evidence;
+- **retired V4 corpus** — historical/touched development evidence;
+- **retired Prospective HYPE V1/V2/V3** — historical research evidence only;
+- **learned-candidate clean/shadow evidence** — a separate candidate-validation lifecycle.
 
-For current-trade questions, workflow status and economic trade state are now explicitly separate concepts.
+Required current-state reporting rule:
 
-**Required reporting rule:**
+- read GitHub Issue #469 (`Continuous Paper Trader — Live Status`) first;
+- verify the newest active `Continuous Mainnet Paper Trader` run and its exact head SHA;
+- use authenticated open-position/fill/journal state before claiming a trade opened or closed;
+- treat Issue #82, Issue #124, retired HYPE artifacts, and old completed worker artifacts as historical context rather than current-position authority;
+- if #469 lacks `Worker head SHA` and decision/risk diagnostics, it is a legacy #468 heartbeat: its `closed_trades` counter is unreliable and must not be quoted as a real trade count;
+- the durable journal/artifact is authoritative for closed trades; #470 fixed the live unique-trade counter;
+- workflow scheduling/dispatch is infrastructure continuity, not the economic decision cadence.
 
-- a running capture/heartbeat/transport workflow proves only that the campaign/control plane is active;
-- V3 queue, transport, and heartbeat receipts are non-economic;
-- a new trade/open/close/PnL claim requires authenticated economic evidence/state from the relevant lane;
-- stale aggregate dashboard counts cannot be used to conclude that no newer trade exists elsewhere;
-- Issue #82 (retired V4 evidence) and Issue #124 (touched research) are useful context but are not sufficient by themselves to answer whether the active V3 campaign has taken a trade;
-- when "current paper trade" is ambiguous, report the active campaign state and the latest authenticated economic trade state separately.
+The active runtime continuously consumes mainnet market data for the deep shortlist, refreshes/ranks the broader native perp universe, evaluates the existing strategy on its 15-minute decision epochs, manages open positions on fresh market events, and remains paper-only.
 
-Point-in-time state used to establish this guardrail:
-
-- V4 dashboard: 121 historical/touched closed paper trades across 21 closed-trade days; V4 retired/touched, no edge demonstrated;
-- research dashboard at 2026-09-26 00:37 UTC: `scheduled-research-root` 14 closed trades, r1 6, r2 1;
-- HYPE V3 clean validation began 2026-09-26 00:00 UTC;
-- first expected V3 anchor: 2026-09-26 00:59:59.999 UTC; intended capture around 01:03 UTC;
-- V3 capture/heartbeat runs inspected before that first anchor were in transport/hold stages and had no authenticated V3 economic artifact at that check.
-
-The last bullet is intentionally time-scoped. Future assistants must refresh live GitHub Actions and artifacts before describing the V3 trade state as current.
-
-This clarification changes reporting/continuation discipline only. It does not alter candidate economics, risk settings, validation thresholds, campaign identity, or live-trading authority.
+Prospective HYPE D-029 remains historical documentation only and must not be restarted or presented as the current trader.
 
 **LIVE TRADING: DISABLED.**
 
