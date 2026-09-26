@@ -180,6 +180,31 @@ class BaselineReplayPipeline:
     def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
         self._decision_engine.reconcile_markets(selected_markets)
 
+    @staticmethod
+    def _checkpoint_marks(
+        lifecycle: _OpenTradeLifecycle,
+    ) -> tuple[ReplayRecord, ...]:
+        records = tuple(lifecycle.marks.values())
+        if len(records) <= 2:
+            return tuple(sorted(records, key=lambda record: record.sort_key))
+
+        def mark_price(record: ReplayRecord) -> Decimal:
+            payload = record.payload
+            if not isinstance(payload, dict):
+                raise ReplayInvariantError("mark observation payload must be an object")
+            raw = payload.get("mark_px")
+            try:
+                value = Decimal(str(raw))
+            except Exception as exc:
+                raise ReplayInvariantError("mark observation price is invalid") from exc
+            if not value.is_finite() or value <= ZERO:
+                raise ReplayInvariantError("mark observation price must be positive")
+            return value
+
+        low = min(records, key=lambda record: (mark_price(record), record.sort_key))
+        high = max(records, key=lambda record: (mark_price(record), record.sort_key))
+        return tuple(sorted({low.event_key: low, high.event_key: high}.values(), key=lambda record: record.sort_key))
+
     @property
     def open_lifecycle_checkpoints(self) -> tuple[OpenLifecycleCheckpoint, ...]:
         return tuple(
@@ -195,9 +220,7 @@ class BaselineReplayPipeline:
                         key=lambda plan: (plan.created_at_ms, plan.plan_id),
                     )
                 ),
-                mark_observations=tuple(
-                    sorted(item.marks.values(), key=lambda record: record.sort_key)
-                ),
+                mark_observations=self._checkpoint_marks(item),
             )
             for item in sorted(
                 self._lifecycles.values(),
