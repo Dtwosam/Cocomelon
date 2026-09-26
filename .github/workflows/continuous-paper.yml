@@ -213,6 +213,9 @@ jobs:
             --selection-refresh-seconds 300 \
             --checkpoint-seconds 30 \
             --stop-file /tmp/continuous-paper-upgrade-requested \
+            --worker-run-id "$GITHUB_RUN_ID" \
+            --worker-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --worker-head-sha "$GITHUB_SHA" \
             | while IFS= read -r line; do
                 printf '%s\n' "$line"
                 if [[ "$line" != COCOMELON_PAPER_HEARTBEAT\ * ]]; then
@@ -279,6 +282,11 @@ jobs:
           print(
               "- feature snapshot state digest: "
               f"{payload.get('feature_snapshot_state_digest', 'missing')}"
+          )
+          print(f"- opening lineage records: {payload.get('opening_lineage_count', 0)}")
+          print(
+              "- opening lineage state digest: "
+              f"{payload.get('opening_lineage_state_digest', 'missing')}"
           )
           print(f"- open paper positions: {payload['open_positions']}")
           print(f"- paper equity: {payload['equity']}")
