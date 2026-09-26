@@ -559,10 +559,95 @@ def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
     }
 
 
+
+def _closed_trade_performance(
+    trades: tuple[TradeJournalEntry, ...],
+    feature_store: LearningFeatureSnapshotStore,
+) -> dict[str, object]:
+    def summarize(items: tuple[TradeJournalEntry, ...]) -> dict[str, object]:
+        count = len(items)
+        net_pnl = sum((trade.net_pnl for trade in items), Decimal("0"))
+        net_r = sum((trade.net_r for trade in items), Decimal("0"))
+        return {
+            "trades": count,
+            "wins": sum(1 for trade in items if trade.net_pnl > 0),
+            "losses": sum(1 for trade in items if trade.net_pnl < 0),
+            "breakeven": sum(1 for trade in items if trade.net_pnl == 0),
+            "net_pnl": str(net_pnl),
+            "mean_net_pnl": None if count == 0 else str(net_pnl / count),
+            "mean_net_r": None if count == 0 else str(net_r / count),
+            "average_holding_ms": (
+                None
+                if count == 0
+                else sum(trade.holding_duration_ms for trade in items) // count
+            ),
+        }
+
+    def grouped(
+        labels: dict[str, list[TradeJournalEntry]],
+    ) -> dict[str, dict[str, object]]:
+        return {
+            label: summarize(tuple(items))
+            for label, items in sorted(labels.items())
+        }
+
+    gross_profit = sum(
+        (trade.net_pnl for trade in trades if trade.net_pnl > 0),
+        Decimal("0"),
+    )
+    gross_loss_abs = -sum(
+        (trade.net_pnl for trade in trades if trade.net_pnl < 0),
+        Decimal("0"),
+    )
+    profit_factor = (
+        None
+        if gross_loss_abs == 0
+        else str(gross_profit / gross_loss_abs)
+    )
+
+    by_side: dict[str, list[TradeJournalEntry]] = {}
+    by_exit_reason: dict[str, list[TradeJournalEntry]] = {}
+    by_trend_regime: dict[str, list[TradeJournalEntry]] = {}
+    by_volatility_regime: dict[str, list[TradeJournalEntry]] = {}
+    unattributed_feature_trades = 0
+
+    for trade in trades:
+        by_side.setdefault(trade.direction.value, []).append(trade)
+        by_exit_reason.setdefault(trade.exit_reason, []).append(trade)
+
+        trend_regime = "unknown"
+        volatility_regime = "unknown"
+        try:
+            verified = feature_store.load(trade.feature_snapshot_id)
+            if verified is not None:
+                trend_regime = verified.snapshot.trend_regime.value
+                volatility_regime = verified.snapshot.volatility_regime.value
+            else:
+                unattributed_feature_trades += 1
+        except Exception:
+            unattributed_feature_trades += 1
+
+        by_trend_regime.setdefault(trend_regime, []).append(trade)
+        by_volatility_regime.setdefault(volatility_regime, []).append(trade)
+
+    return {
+        **summarize(trades),
+        "gross_profit": str(gross_profit),
+        "gross_loss_abs": str(gross_loss_abs),
+        "profit_factor": profit_factor,
+        "unattributed_feature_trades": unattributed_feature_trades,
+        "by_side": grouped(by_side),
+        "by_exit_reason": grouped(by_exit_reason),
+        "by_trend_regime": grouped(by_trend_regime),
+        "by_volatility_regime": grouped(by_volatility_regime),
+    }
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
+    feature_store: LearningFeatureSnapshotStore,
     *,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -604,6 +689,21 @@ def _live_status_payload(
         if execution.account.equity == 0
         else open_planned_risk / execution.account.equity
     )
+    total_account_pnl = execution.account.equity - execution.account.starting_cash
+    total_return_fraction = (
+        Decimal("0")
+        if execution.account.starting_cash == 0
+        else total_account_pnl / execution.account.starting_cash
+    )
+    gross_open_notional_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else execution.account.gross_open_notional / execution.account.equity
+    )
+    closed_trade_performance = _closed_trade_performance(
+        tuple(pump.journal.iter_trades()),
+        feature_store,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -639,11 +739,15 @@ def _live_status_payload(
             _closed_trade_status_payload(trade)
             for trade in reversed(pump.recent_closed_trades)
         ],
+        "closed_trade_performance": closed_trade_performance,
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(
             open_planned_risk_fraction
         ),
         "gross_open_notional": str(execution.account.gross_open_notional),
+        "gross_open_notional_fraction_of_equity": str(
+            gross_open_notional_fraction
+        ),
         "available_margin": str(execution.account.available_margin),
         "session_decision_epochs": activity.decision_epochs,
         "last_decision_boundary_ms": activity.last_decision_boundary_ms,
@@ -664,8 +768,11 @@ def _live_status_payload(
         "session_opening_fills": activity.opening_fills,
         "open_position_count": len(positions),
         "positions": positions,
+        "starting_cash": str(execution.account.starting_cash),
         "cash": str(execution.account.cash),
         "equity": str(execution.account.equity),
+        "total_account_pnl": str(total_account_pnl),
+        "total_return_fraction": str(total_return_fraction),
         "unrealized_pnl": str(execution.account.unrealized_pnl),
         "realized_gross_pnl": str(execution.account.realized_gross_pnl),
         "cumulative_fees": str(execution.account.cumulative_fees),
@@ -680,6 +787,7 @@ def _emit_live_status(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
+    feature_store: LearningFeatureSnapshotStore,
     *,
     timestamp_ms: int,
 ) -> None:
@@ -687,6 +795,7 @@ def _emit_live_status(
         execution,
         pump,
         selected_markets,
+        feature_store,
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -901,6 +1010,7 @@ async def run_continuous_paper_session(
             execution,
             pump,
             selected,
+            feature_store,
             timestamp_ms=utc_now_ms(),
         )
 
@@ -1024,6 +1134,7 @@ async def run_continuous_paper_session(
                     execution,
                     pump,
                     selected,
+                    feature_store,
                     timestamp_ms=now_ms,
                 )
 
