@@ -82,6 +82,7 @@ class ContinuousPaperConfig:
 class ContinuousPaperSummary:
     started_at_ms: int
     ended_at_ms: int
+    exit_reason: str
     selected_markets: tuple[str, ...]
     processed_records: int
     journal_observations: int
@@ -97,6 +98,7 @@ class ContinuousPaperSummary:
         return {
             "started_at_ms": self.started_at_ms,
             "ended_at_ms": self.ended_at_ms,
+            "exit_reason": self.exit_reason,
             "selected_markets": list(self.selected_markets),
             "processed_records": self.processed_records,
             "journal_observations": self.journal_observations,
@@ -686,6 +688,7 @@ async def run_continuous_paper_session(
     config: ContinuousPaperConfig,
     *,
     settings: Settings | None = None,
+    stop_file: str | Path | None = None,
 ) -> ContinuousPaperSummary:
     settings = settings or Settings.from_env()
     if settings.execution_mode is not ExecutionMode.PAPER:
@@ -693,6 +696,9 @@ async def run_continuous_paper_session(
 
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
+    stop_path = None if stop_file is None else Path(stop_file)
+    if stop_path is not None and stop_path.exists():
+        stop_path.unlink()
     started_at_ms = utc_now_ms()
     checkpoint_path = root / CHECKPOINT_FILENAME
     checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
@@ -844,8 +850,12 @@ async def run_continuous_paper_session(
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
 
+        exit_reason = "duration_elapsed"
         try:
             while utc_now_ms() < deadline_ms:
+                if stop_path is not None and stop_path.exists():
+                    exit_reason = "upgrade_requested"
+                    break
                 now_ms = utc_now_ms()
                 sleep_seconds = min(
                     float(config.context_poll_seconds),
@@ -853,6 +863,9 @@ async def run_continuous_paper_session(
                 )
                 await asyncio.sleep(sleep_seconds)
                 now_ms = utc_now_ms()
+                if stop_path is not None and stop_path.exists():
+                    exit_reason = "upgrade_requested"
+                    break
 
                 refreshed = await asyncio.to_thread(
                     _native_market_snapshots,
@@ -942,6 +955,7 @@ async def run_continuous_paper_session(
         summary = ContinuousPaperSummary(
             started_at_ms=started_at_ms,
             ended_at_ms=ended_at_ms,
+            exit_reason=exit_reason,
             selected_markets=tuple(market.canonical for market in selected),
             processed_records=pump.processed_records,
             journal_observations=pump.journal_observations,
