@@ -123,6 +123,43 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "by_volatility_regime": {},
         },
+        "cadence_shadow": {
+            "enabled": True,
+            "error": None,
+            "shadow_only": True,
+            "execution_authority": False,
+            "session_only": True,
+            "pending_outcome_count": 3,
+            "censored_due_to_unsubscribe": 1,
+            "cadences": {
+                "300000": {
+                    "decision_counts": {
+                        "long": 2,
+                        "short": 1,
+                        "no_trade": 7,
+                    },
+                    "off_primary_boundary_outcomes_by_horizon_ms": {
+                        "900000": {
+                            "settled_count": 2,
+                            "mean_net_return": "0.003",
+                            "positive_net_count": 1,
+                        },
+                        "3600000": {
+                            "settled_count": 1,
+                            "mean_net_return": "-0.002",
+                            "positive_net_count": 0,
+                        },
+                    },
+                },
+                "900000": {
+                    "decision_counts": {
+                        "long": 1,
+                        "short": 0,
+                        "no_trade": 3,
+                    },
+                },
+            },
+        },
         "positions": [
             {
                 "market": "BTC",
@@ -184,6 +221,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`2`" in output
     assert "open planned risk" in output
     assert "gross open notional" in output
+    assert "5m cadence shadow diagnostic" in output
+    assert "RESEARCH ONLY / NO EXECUTION" in output
+    assert "2 / 1 / 7" in output
+    assert "mean net=`0.003`" in output
     assert "starting cash" in output
     assert "total account PnL" in output
     assert "2.5" in output
