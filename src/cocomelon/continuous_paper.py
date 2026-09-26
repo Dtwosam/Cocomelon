@@ -630,6 +630,7 @@ def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
 def _closed_trade_performance(
     trades: tuple[TradeJournalEntry, ...],
     feature_store: LearningFeatureSnapshotStore,
+    fact_store: EvaluationFactStore,
 ) -> dict[str, object]:
     def summarize(items: tuple[TradeJournalEntry, ...]) -> dict[str, object]:
         count = len(items)
@@ -817,28 +818,67 @@ def _closed_trade_performance(
         )
     )
 
+    def decision_score_band(score: Decimal) -> str:
+        if score < Decimal("65"):
+            return "<65"
+        if score < Decimal("70"):
+            return "65-<70"
+        if score < Decimal("75"):
+            return "70-<75"
+        if score < Decimal("80"):
+            return "75-<80"
+        return "80+"
+
     by_side: dict[str, list[TradeJournalEntry]] = {}
     by_exit_reason: dict[str, list[TradeJournalEntry]] = {}
+    by_lead_strategy: dict[str, list[TradeJournalEntry]] = {}
+    by_decision_score_band: dict[str, list[TradeJournalEntry]] = {}
     by_trend_regime: dict[str, list[TradeJournalEntry]] = {}
     by_volatility_regime: dict[str, list[TradeJournalEntry]] = {}
-    unattributed_feature_trades = 0
+    decision_fact_attributed_trades = 0
+    decision_fact_attribution_misses = 0
+    feature_snapshot_fallback_trades = 0
+    regime_attribution_misses = 0
 
     for trade in trades:
         by_side.setdefault(trade.direction.value, []).append(trade)
         by_exit_reason.setdefault(trade.exit_reason, []).append(trade)
 
+        lead_strategy = "unknown"
+        score_band = "unknown"
         trend_regime = "unknown"
         volatility_regime = "unknown"
-        try:
-            verified = feature_store.load(trade.feature_snapshot_id)
-            if verified is not None:
-                trend_regime = verified.snapshot.trend_regime.value
-                volatility_regime = verified.snapshot.volatility_regime.value
-            else:
-                unattributed_feature_trades += 1
-        except Exception:
-            unattributed_feature_trades += 1
+        decision_fact = None
+        if trade.replay_run_id is not None:
+            try:
+                decision_fact = fact_store.load_decision_by_strategy_id(
+                    trade.strategy_decision_id,
+                    trade.replay_run_id,
+                )
+            except Exception:
+                decision_fact = None
 
+        if decision_fact is not None:
+            decision_fact_attributed_trades += 1
+            lead_strategy = decision_fact.lead_strategy or "unknown"
+            score_band = decision_score_band(decision_fact.score)
+            trend_regime = decision_fact.trend_regime.value
+            volatility_regime = decision_fact.volatility_regime.value
+        else:
+            decision_fact_attribution_misses += 1
+            try:
+                verified = feature_store.load(trade.feature_snapshot_id)
+                if verified is not None:
+                    feature_snapshot_fallback_trades += 1
+                    trend_regime = verified.snapshot.trend_regime.value
+                    volatility_regime = verified.snapshot.volatility_regime.value
+                else:
+                    regime_attribution_misses += 1
+            except Exception:
+                regime_attribution_misses += 1
+
+        by_lead_strategy.setdefault(lead_strategy, []).append(trade)
+        by_decision_score_band.setdefault(score_band, []).append(trade)
         by_trend_regime.setdefault(trend_regime, []).append(trade)
         by_volatility_regime.setdefault(volatility_regime, []).append(trade)
 
@@ -847,9 +887,15 @@ def _closed_trade_performance(
         "gross_profit": str(gross_profit),
         "gross_loss_abs": str(gross_loss_abs),
         "profit_factor": profit_factor,
-        "unattributed_feature_trades": unattributed_feature_trades,
+        "decision_fact_attributed_trades": decision_fact_attributed_trades,
+        "decision_fact_attribution_misses": decision_fact_attribution_misses,
+        "feature_snapshot_fallback_trades": feature_snapshot_fallback_trades,
+        "regime_attribution_misses": regime_attribution_misses,
+        "unattributed_feature_trades": regime_attribution_misses,
         "by_side": grouped(by_side),
         "by_exit_reason": grouped(by_exit_reason),
+        "by_lead_strategy": grouped(by_lead_strategy),
+        "by_decision_score_band": grouped(by_decision_score_band),
         "by_trend_regime": grouped(by_trend_regime),
         "by_volatility_regime": grouped(by_volatility_regime),
     }
@@ -860,6 +906,7 @@ def _live_status_payload(
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
+    fact_store: EvaluationFactStore,
     *,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -915,6 +962,7 @@ def _live_status_payload(
     closed_trade_performance = _closed_trade_performance(
         tuple(pump.journal.iter_trades()),
         feature_store,
+        fact_store,
     )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
@@ -1001,6 +1049,7 @@ def _emit_live_status(
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
+    fact_store: EvaluationFactStore,
     *,
     timestamp_ms: int,
 ) -> None:
@@ -1009,6 +1058,7 @@ def _emit_live_status(
         pump,
         selected_markets,
         feature_store,
+        fact_store,
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -1233,6 +1283,7 @@ async def run_continuous_paper_session(
             pump,
             selected,
             feature_store,
+            facts,
             timestamp_ms=utc_now_ms(),
         )
 
@@ -1358,6 +1409,7 @@ async def run_continuous_paper_session(
                     pump,
                     selected,
                     feature_store,
+                    facts,
                     timestamp_ms=now_ms,
                 )
 
