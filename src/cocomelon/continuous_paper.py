@@ -45,6 +45,7 @@ from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = "continuous-paper-mainnet-v1"
@@ -89,6 +90,8 @@ class ContinuousPaperSummary:
     journal_observations: int
     closed_trades: int
     session_closed_trades: int
+    feature_snapshot_count: int
+    feature_snapshot_state_digest: str
     open_positions: int
     equity: Decimal
     execution_healthy: bool
@@ -106,6 +109,8 @@ class ContinuousPaperSummary:
             "journal_observations": self.journal_observations,
             "closed_trades": self.closed_trades,
             "session_closed_trades": self.session_closed_trades,
+            "feature_snapshot_count": self.feature_snapshot_count,
+            "feature_snapshot_state_digest": self.feature_snapshot_state_digest,
             "open_positions": self.open_positions,
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
@@ -754,6 +759,7 @@ async def run_continuous_paper_session(
     )
     journal = JournalStore(root / "journal.sqlite3")
     facts = EvaluationFactStore(root / "facts.sqlite3")
+    feature_store = LearningFeatureSnapshotStore(root / "learning-features")
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -785,6 +791,7 @@ async def run_continuous_paper_session(
             selected_markets=selected,
             replay_run_id=RUN_ID,
             evidence_class=EvidenceClass.MICROSTRUCTURE,
+            feature_snapshot_sink=feature_store,
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
@@ -1003,6 +1010,8 @@ async def run_continuous_paper_session(
             journal_observations=pump.journal_observations,
             closed_trades=len(closed_trades),
             session_closed_trades=pump.session_closed_trades,
+            feature_snapshot_count=len(feature_store.iter_verified()),
+            feature_snapshot_state_digest=feature_store.state_digest,
             open_positions=len(execution.account.positions),
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
