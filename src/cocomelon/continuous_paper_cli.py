@@ -17,6 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--context-poll-seconds", type=int, default=60)
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
+    parser.add_argument("--stop-file", type=Path)
     return parser
 
 
@@ -33,6 +34,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         run_continuous_paper_session(
             args.state_root,
             config,
+            stop_file=args.stop_file,
         )
     )
     print(json.dumps(summary.payload(), indent=2, sort_keys=True))
