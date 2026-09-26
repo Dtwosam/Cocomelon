@@ -4,9 +4,12 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from cocomelon.continuous_paper import RUN_ID
+from cocomelon.continuous_paper_learning_source import (
+    ContinuousPaperLearningSourceError,
+    verify_continuous_paper_learning_source,
+)
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.execution_learning_sync import (
     sync_execution_learning_evidence,
@@ -43,43 +46,6 @@ def _sha256_json(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
-def _mapping(path: Path, field: str) -> dict[str, object]:
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ContinuousPaperLearningSyncError(
-            f"{field.upper()}_MISSING"
-        ) from exc
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ContinuousPaperLearningSyncError(
-            f"{field.upper()}_INVALID"
-        ) from exc
-    if not isinstance(raw, dict) or not all(isinstance(key, str) for key in raw):
-        raise ContinuousPaperLearningSyncError(f"{field.upper()}_INVALID")
-    return cast(dict[str, object], raw)
-
-
-def _integer(raw: dict[str, object], field: str) -> int:
-    value = raw.get(field)
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ContinuousPaperLearningSyncError(f"{field.upper()}_INVALID")
-    return value
-
-
-def _string(raw: dict[str, object], field: str) -> str:
-    value = raw.get(field)
-    if not isinstance(value, str) or not value.strip():
-        raise ContinuousPaperLearningSyncError(f"{field.upper()}_INVALID")
-    return value
-
-
-def _boolean(raw: dict[str, object], field: str) -> bool:
-    value = raw.get(field)
-    if not isinstance(value, bool):
-        raise ContinuousPaperLearningSyncError(f"{field.upper()}_INVALID")
-    return value
-
-
 def _require_commit_sha(value: str) -> None:
     if len(value) != 40 or any(char not in "0123456789abcdef" for char in value):
         raise ValueError("upstream_head_sha must be lowercase 40-character git SHA")
@@ -95,11 +61,6 @@ def _require_artifact_digest(value: str) -> None:
         raise ValueError(
             "upstream_artifact_digest must be sha256:<lowercase hex>"
         )
-
-
-def _require_state_digest(value: str, field: str) -> None:
-    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
-        raise ContinuousPaperLearningSyncError(f"{field.upper()}_INVALID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,55 +152,17 @@ def sync_continuous_paper_learning(
     _require_commit_sha(upstream_head_sha)
     _require_artifact_digest(upstream_artifact_digest)
 
-    worker = Path(worker_root)
-    state = Path(state_root)
-    summary = _mapping(worker / "session-summary.json", "session_summary")
-
-    if _boolean(summary, "live_orders"):
-        raise ContinuousPaperLearningSyncError("LIVE_ORDERS_FORBIDDEN")
-    if not _boolean(summary, "network_access"):
-        raise ContinuousPaperLearningSyncError("MAINNET_NETWORK_ACCESS_REQUIRED")
-
-    started_at_ms = _integer(summary, "started_at_ms")
-    ended_at_ms = _integer(summary, "ended_at_ms")
-    activation_ms = _integer(
-        summary,
-        "learning_feature_capture_started_at_ms",
-    )
-    if ended_at_ms < started_at_ms:
-        raise ContinuousPaperLearningSyncError("WORKER_TIME_RANGE_INVALID")
-    if activation_ms > ended_at_ms:
-        raise ContinuousPaperLearningSyncError(
-            "FEATURE_CAPTURE_ACTIVATION_AFTER_WORKER_END"
-        )
-
-    expected_feature_count = _integer(summary, "feature_snapshot_count")
-    expected_feature_digest = _string(
-        summary,
-        "feature_snapshot_state_digest",
-    )
-    _require_state_digest(expected_feature_digest, "feature_snapshot_state_digest")
-
-    source_features_root = worker / "learning-features"
-    if not source_features_root.is_dir():
-        raise ContinuousPaperLearningSyncError("FEATURE_STORE_MISSING")
-    source_features = LearningFeatureSnapshotStore(source_features_root)
-    verified_source_features = source_features.iter_verified()
-    if len(verified_source_features) != expected_feature_count:
-        raise ContinuousPaperLearningSyncError("FEATURE_STORE_COUNT_MISMATCH")
-    if source_features.state_digest != expected_feature_digest:
-        raise ContinuousPaperLearningSyncError("FEATURE_STORE_DIGEST_MISMATCH")
-
-    journal_path = worker / "journal.sqlite3"
-    if not journal_path.is_file():
-        raise ContinuousPaperLearningSyncError("JOURNAL_MISSING")
-    journal = JournalStore(journal_path)
     try:
-        source_trades = tuple(journal.iter_trades())
-        expected_trade_count = _integer(summary, "closed_trades")
-        if len(source_trades) != expected_trade_count:
-            raise ContinuousPaperLearningSyncError("JOURNAL_TRADE_COUNT_MISMATCH")
+        verified_source = verify_continuous_paper_learning_source(worker_root)
+    except ContinuousPaperLearningSourceError as exc:
+        raise ContinuousPaperLearningSyncError(str(exc)) from exc
 
+    state = Path(state_root)
+    source_features = LearningFeatureSnapshotStore(
+        verified_source.feature_store_root
+    )
+    journal = JournalStore(verified_source.journal_path)
+    try:
         ledger = LearningEvidenceLedger(state / "ledger")
         destination_features = LearningFeatureSnapshotStore(state / "features")
         before_records = ledger.iter_records()
@@ -264,12 +187,12 @@ def sync_continuous_paper_learning(
             research_eligible_at_ms=None,
             expected_replay_run_id=RUN_ID,
             destination_feature_store=destination_features,
-            opened_at_or_after_ms=activation_ms,
+            opened_at_or_after_ms=verified_source.feature_capture_started_at_ms,
         )
     finally:
         journal.close()
 
-    if result.scanned_trades != expected_trade_count:
+    if result.scanned_trades != verified_source.closed_trade_count:
         raise ContinuousPaperLearningSyncError("SCANNED_TRADE_COUNT_MISMATCH")
 
     after_records = ledger.iter_records()
@@ -308,9 +231,11 @@ def sync_continuous_paper_learning(
         upstream_head_sha=upstream_head_sha,
         upstream_artifact_id=upstream_artifact_id,
         upstream_artifact_digest=upstream_artifact_digest,
-        worker_started_at_ms=started_at_ms,
-        worker_ended_at_ms=ended_at_ms,
-        learning_feature_capture_started_at_ms=activation_ms,
+        worker_started_at_ms=verified_source.worker_started_at_ms,
+        worker_ended_at_ms=verified_source.worker_ended_at_ms,
+        learning_feature_capture_started_at_ms=(
+            verified_source.feature_capture_started_at_ms
+        ),
         scanned_trades=result.scanned_trades,
         skipped_pre_activation_trades=result.skipped_pre_activation_trades,
         created_records=result.created_records,
