@@ -155,6 +155,36 @@ Phase plans describe exactly how the next approved slice is implemented.
 
 When implementation reveals a spec contradiction, stop and resolve the contradiction in the docs rather than silently coding around it.
 
+
+### Current paper-trading status reporting
+
+When answering questions such as "what paper trades are running now?", "did it take a trade today?", or "what is the current paper-trade PnL?", do **not** infer current trade state from aggregate dashboards, historical trade counts, or the existence of a running workflow.
+
+Before making a current-state claim:
+
+1. inspect the latest active paper/prospective workflow runs;
+2. inspect their jobs/steps and authenticated artifacts/state where available;
+3. distinguish the evidence family being discussed;
+4. use an authenticated trade/evidence row before claiming that a new trade opened, closed, or produced PnL.
+
+Keep these paper-evidence families separate:
+
+- retired/touched V4 corpus evidence;
+- touched scheduled-research replay lanes (`scheduled-research-root`, r1, r2, etc.);
+- the active prospective HYPE clean campaign (currently V3 under D-029);
+- learned-candidate clean/shadow evidence.
+
+A workflow being `in_progress` proves that a campaign or transport step is active; it does **not** by itself prove that an economic trade exists. Conversely, a stale research/dashboard checkpoint does **not** prove that no newer paper activity exists in another evidence family.
+
+For the active prospective HYPE campaign, transport/heartbeat/queue receipts are explicitly non-economic. Do not call them trades. Confirm a new HYPE prospective trade only from authenticated prospective observation/evidence state.
+
+When the user says "current paper trade" without naming a lane, default to reporting both:
+
+- the newest active paper/prospective campaign state; and
+- the newest authenticated economic trade state,
+
+while clearly labeling historical/cumulative evidence separately.
+
 ## 9. Current official references
 
 Use official Hyperliquid documentation as the primary external reference:

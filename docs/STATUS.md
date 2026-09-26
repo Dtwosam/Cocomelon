@@ -793,3 +793,39 @@ Current evidence and promotion boundary:
 
 **LIVE TRADING: DISABLED.**
 
+### Current paper-trade status interpretation guardrail — 2026-09-26
+
+A current-state reporting ambiguity was identified and corrected in the documentation.
+
+Paper evidence currently exists in several independent families:
+
+- the retired/touched V4 corpus, which has historical closed paper trades and must not be presented as the newly started campaign;
+- touched research replay lanes (`scheduled-research-root`, r1, r2), which have their own checkpoint/trade accounting;
+- the frozen prospective HYPE V3 clean campaign under D-029;
+- learned-candidate clean/shadow evidence, which is a separate later lifecycle.
+
+For current-trade questions, workflow status and economic trade state are now explicitly separate concepts.
+
+**Required reporting rule:**
+
+- a running capture/heartbeat/transport workflow proves only that the campaign/control plane is active;
+- V3 queue, transport, and heartbeat receipts are non-economic;
+- a new trade/open/close/PnL claim requires authenticated economic evidence/state from the relevant lane;
+- stale aggregate dashboard counts cannot be used to conclude that no newer trade exists elsewhere;
+- Issue #82 (retired V4 evidence) and Issue #124 (touched research) are useful context but are not sufficient by themselves to answer whether the active V3 campaign has taken a trade;
+- when "current paper trade" is ambiguous, report the active campaign state and the latest authenticated economic trade state separately.
+
+Point-in-time state used to establish this guardrail:
+
+- V4 dashboard: 121 historical/touched closed paper trades across 21 closed-trade days; V4 retired/touched, no edge demonstrated;
+- research dashboard at 2026-09-26 00:37 UTC: `scheduled-research-root` 14 closed trades, r1 6, r2 1;
+- HYPE V3 clean validation began 2026-09-26 00:00 UTC;
+- first expected V3 anchor: 2026-09-26 00:59:59.999 UTC; intended capture around 01:03 UTC;
+- V3 capture/heartbeat runs inspected before that first anchor were in transport/hold stages and had no authenticated V3 economic artifact at that check.
+
+The last bullet is intentionally time-scoped. Future assistants must refresh live GitHub Actions and artifacts before describing the V3 trade state as current.
+
+This clarification changes reporting/continuation discipline only. It does not alter candidate economics, risk settings, validation thresholds, campaign identity, or live-trading authority.
+
+**LIVE TRADING: DISABLED.**
+
