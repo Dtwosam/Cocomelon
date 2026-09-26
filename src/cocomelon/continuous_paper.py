@@ -394,7 +394,9 @@ class _RecordPump:
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
-        self.closed_trades = sum(1 for _ in journal.iter_trades())
+        existing_trades = tuple(journal.iter_trades())
+        self._known_trade_ids = {trade.trade_id for trade in existing_trades}
+        self.closed_trades = len(self._known_trade_ids)
         self.last_observation: JournalObservation | None = None
         self._lock = asyncio.Lock()
 
@@ -421,10 +423,12 @@ class _RecordPump:
                 self.journal.record_observation(observation)
             if observations:
                 self.last_observation = observations[-1]
-            closed = self.pipeline.finalize(available)
-            for trade in closed:
+            for trade in self.pipeline.finalize(available):
+                if trade.trade_id in self._known_trade_ids:
+                    continue
                 self.journal.record_trade(trade)
-            self.closed_trades += len(closed)
+                self._known_trade_ids.add(trade.trade_id)
+                self.closed_trades += 1
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
