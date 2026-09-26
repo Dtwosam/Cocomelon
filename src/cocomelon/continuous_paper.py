@@ -466,6 +466,10 @@ def _live_status_payload(
                 "opening_plan_id": position.opening_plan_id,
             }
         )
+    activity = pump.pipeline.session_decision_activity
+    decision_reason_counts = dict(activity.decision_reason_counts)
+    risk_reason_counts = dict(activity.risk_reason_counts)
+
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
     if observation is not None:
@@ -492,6 +496,23 @@ def _live_status_payload(
         "processed_records": pump.processed_records,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
+        "session_decision_epochs": activity.decision_epochs,
+        "last_decision_boundary_ms": activity.last_decision_boundary_ms,
+        "last_decision_evaluated_at_ms": activity.last_decision_evaluated_at_ms,
+        "session_decisions": {
+            "long": activity.long_decisions,
+            "short": activity.short_decisions,
+            "no_trade": activity.no_trade_decisions,
+        },
+        "session_decision_reason_counts": decision_reason_counts,
+        "session_risk": {
+            "evaluations": activity.risk_evaluations,
+            "approvals": activity.risk_approvals,
+            "rejections": activity.risk_rejections,
+            "reason_counts": risk_reason_counts,
+        },
+        "session_opening_execution_attempts": activity.opening_execution_attempts,
+        "session_opening_fills": activity.opening_fills,
         "open_position_count": len(positions),
         "positions": positions,
         "cash": str(execution.account.cash),
