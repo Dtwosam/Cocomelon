@@ -958,3 +958,22 @@ Issue #469 may display this diagnostic live, including whether durable shadow st
 Production execution remains on the existing 15-minute V1 strategy cadence. Durable shadow accumulation changes only research observability; no cadence or execution change is authorized by this diagnostic. Any later execution-cadence or entry-quality change requires enough cost-adjusted evidence to justify a separately validated decision.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous paper closed-trade path evidence — 2026-09-26
+
+The continuous paper runtime now preserves exact intratrade mark sequences for future closed trades in a separate research-only sidecar.
+
+- each completed lifecycle can emit its authenticated mark observations plus known gap intervals before the lifecycle is discarded;
+- records are immutable, canonical, idempotent by trade ID, and conflicting rewrites fail closed inside the evidence store;
+- the sidecar lives under `continuous-paper-state/trade-paths/`, so it follows the same 90-day worker-state handoff as the paper account;
+- worker summaries expose the cumulative path-record count, state digest, and any non-fatal capture error;
+- trade-path capture failure cannot authorize orders or stop the paper trader; the runtime records the diagnostic failure and continues;
+- the path sidecar does not alter `TradeJournalEntry`, execution accounting, strategy decisions, stops, sizing, or risk;
+- evidence is prospective only. The first eight closed trades are not reconstructed from MFE/MAE because peak excursion does not reveal event order.
+
+The purpose is to support honest counterfactual exit research such as fixed profit-lock or breakeven-stop rules using the actual observed path rather than inferring a path from MFE/MAE.
+
+Operational verification immediately before this addition: continuous-paper worker #34 restored the durable cadence-shadow state from worker #31 with `state_restored=true` while preserving the open paper positions. The accumulated 5-minute off-cycle shadow sample was still research-only and did not modify production cadence.
+
+**LIVE TRADING: DISABLED.**
