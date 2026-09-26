@@ -22,6 +22,19 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "selected_market_count": 20,
         "processed_records": 123,
         "journal_observations": 7,
+        "session_decision_epochs": 1,
+        "last_decision_boundary_ms": 1_699_999_970_000,
+        "last_decision_evaluated_at_ms": 1_700_000_000_000,
+        "session_decisions": {"long": 1, "short": 0, "no_trade": 19},
+        "session_decision_reason_counts": {"NO_SIGNAL": 19, "trend": 1},
+        "session_risk": {
+            "evaluations": 1,
+            "approvals": 1,
+            "rejections": 0,
+            "reason_counts": {"APPROVED": 1},
+        },
+        "session_opening_execution_attempts": 1,
+        "session_opening_fills": 1,
         "last_observation": {
             "kind": "execution",
             "timestamp_ms": 1_700_000_000_000,
@@ -66,3 +79,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "64000" in output
     assert "65200" in output
     assert "12345" in output
+    assert "### Decision path" in output
+    assert "LONG / SHORT / NO_TRADE" in output
+    assert "`1 / 0 / 19`" in output
+    assert "risk evaluations / approvals / rejections" in output
+    assert "opening execution attempts / fills" in output
