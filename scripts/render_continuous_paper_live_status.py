@@ -4,6 +4,7 @@ import json
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
 
@@ -126,8 +127,8 @@ def render_live_status(
             if not isinstance(raw, dict):
                 raise ValueError("recent closed trade must be an object")
             fees = str(
-                float(str(raw["entry_fees"]))
-                + float(str(raw["exit_fees"]))
+                Decimal(str(raw["entry_fees"]))
+                + Decimal(str(raw["exit_fees"]))
             )
             lines.append(
                 "| {market} | {direction} | {entry} | {exit} | {net_pnl} | "
