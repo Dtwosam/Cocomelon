@@ -7,6 +7,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+def _reason_summary(raw: object) -> str:
+    if not isinstance(raw, dict) or not raw:
+        return "none"
+    counts = sorted(
+        ((str(reason), int(count)) for reason, count in raw.items()),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -122,6 +131,8 @@ def render_live_status(
                 f"`{payload.get('session_opening_execution_attempts', 0)} / "
                 f"{payload.get('session_opening_fills', 0)}`"
             ),
+               f"- strategy reasons: `{_reason_summary(payload.get('session_decision_reason_counts', {}))}`",
+            f"- risk reasons: `{_reason_summary(risk.get('reason_counts', {}))}`",
             "",
             "### Runtime",
             "",
