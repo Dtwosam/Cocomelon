@@ -39,6 +39,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         },
         "session_opening_execution_attempts": 1,
         "session_opening_fills": 1,
+        "entry_timing_policy": "fresh_order_flow_v1",
+        "entry_timing": {
+            "pending_candidates": 1,
+            "expired_candidates": 2,
+            "superseded_candidates": 3,
+            "trigger_waits": 4,
+            "trigger_approvals": 5,
+            "wait_reason_counts": {"neutral_order_flow": 4},
+        },
         "last_observation": {
             "kind": "execution",
             "timestamp_ms": 1_700_000_000_000,
@@ -87,6 +96,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "12345" in output
     assert "abcdef123456" in output
     assert "12222" in output
+    assert "fresh_order_flow_v1" in output
+    assert "neutral_order_flow=4" in output
+    assert "1 / 2 / 3" in output
+    assert "4 / 5" in output
     assert "### Decision path" in output
     assert "LONG / SHORT / NO_TRADE" in output
     assert "`1 / 0 / 19`" in output
