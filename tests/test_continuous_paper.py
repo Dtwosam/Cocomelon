@@ -8,6 +8,7 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _live_status_payload,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
@@ -66,3 +67,15 @@ def test_stream_record_round_trip_is_canonical() -> None:
     restored = _record_from_payload(_record_payload(record))
     assert restored == record
     assert RUN_ID == "continuous-paper-mainnet-v1"
+
+
+
+def test_runtime_source_exposes_structured_live_heartbeat() -> None:
+    source = __import__(
+        "pathlib"
+    ).Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    assert "COCOMELON_PAPER_HEARTBEAT " in source
+    assert '"paper_only": True' in source
+    assert '"live_orders": False' in source
+    assert '"positions": positions' in source
+    assert '"stop_price": str(position.stop_price)' in source
