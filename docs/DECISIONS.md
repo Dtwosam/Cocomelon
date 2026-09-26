@@ -324,3 +324,24 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **Safety:** the runtime must fail closed on corrupted/missing restart lineage, stale/inconsistent execution state, or non-paper execution configuration. Live trading remains disabled and still requires every locked promotion gate plus explicit user live authorization and capital amount.
 
+## D-032 — Continuous paper closures feed a separate authenticated learning state
+
+**Date:** 2026-09-26
+
+**Decision:** Completed ordinary continuous-paper worker artifacts may feed a dedicated append-only learning state only after the runtime has an authenticated decision-time feature-capture activation boundary.
+
+Rules:
+
+- the legacy pre-feature worker is never backfilled into learning;
+- the runtime persists `learning_feature_capture_started_at_ms` across worker handoffs;
+- trades opened before that boundary are explicitly excluded from continuous-paper learning;
+- every trade opened at or after the boundary must resolve to an authenticated decision-time `FeatureSnapshot`, otherwise ingestion fails closed;
+- completed-worker `session-summary.json`, journal trade count, feature-store count, and feature-store digest must reconcile before admission;
+- repeated cumulative-worker ingestion is idempotent: each execution learning record uses the trade close time as its stable research-eligibility timestamp;
+- continuous-paper learning state is source-separated from scheduled-research cumulative state so source-specific lineage is not blurred or raced;
+- readiness may be evaluated automatically, but this state is research-only and cannot directly retune the active trader, promote a candidate, or authorize execution.
+
+The active paper strategy, risk limits, execution model, and live-trading authority are unchanged.
+
+**LIVE TRADING: DISABLED.**
+
