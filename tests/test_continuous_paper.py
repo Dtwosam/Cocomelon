@@ -300,3 +300,27 @@ def test_rotation_source_promotes_replacement_before_retiring_previous() -> None
     assert start_index < readiness_index < promote_index < retire_index
     assert "forward_gaps=False" in source[start_index:readiness_index + 300]
     assert "ready_lanes[lane].set()" in source
+
+
+
+def test_supervisor_group_readiness_rejects_completed_task() -> None:
+    async def scenario() -> bool:
+        lane_a = asyncio.Event()
+        lane_b = asyncio.Event()
+        lane_a.set()
+        lane_b.set()
+        completed = asyncio.create_task(asyncio.sleep(0))
+        await completed
+        group = _SupervisorGroup(
+            supervisors=(),
+            tasks=(completed,),
+            forward_gaps=asyncio.Event(),
+            ready_lanes=(lane_a, lane_b),
+        )
+        return await _wait_supervisor_group_ready(
+            group,
+            timeout_seconds=0.1,
+            poll_seconds=0.01,
+        )
+
+    assert asyncio.run(scenario()) is False
