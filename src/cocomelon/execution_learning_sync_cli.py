@@ -66,14 +66,19 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         type=_execution_kind,
     )
-    parser.add_argument(
+    eligibility = parser.add_mutually_exclusive_group(required=True)
+    eligibility.add_argument(
         "--research-eligible-at-ms",
-        required=True,
         type=int,
+    )
+    eligibility.add_argument(
+        "--research-eligible-at-trade-close",
+        action="store_true",
     )
     parser.add_argument("--expected-replay-run-id")
     parser.add_argument("--candidate-spec-id")
     parser.add_argument("--campaign-id")
+    parser.add_argument("--destination-feature-store-dir", type=Path)
     return parser
 
 
@@ -84,15 +89,22 @@ def execution_learning_sync_payload(
     learning_root: Path,
     candidate_id: str,
     kind: LearningEvidenceKind,
-    research_eligible_at_ms: int,
+    research_eligible_at_ms: int | None,
+    research_eligible_at_trade_close: bool = False,
     expected_replay_run_id: str | None = None,
     candidate_spec_id: str | None = None,
     campaign_id: str | None = None,
+    destination_feature_store_dir: Path | None = None,
 ) -> dict[str, object]:
     journal = JournalStore(journal_path)
     try:
         feature_store = LearningFeatureSnapshotStore(feature_store_dir)
         ledger = LearningEvidenceLedger(learning_root)
+        destination_feature_store = (
+            None
+            if destination_feature_store_dir is None
+            else LearningFeatureSnapshotStore(destination_feature_store_dir)
+        )
         result = sync_execution_learning_evidence(
             journal,
             feature_store,
@@ -100,11 +112,18 @@ def execution_learning_sync_payload(
             candidate_id=candidate_id,
             kind=kind,
             research_eligible_at_ms=research_eligible_at_ms,
+            research_eligible_at_trade_close=research_eligible_at_trade_close,
             expected_replay_run_id=expected_replay_run_id,
             candidate_spec_id=candidate_spec_id,
             campaign_id=campaign_id,
+            destination_feature_store=destination_feature_store,
         )
         records = ledger.iter_records()
+        destination_snapshots = (
+            ()
+            if destination_feature_store is None
+            else destination_feature_store.iter_verified()
+        )
         return {
             "command": "execution-learning-sync",
             "candidate_id": candidate_id,
@@ -112,15 +131,33 @@ def execution_learning_sync_payload(
             "campaign_id": campaign_id,
             "kind": kind.value,
             "research_eligible_at_ms": research_eligible_at_ms,
+            "research_eligibility_mode": (
+                "trade_close"
+                if research_eligible_at_trade_close
+                else "fixed_timestamp"
+            ),
             "expected_replay_run_id": expected_replay_run_id,
             "scanned_trades": result.scanned_trades,
             "created_records": result.created_records,
             "existing_records": result.existing_records,
+            "created_feature_snapshots": result.created_feature_snapshots,
+            "existing_feature_snapshots": result.existing_feature_snapshots,
             "learning_record_count": len(records),
             "learning_state_digest": ledger.state_digest,
-            "feature_store_state_digest": feature_store.state_digest,
+            "source_feature_state_digest": feature_store.state_digest,
+            "feature_snapshot_count": len(destination_snapshots),
+            "feature_state_digest": (
+                None
+                if destination_feature_store is None
+                else destination_feature_store.state_digest
+            ),
             "journal": str(journal_path),
             "feature_store_dir": str(feature_store_dir),
+            "destination_feature_store_dir": (
+                None
+                if destination_feature_store_dir is None
+                else str(destination_feature_store_dir)
+            ),
             "learning_root": str(learning_root),
         }
     finally:
@@ -137,9 +174,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_id=args.candidate_id,
             kind=args.kind,
             research_eligible_at_ms=args.research_eligible_at_ms,
+            research_eligible_at_trade_close=args.research_eligible_at_trade_close,
             expected_replay_run_id=args.expected_replay_run_id,
             candidate_spec_id=args.candidate_spec_id,
             campaign_id=args.campaign_id,
+            destination_feature_store_dir=args.destination_feature_store_dir,
         )
     except (OSError, RuntimeError, ValueError) as exc:
         _emit(
