@@ -874,3 +874,19 @@ The durable journal did **not** duplicate those trades because `JournalStore.rec
 
 Open-position/account telemetry from the legacy worker remains usable as point-in-time paper state when tied to its exact run, but closed-trade count must come from the corrected worker or durable journal/artifact.
 
+### Continuous paper decision-time learning features — 2026-09-26
+
+The ordinary continuous paper runtime now persists every evaluated decision-time `FeatureSnapshot` through the existing authenticated `LearningFeatureSnapshotStore` under its durable worker state.
+
+This closes the provenance prerequisite for feeding actual continuous paper closures into the quarantined learning ledger:
+
+- feature snapshots are recorded at the decision epoch before trade outcome is known;
+- the store preserves canonical per-snapshot records and a deterministic state digest;
+- the worker summary exposes snapshot count and state digest;
+- the active strategy is not retuned from these records;
+- downstream learning ingestion must still authenticate the completed worker artifact, exact journal trade, matching snapshot identity, and research-eligibility boundary.
+
+This change creates evidence, not promotion authority. Live trading remains disabled.
+
+**LIVE TRADING: DISABLED.**
+
