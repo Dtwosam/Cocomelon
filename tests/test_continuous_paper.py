@@ -15,6 +15,7 @@ from cocomelon.continuous_paper import (
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
     _load_checkpoint,
+    _opening_rank_attribution_payload,
     _position_action_from_payload,
     _position_action_payload,
     _position_protection_metrics,
@@ -137,6 +138,33 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert '"prospective_entry_filter": prospective_entry_filter' in source
     assert "prospective_entry_filter_state.payload()" in source
+    assert 'ContinuousPaperOpeningRankStore(' in source
+    assert 'root / "opening-ranks"' in source
+    assert '"opening_scanner_rank": opening_rank' in source
+    assert '"opening_rank_count": self.opening_rank_count' in source
+    assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
+
+
+def test_opening_rank_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("rank boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.opening_rank_attribution",
+        fail,
+    )
+    payload = _opening_rank_attribution_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        capture_error=None,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["error"] == "RuntimeError: rank boom"
 
 
 def test_profit_lock_counterfactual_telemetry_fails_open(

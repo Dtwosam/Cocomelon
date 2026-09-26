@@ -42,6 +42,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/risk" in source
     assert "src/cocomelon/research/cadence_shadow.py" in source
     assert "src/cocomelon/research/continuous_paper_trade_paths.py" in source
+    assert "src/cocomelon/research/continuous_paper_opening_rank.py" in source
     assert "src/cocomelon/research/profit_lock_counterfactual.py" in source
     assert "src/cocomelon/research/profit_lock_execution_readiness.py" in source
     assert "src/cocomelon/research/profit_lock_execution_shadow.py" in source
@@ -59,6 +60,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/risk/**"' in source
     assert '"src/cocomelon/research/cadence_shadow.py"' in source
     assert '"src/cocomelon/research/continuous_paper_trade_paths.py"' in source
+    assert '"src/cocomelon/research/continuous_paper_opening_rank.py"' in source
     assert '"src/cocomelon/research/profit_lock_counterfactual.py"' in source
     assert '"src/cocomelon/research/profit_lock_execution_readiness.py"' in source
     assert '"src/cocomelon/research/profit_lock_execution_shadow.py"' in source
@@ -76,6 +78,9 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert '--worker-head-sha "$GITHUB_SHA"' in source
     assert "opening lineage records:" in source
     assert "opening_lineage_state_digest" in source
+    assert "opening scanner-rank records:" in source
+    assert "opening_rank_state_digest" in source
+    assert "opening_rank_capture_error" in source
     assert "closed trade paths:" in source
     assert "staged open trade paths:" in source
     assert "trade_path_open_count" in source

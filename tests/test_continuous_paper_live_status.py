@@ -257,6 +257,38 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 }
             ],
         },
+        "opening_scanner_rank": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "rank_definition": "latest_coarse_rank_before_open",
+            "prospective_only": True,
+            "evidence_records": 4,
+            "attributed_closed_trades": 3,
+            "closed_trades_without_rank_evidence": 10,
+            "mean_rank_age_ms": 32000,
+            "max_rank_age_ms": 58000,
+            "capture_error": None,
+            "error": None,
+            "by_rank_bucket": {
+                "1-5": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "5",
+                    "mean_net_r": "0.5",
+                },
+                "11-20": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "breakeven": 0,
+                    "net_pnl": "-7",
+                    "mean_net_r": "-0.35",
+                },
+            },
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -499,6 +531,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1`" in output
     assert "### Fixed profit-lock counterfactual" in output
     assert "### Prospective LONG-trend entry filter" in output
+    assert "### Opening scanner-rank attribution" in output
+    assert "latest_coarse_rank_before_open" in output
+    assert "rank evidence records / attributed closed trades" in output
+    assert "`4 / 3`" in output
+    assert "mean / max rank age at opening" in output
+    assert "`32000`ms / `58000`ms" in output
+    assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
+    assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
     assert "prospective-reject-long-trend-v1" in output
     assert "reject `long` + `trend`" in output
     assert "allowed / blocked trades" in output
