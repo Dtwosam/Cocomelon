@@ -1005,3 +1005,22 @@ Counterfactual rules:
 This challenger has no execution authority and cannot change live paper stops, entries, exits, cadence, risk, or sizing.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Profit-lock evidence readiness boundary — 2026-09-26
+
+The fixed profit-lock counterfactual now has a precommitted evidence-volume gate that is intentionally separate from economic judgment.
+
+A rule remains `collecting` until all of the following are observed prospectively:
+
+- at least 30 complete exact trade paths evaluated;
+- at least 15 trades on which that rule actually arms;
+- at least 10 trades on which that armed rule actually triggers.
+
+Only after all three counts are met may the rule become `ready_for_review`. This state means only that there is enough direct path exposure to inspect the economics without leaning on single-digit trigger counts.
+
+The readiness gate does **not** inspect PnL direction, choose a winning rule, freeze a candidate, promote a stop policy, mutate the paper strategy, or grant execution authority. Even a rule with poor estimated economics can become ready for review once the evidence count is sufficient; promotion remains a separate prospective validation decision.
+
+Current live evidence was still far below this boundary when the policy was frozen.
+
+**LIVE TRADING: DISABLED.**
