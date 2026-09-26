@@ -529,6 +529,91 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
     return lines
 
 
+def _opening_rank_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Opening scanner-rank attribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No opening-rank telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    capture_error = raw.get("capture_error")
+    if capture_error:
+        lines.append(f"- capture warning: `{capture_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- rank definition: "
+                f"`{raw.get('rank_definition', 'unknown')}`"
+            ),
+            (
+                "- rank evidence records / attributed closed trades: "
+                f"`{raw.get('evidence_records', 0)} / "
+                f"{raw.get('attributed_closed_trades', 0)}`"
+            ),
+            (
+                "- closed trades without prospective rank evidence: "
+                f"`{raw.get('closed_trades_without_rank_evidence', 0)}`"
+            ),
+            (
+                "- mean / max rank age at opening: "
+                f"`{raw.get('mean_rank_age_ms')}`ms / "
+                f"`{raw.get('max_rank_age_ms')}`ms"
+            ),
+        ]
+    )
+    groups = raw.get("by_rank_bucket", {})
+    if not isinstance(groups, dict):
+        groups = {}
+    if groups:
+        lines.extend(
+            [
+                "",
+                "| Rank bucket | Trades | W | L | BE | Net PnL | Mean R |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for bucket in ("1-5", "6-10", "11-20", "21+"):
+            group = groups.get(bucket)
+            if not isinstance(group, dict):
+                continue
+            lines.append(
+                (
+                    "| {bucket} | {trades} | {wins} | {losses} | "
+                    "{breakeven} | {net_pnl} | {mean_r} |"
+                ).format(
+                    bucket=bucket,
+                    trades=group.get("trades", 0),
+                    wins=group.get("wins", 0),
+                    losses=group.get("losses", 0),
+                    breakeven=group.get("breakeven", 0),
+                    net_pnl=group.get("net_pnl", "0"),
+                    mean_r=group.get("mean_net_r"),
+                )
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective attribution from the latest coarse universe "
+                "rank observed before the opening; it does not alter market "
+                "selection or entry decisions._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -648,6 +733,11 @@ def render_live_status(
     lines.extend(
         _prospective_entry_filter_lines(
             payload.get("prospective_entry_filter")
+        )
+    )
+    lines.extend(
+        _opening_rank_lines(
+            payload.get("opening_scanner_rank")
         )
     )
     lines.extend(["", "### Open positions", ""])
