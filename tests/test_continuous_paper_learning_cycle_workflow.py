@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 WORKFLOW = Path(".github/workflows/continuous-paper-learning-cycle.yml")
 PYPROJECT = Path("pyproject.toml")
 
