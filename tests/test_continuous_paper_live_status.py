@@ -221,6 +221,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "excluded_closed_trades": 1,
             "closed_outcome_count": 2,
             "error": None,
+            "readiness": {
+                "all_rules_ready_for_review": False,
+                "min_economically_evaluated_trades_per_rule": 30,
+                "min_activated_trades_per_rule": 15,
+                "min_triggered_trades_per_rule": 10,
+                "min_simulated_full_closes_per_rule": 10,
+                "promotion_authority": False,
+                "execution_authority": False,
+            },
             "rules": [
                 {
                     "rule_id": "breakeven_after_0_5r",
@@ -240,6 +249,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "actual_mean_net_r": "-0.6",
                     "candidate_mean_net_r_estimate": "0.15",
                     "delta_mean_net_r_estimate": "0.75",
+                    "readiness_status": "collecting",
+                    "missing_evaluated_trades": 28,
+                    "missing_activated_trades": 13,
+                    "missing_triggered_trades": 9,
+                    "missing_simulated_full_closes": 9,
                 }
             ],
         },
@@ -448,6 +462,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve" in output
     assert "eligible / excluded open positions" in output
     assert "IOC full" in output
+    assert "evidence gate (economic / armed / triggered / IOC full)" in output
+    assert "`30 / 15 / 10 / 10`" in output
+    assert "Need E/A/T/F" in output
+    assert "28/13/9/9" in output
     assert "breakeven_after_0_5r" in output
     assert "complete paths evaluated" in output
     assert "`2 / 3`" in output
