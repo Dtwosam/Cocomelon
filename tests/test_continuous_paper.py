@@ -12,6 +12,7 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _ContinuousTradePathSink,
     _load_checkpoint,
     _position_action_from_payload,
     _position_action_payload,
@@ -170,6 +171,26 @@ def test_position_protection_metrics_keep_unprotected_stop_negative() -> None:
     assert metrics["stop_trigger_gross_pnl"] == "-10"
     assert metrics["stop_trigger_gross_r"] == "-1"
     assert metrics["stop_protects_profit"] is False
+
+
+def test_trade_path_capture_failure_is_fail_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Store:
+        def record(self, _trade_path: object) -> bool:
+            raise AssertionError("store should not be reached")
+
+    def fail_path(*_args: object) -> object:
+        raise RuntimeError("path boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.continuous_paper_trade_path",
+        fail_path,
+    )
+    sink = _ContinuousTradePathSink(Store())  # type: ignore[arg-type]
+
+    assert sink.record(SimpleNamespace(), (), ()) is False  # type: ignore[arg-type]
+    assert sink.error == "RuntimeError: path boom"
 
 
 def test_record_pump_counts_each_closed_trade_once() -> None:
