@@ -198,6 +198,7 @@ jobs:
             --context-poll-seconds 60 \
             --selection-refresh-seconds 300 \
             --checkpoint-seconds 30 \
+            --stop-file /tmp/continuous-paper-upgrade-requested \
             | while IFS= read -r line; do
                 printf '%s\n' "$line"
                 if [[ "$line" != COCOMELON_PAPER_HEARTBEAT\ * ]]; then
@@ -208,6 +209,15 @@ jobs:
                   continue
                 fi
                 heartbeat="${line#COCOMELON_PAPER_HEARTBEAT }"
+                git fetch --quiet --depth=1 origin main
+                changed_runtime="$(
+                  git diff --name-only "$GITHUB_SHA" FETCH_HEAD --                     .github/workflows/continuous-paper.yml                     pyproject.toml                     scripts/render_continuous_paper_live_status.py                     src/cocomelon/config.py                     src/cocomelon/continuous_paper.py                     src/cocomelon/continuous_paper_cli.py                     src/cocomelon/domain                     src/cocomelon/evaluation                     src/cocomelon/evidence                     src/cocomelon/execution                     src/cocomelon/hyperliquid                     src/cocomelon/journal                     src/cocomelon/risk                     src/cocomelon/scanner                     src/cocomelon/strategies
+                )"
+                if [ -n "$changed_runtime" ]; then
+                  echo "::notice::new continuous-paper runtime code detected on main; requesting graceful handoff"
+                  printf '%s\n' "$changed_runtime"
+                  touch /tmp/continuous-paper-upgrade-requested
+                fi
                 if HEARTBEAT_JSON="$heartbeat" \
                   python scripts/render_continuous_paper_live_status.py \
                   > /tmp/continuous-paper-live.md; then
@@ -243,6 +253,7 @@ jobs:
               Path("continuous-paper-state/session-summary.json").read_text(encoding="utf-8")
           )
           print("## Continuous mainnet paper trader")
+          print(f"- exit reason: {payload['exit_reason']}")
           print(f"- selected markets: {len(payload['selected_markets'])}")
           print(f"- processed records: {payload['processed_records']}")
           print(f"- closed paper trades: {payload['closed_trades']}")
