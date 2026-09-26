@@ -1038,7 +1038,9 @@ def _live_status_payload(
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
+    trade_path_store: ContinuousPaperTradePathStore,
     *,
+    trade_path_capture_error: str | None,
     timestamp_ms: int,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
@@ -1180,6 +1182,13 @@ def _live_status_payload(
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
+        "trade_path_evidence": {
+            "research_only": True,
+            "durable_across_workers": True,
+            "closed_path_count": trade_path_store.record_count,
+            "staged_open_path_count": trade_path_store.open_path_count,
+            "capture_error": trade_path_capture_error,
+        },
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1203,7 +1212,9 @@ def _emit_live_status(
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
+    trade_path_store: ContinuousPaperTradePathStore,
     *,
+    trade_path_capture_error: str | None,
     timestamp_ms: int,
 ) -> None:
     payload = _live_status_payload(
@@ -1212,6 +1223,8 @@ def _emit_live_status(
         selected_markets,
         feature_store,
         fact_store,
+        trade_path_store,
+        trade_path_capture_error=trade_path_capture_error,
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -1448,6 +1461,8 @@ async def run_continuous_paper_session(
             selected,
             feature_store,
             facts,
+            trade_path_store,
+            trade_path_capture_error=trade_path_sink.error,
             timestamp_ms=utc_now_ms(),
         )
 
@@ -1574,6 +1589,8 @@ async def run_continuous_paper_session(
                     selected,
                     feature_store,
                     facts,
+                    trade_path_store,
+                    trade_path_capture_error=trade_path_sink.error,
                     timestamp_ms=now_ms,
                 )
 
