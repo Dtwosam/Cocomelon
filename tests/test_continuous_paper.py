@@ -11,14 +11,14 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
-    _RecordPump,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
     _record_payload,
+    _RecordPump,
 )
 from cocomelon.domain.market import MarketId
-from cocomelon.domain.replay import SourceRecordKind
+from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 
 
