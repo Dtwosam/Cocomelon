@@ -17,6 +17,7 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+
 def _cadence_shadow_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
