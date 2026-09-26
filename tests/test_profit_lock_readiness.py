@@ -96,7 +96,7 @@ def test_profit_lock_readiness_only_means_ready_for_review() -> None:
             ),
             _summary(
                 "lock_0_5r_after_1r",
-                evaluated=MIN_COMPLETE_PATHS + 5,
+                evaluated=MIN_COMPLETE_PATHS,
                 activated=MIN_ACTIVATED_TRADES_PER_RULE + 2,
                 triggered=MIN_TRIGGERED_TRADES_PER_RULE + 1,
             ),
