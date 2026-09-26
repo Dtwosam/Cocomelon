@@ -35,6 +35,9 @@ def render_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    performance = payload.get("closed_trade_performance", {})
+    if not isinstance(performance, dict):
+        performance = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -54,7 +57,13 @@ def render_live_status(
         "",
         "### Account",
         "",
+        f"- starting cash: `{payload.get('starting_cash', 'unknown')}`",
         f"- equity: `{payload['equity']}`",
+        f"- total account PnL: `{payload.get('total_account_pnl', 'unknown')}`",
+        (
+            "- total return fraction: "
+            f"`{payload.get('total_return_fraction', 'unknown')}`"
+        ),
         f"- cash: `{payload['cash']}`",
         f"- unrealized PnL: `{payload['unrealized_pnl']}`",
         f"- realized gross PnL: `{payload['realized_gross_pnl']}`",
@@ -71,6 +80,10 @@ def render_live_status(
             f"`{payload.get('open_planned_risk_fraction_of_equity', '0')}`"
         ),
         f"- gross open notional: `{payload.get('gross_open_notional', '0')}`",
+        (
+            "- gross open notional / equity: "
+            f"`{payload.get('gross_open_notional_fraction_of_equity', '0')}`"
+        ),
         f"- available margin: `{payload.get('available_margin', '0')}`",
         (
             "- execution healthy: "
@@ -151,6 +164,78 @@ def render_live_status(
             )
     else:
         lines.append("_No closed paper trades in durable state yet._")
+
+    lines.extend(["", "### Closed trade performance", ""])
+    if performance:
+        profit_factor = performance.get("profit_factor")
+        lines.extend(
+            [
+                (
+                    "| Trades | Wins | Losses | BE | Net PnL | Gross profit | "
+                    "Gross loss | Profit factor | Mean R | Avg hold |"
+                ),
+                "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                (
+                    "| {trades} | {wins} | {losses} | {breakeven} | {net_pnl} | "
+                    "{gross_profit} | {gross_loss_abs} | {profit_factor} | "
+                    "{mean_net_r} | {average_holding_ms}ms |"
+                ).format(
+                    trades=performance.get("trades", 0),
+                    wins=performance.get("wins", 0),
+                    losses=performance.get("losses", 0),
+                    breakeven=performance.get("breakeven", 0),
+                    net_pnl=performance.get("net_pnl", "0"),
+                    gross_profit=performance.get("gross_profit", "0"),
+                    gross_loss_abs=performance.get("gross_loss_abs", "0"),
+                    profit_factor="n/a" if profit_factor is None else profit_factor,
+                    mean_net_r=performance.get("mean_net_r", "n/a"),
+                    average_holding_ms=performance.get("average_holding_ms", "n/a"),
+                ),
+                (
+                    "- feature-attribution misses: "
+                    f"`{performance.get('unattributed_feature_trades', 0)}`"
+                ),
+            ]
+        )
+        dimension_labels = (
+            ("by_side", "Side"),
+            ("by_exit_reason", "Exit reason"),
+            ("by_trend_regime", "Entry trend regime"),
+            ("by_volatility_regime", "Entry volatility regime"),
+        )
+        for field, label in dimension_labels:
+            raw_groups = performance.get(field, {})
+            if not isinstance(raw_groups, dict) or not raw_groups:
+                continue
+            lines.extend(
+                [
+                    "",
+                    f"#### {label} attribution",
+                    "",
+                    "| Bucket | Trades | W | L | BE | Net PnL | Mean R | Avg hold |",
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+                ]
+            )
+            for bucket, raw_group in sorted(raw_groups.items()):
+                if not isinstance(raw_group, dict):
+                    continue
+                lines.append(
+                    (
+                        "| {bucket} | {trades} | {wins} | {losses} | {breakeven} | "
+                        "{net_pnl} | {mean_net_r} | {average_holding_ms}ms |"
+                    ).format(
+                        bucket=bucket,
+                        trades=raw_group.get("trades", 0),
+                        wins=raw_group.get("wins", 0),
+                        losses=raw_group.get("losses", 0),
+                        breakeven=raw_group.get("breakeven", 0),
+                        net_pnl=raw_group.get("net_pnl", "0"),
+                        mean_net_r=raw_group.get("mean_net_r", "n/a"),
+                        average_holding_ms=raw_group.get("average_holding_ms", "n/a"),
+                    )
+                )
+    else:
+        lines.append("_No cumulative performance diagnostics are available yet._")
 
     lines.extend(
         [
