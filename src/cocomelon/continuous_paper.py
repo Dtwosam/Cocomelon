@@ -530,6 +530,8 @@ def _live_status_payload(
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
+    entry_timing = pump.pipeline.session_entry_timing_activity
+    entry_wait_reason_counts = dict(entry_timing.wait_reason_counts)
 
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
@@ -580,6 +582,15 @@ def _live_status_payload(
         },
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
+        "entry_timing_policy": "fresh_order_flow_v1",
+        "entry_timing": {
+            "pending_candidates": entry_timing.pending_candidates,
+            "expired_candidates": entry_timing.expired_candidates,
+            "superseded_candidates": entry_timing.superseded_candidates,
+            "trigger_waits": entry_timing.trigger_waits,
+            "trigger_approvals": entry_timing.trigger_approvals,
+            "wait_reason_counts": entry_wait_reason_counts,
+        },
         "open_position_count": len(positions),
         "positions": positions,
         "cash": str(execution.account.cash),
@@ -737,6 +748,7 @@ async def run_continuous_paper_session(
             selected_markets=selected,
             replay_run_id=RUN_ID,
             evidence_class=EvidenceClass.MICROSTRUCTURE,
+            require_fresh_order_flow_entry=True,
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
