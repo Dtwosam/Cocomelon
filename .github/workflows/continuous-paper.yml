@@ -292,6 +292,10 @@ jobs:
           )
           print(f"- closed trade paths: {payload.get('trade_path_count', 0)}")
           print(
+              "- staged open trade paths: "
+              f"{payload.get('trade_path_open_count', 0)}"
+          )
+          print(
               "- closed trade path state digest: "
               f"{payload.get('trade_path_state_digest', 'missing')}"
           )
