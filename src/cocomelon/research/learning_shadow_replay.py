@@ -707,6 +707,24 @@ def verify_learning_shadow_replay_receipt(
         raise LearningShadowReplayError(
             "LEARNING_SHADOW_REPLAY_RECEIPT_ELIGIBILITY_MISMATCH"
         )
+    for trade in trades:
+        verified = feature_store.load(trade.feature_snapshot_id)
+        if verified is None:
+            raise LearningShadowReplayError(
+                "LEARNING_SHADOW_REPLAY_RECEIPT_TRADE_FEATURE_MISSING"
+            )
+        snapshot = verified.snapshot
+        if snapshot.market != trade.market:
+            raise LearningShadowReplayError(
+                "LEARNING_SHADOW_REPLAY_RECEIPT_TRADE_FEATURE_MARKET_MISMATCH"
+            )
+        if (
+            snapshot.as_of_ms > trade.opened_at_ms
+            or snapshot.source_received_at_ms > trade.opened_at_ms
+        ):
+            raise LearningShadowReplayError(
+                "LEARNING_SHADOW_REPLAY_RECEIPT_TRADE_FEATURE_AFTER_OPEN"
+            )
 
     store = open_verified_learning_shadow_evidence_store(
         shadow_evidence_root,
@@ -748,6 +766,20 @@ def verify_learning_shadow_replay_receipt(
         raise LearningShadowReplayError(
             "LEARNING_SHADOW_REPLAY_RECEIPT_EVIDENCE_TRADES_MISMATCH"
         )
+    records_by_trade_id = {
+        record.source_record_id: record for record in campaign_records
+    }
+    for trade in trades:
+        expected_record = _shadow_record(
+            trade,
+            store=store,
+            shadow_campaign_id=receipt.shadow_campaign_id,
+            evidence_eligible_at_ms=receipt.evidence_eligible_at_ms,
+        )
+        if records_by_trade_id.get(trade.trade_id) != expected_record:
+            raise LearningShadowReplayError(
+                "LEARNING_SHADOW_REPLAY_RECEIPT_EVIDENCE_RECORD_MISMATCH"
+            )
     if store.state_digest != receipt.shadow_evidence_state_digest:
         raise LearningShadowReplayError(
             "LEARNING_SHADOW_REPLAY_RECEIPT_EVIDENCE_STATE_MISMATCH"
