@@ -32,6 +32,9 @@ def render_live_status(
     decisions = payload.get("session_decisions", {})
     if not isinstance(decisions, dict):
         decisions = {}
+    eligibility = payload.get("session_eligibility", {})
+    if not isinstance(eligibility, dict):
+        eligibility = {}
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
@@ -179,6 +182,15 @@ def render_live_status(
                 f"{decisions.get('no_trade', 0)}`"
             ),
             (
+                "- rankable / deep-ready evaluations: "
+                f"`{eligibility.get('rankable', 0)} / "
+                f"{eligibility.get('deep_ready', 0)}`"
+            ),
+            (
+                "- eligibility reasons: "
+                f"`{_reason_summary(eligibility.get('reason_counts', {}))}`"
+            ),
+            (
                 "- risk evaluations / approvals / rejections: "
                 f"`{risk.get('evaluations', 0)} / "
                 f"{risk.get('approvals', 0)} / "
@@ -202,6 +214,10 @@ def render_live_status(
             "",
             f"- selected markets: `{payload['selected_market_count']}`",
             f"- processed records: `{payload['processed_records']}`",
+            (
+                "- duplicate records dropped: "
+                f"`{payload.get('duplicate_records_dropped', 0)}`"
+            ),
             f"- journal observations: `{payload['journal_observations']}`",
             "",
             "<details><summary>Full heartbeat JSON</summary>",

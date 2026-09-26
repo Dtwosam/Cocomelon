@@ -112,6 +112,9 @@ class SessionDecisionActivity:
     long_decisions: int
     short_decisions: int
     no_trade_decisions: int
+    rankable_evaluations: int
+    deep_ready_evaluations: int
+    eligibility_reason_counts: tuple[tuple[str, int], ...]
     decision_reason_counts: tuple[tuple[str, int], ...]
     risk_evaluations: int
     risk_approvals: int
@@ -194,7 +197,10 @@ class BaselineReplayPipeline:
         self._funding_gaps: set[tuple[str, int]] = set()
         self._funding_inconsistent = False
         self._gap_intervals: list[tuple[int, int | None]] = []
-        self._recorded_account_states: set[str] = set()
+        self._recorded_account_states: set[str] = {
+            fact.account_state_id
+            for fact in self._facts.iter_equity_facts(self._run_id)
+        }
         self._initial_observation_emitted = False
         self._decision_epochs = 0
         self._last_decision_boundary_ms: int | None = None
@@ -204,6 +210,9 @@ class BaselineReplayPipeline:
             "short": 0,
             "no_trade": 0,
         }
+        self._rankable_evaluations = 0
+        self._deep_ready_evaluations = 0
+        self._eligibility_reason_counts: dict[str, int] = {}
         self._decision_reason_counts: dict[str, int] = {}
         self._risk_evaluations = 0
         self._risk_approvals = 0
@@ -229,6 +238,11 @@ class BaselineReplayPipeline:
             long_decisions=self._decision_counts["long"],
             short_decisions=self._decision_counts["short"],
             no_trade_decisions=self._decision_counts["no_trade"],
+            rankable_evaluations=self._rankable_evaluations,
+            deep_ready_evaluations=self._deep_ready_evaluations,
+            eligibility_reason_counts=tuple(
+                sorted(self._eligibility_reason_counts.items())
+            ),
             decision_reason_counts=tuple(sorted(self._decision_reason_counts.items())),
             risk_evaluations=self._risk_evaluations,
             risk_approvals=self._risk_approvals,
@@ -444,6 +458,14 @@ class BaselineReplayPipeline:
         self._last_decision_evaluated_at_ms = epoch.evaluated_at_ms
         observations: list[JournalObservation] = []
         for evaluation in epoch.markets:
+            if evaluation.eligibility.rankable:
+                self._rankable_evaluations += 1
+            if evaluation.eligibility.deep_ready:
+                self._deep_ready_evaluations += 1
+            for reason in evaluation.eligibility.reasons:
+                self._eligibility_reason_counts[reason] = (
+                    self._eligibility_reason_counts.get(reason, 0) + 1
+                )
             decision = evaluation.decision
             direction = decision.direction.value
             if direction not in self._decision_counts:
