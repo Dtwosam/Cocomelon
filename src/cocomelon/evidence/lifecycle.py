@@ -83,6 +83,7 @@ class OpenLifecycleCheckpoint:
     feature_snapshot_id: str
     equity_before: Decimal
     exit_plan_ids: tuple[str, ...] = ()
+    position_actions: tuple[PositionAction, ...] = ()
     mark_observations: tuple[ReplayRecord, ...] = ()
 
     def __post_init__(self) -> None:
@@ -92,6 +93,8 @@ class OpenLifecycleCheckpoint:
             raise ValueError("open lifecycle checkpoint equity must be positive and finite")
         if any(not value.strip() for value in self.exit_plan_ids):
             raise ValueError("exit_plan_ids must not contain empty values")
+        if any(action.market != self.market for action in self.position_actions):
+            raise ValueError("position_actions must match checkpoint market")
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +278,15 @@ class BaselineReplayPipeline:
                         key=lambda plan: (plan.created_at_ms, plan.plan_id),
                     )
                 ),
+                position_actions=tuple(
+                    sorted(
+                        item.actions.values(),
+                        key=lambda action: (
+                            action.timestamp_ms,
+                            action.action_type.value,
+                        ),
+                    )
+                ),
                 mark_observations=self._checkpoint_marks(item),
             )
             for item in sorted(
@@ -345,6 +357,11 @@ class BaselineReplayPipeline:
             if fill.plan_id not in known_exit_plans:
                 raise ReplayInvariantError("restored exit fill plan mismatch")
             lifecycle.fills[fill.fill_id] = fill
+        for action in checkpoint.position_actions:
+            key = (action.action_type.value, action.timestamp_ms)
+            if key in lifecycle.actions:
+                raise ReplayInvariantError("restored position action duplicate")
+            lifecycle.actions[key] = action
         for record in checkpoint.mark_observations:
             if record.market != checkpoint.market.canonical:
                 raise ReplayInvariantError("restored mark observation market mismatch")
