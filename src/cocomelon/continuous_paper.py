@@ -16,6 +16,7 @@ from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.execution import (
     ExecutionAttempt,
     InstrumentExecutionSpec,
+    PaperExecutionConfig,
     PaperFill,
     PaperOrderPlan,
     PositionAction,
@@ -588,15 +589,10 @@ def _restore_cadence_shadow(
 
 def _restore_profit_lock_execution_shadow(
     path: Path,
-    execution_config: object,
+    execution_config: PaperExecutionConfig,
     *,
     started_at_ms: int,
 ) -> ProfitLockExecutionShadow:
-    if not isinstance(
-        execution_config,
-        type(BaselineReplayConfig().execution),
-    ):
-        raise TypeError("execution_config must be PaperExecutionConfig")
     shadow = ProfitLockExecutionShadow(
         execution_config,
         started_at_ms=started_at_ms,
