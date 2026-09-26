@@ -46,6 +46,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "reason_codes": ["OPEN_FILLED"],
             "plan_id": "plan-1",
         },
+        "recent_closed_trades": [
+            {
+                "trade_id": "trade-1",
+                "market": "ETH",
+                "direction": "short",
+                "opened_at_ms": 1_699_999_000_000,
+                "closed_at_ms": 1_700_000_000_000,
+                "holding_duration_ms": 1_000_000,
+                "entry_price": "3500",
+                "exit_price": "3480",
+                "filled_quantity": "0.5",
+                "initial_stop": "3520",
+                "initial_risk_amount": "10",
+                "gross_realized_pnl": "10",
+                "entry_fees": "0.8",
+                "exit_fees": "0.8",
+                "funding_cash_pnl": "0.1",
+                "net_pnl": "8.5",
+                "net_r": "0.85",
+                "exit_reason": "thesis_exit",
+            }
+        ],
         "positions": [
             {
                 "market": "BTC",
@@ -85,6 +107,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "64000" in output
     assert "65200" in output
     assert "12345" in output
+    assert "Recent closed trades" in output
+    assert "ETH" in output
+    assert "8.5" in output
+    assert "0.85" in output
+    assert "thesis_exit" in output
     assert "abcdef123456" in output
     assert "12222" in output
     assert "### Decision path" in output
