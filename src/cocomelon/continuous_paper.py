@@ -470,6 +470,15 @@ def _live_status_payload(
                 "opening_plan_id": position.opening_plan_id,
             }
         )
+    open_planned_risk = sum(
+        (position.planned_risk for position in execution.account.positions),
+        Decimal("0"),
+    )
+    open_planned_risk_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else open_planned_risk / execution.account.equity
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -500,6 +509,12 @@ def _live_status_payload(
         "processed_records": pump.processed_records,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
+        "open_planned_risk": str(open_planned_risk),
+        "open_planned_risk_fraction_of_equity": str(
+            open_planned_risk_fraction
+        ),
+        "gross_open_notional": str(execution.account.gross_open_notional),
+        "available_margin": str(execution.account.available_margin),
         "session_decision_epochs": activity.decision_epochs,
         "last_decision_boundary_ms": activity.last_decision_boundary_ms,
         "last_decision_evaluated_at_ms": activity.last_decision_evaluated_at_ms,
