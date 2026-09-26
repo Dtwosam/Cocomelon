@@ -301,3 +301,26 @@ This file records decisions that should not be casually re-litigated in later ch
 
 **Supersedes:** D-029 only as active operational authority. D-029 remains historical documentation of the retired V3 protocol.
 
+## D-031 — Continuous ordinary paper trader replaces periodic prospective experiments
+
+**Date:** 2026-09-26
+
+**Decision:** Operate paper trading through the ordinary mainnet scanner -> dynamic shortlist -> strategy -> independent risk -> paper execution lifecycle. The active paper runtime is not a fixed-hour candidate experiment and is not tied to HYPE.
+
+**Runtime behavior:**
+
+- scan the native Hyperliquid perp universe from fresh mainnet market context;
+- maintain a bounded deep shortlist (initially 20, configurable) while pinning every open position;
+- consume mainnet active-asset context, L2, trades, and 1m/5m/15m candles continuously;
+- evaluate the existing deterministic strategy stack on the frozen V1 15-minute decision cadence;
+- allow LONG, SHORT, or NO_TRADE and submit exposure only after independent risk approval;
+- manage stops, thesis exits, funding, marks, partial/reduce-only exits, and accounting from fresh market events;
+- persist paper execution/journal/evaluation state and restart lineage across long-running worker handoffs;
+- periodically re-rank the universe without changing risk limits or converting the runtime into a research experiment.
+
+**Operational hosting:** GitHub Actions may be used as a rolling paper-only worker. Long sessions publish durable state, then dispatch the next worker. A lightweight watchdog may recover a broken chain; the watchdog is operational continuity, not an economic observation cadence.
+
+**Evidence:** ordinary paper fills/trades produced by this runtime are a separate authenticated evidence family. Retired V4, scheduled research replay, retired Prospective HYPE, and learned-candidate clean/shadow evidence remain separate.
+
+**Safety:** the runtime must fail closed on corrupted/missing restart lineage, stale/inconsistent execution state, or non-paper execution configuration. Live trading remains disabled and still requires every locked promotion gate plus explicit user live authorization and capital amount.
+

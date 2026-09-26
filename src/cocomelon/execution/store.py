@@ -323,6 +323,21 @@ def _funding_payload(accrual: FundingAccrual) -> dict[str, object]:
     }
 
 
+def _funding_from_payload(payload: dict[str, Any]) -> FundingAccrual:
+    return FundingAccrual(
+        market=_market_from_canonical(str(payload["market"])),
+        boundary_ms=int(payload["boundary_ms"]),
+        position_id=str(payload["position_id"]),
+        signed_quantity=Decimal(str(payload["signed_quantity"])),
+        oracle_price=Decimal(str(payload["oracle_price"])),
+        funding_rate=Decimal(str(payload["funding_rate"])),
+        cash_delta=Decimal(str(payload["cash_delta"])),
+        oracle_event_key=str(payload["oracle_event_key"]),
+        funding_source=str(payload["funding_source"]),
+        funding_received_at_ms=int(payload["funding_received_at_ms"]),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ReconciledPaperState:
     account: PaperAccountState | None
@@ -499,6 +514,93 @@ class PaperExecutionStore:
         if plan.plan_id != plan_id:
             raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
         return plan
+
+    def load_execution_history(
+        self,
+        plan_id: str,
+    ) -> tuple[tuple[ExecutionAttempt, ...], tuple[PaperFill, ...]]:
+        if not plan_id.strip():
+            raise ValueError("plan_id must not be empty")
+        attempt_rows = self._conn.execute(
+            """
+            SELECT attempt_id, payload_json
+            FROM paper_execution_attempts
+            WHERE plan_id = ?
+            ORDER BY rowid
+            """,
+            (plan_id,),
+        ).fetchall()
+        attempts: list[ExecutionAttempt] = []
+        for attempt_id, payload_json in attempt_rows:
+            try:
+                payload = json.loads(str(payload_json))
+                if not isinstance(payload, dict):
+                    raise ValueError("attempt payload is not an object")
+                attempt = _attempt_from_payload(payload)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("persisted execution attempt is unreadable") from exc
+            if attempt.attempt_id != str(attempt_id) or attempt.plan_id != plan_id:
+                raise ValueError("persisted execution attempt lineage mismatch")
+            attempts.append(attempt)
+
+        fill_rows = self._conn.execute(
+            """
+            SELECT fill_id, payload_json
+            FROM paper_fills
+            WHERE plan_id = ?
+            ORDER BY rowid
+            """,
+            (plan_id,),
+        ).fetchall()
+        fills: list[PaperFill] = []
+        known_attempts = {item.attempt_id for item in attempts}
+        for fill_id, payload_json in fill_rows:
+            try:
+                payload = json.loads(str(payload_json))
+                if not isinstance(payload, dict):
+                    raise ValueError("fill payload is not an object")
+                paper_fill = _fill_from_payload(payload)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("persisted fill is unreadable") from exc
+            if (
+                paper_fill.fill_id != str(fill_id)
+                or paper_fill.plan_id != plan_id
+                or paper_fill.attempt_id not in known_attempts
+            ):
+                raise ValueError("persisted fill lineage mismatch")
+            fills.append(paper_fill)
+        return tuple(attempts), tuple(fills)
+
+    def load_funding_for_market(
+        self,
+        market: MarketId,
+        *,
+        start_ms: int = 0,
+    ) -> tuple[FundingAccrual, ...]:
+        if start_ms < 0:
+            raise ValueError("start_ms must be non-negative")
+        rows = self._conn.execute(
+            """
+            SELECT accrual_id, payload_json
+            FROM paper_funding_events
+            WHERE market = ? AND boundary_ms >= ?
+            ORDER BY boundary_ms, accrual_id
+            """,
+            (market.canonical, start_ms),
+        ).fetchall()
+        accruals: list[FundingAccrual] = []
+        for accrual_id, payload_json in rows:
+            try:
+                payload = json.loads(str(payload_json))
+                if not isinstance(payload, dict):
+                    raise ValueError("funding payload is not an object")
+                accrual = _funding_from_payload(payload)
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("persisted funding accrual is unreadable") from exc
+            if accrual.accrual_id != str(accrual_id) or accrual.market != market:
+                raise ValueError("persisted funding accrual lineage mismatch")
+            accruals.append(accrual)
+        return tuple(accruals)
 
     def _write_materialized_account(self, account: PaperAccountState) -> None:
         account_json = _canonical_json(_account_payload(account))

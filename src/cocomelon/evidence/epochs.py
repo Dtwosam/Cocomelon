@@ -145,6 +145,15 @@ class BaselineDecisionEngine:
     def state_book(self) -> RecordedStateBook:
         return self._state
 
+    def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
+        ordered = tuple(sorted(selected_markets, key=lambda market: market.canonical))
+        if not ordered:
+            raise ValueError("selected_markets must not be empty")
+        keys = tuple(market.canonical for market in ordered)
+        if len(set(keys)) != len(keys):
+            raise ValueError("selected_markets contains duplicates")
+        self._markets = ordered
+
     def _feature_inputs(
         self,
         market: MarketId,

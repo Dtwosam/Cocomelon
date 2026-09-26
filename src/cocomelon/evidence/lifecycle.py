@@ -76,10 +76,30 @@ class FeatureSnapshotSink(Protocol):
     def record(self, snapshot: FeatureSnapshot) -> bool: ...
 
 
+@dataclass(frozen=True, slots=True)
+class OpenLifecycleCheckpoint:
+    market: MarketId
+    opening_plan_id: str
+    feature_snapshot_id: str
+    equity_before: Decimal
+    exit_plan_ids: tuple[str, ...] = ()
+    mark_observations: tuple[ReplayRecord, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.opening_plan_id.strip() or not self.feature_snapshot_id.strip():
+            raise ValueError("open lifecycle checkpoint identity must not be empty")
+        if not self.equity_before.is_finite() or self.equity_before <= ZERO:
+            raise ValueError("open lifecycle checkpoint equity must be positive and finite")
+        if any(not value.strip() for value in self.exit_plan_ids):
+            raise ValueError("exit_plan_ids must not contain empty values")
+
+
 @dataclass(slots=True)
 class _OpenTradeLifecycle:
-    evaluation: EpochMarketEvaluation
-    opening: BaselineOpeningTrace
+    feature_snapshot_id: str
+    opening_plan: PaperOrderPlan
+    opening_attempt: ExecutionAttempt
+    equity_before: Decimal
     exit_plans: dict[str, PaperOrderPlan] = field(default_factory=dict)
     exit_attempts: dict[str, ExecutionAttempt] = field(default_factory=dict)
     fills: dict[str, PaperFill] = field(default_factory=dict)
@@ -89,7 +109,7 @@ class _OpenTradeLifecycle:
 
     @property
     def market(self) -> MarketId:
-        return self.evaluation.decision.market
+        return self.opening_plan.market
 
 
 def _receive_ms(event: StreamEvent) -> int:
@@ -154,6 +174,154 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
+        if not isinstance(self._decision_engine, BaselineDecisionEngine):
+            raise ReplayInvariantError(
+                "dynamic market reconciliation requires the baseline decision engine"
+            )
+        self._decision_engine.reconcile_markets(selected_markets)
+
+    @staticmethod
+    def _checkpoint_marks(
+        lifecycle: _OpenTradeLifecycle,
+    ) -> tuple[ReplayRecord, ...]:
+        records = tuple(lifecycle.marks.values())
+        if len(records) <= 2:
+            return tuple(sorted(records, key=lambda record: record.sort_key))
+
+        def mark_price(record: ReplayRecord) -> Decimal:
+            payload = record.payload
+            if not isinstance(payload, dict):
+                raise ReplayInvariantError("mark observation payload must be an object")
+            raw = payload.get("mark_px")
+            try:
+                value = Decimal(str(raw))
+            except Exception as exc:
+                raise ReplayInvariantError("mark observation price is invalid") from exc
+            if not value.is_finite() or value <= ZERO:
+                raise ReplayInvariantError("mark observation price must be positive")
+            return value
+
+        low = min(records, key=lambda record: (mark_price(record), record.sort_key))
+        high = max(records, key=lambda record: (mark_price(record), record.sort_key))
+        extrema = {low.event_key: low, high.event_key: high}
+        return tuple(
+            sorted(extrema.values(), key=lambda record: record.sort_key)
+        )
+
+    @property
+    def open_lifecycle_checkpoints(self) -> tuple[OpenLifecycleCheckpoint, ...]:
+        return tuple(
+            OpenLifecycleCheckpoint(
+                market=item.market,
+                opening_plan_id=item.opening_plan.plan_id,
+                feature_snapshot_id=item.feature_snapshot_id,
+                equity_before=item.equity_before,
+                exit_plan_ids=tuple(
+                    plan.plan_id
+                    for plan in sorted(
+                        item.exit_plans.values(),
+                        key=lambda plan: (plan.created_at_ms, plan.plan_id),
+                    )
+                ),
+                mark_observations=self._checkpoint_marks(item),
+            )
+            for item in sorted(
+                self._lifecycles.values(),
+                key=lambda lifecycle: lifecycle.market.canonical,
+            )
+        )
+
+    def restore_open_lifecycle(
+        self,
+        checkpoint: OpenLifecycleCheckpoint,
+        *,
+        opening_plan: PaperOrderPlan,
+        opening_attempt: ExecutionAttempt,
+        opening_fills: Sequence[PaperFill],
+        exit_plans: Sequence[PaperOrderPlan] = (),
+        exit_attempts: Sequence[ExecutionAttempt] = (),
+        exit_fills: Sequence[PaperFill] = (),
+        funding_accruals: Sequence[FundingAccrual] = (),
+    ) -> None:
+        market_key = checkpoint.market.canonical
+        if market_key in self._lifecycles:
+            raise ReplayInvariantError("open lifecycle already restored")
+        if opening_plan.plan_id != checkpoint.opening_plan_id:
+            raise ReplayInvariantError("restored opening plan id mismatch")
+        if opening_plan.market != checkpoint.market or opening_plan.reduce_only:
+            raise ReplayInvariantError("restored opening plan market mismatch")
+        if opening_attempt.plan_id != opening_plan.plan_id:
+            raise ReplayInvariantError("restored opening attempt plan mismatch")
+        fills = tuple(opening_fills)
+        if not fills or any(
+            fill.plan_id != opening_plan.plan_id
+            or fill.attempt_id != opening_attempt.attempt_id
+            for fill in fills
+        ):
+            raise ReplayInvariantError("restored opening fills mismatch")
+        if not any(
+            position.market == checkpoint.market
+            for position in self._execution.account.positions
+        ):
+            raise ReplayInvariantError("restored lifecycle has no matching open position")
+        lifecycle = _OpenTradeLifecycle(
+            feature_snapshot_id=checkpoint.feature_snapshot_id,
+            opening_plan=opening_plan,
+            opening_attempt=opening_attempt,
+            equity_before=checkpoint.equity_before,
+        )
+        for fill in fills:
+            lifecycle.fills[fill.fill_id] = fill
+        restored_exit_plans = tuple(exit_plans)
+        if tuple(plan.plan_id for plan in restored_exit_plans) != checkpoint.exit_plan_ids:
+            raise ReplayInvariantError("restored exit-plan checkpoint mismatch")
+        for plan in restored_exit_plans:
+            if (
+                not plan.reduce_only
+                or plan.market != checkpoint.market
+                or plan.risk_decision_id != opening_plan.risk_decision_id
+                or plan.strategy_decision_id != opening_plan.strategy_decision_id
+            ):
+                raise ReplayInvariantError("restored exit-plan lineage mismatch")
+            lifecycle.exit_plans[plan.plan_id] = plan
+        known_exit_plans = set(checkpoint.exit_plan_ids)
+        for attempt in exit_attempts:
+            if attempt.plan_id not in known_exit_plans:
+                raise ReplayInvariantError("restored exit attempt plan mismatch")
+            lifecycle.exit_attempts[attempt.attempt_id] = attempt
+        for fill in exit_fills:
+            if fill.plan_id not in known_exit_plans:
+                raise ReplayInvariantError("restored exit fill plan mismatch")
+            lifecycle.fills[fill.fill_id] = fill
+        for record in checkpoint.mark_observations:
+            if record.market != checkpoint.market.canonical:
+                raise ReplayInvariantError("restored mark observation market mismatch")
+            if record.event_key is None:
+                raise ReplayInvariantError("restored mark observation key missing")
+            lifecycle.marks[record.event_key] = record
+        for accrual in funding_accruals:
+            if accrual.market != checkpoint.market:
+                raise ReplayInvariantError("restored funding market mismatch")
+            lifecycle.funding[accrual.accrual_id] = accrual
+            self._funding_resolved.add((checkpoint.market.canonical, accrual.boundary_ms))
+        self._lifecycles[market_key] = lifecycle
+
+    @property
+    def known_gap_intervals(self) -> tuple[tuple[int, int | None], ...]:
+        return tuple(self._gap_intervals)
+
+    def restore_gap_intervals(
+        self,
+        intervals: Sequence[tuple[int, int | None]],
+    ) -> None:
+        restored: list[tuple[int, int | None]] = []
+        for started_ms, ended_ms in intervals:
+            if started_ms < 0 or (ended_ms is not None and ended_ms < started_ms):
+                raise ReplayInvariantError("restored gap interval is invalid")
+            restored.append((started_ms, ended_ms))
+        self._gap_intervals = restored
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -256,7 +424,7 @@ class BaselineReplayPipeline:
             first_boundary = (position.opened_at_ms // HOUR_MS + 1) * HOUR_MS
             boundary_ms = first_boundary
             while boundary_ms <= now_ms:
-                key = (position.position_id, boundary_ms)
+                key = (position.market.canonical, boundary_ms)
                 if key in self._funding_resolved or key in self._funding_gaps:
                     boundary_ms += HOUR_MS
                     continue
@@ -346,8 +514,10 @@ class BaselineReplayPipeline:
         if market_key in self._lifecycles:
             raise ReplayInvariantError("opening fill collided with existing lifecycle")
         lifecycle = _OpenTradeLifecycle(
-            evaluation=trace.evaluation,
-            opening=trace,
+            feature_snapshot_id=trace.evaluation.feature.snapshot_id,
+            opening_plan=submission.plan,
+            opening_attempt=simulation.attempt,
+            equity_before=trace.equity_before,
         )
         for fill in simulation.fills:
             lifecycle.fills[fill.fill_id] = fill
@@ -413,9 +583,8 @@ class BaselineReplayPipeline:
         lifecycle = self._lifecycles.get(market.canonical)
         if lifecycle is None:
             raise ReplayInvariantError("closed position has no replay lifecycle")
-        submission = lifecycle.opening.submission
-        if submission.plan is None or submission.simulation is None:
-            raise ReplayInvariantError("journal lifecycle is missing opening execution")
+        opening_plan = lifecycle.opening_plan
+        opening_attempt = lifecycle.opening_attempt
         actions = tuple(
             sorted(
                 lifecycle.actions.values(),
@@ -425,15 +594,15 @@ class BaselineReplayPipeline:
         exit_reason = actions[-1].reason_codes[0] if actions else "POSITION_CLOSED"
         assembled = assemble_trade_journal_entry(
             TradeLifecycleInput(
-                feature_snapshot_id=lifecycle.evaluation.feature.snapshot_id,
-                opening_plan=submission.plan,
-                opening_attempt=submission.simulation.attempt,
+                feature_snapshot_id=lifecycle.feature_snapshot_id,
+                opening_plan=opening_plan,
+                opening_attempt=opening_attempt,
                 exit_plans=tuple(lifecycle.exit_plans.values()),
                 exit_attempts=tuple(lifecycle.exit_attempts.values()),
                 fills=tuple(lifecycle.fills.values()),
                 position_actions=actions,
                 funding_accruals=tuple(lifecycle.funding.values()),
-                equity_before=lifecycle.opening.equity_before,
+                equity_before=lifecycle.equity_before,
                 equity_after=self._execution.account.equity,
                 exit_reason=exit_reason,
                 mark_observations=tuple(lifecycle.marks.values()),
@@ -527,7 +696,29 @@ class BaselineReplayPipeline:
         observations = list(self._ensure_initial_account_observation())
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
-            self._gap_intervals.append((record.available_at_ms, None))
+            payload = record.payload
+            if not isinstance(payload, dict):
+                raise ReplayInvariantError("data-gap payload must be an object")
+            started_raw = payload.get("started_ms")
+            ended_raw = payload.get("ended_ms")
+            if isinstance(started_raw, bool) or not isinstance(started_raw, int):
+                raise ReplayInvariantError("data-gap started_ms must be an integer")
+            if ended_raw is not None and (
+                isinstance(ended_raw, bool) or not isinstance(ended_raw, int)
+            ):
+                raise ReplayInvariantError("data-gap ended_ms must be an integer or null")
+            interval = (started_raw, ended_raw)
+            if ended_raw is None:
+                if interval not in self._gap_intervals:
+                    self._gap_intervals.append(interval)
+            else:
+                open_interval = (started_raw, None)
+                if open_interval in self._gap_intervals:
+                    self._gap_intervals[
+                        self._gap_intervals.index(open_interval)
+                    ] = interval
+                elif interval not in self._gap_intervals:
+                    self._gap_intervals.append(interval)
 
         for epoch in self._decision_engine.observe(record, now_ms):
             observations.extend(self._process_epoch(epoch))

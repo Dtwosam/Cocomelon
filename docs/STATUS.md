@@ -850,3 +850,25 @@ This retirement changes experiment/control-plane authority only. Existing risk l
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous ordinary paper runtime — 2026-09-26
+
+PR #464 replaces the retired periodic Prospective HYPE experiment as the operational paper-trading path.
+
+The new runtime:
+
+- scans/ranks the native Hyperliquid mainnet perp universe and keeps a dynamic deep shortlist;
+- pins open positions even if their market falls out of the opportunity shortlist;
+- consumes real mainnet L2, trades, active-asset context, and short-horizon candles continuously;
+- runs the existing deterministic LONG/SHORT/NO_TRADE strategy stack on 15-minute decision epochs;
+- preserves the existing independent risk engine and realistic paper IOC execution model;
+- manages open positions from fresh market events rather than waiting for an hourly experiment anchor;
+- persists paper execution, journal, evaluation facts, funding, open-trade lineage, mark extrema, and gap state for restart recovery;
+- uses rolling 5.5-hour GitHub workers with exact predecessor-state handoff and a non-economic watchdog for continuity;
+- refuses to start if execution mode is anything other than paper.
+
+The runtime does not claim edge. Existing strategy quality remains what the evidence says; the purpose of this change is to observe/trade valid setups when they occur instead of missing them because of experiment cadence.
+
+Live trading remains disabled. Existing risk and promotion gates are unchanged.
+
+**LIVE TRADING: DISABLED.**
+
