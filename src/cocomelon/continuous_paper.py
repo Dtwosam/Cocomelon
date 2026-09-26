@@ -931,6 +931,46 @@ def _closed_trade_performance(
     }
 
 
+def _position_protection_metrics(
+    *,
+    side: str,
+    quantity: Decimal,
+    entry_price: Decimal,
+    stop_price: Decimal,
+    latest_mark: Decimal | None,
+    planned_risk: Decimal,
+) -> dict[str, object]:
+    if planned_risk <= 0:
+        raise ValueError("planned_risk must be positive")
+    if side == "long":
+        stop_pnl = (stop_price - entry_price) * quantity
+        unrealized = (
+            None
+            if latest_mark is None
+            else (latest_mark - entry_price) * quantity
+        )
+    elif side == "short":
+        stop_pnl = (entry_price - stop_price) * quantity
+        unrealized = (
+            None
+            if latest_mark is None
+            else (entry_price - latest_mark) * quantity
+        )
+    else:
+        raise ValueError("position side must be long or short")
+    return {
+        "unrealized_gross_pnl": (
+            None if unrealized is None else str(unrealized)
+        ),
+        "current_gross_r": (
+            None if unrealized is None else str(unrealized / planned_risk)
+        ),
+        "stop_trigger_gross_pnl": str(stop_pnl),
+        "stop_trigger_gross_r": str(stop_pnl / planned_risk),
+        "stop_protects_profit": stop_pnl > 0,
+    }
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -943,16 +983,14 @@ def _live_status_payload(
     positions: list[dict[str, object]] = []
     for position in execution.account.positions:
         latest_mark = position.latest_mark
-        unrealized = Decimal("0")
-        if latest_mark is not None:
-            if position.side.value == "long":
-                unrealized = (
-                    latest_mark - position.average_entry_price
-                ) * position.quantity
-            else:
-                unrealized = (
-                    position.average_entry_price - latest_mark
-                ) * position.quantity
+        protection = _position_protection_metrics(
+            side=position.side.value,
+            quantity=position.quantity,
+            entry_price=position.average_entry_price,
+            stop_price=position.stop_price,
+            latest_mark=latest_mark,
+            planned_risk=position.planned_risk,
+        )
         positions.append(
             {
                 "market": position.market.canonical,
@@ -963,7 +1001,7 @@ def _live_status_payload(
                 "latest_mark": (
                     None if latest_mark is None else str(latest_mark)
                 ),
-                "unrealized_gross_pnl": str(unrealized),
+                **protection,
                 "planned_risk": str(position.planned_risk),
                 "opened_at_ms": position.opened_at_ms,
                 "opening_plan_id": position.opening_plan_id,
@@ -977,6 +1015,23 @@ def _live_status_payload(
         Decimal("0")
         if execution.account.equity == 0
         else open_planned_risk / execution.account.equity
+    )
+    open_stop_trigger_gross_pnl = sum(
+        (
+            Decimal(str(position["stop_trigger_gross_pnl"]))
+            for position in positions
+        ),
+        Decimal("0"),
+    )
+    open_stop_trigger_gross_r = (
+        None
+        if open_planned_risk == 0
+        else open_stop_trigger_gross_pnl / open_planned_risk
+    )
+    protected_stop_count = sum(
+        1
+        for position in positions
+        if position["stop_protects_profit"] is True
     )
     total_account_pnl = execution.account.equity - execution.account.starting_cash
     total_return_fraction = (
@@ -1034,6 +1089,13 @@ def _live_status_payload(
         "open_planned_risk_fraction_of_equity": str(
             open_planned_risk_fraction
         ),
+        "open_stop_trigger_gross_pnl": str(open_stop_trigger_gross_pnl),
+        "open_stop_trigger_gross_r": (
+            None
+            if open_stop_trigger_gross_r is None
+            else str(open_stop_trigger_gross_r)
+        ),
+        "open_positions_with_profit_protected_stop": protected_stop_count,
         "gross_open_notional": str(execution.account.gross_open_notional),
         "gross_open_notional_fraction_of_equity": str(
             gross_open_notional_fraction
