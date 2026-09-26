@@ -18,6 +18,7 @@ from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyDecision
+from cocomelon.domain.stream import StreamEvent
 from cocomelon.evaluation.facts import account_equity_fact
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.baseline import RecordedStateBook
@@ -335,24 +336,24 @@ def test_position_research_observer_receives_marks_books_and_close(
         def observe_mark(
             self,
             positions: object,
-            mark_event: object,
+            mark_event: StreamEvent,
             *,
             now_ms: int,
         ) -> None:
             del positions, now_ms
-            calls.append(("mark", getattr(mark_event, "event_key")))
+            calls.append(("mark", mark_event.event_key))
 
         def observe_book(
             self,
             positions: object,
             instrument: object,
-            book: object,
+            book: StreamEvent,
             *,
             reference_price: Decimal,
             now_ms: int,
         ) -> None:
             del positions, instrument, reference_price, now_ms
-            calls.append(("book", getattr(book, "event_key")))
+            calls.append(("book", book.event_key))
 
         def record_closed_trade(
             self,
