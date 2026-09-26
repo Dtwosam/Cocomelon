@@ -1,0 +1,330 @@
+name: Continuous Paper Research Learning Cycle
+
+on:
+  workflow_run:
+    workflows: ["Continuous Paper Learning Evidence Sync"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful continuous-paper learning sync run ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: continuous-paper-research-learning-cycle
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  cycle:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current frozen learner
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Authenticate exact continuous-paper learning state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "continuous-paper learning sync run id is invalid" >&2
+            exit 64
+          fi
+
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/continuous-learning-sync-run.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/continuous-learning-sync-run.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("continuous-paper learning sync run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("continuous-paper learning sync is not from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("continuous-paper learning sync did not succeed")
+          if run.get("path") != ".github/workflows/continuous-paper-learning-evidence.yml":
+              raise SystemExit("continuous-paper learning sync workflow path is invalid")
+          if run.get("name") != "Continuous Paper Learning Evidence Sync":
+              raise SystemExit("continuous-paper learning sync workflow name is invalid")
+          if run.get("event") not in {"workflow_run", "workflow_dispatch"}:
+              raise SystemExit("continuous-paper learning sync event is invalid")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("continuous-paper learning sync head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("continuous-paper learning sync attempt is invalid")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("continuous-paper learning sync repository is invalid")
+          PY
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/continuous-learning-sync-run.json)"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/continuous-learning-sync-artifacts.json
+          ARTIFACT_ROW="$(
+            python - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/continuous-learning-sync-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == "continuous-paper-learning-state"
+              and item.get("expired") is False
+          ]
+          if not matches:
+              print("SKIP")
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit(
+                  "expected exactly one continuous-paper learning state artifact"
+              )
+          artifact = matches[0]
+          digest = artifact.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("continuous-paper learning state digest is missing")
+          print(str(artifact["id"]) + "\t" + digest)
+          PY
+          )"
+          if [ "$ARTIFACT_ROW" = "SKIP" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "sync produced no continuous-paper learning state; cycle skipped"
+            exit 0
+          fi
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          mkdir -p continuous-learning-state
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/continuous-learning-state.zip
+          unzip -q /tmp/continuous-learning-state.zip -d continuous-learning-state
+          {
+            echo "eligible=true"
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate continuous-paper learning authority
+        id: metadata
+        if: ${{ steps.state.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          python - <<'PY' > /tmp/continuous-cycle-metadata.env
+          import json
+          from pathlib import Path
+
+          from cocomelon.research.learning_feature_snapshots import (
+              LearningFeatureSnapshotStore,
+          )
+          from cocomelon.research.outcome_learning import LearningEvidenceLedger
+
+          root = Path("continuous-learning-state")
+          sync = json.loads((root / "last-sync.json").read_text(encoding="utf-8"))
+          readiness = json.loads(
+              (root / "readiness.json").read_text(encoding="utf-8")
+          )
+          receipt = json.loads(
+              (root / "last-source-receipt.json").read_text(encoding="utf-8")
+          )
+
+          for payload, label in (
+              (sync, "sync"),
+              (readiness, "readiness"),
+              (receipt, "receipt"),
+          ):
+              if payload.get("research_only") is not True:
+                  raise SystemExit(f"{label} is not research-only")
+              if payload.get("promotion_eligible") is not False:
+                  raise SystemExit(f"{label} unexpectedly authorizes promotion")
+              if payload.get("execution_ready") is not False:
+                  raise SystemExit(f"{label} unexpectedly authorizes execution")
+
+          if sync.get("command") != "continuous-paper-learning-sync":
+              raise SystemExit("continuous-paper learning command identity is invalid")
+          if readiness.get("command") != "learning-readiness":
+              raise SystemExit("continuous-paper readiness command identity is invalid")
+          if readiness.get("evidence_kind") != "paper_execution":
+              raise SystemExit("continuous-paper readiness evidence kind is invalid")
+          if receipt.get("source_kind") != "continuous_paper_worker":
+              raise SystemExit("continuous-paper source receipt kind is invalid")
+
+          learning_digest = sync.get("learning_state_digest")
+          feature_digest = sync.get("feature_state_digest")
+          if readiness.get("ledger_state_digest") != learning_digest:
+              raise SystemExit("continuous-paper ledger digest does not match readiness")
+          if readiness.get("feature_store_state_digest") != feature_digest:
+              raise SystemExit("continuous-paper feature digest does not match readiness")
+          if receipt.get("learning_state_digest") != learning_digest:
+              raise SystemExit("continuous-paper ledger digest does not match receipt")
+          if receipt.get("feature_state_digest") != feature_digest:
+              raise SystemExit("continuous-paper feature digest does not match receipt")
+
+          created = sync.get("created_records")
+          as_of_ms = readiness.get("as_of_ms")
+          if isinstance(created, bool) or not isinstance(created, int) or created < 0:
+              raise SystemExit("continuous-paper created record count is invalid")
+          if isinstance(as_of_ms, bool) or not isinstance(as_of_ms, int) or as_of_ms < 0:
+              raise SystemExit("continuous-paper readiness as_of_ms is invalid")
+          if not isinstance(learning_digest, str) or len(learning_digest) != 64:
+              raise SystemExit("continuous-paper learning digest is invalid")
+          if not isinstance(feature_digest, str) or len(feature_digest) != 64:
+              raise SystemExit("continuous-paper feature digest is invalid")
+
+          ledger = LearningEvidenceLedger(root / "ledger")
+          feature_store = LearningFeatureSnapshotStore(root / "features")
+          records = ledger.iter_records()
+          snapshots = feature_store.iter_verified()
+          if sync.get("learning_record_count") != len(records):
+              raise SystemExit("continuous-paper learning record count mismatch")
+          if sync.get("feature_snapshot_count") != len(snapshots):
+              raise SystemExit("continuous-paper feature count mismatch")
+          if ledger.state_digest != learning_digest:
+              raise SystemExit("continuous-paper persisted ledger digest changed")
+          if feature_store.state_digest != feature_digest:
+              raise SystemExit("continuous-paper persisted feature digest changed")
+
+          print(f"new_records={created}")
+          print(f"as_of_ms={as_of_ms}")
+          print(f"learning_state_digest={learning_digest}")
+          print(f"feature_state_digest={feature_digest}")
+          print(f"learning_record_count={len(records)}")
+          PY
+          cat /tmp/continuous-cycle-metadata.env >> "$GITHUB_OUTPUT"
+
+      - name: Run frozen continuous-paper research cycle
+        if: >-
+          steps.state.outputs.eligible == 'true' &&
+          steps.metadata.outputs.new_records != '0'
+        id: cycle
+        run: |
+          set -euo pipefail
+          IMPLEMENTATION_SHA="$(git rev-parse HEAD)"
+          set +e
+          cocomelon-learning-cycle             --learning-root continuous-learning-state/ledger             --feature-store-dir continuous-learning-state/features             --output-root continuous-paper-learning-cycle             --as-of-ms "${{ steps.metadata.outputs.as_of_ms }}"             --implementation-commit-sha "$IMPLEMENTATION_SHA"             --expected-learning-state-digest               "${{ steps.metadata.outputs.learning_state_digest }}"             --expected-feature-state-digest               "${{ steps.metadata.outputs.feature_state_digest }}"             > /tmp/continuous-paper-learning-cycle-command.json             2> /tmp/continuous-paper-learning-cycle-command.err
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 3 ]; then
+            cat /tmp/continuous-paper-learning-cycle-command.err >&2
+            exit "$STATUS"
+          fi
+          cp /tmp/continuous-paper-learning-cycle-command.json             continuous-paper-learning-cycle/command.json
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Render continuous-paper research cycle summary
+        if: >-
+          steps.state.outputs.eligible == 'true' &&
+          steps.metadata.outputs.new_records != '0'
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          cycle = json.loads(
+              Path("continuous-paper-learning-cycle/cycle.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Continuous paper research learning cycle")
+          print(f"- status: {cycle['status']}")
+          print(f"- eligible records: {cycle['eligible_record_count']}")
+          print(
+              "- settled chronological train records: "
+              f"{cycle['settled_train_record_count']}"
+          )
+          print(f"- validation records: {cycle['validation_record_count']}")
+          if cycle["status"] == "completed":
+              print(
+                  "- grouped-mean development gate: "
+                  f"{cycle['baseline_qualifies_development']}"
+              )
+              print(
+                  "- shallow-tree development gate: "
+                  f"{cycle['tree_qualifies_development']}"
+              )
+          print("- candidate freeze: disabled")
+          print("- promotion eligible: false")
+          print("- execution enabled: false")
+          PY
+
+      - name: Note sync with no new continuous-paper records
+        if: >-
+          steps.state.outputs.eligible == 'true' &&
+          steps.metadata.outputs.new_records == '0'
+        run: |
+          {
+            echo "## Continuous paper research learning cycle"
+            echo "- sync created no new attributed records; cycle intentionally skipped"
+            echo "- promotion eligible: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note non-producing learning sync
+        if: ${{ steps.state.outputs.eligible != 'true' }}
+        run: |
+          {
+            echo "## Continuous paper research learning cycle"
+            echo "- upstream sync published no learning state; cycle skipped"
+            echo "- promotion eligible: false"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish immutable continuous-paper learning cycle
+        if: >-
+          steps.state.outputs.eligible == 'true' &&
+          steps.metadata.outputs.new_records != '0'
+        uses: actions/upload-artifact@v7
+        with:
+          name: >-
+            continuous-paper-learning-cycle-${{ steps.state.outputs.run_id }}-${{ steps.state.outputs.run_attempt }}
+          path: continuous-paper-learning-cycle/
+          if-no-files-found: error
+          retention-days: 90
