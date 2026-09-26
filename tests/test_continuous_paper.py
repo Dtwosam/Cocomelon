@@ -104,7 +104,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'ContinuousPaperTradePathStore(root / "trade-paths")' in source
     assert "closed_lifecycle_sink=trade_path_sink" in source
     assert '"trade_path_count": self.trade_path_count' in source
+    assert '"trade_path_open_count": self.trade_path_open_count' in source
     assert '"trade_path_state_digest": self.trade_path_state_digest' in source
+    assert "trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)" in source
     assert '"trade_path_capture_error": self.trade_path_capture_error' in source
 
 
@@ -173,23 +175,29 @@ def test_position_protection_metrics_keep_unprotected_stop_negative() -> None:
     assert metrics["stop_protects_profit"] is False
 
 
-def test_trade_path_capture_failure_is_fail_open(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_trade_path_capture_failure_is_fail_open() -> None:
     class Store:
-        def record(self, _trade_path: object) -> bool:
-            raise AssertionError("store should not be reached")
+        def finalize_trade(self, *_args: object) -> bool:
+            raise RuntimeError("path boom")
 
-    def fail_path(*_args: object) -> object:
-        raise RuntimeError("path boom")
+        def checkpoint_open_path(self, **_kwargs: object) -> int:
+            raise RuntimeError("checkpoint boom")
 
-    monkeypatch.setattr(
-        "cocomelon.continuous_paper.continuous_paper_trade_path",
-        fail_path,
-    )
     sink = _ContinuousTradePathSink(Store())  # type: ignore[arg-type]
 
     assert sink.record(SimpleNamespace(), (), ()) is False  # type: ignore[arg-type]
+    assert sink.error == "RuntimeError: path boom"
+
+    sink.checkpoint(
+        (
+            SimpleNamespace(
+                opening_plan_id="plan-1",
+                market=MarketId("", "BTC"),
+                opened_at_ms=1,
+                mark_observations=(),
+            ),
+        )
+    )
     assert sink.error == "RuntimeError: path boom"
 
 
