@@ -6,6 +6,14 @@ from types import SimpleNamespace
 from cocomelon.continuous_paper import _closed_trade_performance
 
 
+def _excursion(kind: str, r_multiple: str, *, complete: bool = True) -> SimpleNamespace:
+    return SimpleNamespace(
+        kind=kind,
+        r_multiple=Decimal(r_multiple),
+        complete=complete,
+    )
+
+
 def _trade(
     *,
     pnl: str,
@@ -14,6 +22,9 @@ def _trade(
     reason: str,
     feature_id: str,
     hold_ms: int,
+    mfe_r: str = "0",
+    mae_r: str = "0",
+    excursion_complete: bool = True,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         net_pnl=Decimal(pnl),
@@ -22,6 +33,8 @@ def _trade(
         exit_reason=reason,
         feature_snapshot_id=feature_id,
         holding_duration_ms=hold_ms,
+        mfe=_excursion("mfe", mfe_r, complete=excursion_complete),
+        mae=_excursion("mae", mae_r, complete=excursion_complete),
     )
 
 
@@ -52,6 +65,8 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             reason="OPPOSITE_FRESH_THESIS",
             feature_id="feature-up",
             hold_ms=60_000,
+            mfe_r="1.2",
+            mae_r="0.3",
         ),
         _trade(
             pnl="-2",
@@ -60,6 +75,8 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             reason="OPPOSITE_FRESH_THESIS",
             feature_id="feature-down",
             hold_ms=120_000,
+            mfe_r="0.6",
+            mae_r="0.8",
         ),
         _trade(
             pnl="-10",
@@ -68,6 +85,8 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
             reason="MARK_STOP_TRIGGERED",
             feature_id="feature-missing",
             hold_ms=180_000,
+            mfe_r="0.1",
+            mae_r="1.1",
         ),
     )
 
@@ -86,6 +105,16 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     assert Decimal(str(result["profit_factor"])) == Decimal("5") / Decimal("12")
     assert result["average_holding_ms"] == 120_000
     assert result["unattributed_feature_trades"] == 1
+
+    assert result["complete_excursion_trades"] == 3
+    assert result["incomplete_or_missing_excursion_trades"] == 0
+    assert Decimal(str(result["mean_mfe_r"])) == Decimal("1.9") / Decimal("3")
+    assert Decimal(str(result["mean_mae_r"])) == Decimal("2.2") / Decimal("3")
+    assert result["mfe_ge_0_5r"] == 2
+    assert result["mfe_ge_1r"] == 1
+    assert result["losses_with_mfe_lt_0_25r"] == 1
+    assert result["losses_after_mfe_ge_0_5r"] == 1
+    assert result["losses_after_mfe_ge_1r"] == 0
 
     by_side = result["by_side"]
     assert isinstance(by_side, dict)
@@ -110,3 +139,29 @@ def test_closed_trade_performance_attributes_realized_outcomes() -> None:
     assert by_vol["normal"]["net_pnl"] == "5"
     assert by_vol["high"]["net_pnl"] == "-2"
     assert by_vol["unknown"]["net_pnl"] == "-10"
+
+
+def test_closed_trade_performance_excludes_incomplete_excursions() -> None:
+    trade = _trade(
+        pnl="-1",
+        net_r="-0.1",
+        side="long",
+        reason="MARK_STOP_TRIGGERED",
+        feature_id="feature-up",
+        hold_ms=60_000,
+        mfe_r="2",
+        mae_r="2",
+        excursion_complete=False,
+    )
+
+    result = _closed_trade_performance(  # type: ignore[arg-type]
+        (trade,),
+        _FeatureStore(),  # type: ignore[arg-type]
+    )
+
+    assert result["complete_excursion_trades"] == 0
+    assert result["incomplete_or_missing_excursion_trades"] == 1
+    assert result["mean_mfe_r"] is None
+    assert result["mean_mae_r"] is None
+    assert result["mfe_ge_0_5r"] == 0
+    assert result["losses_after_mfe_ge_0_5r"] == 0
