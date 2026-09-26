@@ -14,7 +14,7 @@ from cocomelon.domain.features import (
     TrendRegime,
     VolatilityRegime,
 )
-from cocomelon.domain.journal import JournalObservation
+from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.strategy import Direction, StrategyDecision
@@ -325,12 +325,18 @@ def test_long_lifecycle_applies_funding_closes_and_records_evaluation_facts(
 def test_closed_lifecycle_sink_receives_full_mark_path(
     tmp_path: Path,
 ) -> None:
-    captured: list[tuple[object, tuple[ReplayRecord, ...], tuple[tuple[int, int | None], ...]]] = []
+    captured: list[
+        tuple[
+            TradeJournalEntry,
+            tuple[ReplayRecord, ...],
+            tuple[tuple[int, int | None], ...],
+        ]
+    ] = []
 
     class Sink:
         def record(
             self,
-            trade: object,
+            trade: TradeJournalEntry,
             mark_observations: tuple[ReplayRecord, ...],
             known_gap_intervals: tuple[tuple[int, int | None], ...],
         ) -> bool:
@@ -359,7 +365,7 @@ def test_closed_lifecycle_sink_receives_full_mark_path(
 
     assert len(captured) == 1
     trade, marks, gaps = captured[0]
-    assert getattr(trade, "market") == MARKET
+    assert trade.market == MARKET
     assert tuple(record.market for record in marks) == (
         MARKET.canonical,
         MARKET.canonical,
