@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 
-
 SCRIPT = "scripts/render_universe_opportunity_diagnostics.py"
 
 
