@@ -234,6 +234,9 @@ jobs:
                       run_cache[run_id] = json.loads(response.stdout)
                   run = run_cache[run_id]
                   config = trusted.get(run.get("path"))
+                  attempt = run.get("run_attempt")
+                  head_sha = run.get("head_sha")
+                  artifact_head_sha = artifact["workflow_run"].get("head_sha")
                   if (
                       config is None
                       or run.get("status") != "completed"
@@ -243,6 +246,13 @@ jobs:
                       or run.get("event") not in config["events"]
                       or (run.get("head_repository") or {}).get("full_name")
                       != os.environ["GITHUB_REPOSITORY"]
+                      or isinstance(attempt, bool)
+                      or not isinstance(attempt, int)
+                      or attempt <= 0
+                      or not isinstance(head_sha, str)
+                      or len(head_sha) != 40
+                      or any(char not in "0123456789abcdef" for char in head_sha)
+                      or artifact_head_sha != head_sha
                   ):
                       continue
                   digest = artifact.get("digest")
