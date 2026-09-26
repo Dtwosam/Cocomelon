@@ -204,6 +204,9 @@ def render_live_status(
     performance = payload.get("closed_trade_performance", {})
     if not isinstance(performance, dict):
         performance = {}
+    trade_path_evidence = payload.get("trade_path_evidence", {})
+    if not isinstance(trade_path_evidence, dict):
+        trade_path_evidence = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -267,6 +270,25 @@ def render_live_status(
         (
             "- execution healthy: "
             f"`{str(payload['execution_healthy']).lower()}`"
+        ),
+        "",
+        "### Trade-path evidence",
+        "",
+        (
+            "- authority: `RESEARCH ONLY / NO EXECUTION` · durable across workers: "
+            f"`{str(bool(trade_path_evidence.get('durable_across_workers'))).lower()}`"
+        ),
+        (
+            "- completed exact trade paths: "
+            f"`{trade_path_evidence.get('closed_path_count', 0)}`"
+        ),
+        (
+            "- staged open trade paths: "
+            f"`{trade_path_evidence.get('staged_open_path_count', 0)}`"
+        ),
+        (
+            "- capture error: "
+            f"`{trade_path_evidence.get('capture_error')}`"
         ),
         "",
         "### Open positions",
