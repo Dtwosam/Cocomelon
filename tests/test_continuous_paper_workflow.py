@@ -67,5 +67,7 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert "opening lineage records:" in source
     assert "opening_lineage_state_digest" in source
     assert "closed trade paths:" in source
+    assert "staged open trade paths:" in source
+    assert "trade_path_open_count" in source
     assert "trade_path_state_digest" in source
     assert "trade_path_capture_error" in source
