@@ -51,6 +51,7 @@ from cocomelon.util.time import utc_now_ms
 RUN_ID = "continuous-paper-mainnet-v1"
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
+LEARNING_SOURCE_FILENAME = "learning-source.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,6 +307,38 @@ def _checkpoint_payload(
             for started_ms, ended_ms in pipeline.known_gap_intervals
         ],
         "execution_mode": "paper",
+        "live_orders": False,
+    }
+
+
+def _learning_source_payload(
+    replay_config: BaselineReplayConfig,
+    *,
+    runtime_head_sha: str | None,
+) -> dict[str, object]:
+    if runtime_head_sha is not None and (
+        len(runtime_head_sha) != 40
+        or any(char not in "0123456789abcdef" for char in runtime_head_sha)
+    ):
+        raise ValueError("runtime_head_sha must be a lowercase 40-character git SHA")
+    config_digest = replay_config.config_digest
+    return {
+        "schema_version": 1,
+        "source_kind": "continuous_paper",
+        "replay_run_id": RUN_ID,
+        "candidate_id": f"continuous-paper-{config_digest[:24]}",
+        "candidate_spec_id": config_digest,
+        "feature_version": replay_config.feature_version,
+        "strategy_version": replay_config.strategy_version,
+        "risk_version": replay_config.risk_version,
+        "execution_config_version": replay_config.execution.config_version,
+        "replay_engine_version": replay_config.replay_engine_version,
+        "replay_config_version": replay_config.config_version,
+        "replay_config_digest": config_digest,
+        "runtime_head_sha": runtime_head_sha,
+        "research_only": True,
+        "promotion_eligible": False,
+        "execution_ready": False,
         "live_orders": False,
     }
 
@@ -751,9 +784,17 @@ async def run_continuous_paper_session(
     checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
 
     reader = InfoClient(settings)
+    replay_config = BaselineReplayConfig()
+    _write_json_atomic(
+        root / LEARNING_SOURCE_FILENAME,
+        _learning_source_payload(
+            replay_config,
+            runtime_head_sha=os.environ.get("COCOMELON_RUNTIME_HEAD_SHA"),
+        ),
+    )
     execution = PaperExecutionAdapter(
         root / "paper.sqlite3",
-        BaselineReplayConfig().execution,
+        replay_config.execution,
         starting_cash=Decimal("10000"),
         startup_timestamp_ms=started_at_ms,
     )
@@ -785,7 +826,7 @@ async def run_continuous_paper_session(
             raise RuntimeError("continuous paper scan produced no rankable native markets")
 
         pipeline = BaselineReplayPipeline(
-            BaselineReplayConfig(),
+            replay_config,
             execution,
             facts,
             selected_markets=selected,
