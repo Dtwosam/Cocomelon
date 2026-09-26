@@ -163,6 +163,8 @@ jobs:
 
       - name: Re-verify human decision and optional admission
         id: review
+        env:
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
         run: |
           set -euo pipefail
           test -f review-source/review-provenance.json
@@ -171,6 +173,7 @@ jobs:
           python - <<'PY'
           import hashlib
           import json
+          import os
           from pathlib import Path
 
           from cocomelon.research.learning_clean_review_decision import (
@@ -227,6 +230,11 @@ jobs:
               ),
               evidence_root=root / "evidence",
           )
+          expected_artifact_name = (
+              "research-learning-shadow-review-" + decision.candidate_id
+          )
+          if os.environ["SOURCE_ARTIFACT_NAME"] != expected_artifact_name:
+              raise SystemExit("shadow review artifact name does not match candidate")
           if (
               decision.candidate_id != raw.get("candidate_id")
               or decision.review_decision_id != raw.get("review_decision_id")
@@ -316,10 +324,19 @@ jobs:
           pages = json.loads(
               Path("/tmp/prior-shadow-state-pages.json").read_text(encoding="utf-8")
           )
-          trusted_paths = {
-              ".github/workflows/research-learning-shadow-state-bootstrap.yml",
-              ".github/workflows/research-learning-shadow-state-sync.yml",
-              ".github/workflows/research-learning-shadow-state-continuity.yml",
+          trusted = {
+              ".github/workflows/research-learning-shadow-state-bootstrap.yml": {
+                  "name": "Research Learning Shadow State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-shadow-state-sync.yml": {
+                  "name": "Research Learning Shadow State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-shadow-state-continuity.yml": {
+                  "name": "Research Learning Shadow State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
           }
           for page in pages:
               for artifact in page.get("artifacts", []):
@@ -343,11 +360,14 @@ jobs:
                       text=True,
                   )
                   run = json.loads(response.stdout)
+                  config = trusted.get(run.get("path"))
                   if (
-                      run.get("status") == "completed"
+                      config is not None
+                      and run.get("status") == "completed"
                       and run.get("conclusion") == "success"
                       and run.get("head_branch") == "main"
-                      and run.get("path") in trusted_paths
+                      and run.get("name") == config["name"]
+                      and run.get("event") in config["events"]
                       and (run.get("head_repository") or {}).get("full_name")
                       == os.environ["GITHUB_REPOSITORY"]
                   ):
