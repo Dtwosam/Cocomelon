@@ -38,12 +38,13 @@ def test_continuity_workflow_reauthenticates_state_before_republishing() -> None
     assert 'payload.get("execution_ready") is not False' in source
 
 
-def test_learning_state_consumers_trust_only_evidence_or_continuity_producers() -> None:
+def test_learning_state_consumers_trust_all_authenticated_state_producers() -> None:
     continuity_path = ".github/workflows/research-learning-state-continuity.yml"
     for workflow in (EVIDENCE, CATCHUP, DASHBOARD):
         source = workflow.read_text(encoding="utf-8")
         assert continuity_path in source
         assert ".github/workflows/research-learning-evidence.yml" in source
+        assert ".github/workflows/continuous-paper-learning-evidence.yml" in source
 
 
 def test_continuity_workflow_cannot_train_promote_or_execute() -> None:
