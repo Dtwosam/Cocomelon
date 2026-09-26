@@ -284,3 +284,20 @@ This file records decisions that should not be casually re-litigated in later ch
 **Metric consequence:** Prospective modeled-return evidence, paper execution evidence, and live execution evidence remain separate typed partitions. Downstream research must explicitly choose how to use them rather than silently pooling incomparable targets.
 
 **Evolution consequence:** A challenger may learn only from an eligible snapshot and must retain that snapshot ID in its lineage. The active candidate remains immutable during its own clean campaign.
+
+## D-030 — Retire Prospective HYPE experiment and restore continuous paper-trader semantics
+
+**Date:** 2026-09-26
+
+**Decision:** Retire the Prospective HYPE V1/V2/V3 experiment family from active operation. Remove its scheduled observers, audits, readiness/lineage/blind-monitor jobs, V2 clean workflow, V3 capture/heartbeat rolling queue, and cutover machinery. Preserve historical artifacts and prior decisions only as audit history.
+
+**Reason:** The experiment's periodic/hourly observation semantics do not represent the intended product. Cocomelon is specified to continuously scan the eligible Hyperliquid mainnet perp universe and enter paper positions when a valid strategy setup passes independent risk and execution checks. A once-per-hour HYPE-only experiment can miss intraday opportunities and must not be confused with the operational paper trader.
+
+**Operational consequence:** Prospective HYPE artifacts are historical/non-current. Future paper operation must be driven by the ordinary scanner -> shortlist -> strategy -> risk -> paper-execution runtime. Research and learning may consume properly authenticated ordinary paper evidence without reviving the retired HYPE experiment.
+
+**Integrity consequence:** Retiring the experiment does not relabel its touched/prospective evidence, does not convert modeled outcomes into actual paper fills, and does not weaken risk or promotion gates.
+
+**Safety consequence:** Execution remains paper/shadow only. Live trading remains disabled and still requires all objective promotion gates plus explicit user live authorization and capital amount.
+
+**Supersedes:** D-029 only as active operational authority. D-029 remains historical documentation of the retired V3 protocol.
+
