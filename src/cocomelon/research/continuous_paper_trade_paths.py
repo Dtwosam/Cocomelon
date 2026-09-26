@@ -594,16 +594,24 @@ class ContinuousPaperTradePathStore:
                     "CONTINUOUS_PAPER_TRADE_PATH_NON_CANONICAL"
                 )
             payloads.append(raw)
-        return tuple(
-            sorted(
-                payloads,
-                key=lambda item: (
-                    int(item["closed_at_ms"]),
-                    str(item["market"]),
-                    str(item["trade_id"]),
-                ),
-            )
-        )
+        def payload_sort_key(
+            item: dict[str, object],
+        ) -> tuple[int, str, str]:
+            closed_at_ms = item.get("closed_at_ms")
+            market = item.get("market")
+            trade_id = item.get("trade_id")
+            if (
+                isinstance(closed_at_ms, bool)
+                or not isinstance(closed_at_ms, int)
+                or not isinstance(market, str)
+                or not isinstance(trade_id, str)
+            ):
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_SORT_IDENTITY_INVALID"
+                )
+            return closed_at_ms, market, trade_id
+
+        return tuple(sorted(payloads, key=payload_sort_key))
 
     @property
     def record_count(self) -> int:
