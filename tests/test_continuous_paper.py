@@ -11,6 +11,7 @@ import pytest
 
 from cocomelon.continuous_paper import (
     RUN_ID,
+    _learning_source_payload,
     ContinuousPaperConfig,
     _load_checkpoint,
     _position_action_from_payload,
@@ -217,3 +218,27 @@ def test_runtime_persists_authenticated_learning_features() -> None:
         '"feature_snapshot_state_digest": self.feature_snapshot_state_digest'
         in source
     )
+
+
+
+def test_learning_source_identity_binds_semantic_config() -> None:
+    from cocomelon.evidence.contracts import BaselineReplayConfig
+
+    config = BaselineReplayConfig()
+    payload = _learning_source_payload(
+        config,
+        runtime_head_sha="a" * 40,
+    )
+    assert payload["source_kind"] == "continuous_paper"
+    assert payload["candidate_id"] == (
+        "continuous-paper-" + config.config_digest[:24]
+    )
+    assert payload["candidate_spec_id"] == config.config_digest
+    assert payload["strategy_version"] == config.strategy_version
+    assert payload["risk_version"] == config.risk_version
+    assert payload["execution_config_version"] == config.execution.config_version
+    assert payload["runtime_head_sha"] == "a" * 40
+    assert payload["research_only"] is True
+    assert payload["promotion_eligible"] is False
+    assert payload["execution_ready"] is False
+    assert payload["live_orders"] is False
