@@ -890,3 +890,24 @@ This change creates evidence, not promotion authority. Live trading remains disa
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous paper learning evidence follower — 2026-09-26
+
+A new source-separated learning path is being added for the ordinary continuous paper trader.
+
+The runtime now persists a durable feature-capture activation timestamp. This allows the first corrected worker to inherit the legacy paper journal without pretending that earlier trades had authenticated decision-time learning features.
+
+Completed feature-aware workers are eligible for a dedicated cumulative learning follower that:
+
+- authenticates the exact successful main-branch worker run and state artifact;
+- verifies paper-only authority, session summary, journal trade count, feature-store count, and feature-store digest;
+- skips only trades opened before the persisted feature-capture activation boundary;
+- fails closed if any post-activation trade is missing its authenticated feature snapshot;
+- appends settled paper execution records and only their referenced snapshots into an append-only source-specific learning state;
+- preserves exact upstream run/artifact lineage and 90-day durable state;
+- evaluates baseline and tree feature readiness after each admissible worker;
+- remains research-only, promotion-ineligible, and execution-ineligible.
+
+This path does not backfill the initial legacy continuous worker and does not mix its source lineage into the scheduled-research learning state.
+
+**LIVE TRADING: DISABLED.**
+
