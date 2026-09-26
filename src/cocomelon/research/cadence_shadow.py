@@ -31,6 +31,18 @@ DEFAULT_COSTS: Final = ExecutionCostAssumptions(
 ZERO: Final = Decimal("0")
 
 
+def _score_band(score: Decimal) -> str:
+    if score < Decimal("65"):
+        return "<65"
+    if score < Decimal("70"):
+        return "65-<70"
+    if score < Decimal("75"):
+        return "70-<75"
+    if score < Decimal("80"):
+        return "75-<80"
+    return "80+"
+
+
 def _initial_boundary_for_interval(
     available_at_ms: int,
     *,
@@ -143,6 +155,7 @@ class ShadowCadenceDecision:
     market: MarketId
     direction: Direction
     score: Decimal
+    lead_strategy: str
     decision_id: str
     feature_snapshot_id: str
     entry_px: Decimal
@@ -160,6 +173,8 @@ class ShadowCadenceDecision:
             raise ValueError("shadow cadence sample must be directional")
         if not self.score.is_finite():
             raise ValueError("score must be finite")
+        if not self.lead_strategy.strip():
+            raise ValueError("lead_strategy must not be empty")
         if not self.decision_id.strip() or not self.feature_snapshot_id.strip():
             raise ValueError("decision lineage must not be empty")
         if not self.entry_px.is_finite() or self.entry_px <= ZERO:
@@ -262,6 +277,20 @@ class CadenceShadowComparator:
             interval_ms: Counter()
             for interval_ms in SUPPORTED_CADENCES_MS
         }
+        self._directional_counts_by_lead_strategy: dict[
+            int,
+            dict[str, Counter[str]],
+        ] = {
+            interval_ms: defaultdict(Counter)
+            for interval_ms in SUPPORTED_CADENCES_MS
+        }
+        self._directional_counts_by_score_band: dict[
+            int,
+            dict[str, Counter[str]],
+        ] = {
+            interval_ms: defaultdict(Counter)
+            for interval_ms in SUPPORTED_CADENCES_MS
+        }
         self._pending: dict[
             tuple[str, int],
             list[ShadowCadenceDecision],
@@ -269,6 +298,7 @@ class CadenceShadowComparator:
         self._outcomes: list[ShadowCadenceOutcome] = []
         self._censored_count = 0
         self._skipped_missing_entry_px = 0
+        self._skipped_missing_lead_strategy = 0
 
     def reconcile_markets(
         self,
@@ -300,6 +330,17 @@ class CadenceShadowComparator:
             counts[direction.value] += 1
             if direction is Direction.NO_TRADE:
                 continue
+            lead_strategy = evaluation.decision.lead_strategy
+            if lead_strategy is None or not lead_strategy.strip():
+                self._skipped_missing_lead_strategy += 1
+                continue
+            score_band = _score_band(evaluation.decision.score)
+            self._directional_counts_by_lead_strategy[cadence_ms][
+                lead_strategy
+            ][direction.value] += 1
+            self._directional_counts_by_score_band[cadence_ms][
+                score_band
+            ][direction.value] += 1
 
             state = engine.state_book.state(evaluation.decision.market)
             snapshot = _effective_snapshot(
@@ -328,6 +369,7 @@ class CadenceShadowComparator:
                     market=evaluation.decision.market,
                     direction=direction,
                     score=evaluation.decision.score,
+                    lead_strategy=lead_strategy,
                     decision_id=evaluation.decision.decision_id,
                     feature_snapshot_id=evaluation.feature.snapshot_id,
                     entry_px=entry_px,
@@ -382,6 +424,8 @@ class CadenceShadowComparator:
         cadence_ms: int,
         horizon_ms: int,
         off_primary_only: bool,
+        lead_strategy: str | None = None,
+        score_band: str | None = None,
     ) -> dict[str, object]:
         outcomes = tuple(
             item
@@ -391,6 +435,14 @@ class CadenceShadowComparator:
             and (
                 not off_primary_only
                 or item.sample.off_primary_boundary
+            )
+            and (
+                lead_strategy is None
+                or item.sample.lead_strategy == lead_strategy
+            )
+            and (
+                score_band is None
+                or _score_band(item.sample.score) == score_band
             )
         )
         net_sum = sum(
@@ -423,12 +475,83 @@ class CadenceShadowComparator:
             ),
         }
 
+    def _grouped_outcomes(
+        self,
+        *,
+        cadence_ms: int,
+        horizon_ms: int,
+        field: str,
+    ) -> dict[str, dict[str, object]]:
+        if field == "lead_strategy":
+            labels = sorted(
+                {
+                    item.sample.lead_strategy
+                    for item in self._outcomes
+                    if item.sample.cadence_ms == cadence_ms
+                    and item.sample.horizon_ms == horizon_ms
+                }
+            )
+            return {
+                label: self._outcome_summary(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    off_primary_only=False,
+                    lead_strategy=label,
+                )
+                for label in labels
+            }
+        if field == "score_band":
+            labels = {
+                _score_band(item.sample.score)
+                for item in self._outcomes
+                if item.sample.cadence_ms == cadence_ms
+                and item.sample.horizon_ms == horizon_ms
+            }
+            order = ("<65", "65-<70", "70-<75", "75-<80", "80+")
+            return {
+                label: self._outcome_summary(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    off_primary_only=False,
+                    score_band=label,
+                )
+                for label in order
+                if label in labels
+            }
+        raise ValueError("unsupported grouped shadow outcome field")
+
+    @staticmethod
+    def _directional_count_payload(
+        grouped: dict[str, Counter[str]],
+        *,
+        score_order: bool = False,
+    ) -> dict[str, dict[str, int]]:
+        labels = list(grouped)
+        if score_order:
+            order = ("<65", "65-<70", "70-<75", "75-<80", "80+")
+            labels = [label for label in order if label in grouped]
+        else:
+            labels.sort()
+        return {
+            label: {
+                "long": grouped[label][Direction.LONG.value],
+                "short": grouped[label][Direction.SHORT.value],
+                "total": (
+                    grouped[label][Direction.LONG.value]
+                    + grouped[label][Direction.SHORT.value]
+                ),
+            }
+            for label in labels
+        }
+
     def summary_payload(self) -> dict[str, object]:
         cadence_payload: dict[str, object] = {}
         for cadence_ms in SUPPORTED_CADENCES_MS:
             counts = self._decision_counts[cadence_ms]
             outcomes_by_horizon: dict[str, object] = {}
             off_cycle_by_horizon: dict[str, object] = {}
+            outcomes_by_lead_strategy: dict[str, object] = {}
+            outcomes_by_score_band: dict[str, object] = {}
             for horizon_ms in self._horizons_ms:
                 key = str(horizon_ms)
                 outcomes_by_horizon[key] = self._outcome_summary(
@@ -440,6 +563,16 @@ class CadenceShadowComparator:
                     cadence_ms=cadence_ms,
                     horizon_ms=horizon_ms,
                     off_primary_only=True,
+                )
+                outcomes_by_lead_strategy[key] = self._grouped_outcomes(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    field="lead_strategy",
+                )
+                outcomes_by_score_band[key] = self._grouped_outcomes(
+                    cadence_ms=cadence_ms,
+                    horizon_ms=horizon_ms,
+                    field="score_band",
                 )
             cadence_payload[str(cadence_ms)] = {
                 "decision_counts": {
@@ -454,6 +587,25 @@ class CadenceShadowComparator:
                 "outcomes_by_horizon_ms": outcomes_by_horizon,
                 "off_primary_boundary_outcomes_by_horizon_ms": (
                     off_cycle_by_horizon
+                ),
+                "directional_counts_by_lead_strategy": (
+                    self._directional_count_payload(
+                        self._directional_counts_by_lead_strategy[
+                            cadence_ms
+                        ]
+                    )
+                ),
+                "directional_counts_by_score_band": (
+                    self._directional_count_payload(
+                        self._directional_counts_by_score_band[cadence_ms],
+                        score_order=True,
+                    )
+                ),
+                "outcomes_by_lead_strategy_by_horizon_ms": (
+                    outcomes_by_lead_strategy
+                ),
+                "outcomes_by_score_band_by_horizon_ms": (
+                    outcomes_by_score_band
                 ),
             }
 
@@ -488,4 +640,7 @@ class CadenceShadowComparator:
             },
             "censored_due_to_unsubscribe": self._censored_count,
             "skipped_missing_entry_px": self._skipped_missing_entry_px,
+            "skipped_missing_lead_strategy": (
+                self._skipped_missing_lead_strategy
+            ),
         }
