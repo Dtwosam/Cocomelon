@@ -189,3 +189,14 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
     assert gaps == ()
     assert len(checkpoints) == 1
     assert checkpoints[0].position_actions == ()
+
+
+
+def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    cli = Path("src/cocomelon/continuous_paper_cli.py").read_text(encoding="utf-8")
+    assert 'stop_file: str | Path | None = None' in source
+    assert 'exit_reason = "upgrade_requested"' in source
+    assert '"exit_reason": self.exit_reason' in source
+    assert 'parser.add_argument("--stop-file", type=Path)' in cli
+    assert "stop_file=args.stop_file" in cli
