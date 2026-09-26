@@ -205,6 +205,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "session_only": True,
             "pending_outcome_count": 3,
             "censored_due_to_unsubscribe": 1,
+            "skipped_missing_lead_strategy": 0,
             "cadences": {
                 "300000": {
                     "decision_counts": {
@@ -230,6 +231,48 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                         "long": 1,
                         "short": 0,
                         "no_trade": 3,
+                    },
+                    "outcomes_by_lead_strategy_by_horizon_ms": {
+                        "900000": {
+                            "trend": {
+                                "settled_count": 3,
+                                "mean_net_return": "-0.001",
+                                "positive_net_count": 1,
+                            }
+                        },
+                        "3600000": {
+                            "trend": {
+                                "settled_count": 2,
+                                "mean_net_return": "0.002",
+                                "positive_net_count": 1,
+                            }
+                        },
+                    },
+                    "outcomes_by_score_band_by_horizon_ms": {
+                        "900000": {
+                            "65-<70": {
+                                "settled_count": 1,
+                                "mean_net_return": "-0.004",
+                                "positive_net_count": 0,
+                            },
+                            "80+": {
+                                "settled_count": 2,
+                                "mean_net_return": "0.0005",
+                                "positive_net_count": 1,
+                            },
+                        },
+                        "3600000": {
+                            "65-<70": {
+                                "settled_count": 1,
+                                "mean_net_return": "-0.003",
+                                "positive_net_count": 0,
+                            },
+                            "80+": {
+                                "settled_count": 1,
+                                "mean_net_return": "0.007",
+                                "positive_net_count": 1,
+                            },
+                        },
                     },
                 },
             },
@@ -299,6 +342,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "2 / 1 / 7" in output
     assert "mean net=`0.003`" in output
+    assert "#### 15m lead-strategy forward outcomes" in output
+    assert "| trend | 3 | -0.001 | 1 | 2 | 0.002 | 1 |" in output
+    assert "#### 15m decision-score forward outcomes" in output
+    assert "| 65-<70 | 1 | -0.004 | 0 | 1 | -0.003 | 0 |" in output
+    assert "| 80+ | 2 | 0.0005 | 1 | 1 | 0.007 | 1 |" in output
+    assert "skipped directional signals missing lead strategy" in output
     assert "starting cash" in output
     assert "total account PnL" in output
     assert "2.5" in output

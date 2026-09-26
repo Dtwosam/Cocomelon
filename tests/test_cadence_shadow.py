@@ -44,6 +44,7 @@ def _sample(direction: Direction) -> ShadowCadenceDecision:
         market=MARKET,
         direction=direction,
         score=Decimal("70"),
+        lead_strategy="trend",
         decision_id=f"decision-{direction.value}",
         feature_snapshot_id="feature-1",
         entry_px=Decimal("100"),
@@ -180,6 +181,15 @@ def test_shadow_settlement_uses_hyperliquid_close_boundary_not_raw_T() -> None:
     )
     comparator._settle_candle(candle)
     payload = comparator.summary_payload()
-    horizon = payload["cadences"]["300000"]["outcomes_by_horizon_ms"]["900000"]
+    cadence = payload["cadences"]["300000"]
+    horizon = cadence["outcomes_by_horizon_ms"]["900000"]
     assert horizon["settled_count"] == 1
     assert horizon["mean_net_return"] == "0.0085"
+
+    by_strategy = cadence["outcomes_by_lead_strategy_by_horizon_ms"]["900000"]
+    assert by_strategy["trend"]["settled_count"] == 1
+    assert by_strategy["trend"]["mean_net_return"] == "0.0085"
+
+    by_score = cadence["outcomes_by_score_band_by_horizon_ms"]["900000"]
+    assert by_score["70-<75"]["settled_count"] == 1
+    assert by_score["70-<75"]["positive_net_count"] == 1
