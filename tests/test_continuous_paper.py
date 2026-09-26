@@ -19,8 +19,8 @@ from cocomelon.continuous_paper import (
     _record_from_payload,
     _record_from_stream,
     _record_payload,
-    _restore_cadence_shadow,
     _RecordPump,
+    _restore_cadence_shadow,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
