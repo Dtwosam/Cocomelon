@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -11,12 +12,16 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _load_checkpoint,
+    _position_action_from_payload,
+    _position_action_payload,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
     _record_payload,
     _RecordPump,
 )
+from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -132,3 +137,55 @@ def test_record_pump_counts_each_closed_trade_once() -> None:
 
     assert journal.recorded == ["trade-1"]
     assert pump.closed_trades == 1
+
+
+def test_position_action_checkpoint_round_trip() -> None:
+    action = PositionAction(
+        action_type=PositionActionType.TIGHTEN_STOP,
+        market=MarketId("", "BTC"),
+        quantity=None,
+        new_stop_price=Decimal("99.5"),
+        reason_codes=("TRAILING_STOP",),
+        timestamp_ms=1_700_000_000_000,
+    )
+
+    restored = _position_action_from_payload(_position_action_payload(action))
+
+    assert restored == action
+
+
+def test_legacy_checkpoint_without_position_actions_remains_loadable(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "runtime-state.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": RUN_ID,
+                "last_available_at_ms": 123,
+                "selected_markets": ["BTC"],
+                "open_lifecycles": [
+                    {
+                        "market": "BTC",
+                        "opening_plan_id": "plan-1",
+                        "feature_snapshot_id": "feature-1",
+                        "equity_before": "10000",
+                        "exit_plan_ids": [],
+                        "mark_observations": [],
+                    }
+                ],
+                "known_gap_intervals": [],
+                "execution_mode": "paper",
+                "live_orders": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checkpoints, gaps, last_available_at_ms = _load_checkpoint(path)
+
+    assert last_available_at_ms == 123
+    assert gaps == ()
+    assert len(checkpoints) == 1
+    assert checkpoints[0].position_actions == ()
