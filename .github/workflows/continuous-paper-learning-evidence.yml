@@ -1,0 +1,302 @@
+name: Continuous Paper Learning Evidence Sync
+
+on:
+  workflow_run:
+    workflows: ["Continuous Mainnet Paper Trader"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful continuous paper worker run ID to recover
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: continuous-paper-learning-evidence-sync
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  sync:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout current learning control plane
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Verify upstream worker and download exact state
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "upstream continuous-paper run id is invalid" >&2
+            exit 64
+          fi
+
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/upstream-run.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          run = json.loads(
+              Path("/tmp/upstream-run.json").read_text(encoding="utf-8")
+          )
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("upstream continuous-paper run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("upstream continuous-paper run is not from main")
+          if run.get("conclusion") != "success":
+              raise SystemExit("upstream continuous-paper run did not succeed")
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("upstream continuous-paper workflow path is invalid")
+          if run.get("name") != "Continuous Mainnet Paper Trader":
+              raise SystemExit("upstream continuous-paper workflow name is invalid")
+          if run.get("event") not in {"push", "workflow_dispatch", "schedule"}:
+              raise SystemExit("upstream continuous-paper event is invalid")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("upstream continuous-paper head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("upstream continuous-paper run attempt is invalid")
+          repository = run.get("head_repository") or {}
+          if repository.get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("upstream continuous-paper run is from another repository")
+          PY
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/upstream-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/upstream-run.json)"
+          ARTIFACT_NAME="continuous-paper-state-${RUN_ID}-${RUN_ATTEMPT}"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/upstream-artifacts.json
+          ARTIFACT_ROW="$(
+            python - "$ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          expected = sys.argv[1]
+          payload = json.loads(
+              Path("/tmp/upstream-artifacts.json").read_text(encoding="utf-8")
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == expected and item.get("expired") is False
+          ]
+          if not matches:
+              print("SKIP")
+              raise SystemExit(0)
+          if len(matches) != 1:
+              raise SystemExit("expected at most one continuous-paper state artifact")
+          artifact = matches[0]
+          digest = artifact.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("continuous-paper artifact digest is missing")
+          print(str(artifact["id"]) + "\t" + digest)
+          PY
+          )"
+          if [ "$ARTIFACT_ROW" = "SKIP" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "No durable worker artifact; this was a watchdog/bootstrap skip."
+            exit 0
+          fi
+
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          mkdir -p incoming/continuous
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/continuous-paper.zip
+          unzip -q /tmp/continuous-paper.zip -d incoming/continuous
+
+          if [ ! -d incoming/continuous/learning-features/records ] ||              [ ! -d incoming/continuous/opening-lineage/records ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "Worker predates authenticated continuous-paper learning lineage."
+            exit 0
+          fi
+
+          {
+            echo "eligible=true"
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Restore latest trusted continuous-paper learning state
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p continuous-learning-state
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=continuous-paper-learning-state&per_page=100"             > /tmp/learning-artifacts.json
+          ARTIFACT_ID="$(
+            python - <<'PY'
+          import json
+          import os
+          import subprocess
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/learning-artifacts.json").read_text(encoding="utf-8")
+          )
+          artifacts = sorted(
+              (
+                  item
+                  for item in payload.get("artifacts", [])
+                  if item.get("expired") is False
+                  and isinstance(item.get("workflow_run"), dict)
+                  and item["workflow_run"].get("head_branch") == "main"
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          for artifact in artifacts:
+              run_id = artifact["workflow_run"].get("id")
+              if not isinstance(run_id, int):
+                  continue
+              completed = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(completed.stdout)
+              if (
+                  run.get("path")
+                  == ".github/workflows/continuous-paper-learning-evidence.yml"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and run.get("head_branch") == "main"
+                  and run.get("event") in {"workflow_run", "workflow_dispatch"}
+                  and run.get("head_sha") == artifact["workflow_run"].get("head_sha")
+                  and (run.get("head_repository") or {}).get("full_name")
+                  == os.environ["GITHUB_REPOSITORY"]
+              ):
+                  print(artifact["id"])
+                  break
+          PY
+          )"
+          if [ -n "$ARTIFACT_ID" ]; then
+            /usr/bin/gh api               "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"               > /tmp/continuous-learning-state.zip
+            unzip -q /tmp/continuous-learning-state.zip -d continuous-learning-state
+          fi
+
+      - name: Sync attributed continuous paper outcomes
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          cocomelon-continuous-paper-learning-sync             --source-state-root incoming/continuous             --learning-state-root continuous-learning-state             > continuous-learning-state/last-sync.json
+
+      - name: Audit continuous-paper learning readiness without training
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          set -euo pipefail
+          AS_OF_MS="$(date +%s%3N)"
+          set +e
+          cocomelon-learning-readiness             --learning-root continuous-learning-state/ledger             --feature-store-dir continuous-learning-state/features             --as-of-ms "$AS_OF_MS"             --kind paper_execution             --feature market             --feature direction             --feature return_5m             --feature return_15m             --feature return_1h             --feature funding             --feature open_interest             --feature trend_regime             --feature volatility_regime             > continuous-learning-state/readiness.json             2> /tmp/continuous-learning-readiness.err
+          STATUS=$?
+          set -e
+          if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 3 ]; then
+            cat /tmp/continuous-learning-readiness.err >&2
+            exit "$STATUS"
+          fi
+
+      - name: Render research-only sync summary
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          sync = json.loads(
+              Path("continuous-learning-state/last-sync.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          readiness = json.loads(
+              Path("continuous-learning-state/readiness.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Continuous paper learning evidence sync")
+          print(f"- scanned trades: {sync['scanned_trades']}")
+          print(f"- attributed trades: {sync['attributed_trades']}")
+          print(
+              "- legacy/unattributed trades skipped: "
+              f"{sync['skipped_unattributed_trades']}"
+          )
+          print(f"- new learning records: {sync['created_records']}")
+          print(
+              "- cumulative continuous learning records: "
+              f"{sync['learning_record_count']}"
+          )
+          print(
+              "- structural readiness: "
+              + ("ready" if readiness["structurally_ready"] else "not ready")
+          )
+          print("- research-only: true")
+          print("- promotion eligible: false")
+          print("- execution enabled: false")
+          PY
+
+      - name: Note skipped non-producer worker
+        if: ${{ steps.upstream.outputs.eligible != 'true' }}
+        run: |
+          {
+            echo "## Continuous paper learning evidence sync"
+            echo "- no authenticated lineage-capable worker artifact to ingest"
+            echo "- research-only: true"
+            echo "- execution enabled: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish continuous-paper learning state
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-learning-state
+          path: continuous-learning-state/
+          if-no-files-found: error
+          retention-days: 90
