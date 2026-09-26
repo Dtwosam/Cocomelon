@@ -220,11 +220,11 @@ def render_live_status(
             [
                 (
                     "| Market | Side | Entry | Exit | Net PnL | Net R | "
-                    "Fees | Funding | Hold | Exit reason |"
+                    "MFE R | MAE R | Fees | Funding | Hold | Exit reason |"
                 ),
                 (
                     "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
-                    "---: | ---: | --- |"
+                    "---: | ---: | ---: | ---: | --- |"
                 ),
             ]
         )
@@ -237,13 +237,16 @@ def render_live_status(
             )
             lines.append(
                 "| {market} | {direction} | {entry} | {exit} | {net_pnl} | "
-                "{net_r} | {fees} | {funding} | {hold}ms | {reason} |".format(
+                "{net_r} | {mfe_r} | {mae_r} | {fees} | {funding} | "
+                "{hold}ms | {reason} |".format(
                     market=raw["market"],
                     direction=raw["direction"],
                     entry=raw["entry_price"],
                     exit=raw["exit_price"],
                     net_pnl=raw["net_pnl"],
                     net_r=raw["net_r"],
+                    mfe_r=raw.get("mfe_r") or "n/a",
+                    mae_r=raw.get("mae_r") or "n/a",
                     fees=fees,
                     funding=raw["funding_cash_pnl"],
                     hold=raw["holding_duration_ms"],
@@ -314,11 +317,82 @@ def render_live_status(
                     "- incomplete/missing excursion evidence: "
                     f"`{performance.get('incomplete_or_missing_excursion_trades', 0)}`"
                 ),
+                "",
+                "#### Exit giveback diagnostics",
+                "",
+                (
+                    "- mean peak-to-close giveback: "
+                    f"`{performance.get('mean_peak_to_close_giveback_r')}`R"
+                ),
+                (
+                    "- mean giveback after reaching +0.5R / +1R: "
+                    f"`{performance.get('mean_giveback_after_mfe_ge_0_5r')}`R / "
+                    f"`{performance.get('mean_giveback_after_mfe_ge_1r')}`R"
+                ),
+                (
+                    "- positive closes after reaching +0.5R / +1R: "
+                    f"`{performance.get('positive_closes_after_mfe_ge_0_5r', 0)} / "
+                    f"{performance.get('positive_closes_after_mfe_ge_1r', 0)}`"
+                ),
+                (
+                    "- mean final net R after reaching +0.5R / +1R: "
+                    f"`{performance.get('mean_final_net_r_after_mfe_ge_0_5r')}`R / "
+                    f"`{performance.get('mean_final_net_r_after_mfe_ge_1r')}`R"
+                ),
             ]
         )
+        exit_groups = performance.get("by_exit_reason", {})
+        if isinstance(exit_groups, dict) and exit_groups:
+            lines.extend(
+                [
+                    "",
+                    "#### Exit-path giveback attribution",
+                    "",
+                    (
+                        "| Exit path | Trades | +0.5R reached | +1R reached | "
+                        "Positive after +0.5R | Mean giveback | "
+                        "Giveback after +0.5R | Final R after +0.5R |"
+                    ),
+                    (
+                        "| --- | ---: | ---: | ---: | ---: | ---: | "
+                        "---: | ---: |"
+                    ),
+                ]
+            )
+            for bucket, raw_group in sorted(exit_groups.items()):
+                if not isinstance(raw_group, dict):
+                    continue
+                lines.append(
+                    (
+                        "| {bucket} | {trades} | {mfe_half} | {mfe_one} | "
+                        "{positive_half} | {giveback} | {giveback_half} | "
+                        "{final_half} |"
+                    ).format(
+                        bucket=bucket,
+                        trades=raw_group.get("trades", 0),
+                        mfe_half=raw_group.get("mfe_ge_0_5r", 0),
+                        mfe_one=raw_group.get("mfe_ge_1r", 0),
+                        positive_half=raw_group.get(
+                            "positive_closes_after_mfe_ge_0_5r",
+                            0,
+                        ),
+                        giveback=raw_group.get(
+                            "mean_peak_to_close_giveback_r",
+                            "n/a",
+                        ),
+                        giveback_half=raw_group.get(
+                            "mean_giveback_after_mfe_ge_0_5r",
+                            "n/a",
+                        ),
+                        final_half=raw_group.get(
+                            "mean_final_net_r_after_mfe_ge_0_5r",
+                            "n/a",
+                        ),
+                    )
+                )
+
         dimension_labels = (
             ("by_side", "Side"),
-            ("by_exit_reason", "Exit reason"),
             ("by_trend_regime", "Entry trend regime"),
             ("by_volatility_regime", "Entry volatility regime"),
         )
