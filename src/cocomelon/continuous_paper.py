@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -52,6 +53,10 @@ from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperOpeningLineageStore,
     ContinuousPaperRuntimeIdentity,
 )
+from cocomelon.research.continuous_paper_trade_paths import (
+    ContinuousPaperTradePathStore,
+    continuous_paper_trade_path,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.util.time import utc_now_ms
 
@@ -87,6 +92,32 @@ class ContinuousPaperConfig:
             raise ValueError("checkpoint_seconds must be positive")
         if self.warmup_5m_bars <= 0 or self.warmup_15m_bars <= 0:
             raise ValueError("warmup bar counts must be positive")
+
+
+class _ContinuousTradePathSink:
+    def __init__(self, store: ContinuousPaperTradePathStore) -> None:
+        self._store = store
+        self.error: str | None = None
+
+    def record(
+        self,
+        trade: TradeJournalEntry,
+        mark_observations: Sequence[ReplayRecord],
+        known_gap_intervals: Sequence[tuple[int, int | None]],
+    ) -> bool:
+        try:
+            created = self._store.record(
+                continuous_paper_trade_path(
+                    trade,
+                    mark_observations,
+                    known_gap_intervals,
+                )
+            )
+        except Exception as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
+            return False
+        self.error = None
+        return created
 
 
 class _ContinuousOpeningLineageSink:
@@ -126,6 +157,9 @@ class ContinuousPaperSummary:
     feature_snapshot_state_digest: str
     opening_lineage_count: int
     opening_lineage_state_digest: str
+    trade_path_count: int
+    trade_path_state_digest: str
+    trade_path_capture_error: str | None
     open_positions: int
     equity: Decimal
     execution_healthy: bool
@@ -147,6 +181,9 @@ class ContinuousPaperSummary:
             "feature_snapshot_state_digest": self.feature_snapshot_state_digest,
             "opening_lineage_count": self.opening_lineage_count,
             "opening_lineage_state_digest": self.opening_lineage_state_digest,
+            "trade_path_count": self.trade_path_count,
+            "trade_path_state_digest": self.trade_path_state_digest,
+            "trade_path_capture_error": self.trade_path_capture_error,
             "open_positions": self.open_positions,
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
@@ -1265,6 +1302,8 @@ async def run_continuous_paper_session(
     opening_lineage_store = ContinuousPaperOpeningLineageStore(
         root / "opening-lineage"
     )
+    trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
+    trade_path_sink = _ContinuousTradePathSink(trade_path_store)
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -1306,6 +1345,7 @@ async def run_continuous_paper_session(
                     runtime_identity,
                 )
             ),
+            closed_lifecycle_sink=trade_path_sink,
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
@@ -1548,6 +1588,9 @@ async def run_continuous_paper_session(
             feature_snapshot_state_digest=feature_store.state_digest,
             opening_lineage_count=opening_lineage_store.record_count,
             opening_lineage_state_digest=opening_lineage_store.state_digest,
+            trade_path_count=trade_path_store.record_count,
+            trade_path_state_digest=trade_path_store.state_digest,
+            trade_path_capture_error=trade_path_sink.error,
             open_positions=len(execution.account.positions),
             equity=execution.account.equity,
             execution_healthy=execution.health.healthy_for_new_exposure,
