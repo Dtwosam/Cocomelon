@@ -11,19 +11,27 @@ from cocomelon.domain.risk import (
     RiskHealthState,
     RiskRequest,
 )
-from cocomelon.domain.strategy import Direction
+from cocomelon.domain.strategy import Direction, StrategyContext
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
-from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation, _effective_snapshot
+from cocomelon.evidence.epochs import (
+    DECISION_INTERVAL_MS,
+    DecisionEpoch,
+    EpochMarketEvaluation,
+    _effective_snapshot,
+)
 from cocomelon.execution.accounting import risk_state_from_paper
 from cocomelon.execution.interface import OpeningSubmission
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.features.microstructure import calculate_microstructure_features
+from cocomelon.strategies.microstructure import build_microstructure_window
+from cocomelon.strategies.order_flow import evaluate_order_flow
 
 BPS = Decimal("10000")
 ONE = Decimal("1")
 ZERO = Decimal("0")
+ENTRY_TRIGGER_MIN_SCORE = Decimal("75")
 AUTHORITATIVE_CONTEXT = Context(prec=28, rounding=ROUND_HALF_EVEN)
 
 
@@ -35,6 +43,16 @@ class _PendingOpening:
     @property
     def market(self) -> MarketId:
         return self.evaluation.decision.market
+
+
+@dataclass(frozen=True, slots=True)
+class EntryTimingActivity:
+    pending_candidates: int
+    expired_candidates: int
+    superseded_candidates: int
+    trigger_waits: int
+    trigger_approvals: int
+    wait_reason_counts: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +136,8 @@ class BaselineOpeningEngine:
         replay_config: BaselineReplayConfig,
         execution: PaperExecutionAdapter,
         state_book: RecordedStateBook,
+        *,
+        require_fresh_order_flow_entry: bool = False,
     ) -> None:
         self._config = replay_config
         self._execution = execution
@@ -125,10 +145,27 @@ class BaselineOpeningEngine:
         self._pending: list[_PendingOpening] = []
         self._books: dict[str, StreamEvent] = {}
         self._traces: list[BaselineOpeningTrace] = []
+        self._require_fresh_order_flow_entry = require_fresh_order_flow_entry
+        self._expired_candidates = 0
+        self._superseded_candidates = 0
+        self._trigger_waits = 0
+        self._trigger_approvals = 0
+        self._wait_reason_counts: dict[str, int] = {}
 
     @property
     def pending_markets(self) -> tuple[MarketId, ...]:
         return tuple(item.market for item in self._pending)
+
+    @property
+    def entry_timing_activity(self) -> EntryTimingActivity:
+        return EntryTimingActivity(
+            pending_candidates=len(self._pending),
+            expired_candidates=self._expired_candidates,
+            superseded_candidates=self._superseded_candidates,
+            trigger_waits=self._trigger_waits,
+            trigger_approvals=self._trigger_approvals,
+            wait_reason_counts=tuple(sorted(self._wait_reason_counts.items())),
+        )
 
     def take_traces(self) -> tuple[BaselineOpeningTrace, ...]:
         traces = tuple(self._traces)
@@ -136,31 +173,97 @@ class BaselineOpeningEngine:
         return traces
 
     def stage_epoch(self, epoch: DecisionEpoch) -> None:
+        evaluated_markets = {
+            item.decision.market.canonical for item in epoch.markets
+        }
+        retained = [
+            item
+            for item in self._pending
+            if item.market.canonical not in evaluated_markets
+        ]
+        self._superseded_candidates += len(self._pending) - len(retained)
+        self._pending = retained
+
         directional = tuple(
             item
             for item in epoch.markets
             if item.decision.direction is not Direction.NO_TRADE
         )
-        existing = {
-            (item.evaluated_at_ms, item.market.canonical) for item in self._pending
-        }
         for evaluation in directional:
-            key = (epoch.evaluated_at_ms, evaluation.decision.market.canonical)
-            if key in existing:
-                raise ValueError("baseline opening candidate already staged")
             self._pending.append(
                 _PendingOpening(
                     evaluated_at_ms=epoch.evaluated_at_ms,
                     evaluation=evaluation,
                 )
             )
-            existing.add(key)
         self._pending.sort(
             key=lambda item: (
                 item.evaluated_at_ms,
                 item.market.canonical,
             )
         )
+
+    def _expire_pending(self, now_ms: int) -> None:
+        retained: list[_PendingOpening] = []
+        for pending in self._pending:
+            if now_ms >= pending.evaluated_at_ms + DECISION_INTERVAL_MS:
+                self._expired_candidates += 1
+                continue
+            retained.append(pending)
+        self._pending = retained
+
+    def _record_trigger_wait(self, reasons: tuple[str, ...]) -> None:
+        self._trigger_waits += 1
+        for reason in reasons:
+            self._wait_reason_counts[reason] = (
+                self._wait_reason_counts.get(reason, 0) + 1
+            )
+
+    def _entry_trigger_ready(
+        self,
+        pending: _PendingOpening,
+        *,
+        now_ms: int,
+    ) -> bool:
+        state = self._state.state(pending.market)
+        snapshot = _effective_snapshot(state, as_of_ms=now_ms)
+        if snapshot is None:
+            self._record_trigger_wait(("missing_market_context",))
+            return False
+        events = tuple(
+            event
+            for event in state.micro_events
+            if _receive_ms(event) <= now_ms
+        )
+        microstructure = build_microstructure_window(
+            events,
+            market=pending.market,
+            as_of_ms=now_ms,
+            window_ms=self._config.microstructure_window_ms,
+        )
+        context = StrategyContext(
+            market_snapshot=snapshot,
+            feature_snapshot=pending.evaluation.feature,
+            eligibility=pending.evaluation.eligibility,
+            candles_5m=tuple(
+                state.candles_5m[key] for key in sorted(state.candles_5m)
+            ),
+            candles_15m=tuple(
+                state.candles_15m[key] for key in sorted(state.candles_15m)
+            ),
+            microstructure=microstructure,
+            as_of_ms=now_ms,
+        )
+        signal = evaluate_order_flow(context)
+        direction = pending.evaluation.decision.direction
+        if direction in signal.veto_directions:
+            self._record_trigger_wait(("fresh_order_flow_veto", *signal.reason_codes))
+            return False
+        if signal.direction is direction and signal.score >= ENTRY_TRIGGER_MIN_SCORE:
+            self._trigger_approvals += 1
+            return True
+        self._record_trigger_wait(("fresh_order_flow_not_supportive", *signal.reason_codes))
+        return False
 
     def _refresh_account(self, now_ms: int) -> bool:
         marks: dict[MarketId, Decimal] = {}
@@ -275,7 +378,48 @@ class BaselineOpeningEngine:
         if existing is None or _receive_ms(existing) <= received_ms:
             self._books[book.market.canonical] = book
 
+        self._expire_pending(now_ms)
         outcomes: list[OpeningSubmission] = []
+
+        if self._require_fresh_order_flow_entry:
+            candidates = tuple(
+                pending
+                for pending in self._pending
+                if pending.market == book.market
+            )
+            for pending in candidates:
+                earliest_ms = (
+                    pending.evaluated_at_ms + self._config.execution.latency_ms
+                )
+                if received_ms < earliest_ms:
+                    continue
+                if not self._entry_trigger_ready(pending, now_ms=now_ms):
+                    continue
+                request, instrument, reference = self._risk_request(
+                    pending,
+                    book,
+                    now_ms=now_ms,
+                )
+                equity_before = self._execution.account.equity
+                submission = self._execution.submit_risk_request(
+                    request,
+                    instrument,
+                    book,
+                    reference_price=reference,
+                    created_at_ms=pending.evaluated_at_ms,
+                    attempt_timestamp_ms=now_ms,
+                )
+                outcomes.append(submission)
+                self._traces.append(
+                    BaselineOpeningTrace(
+                        evaluation=pending.evaluation,
+                        submission=submission,
+                        equity_before=equity_before,
+                    )
+                )
+                self._pending.remove(pending)
+            return tuple(outcomes)
+
         while self._pending:
             pending = self._pending[0]
             candidate_book = self._books.get(pending.market.canonical)
