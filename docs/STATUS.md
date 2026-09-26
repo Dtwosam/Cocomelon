@@ -1088,3 +1088,20 @@ The study remains `collecting` until all three volume gates are satisfied prospe
 Meeting the evidence gate means only `ready_for_review`. It grants no execution or promotion authority and cannot mutate the paper strategy.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective opening scanner-rank attribution — 2026-09-27
+
+The continuous paper runtime now records the market's latest **coarse universe rank observed before each new opening**.
+
+- rank evidence is prospective only; historical trades are not backfilled;
+- every record is bound to the paper opening plan, market, opening timestamp, rank observation timestamp, ordinal, score, rank-pool size, and scanner reason codes;
+- the runtime refuses to use a rank observation timestamped after the opening, so the attribution cannot leak future information;
+- the rank tracker refreshes from the same periodic native-market snapshot already fetched by the paper worker and does not add a new market-data dependency;
+- records are immutable, canonical, conflict-detecting, and travel in the ordinary durable paper-state artifact;
+- Issue #469 attributes closed paper PnL and mean R into rank buckets `1-5`, `6-10`, `11-20`, and `21+`, while separately reporting record age;
+- older closed trades without prospective rank records are labeled as such rather than treated as capture failures.
+
+This diagnostic does not change the deep-watch shortlist, scanner weights, strategy decisions, risk, sizing, stops, or execution. It exists to determine whether losses are concentrated in lower-ranked opportunities before any selection rule is changed.
+
+**LIVE TRADING: DISABLED.**
