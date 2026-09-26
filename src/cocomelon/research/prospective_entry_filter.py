@@ -102,6 +102,8 @@ def _fact_for_trade(
     trade: TradeJournalEntry,
     fact_store: EvaluationFactStore,
 ) -> DecisionEvaluationFact | None:
+    if trade.replay_run_id is None:
+        return None
     fact = fact_store.load_decision_by_strategy_id(
         trade.strategy_decision_id,
         trade.replay_run_id,
