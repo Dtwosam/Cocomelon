@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/research-dashboard.yml")
+PYPROJECT = Path("pyproject.toml")
 
 
 def _workflow() -> str:
@@ -138,3 +139,12 @@ def test_research_dashboard_renders_blind_learned_clean_review_queue() -> None:
     assert "qualifies_clean_validation" not in clean_section
     assert "api.hyperliquid" not in clean_section
     assert "live_execution" not in clean_section
+
+
+def test_research_dashboard_required_learning_cli_is_packaged() -> None:
+    pyproject = PYPROJECT.read_text(encoding="utf-8")
+
+    assert (
+        'cocomelon-learning-ops-status = "cocomelon.learning_dashboard_cli:main"'
+        in pyproject
+    )
