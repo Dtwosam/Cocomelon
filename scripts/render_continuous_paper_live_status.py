@@ -93,8 +93,77 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
             f"mean net=`{outcome.get('mean_net_return')}`, "
             f"positive=`{outcome.get('positive_net_count', 0)}`"
         )
+
+    def grouped_quality_table(
+        field: str,
+        title: str,
+        *,
+        preferred_order: tuple[str, ...] = (),
+    ) -> None:
+        raw_by_horizon = fifteen.get(field, {})
+        if not isinstance(raw_by_horizon, dict):
+            return
+        h15 = raw_by_horizon.get("900000", {})
+        h1h = raw_by_horizon.get("3600000", {})
+        if not isinstance(h15, dict):
+            h15 = {}
+        if not isinstance(h1h, dict):
+            h1h = {}
+        labels = set(str(label) for label in h15)
+        labels.update(str(label) for label in h1h)
+        if not labels:
+            return
+        ordered = [label for label in preferred_order if label in labels]
+        ordered.extend(sorted(labels.difference(ordered)))
+        lines.extend(
+            [
+                "",
+                f"#### {title}",
+                "",
+                (
+                    "| Bucket | 15m settled | 15m mean net | 15m positive | "
+                    "1h settled | 1h mean net | 1h positive |"
+                ),
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for label in ordered:
+            short = h15.get(label, {})
+            long = h1h.get(label, {})
+            if not isinstance(short, dict):
+                short = {}
+            if not isinstance(long, dict):
+                long = {}
+            lines.append(
+                (
+                    "| {label} | {n15} | {mean15} | {pos15} | "
+                    "{n1h} | {mean1h} | {pos1h} |"
+                ).format(
+                    label=label,
+                    n15=short.get("settled_count", 0),
+                    mean15=short.get("mean_net_return"),
+                    pos15=short.get("positive_net_count", 0),
+                    n1h=long.get("settled_count", 0),
+                    mean1h=long.get("mean_net_return"),
+                    pos1h=long.get("positive_net_count", 0),
+                )
+            )
+
+    grouped_quality_table(
+        "outcomes_by_lead_strategy_by_horizon_ms",
+        "15m lead-strategy forward outcomes",
+    )
+    grouped_quality_table(
+        "outcomes_by_score_band_by_horizon_ms",
+        "15m decision-score forward outcomes",
+        preferred_order=("<65", "65-<70", "70-<75", "75-<80", "80+"),
+    )
     lines.extend(
         [
+            (
+                "- skipped directional signals missing lead strategy: "
+                f"`{raw.get('skipped_missing_lead_strategy', 0)}`"
+            ),
             "",
             (
                 "_Forward-return diagnostic after frozen research costs; "
