@@ -79,7 +79,6 @@ class ContinuousPaperConfig:
             raise ValueError("warmup bar counts must be positive")
 
 
-@dataclass(frozen=True, slots=True)
 @dataclass(slots=True)
 class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
@@ -118,6 +117,7 @@ async def _cancel_supervisor_group(group: _SupervisorGroup) -> None:
     await asyncio.gather(*group.tasks, return_exceptions=True)
 
 
+@dataclass(frozen=True, slots=True)
 class ContinuousPaperSummary:
     started_at_ms: int
     ended_at_ms: int
