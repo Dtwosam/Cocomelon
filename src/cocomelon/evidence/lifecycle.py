@@ -8,6 +8,7 @@ from typing import Protocol
 from cocomelon.domain.evaluation import EquityFactKind
 from cocomelon.domain.execution import (
     ExecutionAttempt,
+    InstrumentExecutionSpec,
     PaperFill,
     PaperOrderPlan,
     PositionAction,
@@ -38,6 +39,7 @@ from cocomelon.evidence.openings import (
     BaselineOpeningTrace,
     _instrument,
 )
+from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.funding import FundingAccrual, reconcile_funding_boundary
 from cocomelon.execution.interface import PositionManagement
 from cocomelon.execution.paper import PaperExecutionAdapter
@@ -87,6 +89,31 @@ class ClosedLifecycleSink(Protocol):
         mark_observations: Sequence[ReplayRecord],
         known_gap_intervals: Sequence[tuple[int, int | None]],
     ) -> bool: ...
+
+
+class PositionResearchObserver(Protocol):
+    def observe_mark(
+        self,
+        positions: Sequence[PaperPosition],
+        mark_event: StreamEvent,
+        *,
+        now_ms: int,
+    ) -> None: ...
+
+    def observe_book(
+        self,
+        positions: Sequence[PaperPosition],
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        now_ms: int,
+    ) -> None: ...
+
+    def record_closed_trade(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +203,7 @@ class BaselineReplayPipeline:
         feature_snapshot_sink: FeatureSnapshotSink | None = None,
         opening_lifecycle_sink: OpenLifecycleSink | None = None,
         closed_lifecycle_sink: ClosedLifecycleSink | None = None,
+        position_research_observer: PositionResearchObserver | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -198,6 +226,7 @@ class BaselineReplayPipeline:
         self._feature_snapshot_sink = feature_snapshot_sink
         self._opening_lifecycle_sink = opening_lifecycle_sink
         self._closed_lifecycle_sink = closed_lifecycle_sink
+        self._position_research_observer = position_research_observer
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
             replay_config=replay_config,
@@ -542,6 +571,13 @@ class BaselineReplayPipeline:
         if lifecycle is not None and record.event_key is not None:
             lifecycle.marks[record.event_key] = record
 
+        if self._position_research_observer is not None:
+            self._position_research_observer.observe_mark(
+                self._execution.account.positions,
+                event,
+                now_ms=now_ms,
+            )
+
         if not self._execution.account.positions:
             return ()
         marks = self._all_current_marks(now_ms)
@@ -800,6 +836,10 @@ class BaselineReplayPipeline:
                 tuple(lifecycle.marks.values()),
                 tuple(self._gap_intervals),
             )
+        if self._position_research_observer is not None:
+            self._position_research_observer.record_closed_trade(
+                assembled
+            )
         self._completed[assembled.trade_id] = assembled
         del self._lifecycles[market.canonical]
 
@@ -824,6 +864,14 @@ class BaselineReplayPipeline:
             return ()
         instrument = _instrument(snapshot, self._config.execution)
         micro = calculate_microstructure_features(book, as_of_ms=now_ms)
+        if self._position_research_observer is not None:
+            self._position_research_observer.observe_book(
+                self._execution.account.positions,
+                instrument,
+                book,
+                reference_price=micro.mid_px,
+                now_ms=now_ms,
+            )
         mark_event = self._latest_mark.get(position.market.canonical)
         decision = self._latest_strategy(position.market)
         action_timestamp = now_ms if mark_event is None else _receive_ms(mark_event)
