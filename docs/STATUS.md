@@ -932,3 +932,27 @@ Continuous-paper workers with decision-time feature capture but zero post-D-032 
 
 **LIVE TRADING: DISABLED.**
 
+### 5m versus 15m cadence shadow diagnostic — 2026-09-26
+
+The continuous paper worker now carries a non-economic cadence comparator.
+
+Purpose: measure whether the frozen V1 strategy surfaces useful additional opportunities when evaluated every 5 minutes instead of only on the production 15-minute decision clock, without changing execution authority.
+
+The comparator:
+
+- consumes the same authenticated ReplayRecords as the active continuous paper trader;
+- runs independent 5-minute and 15-minute decision clocks through the unchanged feature/eligibility/strategy stack;
+- never submits an order, never calls the risk engine for execution, never mutates positions, and cannot promote itself;
+- records LONG/SHORT/NO_TRADE counts separately for each cadence;
+- isolates 5-minute directional signals that occur off the normal 15-minute boundary;
+- settles directional shadow observations only when an exact future 5-minute candle close exists at fixed 15-minute and 1-hour horizons;
+- subtracts frozen research costs: 0.09% round-trip fee, 0.05% round-trip slippage, plus 0.01% funding reserve per hour;
+- censors pending outcomes if a market leaves the deep shortlist rather than approximating across unavailable evidence;
+- writes `cadence-shadow-summary.json` into each continuous-paper worker artifact;
+- fails open with respect to trading: a comparator error disables the diagnostic but does not interrupt the ordinary paper trader.
+
+Issue #469 may display this diagnostic live. Its 5-minute signals and forward outcomes are **not paper trades or PnL**. Current paper positions and closed trades remain the ordinary execution/journal fields.
+
+Production execution remains on the existing 15-minute V1 strategy cadence. No cadence change is authorized by this diagnostic; any later execution-cadence change requires enough cost-adjusted evidence to justify a new documented decision.
+
+**LIVE TRADING: DISABLED.**
