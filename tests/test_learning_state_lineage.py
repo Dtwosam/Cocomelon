@@ -160,7 +160,7 @@ def test_learning_state_lineage_rejects_changed_identity_for_same_upstream(
     assert len(list((tmp_path / "lineage" / "entries").glob("*.json"))) == 1
 
 
-def test_learning_state_lineage_rejects_regressed_upstream_order(tmp_path) -> None:
+def test_learning_state_lineage_accepts_authenticated_late_backfill(tmp_path) -> None:
     first = _append(
         tmp_path,
         run_id=101,
@@ -170,22 +170,20 @@ def test_learning_state_lineage_rejects_regressed_upstream_order(tmp_path) -> No
         before_features=0,
         before_feature_digest="2" * 64,
     )
+    second = _append(
+        tmp_path,
+        run_id=100,
+        attempt=1,
+        before_records=1,
+        before_learning_digest=first.after_learning_state_digest,
+        before_features=1,
+        before_feature_digest=first.after_feature_state_digest,
+        after_learning_digest="e" * 64,
+        after_feature_digest="f" * 64,
+    )
 
-    with pytest.raises(
-        LearningStateLineageError,
-        match="LINEAGE_UPSTREAM_ORDER_INVALID",
-    ):
-        _append(
-            tmp_path,
-            run_id=100,
-            attempt=1,
-            before_records=1,
-            before_learning_digest=first.after_learning_state_digest,
-            before_features=1,
-            before_feature_digest=first.after_feature_state_digest,
-            after_learning_digest="e" * 64,
-            after_feature_digest="f" * 64,
-        )
+    assert second.sequence == 2
+    assert second.previous_entry_id == first.entry_id
 
 
 def test_learning_state_lineage_rejects_tampered_entry(tmp_path) -> None:
