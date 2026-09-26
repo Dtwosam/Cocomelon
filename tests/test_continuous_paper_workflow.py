@@ -33,3 +33,16 @@ def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     assert "private_key" not in source
     assert "withdraw" not in source
     assert "transfer" not in source
+
+
+
+def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "--stop-file /tmp/continuous-paper-upgrade-requested" in source
+    assert 'git fetch --quiet --depth=1 origin main' in source
+    assert 'git diff --name-only "$GITHUB_SHA" FETCH_HEAD --' in source
+    assert "src/cocomelon/continuous_paper.py" in source
+    assert "src/cocomelon/risk" in source
+    assert "src/cocomelon/strategies" in source
+    assert "touch /tmp/continuous-paper-upgrade-requested" in source
+    assert "new continuous-paper runtime code detected on main" in source
