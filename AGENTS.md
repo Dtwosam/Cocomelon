@@ -185,6 +185,10 @@ When the user says "current paper trade" without naming a lane, default to repor
 
 while clearly labeling historical/cumulative evidence separately.
 
+For the active `Continuous Mainnet Paper Trader`, the authoritative near-real-time operational surface is the latest structured job-log line beginning with `COCOMELON_PAPER_HEARTBEAT `. Fetch the newest active run, inspect its paper job log, and parse the most recent heartbeat before answering about open positions, current paper equity, entry/stop/mark, or whether a trade is presently open. Heartbeats are paper-only operational telemetry; completed durable artifacts/journal state remain the historical audit authority.
+
+If an active worker has not emitted its first heartbeat yet, report that it is still starting rather than inferring either "no trade" or "trade open" from old dashboards.
+
 ## 9. Current official references
 
 Use official Hyperliquid documentation as the primary external reference:
