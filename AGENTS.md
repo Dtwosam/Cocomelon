@@ -171,16 +171,16 @@ Keep these paper-evidence families separate:
 
 - retired/touched V4 corpus evidence;
 - touched scheduled-research replay lanes (`scheduled-research-root`, r1, r2, etc.);
-- the active prospective HYPE clean campaign (currently V3 under D-029);
+- retired Prospective HYPE experiment evidence (V1/V2/V3); this is historical only and must never be reported as the current paper trader;
 - learned-candidate clean/shadow evidence.
 
 A workflow being `in_progress` proves that a campaign or transport step is active; it does **not** by itself prove that an economic trade exists. Conversely, a stale research/dashboard checkpoint does **not** prove that no newer paper activity exists in another evidence family.
 
-For the active prospective HYPE campaign, transport/heartbeat/queue receipts are explicitly non-economic. Do not call them trades. Confirm a new HYPE prospective trade only from authenticated prospective observation/evidence state.
+All Prospective HYPE experiment workflows were retired on 2026-09-26 by explicit user direction. Their historical transport/heartbeat/queue/observation artifacts remain auditable but are non-current and must not be used to answer what the paper trader is doing now.
 
 When the user says "current paper trade" without naming a lane, default to reporting both:
 
-- the newest active paper/prospective campaign state; and
+- the newest active ordinary paper/shadow trading runtime state; and
 - the newest authenticated economic trade state,
 
 while clearly labeling historical/cumulative evidence separately.
