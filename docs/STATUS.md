@@ -890,3 +890,25 @@ This change creates evidence, not promotion authority. Live trading remains disa
 
 **LIVE TRADING: DISABLED.**
 
+### Continuous paper execution-to-learning attribution — 2026-09-26
+
+PR #490 adds the missing provenance boundary between the ordinary continuous paper trader and the quarantined learning system.
+
+The design records attribution at entry time:
+
+- every new opening stores immutable opening-plan, feature-snapshot, market, opened-at, worker run/attempt, and worker-head-SHA lineage;
+- worker identity is supplied directly from GitHub Actions (`GITHUB_RUN_ID`, `GITHUB_RUN_ATTEMPT`, `GITHUB_SHA`);
+- the lineage store is append-only, canonical, digest-addressed, and part of the durable continuous-paper artifact;
+- restored legacy positions remain compatible but are not retroactively attributed;
+- completed trades without verified opening lineage are skipped from this learning path rather than guessed.
+
+A separate `Continuous Paper Learning Evidence Sync` authenticates each successful worker and exact artifact, verifies the worker feature-store and opening-lineage counts/digests against its summary, then copies only attributed closed trades plus their exact decision-time features into a durable research-only learning state.
+
+The evidence uses the existing `paper_execution` target family, preserving realized gross PnL, fees, funding, slippage, net PnL, and net-R. Each record remains bound to the opening worker SHA and run/attempt.
+
+The continuous learning state is intentionally separate from the scheduled-research cumulative learning state for now. This avoids silently interleaving independent producer lineages before a dedicated merger/snapshot protocol is defined.
+
+This changes evidence provenance only. It does not retune the active strategy, loosen risk, promote a candidate, or authorize live orders.
+
+**LIVE TRADING: DISABLED.**
+
