@@ -342,6 +342,25 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
             ),
         ]
     )
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    lines.extend(
+        [
+            (
+                "- evidence gate (economic / armed / triggered / IOC full): "
+                f"`{readiness.get('min_economically_evaluated_trades_per_rule', 0)} / "
+                f"{readiness.get('min_activated_trades_per_rule', 0)} / "
+                f"{readiness.get('min_triggered_trades_per_rule', 0)} / "
+                f"{readiness.get('min_simulated_full_closes_per_rule', 0)}`"
+            ),
+            (
+                "- all rules ready for review: "
+                f"`{str(bool(readiness.get('all_rules_ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
     rules = raw.get("rules", [])
     if not isinstance(rules, list):
         rules = []
@@ -350,13 +369,13 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
             [
                 "",
                 (
-                    "| Rule | Closed eligible | Econ N | Armed | Triggered | "
-                    "IOC full | Triggered incomplete | Actual + | Est + | "
+                    "| Rule | Status | Closed eligible | Econ N | Armed | Triggered | "
+                    "IOC full | Triggered incomplete | Need E/A/T/F | Actual + | Est + | "
                     "Actual PnL | IOC-est PnL | Δ PnL | Actual mean R | "
                     "IOC-est mean R | Δ mean R |"
                 ),
                 (
-                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | "
                     "---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
                 ),
             ]
@@ -366,18 +385,25 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
                 raise ValueError("execution-shadow rule must be an object")
             lines.append(
                 (
-                    "| {rule_id} | {closed} | {evaluated} | {armed} | "
-                    "{triggered} | {full} | {incomplete} | {actual_pos} | "
+                    "| {rule_id} | {status} | {closed} | {evaluated} | {armed} | "
+                    "{triggered} | {full} | {incomplete} | {missing} | {actual_pos} | "
                     "{candidate_pos} | {actual_pnl} | {candidate_pnl} | "
                     "{delta_pnl} | {actual_r} | {candidate_r} | {delta_r} |"
                 ).format(
                     rule_id=rule.get("rule_id", "unknown"),
+                    status=rule.get("readiness_status", "collecting"),
                     closed=rule.get("closed_eligible_trades", 0),
                     evaluated=rule.get("economically_evaluated_trades", 0),
                     armed=rule.get("activated_trades", 0),
                     triggered=rule.get("triggered_trades", 0),
                     full=rule.get("simulated_full_closes", 0),
                     incomplete=rule.get("triggered_incomplete", 0),
+                    missing=(
+                        f"{rule.get('missing_evaluated_trades', 0)}/"
+                        f"{rule.get('missing_activated_trades', 0)}/"
+                        f"{rule.get('missing_triggered_trades', 0)}/"
+                        f"{rule.get('missing_simulated_full_closes', 0)}"
+                    ),
                     actual_pos=rule.get("actual_positive_trades", 0),
                     candidate_pos=rule.get(
                         "candidate_positive_trades_estimate",

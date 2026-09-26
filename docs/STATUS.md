@@ -1044,3 +1044,21 @@ A stricter prospective exit-research layer now shadows the two frozen profit-loc
 The authoritative paper strategy, current stops, 15-minute decision cadence, risk engine, fills, accounting, and live-order lock remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Execution-shadow evidence readiness boundary — 2026-09-26
+
+The visible-book profit-lock shadow now has a precommitted evidence-volume gate frozen before its first eligible trade outcome.
+
+Each rule remains `collecting` until all four minimums are met prospectively:
+
+- 30 economically evaluated eligible closed trades;
+- 15 rule activations;
+- 10 rule triggers;
+- 10 fully simulated visible-book IOC closes.
+
+Triggered candidates that cannot complete their simulated close before the actual paper trade ends remain explicit `triggered_incomplete` evidence and do not count toward the economically evaluated or full-IOC minimums.
+
+Meeting these thresholds changes status only to `ready_for_review`. It does not grant promotion authority or execution authority, does not modify paper stops, and does not weaken the existing mark-path readiness boundary.
+
+**LIVE TRADING: DISABLED.**
