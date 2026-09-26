@@ -604,6 +604,24 @@ def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
         "funding_cash_pnl": str(trade.funding_cash_pnl),
         "net_pnl": str(trade.net_pnl),
         "net_r": str(trade.net_r),
+        "mfe_r": (
+            None
+            if trade.mfe is None or trade.mfe.r_multiple is None
+            else str(trade.mfe.r_multiple)
+        ),
+        "mae_r": (
+            None
+            if trade.mae is None or trade.mae.r_multiple is None
+            else str(trade.mae.r_multiple)
+        ),
+        "excursion_complete": bool(
+            trade.mfe is not None
+            and trade.mae is not None
+            and trade.mfe.complete
+            and trade.mae.complete
+            and trade.mfe.r_multiple is not None
+            and trade.mae.r_multiple is not None
+        ),
         "exit_reason": trade.exit_reason,
     }
 
@@ -617,6 +635,29 @@ def _closed_trade_performance(
         count = len(items)
         net_pnl = sum((trade.net_pnl for trade in items), Decimal("0"))
         net_r = sum((trade.net_r for trade in items), Decimal("0"))
+        complete_excursions = tuple(
+            trade
+            for trade in items
+            if trade.mfe is not None
+            and trade.mae is not None
+            and trade.mfe.complete
+            and trade.mae.complete
+            and trade.mfe.r_multiple is not None
+            and trade.mae.r_multiple is not None
+        )
+        mfe_values = tuple(
+            trade.mfe.r_multiple
+            for trade in complete_excursions
+            if trade.mfe is not None and trade.mfe.r_multiple is not None
+        )
+        mae_values = tuple(
+            trade.mae.r_multiple
+            for trade in complete_excursions
+            if trade.mae is not None and trade.mae.r_multiple is not None
+        )
+        mfe_sum = sum(mfe_values, Decimal("0"))
+        mae_sum = sum(mae_values, Decimal("0"))
+        excursion_count = len(complete_excursions)
         return {
             "trades": count,
             "wins": sum(1 for trade in items if trade.net_pnl > 0),
@@ -629,6 +670,52 @@ def _closed_trade_performance(
                 None
                 if count == 0
                 else sum(trade.holding_duration_ms for trade in items) // count
+            ),
+            "complete_excursion_trades": excursion_count,
+            "incomplete_or_missing_excursion_trades": count - excursion_count,
+            "mean_mfe_r": (
+                None if excursion_count == 0 else str(mfe_sum / excursion_count)
+            ),
+            "mean_mae_r": (
+                None if excursion_count == 0 else str(mae_sum / excursion_count)
+            ),
+            "mfe_ge_0_5r": sum(
+                1
+                for trade in complete_excursions
+                if trade.mfe is not None
+                and trade.mfe.r_multiple is not None
+                and trade.mfe.r_multiple >= Decimal("0.5")
+            ),
+            "mfe_ge_1r": sum(
+                1
+                for trade in complete_excursions
+                if trade.mfe is not None
+                and trade.mfe.r_multiple is not None
+                and trade.mfe.r_multiple >= Decimal("1")
+            ),
+            "losses_with_mfe_lt_0_25r": sum(
+                1
+                for trade in complete_excursions
+                if trade.net_pnl < 0
+                and trade.mfe is not None
+                and trade.mfe.r_multiple is not None
+                and trade.mfe.r_multiple < Decimal("0.25")
+            ),
+            "losses_after_mfe_ge_0_5r": sum(
+                1
+                for trade in complete_excursions
+                if trade.net_pnl < 0
+                and trade.mfe is not None
+                and trade.mfe.r_multiple is not None
+                and trade.mfe.r_multiple >= Decimal("0.5")
+            ),
+            "losses_after_mfe_ge_1r": sum(
+                1
+                for trade in complete_excursions
+                if trade.net_pnl < 0
+                and trade.mfe is not None
+                and trade.mfe.r_multiple is not None
+                and trade.mfe.r_multiple >= Decimal("1")
             ),
         }
 

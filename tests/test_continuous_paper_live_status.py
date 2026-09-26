@@ -86,6 +86,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "gross_loss_abs": "12",
             "profit_factor": "0.4166666666666666666666666667",
             "unattributed_feature_trades": 0,
+            "complete_excursion_trades": 3,
+            "incomplete_or_missing_excursion_trades": 0,
+            "mean_mfe_r": "0.6333333333333333333333333333",
+            "mean_mae_r": "0.7333333333333333333333333333",
+            "mfe_ge_0_5r": 2,
+            "mfe_ge_1r": 1,
+            "losses_with_mfe_lt_0_25r": 1,
+            "losses_after_mfe_ge_0_5r": 1,
+            "losses_after_mfe_ge_1r": 0,
             "by_side": {
                 "long": {
                     "trades": 2,
@@ -231,6 +240,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
     assert "### Closed trade performance" in output
+    assert "#### Excursion diagnostics" in output
+    assert "complete MFE/MAE evidence" in output
+    assert "0.6333333333333333333333333333" in output
+    assert "losses that never reached +0.25R MFE" in output
+    assert "losses after reaching +0.5R / +1R MFE" in output
     assert "| 3 | 1 | 2 | 0 | -7 | 5 | 12 |" in output
     assert "#### Side attribution" in output
     assert "| long | 2 | 1 | 1 | 0 | 3 |" in output

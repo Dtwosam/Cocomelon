@@ -283,6 +283,37 @@ def render_live_status(
                     "- feature-attribution misses: "
                     f"`{performance.get('unattributed_feature_trades', 0)}`"
                 ),
+                "",
+                "#### Excursion diagnostics",
+                "",
+                (
+                    "- complete MFE/MAE evidence: "
+                    f"`{performance.get('complete_excursion_trades', 0)} / "
+                    f"{performance.get('trades', 0)}` trades"
+                ),
+                (
+                    "- mean favorable / adverse excursion: "
+                    f"`{performance.get('mean_mfe_r')}`R / "
+                    f"`{performance.get('mean_mae_r')}`R"
+                ),
+                (
+                    "- reached +0.5R / +1R MFE: "
+                    f"`{performance.get('mfe_ge_0_5r', 0)} / "
+                    f"{performance.get('mfe_ge_1r', 0)}`"
+                ),
+                (
+                    "- losses that never reached +0.25R MFE: "
+                    f"`{performance.get('losses_with_mfe_lt_0_25r', 0)}`"
+                ),
+                (
+                    "- losses after reaching +0.5R / +1R MFE: "
+                    f"`{performance.get('losses_after_mfe_ge_0_5r', 0)} / "
+                    f"{performance.get('losses_after_mfe_ge_1r', 0)}`"
+                ),
+                (
+                    "- incomplete/missing excursion evidence: "
+                    f"`{performance.get('incomplete_or_missing_excursion_trades', 0)}`"
+                ),
             ]
         )
         dimension_labels = (
