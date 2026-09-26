@@ -344,14 +344,6 @@ def verify_learning_state_lineage(
             if (
                 entry.upstream_run_id,
                 entry.upstream_run_attempt,
-            ) < (
-                previous.upstream_run_id,
-                previous.upstream_run_attempt,
-            ):
-                raise LearningStateLineageError("LINEAGE_UPSTREAM_ORDER_INVALID")
-            if (
-                entry.upstream_run_id,
-                entry.upstream_run_attempt,
             ) == (
                 previous.upstream_run_id,
                 previous.upstream_run_attempt,
