@@ -948,11 +948,13 @@ The comparator:
 - settles directional shadow observations only when an exact future 5-minute candle close exists at fixed 15-minute and 1-hour horizons;
 - subtracts frozen research costs: 0.09% round-trip fee, 0.05% round-trip slippage, plus 0.01% funding reserve per hour;
 - censors pending outcomes if a market leaves the deep shortlist rather than approximating across unavailable evidence;
-- writes `cadence-shadow-summary.json` into each continuous-paper worker artifact;
-- fails open with respect to trading: a comparator error disables the diagnostic but does not interrupt the ordinary paper trader.
+- writes `cadence-shadow-summary.json` as the human/reporting snapshot and `cadence-shadow-state.json` as the restorable evidence checkpoint;
+- restores deduplicated decision identities, still-pending horizons, settled outcomes, grouped counts, and diagnostic counters across continuous-paper worker handoffs;
+- rejects incompatible horizon/cost/state schemas rather than silently mixing research protocols;
+- fails open with respect to trading: a comparator or restore error starts a fresh diagnostic stream or disables the diagnostic without interrupting the ordinary paper trader.
 
-Issue #469 may display this diagnostic live. Its 5-minute signals and forward outcomes are **not paper trades or PnL**. Current paper positions and closed trades remain the ordinary execution/journal fields.
+Issue #469 may display this diagnostic live, including whether durable shadow state was restored for the current worker. Its 5-minute signals and forward outcomes are **not paper trades or PnL**. Current paper positions and closed trades remain the ordinary execution/journal fields.
 
-Production execution remains on the existing 15-minute V1 strategy cadence. No cadence change is authorized by this diagnostic; any later execution-cadence change requires enough cost-adjusted evidence to justify a new documented decision.
+Production execution remains on the existing 15-minute V1 strategy cadence. Durable shadow accumulation changes only research observability; no cadence or execution change is authorized by this diagnostic. Any later execution-cadence or entry-quality change requires enough cost-adjusted evidence to justify a separately validated decision.
 
 **LIVE TRADING: DISABLED.**
