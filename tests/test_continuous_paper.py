@@ -89,7 +89,7 @@ def test_record_pump_counts_each_closed_trade_once() -> None:
     trade = SimpleNamespace(trade_id="trade-1")
 
     class Pipeline:
-        def on_record(self, _record: ReplayRecord, _now_ms: int) -> tuple[()]:
+        def on_record(self, _record: ReplayRecord, _now_ms: int) -> tuple[object, ...]:
             return ()
 
         def finalize(self, _end_ms: int) -> tuple[SimpleNamespace, ...]:
@@ -99,7 +99,7 @@ def test_record_pump_counts_each_closed_trade_once() -> None:
         def __init__(self) -> None:
             self.recorded: list[str] = []
 
-        def iter_trades(self) -> tuple[()]:
+        def iter_trades(self) -> tuple[object, ...]:
             return ()
 
         def record_observation(self, _observation: object) -> None:
