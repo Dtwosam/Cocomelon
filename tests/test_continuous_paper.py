@@ -100,6 +100,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"exit_reason": trade.exit_reason' in source
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
     assert "pump.cadence_shadow.state_payload()" in source
+    assert 'ContinuousPaperTradePathStore(root / "trade-paths")' in source
+    assert "closed_lifecycle_sink=trade_path_sink" in source
+    assert '"trade_path_count": self.trade_path_count' in source
+    assert '"trade_path_state_digest": self.trade_path_state_digest' in source
+    assert '"trade_path_capture_error": self.trade_path_capture_error' in source
 
 
 def test_position_protection_metrics_handle_long_and_short_stops() -> None:
