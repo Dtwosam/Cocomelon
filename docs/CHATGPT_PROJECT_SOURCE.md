@@ -4,7 +4,7 @@
 
 **Snapshot updated:** 2026-09-26  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `7a3c943ed9dbcf4464e64b22e6c1d16427734c8b` — snapshot only; always refresh live `main` before acting  
+**Current verified `main` at snapshot:** `923833ba0b652abfe3e220718414cad685e88b7d` — snapshot only; always refresh live `main` before acting  
 **CI rule:** exact-head PR CI and post-merge `main` CI must be checked live; do not rely on an old pinned run ID  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
@@ -62,6 +62,8 @@ GitHub scheduling/dispatch is infrastructure continuity only. It is not the trad
 Read GitHub Issue #469, `Continuous Paper Trader — Live Status`, first. The active worker rewrites that issue from structured `COCOMELON_PAPER_HEARTBEAT` payloads during the session, so it is the near-real-time paper-only operational surface even when in-progress job logs are not retrievable. It reports selected markets, processed records, paper cash/equity, open positions, entry price, stop, latest mark, unrealized gross PnL, risk amount, fees/funding, execution health, the latest journal observation, the exact worker head SHA, and predecessor run lineage.
 
 The raw job-log heartbeat is a fallback when available. Do not substitute Issue #82, Issue #124, retired Prospective HYPE artifacts, or an old completed continuous-paper artifact for a newer Issue #469 heartbeat. If the worker is active but Issue #469 still says bootstrap/starting, say it is still starting. Completed state artifacts and journal databases remain the durable audit source after a worker finishes.
+
+**Cadence shadow interpretation:** Issue #469 may also show a `5m cadence shadow diagnostic`. That section is a research-only comparator over the same live evidence. Its LONG/SHORT counts and 15m/1h forward returns are hypothetical observations with `execution_authority=false`; they are not orders, fills, open positions, closed paper trades, or realized paper PnL. Production execution remains on the 15-minute V1 strategy clock unless a later evidence-backed decision explicitly changes it.
 
 **Legacy heartbeat detection:** a #469 body that lacks both `Worker head SHA` and the decision/risk diagnostics was written by the initial #468 worker. Its `closed_trades` field is not reliable because that worker's telemetry counter re-added the cumulative completed-trade set for every processed event. The underlying journal insert was idempotent, so this is a display/counter defect rather than evidence of hundreds of thousands of real trades. The corrected unique-trade counter landed in #470 (`641b2858f10f5aa041fd14548f4b087f7a978333`). For a legacy worker, verify the Actions run SHA and do not quote `closed_trades` as an economic fact.
 
