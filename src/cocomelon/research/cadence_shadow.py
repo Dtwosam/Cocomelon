@@ -241,6 +241,11 @@ def _sample_payload(sample: ShadowCadenceDecision) -> dict[str, object]:
 def _sample_from_payload(raw: object) -> ShadowCadenceDecision:
     if not isinstance(raw, dict):
         raise ValueError("cadence shadow sample state must be an object")
+    off_primary_boundary = raw.get("off_primary_boundary")
+    if not isinstance(off_primary_boundary, bool):
+        raise ValueError(
+            "cadence shadow off_primary_boundary must be boolean"
+        )
     return ShadowCadenceDecision(
         cadence_ms=int(raw["cadence_ms"]),
         boundary_ms=int(raw["boundary_ms"]),
@@ -255,15 +260,7 @@ def _sample_from_payload(raw: object) -> ShadowCadenceDecision:
         horizon_ms=int(raw["horizon_ms"]),
         target_end_ms=int(raw["target_end_ms"]),
         cost_fraction=Decimal(str(raw["cost_fraction"])),
-        off_primary_boundary=(
-            raw["off_primary_boundary"]
-            if isinstance(raw["off_primary_boundary"], bool)
-            else (_ for _ in ()).throw(
-                ValueError(
-                    "cadence shadow off_primary_boundary must be boolean"
-                )
-            )
-        ),
+        off_primary_boundary=off_primary_boundary,
     )
 
 
