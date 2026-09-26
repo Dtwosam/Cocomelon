@@ -17,6 +17,94 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+def _cadence_shadow_lines(raw: object) -> list[str]:
+    if not isinstance(raw, dict):
+        return [
+            "### 5m cadence shadow diagnostic",
+            "",
+            "_No cadence-shadow telemetry in this heartbeat._",
+        ]
+
+    enabled = bool(raw.get("enabled"))
+    error = raw.get("error")
+    lines = [
+        "### 5m cadence shadow diagnostic",
+        "",
+        (
+            "- authority: `RESEARCH ONLY / NO EXECUTION` · "
+            f"enabled: `{str(enabled).lower()}`"
+        ),
+    ]
+    if error:
+        lines.append(f"- diagnostic error: `{error}`")
+        return lines
+
+    cadences = raw.get("cadences", {})
+    if not isinstance(cadences, dict):
+        cadences = {}
+    five = cadences.get("300000", {})
+    fifteen = cadences.get("900000", {})
+    if not isinstance(five, dict):
+        five = {}
+    if not isinstance(fifteen, dict):
+        fifteen = {}
+
+    def counts(value: dict[str, object]) -> str:
+        decisions = value.get("decision_counts", {})
+        if not isinstance(decisions, dict):
+            decisions = {}
+        return (
+            f"{decisions.get('long', 0)} / "
+            f"{decisions.get('short', 0)} / "
+            f"{decisions.get('no_trade', 0)}"
+        )
+
+    lines.extend(
+        [
+            f"- 5m LONG / SHORT / NO_TRADE: `{counts(five)}`",
+            f"- 15m LONG / SHORT / NO_TRADE: `{counts(fifteen)}`",
+            (
+                "- pending exact forward outcomes: "
+                f"`{raw.get('pending_outcome_count', 0)}`"
+            ),
+            (
+                "- censored after shortlist unsubscribe: "
+                f"`{raw.get('censored_due_to_unsubscribe', 0)}`"
+            ),
+        ]
+    )
+
+    off_cycle = five.get(
+        "off_primary_boundary_outcomes_by_horizon_ms",
+        {},
+    )
+    if not isinstance(off_cycle, dict):
+        off_cycle = {}
+    for horizon_ms, label in (
+        ("900000", "15m"),
+        ("3600000", "1h"),
+    ):
+        outcome = off_cycle.get(horizon_ms, {})
+        if not isinstance(outcome, dict):
+            outcome = {}
+        lines.append(
+            f"- off-cycle 5m signals → {label}: "
+            f"settled=`{outcome.get('settled_count', 0)}`, "
+            f"mean net=`{outcome.get('mean_net_return')}`, "
+            f"positive=`{outcome.get('positive_net_count', 0)}`"
+        )
+    lines.extend(
+        [
+            "",
+            (
+                "_Forward-return diagnostic after frozen research costs; "
+                "not paper fills and not promotion evidence._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -282,6 +370,12 @@ def render_live_status(
                 "- risk reasons: "
                 f"`{_reason_summary(risk.get('reason_counts', {}))}`"
             ),
+            "",
+        ]
+    )
+    lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
+    lines.extend(
+        [
             "",
             "### Runtime",
             "",
