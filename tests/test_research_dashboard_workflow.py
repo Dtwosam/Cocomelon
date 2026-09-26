@@ -18,6 +18,7 @@ def test_research_dashboard_refreshes_from_trusted_producers_and_on_main_push() 
     assert '"Scheduled Research Mainnet Replay Campaign"' in workflow
     assert '"Research V4 Acquisition Authority Sync"' in workflow
     assert '"Research Learning Evidence Sync"' in workflow
+    assert '"Continuous Paper Learning Evidence Sync"' in workflow
     assert '"Research Autonomous Learning Cycle"' in workflow
     assert '"Research Learning Clean State Bootstrap"' in workflow
     assert '"Research Learning Clean State Campaign Follower"' in workflow
