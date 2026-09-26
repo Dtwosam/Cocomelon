@@ -217,6 +217,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "path_record_count": 3,
             "evaluated_trade_count": 2,
             "skipped_incomplete_paths": 1,
+            "readiness": {
+                "all_rules_ready_for_review": False,
+                "min_complete_paths": 30,
+                "min_activated_trades_per_rule": 15,
+                "min_triggered_trades_per_rule": 10,
+            },
             "rules": [
                 {
                     "rule_id": "lock_0_5r_after_1r",
@@ -233,6 +239,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "actual_mean_net_r": "-0.6",
                     "candidate_mean_net_r_estimate": "0.2",
                     "delta_mean_net_r_estimate": "0.8",
+                    "readiness_status": "collecting",
+                    "missing_complete_paths": 28,
+                    "missing_activated_trades": 13,
+                    "missing_triggered_trades": 9,
                 }
             ],
         },
@@ -401,7 +411,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "complete paths evaluated" in output
     assert "`2 / 3`" in output
     assert "lock_0_5r_after_1r" in output
-    assert "| lock_0_5r_after_1r | 2 | 2 | 1 | 0 | 1 | -12 | 4 | 16 | -0.6 | 0.2 | 0.8 |" in output
+    assert "evidence gate (paths / armed / triggered)" in output
+    assert "`30 / 15 / 10`" in output
+    assert "all rules ready for review: `false`" in output
+    assert "promotion authority: `false`" in output
+    assert "| lock_0_5r_after_1r | collecting | 2 | 2 | 1 | 28/13/9 | 0 | 1 | -12 | 4 | 16 | -0.6 | 0.2 | 0.8 |" in output
     assert "not an executable fill claim" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
     assert "5m cadence shadow diagnostic" in output
