@@ -24,10 +24,10 @@ def render_universe_diagnostics(payload: Mapping[str, Any]) -> str:
     observed = datetime.fromtimestamp(observed_at_ms / 1000, tz=UTC)
     combined = _rows(payload.get("combined_top_n"), "combined_top_n")
     hip3 = _rows(payload.get("top_hip3"), "top_hip3")
-    displaced_raw = payload.get("displaced_native_markets", [])
-    if not isinstance(displaced_raw, list):
-        raise ValueError("displaced_native_markets must be a list")
-    displaced = [str(item) for item in displaced_raw]
+    changed_raw = payload.get("native_only_top_n_absent_from_combined", [])
+    if not isinstance(changed_raw, list):
+        raise ValueError("native_only_top_n_absent_from_combined must be a list")
+    changed = [str(item) for item in changed_raw]
 
     lines = [
         "## Universe opportunity coverage",
@@ -108,11 +108,26 @@ def render_universe_diagnostics(payload: Mapping[str, Any]) -> str:
     else:
         lines.append("_No rankable HIP-3 markets in this observation._")
 
-    lines.extend(["", "### Native markets displaced in a combined top-N", ""])
-    if displaced:
-        lines.append(", ".join(f"`{market}`" for market in displaced))
+    lines.extend(
+        [
+            "",
+            "### Native-only top-N members absent after combined normalization",
+            "",
+        ]
+    )
+    if changed:
+        lines.append(", ".join(f"`{market}`" for market in changed))
     else:
         lines.append("_None in this observation._")
+    lines.extend(
+        [
+            "",
+            (
+                "_This set-change is not a direct HIP-3 displacement count: adding "
+                "markets changes percentile normalization for every ranked market._"
+            ),
+        ]
+    )
 
     lines.extend(
         [
