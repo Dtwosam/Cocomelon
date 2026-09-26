@@ -212,6 +212,7 @@ jobs:
                   > /tmp/continuous-paper-live.md; then
                   if gh issue edit "$LIVE_STATUS_ISSUE" \
                     --repo "$GITHUB_REPOSITORY" \
+                    --title "Continuous Paper Trader — Live Status" \
                     --body-file /tmp/continuous-paper-live.md >/dev/null; then
                     last_status_publish="$now"
                   else

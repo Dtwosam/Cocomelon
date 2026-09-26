@@ -189,6 +189,8 @@ For the active `Continuous Mainnet Paper Trader`, read GitHub Issue #469 (`Conti
 
 If an active worker has not emitted its first heartbeat yet, report that it is still starting rather than inferring either "no trade" or "trade open" from old dashboards.
 
+Bootstrap-worker caveat: continuous-paper run `36236109117` started before PR #470 fixed the heartbeat closed-trade counter. After that run's first completed trade, its `closed_trades` heartbeat field can inflate on every later market event and is **not authoritative**. For that run, do not quote the counter as a trade count; use open-position changes, realized PnL, journal/trade artifacts when available, and label the counter invalid. Successor workers on PR #470+ contain the deduplication fix.
+
 ## 9. Current official references
 
 Use official Hyperliquid documentation as the primary external reference:
