@@ -76,12 +76,17 @@ class FeatureSnapshotSink(Protocol):
     def record(self, snapshot: FeatureSnapshot) -> bool: ...
 
 
+class OpenLifecycleSink(Protocol):
+    def record(self, checkpoint: OpenLifecycleCheckpoint) -> bool: ...
+
+
 @dataclass(frozen=True, slots=True)
 class OpenLifecycleCheckpoint:
     market: MarketId
     opening_plan_id: str
     feature_snapshot_id: str
     equity_before: Decimal
+    opened_at_ms: int | None = None
     exit_plan_ids: tuple[str, ...] = ()
     position_actions: tuple[PositionAction, ...] = ()
     mark_observations: tuple[ReplayRecord, ...] = ()
@@ -91,6 +96,8 @@ class OpenLifecycleCheckpoint:
             raise ValueError("open lifecycle checkpoint identity must not be empty")
         if not self.equity_before.is_finite() or self.equity_before <= ZERO:
             raise ValueError("open lifecycle checkpoint equity must be positive and finite")
+        if self.opened_at_ms is not None and self.opened_at_ms < 0:
+            raise ValueError("open lifecycle checkpoint opened_at_ms must be non-negative")
         if any(not value.strip() for value in self.exit_plan_ids):
             raise ValueError("exit_plan_ids must not contain empty values")
         if any(action.market != self.market for action in self.position_actions):
@@ -120,6 +127,7 @@ class _OpenTradeLifecycle:
     opening_plan: PaperOrderPlan
     opening_attempt: ExecutionAttempt
     equity_before: Decimal
+    opened_at_ms: int
     exit_plans: dict[str, PaperOrderPlan] = field(default_factory=dict)
     exit_attempts: dict[str, ExecutionAttempt] = field(default_factory=dict)
     fills: dict[str, PaperFill] = field(default_factory=dict)
@@ -149,6 +157,7 @@ class BaselineReplayPipeline:
         decision_engine: DecisionEpochEngine | None = None,
         new_exposure_cutoff_ms: int | None = None,
         feature_snapshot_sink: FeatureSnapshotSink | None = None,
+        opening_lifecycle_sink: OpenLifecycleSink | None = None,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -169,6 +178,7 @@ class BaselineReplayPipeline:
         self._evidence_class = evidence_class
         self._new_exposure_cutoff_ms = new_exposure_cutoff_ms
         self._feature_snapshot_sink = feature_snapshot_sink
+        self._opening_lifecycle_sink = opening_lifecycle_sink
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
             replay_config=replay_config,
@@ -271,6 +281,7 @@ class BaselineReplayPipeline:
                 opening_plan_id=item.opening_plan.plan_id,
                 feature_snapshot_id=item.feature_snapshot_id,
                 equity_before=item.equity_before,
+                opened_at_ms=item.opened_at_ms,
                 exit_plan_ids=tuple(
                     plan.plan_id
                     for plan in sorted(
@@ -323,16 +334,27 @@ class BaselineReplayPipeline:
             for fill in fills
         ):
             raise ReplayInvariantError("restored opening fills mismatch")
-        if not any(
-            position.market == checkpoint.market
-            for position in self._execution.account.positions
-        ):
+        position = next(
+            (
+                position
+                for position in self._execution.account.positions
+                if position.opening_plan_id == opening_plan.plan_id
+            ),
+            None,
+        )
+        if position is None or position.market != checkpoint.market:
             raise ReplayInvariantError("restored lifecycle has no matching open position")
+        if (
+            checkpoint.opened_at_ms is not None
+            and checkpoint.opened_at_ms != position.opened_at_ms
+        ):
+            raise ReplayInvariantError("restored lifecycle opened_at_ms mismatch")
         lifecycle = _OpenTradeLifecycle(
             feature_snapshot_id=checkpoint.feature_snapshot_id,
             opening_plan=opening_plan,
             opening_attempt=opening_attempt,
             equity_before=checkpoint.equity_before,
+            opened_at_ms=position.opened_at_ms,
         )
         for fill in fills:
             lifecycle.fills[fill.fill_id] = fill
@@ -601,15 +623,36 @@ class BaselineReplayPipeline:
         market_key = trace.evaluation.decision.market.canonical
         if market_key in self._lifecycles:
             raise ReplayInvariantError("opening fill collided with existing lifecycle")
+        position = next(
+            (
+                position
+                for position in self._execution.account.positions
+                if position.opening_plan_id == submission.plan.plan_id
+            ),
+            None,
+        )
+        if position is None:
+            raise ReplayInvariantError("opening fill has no matching paper position")
         lifecycle = _OpenTradeLifecycle(
             feature_snapshot_id=trace.evaluation.feature.snapshot_id,
             opening_plan=submission.plan,
             opening_attempt=simulation.attempt,
             equity_before=trace.equity_before,
+            opened_at_ms=position.opened_at_ms,
         )
         for fill in simulation.fills:
             lifecycle.fills[fill.fill_id] = fill
         self._lifecycles[market_key] = lifecycle
+        if self._opening_lifecycle_sink is not None:
+            self._opening_lifecycle_sink.record(
+                OpenLifecycleCheckpoint(
+                    market=lifecycle.market,
+                    opening_plan_id=lifecycle.opening_plan.plan_id,
+                    feature_snapshot_id=lifecycle.feature_snapshot_id,
+                    equity_before=lifecycle.equity_before,
+                    opened_at_ms=lifecycle.opened_at_ms,
+                )
+            )
         return tuple(observations)
 
     def _latest_strategy(self, market: MarketId) -> StrategyDecision | None:
