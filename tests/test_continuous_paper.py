@@ -9,7 +9,6 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
-    _live_status_payload,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
