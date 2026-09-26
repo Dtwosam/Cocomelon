@@ -12,6 +12,7 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
     _load_checkpoint,
     _position_action_from_payload,
@@ -24,6 +25,7 @@ from cocomelon.continuous_paper import (
     _record_payload,
     _RecordPump,
     _restore_cadence_shadow,
+    _restore_profit_lock_execution_shadow,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
@@ -120,6 +122,12 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"min_activated_trades_per_rule"' in source
     assert '"min_triggered_trades_per_rule"' in source
     assert '"readiness_status"' in source
+    assert (
+        'PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (' in source
+    )
+    assert "position_research_observer=(" in source
+    assert '"profit_lock_execution_shadow": (' in source
+    assert "profit_lock_execution_shadow.shadow.state_payload()" in source
 
 
 def test_profit_lock_counterfactual_telemetry_fails_open(
@@ -143,6 +151,50 @@ def test_profit_lock_counterfactual_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: counterfactual boom"
+
+
+def test_profit_lock_execution_shadow_sink_fails_open() -> None:
+    class FailingShadow:
+        def observe_mark(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("shadow boom")
+
+        def summary_payload(self) -> dict[str, object]:
+            return {}
+
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        FailingShadow(),  # type: ignore[arg-type]
+    )
+    sink.observe_mark(
+        (),
+        SimpleNamespace(),  # type: ignore[arg-type]
+        now_ms=1,
+    )
+
+    assert sink.shadow is None
+    payload = sink.summary_payload()
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["error"] == "RuntimeError: shadow boom"
+
+
+def test_profit_lock_execution_shadow_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "profit-lock-execution-shadow-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    shadow = _restore_profit_lock_execution_shadow(
+        path,
+        BaselineReplayConfig().execution,
+        started_at_ms=123,
+    )
+
+    payload = shadow.summary_payload()
+    assert payload["enabled"] is True
+    assert payload["execution_authority"] is False
+    assert payload["state_restored"] is False
+    assert "JSONDecodeError" in str(payload["state_restore_error"])
 
 
 def test_position_protection_metrics_handle_long_and_short_stops() -> None:

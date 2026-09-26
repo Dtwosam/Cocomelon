@@ -15,6 +15,8 @@ from typing import Any
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.execution import (
     ExecutionAttempt,
+    InstrumentExecutionSpec,
+    PaperExecutionConfig,
     PaperFill,
     PaperOrderPlan,
     PositionAction,
@@ -39,6 +41,7 @@ from cocomelon.evidence.recording import (
     market_snapshot_record_event,
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
+from cocomelon.execution.accounting import PaperPosition
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
 from cocomelon.hyperliquid.normalize import (
@@ -62,6 +65,9 @@ from cocomelon.research.continuous_paper_trade_paths import (
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
+from cocomelon.research.profit_lock_execution_shadow import (
+    ProfitLockExecutionShadow,
+)
 from cocomelon.research.profit_lock_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE,
     MIN_COMPLETE_PATHS,
@@ -75,6 +81,9 @@ CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
+PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
+    "profit-lock-execution-shadow-state.json"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +152,84 @@ class _ContinuousTradePathSink:
         except Exception as exc:
             self._capture_error(exc)
             return False
+
+
+class _ContinuousProfitLockExecutionShadowSink:
+    def __init__(
+        self,
+        shadow: ProfitLockExecutionShadow,
+    ) -> None:
+        self.shadow: ProfitLockExecutionShadow | None = shadow
+        self.error: str | None = None
+
+    def _disable(self, exc: Exception) -> None:
+        if self.error is None:
+            self.error = f"{type(exc).__name__}: {exc}"
+        self.shadow = None
+
+    def observe_mark(
+        self,
+        positions: Sequence[PaperPosition],
+        mark_event: StreamEvent,
+        *,
+        now_ms: int,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.observe_mark(
+                positions,
+                mark_event,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            self._disable(exc)
+
+    def observe_book(
+        self,
+        positions: Sequence[PaperPosition],
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        now_ms: int,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.observe_book(
+                positions,
+                instrument,
+                book,
+                reference_price=reference_price,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            self._disable(exc)
+
+    def record_closed_trade(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.record_closed_trade(trade)
+        except Exception as exc:
+            self._disable(exc)
+
+    def summary_payload(self) -> dict[str, object]:
+        if self.shadow is None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "durable_state": True,
+                "error": self.error,
+            }
+        payload = dict(self.shadow.summary_payload())
+        payload["error"] = self.error
+        return payload
 
 
 class _ContinuousOpeningLineageSink:
@@ -493,6 +580,32 @@ def _restore_cadence_shadow(
         shadow = CadenceShadowComparator(
             selected_markets,
             replay_config=replay_config,
+        )
+        shadow.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+    return shadow
+
+
+def _restore_profit_lock_execution_shadow(
+    path: Path,
+    execution_config: PaperExecutionConfig,
+    *,
+    started_at_ms: int,
+) -> ProfitLockExecutionShadow:
+    shadow = ProfitLockExecutionShadow(
+        execution_config,
+        started_at_ms=started_at_ms,
+    )
+    if not path.exists():
+        return shadow
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        shadow.restore_state(raw)
+    except Exception as exc:
+        shadow = ProfitLockExecutionShadow(
+            execution_config,
+            started_at_ms=started_at_ms,
         )
         shadow.mark_state_restore_error(
             f"{type(exc).__name__}: {exc}"
@@ -1140,6 +1253,7 @@ def _live_status_payload(
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
+    profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     *,
     trade_path_capture_error: str | None,
     timestamp_ms: int,
@@ -1295,6 +1409,9 @@ def _live_status_payload(
             "capture_error": trade_path_capture_error,
         },
         "profit_lock_counterfactual": profit_lock_counterfactual,
+        "profit_lock_execution_shadow": (
+            profit_lock_execution_shadow.summary_payload()
+        ),
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1319,6 +1436,7 @@ def _emit_live_status(
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
+    profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     *,
     trade_path_capture_error: str | None,
     timestamp_ms: int,
@@ -1330,6 +1448,7 @@ def _emit_live_status(
         feature_store,
         fact_store,
         trade_path_store,
+        profit_lock_execution_shadow,
         trade_path_capture_error=trade_path_capture_error,
         timestamp_ms=timestamp_ms,
     )
@@ -1443,6 +1562,16 @@ async def run_continuous_paper_session(
     )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
+    replay_config = BaselineReplayConfig()
+    profit_lock_execution_shadow = (
+        _ContinuousProfitLockExecutionShadowSink(
+            _restore_profit_lock_execution_shadow(
+                root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+            )
+        )
+    )
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -1467,7 +1596,6 @@ async def run_continuous_paper_session(
         if not selected:
             raise RuntimeError("continuous paper scan produced no rankable native markets")
 
-        replay_config = BaselineReplayConfig()
         pipeline = BaselineReplayPipeline(
             replay_config,
             execution,
@@ -1485,6 +1613,9 @@ async def run_continuous_paper_session(
                 )
             ),
             closed_lifecycle_sink=trade_path_sink,
+            position_research_observer=(
+                profit_lock_execution_shadow
+            ),
         )
         pipeline.restore_gap_intervals(gap_intervals)
         _restore_open_lifecycles(pipeline, execution, checkpoints)
@@ -1559,6 +1690,11 @@ async def run_continuous_paper_session(
                     root / CADENCE_SHADOW_STATE_FILENAME,
                     pump.cadence_shadow.state_payload(),
                 )
+            if profit_lock_execution_shadow.shadow is not None:
+                _write_json_atomic(
+                    root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
+                    profit_lock_execution_shadow.shadow.state_payload(),
+                )
 
         persist_checkpoint()
         _emit_live_status(
@@ -1568,6 +1704,7 @@ async def run_continuous_paper_session(
             feature_store,
             facts,
             trade_path_store,
+            profit_lock_execution_shadow,
             trade_path_capture_error=trade_path_sink.error,
             timestamp_ms=utc_now_ms(),
         )
@@ -1696,6 +1833,7 @@ async def run_continuous_paper_session(
                     feature_store,
                     facts,
                     trade_path_store,
+                    profit_lock_execution_shadow,
                     trade_path_capture_error=trade_path_sink.error,
                     timestamp_ms=now_ms,
                 )
