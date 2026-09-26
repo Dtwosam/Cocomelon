@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 
 CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION = 1
@@ -65,6 +66,14 @@ class ContinuousPaperTradePathMark:
         if not self.mark_px.is_finite() or self.mark_px <= 0:
             raise ValueError("mark_px must be positive and finite")
 
+    @property
+    def sort_key(self) -> tuple[int, int, str]:
+        return (
+            self.available_at_ms,
+            -1 if self.exchange_time_ms is None else self.exchange_time_ms,
+            self.event_key,
+        )
+
     def to_dict(self) -> dict[str, object]:
         return {
             "available_at_ms": self.available_at_ms,
@@ -72,6 +81,53 @@ class ContinuousPaperTradePathMark:
             "event_key": self.event_key,
             "mark_px": str(self.mark_px),
         }
+
+    @classmethod
+    def from_dict(
+        cls,
+        raw: object,
+    ) -> ContinuousPaperTradePathMark:
+        if not isinstance(raw, dict) or set(raw) != {
+            "available_at_ms",
+            "exchange_time_ms",
+            "event_key",
+            "mark_px",
+        }:
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_MARK_INVALID"
+            )
+        available_at_ms = raw["available_at_ms"]
+        exchange_time_ms = raw["exchange_time_ms"]
+        event_key = raw["event_key"]
+        if (
+            isinstance(available_at_ms, bool)
+            or not isinstance(available_at_ms, int)
+        ):
+            raise ContinuousPaperTradePathError(
+                "trade path mark available_at_ms must be an integer"
+            )
+        if exchange_time_ms is not None and (
+            isinstance(exchange_time_ms, bool)
+            or not isinstance(exchange_time_ms, int)
+        ):
+            raise ContinuousPaperTradePathError(
+                "trade path mark exchange_time_ms must be an integer or null"
+            )
+        if not isinstance(event_key, str):
+            raise ContinuousPaperTradePathError(
+                "trade path mark event_key must be a string"
+            )
+        try:
+            return cls(
+                available_at_ms=available_at_ms,
+                exchange_time_ms=exchange_time_ms,
+                event_key=event_key,
+                mark_px=_decimal(raw["mark_px"], "mark_px"),
+            )
+        except ValueError as exc:
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_MARK_INVALID"
+            ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,14 +187,9 @@ class ContinuousPaperTradePath:
             if mark.event_key in seen_event_keys:
                 raise ValueError("trade path mark event keys must be unique")
             seen_event_keys.add(mark.event_key)
-            key = (
-                mark.available_at_ms,
-                -1 if mark.exchange_time_ms is None else mark.exchange_time_ms,
-                mark.event_key,
-            )
-            if previous_key is not None and key < previous_key:
+            if previous_key is not None and mark.sort_key < previous_key:
                 raise ValueError("trade path marks must be sorted")
-            previous_key = key
+            previous_key = mark.sort_key
         for started_ms, ended_ms in self.known_gap_intervals:
             if started_ms < 0:
                 raise ValueError("gap start must be non-negative")
@@ -180,53 +231,69 @@ class ContinuousPaperTradePath:
         return {**self.identity_payload(), "path_id": self.path_id}
 
 
-def continuous_paper_trade_path(
-    trade: TradeJournalEntry,
-    mark_observations: Sequence[ReplayRecord],
-    known_gap_intervals: Sequence[tuple[int, int | None]],
-) -> ContinuousPaperTradePath:
-    marks_by_key: dict[str, ContinuousPaperTradePathMark] = {}
-    for record in mark_observations:
-        if record.record_kind is not SourceRecordKind.NORMALIZED_EVENT:
-            raise ContinuousPaperTradePathError(
-                "trade path marks must be normalized events"
-            )
-        if record.market != trade.market.canonical:
-            raise ContinuousPaperTradePathError(
-                "trade path mark market mismatch"
-            )
-        if record.event_key is None:
-            raise ContinuousPaperTradePathError(
-                "trade path mark is missing event_key"
-            )
-        payload = record.payload
-        if not isinstance(payload, dict):
-            raise ContinuousPaperTradePathError(
-                "trade path mark payload must be an object"
-            )
-        mark = ContinuousPaperTradePathMark(
-            available_at_ms=record.available_at_ms,
-            exchange_time_ms=record.exchange_time_ms,
-            event_key=record.event_key,
-            mark_px=_decimal(payload.get("mark_px"), "mark_px"),
+def _mark_from_record(
+    record: ReplayRecord,
+    *,
+    market: str,
+    opened_at_ms: int,
+    closed_at_ms: int | None,
+) -> ContinuousPaperTradePathMark:
+    if record.record_kind is not SourceRecordKind.NORMALIZED_EVENT:
+        raise ContinuousPaperTradePathError(
+            "trade path marks must be normalized events"
         )
-        existing = marks_by_key.get(mark.event_key)
+    if record.market != market:
+        raise ContinuousPaperTradePathError(
+            "trade path mark market mismatch"
+        )
+    if record.event_key is None:
+        raise ContinuousPaperTradePathError(
+            "trade path mark is missing event_key"
+        )
+    if record.available_at_ms < opened_at_ms:
+        raise ContinuousPaperTradePathError(
+            "trade path mark precedes lifecycle"
+        )
+    if (
+        closed_at_ms is not None
+        and record.available_at_ms > closed_at_ms
+    ):
+        raise ContinuousPaperTradePathError(
+            "trade path mark follows lifecycle"
+        )
+    payload = record.payload
+    if not isinstance(payload, dict):
+        raise ContinuousPaperTradePathError(
+            "trade path mark payload must be an object"
+        )
+    return ContinuousPaperTradePathMark(
+        available_at_ms=record.available_at_ms,
+        exchange_time_ms=record.exchange_time_ms,
+        event_key=record.event_key,
+        mark_px=_decimal(payload.get("mark_px"), "mark_px"),
+    )
+
+
+def _merge_marks(
+    marks: Sequence[ContinuousPaperTradePathMark],
+) -> tuple[ContinuousPaperTradePathMark, ...]:
+    by_key: dict[str, ContinuousPaperTradePathMark] = {}
+    for mark in marks:
+        existing = by_key.get(mark.event_key)
         if existing is not None and existing != mark:
             raise ContinuousPaperTradePathError(
                 "conflicting trade path mark event"
             )
-        marks_by_key[mark.event_key] = mark
+        by_key[mark.event_key] = mark
+    return tuple(sorted(by_key.values(), key=lambda mark: mark.sort_key))
 
-    ordered_marks = tuple(
-        sorted(
-            marks_by_key.values(),
-            key=lambda mark: (
-                mark.available_at_ms,
-                -1 if mark.exchange_time_ms is None else mark.exchange_time_ms,
-                mark.event_key,
-            ),
-        )
-    )
+
+def continuous_paper_trade_path(
+    trade: TradeJournalEntry,
+    marks: Sequence[ContinuousPaperTradePathMark],
+    known_gap_intervals: Sequence[tuple[int, int | None]],
+) -> ContinuousPaperTradePath:
+    ordered_marks = _merge_marks(marks)
     mfe_complete = trade.mfe is not None and trade.mfe.complete
     mae_complete = trade.mae is not None and trade.mae.complete
     return ContinuousPaperTradePath(
@@ -251,15 +318,182 @@ class ContinuousPaperTradePathStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         self.records_root = self.root / "records"
+        self.open_root = self.root / "open"
         self.records_root.mkdir(parents=True, exist_ok=True)
+        self.open_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _record_name(trade_id: str) -> str:
-        _require_nonempty(trade_id, "trade_id")
-        return hashlib.sha256(trade_id.encode("utf-8")).hexdigest() + ".json"
+    def _record_name(identity: str, suffix: str) -> str:
+        _require_nonempty(identity, "identity")
+        digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        return digest + suffix
 
     def _path(self, trade_id: str) -> Path:
-        return self.records_root / self._record_name(trade_id)
+        return self.records_root / self._record_name(trade_id, ".json")
+
+    def _open_path(self, opening_plan_id: str) -> Path:
+        return self.open_root / self._record_name(opening_plan_id, ".jsonl")
+
+    @staticmethod
+    def _open_header(
+        *,
+        opening_plan_id: str,
+        market: str,
+        opened_at_ms: int,
+    ) -> dict[str, object]:
+        return {
+            "kind": "header",
+            "schema_version": CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+            "opening_plan_id": opening_plan_id,
+            "market": market,
+            "opened_at_ms": opened_at_ms,
+        }
+
+    @staticmethod
+    def _open_mark_payload(
+        mark: ContinuousPaperTradePathMark,
+    ) -> dict[str, object]:
+        return {"kind": "mark", **mark.to_dict()}
+
+    def _load_open(
+        self,
+        opening_plan_id: str,
+    ) -> tuple[dict[str, object] | None, tuple[ContinuousPaperTradePathMark, ...]]:
+        path = self._open_path(opening_plan_id)
+        if not path.exists():
+            return None, ()
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_UNREADABLE"
+            ) from exc
+        if not lines:
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_EMPTY"
+            )
+        parsed: list[dict[str, object]] = []
+        for line in lines:
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_INVALID"
+                ) from exc
+            if not isinstance(raw, dict) or not all(
+                isinstance(key, str) for key in raw
+            ):
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_INVALID"
+                )
+            if _canonical_json(raw) != line:
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_NON_CANONICAL"
+                )
+            parsed.append(raw)
+
+        header = parsed[0]
+        if (
+            set(header)
+            != {
+                "kind",
+                "schema_version",
+                "opening_plan_id",
+                "market",
+                "opened_at_ms",
+            }
+            or header.get("kind") != "header"
+            or header.get("schema_version")
+            != CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+            or header.get("opening_plan_id") != opening_plan_id
+        ):
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_HEADER_INVALID"
+            )
+        marks: list[ContinuousPaperTradePathMark] = []
+        for raw in parsed[1:]:
+            if raw.get("kind") != "mark":
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_MARK_INVALID"
+                )
+            mark_payload = dict(raw)
+            mark_payload.pop("kind")
+            marks.append(ContinuousPaperTradePathMark.from_dict(mark_payload))
+        return header, _merge_marks(marks)
+
+    def checkpoint_open_path(
+        self,
+        *,
+        opening_plan_id: str,
+        market: MarketId,
+        opened_at_ms: int,
+        mark_observations: Sequence[ReplayRecord],
+    ) -> int:
+        _require_nonempty(opening_plan_id, "opening_plan_id")
+        if opened_at_ms < 0:
+            raise ValueError("opened_at_ms must be non-negative")
+        path = self._open_path(opening_plan_id)
+        header, existing_marks = self._load_open(opening_plan_id)
+        expected_header = self._open_header(
+            opening_plan_id=opening_plan_id,
+            market=market.canonical,
+            opened_at_ms=opened_at_ms,
+        )
+        if header is not None and header != expected_header:
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_IDENTITY_MISMATCH"
+            )
+
+        current_marks = _merge_marks(
+            tuple(existing_marks)
+            + tuple(
+                _mark_from_record(
+                    record,
+                    market=market.canonical,
+                    opened_at_ms=opened_at_ms,
+                    closed_at_ms=None,
+                )
+                for record in mark_observations
+            )
+        )
+        existing_by_key = {
+            mark.event_key: mark
+            for mark in existing_marks
+        }
+        new_marks = tuple(
+            mark
+            for mark in current_marks
+            if mark.event_key not in existing_by_key
+        )
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("xb") as handle:
+                handle.write(
+                    (_canonical_json(expected_header) + "\n").encode("utf-8")
+                )
+                for mark in new_marks:
+                    handle.write(
+                        (
+                            _canonical_json(self._open_mark_payload(mark))
+                            + "\n"
+                        ).encode("utf-8")
+                    )
+                handle.flush()
+                os.fsync(handle.fileno())
+            return len(new_marks)
+
+        if new_marks:
+            with path.open("ab") as handle:
+                for mark in new_marks:
+                    handle.write(
+                        (
+                            _canonical_json(self._open_mark_payload(mark))
+                            + "\n"
+                        ).encode("utf-8")
+                    )
+                handle.flush()
+                os.fsync(handle.fileno())
+        return len(new_marks)
 
     def record(self, trade_path: ContinuousPaperTradePath) -> bool:
         path = self._path(trade_path.trade_id)
@@ -289,6 +523,40 @@ class ContinuousPaperTradePathStore:
                 temporary.unlink()
         return True
 
+    def finalize_trade(
+        self,
+        trade: TradeJournalEntry,
+        mark_observations: Sequence[ReplayRecord],
+        known_gap_intervals: Sequence[tuple[int, int | None]],
+    ) -> bool:
+        header, staged_marks = self._load_open(trade.opening_plan_id)
+        if header is not None and (
+            header.get("market") != trade.market.canonical
+            or header.get("opened_at_ms") != trade.opened_at_ms
+        ):
+            raise ContinuousPaperTradePathError(
+                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_TRADE_MISMATCH"
+            )
+        current_marks = tuple(
+            _mark_from_record(
+                record,
+                market=trade.market.canonical,
+                opened_at_ms=trade.opened_at_ms,
+                closed_at_ms=trade.closed_at_ms,
+            )
+            for record in mark_observations
+        )
+        trade_path = continuous_paper_trade_path(
+            trade,
+            tuple(staged_marks) + current_marks,
+            known_gap_intervals,
+        )
+        created = self.record(trade_path)
+        open_path = self._open_path(trade.opening_plan_id)
+        if open_path.exists():
+            open_path.unlink()
+        return created
+
     def iter_payloads(self) -> tuple[dict[str, object], ...]:
         payloads: list[dict[str, object]] = []
         for path in sorted(self.records_root.glob("*.json")):
@@ -310,7 +578,7 @@ class ContinuousPaperTradePathStore:
                 raise ContinuousPaperTradePathError(
                     "CONTINUOUS_PAPER_TRADE_PATH_IDENTITY_INVALID"
                 )
-            if path.name != self._record_name(trade_id):
+            if path.name != self._record_name(trade_id, ".json"):
                 raise ContinuousPaperTradePathError(
                     "CONTINUOUS_PAPER_TRADE_PATH_FILENAME_MISMATCH"
                 )
@@ -340,6 +608,10 @@ class ContinuousPaperTradePathStore:
     @property
     def record_count(self) -> int:
         return len(self.iter_payloads())
+
+    @property
+    def open_path_count(self) -> int:
+        return len(tuple(self.open_root.glob("*.jsonl")))
 
     @property
     def state_digest(self) -> str:
