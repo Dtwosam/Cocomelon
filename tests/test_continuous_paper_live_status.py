@@ -24,6 +24,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "session_closed_trades": 2,
         "open_planned_risk": "10",
         "open_planned_risk_fraction_of_equity": "0.0009997500624843789052736815796",
+        "open_stop_trigger_gross_pnl": "4",
+        "open_stop_trigger_gross_r": "0.4",
+        "open_positions_with_profit_protected_stop": 1,
         "gross_open_notional": "650",
         "gross_open_notional_fraction_of_equity": "0.06498375406148462884278930267",
         "available_margin": "9500",
@@ -290,6 +293,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "stop_price": "64000",
                 "latest_mark": "65200",
                 "unrealized_gross_pnl": "2",
+                "current_gross_r": "0.2",
+                "stop_trigger_gross_pnl": "4",
+                "stop_trigger_gross_r": "0.4",
+                "stop_protects_profit": True,
                 "planned_risk": "10",
                 "opened_at_ms": 1_700_000_000_000,
                 "opening_plan_id": "plan-1",
@@ -341,6 +348,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`12`" in output
     assert "`2`" in output
     assert "open planned risk" in output
+    assert "stop-trigger gross PnL at current stops" in output
+    assert "stop-trigger gross R / planned risk" in output
+    assert "positions with profit-protecting stop" in output
+    assert "Current R" in output
+    assert "Stop-lock PnL" in output
+    assert "Stop-lock R" in output
+    assert "| BTC | long | 0.01 | 65000 | 64000 | 65200 | 2 | 0.2 | 4 | 0.4 | yes | 10 |" in output
     assert "gross open notional" in output
     assert "5m cadence shadow diagnostic" in output
     assert "RESEARCH ONLY / NO EXECUTION" in output
