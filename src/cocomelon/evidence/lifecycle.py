@@ -114,6 +114,14 @@ class OpenLifecycleCheckpoint:
 
 
 @dataclass(frozen=True, slots=True)
+class OpenLifecycleMarkPath:
+    market: MarketId
+    opening_plan_id: str
+    opened_at_ms: int
+    mark_observations: tuple[ReplayRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SessionDecisionActivity:
     decision_epochs: int
     last_decision_boundary_ms: int | None
@@ -285,6 +293,26 @@ class BaselineReplayPipeline:
         extrema = {low.event_key: low, high.event_key: high}
         return tuple(
             sorted(extrema.values(), key=lambda record: record.sort_key)
+        )
+
+    @property
+    def open_lifecycle_mark_paths(self) -> tuple[OpenLifecycleMarkPath, ...]:
+        return tuple(
+            OpenLifecycleMarkPath(
+                market=item.market,
+                opening_plan_id=item.opening_plan.plan_id,
+                opened_at_ms=item.opened_at_ms,
+                mark_observations=tuple(
+                    sorted(
+                        item.marks.values(),
+                        key=lambda record: record.sort_key,
+                    )
+                ),
+            )
+            for item in sorted(
+                self._lifecycles.values(),
+                key=lambda lifecycle: lifecycle.market.canonical,
+            )
         )
 
     @property
