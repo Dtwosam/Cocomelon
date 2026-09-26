@@ -501,7 +501,7 @@ class CadenceShadowComparator:
                 for label in labels
             }
         if field == "score_band":
-            labels = {
+            score_labels = {
                 _score_band(item.sample.score)
                 for item in self._outcomes
                 if item.sample.cadence_ms == cadence_ms
@@ -516,7 +516,7 @@ class CadenceShadowComparator:
                     score_band=label,
                 )
                 for label in order
-                if label in labels
+                if label in score_labels
             }
         raise ValueError("unsupported grouped shadow outcome field")
 
