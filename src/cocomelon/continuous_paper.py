@@ -61,6 +61,7 @@ from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -1032,6 +1033,68 @@ def _position_protection_metrics(
     }
 
 
+def _profit_lock_counterfactual_payload(
+    journal: JournalStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    try:
+        study = evaluate_profit_lock_state(journal, trade_path_store)
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    return {
+        "enabled": True,
+        "research_only": True,
+        "execution_authority": False,
+        "error": None,
+        "evidence_class": study.evidence_class,
+        "fill_model": study.fill_model,
+        "path_record_count": study.path_record_count,
+        "evaluated_trade_count": study.evaluated_trade_count,
+        "skipped_incomplete_paths": study.skipped_incomplete_paths,
+        "rules": [
+            {
+                "rule_id": rule.rule_id,
+                "activate_at_r": str(rule.activate_at_r),
+                "lock_at_r": str(rule.lock_at_r),
+                "evaluated_trades": rule.evaluated_trades,
+                "activated_trades": rule.activated_trades,
+                "triggered_trades": rule.triggered_trades,
+                "actual_positive_trades": rule.actual_positive_trades,
+                "candidate_positive_trades_estimate": (
+                    rule.candidate_positive_trades_estimate
+                ),
+                "actual_net_pnl": str(rule.actual_net_pnl),
+                "candidate_net_pnl_estimate": str(
+                    rule.candidate_net_pnl_estimate
+                ),
+                "delta_net_pnl_estimate": str(rule.delta_net_pnl_estimate),
+                "actual_mean_net_r": (
+                    None
+                    if rule.actual_mean_net_r is None
+                    else str(rule.actual_mean_net_r)
+                ),
+                "candidate_mean_net_r_estimate": (
+                    None
+                    if rule.candidate_mean_net_r_estimate is None
+                    else str(rule.candidate_mean_net_r_estimate)
+                ),
+                "delta_mean_net_r_estimate": (
+                    None
+                    if rule.delta_mean_net_r_estimate is None
+                    else str(rule.delta_mean_net_r_estimate)
+                ),
+            }
+            for rule in study.rules
+        ],
+    }
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -1115,6 +1178,10 @@ def _live_status_payload(
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
+    profit_lock_counterfactual = _profit_lock_counterfactual_payload(
+        pump.journal,
+        trade_path_store,
+    )
 
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
@@ -1189,6 +1256,7 @@ def _live_status_payload(
             "staged_open_path_count": trade_path_store.open_path_count,
             "capture_error": trade_path_capture_error,
         },
+        "profit_lock_counterfactual": profit_lock_counterfactual,
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
