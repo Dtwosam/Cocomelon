@@ -6,7 +6,6 @@ from decimal import Decimal, InvalidOperation
 from typing import Final
 
 from cocomelon.domain.execution import (
-    ExecutionResult,
     InstrumentExecutionSpec,
     PaperExecutionConfig,
     PaperOrderPlan,
