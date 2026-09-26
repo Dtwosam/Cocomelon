@@ -230,6 +230,44 @@ jobs:
           set -euo pipefail
           cocomelon-continuous-paper-learning-sync             --source-state-root incoming/continuous             --learning-state-root continuous-learning-state             > continuous-learning-state/last-sync.json
 
+      - name: Record authenticated upstream receipt
+        if: ${{ steps.upstream.outputs.eligible == 'true' }}
+        env:
+          UPSTREAM_RUN_ID: ${{ steps.upstream.outputs.run_id }}
+          UPSTREAM_RUN_ATTEMPT: ${{ steps.upstream.outputs.run_attempt }}
+          UPSTREAM_HEAD_SHA: ${{ steps.upstream.outputs.head_sha }}
+          UPSTREAM_ARTIFACT_ID: ${{ steps.upstream.outputs.artifact_id }}
+          UPSTREAM_ARTIFACT_DIGEST: ${{ steps.upstream.outputs.artifact_digest }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          sync = json.loads(
+              Path("continuous-learning-state/last-sync.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          receipt = {
+              "source_kind": "continuous_paper_worker",
+              "upstream_run_id": int(os.environ["UPSTREAM_RUN_ID"]),
+              "upstream_run_attempt": int(os.environ["UPSTREAM_RUN_ATTEMPT"]),
+              "upstream_head_sha": os.environ["UPSTREAM_HEAD_SHA"],
+              "upstream_artifact_id": int(os.environ["UPSTREAM_ARTIFACT_ID"]),
+              "upstream_artifact_digest": os.environ["UPSTREAM_ARTIFACT_DIGEST"],
+              "learning_state_digest": sync["learning_state_digest"],
+              "feature_state_digest": sync["feature_state_digest"],
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "schema_version": 1,
+          }
+          Path("continuous-learning-state/last-source-receipt.json").write_text(
+              json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
       - name: Audit continuous-paper learning readiness without training
         if: ${{ steps.upstream.outputs.eligible == 'true' }}
         run: |
