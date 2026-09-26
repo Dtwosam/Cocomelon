@@ -197,7 +197,10 @@ class BaselineReplayPipeline:
         self._funding_gaps: set[tuple[str, int]] = set()
         self._funding_inconsistent = False
         self._gap_intervals: list[tuple[int, int | None]] = []
-        self._recorded_account_states: set[str] = set()
+        self._recorded_account_states: set[str] = {
+            fact.account_state_id
+            for fact in self._facts.iter_equity_facts(self._run_id)
+        }
         self._initial_observation_emitted = False
         self._decision_epochs = 0
         self._last_decision_boundary_ms: int | None = None
