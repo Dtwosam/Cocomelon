@@ -829,3 +829,24 @@ This clarification changes reporting/continuation discipline only. It does not a
 
 **LIVE TRADING: DISABLED.**
 
+### Prospective HYPE experiment retired — 2026-09-26
+
+By explicit user direction, all active Prospective HYPE V1/V2/V3 experiment workflows are retired.
+
+Removed active orchestration includes:
+
+- legacy Prospective HYPE clean observer scheduling;
+- lineage/readiness/state-readiness/blind-monitor/cutover workflows;
+- V2 clean observer and independent audit;
+- V3 capture workflow, rolling dispatch queue, control heartbeat, cutover acceptance, and independent audit.
+
+Historical artifacts and source modules that describe prior prospective research may remain for audit/reproducibility, but they are no longer an active producer and must not be reported as the current paper trader.
+
+The intended paper-trading behavior is the canonical product behavior in `MASTER_SPEC.md`: continuously scan the eligible universe, rank opportunities, analyze the deep shortlist, emit LONG/SHORT/NO_TRADE, apply independent risk vetoes, and simulate approved orders against real Hyperliquid mainnet observations.
+
+A separate long-running ordinary paper/shadow runtime is therefore the operational priority. The retired HYPE experiment must not be restarted merely to create trade activity.
+
+This retirement changes experiment/control-plane authority only. Existing risk limits remain unchanged and live trading remains disabled.
+
+**LIVE TRADING: DISABLED.**
+

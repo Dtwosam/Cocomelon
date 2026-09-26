@@ -17,34 +17,32 @@
 
 ## 0. Current paper-trade interpretation — read this before answering current-trade questions
 
-**Point-in-time verification:** 2026-09-26 00:57 UTC. This subsection is a bootstrap snapshot, not a substitute for re-checking live GitHub Actions and authenticated artifacts when a user asks "now", "today", or "current".
+**Current directive — 2026-09-26:** the Prospective HYPE V1/V2/V3 experiment family is retired. Its scheduled observers, audits, readiness monitors, V3 heartbeat/capture queue, and cutover workflows are removed from active operation. Historical artifacts remain evidence only.
 
-There are multiple paper-evidence families in this repository and they must not be conflated:
+Do **not** call Prospective HYPE the current paper trader. Do **not** infer current paper activity from old V1/V2/V3 workflow runs, hourly anchors, transport receipts, or prospective modeled outcomes.
 
-1. **Retired/touched V4 corpus** — historical development evidence. The trusted evidence dashboard showed 121 closed paper trades across 21 closed-trade days. V4 is retired/touched and demonstrated no edge. These trades are not evidence that the newly started campaign has already traded.
-2. **Touched research replay lanes** — `scheduled-research-root`, `research-r1-exit-15m-v1`, and `research-r2-short-trend-quality-v1`. At the 2026-09-26 00:37 UTC research-dashboard snapshot, root had 14 closed trades (9 LONG / 5 SHORT), r1 had 6, and r2 had 1. These are separate from the clean prospective HYPE campaign.
-3. **Active clean prospective HYPE V3 campaign** — candidate `hype-down-bearish-near-basket-long-4h-v3`, frozen under D-029. V3 began 2026-09-26 00:00:00 UTC, uses HYPE 1h anchors, a frozen LONG hypothesis, and an exact 4h prospective outcome horizon. Its first expected V3 anchor is 2026-09-26 00:59:59.999 UTC, with the pre-created capture run intended around 01:03 UTC.
-4. **Learned-candidate clean/shadow evidence** — a later, separately authenticated path. Do not treat learned-candidate lifecycle/workflow state as the same thing as V3 prospective HYPE trading.
+The product behavior remains the canonical `MASTER_SPEC.md` behavior: continuously scan the dynamically eligible Hyperliquid mainnet perp universe, rank opportunities, perform deeper analysis on a dynamic shortlist, choose LONG/SHORT/NO_TRADE, pass directional proposals through the independent risk engine, and paper-execute only approved setups against real mainnet observations.
 
-At the point-in-time check above, V3 transport/capture runs existed and were active, but the checked runs were still in transport/hold steps and had no authenticated V3 economic artifact yet. That statement can become stale quickly, so **always re-check the latest V3 run jobs and artifacts before repeating it**.
+Until the dedicated long-running paper/shadow runtime is operationally verified, distinguish clearly between:
 
-### Required interpretation rule for new chats
+1. **ordinary paper execution evidence** — actual simulated orders/fills/positions produced by the scanner -> strategy -> risk -> paper execution stack;
+2. **scheduled research replay evidence** — touched research campaigns and their authenticated closed paper trades;
+3. **retired V4 evidence** — historical/touched development evidence;
+4. **retired Prospective HYPE evidence** — V1/V2/V3 historical research only;
+5. **learned-candidate clean/shadow evidence** — a separate candidate-validation lifecycle.
 
 For any question about the "current paper trade":
 
-- first inspect latest Actions activity for `Prospective HYPE V3`, scheduled research replay, and any learned clean/shadow follower that could own the newest economic evidence;
-- inspect the relevant run's jobs/steps and artifact list;
-- use authenticated evidence/state before saying a new trade opened, closed, or has PnL;
-- never use Issue #82 alone for current trades — it primarily summarizes retired/touched V4 evidence;
-- never use Issue #124 alone for current trades — it summarizes touched research lanes and can lag a separate prospective HYPE campaign;
-- treat V3 transport receipts, heartbeat receipts, queue state, and workflow existence as **non-economic**;
-- if a campaign is active but no authenticated trade row is visible, say exactly that: **campaign active; new economic trade not yet confirmed from authenticated evidence**;
-- if authenticated trade evidence exists, report its candidate/market, direction, anchor/open time, settlement status, modeled or realized return type, and provenance lane.
+- inspect the newest ordinary paper/shadow runtime or campaign that can create real simulated orders/fills;
+- inspect authenticated positions, fills, journal/state, and relevant run artifacts before claiming a trade opened or closed;
+- report research replay and retired experimental evidence separately;
+- never present an old Prospective HYPE observation as a current position;
+- a running workflow alone does not prove an economic trade;
+- if no continuously operating paper runtime is active, say that plainly instead of substituting an experiment for it.
 
-Do not say "there are no paper trades" when what is actually known is only "this particular active campaign has not yet published a confirmed economic trade." Preserve the distinction between cumulative historical trades and the newest campaign.
+The retired Prospective HYPE experiment must not be restarted, rescheduled, or treated as the primary paper trader unless the user explicitly reverses this directive.
 
 ---
-
 ## 1. Authority and continuation rule
 
 Use this order:
