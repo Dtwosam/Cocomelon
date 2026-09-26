@@ -85,6 +85,10 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
+from cocomelon.research.prospective_entry_filter import (
+    ProspectiveEntryFilterState,
+    evaluate_prospective_entry_filter,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -94,6 +98,9 @@ CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
     "profit-lock-execution-shadow-state.json"
+)
+PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
+    "prospective-entry-filter-state.json"
 )
 
 
@@ -673,6 +680,61 @@ def _restore_profit_lock_execution_shadow(
             f"{type(exc).__name__}: {exc}"
         )
     return shadow
+
+
+def _restore_prospective_entry_filter(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveEntryFilterState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveEntryFilterState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ProspectiveEntryFilterState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            ProspectiveEntryFilterState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_entry_filter_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    state: ProspectiveEntryFilterState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_entry_filter(
+            journal,
+            fact_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _native_market_snapshots(
@@ -1316,8 +1378,10 @@ def _live_status_payload(
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
+    prospective_entry_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
@@ -1395,6 +1459,12 @@ def _live_status_payload(
     profit_lock_counterfactual = _profit_lock_counterfactual_payload(
         pump.journal,
         trade_path_store,
+    )
+    prospective_entry_filter = _prospective_entry_filter_payload(
+        pump.journal,
+        fact_store,
+        prospective_entry_filter_state,
+        restore_error=prospective_entry_filter_restore_error,
     )
 
     observation = pump.last_observation
@@ -1474,6 +1544,7 @@ def _live_status_payload(
         "profit_lock_execution_shadow": (
             profit_lock_execution_shadow.summary_payload()
         ),
+        "prospective_entry_filter": prospective_entry_filter,
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1499,8 +1570,10 @@ def _emit_live_status(
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
+    prospective_entry_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> None:
     payload = _live_status_payload(
@@ -1511,7 +1584,11 @@ def _emit_live_status(
         fact_store,
         trade_path_store,
         profit_lock_execution_shadow,
+        prospective_entry_filter_state,
         trade_path_capture_error=trade_path_capture_error,
+        prospective_entry_filter_restore_error=(
+            prospective_entry_filter_restore_error
+        ),
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -1633,6 +1710,13 @@ async def run_continuous_paper_session(
                 started_at_ms=started_at_ms,
             )
         )
+    )
+    (
+        prospective_entry_filter_state,
+        prospective_entry_filter_restore_error,
+    ) = _restore_prospective_entry_filter(
+        root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
+        started_at_ms=started_at_ms,
     )
 
     try:
@@ -1757,6 +1841,10 @@ async def run_continuous_paper_session(
                     root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
                     profit_lock_execution_shadow.shadow.state_payload(),
                 )
+            _write_json_atomic(
+                root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
+                prospective_entry_filter_state.payload(),
+            )
 
         persist_checkpoint()
         _emit_live_status(
@@ -1767,7 +1855,11 @@ async def run_continuous_paper_session(
             facts,
             trade_path_store,
             profit_lock_execution_shadow,
+            prospective_entry_filter_state,
             trade_path_capture_error=trade_path_sink.error,
+            prospective_entry_filter_restore_error=(
+                prospective_entry_filter_restore_error
+            ),
             timestamp_ms=utc_now_ms(),
         )
 
@@ -1896,7 +1988,11 @@ async def run_continuous_paper_session(
                     facts,
                     trade_path_store,
                     profit_lock_execution_shadow,
+                    prospective_entry_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
+                    prospective_entry_filter_restore_error=(
+                        prospective_entry_filter_restore_error
+                    ),
                     timestamp_ms=now_ms,
                 )
 

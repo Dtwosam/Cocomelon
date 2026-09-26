@@ -435,6 +435,100 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_entry_filter_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Prospective LONG-trend entry filter",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No prospective entry-filter telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    rule = raw.get("rule", {})
+    if not isinstance(rule, dict):
+        rule = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- frozen rule: reject "
+                f"`{rule.get('direction', 'unknown')}` + "
+                f"`{rule.get('lead_strategy', 'unknown')}`"
+            ),
+            (
+                "- prospective closed / attributed / misses: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('attributed_trades', 0)} / "
+                f"{raw.get('attribution_misses', 0)}`"
+            ),
+            (
+                "- allowed / blocked trades: "
+                f"`{raw.get('allowed_trades', 0)} / "
+                f"{raw.get('blocked_trades', 0)}`"
+            ),
+            (
+                "- blocked wins / losses: "
+                f"`{raw.get('blocked_wins', 0)} / "
+                f"{raw.get('blocked_losses', 0)}`"
+            ),
+            (
+                "- blocked / allowed net PnL: "
+                f"`{raw.get('blocked_net_pnl', '0')}` / "
+                f"`{raw.get('allowed_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / candidate trade-contribution PnL: "
+                f"`{raw.get('actual_net_pnl', '0')}` / "
+                f"`{raw.get('candidate_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- delta trade contribution: "
+                f"`{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- evidence gate (prospective / blocked / allowed): "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_blocked_trades', 0)} / "
+                f"{readiness.get('min_allowed_trades', 0)}`"
+            ),
+            (
+                "- still needed P/B/A: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_blocked_trades', 0)} / "
+                f"{readiness.get('missing_allowed_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Trade-contribution study only. It does not claim portfolio "
+                "PnL because skipping a trade can change later capacity, "
+                "cooldowns, and replacement opportunities._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -549,6 +643,11 @@ def render_live_status(
     lines.extend(
         _profit_lock_execution_shadow_lines(
             payload.get("profit_lock_execution_shadow")
+        )
+    )
+    lines.extend(
+        _prospective_entry_filter_lines(
+            payload.get("prospective_entry_filter")
         )
     )
     lines.extend(["", "### Open positions", ""])

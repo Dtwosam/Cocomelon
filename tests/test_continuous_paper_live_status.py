@@ -257,6 +257,46 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 }
             ],
         },
+        "prospective_entry_filter": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "prospective-reject-long-trend-v1",
+            "started_at_ms": 1_699_999_500_000,
+            "state_restore_error": None,
+            "error": None,
+            "rule": {
+                "direction": "long",
+                "lead_strategy": "trend",
+                "action": "reject",
+            },
+            "claim_scope": "closed_trade_contribution_only",
+            "portfolio_counterfactual": False,
+            "prospective_closed_trades": 12,
+            "attributed_trades": 12,
+            "attribution_misses": 0,
+            "allowed_trades": 7,
+            "blocked_trades": 5,
+            "blocked_wins": 0,
+            "blocked_losses": 5,
+            "blocked_net_pnl": "-30",
+            "allowed_net_pnl": "18",
+            "actual_net_pnl": "-12",
+            "candidate_trade_contribution_pnl": "18",
+            "delta_trade_contribution_pnl": "30",
+            "actual_mean_net_r": "-0.1",
+            "candidate_mean_net_r_contribution": "0.15",
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_blocked_trades": 10,
+                "min_allowed_trades": 10,
+                "missing_prospective_closed_trades": 18,
+                "missing_blocked_trades": 5,
+                "missing_allowed_trades": 3,
+            },
+        },
         "profit_lock_counterfactual": {
             "enabled": True,
             "research_only": True,
@@ -458,6 +498,21 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`3`" in output
     assert "`1`" in output
     assert "### Fixed profit-lock counterfactual" in output
+    assert "### Prospective LONG-trend entry filter" in output
+    assert "prospective-reject-long-trend-v1" in output
+    assert "reject `long` + `trend`" in output
+    assert "allowed / blocked trades" in output
+    assert "`7 / 5`" in output
+    assert "blocked wins / losses" in output
+    assert "`0 / 5`" in output
+    assert "delta trade contribution" in output
+    assert "`30`" in output
+    assert "evidence gate (prospective / blocked / allowed)" in output
+    assert "`30 / 10 / 10`" in output
+    assert "still needed P/B/A" in output
+    assert "`18 / 5 / 3`" in output
+    assert "ready for review: `false`" in output
+    assert "Trade-contribution study only" in output
     assert "### Profit-lock execution shadow" in output
     assert "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve" in output
     assert "eligible / excluded open positions" in output
