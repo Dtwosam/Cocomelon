@@ -230,6 +230,7 @@ class BaselineReplayPipeline:
             if accrual.market != checkpoint.market:
                 raise ReplayInvariantError("restored funding market mismatch")
             lifecycle.funding[accrual.accrual_id] = accrual
+            self._funding_resolved.add((checkpoint.market.canonical, accrual.boundary_ms))
         self._lifecycles[market_key] = lifecycle
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
@@ -333,7 +334,7 @@ class BaselineReplayPipeline:
             first_boundary = (position.opened_at_ms // HOUR_MS + 1) * HOUR_MS
             boundary_ms = first_boundary
             while boundary_ms <= now_ms:
-                key = (position.position_id, boundary_ms)
+                key = (position.market.canonical, boundary_ms)
                 if key in self._funding_resolved or key in self._funding_gaps:
                     boundary_ms += HOUR_MS
                     continue
