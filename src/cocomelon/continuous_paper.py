@@ -12,7 +12,7 @@ from typing import Any
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.journal import JournalObservation
-from cocomelon.domain.market import Candle, FundingRate, MarketId, PerpMarketSnapshot
+from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evaluation.store import EvaluationFactStore
