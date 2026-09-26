@@ -255,7 +255,15 @@ def _sample_from_payload(raw: object) -> ShadowCadenceDecision:
         horizon_ms=int(raw["horizon_ms"]),
         target_end_ms=int(raw["target_end_ms"]),
         cost_fraction=Decimal(str(raw["cost_fraction"])),
-        off_primary_boundary=bool(raw["off_primary_boundary"]),
+        off_primary_boundary=(
+            raw["off_primary_boundary"]
+            if isinstance(raw["off_primary_boundary"], bool)
+            else (_ for _ in ()).throw(
+                ValueError(
+                    "cadence shadow off_primary_boundary must be boolean"
+                )
+            )
+        ),
     )
 
 
@@ -769,14 +777,20 @@ class CadenceShadowComparator:
                 raise ValueError("cadence shadow lead groups are invalid")
             if not isinstance(raw_score_groups, dict):
                 raise ValueError("cadence shadow score groups are invalid")
-            lead_counts[cadence_ms] = {
-                str(label): _counter_from_payload(counter)
-                for label, counter in raw_lead_groups.items()
-            }
-            score_counts[cadence_ms] = {
-                str(label): _counter_from_payload(counter)
-                for label, counter in raw_score_groups.items()
-            }
+            lead_counts[cadence_ms] = defaultdict(
+                Counter,
+                {
+                    str(label): _counter_from_payload(counter)
+                    for label, counter in raw_lead_groups.items()
+                },
+            )
+            score_counts[cadence_ms] = defaultdict(
+                Counter,
+                {
+                    str(label): _counter_from_payload(counter)
+                    for label, counter in raw_score_groups.items()
+                },
+            )
 
         seen_raw = raw.get("seen_decisions")
         pending_raw = raw.get("pending")
@@ -801,6 +815,14 @@ class CadenceShadowComparator:
 
         pending_samples = tuple(_sample_from_payload(item) for item in pending_raw)
         outcomes = tuple(_outcome_from_payload(item) for item in outcomes_raw)
+        seen.update(
+            (sample.cadence_ms, sample.decision_id)
+            for sample in pending_samples
+        )
+        seen.update(
+            (outcome.sample.cadence_ms, outcome.sample.decision_id)
+            for outcome in outcomes
+        )
         all_keys = [_sample_key(sample) for sample in pending_samples]
         all_keys.extend(_sample_key(outcome.sample) for outcome in outcomes)
         if len(all_keys) != len(set(all_keys)):
