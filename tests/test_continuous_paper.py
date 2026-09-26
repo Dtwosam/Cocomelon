@@ -206,3 +206,14 @@ def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
     assert '"exit_reason": self.exit_reason' in source
     assert 'parser.add_argument("--stop-file", type=Path)' in cli
     assert "stop_file=args.stop_file" in cli
+
+
+def test_runtime_persists_authenticated_learning_features() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
+    assert "LearningFeatureSnapshotStore(root / \"learning-features\")" in source
+    assert "feature_snapshot_sink=feature_store" in source
+    assert '"feature_snapshot_count": self.feature_snapshot_count' in source
+    assert (
+        '"feature_snapshot_state_digest": self.feature_snapshot_state_digest'
+        in source
+    )
