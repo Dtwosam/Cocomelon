@@ -145,6 +145,61 @@ def test_record_pump_counts_each_closed_trade_once() -> None:
     assert pump.session_closed_trades == 1
 
 
+def test_record_pump_disables_failing_cadence_shadow() -> None:
+    class Pipeline:
+        def on_record(
+            self,
+            _record: ReplayRecord,
+            _now_ms: int,
+        ) -> tuple[object, ...]:
+            return ()
+
+        def finalize(self, _end_ms: int) -> tuple[object, ...]:
+            return ()
+
+    class Journal:
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(self, _observation: object) -> None:
+            raise AssertionError("no observations expected")
+
+        def record_trade(self, _trade: object) -> None:
+            raise AssertionError("no trades expected")
+
+    class FailingShadow:
+        def observe(self, _record: ReplayRecord, _now_ms: int) -> None:
+            raise RuntimeError("diagnostic boom")
+
+    pump = _RecordPump(
+        Pipeline(),  # type: ignore[arg-type]
+        Journal(),  # type: ignore[arg-type]
+        last_available_at_ms=0,
+        cadence_shadow=FailingShadow(),  # type: ignore[arg-type]
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=1,
+        source="fixture",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key="gap-shadow",
+        payload_json=(
+            '{"started_ms":1,"ended_ms":1,"reason":"fixture","stream_id":"x"}'
+        ),
+        event_kind=None,
+    )
+
+    asyncio.run(pump.process(record))
+
+    assert pump.cadence_shadow is None
+    payload = pump.cadence_shadow_payload()
+    assert payload["enabled"] is False
+    assert payload["execution_authority"] is False
+    assert payload["error"] == "RuntimeError: diagnostic boom"
+
+
 def test_position_action_checkpoint_round_trip() -> None:
     action = PositionAction(
         action_type=PositionActionType.TIGHTEN_STOP,
