@@ -658,6 +658,54 @@ def _closed_trade_performance(
         mfe_sum = sum(mfe_values, Decimal("0"))
         mae_sum = sum(mae_values, Decimal("0"))
         excursion_count = len(complete_excursions)
+        giveback_values = tuple(
+            max(
+                Decimal("0"),
+                trade.mfe.r_multiple - trade.net_r,
+            )
+            for trade in complete_excursions
+            if trade.mfe is not None and trade.mfe.r_multiple is not None
+        )
+        reached_0_5r = tuple(
+            trade
+            for trade in complete_excursions
+            if trade.mfe is not None
+            and trade.mfe.r_multiple is not None
+            and trade.mfe.r_multiple >= Decimal("0.5")
+        )
+        reached_1r = tuple(
+            trade
+            for trade in complete_excursions
+            if trade.mfe is not None
+            and trade.mfe.r_multiple is not None
+            and trade.mfe.r_multiple >= Decimal("1")
+        )
+
+        def mean_giveback(
+            reached: tuple[TradeJournalEntry, ...],
+        ) -> str | None:
+            if not reached:
+                return None
+            values = tuple(
+                max(
+                    Decimal("0"),
+                    trade.mfe.r_multiple - trade.net_r,
+                )
+                for trade in reached
+                if trade.mfe is not None and trade.mfe.r_multiple is not None
+            )
+            return str(sum(values, Decimal("0")) / len(values))
+
+        def mean_final_net_r(
+            reached: tuple[TradeJournalEntry, ...],
+        ) -> str | None:
+            if not reached:
+                return None
+            return str(
+                sum((trade.net_r for trade in reached), Decimal("0"))
+                / len(reached)
+            )
+
         return {
             "trades": count,
             "wins": sum(1 for trade in items if trade.net_pnl > 0),
@@ -717,6 +765,30 @@ def _closed_trade_performance(
                 and trade.mfe.r_multiple is not None
                 and trade.mfe.r_multiple >= Decimal("1")
             ),
+            "mean_peak_to_close_giveback_r": (
+                None
+                if excursion_count == 0
+                else str(
+                    sum(giveback_values, Decimal("0"))
+                    / excursion_count
+                )
+            ),
+            "mean_giveback_after_mfe_ge_0_5r": mean_giveback(
+                reached_0_5r
+            ),
+            "mean_giveback_after_mfe_ge_1r": mean_giveback(reached_1r),
+            "positive_closes_after_mfe_ge_0_5r": sum(
+                1 for trade in reached_0_5r if trade.net_pnl > 0
+            ),
+            "positive_closes_after_mfe_ge_1r": sum(
+                1 for trade in reached_1r if trade.net_pnl > 0
+            ),
+            "mean_final_net_r_after_mfe_ge_0_5r": mean_final_net_r(
+                reached_0_5r
+            ),
+            "mean_final_net_r_after_mfe_ge_1r": mean_final_net_r(
+                reached_1r
+            ),
         }
 
     def grouped(
@@ -738,7 +810,11 @@ def _closed_trade_performance(
     profit_factor = (
         None
         if gross_loss_abs == 0
-        else str(gross_profit / gross_loss_abs)
+        else (
+            "0"
+            if gross_profit == 0
+            else str(gross_profit / gross_loss_abs)
+        )
     )
 
     by_side: dict[str, list[TradeJournalEntry]] = {}
