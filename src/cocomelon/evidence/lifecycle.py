@@ -67,8 +67,6 @@ class DecisionEpochEngine(Protocol):
     @property
     def state_book(self) -> RecordedStateBook: ...
 
-    def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None: ...
-
     def observe(self, record: ReplayRecord, now_ms: int) -> tuple[DecisionEpoch, ...]: ...
 
     def flush(self, end_ms: int) -> tuple[DecisionEpoch, ...]: ...
@@ -178,6 +176,10 @@ class BaselineReplayPipeline:
         return self._state
 
     def reconcile_markets(self, selected_markets: Sequence[MarketId]) -> None:
+        if not isinstance(self._decision_engine, BaselineDecisionEngine):
+            raise ReplayInvariantError(
+                "dynamic market reconciliation requires the baseline decision engine"
+            )
         self._decision_engine.reconcile_markets(selected_markets)
 
     @staticmethod
