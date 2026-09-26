@@ -18,6 +18,7 @@ class ExecutionLearningSyncResult:
     existing_records: int
     created_feature_snapshots: int
     existing_feature_snapshots: int
+    skipped_pre_activation_trades: int = 0
 
     def __post_init__(self) -> None:
         if min(
@@ -26,14 +27,18 @@ class ExecutionLearningSyncResult:
             self.existing_records,
             self.created_feature_snapshots,
             self.existing_feature_snapshots,
+            self.skipped_pre_activation_trades,
         ) < 0:
             raise ValueError("execution learning sync counts must be non-negative")
-        if self.created_records + self.existing_records != self.scanned_trades:
+        eligible_trades = self.scanned_trades - self.skipped_pre_activation_trades
+        if eligible_trades < 0:
+            raise ValueError("execution learning skipped trades exceed scanned trades")
+        if self.created_records + self.existing_records != eligible_trades:
             raise ValueError("execution learning record counts must reconcile")
         feature_attempts = (
             self.created_feature_snapshots + self.existing_feature_snapshots
         )
-        if feature_attempts not in {0, self.scanned_trades}:
+        if feature_attempts not in {0, eligible_trades}:
             raise ValueError("execution learning feature counts must reconcile")
 
 
@@ -49,6 +54,7 @@ def sync_execution_learning_evidence(
     candidate_spec_id: str | None = None,
     campaign_id: str | None = None,
     destination_feature_store: LearningFeatureSnapshotStore | None = None,
+    opened_at_or_after_ms: int | None = None,
 ) -> ExecutionLearningSyncResult:
     if not candidate_id.strip():
         raise ValueError("candidate_id must not be empty")
@@ -61,13 +67,22 @@ def sync_execution_learning_evidence(
         LearningEvidenceKind.LIVE_EXECUTION,
     }:
         raise ValueError("execution learning sync requires paper or live execution kind")
+    if opened_at_or_after_ms is not None and opened_at_or_after_ms < 0:
+        raise ValueError("opened_at_or_after_ms must be non-negative when present")
 
     created = 0
     existing = 0
     created_features = 0
     existing_features = 0
+    skipped_pre_activation = 0
     trades = tuple(journal.iter_trades())
     for trade in trades:
+        if (
+            opened_at_or_after_ms is not None
+            and trade.opened_at_ms < opened_at_or_after_ms
+        ):
+            skipped_pre_activation += 1
+            continue
         if expected_replay_run_id is not None:
             if trade.replay_run_id != expected_replay_run_id:
                 raise ValueError(
@@ -120,4 +135,5 @@ def sync_execution_learning_evidence(
         existing_records=existing,
         created_feature_snapshots=created_features,
         existing_feature_snapshots=existing_features,
+        skipped_pre_activation_trades=skipped_pre_activation,
     )
