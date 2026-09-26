@@ -68,6 +68,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     env = dict(os.environ)
     env["HEARTBEAT_JSON"] = json.dumps(payload)
     env["GITHUB_RUN_ID"] = "12345"
+    env["GITHUB_SHA"] = "abcdef123456"
+    env["PREDECESSOR_RUN_ID"] = "12222"
     completed = subprocess.run(
         [sys.executable, SCRIPT],
         env=env,
@@ -83,6 +85,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "64000" in output
     assert "65200" in output
     assert "12345" in output
+    assert "abcdef123456" in output
+    assert "12222" in output
     assert "### Decision path" in output
     assert "LONG / SHORT / NO_TRADE" in output
     assert "`1 / 0 / 19`" in output

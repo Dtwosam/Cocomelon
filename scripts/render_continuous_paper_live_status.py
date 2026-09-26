@@ -20,6 +20,8 @@ def render_live_status(
     payload: Mapping[str, Any],
     *,
     run_id: str,
+    head_sha: str,
+    predecessor_run_id: str,
 ) -> str:
     timestamp_ms = int(payload["timestamp_ms"])
     timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
@@ -38,6 +40,15 @@ def render_live_status(
         "",
         f"**Updated:** `{timestamp.isoformat()}`",
         f"**Worker run:** `{run_id}`",
+        f"**Worker head SHA:** `{head_sha}`",
+        (
+            "**Predecessor run:** "
+            + (
+                f"`{predecessor_run_id}`"
+                if predecessor_run_id
+                else "_fresh/watchdog restore_"
+            )
+        ),
         "**Execution:** `PAPER ONLY` · **Live orders:** `false`",
         "",
         "### Account",
@@ -173,6 +184,8 @@ def main() -> None:
         render_live_status(
             decoded,
             run_id=os.environ.get("GITHUB_RUN_ID", "unknown"),
+            head_sha=os.environ.get("GITHUB_SHA", "unknown"),
+            predecessor_run_id=os.environ.get("PREDECESSOR_RUN_ID", ""),
         ),
         end="",
     )

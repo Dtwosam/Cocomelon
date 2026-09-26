@@ -35,6 +35,7 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       STATE_ROOT: continuous-paper-state
       LIVE_STATUS_ISSUE: "469"
+      PREDECESSOR_RUN_ID: ${{ inputs.source_run_id || '' }}
     steps:
       - name: Skip bootstrap/watchdog when a continuous paper run is already active
         id: guard
@@ -212,6 +213,7 @@ jobs:
                   > /tmp/continuous-paper-live.md; then
                   if gh issue edit "$LIVE_STATUS_ISSUE" \
                     --repo "$GITHUB_REPOSITORY" \
+                    --title "Continuous Paper Trader — Live Status" \
                     --body-file /tmp/continuous-paper-live.md >/dev/null; then
                     last_status_publish="$now"
                   else

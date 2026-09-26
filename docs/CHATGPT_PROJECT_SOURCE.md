@@ -59,7 +59,7 @@ GitHub scheduling/dispatch is infrastructure continuity only. It is not the trad
 
 ### Reading the current live paper state
 
-Read GitHub Issue #469, `Continuous Paper Trader — Live Status`, first. The active worker rewrites that issue from structured `COCOMELON_PAPER_HEARTBEAT` payloads during the session, so it is the near-real-time paper-only operational surface even when in-progress job logs are not retrievable. It reports selected markets, processed records, paper cash/equity, open positions, entry price, stop, latest mark, unrealized gross PnL, risk amount, fees/funding, execution health, and the latest journal observation.
+Read GitHub Issue #469, `Continuous Paper Trader — Live Status`, first. The active worker rewrites that issue from structured `COCOMELON_PAPER_HEARTBEAT` payloads during the session, so it is the near-real-time paper-only operational surface even when in-progress job logs are not retrievable. It reports selected markets, processed records, paper cash/equity, open positions, entry price, stop, latest mark, unrealized gross PnL, risk amount, fees/funding, execution health, the latest journal observation, the exact worker head SHA, and predecessor run lineage.
 
 The raw job-log heartbeat is a fallback when available. Do not substitute Issue #82, Issue #124, retired Prospective HYPE artifacts, or an old completed continuous-paper artifact for a newer Issue #469 heartbeat. If the worker is active but Issue #469 still says bootstrap/starting, say it is still starting. Completed state artifacts and journal databases remain the durable audit source after a worker finishes.
 
