@@ -4,8 +4,8 @@
 
 **Snapshot updated:** 2026-09-26  
 **Repository:** `Dtwosam/Cocomelon`  
-**Current verified `main` at snapshot:** `f34dd1de5fd2e73151d0ebb6e73b7b37355043dd`  
-**Latest verified development CI:** `35614793455` on PR #237 implementation head — success  
+**Current verified `main` at snapshot:** `7a3c943ed9dbcf4464e64b22e6c1d16427734c8b` — snapshot only; always refresh live `main` before acting  
+**CI rule:** exact-head PR CI and post-merge `main` CI must be checked live; do not rely on an old pinned run ID  
 **Venue:** Hyperliquid perpetual futures  
 **Observation:** genuine public Hyperliquid mainnet  
 **Execution:** paper/shadow only  
@@ -23,9 +23,9 @@ Do **not** call Prospective HYPE the current paper trader. Do **not** infer curr
 
 The product behavior remains the canonical `MASTER_SPEC.md` behavior: continuously scan the dynamically eligible Hyperliquid mainnet perp universe, rank opportunities, perform deeper analysis on a dynamic shortlist, choose LONG/SHORT/NO_TRADE, pass directional proposals through the independent risk engine, and paper-execute only approved setups against real mainnet observations.
 
-Until the dedicated long-running paper/shadow runtime is operationally verified, distinguish clearly between:
+The dedicated continuous paper runtime is operational. Keep these evidence families separate:
 
-1. **ordinary paper execution evidence** — actual simulated orders/fills/positions produced by the scanner -> strategy -> risk -> paper execution stack;
+1. **active continuous ordinary paper evidence** — actual simulated orders/fills/positions produced by the scanner -> strategy -> risk -> paper execution stack and surfaced through Issue #469;
 2. **scheduled research replay evidence** — touched research campaigns and their authenticated closed paper trades;
 3. **retired V4 evidence** — historical/touched development evidence;
 4. **retired Prospective HYPE evidence** — V1/V2/V3 historical research only;
