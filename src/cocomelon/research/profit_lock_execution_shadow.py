@@ -228,14 +228,14 @@ class ProfitLockExecutionOutcome:
     candidate_source: str
 
     def __post_init__(self) -> None:
-        for value in (
+        for identity_value in (
             self.trade_id,
             self.opening_plan_id,
             self.market,
             self.rule_id,
             self.candidate_source,
         ):
-            if not value.strip():
+            if not identity_value.strip():
                 raise ValueError("outcome identity must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
@@ -273,15 +273,15 @@ class ProfitLockExecutionOutcome:
             raise ValueError(
                 "simulated_exit_fees must be non-negative"
             )
-        for value in (
+        for count_value in (
             self.attempt_count,
             self.planning_rejection_count,
             self.no_fill_count,
         ):
-            if value < 0:
+            if count_value < 0:
                 raise ValueError("execution counts must be non-negative")
-        for value in (self.actual_net_pnl, self.actual_net_r):
-            if not value.is_finite():
+        for actual_value in (self.actual_net_pnl, self.actual_net_r):
+            if not actual_value.is_finite():
                 raise ValueError("actual economics must be finite")
         estimated = (
             self.candidate_net_pnl_estimate,
@@ -295,8 +295,11 @@ class ProfitLockExecutionOutcome:
             raise ValueError(
                 "candidate economics must be all present or all absent"
             )
-        for value in estimated:
-            if value is not None and not value.is_finite():
+        for estimated_value in estimated:
+            if (
+                estimated_value is not None
+                and not estimated_value.is_finite()
+            ):
                 raise ValueError(
                     "candidate economics must be finite when present"
                 )
@@ -816,10 +819,16 @@ class ProfitLockExecutionShadow:
                     raise ProfitLockExecutionShadowError(
                         "completed shadow fill quantity mismatch"
                     )
+                completion_timestamp_ms = (
+                    rule_state.completed_at_ms
+                )
+                if completion_timestamp_ms is None:
+                    raise ProfitLockExecutionShadowError(
+                        "completed shadow is missing completion timestamp"
+                    )
                 elapsed_ms = max(
                     1,
-                    rule_state.completed_at_ms
-                    - trade.opened_at_ms,
+                    completion_timestamp_ms - trade.opened_at_ms,
                 )
                 funding_reserve = (
                     trade.entry_price
