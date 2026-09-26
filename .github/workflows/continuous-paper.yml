@@ -1,6 +1,11 @@
 name: Continuous Mainnet Paper Trader
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/continuous-paper.yml"
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -29,13 +34,16 @@ jobs:
       COCOMELON_EXECUTION_MODE: paper
       STATE_ROOT: continuous-paper-state
     steps:
-      - name: Skip watchdog when a continuous paper run is already active
+      - name: Skip bootstrap/watchdog when a continuous paper run is already active
         id: guard
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id || '' }}
         run: |
           set -euo pipefail
           echo "skip=false" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" != "schedule" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]; then
             exit 0
           fi
           ACTIVE="$(
