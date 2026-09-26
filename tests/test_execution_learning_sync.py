@@ -252,3 +252,49 @@ def test_execution_learning_sync_copies_only_trade_features_to_destination(
     assert second.existing_feature_snapshots == 1
     assert destination.load(snapshot.snapshot_id) is not None
     assert destination.load(unused.snapshot_id) is None
+
+
+
+def test_execution_learning_sync_trade_close_eligibility_and_feature_copy(
+    tmp_path,
+) -> None:
+    snapshot = _snapshot()
+    journal_path, feature_store_dir = _source(tmp_path, snapshot=snapshot)
+    destination = tmp_path / "cumulative-features"
+    payload = execution_learning_sync_cli.execution_learning_sync_payload(
+        journal_path=journal_path,
+        feature_store_dir=feature_store_dir,
+        learning_root=tmp_path / "learning",
+        candidate_id="continuous-paper-baseline",
+        kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
+        research_eligible_at_ms=None,
+        research_eligible_at_trade_close=True,
+        expected_replay_run_id="run-1",
+        destination_feature_store_dir=destination,
+    )
+
+    assert payload["research_eligibility_mode"] == "trade_close"
+    assert payload["created_records"] == 1
+    assert payload["created_feature_snapshots"] == 1
+    assert payload["feature_snapshot_count"] == 1
+    records = outcome_learning.LearningEvidenceLedger(
+        tmp_path / "learning"
+    ).iter_records()
+    assert records[0].research_eligible_at_ms == records[0].closed_at_ms
+    copied = learning_feature_snapshots.LearningFeatureSnapshotStore(destination)
+    assert copied.load(snapshot.snapshot_id) is not None
+
+
+def test_execution_learning_sync_rejects_mixed_eligibility_modes(tmp_path) -> None:
+    snapshot = _snapshot()
+    journal_path, feature_store_dir = _source(tmp_path, snapshot=snapshot)
+    with pytest.raises(ValueError, match="must be omitted"):
+        execution_learning_sync_cli.execution_learning_sync_payload(
+            journal_path=journal_path,
+            feature_store_dir=feature_store_dir,
+            learning_root=tmp_path / "learning",
+            candidate_id="continuous-paper-baseline",
+            kind=outcome_learning.LearningEvidenceKind.PAPER_EXECUTION,
+            research_eligible_at_ms=30_000,
+            research_eligible_at_trade_close=True,
+        )
