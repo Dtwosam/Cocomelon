@@ -194,6 +194,11 @@ def test_shadow_settlement_uses_hyperliquid_close_boundary_not_raw_T() -> None:
     assert by_score["70-<75"]["settled_count"] == 1
     assert by_score["70-<75"]["positive_net_count"] == 1
 
+    by_direction = cadence["outcomes_by_direction_by_horizon_ms"]["900000"]
+    assert by_direction["long"]["settled_count"] == 1
+    assert by_direction["long"]["mean_net_return"] == "0.0085"
+    assert "short" not in by_direction
+
 
 def test_shadow_state_round_trip_preserves_pending_and_settled_evidence() -> None:
     comparator = CadenceShadowComparator((MARKET,))
@@ -245,6 +250,9 @@ def test_shadow_state_round_trip_preserves_pending_and_settled_evidence() -> Non
     outcome = cadence["outcomes_by_horizon_ms"]["900000"]
     assert outcome["settled_count"] == 1
     assert outcome["mean_net_return"] == "0.0085"
+    by_direction = cadence["outcomes_by_direction_by_horizon_ms"]["900000"]
+    assert by_direction["short"]["settled_count"] == 1
+    assert by_direction["short"]["mean_net_return"] == "0.0085"
 
     target_start = pending.target_end_ms - FIVE_MINUTES_MS
     restored._settle_candle(
