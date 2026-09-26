@@ -5,7 +5,6 @@ import os
 import subprocess
 import sys
 
-
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
 
 
