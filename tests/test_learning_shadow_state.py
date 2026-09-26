@@ -121,7 +121,7 @@ def test_shadow_state_receipt_reverifies_and_rejects_tampering(tmp_path) -> None
     assert verify_learning_shadow_state(path, **kwargs) == state
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["closed_paper_trade_count"] = 0
+    payload["campaign_count"] = 2
     path.write_text(
         json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
