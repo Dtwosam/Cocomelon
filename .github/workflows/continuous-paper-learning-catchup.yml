@@ -1,0 +1,266 @@
+name: Continuous Paper Learning Catch-up
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+      - "Continuous Paper Learning Evidence Sync"
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: continuous-paper-learning-catchup
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout trusted catch-up control
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Allow normal follower to register
+        if: ${{ github.event_name == 'workflow_run' }}
+        run: sleep 10
+
+      - name: Find newest successful lineage-capable paper worker
+        id: worker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"             > /tmp/continuous-paper-runs.json
+          RUN_ID="$(
+            python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import tempfile
+          import zipfile
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/continuous-paper-runs.json").read_text(encoding="utf-8")
+          )
+          runs = sorted(
+              payload.get("workflow_runs", []),
+              key=lambda item: (item.get("created_at", ""), int(item.get("id", 0))),
+              reverse=True,
+          )
+          for run in runs:
+              run_id = run.get("id")
+              attempt = run.get("run_attempt")
+              if (
+                  not isinstance(run_id, int)
+                  or isinstance(attempt, bool)
+                  or not isinstance(attempt, int)
+                  or attempt <= 0
+                  or run.get("name") != "Continuous Mainnet Paper Trader"
+                  or run.get("path") != ".github/workflows/continuous-paper.yml"
+                  or run.get("head_branch") != "main"
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("event") not in {"push", "workflow_dispatch", "schedule"}
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              expected = f"continuous-paper-state-{run_id}-{attempt}"
+              artifacts_raw = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}/artifacts?per_page=100",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              artifacts = json.loads(artifacts_raw.stdout).get("artifacts", [])
+              matches = [
+                  item
+                  for item in artifacts
+                  if item.get("name") == expected and item.get("expired") is False
+              ]
+              if len(matches) != 1:
+                  continue
+              artifact = matches[0]
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  continue
+              with tempfile.NamedTemporaryFile(suffix=".zip") as handle:
+                  with open(handle.name, "wb") as output:
+                      subprocess.run(
+                          [
+                              "/usr/bin/gh",
+                              "api",
+                              f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip",
+                          ],
+                          check=True,
+                          stdout=output,
+                      )
+                  with zipfile.ZipFile(handle.name) as archive:
+                      names = tuple(archive.namelist())
+              if not any(name.startswith("learning-features/records/") for name in names):
+                  continue
+              if not any(name.startswith("opening-lineage/records/") for name in names):
+                  continue
+              print(run_id)
+              break
+          PY
+          )"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          if [ -z "$RUN_ID" ]; then
+            echo "no successful lineage-capable continuous paper worker exists yet"
+          else
+            echo "newest lineage-capable continuous paper worker: $RUN_ID"
+          fi
+
+      - name: Restore latest trusted continuous-paper learning receipt
+        id: state
+        if: ${{ steps.worker.outputs.run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts?name=continuous-paper-learning-state&per_page=100"             > /tmp/continuous-learning-artifacts.json
+          UPSTREAM_RUN_ID="$(
+            python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import tempfile
+          import zipfile
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/continuous-learning-artifacts.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          artifacts = sorted(
+              (
+                  item
+                  for item in payload.get("artifacts", [])
+                  if item.get("expired") is False
+                  and isinstance(item.get("workflow_run"), dict)
+                  and item["workflow_run"].get("head_branch") == "main"
+              ),
+              key=lambda item: item.get("created_at", ""),
+              reverse=True,
+          )
+          for artifact in artifacts:
+              workflow_run = artifact["workflow_run"]
+              run_id = workflow_run.get("id")
+              if not isinstance(run_id, int):
+                  continue
+              run_raw = subprocess.run(
+                  [
+                      "/usr/bin/gh",
+                      "api",
+                      f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                  ],
+                  check=True,
+                  capture_output=True,
+                  text=True,
+              )
+              run = json.loads(run_raw.stdout)
+              if (
+                  run.get("path")
+                  != ".github/workflows/continuous-paper-learning-evidence.yml"
+                  or run.get("status") != "completed"
+                  or run.get("conclusion") != "success"
+                  or run.get("head_branch") != "main"
+                  or run.get("event") not in {"workflow_run", "workflow_dispatch"}
+                  or run.get("head_sha") != workflow_run.get("head_sha")
+                  or (run.get("head_repository") or {}).get("full_name")
+                  != os.environ["GITHUB_REPOSITORY"]
+              ):
+                  continue
+              digest = artifact.get("digest")
+              if not isinstance(digest, str) or not digest.startswith("sha256:"):
+                  continue
+              with tempfile.NamedTemporaryFile(suffix=".zip") as handle:
+                  with open(handle.name, "wb") as output:
+                      subprocess.run(
+                          [
+                              "/usr/bin/gh",
+                              "api",
+                              f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip",
+                          ],
+                          check=True,
+                          stdout=output,
+                      )
+                  with zipfile.ZipFile(handle.name) as archive:
+                      receipt_names = [
+                          name
+                          for name in archive.namelist()
+                          if name.endswith("last-source-receipt.json")
+                      ]
+                      if len(receipt_names) != 1:
+                          continue
+                      receipt = json.loads(
+                          archive.read(receipt_names[0]).decode("utf-8")
+                      )
+              if (
+                  receipt.get("source_kind") != "continuous_paper_worker"
+                  or receipt.get("research_only") is not True
+                  or receipt.get("promotion_eligible") is not False
+                  or receipt.get("execution_ready") is not False
+              ):
+                  raise SystemExit("trusted continuous learning receipt is invalid")
+              upstream = receipt.get("upstream_run_id")
+              if isinstance(upstream, bool) or not isinstance(upstream, int) or upstream <= 0:
+                  raise SystemExit("trusted continuous learning upstream run id is invalid")
+              print(upstream)
+              break
+          PY
+          )"
+          echo "upstream_run_id=$UPSTREAM_RUN_ID" >> "$GITHUB_OUTPUT"
+          if [ -z "$UPSTREAM_RUN_ID" ]; then
+            echo "no trusted continuous-paper learning receipt exists yet"
+          else
+            echo "latest trusted learning receipt upstream: $UPSTREAM_RUN_ID"
+          fi
+
+      - name: Recover missing continuous-paper learning sync
+        if: ${{ steps.worker.outputs.run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST_WORKER_RUN_ID: ${{ steps.worker.outputs.run_id }}
+          LATEST_STATE_UPSTREAM_RUN_ID: ${{ steps.state.outputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$LATEST_STATE_UPSTREAM_RUN_ID" = "$LATEST_WORKER_RUN_ID" ]; then
+            echo "newest lineage-capable paper worker is already in learning state"
+            exit 0
+          fi
+          if [ -n "$LATEST_STATE_UPSTREAM_RUN_ID" ]             && [ "$LATEST_STATE_UPSTREAM_RUN_ID" -gt "$LATEST_WORKER_RUN_ID" ]; then
+            echo "trusted learning state is ahead of newest lineage-capable paper worker" >&2
+            exit 65
+          fi
+          ACTIVE_SYNC="$(
+            /usr/bin/gh api               "/repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper-learning-evidence.yml/runs?per_page=100"               --jq '.workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.status != "completed")
+                | [.id, .status, .event]
+                | @tsv'
+          )"
+          if [ -n "$ACTIVE_SYNC" ]; then
+            echo "continuous-paper learning sync already active; catch-up skipped"
+            printf '%s\n' "$ACTIVE_SYNC"
+            exit 0
+          fi
+          /usr/bin/gh api             --method POST             "/repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper-learning-evidence.yml/dispatches"             -f ref=main             -f "inputs[upstream_run_id]=$LATEST_WORKER_RUN_ID"
+          echo "dispatched missing continuous-paper learning sync for $LATEST_WORKER_RUN_ID"
