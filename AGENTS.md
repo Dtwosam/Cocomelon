@@ -185,7 +185,7 @@ When the user says "current paper trade" without naming a lane, default to repor
 
 while clearly labeling historical/cumulative evidence separately.
 
-For the active `Continuous Mainnet Paper Trader`, the authoritative near-real-time operational surface is the latest structured job-log line beginning with `COCOMELON_PAPER_HEARTBEAT `. Fetch the newest active run, inspect its paper job log, and parse the most recent heartbeat before answering about open positions, current paper equity, entry/stop/mark, or whether a trade is presently open. Heartbeats are paper-only operational telemetry; completed durable artifacts/journal state remain the historical audit authority.
+For the active `Continuous Mainnet Paper Trader`, read GitHub Issue #469 (`Continuous Paper Trader — Live Status`) first. The worker rewrites that issue from structured `COCOMELON_PAPER_HEARTBEAT` payloads while it is running. Use its latest timestamp and payload before answering about open positions, current paper equity, entry/stop/mark, or whether a trade is presently open. The raw heartbeat line is a fallback when logs are available. Heartbeats are paper-only operational telemetry; completed durable artifacts/journal state remain the historical audit authority.
 
 If an active worker has not emitted its first heartbeat yet, report that it is still starting rather than inferring either "no trade" or "trade open" from old dashboards.
 
