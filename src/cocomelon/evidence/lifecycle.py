@@ -76,10 +76,26 @@ class FeatureSnapshotSink(Protocol):
     def record(self, snapshot: FeatureSnapshot) -> bool: ...
 
 
+@dataclass(frozen=True, slots=True)
+class OpenLifecycleCheckpoint:
+    market: MarketId
+    opening_plan_id: str
+    feature_snapshot_id: str
+    equity_before: Decimal
+
+    def __post_init__(self) -> None:
+        if not self.opening_plan_id.strip() or not self.feature_snapshot_id.strip():
+            raise ValueError("open lifecycle checkpoint identity must not be empty")
+        if not self.equity_before.is_finite() or self.equity_before <= ZERO:
+            raise ValueError("open lifecycle checkpoint equity must be positive and finite")
+
+
 @dataclass(slots=True)
 class _OpenTradeLifecycle:
-    evaluation: EpochMarketEvaluation
-    opening: BaselineOpeningTrace
+    feature_snapshot_id: str
+    opening_plan: PaperOrderPlan
+    opening_attempt: ExecutionAttempt
+    equity_before: Decimal
     exit_plans: dict[str, PaperOrderPlan] = field(default_factory=dict)
     exit_attempts: dict[str, ExecutionAttempt] = field(default_factory=dict)
     fills: dict[str, PaperFill] = field(default_factory=dict)
@@ -89,7 +105,7 @@ class _OpenTradeLifecycle:
 
     @property
     def market(self) -> MarketId:
-        return self.evaluation.decision.market
+        return self.opening_plan.market
 
 
 def _receive_ms(event: StreamEvent) -> int:
@@ -154,6 +170,62 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    @property
+    def open_lifecycle_checkpoints(self) -> tuple[OpenLifecycleCheckpoint, ...]:
+        return tuple(
+            OpenLifecycleCheckpoint(
+                market=item.market,
+                opening_plan_id=item.opening_plan.plan_id,
+                feature_snapshot_id=item.feature_snapshot_id,
+                equity_before=item.equity_before,
+            )
+            for item in sorted(
+                self._lifecycles.values(),
+                key=lambda lifecycle: lifecycle.market.canonical,
+            )
+        )
+
+    def restore_open_lifecycle(
+        self,
+        checkpoint: OpenLifecycleCheckpoint,
+        *,
+        opening_plan: PaperOrderPlan,
+        opening_attempt: ExecutionAttempt,
+        opening_fills: Sequence[PaperFill],
+        funding_accruals: Sequence[FundingAccrual] = (),
+    ) -> None:
+        market_key = checkpoint.market.canonical
+        if market_key in self._lifecycles:
+            raise ReplayInvariantError("open lifecycle already restored")
+        if opening_plan.plan_id != checkpoint.opening_plan_id:
+            raise ReplayInvariantError("restored opening plan id mismatch")
+        if opening_plan.market != checkpoint.market or opening_plan.reduce_only:
+            raise ReplayInvariantError("restored opening plan market mismatch")
+        if opening_attempt.plan_id != opening_plan.plan_id:
+            raise ReplayInvariantError("restored opening attempt plan mismatch")
+        fills = tuple(opening_fills)
+        if not fills or any(
+            fill.plan_id != opening_plan.plan_id
+            or fill.attempt_id != opening_attempt.attempt_id
+            for fill in fills
+        ):
+            raise ReplayInvariantError("restored opening fills mismatch")
+        if not any(position.market == checkpoint.market for position in self._execution.account.positions):
+            raise ReplayInvariantError("restored lifecycle has no matching open position")
+        lifecycle = _OpenTradeLifecycle(
+            feature_snapshot_id=checkpoint.feature_snapshot_id,
+            opening_plan=opening_plan,
+            opening_attempt=opening_attempt,
+            equity_before=checkpoint.equity_before,
+        )
+        for fill in fills:
+            lifecycle.fills[fill.fill_id] = fill
+        for accrual in funding_accruals:
+            if accrual.market != checkpoint.market:
+                raise ReplayInvariantError("restored funding market mismatch")
+            lifecycle.funding[accrual.accrual_id] = accrual
+        self._lifecycles[market_key] = lifecycle
 
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
         cutoff_ms = self._new_exposure_cutoff_ms
@@ -346,8 +418,10 @@ class BaselineReplayPipeline:
         if market_key in self._lifecycles:
             raise ReplayInvariantError("opening fill collided with existing lifecycle")
         lifecycle = _OpenTradeLifecycle(
-            evaluation=trace.evaluation,
-            opening=trace,
+            feature_snapshot_id=trace.evaluation.feature.snapshot_id,
+            opening_plan=submission.plan,
+            opening_attempt=simulation.attempt,
+            equity_before=trace.equity_before,
         )
         for fill in simulation.fills:
             lifecycle.fills[fill.fill_id] = fill
@@ -413,9 +487,8 @@ class BaselineReplayPipeline:
         lifecycle = self._lifecycles.get(market.canonical)
         if lifecycle is None:
             raise ReplayInvariantError("closed position has no replay lifecycle")
-        submission = lifecycle.opening.submission
-        if submission.plan is None or submission.simulation is None:
-            raise ReplayInvariantError("journal lifecycle is missing opening execution")
+        opening_plan = lifecycle.opening_plan
+        opening_attempt = lifecycle.opening_attempt
         actions = tuple(
             sorted(
                 lifecycle.actions.values(),
@@ -425,15 +498,15 @@ class BaselineReplayPipeline:
         exit_reason = actions[-1].reason_codes[0] if actions else "POSITION_CLOSED"
         assembled = assemble_trade_journal_entry(
             TradeLifecycleInput(
-                feature_snapshot_id=lifecycle.evaluation.feature.snapshot_id,
-                opening_plan=submission.plan,
-                opening_attempt=submission.simulation.attempt,
+                feature_snapshot_id=lifecycle.feature_snapshot_id,
+                opening_plan=opening_plan,
+                opening_attempt=opening_attempt,
                 exit_plans=tuple(lifecycle.exit_plans.values()),
                 exit_attempts=tuple(lifecycle.exit_attempts.values()),
                 fills=tuple(lifecycle.fills.values()),
                 position_actions=actions,
                 funding_accruals=tuple(lifecycle.funding.values()),
-                equity_before=lifecycle.opening.equity_before,
+                equity_before=lifecycle.equity_before,
                 equity_after=self._execution.account.equity,
                 exit_reason=exit_reason,
                 mark_observations=tuple(lifecycle.marks.values()),
