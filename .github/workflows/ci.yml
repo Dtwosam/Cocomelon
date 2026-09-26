@@ -138,6 +138,8 @@ jobs:
           tests/test_learning_clean_campaign_sequence_cli.py
           tests/test_learning_state_lineage.py
           tests/test_execution_learning_sync.py
+          tests/test_continuous_paper_learning_sync.py
+          tests/test_continuous_paper_learning_workflow.py
           tests/test_research_learning_sync.py
           tests/test_research_learning_workflow.py
           tests/test_research_learning_producer_contract.py
