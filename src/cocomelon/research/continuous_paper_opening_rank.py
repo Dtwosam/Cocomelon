@@ -349,12 +349,12 @@ def opening_rank_attribution(
     grouped: dict[str, list[TradeJournalEntry]] = {}
     ages: list[int] = []
     attributed = 0
-    misses = 0
+    without_evidence = 0
 
     for trade in trades:
         evidence = store.load(trade.opening_plan_id)
         if evidence is None:
-            misses += 1
+            without_evidence += 1
             continue
         if (
             evidence.market != trade.market.canonical
@@ -409,7 +409,7 @@ def opening_rank_attribution(
         "prospective_only": True,
         "evidence_records": store.record_count,
         "attributed_closed_trades": attributed,
-        "attribution_misses": misses,
+        "closed_trades_without_rank_evidence": without_evidence,
         "mean_rank_age_ms": (
             None
             if not ages
