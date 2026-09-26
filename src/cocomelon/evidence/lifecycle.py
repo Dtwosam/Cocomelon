@@ -36,6 +36,7 @@ from cocomelon.evidence.epochs import (
 from cocomelon.evidence.openings import (
     BaselineOpeningEngine,
     BaselineOpeningTrace,
+    EntryTimingActivity,
     _instrument,
 )
 from cocomelon.execution.funding import FundingAccrual, reconcile_funding_boundary
@@ -149,6 +150,7 @@ class BaselineReplayPipeline:
         decision_engine: DecisionEpochEngine | None = None,
         new_exposure_cutoff_ms: int | None = None,
         feature_snapshot_sink: FeatureSnapshotSink | None = None,
+        require_fresh_order_flow_entry: bool = False,
     ) -> None:
         if not replay_run_id.strip():
             raise ValueError("replay_run_id must not be empty")
@@ -174,7 +176,12 @@ class BaselineReplayPipeline:
             replay_config=replay_config,
         )
         self._state = self._decision_engine.state_book
-        self._opening = BaselineOpeningEngine(replay_config, execution, self._state)
+        self._opening = BaselineOpeningEngine(
+            replay_config,
+            execution,
+            self._state,
+            require_fresh_order_flow_entry=require_fresh_order_flow_entry,
+        )
         self._latest_evaluation: dict[str, EpochMarketEvaluation] = {}
         self._lifecycles: dict[str, _OpenTradeLifecycle] = {}
         self._completed: dict[str, TradeJournalEntry] = {}
@@ -209,6 +216,10 @@ class BaselineReplayPipeline:
     @property
     def state_book(self) -> RecordedStateBook:
         return self._state
+
+    @property
+    def session_entry_timing_activity(self) -> EntryTimingActivity:
+        return self._opening.entry_timing_activity
 
     @property
     def session_decision_activity(self) -> SessionDecisionActivity:
