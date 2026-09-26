@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from cocomelon.config import ExecutionMode, Settings
+from cocomelon.domain.execution import ExecutionAttempt, PaperFill, PaperOrderPlan
 from cocomelon.domain.journal import JournalObservation
 from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
@@ -452,9 +453,9 @@ def _restore_open_lifecycles(
             fill for fill in opening_fills if fill.attempt_id == opening_attempt.attempt_id
         )
 
-        exit_plans = []
-        exit_attempts = []
-        exit_fills = []
+        exit_plans: list[PaperOrderPlan] = []
+        exit_attempts: list[ExecutionAttempt] = []
+        exit_fills: list[PaperFill] = []
         for plan_id in checkpoint.exit_plan_ids:
             plan = execution.store.load_plan(plan_id)
             if plan is None:
