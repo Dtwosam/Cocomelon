@@ -63,6 +63,8 @@ Read GitHub Issue #469, `Continuous Paper Trader — Live Status`, first. The ac
 
 The raw job-log heartbeat is a fallback when available. Do not substitute Issue #82, Issue #124, retired Prospective HYPE artifacts, or an old completed continuous-paper artifact for a newer Issue #469 heartbeat. If the worker is active but Issue #469 still says bootstrap/starting, say it is still starting. Completed state artifacts and journal databases remain the durable audit source after a worker finishes.
 
+Temporary bootstrap-run caveat: run `36236109117` predates PR #470's completed-trade heartbeat deduplication. Once that run records its first closure, the `closed_trades` field can become inflated and must not be reported as an actual count. The fix is already merged for successor workers. Open-position state, realized PnL, and durable journal/trade evidence remain usable.
+
 ---
 ## 1. Authority and continuation rule
 
