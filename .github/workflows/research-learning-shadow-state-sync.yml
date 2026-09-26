@@ -1,0 +1,585 @@
+name: Research Learning Shadow State Campaign Follower
+
+on:
+  workflow_run:
+    workflows: ["Scheduled Research Mainnet Replay Campaign"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      upstream_run_id:
+        description: Exact successful scheduled paper campaign run ID to recover
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: research-learning-shadow-state-lineage-mutator
+  cancel-in-progress: false
+
+env:
+  COCOMELON_EXECUTION_MODE: paper
+
+jobs:
+  prepare:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      campaign_run_id: ${{ steps.campaign.outputs.run_id }}
+      campaign_run_attempt: ${{ steps.campaign.outputs.run_attempt }}
+      campaign_head_sha: ${{ steps.campaign.outputs.head_sha }}
+      campaign_artifact_id: ${{ steps.campaign.outputs.artifact_id }}
+      campaign_artifact_name: ${{ steps.campaign.outputs.artifact_name }}
+      campaign_artifact_digest: ${{ steps.campaign.outputs.artifact_digest }}
+      campaign_completed_ms: ${{ steps.campaign.outputs.completed_ms }}
+      matrix: ${{ steps.states.outputs.matrix }}
+      active_count: ${{ steps.states.outputs.active_count }}
+    steps:
+      - name: Authenticate exact scheduled paper campaign
+        id: campaign
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          DISPATCH_RUN_ID: ${{ inputs.upstream_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            RUN_ID="$EVENT_RUN_ID"
+          else
+            RUN_ID="$DISPATCH_RUN_ID"
+          fi
+          if ! [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "paper campaign run id is invalid" >&2
+            exit 64
+          fi
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"             > /tmp/campaign-run.json
+          RUN_ID="$RUN_ID" python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from pathlib import Path
+
+          run = json.loads(Path("/tmp/campaign-run.json").read_text(encoding="utf-8"))
+          if run.get("id") != int(os.environ["RUN_ID"]):
+              raise SystemExit("paper campaign run id changed")
+          if run.get("head_branch") != "main":
+              raise SystemExit("paper campaign is not from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("paper campaign is not successful")
+          if run.get("event") != "workflow_dispatch":
+              raise SystemExit("paper campaign event is invalid")
+          if run.get("path") != ".github/workflows/research-campaign-scheduled.yml":
+              raise SystemExit("paper campaign workflow path is invalid")
+          if run.get("name") != "Scheduled Research Mainnet Replay Campaign":
+              raise SystemExit("paper campaign workflow name is invalid")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ[
+              "GITHUB_REPOSITORY"
+          ]:
+              raise SystemExit("paper campaign is from another repository")
+          head_sha = run.get("head_sha")
+          if (
+              not isinstance(head_sha, str)
+              or len(head_sha) != 40
+              or any(char not in "0123456789abcdef" for char in head_sha)
+          ):
+              raise SystemExit("paper campaign head sha is invalid")
+          attempt = run.get("run_attempt")
+          if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt <= 0:
+              raise SystemExit("paper campaign run attempt is invalid")
+          updated_at = run.get("updated_at")
+          if not isinstance(updated_at, str):
+              raise SystemExit("paper campaign completion time is invalid")
+          resolved = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+          if resolved.tzinfo is None:
+              raise SystemExit("paper campaign completion time is naive")
+          Path("/tmp/campaign-completed-ms.txt").write_text(
+              str(int(resolved.timestamp() * 1000)) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/campaign-run.json)"
+          HEAD_SHA="$(jq -r '.head_sha' /tmp/campaign-run.json)"
+          EXPECTED_NAME="research-campaign-$RUN_ID-$RUN_ATTEMPT"
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/campaign-artifacts.json
+          EXPECTED_NAME="$EXPECTED_NAME" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = json.loads(
+              Path("/tmp/campaign-artifacts.json").read_text(encoding="utf-8")
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("expired") is False
+              and item.get("name") == os.environ["EXPECTED_NAME"]
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one complete paper campaign artifact, found {len(matches)}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if (
+              not isinstance(digest, str)
+              or not digest.startswith("sha256:")
+              or len(digest) != 71
+          ):
+              raise SystemExit("paper campaign artifact digest is invalid")
+          print(
+              str(item["id"])
+              + "\t"
+              + item["name"]
+              + "\t"
+              + digest
+          )
+          PY
+          ARTIFACT_ROW="$(
+            EXPECTED_NAME="$EXPECTED_NAME" python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          payload = json.loads(
+              Path("/tmp/campaign-artifacts.json").read_text(encoding="utf-8")
+          )
+          item = next(
+              item
+              for item in payload["artifacts"]
+              if item.get("expired") is False
+              and item.get("name") == os.environ["EXPECTED_NAME"]
+          )
+          print(str(item["id"]) + "\t" + item["name"] + "\t" + item["digest"])
+          PY
+          )"
+          IFS=$'\t' read -r ARTIFACT_ID ARTIFACT_NAME ARTIFACT_DIGEST <<< "$ARTIFACT_ROW"
+          {
+            echo "run_id=$RUN_ID"
+            echo "run_attempt=$RUN_ATTEMPT"
+            echo "head_sha=$HEAD_SHA"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_name=$ARTIFACT_NAME"
+            echo "artifact_digest=$ARTIFACT_DIGEST"
+            echo "completed_ms=$(cat /tmp/campaign-completed-ms.txt)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Discover latest trusted shadow-state lineages
+        id: states
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp             "/repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100"             > /tmp/shadow-state-artifact-pages.json
+          python - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          pages = json.loads(
+              Path("/tmp/shadow-state-artifact-pages.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          pattern = re.compile(r"^research-learning-shadow-state-([0-9a-f]{64})$")
+          trusted = {
+              ".github/workflows/research-learning-shadow-state-bootstrap.yml": {
+                  "name": "Research Learning Shadow State Bootstrap",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-shadow-state-sync.yml": {
+                  "name": "Research Learning Shadow State Campaign Follower",
+                  "events": {"workflow_run", "workflow_dispatch"},
+              },
+              ".github/workflows/research-learning-shadow-state-continuity.yml": {
+                  "name": "Research Learning Shadow State Continuity",
+                  "events": {"schedule", "workflow_dispatch"},
+              },
+          }
+          latest = {}
+          run_cache = {}
+          for page in pages:
+              for artifact in page.get("artifacts", []):
+                  name = artifact.get("name")
+                  match = pattern.fullmatch(name) if isinstance(name, str) else None
+                  if (
+                      match is None
+                      or artifact.get("expired") is not False
+                      or not isinstance(artifact.get("workflow_run"), dict)
+                  ):
+                      continue
+                  run_id = artifact["workflow_run"].get("id")
+                  if isinstance(run_id, bool) or not isinstance(run_id, int):
+                      continue
+                  if run_id not in run_cache:
+                      response = subprocess.run(
+                          [
+                              "/usr/bin/gh",
+                              "api",
+                              f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}",
+                          ],
+                          check=True,
+                          capture_output=True,
+                          text=True,
+                      )
+                      run_cache[run_id] = json.loads(response.stdout)
+                  run = run_cache[run_id]
+                  config = trusted.get(run.get("path"))
+                  if (
+                      config is None
+                      or run.get("status") != "completed"
+                      or run.get("conclusion") != "success"
+                      or run.get("head_branch") != "main"
+                      or run.get("name") != config["name"]
+                      or run.get("event") not in config["events"]
+                      or (run.get("head_repository") or {}).get("full_name")
+                      != os.environ["GITHUB_REPOSITORY"]
+                  ):
+                      continue
+                  digest = artifact.get("digest")
+                  if (
+                      not isinstance(digest, str)
+                      or not digest.startswith("sha256:")
+                      or len(digest) != 71
+                  ):
+                      raise SystemExit("trusted shadow-state artifact digest is invalid")
+                  candidate_id = match.group(1)
+                  item = {
+                      "skip": False,
+                      "candidate_id": candidate_id,
+                      "artifact_id": artifact["id"],
+                      "artifact_name": name,
+                      "artifact_digest": digest,
+                      "artifact_created_at": artifact.get("created_at", ""),
+                      "producer_run_id": run_id,
+                      "producer_run_attempt": run.get("run_attempt"),
+                      "producer_head_sha": run.get("head_sha"),
+                  }
+                  previous = latest.get(name)
+                  if previous is None or (
+                      item["artifact_created_at"],
+                      item["artifact_id"],
+                  ) > (
+                      previous["artifact_created_at"],
+                      previous["artifact_id"],
+                  ):
+                      latest[name] = item
+
+          include = sorted(latest.values(), key=lambda item: item["candidate_id"])
+          active_count = len(include)
+          if not include:
+              include = [{"skip": True, "candidate_id": "none"}]
+          matrix = {"include": include}
+          output = os.environ["GITHUB_OUTPUT"]
+          with open(output, "a", encoding="utf-8") as handle:
+              handle.write(
+                  "matrix="
+                  + json.dumps(matrix, sort_keys=True, separators=(",", ":"))
+                  + "\n"
+              )
+              handle.write(f"active_count={active_count}\n")
+          PY
+
+  advance:
+    needs: prepare
+    if: ${{ needs.prepare.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Skip when no approved shadow lineage exists
+        if: ${{ matrix.skip == true }}
+        run: echo "no durable approved learned shadow state exists yet"
+
+      - name: Checkout trusted shadow runtime
+        if: ${{ matrix.skip != true }}
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Python
+        if: ${{ matrix.skip != true }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Cocomelon research dependencies
+        if: ${{ matrix.skip != true }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[research]"
+
+      - name: Download exact state and campaign artifacts
+        if: ${{ matrix.skip != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE_ARTIFACT_ID: ${{ matrix.artifact_id }}
+          CAMPAIGN_ARTIFACT_ID: ${{ needs.prepare.outputs.campaign_artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf current-state incoming-campaign
+          mkdir -p current-state incoming-campaign
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$STATE_ARTIFACT_ID/zip"             > /tmp/shadow-state.zip
+          unzip -q /tmp/shadow-state.zip -d current-state
+          /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$CAMPAIGN_ARTIFACT_ID/zip"             > /tmp/paper-campaign.zip
+          unzip -q /tmp/paper-campaign.zip -d incoming-campaign
+          if [ -n "$(find current-state incoming-campaign -type l -print -quit)" ]; then
+            echo "source artifact contains a symlink" >&2
+            exit 65
+          fi
+          test -f current-state/bootstrap.json
+          test -f current-state/shadow-state.json
+          test -f incoming-campaign/output/bundle.json
+          test -d incoming-campaign/recording
+
+      - name: Re-verify current learned shadow state
+        if: ${{ matrix.skip != true }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          from cocomelon.research.learning_shadow_state import (
+              verify_learning_shadow_state,
+          )
+
+          root = Path("current-state")
+          state = verify_learning_shadow_state(
+              root / "shadow-state.json",
+              shadow_evidence_root=root / "shadow-evidence",
+              shadow_admission_path=root / "shadow-admission" / "shadow-admission.json",
+              review_decision_path=(
+                  root / "review-decision" / "candidate-review-decision.json"
+              ),
+              review_dossier_path=(
+                  root
+                  / "candidate"
+                  / "review-dossier"
+                  / "candidate-review-dossier.json"
+              ),
+              package_root=root / "candidate" / "package",
+              validation_spec_path=(
+                  root / "candidate" / "candidate-validation-spec.json"
+              ),
+              validation_score_path=(
+                  root / "candidate" / "score" / "candidate-validation-score.json"
+              ),
+              finalization_path=(
+                  root / "candidate" / "finalization" / "candidate-finalization.json"
+              ),
+              clean_evidence_root=root / "candidate" / "evidence",
+          )
+          if (
+              state.promotion_eligible
+              or state.execution_ready
+              or state.live_promotion_authorized
+          ):
+              raise SystemExit("current shadow state carries invalid authority")
+          PY
+
+      - name: Fetch complete successful paper-campaign history
+        if: ${{ matrix.skip != true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          /usr/bin/gh api --paginate --slurp             "/repos/$GITHUB_REPOSITORY/actions/workflows/research-campaign-scheduled.yml/runs?event=workflow_dispatch&status=completed&per_page=100"             > /tmp/paper-campaign-history.json
+
+      - name: Enforce contiguous post-review campaign sequence
+        id: sequence
+        if: ${{ matrix.skip != true }}
+        env:
+          CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
+        run: |
+          set -euo pipefail
+          cocomelon-learning-shadow-sequence             --state-root current-state             --campaign-history /tmp/paper-campaign-history.json             --repository "$GITHUB_REPOSITORY"             --current-run-id "$CAMPAIGN_RUN_ID"             > /tmp/shadow-sequence.json
+          ACTION="$(jq -r '.action' /tmp/shadow-sequence.json)"
+          EXPECTED_RUN_ID="$(jq -r '.next_required_run_id // empty' /tmp/shadow-sequence.json)"
+          {
+            echo "action=$ACTION"
+            echo "expected_run_id=$EXPECTED_RUN_ID"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$ACTION" = "gap" ]; then
+            echo "shadow campaign gap detected; expected run $EXPECTED_RUN_ID before $CAMPAIGN_RUN_ID" >&2
+            exit 73
+          fi
+          if [ "$ACTION" != "process" ]              && [ "$ACTION" != "skip_already_processed" ]              && [ "$ACTION" != "skip_completed_before_bootstrap" ]; then
+            echo "unexpected shadow campaign sequence action: $ACTION" >&2
+            exit 74
+          fi
+
+      - name: Advance learned shadow state through trusted paper engine
+        id: advance
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
+        env:
+          CAMPAIGN_RUN_ID: ${{ needs.prepare.outputs.campaign_run_id }}
+          CAMPAIGN_RUN_ATTEMPT: ${{ needs.prepare.outputs.campaign_run_attempt }}
+          CAMPAIGN_HEAD_SHA: ${{ needs.prepare.outputs.campaign_head_sha }}
+          CAMPAIGN_ARTIFACT_ID: ${{ needs.prepare.outputs.campaign_artifact_id }}
+          CAMPAIGN_ARTIFACT_NAME: ${{ needs.prepare.outputs.campaign_artifact_name }}
+          CAMPAIGN_ARTIFACT_DIGEST: ${{ needs.prepare.outputs.campaign_artifact_digest }}
+          CAMPAIGN_COMPLETED_MS: ${{ needs.prepare.outputs.campaign_completed_ms }}
+          SOURCE_STATE_ARTIFACT_ID: ${{ matrix.artifact_id }}
+          SOURCE_STATE_ARTIFACT_NAME: ${{ matrix.artifact_name }}
+          SOURCE_STATE_ARTIFACT_DIGEST: ${{ matrix.artifact_digest }}
+          SOURCE_STATE_RUN_ID: ${{ matrix.producer_run_id }}
+          SOURCE_STATE_RUN_ATTEMPT: ${{ matrix.producer_run_attempt }}
+          SOURCE_STATE_HEAD_SHA: ${{ matrix.producer_head_sha }}
+        run: |
+          set -euo pipefail
+          rm -rf next-state
+          cp -a current-state next-state
+          mkdir -p next-state/state-history next-state/replays next-state/generations
+
+          PRIOR_STATE_ID="$(jq -r '.state_id' next-state/shadow-state.json)"
+          PRIOR_AS_OF_MS="$(jq -r '.as_of_ms' next-state/shadow-state.json)"
+          HISTORY_PATH="next-state/state-history/$PRIOR_STATE_ID.json"
+          if [ -f "$HISTORY_PATH" ]; then
+            cmp -s next-state/shadow-state.json "$HISTORY_PATH" || {
+              echo "conflicting shadow-state history entry" >&2
+              exit 75
+            }
+          else
+            cp next-state/shadow-state.json "$HISTORY_PATH"
+          fi
+
+          REPLAY_ROOT="next-state/replays/$CAMPAIGN_RUN_ID-$CAMPAIGN_RUN_ATTEMPT"
+          RUNTIME_CODE_REVISION="$(git rev-parse HEAD)"
+          cocomelon-learning-shadow-replay run             --recording-root incoming-campaign/recording             --bundle incoming-campaign/output/bundle.json             --output-root "$REPLAY_ROOT"             --shadow-evidence-root next-state/shadow-evidence             --shadow-admission next-state/shadow-admission/shadow-admission.json             --review-decision next-state/review-decision/candidate-review-decision.json             --review-dossier next-state/candidate/review-dossier/candidate-review-dossier.json             --package-root next-state/candidate/package             --validation-spec next-state/candidate/candidate-validation-spec.json             --validation-score next-state/candidate/score/candidate-validation-score.json             --finalization next-state/candidate/finalization/candidate-finalization.json             --clean-evidence-root next-state/candidate/evidence             --runtime-code-revision "$RUNTIME_CODE_REVISION"             --evidence-eligible-at-ms "$CAMPAIGN_COMPLETED_MS"             > /tmp/shadow-replay-command.json
+
+          cocomelon-learning-shadow-replay verify             --recording-root incoming-campaign/recording             --bundle incoming-campaign/output/bundle.json             --output-root "$REPLAY_ROOT"             --shadow-evidence-root next-state/shadow-evidence             --shadow-admission next-state/shadow-admission/shadow-admission.json             --review-decision next-state/review-decision/candidate-review-decision.json             --review-dossier next-state/candidate/review-dossier/candidate-review-dossier.json             --package-root next-state/candidate/package             --validation-spec next-state/candidate/candidate-validation-spec.json             --validation-score next-state/candidate/score/candidate-validation-score.json             --finalization next-state/candidate/finalization/candidate-finalization.json             --clean-evidence-root next-state/candidate/evidence             --receipt "$REPLAY_ROOT/shadow-replay-receipt.json"             > /tmp/shadow-replay-verify.json
+
+          AS_OF_MS="$CAMPAIGN_COMPLETED_MS"
+          if [ "$PRIOR_AS_OF_MS" -gt "$AS_OF_MS" ]; then
+            AS_OF_MS="$PRIOR_AS_OF_MS"
+          fi
+          rm -rf /tmp/next-shadow-state
+          cocomelon-learning-shadow-state             --shadow-evidence-root next-state/shadow-evidence             --shadow-admission next-state/shadow-admission/shadow-admission.json             --review-decision next-state/review-decision/candidate-review-decision.json             --review-dossier next-state/candidate/review-dossier/candidate-review-dossier.json             --package-root next-state/candidate/package             --validation-spec next-state/candidate/candidate-validation-spec.json             --validation-score next-state/candidate/score/candidate-validation-score.json             --finalization next-state/candidate/finalization/candidate-finalization.json             --clean-evidence-root next-state/candidate/evidence             --output-root /tmp/next-shadow-state             --as-of-ms "$AS_OF_MS"             > /tmp/shadow-state-command.json
+          cp /tmp/next-shadow-state/shadow-state.json next-state/shadow-state.json
+
+          NEXT_STATE_ID="$(jq -r '.state_id' next-state/shadow-state.json)"
+          REPLAY_RECEIPT_ID="$(jq -r '.receipt_id' "$REPLAY_ROOT/shadow-replay-receipt.json")"
+          SHADOW_CAMPAIGN_ID="$(jq -r '.shadow_campaign_id' "$REPLAY_ROOT/shadow-replay-receipt.json")"
+          CLOSED_TRADE_COUNT="$(jq -r '.closed_paper_trade_count' /tmp/shadow-replay-command.json)"
+          TOTAL_TRADE_COUNT="$(jq -r '.closed_paper_trade_count' next-state/shadow-state.json)"
+
+          PRIOR_STATE_ID="$PRIOR_STATE_ID"           NEXT_STATE_ID="$NEXT_STATE_ID"           REPLAY_RECEIPT_ID="$REPLAY_RECEIPT_ID"           SHADOW_CAMPAIGN_ID="$SHADOW_CAMPAIGN_ID"           CLOSED_TRADE_COUNT="$CLOSED_TRADE_COUNT"           TOTAL_TRADE_COUNT="$TOTAL_TRADE_COUNT"           RUNTIME_CODE_REVISION="$RUNTIME_CODE_REVISION"           AS_OF_MS="$AS_OF_MS"           python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          payload = {
+              "schema_version": 1,
+              "campaign_run_id": int(os.environ["CAMPAIGN_RUN_ID"]),
+              "campaign_run_attempt": int(os.environ["CAMPAIGN_RUN_ATTEMPT"]),
+              "campaign_head_sha": os.environ["CAMPAIGN_HEAD_SHA"],
+              "campaign_artifact_id": int(os.environ["CAMPAIGN_ARTIFACT_ID"]),
+              "campaign_artifact_name": os.environ["CAMPAIGN_ARTIFACT_NAME"],
+              "campaign_artifact_digest": os.environ["CAMPAIGN_ARTIFACT_DIGEST"],
+              "campaign_completed_ms": int(os.environ["CAMPAIGN_COMPLETED_MS"]),
+              "source_state_artifact_id": int(os.environ["SOURCE_STATE_ARTIFACT_ID"]),
+              "source_state_artifact_name": os.environ["SOURCE_STATE_ARTIFACT_NAME"],
+              "source_state_artifact_digest": os.environ[
+                  "SOURCE_STATE_ARTIFACT_DIGEST"
+              ],
+              "source_state_run_id": int(os.environ["SOURCE_STATE_RUN_ID"]),
+              "source_state_run_attempt": int(
+                  os.environ["SOURCE_STATE_RUN_ATTEMPT"]
+              ),
+              "source_state_head_sha": os.environ["SOURCE_STATE_HEAD_SHA"],
+              "runtime_code_revision": os.environ["RUNTIME_CODE_REVISION"],
+              "candidate_id": json.loads(
+                  Path("next-state/shadow-state.json").read_text(encoding="utf-8")
+              )["candidate_id"],
+              "shadow_admission_id": json.loads(
+                  Path("next-state/shadow-state.json").read_text(encoding="utf-8")
+              )["shadow_admission_id"],
+              "prior_state_id": os.environ["PRIOR_STATE_ID"],
+              "next_state_id": os.environ["NEXT_STATE_ID"],
+              "replay_receipt_id": os.environ["REPLAY_RECEIPT_ID"],
+              "shadow_campaign_id": os.environ["SHADOW_CAMPAIGN_ID"],
+              "replay_closed_paper_trade_count": int(
+                  os.environ["CLOSED_TRADE_COUNT"]
+              ),
+              "cumulative_closed_paper_trade_count": int(
+                  os.environ["TOTAL_TRADE_COUNT"]
+              ),
+              "as_of_ms": int(os.environ["AS_OF_MS"]),
+              "paper_only": True,
+              "research_only": True,
+              "promotion_eligible": False,
+              "execution_ready": False,
+              "live_promotion_authorized": False,
+          }
+          generation_id = hashlib.sha256(
+              canonical(payload).encode("utf-8")
+          ).hexdigest()
+          path = Path(
+              "next-state/generations/"
+              + os.environ["CAMPAIGN_RUN_ID"]
+              + "-"
+              + os.environ["CAMPAIGN_RUN_ATTEMPT"]
+              + ".json"
+          )
+          encoded = canonical({**payload, "generation_id": generation_id}) + "\n"
+          if path.exists() and path.read_text(encoding="utf-8") != encoded:
+              raise SystemExit("conflicting learned shadow generation receipt")
+          path.write_text(encoded, encoding="utf-8")
+          PY
+
+          {
+            echo "prior_state_id=$PRIOR_STATE_ID"
+            echo "next_state_id=$NEXT_STATE_ID"
+            echo "closed_trade_count=$CLOSED_TRADE_COUNT"
+            echo "total_trade_count=$TOTAL_TRADE_COUNT"
+            echo "replay_receipt_id=$REPLAY_RECEIPT_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Render non-economic shadow progress summary
+        if: ${{ matrix.skip != true }}
+        run: |
+          {
+            echo "## Learned shadow campaign follower"
+            echo "- candidate: ${{ matrix.candidate_id }}"
+            echo "- sequence action: ${{ steps.sequence.outputs.action }}"
+            if [ "${{ steps.sequence.outputs.action }}" = "process" ]; then
+              echo "- replay closed paper trades: ${{ steps.advance.outputs.closed_trade_count }}"
+              echo "- cumulative closed paper trades: ${{ steps.advance.outputs.total_trade_count }}"
+            fi
+            echo "- promotion authorized: false"
+            echo "- execution enabled: false"
+            echo "- live capital authorized: false"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish next durable learned shadow state
+        if: ${{ matrix.skip != true && steps.sequence.outputs.action == 'process' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: next-state/
+          if-no-files-found: error
+          retention-days: 90
