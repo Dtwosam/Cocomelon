@@ -3,10 +3,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Final, Sequence
+from typing import Final
 
 from cocomelon.domain.features import OpportunityRank
 from cocomelon.domain.journal import TradeJournalEntry
