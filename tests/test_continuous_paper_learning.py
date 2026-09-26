@@ -54,9 +54,15 @@ def test_continuous_sync_skips_unattributed_legacy_trade_and_preserves_opening_r
     attributed_snapshot = _snapshot(as_of_ms=9_000)
     legacy_snapshot = _snapshot(as_of_ms=8_000)
 
-    attributed = _trade(attributed_snapshot)
+    attributed = _trade(
+        attributed_snapshot,
+        run_id=CONTINUOUS_PAPER_REPLAY_RUN_ID,
+    )
     legacy = replace(
-        _trade(legacy_snapshot),
+        _trade(
+            legacy_snapshot,
+            run_id=CONTINUOUS_PAPER_REPLAY_RUN_ID,
+        ),
         opening_plan_id="legacy-plan",
         strategy_decision_id="legacy-strategy",
         risk_decision_id="legacy-risk",
@@ -135,7 +141,7 @@ def test_continuous_sync_skips_unattributed_legacy_trade_and_preserves_opening_r
 
 def test_continuous_sync_rejects_mislabeled_opening_lineage(tmp_path) -> None:
     snapshot = _snapshot()
-    trade = _trade(snapshot)
+    trade = _trade(snapshot, run_id=CONTINUOUS_PAPER_REPLAY_RUN_ID)
     journal = JournalStore(tmp_path / "journal.sqlite3")
     journal.record_trade(trade)
     features = LearningFeatureSnapshotStore(tmp_path / "features")
