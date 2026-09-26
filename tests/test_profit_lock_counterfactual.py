@@ -177,7 +177,7 @@ def test_profit_lock_rule_is_direction_symmetric_for_short() -> None:
 
 
 def test_study_uses_actual_close_when_rule_never_triggers() -> None:
-    trade = _trade(net_pnl=Decimal("2"))
+    trade = _trade()
     study = evaluate_profit_lock_study(
         (trade,),
         (
@@ -196,8 +196,8 @@ def test_study_uses_actual_close_when_rule_never_triggers() -> None:
     assert len(study.rules) == 2
     for summary in study.rules:
         assert summary.triggered_trades == 0
-        assert summary.actual_net_pnl == Decimal("2")
-        assert summary.candidate_net_pnl_estimate == Decimal("2")
+        assert summary.actual_net_pnl == Decimal("-10")
+        assert summary.candidate_net_pnl_estimate == Decimal("-10")
         assert summary.delta_net_pnl_estimate == Decimal("0")
 
 
