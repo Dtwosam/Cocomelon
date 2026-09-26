@@ -213,6 +213,15 @@ def settle_shadow_decision(
     )
 
 
+def _five_minute_close_boundary_ms(candle: Candle) -> int:
+    if candle.interval != "5m":
+        raise ValueError("cadence shadow settlement requires a 5m candle")
+    boundary_ms = candle.start_ms + FIVE_MINUTES_MS
+    if candle.end_ms not in {boundary_ms - 1, boundary_ms}:
+        raise ValueError("5m candle timestamps do not match interval boundaries")
+    return boundary_ms
+
+
 class CadenceShadowComparator:
     """Non-economic 5m vs 15m cadence observer over authenticated live evidence."""
 
@@ -336,7 +345,8 @@ class CadenceShadowComparator:
                 ].append(sample)
 
     def _settle_candle(self, candle: Candle) -> None:
-        key = (candle.market.canonical, candle.end_ms)
+        close_boundary_ms = _five_minute_close_boundary_ms(candle)
+        key = (candle.market.canonical, close_boundary_ms)
         samples = tuple(self._pending.pop(key, []))
         for sample in samples:
             self._outcomes.append(
@@ -361,11 +371,10 @@ class CadenceShadowComparator:
             and record.event_kind == "candle"
         ):
             candle = replay_record_candle(record)
-            if (
-                candle.interval == "5m"
-                and record.available_at_ms >= candle.end_ms
-            ):
-                self._settle_candle(candle)
+            if candle.interval == "5m":
+                close_boundary_ms = _five_minute_close_boundary_ms(candle)
+                if record.available_at_ms >= close_boundary_ms:
+                    self._settle_candle(candle)
 
     def _outcome_summary(
         self,
