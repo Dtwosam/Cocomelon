@@ -13,6 +13,7 @@ from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
+    _adaptive_delay_selector_payload,
     _closed_trade_concentration_payload,
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
@@ -45,6 +46,7 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
+    _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
     _restore_delayed_entry_execution_shadow,
     _restore_drawdown_tracker,
@@ -225,6 +227,12 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert (
         'PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (' in source
     )
+    assert (
+        'ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (' in source
+    )
+    assert '"adaptive_delay_selector": adaptive_delay_selector' in source
+    assert "adaptive_delay_selector_state.payload()" in source
+    assert "adaptive_delay_selector_summary(" in source
     assert (
         '"prospective_top10_rank_filter": (' in source
     )
@@ -1178,6 +1186,22 @@ def test_profit_lock_execution_shadow_restore_failure_is_fail_open(
     assert payload["execution_authority"] is False
     assert payload["state_restored"] is False
     assert "JSONDecodeError" in str(payload["state_restore_error"])
+
+
+def test_adaptive_delay_selector_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "adaptive-delay-selector-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_adaptive_delay_selector(
+        path,
+        started_at_ms=456,
+    )
+
+    assert state.started_at_ms == 456
+    assert error is not None
+    assert "JSONDecodeError" in error
 
 
 def test_prospective_entry_filter_restore_failure_is_fail_open(
