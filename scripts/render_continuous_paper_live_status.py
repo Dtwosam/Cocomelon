@@ -333,7 +333,7 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
             (
                 "- eligible / excluded open positions: "
                 f"`{raw.get('eligible_open_positions', 0)} / "
-                f"{raw.get('excluded_pre_observer_open_positions', 0)}`"
+                f"{raw.get('excluded_open_positions', 0)}`"
             ),
             (
                 "- closed shadow outcomes / excluded closes: "
