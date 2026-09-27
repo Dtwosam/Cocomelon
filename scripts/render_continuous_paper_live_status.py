@@ -887,6 +887,11 @@ def _entry_markout_lines(raw: object) -> list[str]:
         "1m by scanner rank",
         "by_scanner_rank_bucket",
     )
+    grouped_line(
+        "60000",
+        "1m by decision age",
+        "by_decision_age_bucket",
+    )
     grouped_line("300000", "5m by side", "by_side")
     grouped_line(
         "300000",
@@ -898,6 +903,11 @@ def _entry_markout_lines(raw: object) -> list[str]:
         "5m by scanner rank",
         "by_scanner_rank_bucket",
     )
+    grouped_line(
+        "300000",
+        "5m by decision age",
+        "by_decision_age_bucket",
+    )
     grouped_line("900000", "15m by side", "by_side")
     grouped_line(
         "900000",
@@ -908,6 +918,11 @@ def _entry_markout_lines(raw: object) -> list[str]:
         "900000",
         "15m by scanner rank",
         "by_scanner_rank_bucket",
+    )
+    grouped_line(
+        "900000",
+        "15m by decision age",
+        "by_decision_age_bucket",
     )
     lines.extend(
         [

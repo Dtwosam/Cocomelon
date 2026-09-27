@@ -1292,3 +1292,18 @@ Research-only position observers now contain close-lineage mismatches instead of
 This lets a single research-lineage discrepancy remain visible without permanently disabling future evidence collection.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry markout attribution by decision age — 2026-09-27
+
+The exact-path 1m / 5m / 15m post-entry markout diagnostic now also groups fresh observations by the age of the persisted strategy decision at the actual opening fill.
+
+- the age source is the same authenticated decision fact used by the standalone decision-age diagnostic;
+- the buckets are the same fixed bands: `<1s`, `1-<5s`, `5-<15s`, `15-<30s`, `30-<60s`, and `60s+`;
+- impossible cases where the fill precedes the decision fail the research diagnostic rather than being normalized;
+- missing decision facts remain explicitly unattributed;
+- this lets the paper evidence distinguish immediate adverse selection associated with older decisions from adverse selection associated with side, strategy family, or scanner rank.
+
+This is attribution only. It does not delay, reject, or reprioritize entries and has no promotion or execution authority.
+
+**LIVE TRADING: DISABLED.**

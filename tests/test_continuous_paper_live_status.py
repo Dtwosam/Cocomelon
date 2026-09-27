@@ -674,6 +674,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                             "max_observation_lag_ms": 1000,
                         },
                     },
+                    "by_decision_age_bucket": {
+                        "<1s": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "95",
+                            "mean_gross_r": "0.19",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 1000,
+                        },
+                        "5-<15s": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-10",
+                            "mean_gross_r": "-0.02",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 2000,
+                        },
+                    },
                     "by_scanner_rank_bucket": {
                         "1-5": {
                             "observations": 1,
@@ -714,6 +736,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "by_side": {},
                     "by_lead_strategy": {},
                     "by_scanner_rank_bucket": {},
+                    "by_decision_age_bucket": {},
                 },
                 "900000": {
                     "readiness_status": "collecting",
@@ -732,6 +755,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "by_side": {},
                     "by_lead_strategy": {},
                     "by_scanner_rank_bucket": {},
+                    "by_decision_age_bucket": {},
                 },
             },
         },
@@ -1231,6 +1255,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "1m by scanner rank:" in output
     assert "1-5: n=1, meanR=0.19, meanbps=95" in output
     assert "11-20: n=2, meanR=-0.02, meanbps=-10" in output
+    assert "1m by decision age:" in output
+    assert "<1s: n=1, meanR=0.19, meanbps=95" in output
+    assert "5-<15s: n=2, meanR=-0.02, meanbps=-10" in output
     assert "stale/missing marks are reported and never imputed" in output
     assert "### Prospective allMids entry markout shadow" in output
     assert "allMids_mid_px" in output
