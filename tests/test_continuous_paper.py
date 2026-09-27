@@ -14,6 +14,7 @@ from cocomelon.continuous_paper import (
     ContinuousPaperConfig,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
+    _entry_markout_payload,
     _load_checkpoint,
     _opening_rank_attribution_payload,
     _position_action_from_payload,
@@ -143,6 +144,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"opening_scanner_rank": opening_rank' in source
     assert '"opening_rank_count": self.opening_rank_count' in source
     assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
+    assert '"entry_markout": entry_markout' in source
+    assert "entry_markout_summary(" in source
 
 
 def test_opening_rank_telemetry_fails_open(
@@ -165,6 +168,29 @@ def test_opening_rank_telemetry_fails_open(
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: rank boom"
+
+
+def test_entry_markout_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("markout boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.entry_markout_summary",
+        fail,
+    )
+    payload = _entry_markout_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: markout boom"
 
 
 def test_profit_lock_counterfactual_telemetry_fails_open(

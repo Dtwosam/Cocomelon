@@ -289,6 +289,105 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "entry_markout": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "first_observed_mark_at_or_after_horizon",
+            "horizons_ms": [60000, 300000, 900000],
+            "complete_path_records": 3,
+            "incomplete_paths_skipped": 0,
+            "missing_journal_trade": 0,
+            "missing_decision_attribution": 0,
+            "by_horizon_ms": {
+                "60000": {
+                    "observations": 3,
+                    "positive": 2,
+                    "negative": 1,
+                    "flat": 0,
+                    "mean_signed_return_bps": "25",
+                    "mean_gross_r": "0.05",
+                    "mean_observation_lag_ms": 1000,
+                    "max_observation_lag_ms": 3000,
+                    "censored_before_horizon": 0,
+                    "missing_observed_mark": 0,
+                    "by_side": {
+                        "long": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-10",
+                            "mean_gross_r": "-0.02",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 2000,
+                        },
+                        "short": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "95",
+                            "mean_gross_r": "0.19",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 1000,
+                        },
+                    },
+                    "by_lead_strategy": {
+                        "trend": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-10",
+                            "mean_gross_r": "-0.02",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 2000,
+                        },
+                        "breakout": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "95",
+                            "mean_gross_r": "0.19",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 1000,
+                        },
+                    },
+                },
+                "300000": {
+                    "observations": 2,
+                    "positive": 1,
+                    "negative": 1,
+                    "flat": 0,
+                    "mean_signed_return_bps": "-10",
+                    "mean_gross_r": "-0.02",
+                    "mean_observation_lag_ms": 1500,
+                    "max_observation_lag_ms": 2500,
+                    "censored_before_horizon": 1,
+                    "missing_observed_mark": 0,
+                    "by_side": {},
+                    "by_lead_strategy": {},
+                },
+                "900000": {
+                    "observations": 1,
+                    "positive": 1,
+                    "negative": 0,
+                    "flat": 0,
+                    "mean_signed_return_bps": "80",
+                    "mean_gross_r": "0.16",
+                    "mean_observation_lag_ms": 500,
+                    "max_observation_lag_ms": 500,
+                    "censored_before_horizon": 2,
+                    "missing_observed_mark": 0,
+                    "by_side": {},
+                    "by_lead_strategy": {},
+                },
+            },
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -539,6 +638,19 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`32000`ms / `58000`ms" in output
     assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
     assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
+    assert "### Post-entry markout diagnostic" in output
+    assert "first_observed_mark_at_or_after_horizon" in output
+    assert "complete paths / incomplete skipped" in output
+    assert "`3 / 0`" in output
+    assert "| 1m | 3 | 2 | 1 | 25 | 0.05 | 0 | 0 | 1000ms | 3000ms |" in output
+    assert "| 5m | 2 | 1 | 1 | -10 | -0.02 | 1 | 0 | 1500ms | 2500ms |" in output
+    assert "| 15m | 1 | 1 | 0 | 80 | 0.16 | 2 | 0 | 500ms | 500ms |" in output
+    assert "1m by side:" in output
+    assert "long: n=2, meanR=-0.02, meanbps=-10" in output
+    assert "short: n=1, meanR=0.19, meanbps=95" in output
+    assert "1m by lead strategy:" in output
+    assert "trend: n=2, meanR=-0.02, meanbps=-10" in output
+    assert "Short-lived trades are censored, not imputed" in output
     assert "prospective-reject-long-trend-v1" in output
     assert "reject `long` + `trend`" in output
     assert "allowed / blocked trades" in output

@@ -68,6 +68,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.entry_markout import entry_markout_summary
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
@@ -1425,6 +1426,31 @@ def _opening_rank_attribution_payload(
     return payload
 
 
+def _entry_markout_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    try:
+        payload = entry_markout_summary(
+            journal,
+            fact_store,
+            trade_path_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -1528,6 +1554,11 @@ def _live_status_payload(
         opening_rank_store,
         capture_error=opening_rank_capture_error,
     )
+    entry_markout = _entry_markout_payload(
+        pump.journal,
+        fact_store,
+        trade_path_store,
+    )
 
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
@@ -1608,6 +1639,7 @@ def _live_status_payload(
         ),
         "prospective_entry_filter": prospective_entry_filter,
         "opening_scanner_rank": opening_rank,
+        "entry_markout": entry_markout,
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),

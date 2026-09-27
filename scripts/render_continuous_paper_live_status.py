@@ -614,6 +614,142 @@ def _opening_rank_lines(raw: object) -> list[str]:
     return lines
 
 
+def _entry_markout_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Post-entry markout diagnostic",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No entry-markout telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- complete paths / incomplete skipped: "
+                f"`{raw.get('complete_path_records', 0)} / "
+                f"{raw.get('incomplete_paths_skipped', 0)}`"
+            ),
+            (
+                "- missing journal / decision attribution: "
+                f"`{raw.get('missing_journal_trade', 0)} / "
+                f"{raw.get('missing_decision_attribution', 0)}`"
+            ),
+        ]
+    )
+
+    horizons = raw.get("by_horizon_ms", {})
+    if not isinstance(horizons, dict):
+        horizons = {}
+    rows = (
+        ("60000", "1m"),
+        ("300000", "5m"),
+        ("900000", "15m"),
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "| Horizon | N | + | - | Mean bps | Mean gross R | "
+                "Censored | Missing mark | Mean lag | Max lag |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+    for key, label in rows:
+        item = horizons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {n} | {positive} | {negative} | "
+                "{bps} | {r} | {censored} | {missing} | "
+                "{mean_lag}ms | {max_lag}ms |"
+            ).format(
+                label=label,
+                n=item.get("observations", 0),
+                positive=item.get("positive", 0),
+                negative=item.get("negative", 0),
+                bps=item.get("mean_signed_return_bps"),
+                r=item.get("mean_gross_r"),
+                censored=item.get("censored_before_horizon", 0),
+                missing=item.get("missing_observed_mark", 0),
+                mean_lag=item.get("mean_observation_lag_ms"),
+                max_lag=item.get("max_observation_lag_ms"),
+            )
+        )
+
+    def grouped_line(
+        key: str,
+        label: str,
+        field: str,
+    ) -> None:
+        horizon = horizons.get(key, {})
+        if not isinstance(horizon, dict):
+            return
+        groups = horizon.get(field, {})
+        if not isinstance(groups, dict) or not groups:
+            return
+        parts: list[str] = []
+        for name, value in sorted(groups.items()):
+            if not isinstance(value, dict):
+                continue
+            parts.append(
+                f"{name}: n={value.get('observations', 0)}, "
+                f"meanR={value.get('mean_gross_r')}, "
+                f"meanbps={value.get('mean_signed_return_bps')}"
+            )
+        if parts:
+            lines.append(f"- {label}: " + "; ".join(parts))
+
+    lines.append("")
+    grouped_line("60000", "1m by side", "by_side")
+    grouped_line(
+        "60000",
+        "1m by lead strategy",
+        "by_lead_strategy",
+    )
+    grouped_line("300000", "5m by side", "by_side")
+    grouped_line(
+        "300000",
+        "5m by lead strategy",
+        "by_lead_strategy",
+    )
+    grouped_line("900000", "15m by side", "by_side")
+    grouped_line(
+        "900000",
+        "15m by lead strategy",
+        "by_lead_strategy",
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "_Signed markout from the actual paper entry price using the "
+                "first observed exact-path mark at or after each fixed "
+                "horizon. Short-lived trades are censored, not imputed._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -738,6 +874,11 @@ def render_live_status(
     lines.extend(
         _opening_rank_lines(
             payload.get("opening_scanner_rank")
+        )
+    )
+    lines.extend(
+        _entry_markout_lines(
+            payload.get("entry_markout")
         )
     )
     lines.extend(["", "### Open positions", ""])
