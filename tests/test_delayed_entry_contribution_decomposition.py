@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -247,12 +248,8 @@ def test_r_decomposition_reconciles_with_repeating_division(
             direction=Direction.LONG,
             exit_price="102",
         )
-        trade = TradeJournalEntry(
-            **{
-                field: getattr(trade, field)
-                for field in trade.__dataclass_fields__
-                if field not in {"initial_risk_amount", "net_r"}
-            },
+        trade = replace(
+            trade,
             initial_risk_amount=Decimal("7"),
             net_r=trade.net_pnl / Decimal("7"),
         )
