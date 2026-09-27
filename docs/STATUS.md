@@ -1490,3 +1490,20 @@ The continuous-paper research layer now measures whether early post-entry markou
 The purpose is to determine whether immediate adverse selection has genuine predictive value before any timing rule is proposed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade entry concurrency diagnostic — 2026-09-27
+
+The continuous-paper research layer now attributes each closed trade to the number of other positions that were already open before its fill.
+
+- concurrency buckets are frozen at 0, 1, 2, and 3+ prior open positions;
+- a position counts only when its opening timestamp is strictly earlier than the evaluated trade and its lifecycle is still open at that fill;
+- same-timestamp openings do not count as prior exposure, avoiding arbitrary ordering between simultaneous fills;
+- currently open paper positions are included when they genuinely predate a historical closed trade;
+- the diagnostic also separates trades with no same-side prior overlap from trades that entered while at least one same-direction position was already open;
+- each group reports W/L/BE, realized net PnL, mean net R, and profit factor;
+- the frozen review gate is 30 closed trades with at least 10 solo and 10 overlapping entries.
+
+This is attribution only. It cannot change correlation limits, capacity, scanner ranking, entries, sizing, stops, exits, or execution.
+
+**LIVE TRADING: DISABLED.**
