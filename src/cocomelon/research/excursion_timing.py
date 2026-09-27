@@ -42,25 +42,25 @@ class ExcursionTimingTrade:
     threshold_first_hit_ms: tuple[tuple[Decimal, int | None], ...]
 
     def __post_init__(self) -> None:
-        for value in (
+        for identity in (
             self.trade_id,
             self.market,
             self.direction,
             self.lead_strategy,
             self.exit_reason,
         ):
-            if not value.strip():
+            if not identity.strip():
                 raise ValueError("excursion timing identity must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
         if self.holding_duration_ms <= 0:
             raise ValueError("holding_duration_ms must be positive")
-        for value in (
+        for timing_ms in (
             self.time_to_mfe_ms,
             self.time_to_mae_ms,
             self.peak_to_close_ms,
         ):
-            if value < 0 or value > self.holding_duration_ms:
+            if timing_ms < 0 or timing_ms > self.holding_duration_ms:
                 raise ValueError(
                     "excursion timing must remain inside lifecycle"
                 )
