@@ -1730,3 +1730,28 @@ The frozen review gate requires:
 Meeting the gate means `ready_for_review` only. It grants no promotion or execution authority and cannot delay or skip an actual paper trade.
 
 **LIVE TRADING: DISABLED.**
+
+### Prospective adaptive 60s/120s delayed-entry selector — 2026-09-27
+
+A new adaptive delay candidate is frozen prospectively after the first fixed 60s-versus-120s results were already observed. Earlier paired outcomes are therefore excluded from this study.
+
+Frozen rule:
+
+- at the 60-second decision point, use the fresh 1-minute allMids markout only if it was observed no later than the 60-second IOC observation;
+- if signed 1-minute gross R is below zero, keep waiting and use the existing 120-second delayed-entry shadow;
+- otherwise use the existing 60-second delayed-entry shadow;
+- no threshold sweep or optimizer is permitted inside this candidate.
+
+The candidate reuses the existing visible-book IOC outcomes and fill-weighted same-exit accounting. Full fills, partial fills, and genuine no-fills are evaluable; unresolved delayed observations remain excluded. Unfilled quantity contributes zero and is not replaced. Observed exits are held constant, so this remains a trade-contribution study rather than a portfolio counterfactual.
+
+The durable candidate start timestamp survives worker handoffs. Review readiness requires:
+
+- 30 prospective closed trades;
+- 20 causally evaluable trades;
+- at least 5 trades selecting 60 seconds;
+- at least 5 trades selecting 120 seconds;
+- no causality or lineage violations.
+
+The study is research-only and grants no execution or promotion authority. It cannot delay or place the actual paper order.
+
+**LIVE TRADING: DISABLED.**
