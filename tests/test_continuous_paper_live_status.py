@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import subprocess
@@ -3591,3 +3592,56 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| long | 2 | 1 | 1 | 0 | 3 |" in output
     assert "#### Entry trend regime attribution" in output
     assert "| downtrend | 2 | 0 | 2 | 0 | -12 |" in output
+
+
+def test_renderer_main_accepts_heartbeat_from_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    payload = {
+        "kind": "continuous-paper-heartbeat",
+        "timestamp_ms": 1,
+        "paper_only": True,
+        "live_orders": False,
+        "selected_market_count": 0,
+        "selected_markets": [],
+        "processed_records": 0,
+        "journal_observations": 0,
+        "closed_trades": 0,
+        "session_closed_trades": 0,
+        "positions": [],
+        "open_position_count": 0,
+        "starting_cash": "10000",
+        "cash": "10000",
+        "equity": "10000",
+        "total_account_pnl": "0",
+        "total_return_fraction": "0",
+        "realized_gross_pnl": "0",
+        "unrealized_pnl": "0",
+        "cumulative_fees": "0",
+        "cumulative_funding": "0",
+        "available_margin": "10000",
+        "gross_open_notional": "0",
+        "open_planned_risk": "0",
+        "open_planned_risk_fraction_of_equity": "0",
+        "open_stop_trigger_gross_pnl": "0",
+        "open_stop_trigger_gross_r": None,
+        "open_positions_with_profit_protected_stop": 0,
+        "execution_healthy": True,
+        "execution_reason_codes": [],
+        "session_decision_epochs": 0,
+        "session_decisions": {},
+        "session_decision_reason_counts": {},
+        "session_risk": {},
+        "session_opening_execution_attempts": 0,
+        "session_opening_fills": 0,
+    }
+    monkeypatch.delenv("HEARTBEAT_JSON", raising=False)
+    monkeypatch.setattr(
+        "scripts.render_continuous_paper_live_status.sys.stdin",
+        io.StringIO(json.dumps(payload)),
+    )
+
+    live_status.main()
+
+    assert "Continuous Paper Trader" in capsys.readouterr().out
