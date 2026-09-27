@@ -250,6 +250,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "net_pnl": "-10",
             },
             "reconciliation": {
+                "absolute_tolerance": "1E-18",
                 "cash_bridge_delta": "0",
                 "closed_gross_delta": "0",
                 "closed_fees_delta": "0",
@@ -1185,6 +1186,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
     assert "### Account lifecycle reconciliation" in output
+    assert "absolute reconciliation tolerance" in output
+    assert "`1E-18`" in output
     assert "fully closed journal matches account-implied closed economics" in output
     assert "realized cash bridge / equity bridge match" in output
     assert "`true / true`" in output
