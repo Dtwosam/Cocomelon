@@ -1473,3 +1473,20 @@ The existing closed-trade robustness diagnostic now tests whether aggregate pape
 The purpose is to detect whole-market dependence that single-best-trade sensitivity can miss. It cannot block a market or change scanner ranking, risk, sizing, entries, or exits.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry markout → final outcome diagnostic — 2026-09-27
+
+The continuous-paper research layer now measures whether early post-entry markout direction predicts the eventual closed-trade result.
+
+- the diagnostic reuses the same exact-path 1-minute, 5-minute, and 15-minute markout definition and 60-second maximum observation lag;
+- each usable horizon observation is frozen into favorable, adverse, or flat based only on signed gross R at that horizon;
+- favorable and adverse groups report eventual W/L/BE, win rate, realized net PnL, and mean final net R;
+- sign accuracy counts favorable-then-winning plus adverse-then-losing outcomes over non-flat observations;
+- short-lived trades are censored and stale/missing marks are excluded rather than imputed;
+- the review gate is fixed at 30 usable observations per horizon, including at least 10 favorable and 10 adverse observations;
+- reaching the evidence gate grants review readiness only and cannot create an entry filter, early-exit rule, or execution change.
+
+The purpose is to determine whether immediate adverse selection has genuine predictive value before any timing rule is proposed.
+
+**LIVE TRADING: DISABLED.**
