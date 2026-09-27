@@ -1423,3 +1423,20 @@ The continuous paper runtime now measures whether realized net economics persist
 This complements the outlier-robustness test: robustness asks whether one winner dominates aggregate PnL, while chronological stability asks whether economics repeat across time.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-paper closed-trade concentration diagnostic — 2026-09-27
+
+The live paper research surface now exposes concentration using the same grouping semantics and formal limits as the evaluation engine.
+
+- trade net PnL is first aggregated by market, lead strategy, and fixed seven-day bucket;
+- only groups with positive aggregated net PnL enter the positive-contribution denominator;
+- the largest positive-contributing market share is compared with the formal 35% market-concentration limit;
+- the largest positive-contributing seven-day bucket share is compared with the formal 50% seven-day concentration limit;
+- lead-strategy concentration is reported descriptively with exact decision-fact lineage and explicit attribution misses;
+- current-sample limit comparisons are diagnostic only;
+- the review-volume gate remains 30 closed trades and grants no promotion authority.
+
+This makes the continuous-paper surface consistent with the formal evaluation definition instead of using a separate ad-hoc concentration formula.
+
+**LIVE TRADING: DISABLED.**
