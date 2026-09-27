@@ -22,6 +22,7 @@ from cocomelon.continuous_paper import (
     _drawdown_payload,
     _entry_decision_age_payload,
     _entry_markout_payload,
+    _excursion_timing_payload,
     _load_checkpoint,
     _opening_rank_attribution_payload,
     _position_action_from_payload,
@@ -197,6 +198,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "drawdown_tracker.state_payload()" in source
     assert "drawdown_tracker.observe(" in source
     assert '"entry_markout": entry_markout' in source
+    assert '"excursion_timing": excursion_timing' in source
+    assert "excursion_timing_summary(" in source
     assert "entry_mid_markout_readiness(payload)" in source
     assert '"min_fresh_observations_per_horizon"' in source
     assert '"max_non_fresh_fraction"' in source
@@ -366,6 +369,29 @@ def test_opening_rank_telemetry_fails_open(
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: rank boom"
+
+
+def test_excursion_timing_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("timing boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.excursion_timing_summary",
+        fail,
+    )
+    payload = _excursion_timing_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: timing boom"
 
 
 def test_entry_markout_telemetry_fails_open(
