@@ -2200,6 +2200,48 @@ def _delayed_entry_same_exit_payload(
     return payload
 
 
+def _delayed_entry_pair_payload(
+    journal: JournalStore,
+    base_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    challenger_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if base_shadow.shadow is None or challenger_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": "delayed-entry pair requires both shadows",
+        }
+    try:
+        challenger_summary = challenger_shadow.shadow.summary_payload()
+        started_at_ms = int(challenger_summary["started_at_ms"])
+        payload = delayed_entry_pair_summary(
+            journal,
+            base_shadow.shadow.outcomes,
+            challenger_shadow.shadow.outcomes,
+            started_at_ms=started_at_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["base_error"] = base_shadow.error
+    payload["challenger_error"] = challenger_shadow.error
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2373,6 +2415,7 @@ def _live_status_payload(
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
@@ -2520,6 +2563,11 @@ def _live_status_payload(
         pump.journal,
         delayed_entry_execution_shadow,
     )
+    delayed_entry_pair = _delayed_entry_pair_payload(
+        pump.journal,
+        delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -2645,6 +2693,10 @@ def _live_status_payload(
         "delayed_entry_execution_shadow": (
             delayed_entry_execution_shadow.summary_payload()
         ),
+        "delayed_entry_120s_execution_shadow": (
+            delayed_entry_120s_execution_shadow.summary_payload()
+        ),
+        "delayed_entry_pair": delayed_entry_pair,
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
@@ -2686,6 +2738,7 @@ def _emit_live_status(
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
@@ -2710,6 +2763,7 @@ def _emit_live_status(
         opening_fill_liquidity_store,
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
         entry_mid_markout_shadow,
         drawdown_tracker,
         prospective_entry_filter_state,
@@ -3109,6 +3163,7 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store,
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
+            delayed_entry_120s_execution_shadow,
             entry_mid_markout_shadow,
             drawdown_tracker,
             prospective_entry_filter_state,
@@ -3269,6 +3324,7 @@ async def run_continuous_paper_session(
                     opening_fill_liquidity_store,
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
+                    delayed_entry_120s_execution_shadow,
                     entry_mid_markout_shadow,
                     drawdown_tracker,
                     prospective_entry_filter_state,
