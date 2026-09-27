@@ -201,7 +201,7 @@ def test_fill_weighted_contribution_prices_partial_and_no_fill(
     full_summary = by_source["full_visible_book_ioc"]
     partial_summary = by_source["partial_visible_book_ioc"]
     no_fill_summary = by_source["no_fill"]
-    assert full_summary["candidate_fill_weighted_net_pnl"] == "5.10"
+    assert full_summary["candidate_fill_weighted_net_pnl"] == "5.1"
     assert partial_summary["candidate_fill_weighted_net_pnl"] == "2.55"
     assert no_fill_summary["candidate_fill_weighted_net_pnl"] == "0"
 
