@@ -164,6 +164,13 @@ def test_allmids_shadow_records_fresh_long_and_short_markouts(
         (long,),
         now_ms=1_400_000,
     )
+    long_trade = _trade(
+        long,
+        suffix="long",
+        closed_at_ms=1_500_000,
+    )
+    shadow.record_closed_trade(long_trade)
+
     shadow.observe(
         _record(2_160_000, "99"),
         (short,),
@@ -174,18 +181,11 @@ def test_allmids_shadow_records_fresh_long_and_short_markouts(
         (short,),
         now_ms=2_400_000,
     )
-
-    long_trade = _trade(
-        long,
-        suffix="long",
-        closed_at_ms=1_500_000,
-    )
     short_trade = _trade(
         short,
         suffix="short",
         closed_at_ms=2_500_000,
     )
-    shadow.record_closed_trade(long_trade)
     shadow.record_closed_trade(short_trade)
 
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
