@@ -3763,6 +3763,7 @@ async def run_continuous_paper_session(
                     entry_mid_markout_shadow,
                     drawdown_tracker,
                     prospective_entry_filter_state,
+                    prospective_delayed_price_confirmation_state,
                     prospective_top10_rank_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
@@ -3775,6 +3776,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
+                    ),
+                    prospective_delayed_price_confirmation_restore_error=(
+                        prospective_delayed_price_confirmation_restore_error
                     ),
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
