@@ -30,6 +30,8 @@ MIN_PROSPECTIVE_CLOSED_TRADES: Final = 30
 MIN_CAUSAL_EVALUABLE_TRADES: Final = 20
 MIN_SELECT_60S_TRADES: Final = 5
 MIN_SELECT_120S_TRADES: Final = 5
+TEMPORAL_BLOCKS: Final = 4
+MIN_TEMPORAL_TRADES_PER_BLOCK: Final = 5
 
 
 class AdaptiveDelaySelectorError(RuntimeError):
@@ -606,6 +608,150 @@ def _edge_robustness(
     }
 
 
+def _temporal_robustness(
+    items: tuple[AdaptiveDelayOutcome, ...],
+    trades: dict[str, TradeJournalEntry],
+) -> dict[str, object]:
+    if not items:
+        return {
+            "chronological_blocks": [],
+            "full_blocks": 0,
+            "positive_blocks_vs_60s": 0,
+            "positive_blocks_vs_120s": 0,
+            "all_full_blocks_positive_vs_60s": False,
+            "all_full_blocks_positive_vs_120s": False,
+            "configured_blocks": TEMPORAL_BLOCKS,
+            "min_trades_per_full_block": (
+                MIN_TEMPORAL_TRADES_PER_BLOCK
+            ),
+        }
+
+    try:
+        ordered = tuple(
+            sorted(
+                items,
+                key=lambda item: (
+                    trades[item.trade_id].closed_at_ms,
+                    trades[item.trade_id].opened_at_ms,
+                    item.trade_id,
+                ),
+            )
+        )
+    except KeyError as exc:
+        raise AdaptiveDelaySelectorError(
+            "adaptive temporal robustness is missing journal trade"
+        ) from exc
+
+    quotient, remainder = divmod(
+        len(ordered),
+        TEMPORAL_BLOCKS,
+    )
+    blocks: list[dict[str, object]] = []
+    start = 0
+    for index in range(TEMPORAL_BLOCKS):
+        count = quotient + (1 if index < remainder else 0)
+        stop = start + count
+        block_items = ordered[start:stop]
+        start = stop
+        if not block_items:
+            continue
+        first_trade = trades[block_items[0].trade_id]
+        last_trade = trades[block_items[-1].trade_id]
+        adaptive_minus_60s = sum(
+            (
+                item.adaptive_minus_base_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        adaptive_minus_120s = sum(
+            (
+                item.adaptive_minus_challenger_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        adaptive_minus_actual = sum(
+            (
+                item.adaptive_minus_actual_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        blocks.append(
+            {
+                "block": index + 1,
+                "trades": len(block_items),
+                "first_closed_at_ms": (
+                    first_trade.closed_at_ms
+                ),
+                "last_closed_at_ms": (
+                    last_trade.closed_at_ms
+                ),
+                "selected_60s": sum(
+                    1
+                    for item in block_items
+                    if item.selected_delay_ms == BASE_DELAY_MS
+                ),
+                "selected_120s": sum(
+                    1
+                    for item in block_items
+                    if item.selected_delay_ms
+                    == CHALLENGER_DELAY_MS
+                ),
+                "adaptive_minus_60s_pnl": str(
+                    adaptive_minus_60s
+                ),
+                "adaptive_minus_120s_pnl": str(
+                    adaptive_minus_120s
+                ),
+                "adaptive_minus_actual_pnl": str(
+                    adaptive_minus_actual
+                ),
+                "positive_vs_60s": (
+                    adaptive_minus_60s > ZERO
+                ),
+                "positive_vs_120s": (
+                    adaptive_minus_120s > ZERO
+                ),
+            }
+        )
+
+    full_blocks = tuple(
+        block
+        for block in blocks
+        if block["trades"] >= MIN_TEMPORAL_TRADES_PER_BLOCK
+    )
+    positive_vs_60s = sum(
+        1
+        for block in full_blocks
+        if block["positive_vs_60s"] is True
+    )
+    positive_vs_120s = sum(
+        1
+        for block in full_blocks
+        if block["positive_vs_120s"] is True
+    )
+    return {
+        "chronological_blocks": blocks,
+        "full_blocks": len(full_blocks),
+        "positive_blocks_vs_60s": positive_vs_60s,
+        "positive_blocks_vs_120s": positive_vs_120s,
+        "all_full_blocks_positive_vs_60s": (
+            len(full_blocks) == TEMPORAL_BLOCKS
+            and positive_vs_60s == TEMPORAL_BLOCKS
+        ),
+        "all_full_blocks_positive_vs_120s": (
+            len(full_blocks) == TEMPORAL_BLOCKS
+            and positive_vs_120s == TEMPORAL_BLOCKS
+        ),
+        "configured_blocks": TEMPORAL_BLOCKS,
+        "min_trades_per_full_block": (
+            MIN_TEMPORAL_TRADES_PER_BLOCK
+        ),
+    }
+
+
 def adaptive_delay_selector_summary(
     journal: JournalStore,
     mid_outcomes: tuple[EntryMidMarkoutOutcome, ...],
@@ -774,6 +920,10 @@ def adaptive_delay_selector_summary(
             "adaptive_minus_120s": _edge_robustness(
                 items,
                 field="adaptive_minus_challenger_pnl",
+            ),
+            "temporal": _temporal_robustness(
+                items,
+                trades,
             ),
         },
         "by_signal": {
