@@ -1441,3 +1441,19 @@ The continuous-paper live status now reports whether realized positive economics
 This is observability only. It does not block markets, modify scanner ranking, change risk, alter entries/exits, or authorize promotion.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade UTC decision-hour diagnostic — 2026-09-27
+
+The continuous-paper live status now attributes realized closed-trade economics to the UTC hour of the immutable strategy decision.
+
+- the hour is derived from the persisted strategy-decision timestamp, not from opening fill or close time;
+- only trades with exact decision-fact lineage are attributed; missing decision facts remain explicit misses;
+- occupied UTC hours report trade count, W/L/BE, net PnL, mean net R, win rate, profit factor, and trade-count share;
+- the report also exposes the number of active/positive/negative UTC hours and trade-count HHI across active hours;
+- the grouping is fixed to the 24 UTC clock hours and is not fitted from outcomes;
+- evaluation failure disables only this research diagnostic and cannot interrupt paper execution.
+
+This completes the Phase 9 deterministic live slice for UTC hour. It is observability only and does not suppress, delay, reprioritize, size, or promote trades.
+
+**LIVE TRADING: DISABLED.**
