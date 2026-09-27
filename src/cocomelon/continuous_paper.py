@@ -3506,6 +3506,7 @@ async def run_continuous_paper_session(
         root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    supervisor_tasks: tuple[asyncio.Task[None], ...] = ()
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -3585,6 +3586,7 @@ async def run_continuous_paper_session(
             entry_mid_markout_shadow=entry_mid_markout_shadow,
             position_provider=lambda: execution.account.positions,
         )
+        pipeline.set_new_exposure_paused(True)
 
         selected_keys = {market.canonical for market in selected}
         for market in selected:
@@ -3594,7 +3596,66 @@ async def run_continuous_paper_session(
                     "selected market missing from native registry: "
                     f"{market.canonical}"
                 )
-            await pump.process(_record_from_public(market_snapshot_record_event(snapshot)))
+            await pump.process(
+                _record_from_public(
+                    market_snapshot_record_event(snapshot)
+                )
+            )
+
+        async def connection_factory() -> Any:
+            return await connect_mainnet_ws(settings)
+
+        async def start_supervisors(
+            markets: tuple[MarketId, ...],
+        ) -> tuple[
+            tuple[WebSocketSupervisor, ...],
+            tuple[asyncio.Task[None], ...],
+        ]:
+            plan = DeepWatchlistManager().reconcile(markets)
+
+            async def event_sink(event: StreamEvent) -> None:
+                await pump.process(_record_from_stream(event))
+
+            async def gap_sink(gap: DataGap) -> None:
+                await pump.process(_record_from_gap(gap))
+
+            mux = RedundantStreamMux(
+                event_sink=event_sink,
+                gap_sink=gap_sink,
+            )
+            supervisors: list[WebSocketSupervisor] = []
+            tasks: list[asyncio.Task[None]] = []
+            for lane in range(2):
+                async def lane_event_sink(
+                    event: StreamEvent,
+                    lane: int = lane,
+                ) -> None:
+                    await mux.on_event(lane, event)
+
+                async def lane_gap_sink(
+                    gap: DataGap,
+                    lane: int = lane,
+                ) -> None:
+                    await mux.on_gap(lane, gap)
+
+                supervisor = WebSocketSupervisor(
+                    connection_factory,
+                    plan.subscribe,
+                    event_sink=lane_event_sink,
+                    gap_sink=lane_gap_sink,
+                    clock_ms=utc_now_ms,
+                    utcnow=lambda: datetime.now(UTC),
+                )
+                supervisors.append(supervisor)
+                tasks.append(
+                    asyncio.create_task(supervisor.run())
+                )
+            return tuple(supervisors), tuple(tasks)
+
+        _supervisors, supervisor_tasks = await start_supervisors(
+            selected
+        )
+
         for market in selected:
             for candle in await _warmup_market(
                 reader,
@@ -3602,7 +3663,9 @@ async def run_continuous_paper_session(
                 end_ms=started_at_ms,
                 config=config,
             ):
-                await pump.process(_record_from_public(candle_record_event(candle)))
+                await pump.process(
+                    _record_from_public(candle_record_event(candle))
+                )
 
         async def refresh_funding() -> None:
             now_ms = utc_now_ms()
@@ -3625,6 +3688,7 @@ async def run_continuous_paper_session(
                     )
 
         await refresh_funding()
+        pipeline.set_new_exposure_paused(False)
 
         def persist_checkpoint() -> None:
             checkpoint_timestamp_ms = utc_now_ms()
@@ -3735,42 +3799,6 @@ async def run_continuous_paper_session(
             timestamp_ms=utc_now_ms(),
         )
 
-        async def connection_factory() -> Any:
-            return await connect_mainnet_ws(settings)
-
-        async def start_supervisors(
-            markets: tuple[MarketId, ...],
-        ) -> tuple[tuple[WebSocketSupervisor, ...], tuple[asyncio.Task[None], ...]]:
-            plan = DeepWatchlistManager().reconcile(markets)
-            async def event_sink(event: StreamEvent) -> None:
-                await pump.process(_record_from_stream(event))
-
-            async def gap_sink(gap: DataGap) -> None:
-                await pump.process(_record_from_gap(gap))
-
-            mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
-            supervisors: list[WebSocketSupervisor] = []
-            tasks: list[asyncio.Task[None]] = []
-            for lane in range(2):
-                async def lane_event_sink(event: StreamEvent, lane: int = lane) -> None:
-                    await mux.on_event(lane, event)
-
-                async def lane_gap_sink(gap: DataGap, lane: int = lane) -> None:
-                    await mux.on_gap(lane, gap)
-
-                supervisor = WebSocketSupervisor(
-                    connection_factory,
-                    plan.subscribe,
-                    event_sink=lane_event_sink,
-                    gap_sink=lane_gap_sink,
-                    clock_ms=utc_now_ms,
-                    utcnow=lambda: datetime.now(UTC),
-                )
-                supervisors.append(supervisor)
-                tasks.append(asyncio.create_task(supervisor.run()))
-            return tuple(supervisors), tuple(tasks)
-
-        _supervisors, supervisor_tasks = await start_supervisors(selected)
         deadline_ms = started_at_ms + config.duration_seconds * 1000
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
@@ -3964,6 +3992,13 @@ async def run_continuous_paper_session(
         _write_json_atomic(root / SUMMARY_FILENAME, summary.payload())
         return summary
     finally:
+        for task in supervisor_tasks:
+            task.cancel()
+        if supervisor_tasks:
+            await asyncio.gather(
+                *supervisor_tasks,
+                return_exceptions=True,
+            )
         facts.close()
         journal.close()
         execution.close()
