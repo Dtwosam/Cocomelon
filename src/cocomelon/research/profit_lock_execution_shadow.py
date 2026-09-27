@@ -782,6 +782,8 @@ class ProfitLockExecutionShadow:
         for opening_plan_id in orphaned:
             del self._positions[opening_plan_id]
         self._orphaned_restored_positions += len(orphaned)
+        for position in positions:
+            self._position_state(position)
 
     def record_closed_trade(
         self,
