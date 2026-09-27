@@ -1557,6 +1557,193 @@ def _closed_trade_friction_lines(raw: object) -> list[str]:
     return lines
 
 
+def _research_readiness_board_lines(
+    payload: Mapping[str, Any],
+) -> list[str]:
+    def mapping(key: str) -> dict[str, object]:
+        value = payload.get(key, {})
+        return value if isinstance(value, dict) else {}
+
+    def readiness(raw: dict[str, object]) -> dict[str, object]:
+        value = raw.get("readiness", {})
+        return value if isinstance(value, dict) else {}
+
+    def status(
+        raw: dict[str, object],
+        *,
+        ready: bool,
+    ) -> str:
+        if raw.get("error"):
+            return "error"
+        if raw.get("enabled") is False:
+            return "disabled"
+        return "review-ready" if ready else "collecting"
+
+    profit = mapping("profit_lock_counterfactual")
+    profit_ready = bool(
+        readiness(profit).get("all_rules_ready_for_review")
+    )
+
+    execution = mapping("profit_lock_execution_shadow")
+    execution_gate = readiness(execution)
+    execution_ready = bool(
+        execution_gate.get("all_rules_ready_for_review")
+    )
+    execution_integrity = (
+        f"mismatch={execution.get('lineage_mismatch_closed_trades', 0)}, "
+        f"orphan={execution.get('orphaned_restored_positions', 0)}"
+    )
+
+    entry_filter = mapping("prospective_entry_filter")
+    entry_filter_gate = readiness(entry_filter)
+    entry_filter_ready = bool(
+        entry_filter_gate.get("ready_for_review")
+    )
+
+    rank_filter = mapping("prospective_top10_rank_filter")
+    rank_filter_gate = readiness(rank_filter)
+    rank_filter_ready = bool(
+        rank_filter_gate.get("ready_for_review")
+    )
+
+    markout = mapping("entry_markout")
+    markout_gate = readiness(markout)
+    markout_ready = bool(
+        markout_gate.get("all_horizons_ready_for_review")
+    )
+    markout_horizons = markout.get("by_horizon_ms", {})
+    if not isinstance(markout_horizons, dict):
+        markout_horizons = {}
+    markout_counts: list[str] = []
+    for key in ("60000", "300000", "900000"):
+        item = markout_horizons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        markout_counts.append(str(item.get("observations", 0)))
+
+    mid = mapping("entry_mid_markout_shadow")
+    mid_gate = readiness(mid)
+    mid_ready = bool(
+        mid_gate.get("all_horizons_ready_for_review")
+    )
+    mid_horizons = mid.get("by_horizon_ms", {})
+    if not isinstance(mid_horizons, dict):
+        mid_horizons = {}
+    mid_counts: list[str] = []
+    for key in ("60000", "300000", "900000"):
+        item = mid_horizons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        mid_counts.append(str(item.get("fresh", 0)))
+    mid_integrity = (
+        f"unmatched={mid.get('unmatched_closed_trades', 0)}, "
+        f"mismatch={mid.get('lineage_mismatch_closed_trades', 0)}, "
+        f"orphan={mid.get('orphaned_restored_positions', 0)}"
+    )
+
+    decision_age = mapping("entry_decision_age")
+    decision_age_ready = bool(
+        decision_age.get("ready_for_review")
+    )
+
+    rows = (
+        (
+            "fixed profit-lock",
+            status(profit, ready=profit_ready),
+            (
+                f"paths={profit.get('evaluated_trade_count', 0)}/"
+                f"{profit.get('path_record_count', 0)}"
+            ),
+            f"skipped={profit.get('skipped_incomplete_paths', 0)}",
+        ),
+        (
+            "IOC profit-lock",
+            status(execution, ready=execution_ready),
+            f"closed={execution.get('closed_outcome_count', 0)}",
+            execution_integrity,
+        ),
+        (
+            "LONG+trend filter",
+            status(entry_filter, ready=entry_filter_ready),
+            (
+                f"closed={entry_filter.get('prospective_closed_trades', 0)}, "
+                f"blocked={entry_filter.get('blocked_trades', 0)}, "
+                f"allowed={entry_filter.get('allowed_trades', 0)}"
+            ),
+            f"misses={entry_filter.get('attribution_misses', 0)}",
+        ),
+        (
+            "top-10 rank filter",
+            status(rank_filter, ready=rank_filter_ready),
+            (
+                f"closed={rank_filter.get('prospective_closed_trades', 0)}, "
+                f"blocked={rank_filter.get('blocked_trades', 0)}, "
+                f"allowed={rank_filter.get('allowed_trades', 0)}"
+            ),
+            (
+                f"missing={rank_filter.get('missing_rank_evidence', 0)}, "
+                f"stale={rank_filter.get('stale_rank_evidence', 0)}"
+            ),
+        ),
+        (
+            "exact-path entry markout",
+            status(markout, ready=markout_ready),
+            "1m/5m/15m=" + "/".join(markout_counts),
+            (
+                f"decision_miss={markout.get('missing_decision_attribution', 0)}, "
+                f"rank_miss={markout.get('missing_rank_attribution', 0)}"
+            ),
+        ),
+        (
+            "allMids entry markout",
+            status(mid, ready=mid_ready),
+            "fresh 1m/5m/15m=" + "/".join(mid_counts),
+            mid_integrity,
+        ),
+        (
+            "decision age at fill",
+            status(decision_age, ready=decision_age_ready),
+            (
+                f"attributed={decision_age.get('attributed_closed_trades', 0)}, "
+                f"need={decision_age.get('still_needed_for_review', 0)}"
+            ),
+            f"misses={decision_age.get('attribution_misses', 0)}",
+        ),
+    )
+
+    lines = [
+        "",
+        "### Research readiness board",
+        "",
+        (
+            "- authority: `OBSERVABILITY ONLY` · review readiness never "
+            "changes paper execution"
+        ),
+        "",
+        "| Study | Status | Evidence | Integrity |",
+        "| --- | --- | --- | --- |",
+    ]
+    for name, study_status, evidence, integrity in rows:
+        lines.append(
+            f"| {name} | {study_status} | {evidence} | {integrity} |"
+        )
+    ready_count = sum(
+        1 for _name, study_status, _evidence, _integrity in rows
+        if study_status == "review-ready"
+    )
+    lines.extend(
+        [
+            "",
+            f"- review-ready studies: `{ready_count} / {len(rows)}`",
+            (
+                "_Collecting means the frozen evidence gate is not yet met. "
+                "Review-ready still grants no promotion or execution authority._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -1651,6 +1838,7 @@ def render_live_status(
             payload.get("account_lifecycle_economics")
         )
     )
+    lines.extend(_research_readiness_board_lines(payload))
     lines.extend(
         [
             "",
