@@ -1771,3 +1771,19 @@ The causal 60s/120s adaptive delayed-entry selector now reports descriptive conc
 This prevents a future small-sample adaptive advantage from looking broad when it is actually concentrated in one lucky trade or one token.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Adaptive delayed-entry temporal robustness — 2026-09-27
+
+The adaptive 60s/120s selector now also reports chronological stability without changing its frozen rule or readiness gate.
+
+- causal evaluable trades are ordered by actual close time;
+- the sequence is split into four chronological blocks;
+- a full block requires five causal trades, matching the selector's 20-trade causal review gate;
+- each block reports adaptive delta versus always-60s and always-120s;
+- the diagnostic reports how many full blocks remain positive versus each fixed delay and whether all four full blocks are positive;
+- incomplete blocks remain visible but do not count as full stability blocks.
+
+This is descriptive robustness only. It cannot make the selector review-ready, cannot alter paper entry timing, and has no promotion or execution authority.
+
+**LIVE TRADING: DISABLED.**
