@@ -69,6 +69,10 @@ from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.entry_markout import entry_markout_summary
+from cocomelon.research.entry_markout_readiness import (
+    MIN_OBSERVATIONS_PER_HORIZON,
+    entry_markout_readiness,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
@@ -1437,6 +1441,7 @@ def _entry_markout_payload(
             fact_store,
             trade_path_store,
         )
+        readiness = entry_markout_readiness(payload)
     except Exception as exc:
         return {
             "enabled": False,
@@ -1446,6 +1451,39 @@ def _entry_markout_payload(
             "error": f"{type(exc).__name__}: {exc}",
         }
     payload = dict(payload)
+    raw_horizons = payload.get("by_horizon_ms")
+    if not isinstance(raw_horizons, dict):
+        raise RuntimeError("entry markout horizons disappeared")
+    readiness_by_horizon = {
+        str(item.horizon_ms): item
+        for item in readiness.horizons
+    }
+    for horizon_ms, raw in raw_horizons.items():
+        if not isinstance(raw, dict):
+            raise RuntimeError(
+                "entry markout horizon summary must be an object"
+            )
+        horizon_readiness = readiness_by_horizon.get(horizon_ms)
+        if horizon_readiness is None:
+            raise RuntimeError(
+                "entry markout readiness horizon mismatch"
+            )
+        raw["readiness_status"] = (
+            horizon_readiness.status.value
+        )
+        raw["missing_observations"] = (
+            horizon_readiness.missing_observations
+        )
+    payload["readiness"] = {
+        "all_horizons_ready_for_review": (
+            readiness.all_horizons_ready_for_review
+        ),
+        "min_observations_per_horizon": (
+            MIN_OBSERVATIONS_PER_HORIZON
+        ),
+        "promotion_authority": readiness.promotion_authority,
+        "execution_authority": readiness.execution_authority,
+    }
     payload["enabled"] = True
     payload["error"] = None
     return payload
