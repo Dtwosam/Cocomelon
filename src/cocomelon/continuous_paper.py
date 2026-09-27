@@ -95,6 +95,9 @@ from cocomelon.research.continuous_paper_trade_paths import (
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryExecutionShadow,
 )
+from cocomelon.research.delayed_entry_same_exit import (
+    delayed_entry_same_exit_contribution,
+)
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
 from cocomelon.research.entry_markout_predictiveness import (
@@ -2151,6 +2154,37 @@ def _profit_lock_counterfactual_payload(
     }
 
 
+def _delayed_entry_same_exit_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_same_exit_contribution(
+            journal,
+            delayed_shadow.shadow.outcomes,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2467,6 +2501,10 @@ def _live_status_payload(
             ),
         )
     )
+    delayed_entry_same_exit = _delayed_entry_same_exit_payload(
+        pump.journal,
+        delayed_entry_execution_shadow,
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -2592,6 +2630,7 @@ def _live_status_payload(
         "delayed_entry_execution_shadow": (
             delayed_entry_execution_shadow.summary_payload()
         ),
+        "delayed_entry_same_exit": delayed_entry_same_exit,
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter
