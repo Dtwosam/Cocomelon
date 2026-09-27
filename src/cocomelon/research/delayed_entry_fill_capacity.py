@@ -36,7 +36,12 @@ def _cause(outcome: DelayedEntryOutcome) -> str:
         return "risk_ceiling_clip"
     if notional:
         return "notional_ceiling_clip"
-    return "visible_depth_or_slippage_boundary"
+    if outcome.capacity_cause in {
+        "visible_depth_exhausted",
+        "slippage_boundary_reached",
+    }:
+        return outcome.capacity_cause
+    return "legacy_unknown_market_capacity_partial"
 
 
 def delayed_entry_fill_capacity_summary(
@@ -108,7 +113,13 @@ def delayed_entry_fill_capacity_summary(
 
     partials = [item for item in rows if item[1] == "partial_visible_book_ioc"]
     known_partials = [
-        item for item in partials if item[3] != "legacy_unknown_partial"
+        item
+        for item in partials
+        if item[3]
+        not in {
+            "legacy_unknown_partial",
+            "legacy_unknown_market_capacity_partial",
+        }
     ]
     ready = (
         len(rows) >= MIN_EVALUATED_ATTEMPTS

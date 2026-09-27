@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from typing import Final
 
 from cocomelon.domain.execution import (
@@ -79,6 +79,90 @@ def _optional_integer(
     return _integer(value, field)
 
 
+def _floor_quantity(
+    value: Decimal,
+    quantum: Decimal,
+) -> Decimal:
+    if value <= ZERO:
+        return ZERO
+    return value.quantize(quantum, rounding=ROUND_DOWN)
+
+
+def _liquidity_capacity_cause(
+    plan: PaperOrderPlan,
+    book: StreamEvent,
+    instrument: InstrumentExecutionSpec,
+    config: PaperExecutionConfig,
+) -> str | None:
+    if book.kind is not StreamKind.L2_BOOK:
+        return None
+    raw_levels = (
+        book.payload.get("asks")
+        if plan.side is OrderSide.BUY
+        else book.payload.get("bids")
+    )
+    if not isinstance(raw_levels, Sequence) or isinstance(
+        raw_levels,
+        (str, bytes),
+    ):
+        return None
+
+    slippage_bps = min(
+        plan.max_slippage_bps,
+        config.max_ioc_slippage_bps,
+    )
+    fraction = slippage_bps / BPS
+    boundary = (
+        plan.execution_reference_price * (ONE + fraction)
+        if plan.side is OrderSide.BUY
+        else plan.execution_reference_price * (ONE - fraction)
+    )
+    eligible_quantity = ZERO
+    total_quantity = ZERO
+    has_outside_boundary = False
+    for raw in raw_levels:
+        if not isinstance(raw, Mapping):
+            return None
+        price = raw.get("px")
+        quantity = raw.get("sz")
+        if not isinstance(price, Decimal) or not isinstance(
+            quantity,
+            Decimal,
+        ):
+            return None
+        if (
+            not price.is_finite()
+            or not quantity.is_finite()
+            or price <= ZERO
+            or quantity <= ZERO
+        ):
+            return None
+        visible = _floor_quantity(
+            quantity,
+            instrument.size_quantum,
+        )
+        total_quantity += visible
+        inside = (
+            price <= boundary
+            if plan.side is OrderSide.BUY
+            else price >= boundary
+        )
+        if inside:
+            eligible_quantity += visible
+        else:
+            has_outside_boundary = True
+
+    requested = _floor_quantity(
+        plan.requested_quantity,
+        instrument.size_quantum,
+    )
+    if eligible_quantity >= requested:
+        return "eligible_depth_sufficient"
+    if has_outside_boundary and total_quantity > eligible_quantity:
+        return "slippage_boundary_reached"
+    return "visible_depth_exhausted"
+
+
 def _market_from_canonical(value: str) -> MarketId:
     if ":" in value:
         dex = value.split(":", 1)[0]
@@ -120,6 +204,7 @@ class _OpenState:
     attempted_at_ms: int | None = None
     attempt_result: str | None = None
     attempt_reason: str | None = None
+    attempt_capacity_cause: str | None = None
     delayed_filled_quantity: Decimal = ZERO
     delayed_average_fill_price: Decimal | None = None
     delayed_fee: Decimal = ZERO
@@ -140,6 +225,7 @@ class DelayedEntryOutcome:
     signed_price_improvement_bps: Decimal | None
     gross_r_improvement: Decimal | None
     attempt_reason: str | None = None
+    capacity_cause: str | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -202,6 +288,10 @@ class DelayedEntryOutcome:
             raise ValueError(
                 "delayed-entry attempt_reason must be null or non-empty"
             )
+        if self.capacity_cause is not None and not self.capacity_cause.strip():
+            raise ValueError(
+                "delayed-entry capacity_cause must be null or non-empty"
+            )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -231,6 +321,7 @@ class DelayedEntryOutcome:
                 else str(self.gross_r_improvement)
             ),
             "attempt_reason": self.attempt_reason,
+            "capacity_cause": self.capacity_cause,
         }
 
     @classmethod
@@ -284,6 +375,14 @@ class DelayedEntryOutcome:
                 else _string(
                     raw.get("attempt_reason"),
                     "attempt_reason",
+                )
+            ),
+            capacity_cause=(
+                None
+                if raw.get("capacity_cause") is None
+                else _string(
+                    raw.get("capacity_cause"),
+                    "capacity_cause",
                 )
             ),
         )
@@ -514,6 +613,12 @@ class DelayedEntryExecutionShadow:
         state.attempt_reason = ",".join(
             simulation.attempt.reason_codes
         )
+        state.attempt_capacity_cause = _liquidity_capacity_cause(
+            plan,
+            book,
+            instrument,
+            self._config,
+        )
         state.observation_lag_ms = lag_ms
         state.delayed_filled_quantity = (
             simulation.attempt.filled_quantity
@@ -629,6 +734,7 @@ class DelayedEntryExecutionShadow:
                 signed_price_improvement_bps=improvement_bps,
                 gross_r_improvement=improvement_r,
                 attempt_reason=state.attempt_reason,
+                capacity_cause=state.attempt_capacity_cause,
             )
         )
 
@@ -832,6 +938,9 @@ class DelayedEntryExecutionShadow:
                     ),
                     "attempt_result": state.attempt_result,
                     "attempt_reason": state.attempt_reason,
+                    "attempt_capacity_cause": (
+                        state.attempt_capacity_cause
+                    ),
                     "delayed_filled_quantity": str(
                         state.delayed_filled_quantity
                     ),
@@ -930,10 +1039,17 @@ class DelayedEntryExecutionShadow:
             exclusion = item.get("exclusion_reason")
             attempt_result = item.get("attempt_result")
             attempt_reason = item.get("attempt_reason")
+            attempt_capacity_cause = item.get(
+                "attempt_capacity_cause"
+            )
             for value, field in (
                 (exclusion, "exclusion_reason"),
                 (attempt_result, "attempt_result"),
                 (attempt_reason, "attempt_reason"),
+                (
+                    attempt_capacity_cause,
+                    "attempt_capacity_cause",
+                ),
             ):
                 if value is not None and not isinstance(
                     value,
@@ -990,6 +1106,7 @@ class DelayedEntryExecutionShadow:
                 ),
                 attempt_result=attempt_result,
                 attempt_reason=attempt_reason,
+                attempt_capacity_cause=attempt_capacity_cause,
                 delayed_filled_quantity=_decimal(
                     item.get("delayed_filled_quantity"),
                     "delayed_filled_quantity",

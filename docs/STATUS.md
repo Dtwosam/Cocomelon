@@ -1620,3 +1620,17 @@ The +60s delayed-entry shadow now preserves IOC attempt reason codes on complete
 This diagnostic cannot alter delay, order size, slippage, risk limits, scanner selection, or execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry market-capacity split — 2026-09-27
+
+The +60s delayed-entry fill-capacity diagnostic now separates market-side partial fills into two causal buckets using the exact delayed L2 snapshot and the frozen IOC slippage boundary:
+
+- `visible_depth_exhausted`: all visible executable-side levels were consumed and no additional displayed size remained;
+- `slippage_boundary_reached`: additional displayed size existed, but only beyond the allowed IOC slippage boundary.
+
+Risk-ceiling and notional-ceiling clipping still take precedence when the IOC simulator reports those constraints. The additional capacity label is research-only metadata stored beside the delayed shadow outcome; it does not modify the authoritative IOC simulation, plan, fills, fees, risk envelope, or account state.
+
+The capacity cause survives continuous-paper worker handoffs if the delayed attempt occurs before rotation and the actual paper trade closes afterward.
+
+**LIVE TRADING: DISABLED.**
