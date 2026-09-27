@@ -1489,25 +1489,26 @@ def render_live_status(
     )
     lines.extend(
         [
-        "",
-        "### Trade-path evidence",
-        "",
-        (
-            "- authority: `RESEARCH ONLY / NO EXECUTION` · durable across workers: "
-            f"`{str(bool(trade_path_evidence.get('durable_across_workers'))).lower()}`"
-        ),
-        (
-            "- completed exact trade paths: "
-            f"`{trade_path_evidence.get('closed_path_count', 0)}`"
-        ),
-        (
-            "- staged open trade paths: "
-            f"`{trade_path_evidence.get('staged_open_path_count', 0)}`"
-        ),
-        (
-            "- capture error: "
-            f"`{trade_path_evidence.get('capture_error')}`"
-        ),
+            "",
+            "### Trade-path evidence",
+            "",
+            (
+                "- authority: `RESEARCH ONLY / NO EXECUTION` · "
+                "durable across workers: "
+                f"`{str(bool(trade_path_evidence.get('durable_across_workers'))).lower()}`"
+            ),
+            (
+                "- completed exact trade paths: "
+                f"`{trade_path_evidence.get('closed_path_count', 0)}`"
+            ),
+            (
+                "- staged open trade paths: "
+                f"`{trade_path_evidence.get('staged_open_path_count', 0)}`"
+            ),
+            (
+                "- capture error: "
+                f"`{trade_path_evidence.get('capture_error')}`"
+            ),
         ]
     )
     lines.extend(
