@@ -2977,6 +2977,16 @@ def _research_readiness_board_lines(
     delayed_same_exit_ready = bool(
         delayed_same_exit_gate.get("ready_for_review")
     )
+    delayed_120 = mapping("delayed_entry_120s_execution_shadow")
+    delayed_120_gate = readiness(delayed_120)
+    delayed_120_ready = bool(
+        delayed_120_gate.get("ready_for_review")
+    )
+    delayed_pair = mapping("delayed_entry_pair")
+    delayed_pair_gate = readiness(delayed_pair)
+    delayed_pair_ready = bool(
+        delayed_pair_gate.get("ready_for_review")
+    )
     delayed_integrity = (
         f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
         f"orphan={delayed.get('orphaned_restored_positions', 0)}"
@@ -3092,6 +3102,33 @@ def _research_readiness_board_lines(
                 f"worse={delayed.get('worse_price_full_fills', 0)}"
             ),
             delayed_integrity,
+        ),
+        (
+            "120s delayed entry",
+            status(delayed_120, ready=delayed_120_ready),
+            (
+                f"closed={delayed_120.get('closed_eligible_trades', 0)}, "
+                f"full={delayed_120.get('full_delayed_fills', 0)}, "
+                f"better={delayed_120.get('better_price_full_fills', 0)}, "
+                f"worse={delayed_120.get('worse_price_full_fills', 0)}"
+            ),
+            (
+                f"mismatch={delayed_120.get('lineage_mismatch_closed_trades', 0)}, "
+                f"orphan={delayed_120.get('orphaned_restored_positions', 0)}"
+            ),
+        ),
+        (
+            "60s vs 120s paired",
+            status(delayed_pair, ready=delayed_pair_ready),
+            (
+                f"closed={delayed_pair.get('prospective_closed_trades', 0)}, "
+                f"paired={delayed_pair.get('paired_full_fills', 0)}"
+            ),
+            (
+                f"missing60={delayed_pair.get('missing_base_outcome', 0)}, "
+                f"missing120={delayed_pair.get('missing_challenger_outcome', 0)}, "
+                f"mismatch={delayed_pair.get('lineage_mismatches', 0)}"
+            ),
         ),
         (
             "60s delayed same-exit",
