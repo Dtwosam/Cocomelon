@@ -58,11 +58,11 @@ from cocomelon.journal.store import JournalStore
 from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
-from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
+from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
 )
