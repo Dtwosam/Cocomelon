@@ -1490,3 +1490,21 @@ The continuous-paper research layer now measures whether early post-entry markou
 The purpose is to determine whether immediate adverse selection has genuine predictive value before any timing rule is proposed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact opening fill-liquidity diagnostic — 2026-09-27
+
+The continuous-paper runtime now captures the exact L2 book consumed by each future opening IOC after the authoritative paper attempt has already been computed.
+
+- evidence is prospective only; historical trades are not reconstructed from decision-time feature snapshots;
+- each filled opening records spread, bid/ask visible notional within 25 bps, direction-adjusted imbalance, exact book exchange/receive age, average fill price, fill slippage, and the fraction of entry-side visible depth consumed;
+- the same record also preserves decision-time spread/book age for later latency-drift analysis without confusing those values with fill-time liquidity;
+- records are immutable, canonical, idempotent by opening-plan ID, conflict-detecting, and travel inside the normal continuous-paper state artifact;
+- closed-trade attribution verifies market, side, opening timestamp, strategy decision, and feature lineage before using a record;
+- live summaries compare overall, winners versus losers, and LONG versus SHORT while explicitly counting historical closes without exact fill-liquidity evidence and open/pending evidence records;
+- the frozen review gate requires 30 matched prospective closed trades;
+- the opening research observer is fail-open: capture failure is surfaced as research telemetry and cannot alter the already-computed paper opening result.
+
+This diagnostic is descriptive only. It does not reject trades, change scanner ranking, alter sizing/risk, delay entries, change IOC behavior, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**
