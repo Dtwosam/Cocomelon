@@ -432,6 +432,7 @@ def delayed_entry_fixed_schedule_portfolio(
         len(outcomes) >= MIN_CLOSED_SHADOW_OUTCOMES
         and len(resolved) >= MIN_EVALUATED_DELAYED_ATTEMPTS
         and actual_overlap >= MIN_ACTUAL_OVERLAP_OPENINGS
+        and unresolved_outcomes == 0
         and missing_journal == 0
         and missing_plan == 0
         and lineage_mismatches == 0
@@ -488,6 +489,8 @@ def delayed_entry_fixed_schedule_portfolio(
                 MIN_EVALUATED_DELAYED_ATTEMPTS
             ),
             "min_actual_overlap_openings": MIN_ACTUAL_OVERLAP_OPENINGS,
+            "requires_zero_unresolved_outcomes": True,
+            "unresolved_outcomes": unresolved_outcomes,
             "missing_closed_shadow_outcomes": max(
                 0,
                 MIN_CLOSED_SHADOW_OUTCOMES - len(outcomes),
