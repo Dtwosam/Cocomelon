@@ -1840,3 +1840,20 @@ Review readiness requires:
 Meeting the gate means only `ready_for_review`. The comparison has no execution or promotion authority and cannot alter actual paper entry timing.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed-schedule delayed-entry portfolio shadow — 2026-09-28
+
+The 60-second delayed-entry research now includes a portfolio-level accounting shadow over the same observed closed-trade schedule.
+
+- actual paper openings are compared with the existing +60s visible-book delayed fill outcomes;
+- full fills, partial fills, and genuine no-fills retain the existing fill-weighted economics;
+- candidate exposure begins at the observed delayed fill timestamp and ends at the actual observed trade close;
+- the study measures concurrent positions, overlapping openings, peak gross notional, peak planned risk, position/notional/risk exposure-hours, cumulative realized contribution, and realized-contribution drawdown;
+- every candidate fill is checked against the immutable opening plan and original stop/risk geometry;
+- unresolved delayed observations are excluded rather than treated as no-fills;
+- review readiness requires 30 closed shadow outcomes, 20 evaluable delayed attempts, at least 5 actual overlap openings, and zero journal/plan/lineage/risk-ceiling integrity failures.
+
+This closes the concurrency/exposure blind spot in per-trade delayed-entry contribution studies, but it remains a **fixed observed schedule** study. It does not invent replacement trades, change exit timestamps, replay strategy decisions under altered capacity, or model unrealized mark-to-market equity. Those limitations are surfaced live and prevent this study from claiming a full alternate portfolio backtest.
+
+**LIVE TRADING: DISABLED.**
