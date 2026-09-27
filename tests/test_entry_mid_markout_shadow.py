@@ -224,7 +224,9 @@ def test_allmids_shadow_records_fresh_long_and_short_markouts(
     assert fifteen["censored"] == 2
 
 
-def test_allmids_shadow_distinguishes_stale_and_missing_close() -> None:
+def test_allmids_shadow_distinguishes_stale_and_missing_close(
+    tmp_path: Path,
+) -> None:
     shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
     position = _position(
         suffix="stale",
@@ -249,7 +251,7 @@ def test_allmids_shadow_distinguishes_stale_and_missing_close() -> None:
     )
     shadow.record_closed_trade(trade)
 
-    facts = EvaluationFactStore(":memory:")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
     try:
         facts.record_decision_fact(
             _fact(trade, lead_strategy="trend")
