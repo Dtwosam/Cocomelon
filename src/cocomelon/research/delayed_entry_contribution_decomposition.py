@@ -173,6 +173,14 @@ def evaluate_delayed_entry_contribution_decomposition(
         raise DelayedEntryContributionDecompositionError(
             "initial risk must be positive"
         )
+    price_effect_r = price_effect / risk
+    entry_fee_effect_r = entry_fee_effect / risk
+    exposure_effect_r = exposure_effect / risk
+    total_delta_r = (
+        price_effect_r
+        + entry_fee_effect_r
+        + exposure_effect_r
+    )
     return DelayedEntryContributionDecompositionOutcome(
         trade_id=trade.trade_id,
         opening_plan_id=trade.opening_plan_id,
@@ -190,10 +198,10 @@ def evaluate_delayed_entry_contribution_decomposition(
         entry_fee_effect_pnl=entry_fee_effect,
         exposure_effect_pnl=exposure_effect,
         total_delta_pnl=total_delta,
-        price_effect_r=price_effect / risk,
-        entry_fee_effect_r=entry_fee_effect / risk,
-        exposure_effect_r=exposure_effect / risk,
-        total_delta_r=total_delta / risk,
+        price_effect_r=price_effect_r,
+        entry_fee_effect_r=entry_fee_effect_r,
+        exposure_effect_r=exposure_effect_r,
+        total_delta_r=total_delta_r,
     )
 
 
