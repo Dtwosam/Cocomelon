@@ -2514,6 +2514,67 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_fixed_schedule_portfolio": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "fixed_observed_schedule_portfolio_contribution_only"
+            ),
+            "delay_ms": 60000,
+            "exit_assumption": (
+                "actual_trade_close_timestamp_and_exit_economics"
+            ),
+            "replacement_trades_modeled": False,
+            "changed_exit_timing_modeled": False,
+            "unrealized_equity_modeled": False,
+            "closed_shadow_outcomes": 12,
+            "evaluated_delayed_attempts": 10,
+            "unresolved_outcomes": 2,
+            "missing_journal_trades": 0,
+            "missing_opening_plans": 0,
+            "lineage_mismatches": 0,
+            "candidate_risk_ceiling_exceeded": 0,
+            "candidate_no_fill_trades": 1,
+            "cohort_reference_equity": "10000",
+            "actual": {
+                "final_realized_contribution": "-12",
+                "max_realized_drawdown": "18",
+                "max_concurrent_positions": 4,
+                "overlap_openings": 6,
+                "max_gross_notional": "1500",
+                "max_planned_risk": "45",
+                "position_exposure_hours": "7.5",
+                "notional_exposure_hours": "2800",
+                "risk_exposure_hours": "85",
+            },
+            "candidate": {
+                "final_realized_contribution": "4",
+                "max_realized_drawdown": "9",
+                "max_concurrent_positions": 3,
+                "overlap_openings": 4,
+                "max_gross_notional": "1100",
+                "max_planned_risk": "34",
+                "position_exposure_hours": "5.9",
+                "notional_exposure_hours": "2100",
+                "risk_exposure_hours": "64",
+            },
+            "delta_final_realized_contribution": "16",
+            "delta_max_realized_drawdown": "-9",
+            "delta_max_gross_notional": "-400",
+            "delta_max_planned_risk": "-11",
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_delayed_attempts": 20,
+                "min_actual_overlap_openings": 5,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_delayed_attempts": 10,
+                "missing_actual_overlap_openings": 0,
+            },
+            "error": None,
+        },
         "delayed_entry_fill_weighted": {
             "enabled": True,
             "research_only": True,
@@ -3285,6 +3346,23 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`18 / 10`" in output
     assert "| Partial fill | 1 | 0.5 | 2 | 1 | -1 | -0.1 |" in output
     assert "| No fill | 1 | 0 | -4 | 0 | 4 | 0.4 |" in output
+    assert "### 60s delayed-entry fixed-schedule portfolio shadow" in output
+    assert "fixed_observed_schedule_portfolio_contribution_only" in output
+    assert "actual / candidate realized contribution / delta" in output
+    assert "`-12` / `4` / `16`" in output
+    assert "actual / candidate max realized drawdown / delta" in output
+    assert "`18` / `9` / `-9`" in output
+    assert "actual / candidate max concurrent positions" in output
+    assert "`4 / 3`" in output
+    assert "actual / candidate overlap openings" in output
+    assert "`6 / 4`" in output
+    assert "actual / candidate max gross notional / delta" in output
+    assert "`1500` / `1100` / `-400`" in output
+    assert "actual / candidate max planned risk / delta" in output
+    assert "`45` / `34` / `-11`" in output
+    assert "evidence gate closed / evaluated / overlap" in output
+    assert "`30 / 20 / 5`" in output
+    assert "Fixed observed schedule only" in output
     assert "### 60s delayed-entry contribution decomposition" in output
     assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
     assert "price / entry-fee / exposure / total Δ PnL" in output
