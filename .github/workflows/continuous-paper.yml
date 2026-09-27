@@ -64,12 +64,14 @@ permissions:
   actions: write
   issues: write
 
+concurrency:
+  group: continuous-mainnet-paper-trader
+  cancel-in-progress: false
+
 jobs:
   paper:
     runs-on: ubuntu-latest
     timeout-minutes: 355
-    outputs:
-      skipped: ${{ steps.guard.outputs.skip }}
     env:
       GH_TOKEN: ${{ github.token }}
       COCOMELON_EXECUTION_MODE: paper
@@ -98,7 +100,7 @@ jobs:
           active = [
               run for run in payload.get("workflow_runs", [])
               if run.get("id") != current
-              and run.get("status") in {"queued", "in_progress", "pending"}
+              and run.get("status") == "in_progress"
               and run.get("head_branch") == "main"
           ]
           print(active[0]["id"] if active else "")
@@ -357,15 +359,8 @@ jobs:
           print("- live orders: false")
           PY
 
-  continue:
-    needs: paper
-    if: ${{ needs.paper.result == 'success' && needs.paper.outputs.skipped != 'true' }}
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Dispatch next continuous paper worker
+      - name: Queue exact successor continuous paper worker
+        if: ${{ success() && steps.guard.outputs.skip != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
