@@ -5,7 +5,7 @@ import json
 import os
 from collections import deque
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
@@ -265,14 +265,70 @@ class _ContinuousDelayedEntryExecutionShadowSink:
     def __init__(
         self,
         shadow: DelayedEntryExecutionShadow,
+        *,
+        opening_plan_loader: Callable[
+            [str],
+            PaperOrderPlan | None,
+        ],
     ) -> None:
         self.shadow: DelayedEntryExecutionShadow | None = shadow
+        self._opening_plan_loader = opening_plan_loader
         self.error: str | None = None
 
     def _disable(self, exc: Exception) -> None:
         if self.error is None:
             self.error = f"{type(exc).__name__}: {exc}"
         self.shadow = None
+
+    def _position_with_original_stop(
+        self,
+        position: PaperPosition,
+    ) -> PaperPosition:
+        plan = self._opening_plan_loader(
+            position.opening_plan_id
+        )
+        if plan is None:
+            raise RuntimeError(
+                "delayed-entry opening plan is missing"
+            )
+        if plan.reduce_only:
+            raise RuntimeError(
+                "delayed-entry opening plan is reduce-only"
+            )
+        if plan.market != position.market:
+            raise RuntimeError(
+                "delayed-entry opening plan market mismatch"
+            )
+        if plan.stop_price is None:
+            raise RuntimeError(
+                "delayed-entry opening plan is missing stop"
+            )
+        return replace(
+            position,
+            stop_price=plan.stop_price,
+        )
+
+    def _positions_with_original_stops(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> tuple[PaperPosition, ...]:
+        return tuple(
+            self._position_with_original_stop(position)
+            for position in positions
+        )
+
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.reconcile_open_positions(
+                self._positions_with_original_stops(positions)
+            )
+        except Exception as exc:
+            self._disable(exc)
 
     def observe_mark(
         self,
@@ -285,7 +341,7 @@ class _ContinuousDelayedEntryExecutionShadowSink:
             return
         try:
             self.shadow.observe_mark(
-                positions,
+                self._positions_with_original_stops(positions),
                 mark_event,
                 now_ms=now_ms,
             )
@@ -305,7 +361,7 @@ class _ContinuousDelayedEntryExecutionShadowSink:
             return
         try:
             self.shadow.observe_book(
-                positions,
+                self._positions_with_original_stops(positions),
                 instrument,
                 book,
                 reference_price=reference_price,
@@ -2407,7 +2463,8 @@ async def run_continuous_paper_session(
                 root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
                 replay_config.execution,
                 started_at_ms=started_at_ms,
-            )
+            ),
+            opening_plan_loader=execution.store.load_plan,
         )
     )
     entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
@@ -2420,10 +2477,9 @@ async def run_continuous_paper_session(
         profit_lock_execution_shadow.shadow.reconcile_open_positions(
             execution.account.positions
         )
-    if delayed_entry_execution_shadow.shadow is not None:
-        delayed_entry_execution_shadow.shadow.reconcile_open_positions(
-            execution.account.positions
-        )
+    delayed_entry_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
     if entry_mid_markout_shadow.shadow is not None:
         entry_mid_markout_shadow.shadow.reconcile_open_positions(
             execution.account.positions
