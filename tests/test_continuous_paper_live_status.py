@@ -1989,6 +1989,71 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 }
             },
         },
+        "delayed_entry_fill_capacity": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "evaluated_attempts": 10,
+            "missing_journal_trades": 0,
+            "lineage_mismatches": 0,
+            "overall": {
+                "attempts": 10,
+                "mean_fill_fraction": "0.85",
+                "full": 8,
+                "partial": 1,
+                "no_fill": 1,
+            },
+            "by_side": {
+                "long": {
+                    "attempts": 4,
+                    "mean_fill_fraction": "0.75",
+                    "full": 3,
+                    "partial": 1,
+                    "no_fill": 0,
+                },
+                "short": {
+                    "attempts": 6,
+                    "mean_fill_fraction": "0.9166666666666666666666666667",
+                    "full": 5,
+                    "partial": 0,
+                    "no_fill": 1,
+                },
+            },
+            "by_cause": {
+                "legacy_unknown_partial": {
+                    "attempts": 1,
+                    "mean_fill_fraction": "0.5",
+                    "full": 0,
+                    "partial": 1,
+                    "no_fill": 0,
+                },
+                "full_fill": {
+                    "attempts": 8,
+                    "mean_fill_fraction": "1",
+                    "full": 8,
+                    "partial": 0,
+                    "no_fill": 0,
+                },
+                "no_fill": {
+                    "attempts": 1,
+                    "mean_fill_fraction": "0",
+                    "full": 0,
+                    "partial": 0,
+                    "no_fill": 1,
+                },
+            },
+            "cause_known_partial_fills": 0,
+            "legacy_unknown_partial_fills": 1,
+            "readiness": {
+                "ready_for_review": False,
+                "min_evaluated_attempts": 30,
+                "min_cause_known_partial_fills": 10,
+                "missing_evaluated_attempts": 20,
+                "missing_cause_known_partial_fills": 10,
+            },
+            "error": None,
+        },
         "delayed_entry_fill_weighted": {
             "enabled": True,
             "research_only": True,
@@ -2441,6 +2506,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`-10` / `6` / `16`" in output
     assert "| LONG | 3 | 1/2 | 2/1 | 1 | -4 | 2 | 6 | 0.17 |" in output
     assert "| SHORT | 5 | 1/4 | 2/3 | 1 | -6 | 4 | 10 | 0.16 |" in output
+    assert "### 60s delayed-entry fill-capacity diagnostic" in output
+    assert "attempts / mean fill fraction" in output
+    assert "`10 / 0.85`" in output
+    assert "cause-known / legacy-unknown partials" in output
+    assert "`0 / 1`" in output
+    assert "| LONG | 4 | 0.75 | 3 | 1 | 0 |" in output
+    assert "| SHORT | 6 | 0.9166666666666666666666666667 | 5 | 0 | 1 |" in output
+    assert "legacy_unknown_partial: n=1, mean_fill=0.5" in output
     assert "### 60s delayed-entry fill-weighted contribution" in output
     assert "fill_weighted_same_exit_trade_contribution_only" in output
     assert "closed shadow / evaluated attempts" in output
