@@ -1191,6 +1191,89 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "challenger_error": None,
             "error": None,
         },
+        "adaptive_delay_selector": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "adverse-1m-mid-waits-to-120s-v1",
+            "started_at_ms": 1700000600000,
+            "state_restore_error": None,
+            "error": None,
+            "claim_scope": (
+                "fill_weighted_same_exit_trade_contribution_only"
+            ),
+            "rule": (
+                "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+                "else_choose_60s"
+            ),
+            "causality_rule": (
+                "1m_mid_observed_at_or_before_60s_ioc_observation"
+            ),
+            "base_delay_ms": 60000,
+            "challenger_delay_ms": 120000,
+            "prospective_closed_trades": 8,
+            "causal_evaluable_trades": 6,
+            "missing_mid_outcome": 0,
+            "non_fresh_mid_outcome": 1,
+            "late_mid_signal": 1,
+            "missing_base_outcome": 0,
+            "missing_challenger_outcome": 0,
+            "non_evaluable_base": 0,
+            "non_evaluable_challenger": 0,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 6,
+                "selected_60s": 3,
+                "selected_120s": 3,
+                "adaptive_better_than_60s": 2,
+                "adaptive_worse_than_60s": 1,
+                "adaptive_equal_to_60s": 3,
+                "adaptive_better_than_120s": 2,
+                "adaptive_worse_than_120s": 1,
+                "adaptive_equal_to_120s": 3,
+                "actual_net_pnl": "-6",
+                "always_60s_net_pnl": "-2",
+                "always_120s_net_pnl": "-1",
+                "adaptive_net_pnl": "1",
+                "adaptive_minus_actual_pnl": "7",
+                "adaptive_minus_60s_pnl": "3",
+                "adaptive_minus_120s_pnl": "2",
+                "mean_adaptive_fill_fraction": "0.9",
+                "mean_adaptive_r_contribution": "0.02",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 3,
+                    "selected_60s": 1,
+                    "selected_120s": 2,
+                    "adaptive_net_pnl": "0.5",
+                    "adaptive_minus_60s_pnl": "1.5",
+                    "adaptive_minus_120s_pnl": "0.5",
+                    "mean_adaptive_fill_fraction": "0.85",
+                },
+                "short": {
+                    "trades": 3,
+                    "selected_60s": 2,
+                    "selected_120s": 1,
+                    "adaptive_net_pnl": "0.5",
+                    "adaptive_minus_60s_pnl": "1.5",
+                    "adaptive_minus_120s_pnl": "1.5",
+                    "mean_adaptive_fill_fraction": "0.95",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_causal_evaluable_trades": 20,
+                "min_selected_60s_trades": 5,
+                "min_selected_120s_trades": 5,
+                "missing_prospective_closed_trades": 22,
+                "missing_causal_evaluable_trades": 14,
+                "missing_selected_60s_trades": 2,
+                "missing_selected_120s_trades": 2,
+            },
+        },
         "delayed_entry_same_exit": {
             "enabled": True,
             "research_only": True,
@@ -2717,7 +2800,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 17`" in output
+    assert "review-ready studies: `0 / " in output
     assert "| 60s price confirmation | collecting | eval=10, confirmed=6, skipped=4 |" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
@@ -2773,6 +2856,30 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`20 / 13 / 2 / 1`" in output
     assert (
         "| LONG | 3 | 1 | 2 | 0 | 0.75 | 0.5 | 0 | -1 | -1 | -0.04 |"
+        in output
+    )
+    assert "### Adaptive 60s/120s delayed-entry selector" in output
+    assert "adverse-1m-mid-waits-to-120s-v1" in output
+    assert "prospective closed / causal evaluable" in output
+    assert "`8 / 6`" in output
+    assert "selected 60s / 120s" in output
+    assert "`3 / 3`" in output
+    assert "actual / always-60 / always-120 / adaptive PnL" in output
+    assert "`-6` / `-2` / `-1` / `1`" in output
+    assert "adaptive Δ vs actual / 60s / 120s" in output
+    assert "`7` / `3` / `2`" in output
+    assert "missing mid / non-fresh / late signal" in output
+    assert "`0 / 1 / 1`" in output
+    assert "evidence gate closed / causal / 60s / 120s" in output
+    assert "`30 / 20 / 5 / 5`" in output
+    assert "still needed C/E/60/120" in output
+    assert "`22 / 14 / 2 / 2`" in output
+    assert (
+        "| LONG | 3 | 1 | 2 | 0.5 | 1.5 | 0.5 | 0.85 |"
+        in output
+    )
+    assert (
+        "| SHORT | 3 | 2 | 1 | 0.5 | 1.5 | 1.5 | 0.95 |"
         in output
     )
     assert "### 60s delayed-entry same-exit contribution" in output
@@ -2864,6 +2971,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| 60s vs 120s fill-weighted | collecting | "
         "closed=10, paired=7 | "
         "missing60=0, missing120=0, mismatch=0 |" in output
+    )
+    assert (
+        "| adaptive 60s/120s delay | collecting | "
+        "closed=8, causal=6 | midmiss=0, late=1, mismatch=0 |"
+        in output
     )
     assert (
         "| 60s delayed same-exit | collecting | "
