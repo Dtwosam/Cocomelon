@@ -51,6 +51,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/research/continuous_paper_opening_rank.py" in source
     assert "src/cocomelon/research/continuous_paper_drawdown.py" in source
     assert "src/cocomelon/research/delayed_entry_execution_shadow.py" in source
+    assert "src/cocomelon/research/delayed_entry_same_exit.py" in source
     assert "src/cocomelon/research/entry_decision_age.py" in source
     assert "src/cocomelon/research/entry_markout.py" in source
     assert "src/cocomelon/research/entry_markout_predictiveness.py" in source
@@ -85,6 +86,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/continuous_paper_opening_rank.py"' in source
     assert '"src/cocomelon/research/continuous_paper_drawdown.py"' in source
     assert '"src/cocomelon/research/delayed_entry_execution_shadow.py"' in source
+    assert '"src/cocomelon/research/delayed_entry_same_exit.py"' in source
     assert '"src/cocomelon/research/entry_decision_age.py"' in source
     assert '"src/cocomelon/research/entry_markout.py"' in source
     assert '"src/cocomelon/research/entry_markout_predictiveness.py"' in source
