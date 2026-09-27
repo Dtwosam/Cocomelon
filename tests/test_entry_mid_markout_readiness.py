@@ -25,6 +25,8 @@ def _summary(
     censored: int = 0,
     attribution_misses: int = 0,
     unmatched_closed: int = 0,
+    lineage_mismatch: int = 0,
+    orphaned: int = 0,
 ) -> dict[str, object]:
     return {
         "source": "allMids_mid_px",
@@ -35,6 +37,8 @@ def _summary(
             ENTRY_MID_MARKOUT_MAX_LAG_MS
         ),
         "unmatched_closed_trades": unmatched_closed,
+        "lineage_mismatch_closed_trades": lineage_mismatch,
+        "orphaned_restored_positions": orphaned,
         "by_horizon_ms": {
             str(horizon_ms): {
                 "fresh": fresh,
@@ -165,3 +169,17 @@ def test_allmids_readiness_fails_closed_on_protocol_mismatch() -> None:
         match="lag protocol mismatch",
     ):
         entry_mid_markout_readiness(summary)
+
+
+def test_allmids_readiness_blocks_research_integrity_mismatch() -> None:
+    result = entry_mid_markout_readiness(
+        _summary(
+            fresh=MIN_FRESH_OBSERVATIONS_PER_HORIZON,
+            lineage_mismatch=1,
+            orphaned=1,
+        )
+    )
+
+    assert result.lineage_mismatch_closed_trades == 1
+    assert result.orphaned_restored_positions == 1
+    assert result.all_horizons_ready_for_review is False
