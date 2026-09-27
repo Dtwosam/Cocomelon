@@ -1583,3 +1583,24 @@ The frozen review gate is 30 closed delayed-shadow outcomes and 20 evaluable ful
 This is research-only and has no execution or promotion authority. It cannot delay entries, alter size, change stops, or submit orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fill-weighted paired 60s vs 120s delay — 2026-09-27
+
+The paired 60-second versus 120-second delayed-entry study now has a second comparison that includes partial and genuine no-fill outcomes on both sides.
+
+- each delay is valued with the same fill-weighted same-exit accounting used by the standalone 60-second contribution study;
+- full and partial fills use the simulated visible-book IOC price/fee and only the quantity actually filled;
+- genuine no-fills contribute zero;
+- unresolved censored, missing-book, rejected, or expired outcomes make that pair non-evaluable rather than being imputed;
+- both delays are compared on the same observed paper exit, with exit fees and funding scaled by each delay's fill fraction;
+- the report explicitly measures when the 120-second challenger loses or gains fill fraction versus 60 seconds;
+- source-pair counts expose which combinations of full/partial/no-fill drive the result.
+
+The original paired full-fill-only study remains unchanged and isolates price/fee differences among trades that fully fill at both delays. This fill-weighted paired view instead asks whether a longer delay still helps after reduced exposure is charged.
+
+The frozen review gate requires 30 prospective closed trades, 20 paired evaluable attempts, at least 5 LONG pairs, at least 5 SHORT pairs, zero missing shadow outcomes, and zero lineage mismatches.
+
+This is research-only and has no execution or promotion authority. It cannot alter the active paper entry delay, quantity, stop, risk, or order flow.
+
+**LIVE TRADING: DISABLED.**

@@ -698,6 +698,177 @@ def _delayed_entry_pair_lines(raw: object) -> list[str]:
     return lines
 
 
+def _delayed_entry_pair_fill_weighted_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Paired 60s vs 120s fill-weighted delay",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No paired fill-weighted delay telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    by_side = raw.get("by_side", {})
+    if not isinstance(by_side, dict):
+        by_side = {}
+    source_pairs = raw.get("source_pairs", {})
+    if not isinstance(source_pairs, dict):
+        source_pairs = {}
+
+    source_text = ", ".join(
+        f"{name}={count}"
+        for name, count in sorted(source_pairs.items())
+    )
+    if not source_text:
+        source_text = "none"
+
+    lines.extend(
+        [
+            (
+                "- prospective start / delays: "
+                f"`{raw.get('started_at_ms')}` / "
+                f"`{raw.get('base_delay_ms')}ms → "
+                f"{raw.get('challenger_delay_ms')}ms`"
+            ),
+            (
+                "- prospective closed / paired evaluable: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('paired_evaluable_attempts', 0)}`"
+            ),
+            (
+                "- missing 60s / 120s outcomes: "
+                f"`{raw.get('missing_base_outcome', 0)} / "
+                f"{raw.get('missing_challenger_outcome', 0)}`"
+            ),
+            (
+                "- non-evaluable 60s / 120s: "
+                f"`{raw.get('non_evaluable_base', 0)} / "
+                f"{raw.get('non_evaluable_challenger', 0)}`"
+            ),
+            (
+                "- lineage mismatches: "
+                f"`{raw.get('lineage_mismatches', 0)}`"
+            ),
+            f"- source pairs: `{source_text}`",
+            (
+                "- 120s better / 60s better / equal contribution: "
+                f"`{overall.get('challenger_better', 0)} / "
+                f"{overall.get('base_better', 0)} / "
+                f"{overall.get('equal', 0)}`"
+            ),
+            (
+                "- 60s / 120s fill-weighted PnL / incremental: "
+                f"`{overall.get('base_fill_weighted_net_pnl', '0')}` / "
+                f"`{overall.get('challenger_fill_weighted_net_pnl', '0')}` / "
+                f"`{overall.get('challenger_minus_base_pnl', '0')}`"
+            ),
+            (
+                "- mean 60s / 120s fill fraction: "
+                f"`{overall.get('mean_base_fill_fraction')} / "
+                f"{overall.get('mean_challenger_fill_fraction')}`"
+            ),
+            (
+                "- 120s loses / gains / matches fill fraction: "
+                f"`{overall.get('challenger_loses_fill_fraction', 0)} / "
+                f"{overall.get('challenger_gains_fill_fraction', 0)} / "
+                f"{overall.get('equal_fill_fraction', 0)}`"
+            ),
+            (
+                "- evidence gate closed / paired / LONG / SHORT: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_paired_evaluable_attempts', 0)} / "
+                f"{readiness.get('min_long_paired_evaluable_attempts', 0)} / "
+                f"{readiness.get('min_short_paired_evaluable_attempts', 0)}`"
+            ),
+            (
+                "- still needed C/P/L/S: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_paired_evaluable_attempts', 0)} / "
+                f"{readiness.get('missing_long_paired_evaluable_attempts', 0)} / "
+                f"{readiness.get('missing_short_paired_evaluable_attempts', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Side | N | 120s better | 60s better | Equal | "
+                "60s fill | 120s fill | 60s PnL | 120s PnL | Δ PnL | Mean ΔR |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    for side in ("long", "short"):
+        item = by_side.get(side, {})
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            (
+                "| {side} | {n} | {challenger} | {base} | {equal} | "
+                "{base_fill} | {challenger_fill} | {base_pnl} | "
+                "{challenger_pnl} | {delta} | {delta_r} |"
+            ).format(
+                side=side.upper(),
+                n=item.get("trades", 0),
+                challenger=item.get("challenger_better", 0),
+                base=item.get("base_better", 0),
+                equal=item.get("equal", 0),
+                base_fill=item.get("mean_base_fill_fraction"),
+                challenger_fill=item.get(
+                    "mean_challenger_fill_fraction"
+                ),
+                base_pnl=item.get(
+                    "base_fill_weighted_net_pnl",
+                    "0",
+                ),
+                challenger_pnl=item.get(
+                    "challenger_fill_weighted_net_pnl",
+                    "0",
+                ),
+                delta=item.get("challenger_minus_base_pnl", "0"),
+                delta_r=item.get("mean_challenger_minus_base_r"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective paired same-exit contribution comparison using "
+                "full, partial, and genuine no-fill outcomes for both delays. "
+                "Unresolved observations are excluded. This does not model "
+                "replacement trades, changed exits, capacity, or stop timing._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_fill_weighted_lines(
     raw: object,
 ) -> list[str]:
@@ -3165,6 +3336,15 @@ def _research_readiness_board_lines(
     delayed_pair_ready = bool(
         delayed_pair_gate.get("ready_for_review")
     )
+    delayed_pair_fill_weighted = mapping(
+        "delayed_entry_pair_fill_weighted"
+    )
+    delayed_pair_fill_weighted_gate = readiness(
+        delayed_pair_fill_weighted
+    )
+    delayed_pair_fill_weighted_ready = bool(
+        delayed_pair_fill_weighted_gate.get("ready_for_review")
+    )
     delayed_integrity = (
         f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
         f"orphan={delayed.get('orphaned_restored_positions', 0)}"
@@ -3306,6 +3486,22 @@ def _research_readiness_board_lines(
                 f"missing60={delayed_pair.get('missing_base_outcome', 0)}, "
                 f"missing120={delayed_pair.get('missing_challenger_outcome', 0)}, "
                 f"mismatch={delayed_pair.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "60s vs 120s fill-weighted",
+            status(
+                delayed_pair_fill_weighted,
+                ready=delayed_pair_fill_weighted_ready,
+            ),
+            (
+                f"closed={delayed_pair_fill_weighted.get('prospective_closed_trades', 0)}, "
+                f"paired={delayed_pair_fill_weighted.get('paired_evaluable_attempts', 0)}"
+            ),
+            (
+                f"missing60={delayed_pair_fill_weighted.get('missing_base_outcome', 0)}, "
+                f"missing120={delayed_pair_fill_weighted.get('missing_challenger_outcome', 0)}, "
+                f"mismatch={delayed_pair_fill_weighted.get('lineage_mismatches', 0)}"
             ),
         ),
         (
@@ -3612,6 +3808,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_pair_lines(
             payload.get("delayed_entry_pair")
+        )
+    )
+    lines.extend(
+        _delayed_entry_pair_fill_weighted_lines(
+            payload.get("delayed_entry_pair_fill_weighted")
         )
     )
     lines.extend(
