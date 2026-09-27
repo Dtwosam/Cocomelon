@@ -1813,3 +1813,20 @@ The candidate has its own durable start timestamp so the partial-fill pattern th
 Meeting the gate means only `ready_for_review`. The selector has no execution or promotion authority and cannot delay or place the actual paper order.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fill-aware delayed-entry robustness precommit — 2026-09-27
+
+Before the prospective fill-aware selector has accumulated outcomes, its robustness checks are frozen:
+
+- leave-one-trade-out and leave-one-market-out delta versus always-60s and always-120s;
+- largest absolute single-trade and single-market contribution/share;
+- four chronological causal blocks, with five trades required for a full block;
+- per-block fill-aware delta versus both fixed delays;
+- counts of full blocks that remain positive versus each fixed delay.
+
+These checks are descriptive only and do not change the candidate's frozen 30/20/5/5 readiness gate. A candidate can therefore become `ready_for_review` while still showing concentration or temporal instability, which must remain visible during review.
+
+The robustness change does not alter the durable candidate start timestamp or any paper execution behavior.
+
+**LIVE TRADING: DISABLED.**
