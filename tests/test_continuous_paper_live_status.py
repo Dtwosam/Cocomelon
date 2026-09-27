@@ -1526,7 +1526,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`10 / 1.0`" in output
     assert "top-1 / top-2 share of gross profit" in output
     assert "`0.6666666666666666666666666667 / 1`" in output
-    assert "| Remove best 1 | 3 | -6 | -0.2 | -0.3 | 0.4545454545454545454545454545 | false |" in output
+    assert (
+        "| Remove best 1 | 3 | -6 | -0.2 | -0.3 | "
+        "0.4545454545454545454545454545 | false |"
+    ) in output
     assert "| Remove best 2 | 2 | -11 | -0.55 | -0.55 | 0 | false |" in output
     assert "positive PnL survives remove best 1 / best 2" in output
     assert "`false / false`" in output
