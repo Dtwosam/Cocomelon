@@ -1508,3 +1508,22 @@ The continuous-paper runtime now captures the exact L2 book consumed by each fut
 This diagnostic is descriptive only. It does not reject trades, change scanner ranking, alter sizing/risk, delay entries, change IOC behavior, or grant promotion/execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed 60-second delayed-entry same-exit contribution — 2026-09-27
+
+The existing fixed +60s delayed-entry execution shadow now has a second derived diagnostic that translates full delayed fills into same-exit trade-contribution economics.
+
+- it reuses the already-durable delayed-entry outcomes; no new delay, shadow state, or timing parameter is introduced;
+- only full visible-book IOC delayed fills are evaluated;
+- each delayed fill must match the actual closed trade by trade ID, opening-plan ID, market, side, and full quantity;
+- the delayed entry price and delayed opening fee replace the actual opening price/fee;
+- the observed actual exit price, actual exit fee, and actual funding cash PnL are held constant;
+- the diagnostic reports actual versus estimated same-exit net PnL/R, estimated loss-to-win or win-to-loss flips, and side attribution;
+- partial/no-fill/rejected/expired delayed outcomes are not assigned invented economics;
+- missing journal trades or lineage mismatches remain explicit and block review readiness;
+- the evidence gate is inherited from the fixed delayed-entry study: 30 closed shadow outcomes and 20 evaluated full delayed fills.
+
+This is a **trade-contribution estimate**, not a portfolio counterfactual. A real 60-second delayed entry could change stop timing, funding exposure, later risk capacity, concurrent positions, missed entries, or replacement opportunities. The study therefore cannot authorize an execution change.
+
+**LIVE TRADING: DISABLED.**
