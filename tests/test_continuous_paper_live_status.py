@@ -1029,6 +1029,153 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "entry_markout_predictiveness": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "early_markout_sign_vs_final_closed_trade_outcome",
+            "complete_path_records": 4,
+            "incomplete_paths_skipped": 0,
+            "missing_journal_trade": 0,
+            "max_observation_lag_ms": 60000,
+            "all_horizons_ready_for_review": False,
+            "by_horizon_ms": {
+                "60000": {
+                    "observations": 4,
+                    "nonflat_observations": 4,
+                    "sign_correct_final_outcomes": 2,
+                    "sign_accuracy": "0.5",
+                    "favorable": {
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "flat": 0,
+                        "win_rate": "0.5",
+                        "net_pnl": "1",
+                        "mean_final_net_r": "0.05",
+                    },
+                    "adverse": {
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "flat": 0,
+                        "win_rate": "0.5",
+                        "net_pnl": "-3",
+                        "mean_final_net_r": "-0.15",
+                    },
+                    "flat": {
+                        "trades": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": None,
+                        "net_pnl": "0",
+                        "mean_final_net_r": None,
+                    },
+                    "censored_before_horizon": 0,
+                    "stale_or_missing_mark": 0,
+                    "readiness": {
+                        "ready_for_review": False,
+                        "min_observations": 30,
+                        "min_favorable": 10,
+                        "min_adverse": 10,
+                        "missing_observations": 26,
+                        "missing_favorable": 8,
+                        "missing_adverse": 8,
+                    },
+                },
+                "300000": {
+                    "observations": 3,
+                    "nonflat_observations": 3,
+                    "sign_correct_final_outcomes": 2,
+                    "sign_accuracy": "0.6666666666666666666666666667",
+                    "favorable": {
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": "1",
+                        "net_pnl": "5",
+                        "mean_final_net_r": "0.5",
+                    },
+                    "adverse": {
+                        "trades": 2,
+                        "wins": 0,
+                        "losses": 2,
+                        "flat": 0,
+                        "win_rate": "0",
+                        "net_pnl": "-10",
+                        "mean_final_net_r": "-0.5",
+                    },
+                    "flat": {
+                        "trades": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": None,
+                        "net_pnl": "0",
+                        "mean_final_net_r": None,
+                    },
+                    "censored_before_horizon": 1,
+                    "stale_or_missing_mark": 0,
+                    "readiness": {
+                        "ready_for_review": False,
+                        "min_observations": 30,
+                        "min_favorable": 10,
+                        "min_adverse": 10,
+                        "missing_observations": 27,
+                        "missing_favorable": 9,
+                        "missing_adverse": 8,
+                    },
+                },
+                "900000": {
+                    "observations": 2,
+                    "nonflat_observations": 2,
+                    "sign_correct_final_outcomes": 1,
+                    "sign_accuracy": "0.5",
+                    "favorable": {
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": "1",
+                        "net_pnl": "5",
+                        "mean_final_net_r": "0.5",
+                    },
+                    "adverse": {
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": "1",
+                        "net_pnl": "3",
+                        "mean_final_net_r": "0.3",
+                    },
+                    "flat": {
+                        "trades": 0,
+                        "wins": 0,
+                        "losses": 0,
+                        "flat": 0,
+                        "win_rate": None,
+                        "net_pnl": "0",
+                        "mean_final_net_r": None,
+                    },
+                    "censored_before_horizon": 2,
+                    "stale_or_missing_mark": 0,
+                    "readiness": {
+                        "ready_for_review": False,
+                        "min_observations": 30,
+                        "min_favorable": 10,
+                        "min_adverse": 10,
+                        "missing_observations": 28,
+                        "missing_favorable": 9,
+                        "missing_adverse": 9,
+                    },
+                },
+            },
+        },
         "entry_markout": {
             "enabled": True,
             "research_only": True,
@@ -1824,6 +1971,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`32000`ms / `58000`ms" in output
     assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
     assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
+    assert "### Entry markout → final outcome" in output
+    assert "early_markout_sign_vs_final_closed_trade_outcome" in output
+    assert "| 1m | 4 | 0.5 | 2/1/1 | 0.05 | 2/1/1 | -0.15 | 26/8/8 |" in output
+    assert (
+        "| 5m | 3 | 0.6666666666666666666666666667 | "
+        "1/1/0 | 0.5 | 2/0/2 | -0.5 | 27/9/8 |"
+    ) in output
+    assert "| 15m | 2 | 0.5 | 1/1/0 | 0.5 | 1/1/0 | 0.3 | 28/9/9 |" in output
+    assert "does not create an entry filter or exit rule" in output
     assert "### Post-entry markout diagnostic" in output
     assert "### Exact-path excursion timing" in output
     assert "complete paths / incomplete skipped" in output

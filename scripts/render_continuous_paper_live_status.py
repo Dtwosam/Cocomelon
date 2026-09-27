@@ -1059,6 +1059,107 @@ def _entry_markout_lines(raw: object) -> list[str]:
     return lines
 
 
+def _entry_markout_predictiveness_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Entry markout → final outcome",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No markout-predictiveness telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- complete paths / incomplete skipped: "
+                f"`{raw.get('complete_path_records', 0)} / "
+                f"{raw.get('incomplete_paths_skipped', 0)}`"
+            ),
+            (
+                "- all horizons ready for review: "
+                f"`{str(bool(raw.get('all_horizons_ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    horizons = raw.get("by_horizon_ms", {})
+    if not isinstance(horizons, dict):
+        horizons = {}
+    rows = (("60000", "1m"), ("300000", "5m"), ("900000", "15m"))
+    lines.extend(
+        [
+            "",
+            (
+                "| H | N | Sign accuracy | Fav N/W/L | Fav mean final R | "
+                "Adv N/W/L | Adv mean final R | Need N/F/A |"
+            ),
+            (
+                "| --- | ---: | ---: | --- | ---: | --- | ---: | --- |"
+            ),
+        ]
+    )
+    for key, label in rows:
+        item = horizons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        favorable = item.get("favorable", {})
+        adverse = item.get("adverse", {})
+        readiness = item.get("readiness", {})
+        if not isinstance(favorable, dict):
+            favorable = {}
+        if not isinstance(adverse, dict):
+            adverse = {}
+        if not isinstance(readiness, dict):
+            readiness = {}
+        lines.append(
+            (
+                "| {label} | {n} | {accuracy} | {fn}/{fw}/{fl} | {fr} | "
+                "{an}/{aw}/{al} | {ar} | {needn}/{needf}/{needa} |"
+            ).format(
+                label=label,
+                n=item.get("observations", 0),
+                accuracy=item.get("sign_accuracy"),
+                fn=favorable.get("trades", 0),
+                fw=favorable.get("wins", 0),
+                fl=favorable.get("losses", 0),
+                fr=favorable.get("mean_final_net_r"),
+                an=adverse.get("trades", 0),
+                aw=adverse.get("wins", 0),
+                al=adverse.get("losses", 0),
+                ar=adverse.get("mean_final_net_r"),
+                needn=readiness.get("missing_observations", 0),
+                needf=readiness.get("missing_favorable", 0),
+                needa=readiness.get("missing_adverse", 0),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            (
+                "_This tests whether early markout sign predicts the eventual "
+                "closed-trade result. It does not create an entry filter or "
+                "exit rule._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _excursion_timing_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2849,6 +2950,11 @@ def render_live_status(
     lines.extend(
         _entry_markout_lines(
             payload.get("entry_markout")
+        )
+    )
+    lines.extend(
+        _entry_markout_predictiveness_lines(
+            payload.get("entry_markout_predictiveness")
         )
     )
     lines.extend(
