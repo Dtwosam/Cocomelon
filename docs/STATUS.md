@@ -1152,3 +1152,23 @@ The exact-path entry markout diagnostic now accepts a horizon observation only w
 This corrects a measurement-quality problem where a much later mark could previously be labeled as a 1m/5m/15m markout. It changes research telemetry only and does not change paper entries, exits, risk, sizing, cadence, or live-order controls.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective allMids entry markout shadow — 2026-09-27
+
+A denser research-only entry-timing observer now measures public mid-price movement after new continuous-paper fills using the already-subscribed Hyperliquid `allMids` stream.
+
+- the fixed horizons are frozen at 1 minute, 5 minutes, and 15 minutes after the actual paper opening time;
+- only the first allMids observation at or after each horizon is considered;
+- an observation is usable only when it arrives within 60 seconds of the target; later first observations are labeled `stale`;
+- LONG and SHORT movement is direction-normalized into signed basis points and gross R;
+- trades closed before a horizon are censored; horizons reached without an observed mid before close are labeled `missing_at_close`;
+- no interpolation, backfill, or invented price is allowed;
+- positions already open when this observer first deploys are excluded from prospective claims;
+- state persists across continuous-paper worker handoffs, including partially observed open positions;
+- persisted decision facts attribute fresh observations by lead strategy without changing those decisions;
+- runtime failures disable only this observer and remain fail-open for the paper trader.
+
+This shadow uses public midpoint observations. It is not a mark-price claim, an executable fill simulation, an entry filter, or promotion evidence. The authoritative strategy, scanner, risk engine, paper execution, stops, accounting, and live-order lock remain unchanged.
+
+**LIVE TRADING: DISABLED.**
