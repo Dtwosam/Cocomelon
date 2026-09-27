@@ -1485,6 +1485,136 @@ def _fill_aware_delay_selector_lines(
     return lines
 
 
+def _delay_selector_comparison_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Markout vs fill-aware delay selector",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No selector-comparison telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    disagreements = raw.get("disagreements", {})
+    readiness = raw.get("readiness", {})
+    by_type = raw.get("by_disagreement_type", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(disagreements, dict):
+        disagreements = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+    if not isinstance(by_type, dict):
+        by_type = {}
+
+    lines.extend(
+        [
+            f"- study: `{raw.get('candidate_id', 'unknown')}`",
+            f"- prospective start: `{raw.get('started_at_ms')}`",
+            (
+                "- prospective closed / causal evaluable / disagreements: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('causal_evaluable_trades', 0)} / "
+                f"{raw.get('disagreement_trades', 0)}`"
+            ),
+            (
+                "- agreement / disagreement: "
+                f"`{overall.get('agreements', 0)} / "
+                f"{overall.get('disagreements', 0)}`"
+            ),
+            (
+                "- both 60s / both 120s / markout60-fill120 / "
+                "markout120-fill60: "
+                f"`{overall.get('both_60s', 0)} / "
+                f"{overall.get('both_120s', 0)} / "
+                f"{overall.get('markout_60s_fill_120s', 0)} / "
+                f"{overall.get('markout_120s_fill_60s', 0)}`"
+            ),
+            (
+                "- disagreements: fill-aware better / markout better / equal: "
+                f"`{disagreements.get('fill_aware_better', 0)} / "
+                f"{disagreements.get('markout_better', 0)} / "
+                f"{disagreements.get('equal_contribution', 0)}`"
+            ),
+            (
+                "- disagreement PnL markout / fill-aware / delta: "
+                f"`{disagreements.get('markout_selector_pnl', '0')}` / "
+                f"`{disagreements.get('fill_aware_selector_pnl', '0')}` / "
+                f"`{disagreements.get('fill_aware_minus_markout_pnl', '0')}`"
+            ),
+            (
+                "- evidence gate closed / evaluable / disagreements: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('min_disagreement_trades', 0)}`"
+            ),
+            (
+                "- still needed C/E/D: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('missing_disagreement_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            "| Disagreement | N | Fill-aware better | Markout better | Δ PnL |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("markout_60s_fill_120s", "Markout 60s / Fill-aware 120s"),
+        ("markout_120s_fill_60s", "Markout 120s / Fill-aware 60s"),
+    ):
+        item = by_type.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {label} | {n} | {fill} | {markout} | {delta} |".format(
+                label=label,
+                n=item.get("trades", 0),
+                fill=item.get("fill_aware_better", 0),
+                markout=item.get("markout_better", 0),
+                delta=item.get(
+                    "fill_aware_minus_markout_pnl",
+                    "0",
+                ),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            (
+                "_Paired prospective comparison only. Agreements do not "
+                "create selector edge; review readiness requires enough "
+                "same-trade disagreements._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _adaptive_delay_selector_lines(
     raw: object,
 ) -> list[str]:
@@ -4811,6 +4941,11 @@ def render_live_status(
     lines.extend(
         _fill_aware_delay_selector_lines(
             payload.get("fill_aware_delay_selector")
+        )
+    )
+    lines.extend(
+        _delay_selector_comparison_lines(
+            payload.get("delay_selector_comparison")
         )
     )
     lines.extend(

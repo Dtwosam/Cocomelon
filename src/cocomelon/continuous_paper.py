@@ -96,6 +96,10 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.delay_selector_comparison import (
+    DelaySelectorComparisonState,
+    delay_selector_comparison_summary,
+)
 from cocomelon.research.delayed_entry_contribution_decomposition import (
     delayed_entry_contribution_decomposition,
 )
@@ -208,6 +212,9 @@ ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
 )
 FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME = (
     "fill-aware-delay-selector-state.json"
+)
+DELAY_SELECTOR_COMPARISON_STATE_FILENAME = (
+    "delay-selector-comparison-state.json"
 )
 ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
     "entry-mid-markout-shadow-state.json"
@@ -1409,6 +1416,30 @@ def _restore_fill_aware_delay_selector(
     except Exception as exc:
         return (
             FillAwareDelaySelectorState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_delay_selector_comparison(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[DelaySelectorComparisonState, str | None]:
+    if not path.exists():
+        return (
+            DelaySelectorComparisonState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return DelaySelectorComparisonState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            DelaySelectorComparisonState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
@@ -2751,6 +2782,59 @@ def _fill_aware_delay_selector_payload(
     return payload
 
 
+def _delay_selector_comparison_payload(
+    journal: JournalStore,
+    mid_shadow: _ContinuousEntryMidMarkoutSink,
+    base_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    challenger_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    state: DelaySelectorComparisonState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    if (
+        mid_shadow.shadow is None
+        or base_shadow.shadow is None
+        or challenger_shadow.shadow is None
+    ):
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": (
+                "delay selector comparison requires all three "
+                "research streams"
+            ),
+        }
+    try:
+        payload = delay_selector_comparison_summary(
+            journal,
+            mid_shadow.shadow.outcomes,
+            base_shadow.shadow.outcomes,
+            challenger_shadow.shadow.outcomes,
+            started_at_ms=state.started_at_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2934,6 +3018,7 @@ def _live_status_payload(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
+    delay_selector_comparison_state: DelaySelectorComparisonState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
@@ -2943,6 +3028,7 @@ def _live_status_payload(
     prospective_top10_rank_filter_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
+    delay_selector_comparison_restore_error: str | None,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -3143,6 +3229,14 @@ def _live_status_payload(
         fill_aware_delay_selector_state,
         restore_error=fill_aware_delay_selector_restore_error,
     )
+    delay_selector_comparison = _delay_selector_comparison_payload(
+        pump.journal,
+        entry_mid_markout_shadow,
+        delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
+        delay_selector_comparison_state,
+        restore_error=delay_selector_comparison_restore_error,
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -3277,6 +3371,7 @@ def _live_status_payload(
         ),
         "adaptive_delay_selector": adaptive_delay_selector,
         "fill_aware_delay_selector": fill_aware_delay_selector,
+        "delay_selector_comparison": delay_selector_comparison,
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "delayed_entry_fill_capacity": delayed_entry_fill_capacity,
         "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
@@ -3337,6 +3432,7 @@ def _emit_live_status(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
+    delay_selector_comparison_state: DelaySelectorComparisonState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
@@ -3346,6 +3442,7 @@ def _emit_live_status(
     prospective_top10_rank_filter_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
+    delay_selector_comparison_restore_error: str | None,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3368,6 +3465,7 @@ def _emit_live_status(
         prospective_top10_rank_filter_state,
         adaptive_delay_selector_state,
         fill_aware_delay_selector_state,
+        delay_selector_comparison_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
         opening_fill_liquidity_capture_error=(
@@ -3387,6 +3485,9 @@ def _emit_live_status(
         ),
         fill_aware_delay_selector_restore_error=(
             fill_aware_delay_selector_restore_error
+        ),
+        delay_selector_comparison_restore_error=(
+            delay_selector_comparison_restore_error
         ),
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
@@ -3604,6 +3705,13 @@ async def run_continuous_paper_session(
         root / FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    (
+        delay_selector_comparison_state,
+        delay_selector_comparison_restore_error,
+    ) = _restore_delay_selector_comparison(
+        root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -3783,6 +3891,10 @@ async def run_continuous_paper_session(
                 root / FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME,
                 fill_aware_delay_selector_state.payload(),
             )
+            _write_json_atomic(
+                root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
+                delay_selector_comparison_state.payload(),
+            )
             if entry_mid_markout_shadow.shadow is not None:
                 _write_json_atomic(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -3813,6 +3925,7 @@ async def run_continuous_paper_session(
             prospective_top10_rank_filter_state,
             adaptive_delay_selector_state,
             fill_aware_delay_selector_state,
+            delay_selector_comparison_state,
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
                 None
@@ -3836,6 +3949,9 @@ async def run_continuous_paper_session(
             ),
             fill_aware_delay_selector_restore_error=(
                 fill_aware_delay_selector_restore_error
+            ),
+            delay_selector_comparison_restore_error=(
+                delay_selector_comparison_restore_error
             ),
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
@@ -3986,6 +4102,7 @@ async def run_continuous_paper_session(
                     prospective_top10_rank_filter_state,
                     adaptive_delay_selector_state,
                     fill_aware_delay_selector_state,
+                    delay_selector_comparison_state,
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
                         None
@@ -4009,6 +4126,9 @@ async def run_continuous_paper_session(
                     ),
                     fill_aware_delay_selector_restore_error=(
                         fill_aware_delay_selector_restore_error
+                    ),
+                    delay_selector_comparison_restore_error=(
+                        delay_selector_comparison_restore_error
                     ),
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,

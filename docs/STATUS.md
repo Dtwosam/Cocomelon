@@ -1813,3 +1813,30 @@ The candidate has its own durable start timestamp so the partial-fill pattern th
 Meeting the gate means only `ready_for_review`. The selector has no execution or promotion authority and cannot delay or place the actual paper order.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective markout-vs-fill-aware delay selector comparison — 2026-09-28
+
+A paired prospective comparison now measures the two existing adaptive delayed-entry selectors on the same future paper trades without introducing a third selector.
+
+Compared rules:
+
+- **markout selector**: at the 60-second decision point, wait to 120 seconds only when a fresh causally available 1-minute allMids gross-R markout is negative;
+- **fill-aware selector**: use 60 seconds only when the 60-second visible-book IOC shadow fully fills the original quantity; otherwise wait to 120 seconds.
+
+The comparison has its own durable start timestamp created after both selector definitions already existed, so earlier touched evidence cannot validate either side.
+
+Only trades with causally evaluable 60-second and 120-second delayed-entry outcomes plus the required 1-minute mid-markout record enter the paired comparison. Both selectors reuse the same fill-weighted same-exit accounting contract. No replacement trades, changed exits, capacity effects, or portfolio PnL are inferred.
+
+The primary evidence is **disagreement trades**. Agreements are counted for coverage but cannot create selector edge. For each disagreement, the study reports which selector's chosen delay produced the higher fill-weighted same-exit trade contribution.
+
+Review readiness requires:
+
+- 30 prospective closed trades;
+- 20 causally evaluable paired trades;
+- 10 same-trade selector disagreements;
+- zero missing required mid/60s/120s outcomes, non-evaluable delayed outcomes, or lineage mismatches.
+
+Meeting the gate means only `ready_for_review`. The comparison has no execution or promotion authority and cannot alter actual paper entry timing.
+
+**LIVE TRADING: DISABLED.**
