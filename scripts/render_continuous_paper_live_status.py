@@ -1374,10 +1374,13 @@ def _adaptive_delay_selector_lines(
         "adaptive_minus_120s",
         {},
     )
+    temporal = robustness.get("temporal", {})
     if not isinstance(robustness_60, dict):
         robustness_60 = {}
     if not isinstance(robustness_120, dict):
         robustness_120 = {}
+    if not isinstance(temporal, dict):
+        temporal = {}
 
     lines.extend(
         [
@@ -1474,6 +1477,22 @@ def _adaptive_delay_selector_lines(
                 f"{robustness_120.get('largest_abs_market_share')}`"
             ),
             (
+                "- temporal full / positive vs 60s / positive vs 120s: "
+                f"`{temporal.get('full_blocks', 0)} / "
+                f"{temporal.get('positive_blocks_vs_60s', 0)} / "
+                f"{temporal.get('positive_blocks_vs_120s', 0)}`"
+            ),
+            (
+                "- all full temporal blocks positive vs 60s / 120s: "
+                f"`{temporal.get('all_full_blocks_positive_vs_60s')} / "
+                f"{temporal.get('all_full_blocks_positive_vs_120s')}`"
+            ),
+            (
+                "- temporal block design: "
+                f"`{temporal.get('configured_blocks', 0)} × "
+                f"{temporal.get('min_trades_per_full_block', 0)} trades`"
+            ),
+            (
                 "- evidence gate closed / causal / 60s / 120s: "
                 f"`{readiness.get('min_prospective_closed_trades', 0)} / "
                 f"{readiness.get('min_causal_evaluable_trades', 0)} / "
@@ -1524,6 +1543,30 @@ def _adaptive_delay_selector_lines(
                 fill=item.get("mean_adaptive_fill_fraction"),
             )
         )
+
+    temporal_blocks = temporal.get("chronological_blocks", [])
+    if isinstance(temporal_blocks, list) and temporal_blocks:
+        lines.extend(
+            [
+                "",
+                "| Time block | N | 60s | 120s | Δ vs 60s | Δ vs 120s |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for block in temporal_blocks:
+            if not isinstance(block, dict):
+                continue
+            lines.append(
+                "| {block} | {n} | {s60} | {s120} | {d60} | {d120} |".format(
+                    block=block.get("block"),
+                    n=block.get("trades", 0),
+                    s60=block.get("selected_60s", 0),
+                    s120=block.get("selected_120s", 0),
+                    d60=block.get("adaptive_minus_60s_pnl", "0"),
+                    d120=block.get("adaptive_minus_120s_pnl", "0"),
+                )
+            )
+
     lines.extend(
         [
             "",
@@ -1532,8 +1575,9 @@ def _adaptive_delay_selector_lines(
                 "a fresh adverse 1m mid-markout waits to 120s; otherwise the "
                 "60s entry is used. Same observed exits are held constant, "
                 "unfilled quantity contributes zero, and no replacement trades "
-                "or changed stops are modeled. Leave-one-out robustness is "
-                "descriptive only and does not change the frozen readiness gate._"
+                "or changed stops are modeled. Leave-one-out and chronological "
+                "robustness are descriptive only and do not change the frozen "
+                "readiness gate._"
             ),
         ]
     )
