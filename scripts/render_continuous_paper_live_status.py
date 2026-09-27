@@ -539,7 +539,9 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
             ),
             (
                 "- positive PnL survives remove top positive market: "
-                f"`{str(bool(raw.get('positive_pnl_survives_remove_top_positive_market'))).lower()}`"
+                f"`{str(bool(raw.get(
+                    'positive_pnl_survives_remove_top_positive_market'
+                ))).lower()}`"
             ),
             (
                 "- ready for review: "
