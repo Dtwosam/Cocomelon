@@ -772,6 +772,156 @@ def _entry_markout_lines(raw: object) -> list[str]:
     return lines
 
 
+def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Prospective allMids entry markout shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No allMids entry-markout telemetry in this heartbeat._"
+        )
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    lines.append(
+        "- durable across workers: "
+        f"`{str(bool(raw.get('durable_state'))).lower()}` · "
+        "restored this worker: "
+        f"`{str(bool(raw.get('state_restored'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- source: `{raw.get('source', 'unknown')}`",
+            (
+                "- maximum accepted observation lag: "
+                f"`{raw.get('max_observation_lag_ms')}`ms"
+            ),
+            (
+                "- eligible / excluded open positions: "
+                f"`{raw.get('eligible_open_positions', 0)} / "
+                f"{raw.get('excluded_pre_observer_open_positions', 0)}`"
+            ),
+            (
+                "- completed prospective trades / excluded / unmatched closes: "
+                f"`{raw.get('closed_trade_count', 0)} / "
+                f"{raw.get('excluded_closed_trades', 0)} / "
+                f"{raw.get('unmatched_closed_trades', 0)}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    horizons = raw.get("by_horizon_ms", {})
+    if not isinstance(horizons, dict):
+        horizons = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Horizon | Fresh | Stale | Censored | Missing close | "
+                "+ | - | Mean bps | Mean gross R | Mean lag | Max lag |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+    for key, label in (
+        ("60000", "1m"),
+        ("300000", "5m"),
+        ("900000", "15m"),
+    ):
+        item = horizons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {fresh} | {stale} | {censored} | "
+                "{missing} | {positive} | {negative} | {bps} | {r} | "
+                "{mean_lag}ms | {max_lag}ms |"
+            ).format(
+                label=label,
+                fresh=item.get("fresh", 0),
+                stale=item.get("stale", 0),
+                censored=item.get("censored", 0),
+                missing=item.get("missing_at_close", 0),
+                positive=item.get("positive", 0),
+                negative=item.get("negative", 0),
+                bps=item.get("mean_signed_return_bps"),
+                r=item.get("mean_gross_r"),
+                mean_lag=item.get("mean_observation_lag_ms"),
+                max_lag=item.get("max_observation_lag_ms"),
+            )
+        )
+
+    def grouped_line(
+        key: str,
+        label: str,
+        field: str,
+    ) -> None:
+        horizon = horizons.get(key, {})
+        if not isinstance(horizon, dict):
+            return
+        groups = horizon.get(field, {})
+        if not isinstance(groups, dict) or not groups:
+            return
+        parts: list[str] = []
+        for name, value in sorted(groups.items()):
+            if not isinstance(value, dict):
+                continue
+            parts.append(
+                f"{name}: n={value.get('observations', 0)}, "
+                f"meanR={value.get('mean_gross_r')}, "
+                f"meanbps={value.get('mean_signed_return_bps')}"
+            )
+        if parts:
+            lines.append(f"- {label}: " + "; ".join(parts))
+
+    lines.append("")
+    grouped_line("60000", "1m by side", "by_side")
+    grouped_line(
+        "60000",
+        "1m by lead strategy",
+        "by_lead_strategy",
+    )
+    grouped_line("300000", "5m by side", "by_side")
+    grouped_line(
+        "300000",
+        "5m by lead strategy",
+        "by_lead_strategy",
+    )
+    grouped_line("900000", "15m by side", "by_side")
+    grouped_line(
+        "900000",
+        "15m by lead strategy",
+        "by_lead_strategy",
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective public mid-price observation from the existing "
+                "allMids feed. It is not a mark-price claim, executable fill, "
+                "entry rule, or promotion signal._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -901,6 +1051,11 @@ def render_live_status(
     lines.extend(
         _entry_markout_lines(
             payload.get("entry_markout")
+        )
+    )
+    lines.extend(
+        _entry_mid_markout_shadow_lines(
+            payload.get("entry_mid_markout_shadow")
         )
     )
     lines.extend(["", "### Open positions", ""])
