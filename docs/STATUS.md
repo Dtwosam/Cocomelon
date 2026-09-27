@@ -1561,3 +1561,25 @@ A second delayed-entry execution horizon is frozen prospectively to test whether
 This is an adaptive but prospectively frozen challenger created after the 60-second shadow showed early favorable entry-price evidence. Historical 60-second outcomes are not reused as paired 120-second evidence. Reaching the gate grants review readiness only and cannot alter the active paper entry timing.
 
 **LIVE TRADING: DISABLED.**
+
+
+### 60s delayed-entry fill-weighted contribution — 2026-09-27
+
+The 60-second delayed-entry study now includes a second, stricter contribution view that does not discard partial or genuine no-fill outcomes.
+
+- full delayed fills use the simulated delayed entry price and exact simulated entry fee;
+- partial delayed fills keep only the quantity actually filled in the visible-book IOC;
+- genuine no-fill outcomes contribute zero rather than inheriting the actual trade result;
+- unresolved censored, missing-book, rejected, or expired observations are excluded rather than treated as missed trades;
+- the observed exit price is held fixed for filled quantity;
+- observed exit fees and funding are scaled linearly by the delayed fill fraction;
+- unfilled quantity is not replaced by another trade;
+- candidate R is expressed against the original paper trade's planned risk so the result measures account-level contribution loss/gain from reduced exposure.
+
+This diagnostic exists specifically to test survivorship bias in the full-fill-only delay result. The original full-fill same-exit study remains unchanged and should be read beside this fill-weighted view.
+
+The frozen review gate is 30 closed delayed-shadow outcomes and 20 evaluable full/partial/no-fill attempts with zero journal or lineage mismatches.
+
+This is research-only and has no execution or promotion authority. It cannot delay entries, alter size, change stops, or submit orders.
+
+**LIVE TRADING: DISABLED.**
