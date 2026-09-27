@@ -217,7 +217,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "state_schema_version": 1,
             "fill_model": "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve",
             "eligible_open_positions": 1,
-            "excluded_pre_observer_open_positions": 0,
+            "excluded_open_positions": 0,
             "excluded_closed_trades": 1,
             "closed_outcome_count": 2,
             "error": None,
@@ -401,6 +401,124 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "censored_before_horizon": 2,
                     "missing_observed_mark": 0,
                     "stale_observed_mark": 0,
+                    "by_side": {},
+                    "by_lead_strategy": {},
+                },
+            },
+        },
+        "entry_mid_markout_shadow": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "durable_state": True,
+            "state_restored": True,
+            "state_restore_error": None,
+            "state_schema_version": 1,
+            "started_at_ms": 1_699_999_500_000,
+            "source": "allMids_mid_px",
+            "horizons_ms": [60000, 300000, 900000],
+            "max_observation_lag_ms": 60000,
+            "eligible_open_positions": 1,
+            "excluded_pre_observer_open_positions": 0,
+            "excluded_closed_trades": 0,
+            "unmatched_closed_trades": 0,
+            "closed_trade_count": 3,
+            "error": None,
+            "by_horizon_ms": {
+                "60000": {
+                    "horizon_ms": 60000,
+                    "observations": 3,
+                    "fresh": 3,
+                    "stale": 0,
+                    "censored": 0,
+                    "missing_at_close": 0,
+                    "positive": 2,
+                    "negative": 1,
+                    "flat": 0,
+                    "mean_signed_return_bps": "30",
+                    "mean_gross_r": "0.06",
+                    "mean_observation_lag_ms": 800,
+                    "max_observation_lag_ms": 1400,
+                    "decision_attribution_misses": 0,
+                    "by_side": {
+                        "long": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-5",
+                            "mean_gross_r": "-0.01",
+                            "mean_observation_lag_ms": 900,
+                            "max_observation_lag_ms": 1400,
+                        },
+                        "short": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "100",
+                            "mean_gross_r": "0.2",
+                            "mean_observation_lag_ms": 600,
+                            "max_observation_lag_ms": 600,
+                        },
+                    },
+                    "by_lead_strategy": {
+                        "trend": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-5",
+                            "mean_gross_r": "-0.01",
+                            "mean_observation_lag_ms": 900,
+                            "max_observation_lag_ms": 1400,
+                        },
+                        "breakout": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "100",
+                            "mean_gross_r": "0.2",
+                            "mean_observation_lag_ms": 600,
+                            "max_observation_lag_ms": 600,
+                        },
+                    },
+                },
+                "300000": {
+                    "horizon_ms": 300000,
+                    "observations": 2,
+                    "fresh": 2,
+                    "stale": 1,
+                    "censored": 0,
+                    "missing_at_close": 0,
+                    "positive": 1,
+                    "negative": 1,
+                    "flat": 0,
+                    "mean_signed_return_bps": "20",
+                    "mean_gross_r": "0.04",
+                    "mean_observation_lag_ms": 1000,
+                    "max_observation_lag_ms": 1600,
+                    "decision_attribution_misses": 0,
+                    "by_side": {},
+                    "by_lead_strategy": {},
+                },
+                "900000": {
+                    "horizon_ms": 900000,
+                    "observations": 1,
+                    "fresh": 1,
+                    "stale": 0,
+                    "censored": 2,
+                    "missing_at_close": 0,
+                    "positive": 1,
+                    "negative": 0,
+                    "flat": 0,
+                    "mean_signed_return_bps": "50",
+                    "mean_gross_r": "0.1",
+                    "mean_observation_lag_ms": 500,
+                    "max_observation_lag_ms": 500,
+                    "decision_attribution_misses": 0,
                     "by_side": {},
                     "by_lead_strategy": {},
                 },
@@ -683,6 +801,26 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "1m by lead strategy:" in output
     assert "trend: n=2, meanR=-0.02, meanbps=-10" in output
     assert "stale/missing marks are reported and never imputed" in output
+    assert "### Prospective allMids entry markout shadow" in output
+    assert "allMids_mid_px" in output
+    assert "completed prospective trades / excluded / unmatched closes" in output
+    assert "`3 / 0 / 0`" in output
+    assert (
+        "| 1m | 3 | 0 | 0 | 0 | 2 | 1 | 30 | 0.06 | "
+        "800ms | 1400ms |"
+    ) in output
+    assert (
+        "| 5m | 2 | 1 | 0 | 0 | 1 | 1 | 20 | 0.04 | "
+        "1000ms | 1600ms |"
+    ) in output
+    assert (
+        "| 15m | 1 | 0 | 2 | 0 | 1 | 0 | 50 | 0.1 | "
+        "500ms | 500ms |"
+    ) in output
+    assert "long: n=2, meanR=-0.01, meanbps=-5" in output
+    assert "short: n=1, meanR=0.2, meanbps=100" in output
+    assert "Prospective public mid-price observation" in output
+    assert "not a mark-price claim, executable fill" in output
     assert "prospective-reject-long-trend-v1" in output
     assert "reject `long` + `trend`" in output
     assert "allowed / blocked trades" in output
