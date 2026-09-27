@@ -217,7 +217,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "state_schema_version": 1,
             "fill_model": "visible_book_ioc_plus_actual_entry_fee_plus_funding_reserve",
             "eligible_open_positions": 1,
-            "excluded_pre_observer_open_positions": 0,
+            "excluded_open_positions": 0,
             "excluded_closed_trades": 1,
             "closed_outcome_count": 2,
             "error": None,
