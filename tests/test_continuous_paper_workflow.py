@@ -4,6 +4,8 @@ WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
+    assert "group: continuous-mainnet-paper-trader" in source
+    assert "cancel-in-progress: false" in source
     assert 'duration-seconds 19800' in source
     assert 'selection-refresh-seconds 300' in source
     assert 'continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}' in source
@@ -21,6 +23,15 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'EVENT_NAME: ${{ github.event_name }}' in source
     assert "SOURCE_RUN_ID" in source
     assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
+    assert 'run.get("status") == "in_progress"' in source
+    assert 'run.get("status") in {"queued", "in_progress", "pending"}' not in source
+    assert "Queue exact successor continuous paper worker" in source
+    assert "\n  continue:\n" not in source
+    upload_at = source.index("- name: Upload durable continuous paper state")
+    dispatch_at = source.index(
+        "- name: Queue exact successor continuous paper worker"
+    )
+    assert upload_at < dispatch_at
 
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     source = WORKFLOW.read_text(encoding="utf-8").lower()
