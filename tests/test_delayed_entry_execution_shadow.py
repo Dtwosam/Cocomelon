@@ -379,3 +379,28 @@ def test_delayed_entry_excludes_position_open_before_observer() -> None:
     summary = shadow.summary_payload()
     assert summary["closed_eligible_trades"] == 0
     assert summary["excluded_closed_trades"] == 1
+
+
+def test_delayed_entry_reconciles_orphaned_restored_position() -> None:
+    position = _position()
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+
+    restored = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=999_999,
+    )
+    restored.restore_state(shadow.state_payload())
+    restored.reconcile_open_positions(())
+
+    summary = restored.summary_payload()
+    assert summary["open_tracked_positions"] == 0
+    assert summary["orphaned_restored_positions"] == 1
+    assert summary["readiness"]["ready_for_review"] is False
