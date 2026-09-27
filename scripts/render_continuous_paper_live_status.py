@@ -1053,6 +1053,156 @@ def _entry_markout_lines(raw: object) -> list[str]:
     return lines
 
 
+def _excursion_timing_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Exact-path excursion timing",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No excursion-timing telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    gate = raw.get("evidence_gate", {})
+    if not isinstance(gate, dict):
+        gate = {}
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    thresholds = overall.get("thresholds", {})
+    if not isinstance(thresholds, dict):
+        thresholds = {}
+
+    lines.extend(
+        [
+            (
+                "- complete paths / incomplete skipped: "
+                f"`{raw.get('complete_paths_evaluated', 0)} / "
+                f"{raw.get('incomplete_paths_skipped', 0)}`"
+            ),
+            (
+                "- missing journal / decision / excursion facts: "
+                f"`{raw.get('missing_journal_trade', 0)} / "
+                f"{raw.get('missing_decision_attribution', 0)} / "
+                f"{raw.get('missing_excursion_metric', 0)}`"
+            ),
+            (
+                "- evidence gate / still needed: "
+                f"`{gate.get('min_complete_paths', 0)} / "
+                f"{gate.get('missing_complete_paths', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(gate.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "- mean / median time-to-MFE: "
+                f"`{overall.get('mean_time_to_mfe_ms')}ms / "
+                f"{overall.get('median_time_to_mfe_ms')}ms`"
+            ),
+            (
+                "- mean time-to-MAE: "
+                f"`{overall.get('mean_time_to_mae_ms')}ms`"
+            ),
+            (
+                "- mean / median peak-to-close: "
+                f"`{overall.get('mean_peak_to_close_ms')}ms / "
+                f"{overall.get('median_peak_to_close_ms')}ms`"
+            ),
+            (
+                "- mean peak-to-close share of hold: "
+                f"`{overall.get('mean_peak_to_close_fraction_of_hold')}`"
+            ),
+            "",
+            (
+                "| Threshold | Reached | Reach fraction | Mean first hit | "
+                "Median first hit | Losing closes after hit | "
+                "Loser hit→close mean |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    for threshold in ("0.25", "0.5", "1"):
+        item = thresholds.get(threshold, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| +{threshold}R | {reached} | {fraction} | "
+                "{mean_hit}ms | {median_hit}ms | {losers} | "
+                "{loser_close}ms |"
+            ).format(
+                threshold=threshold,
+                reached=item.get("reached", 0),
+                fraction=item.get("reach_fraction"),
+                mean_hit=item.get("mean_first_hit_ms"),
+                median_hit=item.get("median_first_hit_ms"),
+                losers=item.get("losing_closes_after_reach", 0),
+                loser_close=item.get(
+                    "mean_reach_to_close_ms_for_losers"
+                ),
+            )
+        )
+
+    def grouped_line(field: str, label: str) -> None:
+        values = raw.get(field, {})
+        if not isinstance(values, dict) or not values:
+            return
+        parts: list[str] = []
+        for name, item in sorted(values.items()):
+            if not isinstance(item, dict):
+                continue
+            group_thresholds = item.get("thresholds", {})
+            if not isinstance(group_thresholds, dict):
+                group_thresholds = {}
+            half = group_thresholds.get("0.5", {})
+            one = group_thresholds.get("1", {})
+            if not isinstance(half, dict):
+                half = {}
+            if not isinstance(one, dict):
+                one = {}
+            parts.append(
+                f"{name}: n={item.get('trades', 0)}, "
+                f"MFE={item.get('mean_time_to_mfe_ms')}ms, "
+                f"peak→close={item.get('mean_peak_to_close_ms')}ms, "
+                f"+0.5R={half.get('reached', 0)}, "
+                f"+1R={one.get('reached', 0)}"
+            )
+        if parts:
+            lines.append(f"- {label}: " + "; ".join(parts))
+
+    lines.append("")
+    grouped_line("by_side", "by side")
+    grouped_line("by_lead_strategy", "by lead strategy")
+    grouped_line("by_exit_reason", "by exit path")
+    lines.extend(
+        [
+            "",
+            (
+                "_Timing is measured only from complete exact mark paths. "
+                "It describes when favorable/adverse excursion happened and "
+                "how long peak profit was exposed before the actual close; "
+                "it does not change stops, entries, or exits._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -1984,6 +2134,17 @@ def _research_readiness_board_lines(
         decision_age.get("ready_for_review")
     )
 
+    excursion = mapping("excursion_timing")
+    excursion_gate = mapping("excursion_timing").get(
+        "evidence_gate",
+        {},
+    )
+    if not isinstance(excursion_gate, dict):
+        excursion_gate = {}
+    excursion_ready = bool(
+        excursion_gate.get("ready_for_review")
+    )
+
     rows = (
         (
             "fixed profit-lock",
@@ -2048,6 +2209,20 @@ def _research_readiness_board_lines(
             status(mid, ready=mid_ready),
             "fresh 1m/5m/15m=" + "/".join(mid_counts),
             mid_integrity,
+        ),
+        (
+            "excursion timing",
+            status(excursion, ready=excursion_ready),
+            (
+                f"paths={excursion.get('complete_paths_evaluated', 0)}, "
+                f"need={excursion_gate.get('missing_complete_paths', 0)}"
+            ),
+            (
+                f"decision_miss="
+                f"{excursion.get('missing_decision_attribution', 0)}, "
+                f"excursion_miss="
+                f"{excursion.get('missing_excursion_metric', 0)}"
+            ),
         ),
         (
             "decision age at fill",
@@ -2248,6 +2423,11 @@ def render_live_status(
     lines.extend(
         _entry_markout_lines(
             payload.get("entry_markout")
+        )
+    )
+    lines.extend(
+        _excursion_timing_lines(
+            payload.get("excursion_timing")
         )
     )
     lines.extend(
