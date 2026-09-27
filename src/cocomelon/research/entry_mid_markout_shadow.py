@@ -13,7 +13,7 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 
 ZERO: Final = Decimal("0")
 BPS: Final = Decimal("10000")
-ENTRY_MID_MARKOUT_STATE_SCHEMA_VERSION: Final = 1
+ENTRY_MID_MARKOUT_STATE_SCHEMA_VERSION: Final = 2
 ENTRY_MID_MARKOUT_HORIZONS_MS: Final = (
     60_000,
     300_000,
@@ -603,16 +603,26 @@ class EntryMidMarkoutShadow:
             or state.side.value != trade.direction.value
             or state.entry_price != trade.entry_price
             or state.opened_at_ms != trade.opened_at_ms
-            or state.planned_risk
-            != trade.initial_risk_amount
-            or state.initial_quantity
-            != trade.filled_quantity
         ):
             self._lineage_mismatch_closed_trades += 1
             return
 
         for horizon_ms in ENTRY_MID_MARKOUT_HORIZONS_MS:
             horizon = state.horizons[horizon_ms]
+            if horizon.status == _FRESH:
+                if horizon.mid_px is None:
+                    raise EntryMidMarkoutShadowError(
+                        "fresh mid-markout lost observed mid"
+                    )
+                signed_bps, gross_r = _signed_mid_economics(
+                    side=PositionSide(trade.direction.value),
+                    entry_price=trade.entry_price,
+                    quantity=trade.filled_quantity,
+                    planned_risk=trade.initial_risk_amount,
+                    mid_px=horizon.mid_px,
+                )
+                horizon.signed_return_bps = signed_bps
+                horizon.gross_r = gross_r
             if horizon.status == _PENDING:
                 if trade.closed_at_ms < (
                     horizon.target_timestamp_ms
@@ -835,6 +845,8 @@ class EntryMidMarkoutShadow:
             ),
             "started_at_ms": self._started_at_ms,
             "source": "allMids_mid_px",
+            "risk_basis": "closed_trade_initial_risk_amount",
+            "quantity_basis": "closed_trade_filled_quantity",
             "horizons_ms": list(
                 ENTRY_MID_MARKOUT_HORIZONS_MS
             ),
