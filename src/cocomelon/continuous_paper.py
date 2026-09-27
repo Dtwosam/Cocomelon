@@ -58,6 +58,9 @@ from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
+from cocomelon.research.closed_trade_concentration import (
+    closed_trade_concentration,
+)
 from cocomelon.research.closed_trade_friction import (
     closed_trade_friction_summary,
 )
@@ -1942,6 +1945,29 @@ def _closed_trade_stability_payload(
     return payload
 
 
+def _closed_trade_concentration_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_concentration(
+            tuple(journal.iter_trades()),
+            fact_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2280,6 +2306,12 @@ def _live_status_payload(
             pump.journal,
         )
     )
+    closed_trade_concentration_payload = (
+        _closed_trade_concentration_payload(
+            pump.journal,
+            fact_store,
+        )
+    )
     entry_decision_age = _entry_decision_age_payload(
         pump.journal,
         fact_store,
@@ -2375,6 +2407,9 @@ def _live_status_payload(
         ),
         "closed_trade_stability": (
             closed_trade_stability_payload
+        ),
+        "closed_trade_concentration": (
+            closed_trade_concentration_payload
         ),
         "entry_decision_age": entry_decision_age,
         "open_planned_risk": str(open_planned_risk),
