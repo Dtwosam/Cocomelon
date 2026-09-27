@@ -1287,6 +1287,10 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
                 f"{candidate.get('risk_exposure_hours', '0')}`"
             ),
             (
+                "- complete cohort required (unresolved must be zero): "
+                f"`{readiness.get('unresolved_outcomes', 0)} unresolved`"
+            ),
+            (
                 "- evidence gate closed / evaluated / overlap: "
                 f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
                 f"{readiness.get('min_evaluated_delayed_attempts', 0)} / "
