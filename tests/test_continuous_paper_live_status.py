@@ -1443,7 +1443,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| decision age at fill | collecting | "
         "attributed=4, need=26 | misses=0 |" in output
     )
-    assert "review-ready studies: `0 / 8`" in output
+    assert (
+        "| excursion timing | collecting | paths=12, need=18 | "
+        "decision_miss=0, excursion_miss=0 |" in output
+    )
+    assert "review-ready studies: `0 / 9`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
