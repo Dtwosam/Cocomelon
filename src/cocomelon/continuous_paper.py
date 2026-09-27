@@ -61,6 +61,9 @@ from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_friction import (
     closed_trade_friction_summary,
 )
+from cocomelon.research.closed_trade_robustness import (
+    closed_trade_robustness,
+)
 from cocomelon.research.continuous_paper_learning import (
     CONTINUOUS_PAPER_REPLAY_RUN_ID,
     ContinuousPaperOpeningLineage,
@@ -1840,6 +1843,27 @@ def _entry_decision_age_payload(
     return payload
 
 
+def _closed_trade_robustness_payload(
+    journal: JournalStore,
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_robustness(
+            tuple(journal.iter_trades())
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2141,6 +2165,11 @@ def _live_status_payload(
         pump.journal,
         fact_store,
     )
+    closed_trade_robustness_payload = (
+        _closed_trade_robustness_payload(
+            pump.journal,
+        )
+    )
     entry_decision_age = _entry_decision_age_payload(
         pump.journal,
         fact_store,
@@ -2219,6 +2248,9 @@ def _live_status_payload(
         "closed_trade_performance": closed_trade_performance,
         "account_lifecycle_economics": account_lifecycle_economics,
         "closed_trade_friction": closed_trade_friction,
+        "closed_trade_robustness": (
+            closed_trade_robustness_payload
+        ),
         "entry_decision_age": entry_decision_age,
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(

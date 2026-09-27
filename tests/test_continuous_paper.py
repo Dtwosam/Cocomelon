@@ -14,6 +14,7 @@ from cocomelon.continuous_paper import (
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
     _closed_trade_friction_payload,
+    _closed_trade_robustness_payload,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
@@ -185,6 +186,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "account_lifecycle_bridge(" in source
     assert '"closed_trade_friction": closed_trade_friction' in source
     assert "closed_trade_friction_summary(" in source
+    assert '"closed_trade_robustness": (' in source
+    assert "closed_trade_robustness(" in source
     assert '"entry_decision_age": entry_decision_age' in source
     assert "entry_decision_age_summary(" in source
     assert '"entry_markout": entry_markout' in source
@@ -269,6 +272,27 @@ def test_closed_trade_friction_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: friction boom"
+
+
+def test_closed_trade_robustness_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("robustness boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.closed_trade_robustness",
+        fail,
+    )
+    payload = _closed_trade_robustness_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: robustness boom"
 
 
 def test_opening_rank_telemetry_fails_open(

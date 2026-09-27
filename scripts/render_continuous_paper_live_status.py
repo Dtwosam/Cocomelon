@@ -1531,6 +1531,102 @@ def _entry_decision_age_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_robustness_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade robustness sensitivity",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No robustness telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    one = raw.get("remove_best_one", {})
+    if not isinstance(one, dict):
+        one = {}
+    two = raw.get("remove_best_two", {})
+    if not isinstance(two, dict):
+        two = {}
+
+    lines.extend(
+        [
+            (
+                "- closed trades / review gate / still needed: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{readiness.get('min_closed_trades', 0)} / "
+                f"{readiness.get('missing_closed_trades', 0)}`"
+            ),
+            (
+                "- largest winner PnL / R: "
+                f"`{raw.get('largest_winner_net_pnl')} / "
+                f"{raw.get('largest_winner_net_r')}`"
+            ),
+            (
+                "- top-1 / top-2 share of gross profit: "
+                f"`{raw.get('top_one_winner_share_of_gross_profit')} / "
+                f"{raw.get('top_two_winner_share_of_gross_profit')}`"
+            ),
+            "",
+            (
+                "| Scenario | Remaining | Net PnL | Mean R | Median R | "
+                "Profit factor | Positive PnL? |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+            (
+                "| Remove best 1 | {n} | {pnl} | {mean} | {median} | "
+                "{pf} | {positive} |"
+            ).format(
+                n=one.get("remaining_trades", 0),
+                pnl=one.get("net_pnl", "0"),
+                mean=one.get("mean_net_r"),
+                median=one.get("median_net_r"),
+                pf=one.get("profit_factor"),
+                positive=str(bool(one.get("positive_net_pnl"))).lower(),
+            ),
+            (
+                "| Remove best 2 | {n} | {pnl} | {mean} | {median} | "
+                "{pf} | {positive} |"
+            ).format(
+                n=two.get("remaining_trades", 0),
+                pnl=two.get("net_pnl", "0"),
+                mean=two.get("mean_net_r"),
+                median=two.get("median_net_r"),
+                pf=two.get("profit_factor"),
+                positive=str(bool(two.get("positive_net_pnl"))).lower(),
+            ),
+            (
+                "- positive PnL survives remove best 1 / best 2: "
+                f"`{str(bool(raw.get('positive_pnl_survives_remove_best_one'))).lower()} / "
+                f"{str(bool(raw.get('positive_pnl_survives_remove_best_two'))).lower()}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Deterministic sensitivity only: it removes the largest "
+                "realized winners from the same closed-trade sample. It does "
+                "not invent replacement trades or claim portfolio PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2133,6 +2229,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_friction_lines(
             payload.get("closed_trade_friction")
+        )
+    )
+    lines.extend(
+        _closed_trade_robustness_lines(
+            payload.get("closed_trade_robustness")
         )
     )
     lines.extend(["", "### Closed trade performance", ""])
