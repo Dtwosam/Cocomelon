@@ -293,6 +293,21 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'entry_mid_markout_shadow=' in source
     assert '"entry_mid_markout_shadow": entry_mid_markout' in source
     assert "entry_mid_markout_shadow.shadow.state_payload()" in source
+    pause_index = source.index(
+        "pipeline.set_new_exposure_paused(True)"
+    )
+    start_index = source.index(
+        "_supervisors, supervisor_tasks = await start_supervisors"
+    )
+    warmup_index = source.index(
+        "for candle in await _warmup_market("
+    )
+    resume_index = source.index(
+        "pipeline.set_new_exposure_paused(False)"
+    )
+    assert pause_index < start_index < warmup_index < resume_index
+    assert "for task in supervisor_tasks:" in source
+    assert "if supervisor_tasks:" in source
 
 
 def test_account_lifecycle_bridge_telemetry_fails_open(
