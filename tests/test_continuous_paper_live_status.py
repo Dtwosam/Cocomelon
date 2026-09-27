@@ -2309,6 +2309,91 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_risk_geometry": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "definition": "delayed_average_fill_risk_vs_actual_position_risk",
+            "evaluated_filled_attempts": 10,
+            "no_fill_outcomes": 1,
+            "missing_journal_trades": 0,
+            "missing_opening_plans": 0,
+            "lineage_mismatches": 0,
+            "missing_delayed_fill_price": 0,
+            "overall": {
+                "attempts": 10,
+                "mean_fill_fraction": "0.85",
+                "mean_risk_utilization": "0.82",
+                "mean_full_size_risk_ratio": "0.94",
+                "mean_risk_capacity_fraction": "0.96",
+                "mean_unit_risk_change_fraction": "-0.04",
+                "risk_clipped": 2,
+                "full_size_risk_above_ceiling": 2,
+            },
+            "risk_clipped": {
+                "attempts": 2,
+                "mean_fill_fraction": "0.70",
+                "mean_risk_utilization": "0.99",
+                "mean_full_size_risk_ratio": "1.18",
+                "mean_risk_capacity_fraction": "0.85",
+                "mean_unit_risk_change_fraction": "0.18",
+                "risk_clipped": 2,
+                "full_size_risk_above_ceiling": 2,
+            },
+            "by_side": {
+                "long": {
+                    "attempts": 4,
+                    "mean_fill_fraction": "0.75",
+                    "mean_risk_utilization": "0.90",
+                    "mean_full_size_risk_ratio": "1.05",
+                    "mean_risk_capacity_fraction": "0.91",
+                    "mean_unit_risk_change_fraction": "0.05",
+                    "risk_clipped": 2,
+                    "full_size_risk_above_ceiling": 2,
+                },
+                "short": {
+                    "attempts": 6,
+                    "mean_fill_fraction": "0.9166666667",
+                    "mean_risk_utilization": "0.77",
+                    "mean_full_size_risk_ratio": "0.87",
+                    "mean_risk_capacity_fraction": "1",
+                    "mean_unit_risk_change_fraction": "-0.10",
+                    "risk_clipped": 0,
+                    "full_size_risk_above_ceiling": 0,
+                },
+            },
+            "by_cause": {
+                "full_fill": {
+                    "attempts": 8,
+                    "mean_fill_fraction": "1",
+                    "mean_risk_utilization": "0.78",
+                    "mean_full_size_risk_ratio": "0.78",
+                    "mean_risk_capacity_fraction": "1",
+                    "mean_unit_risk_change_fraction": "-0.08",
+                    "risk_clipped": 0,
+                    "full_size_risk_above_ceiling": 0,
+                },
+                "risk_ceiling_clip": {
+                    "attempts": 2,
+                    "mean_fill_fraction": "0.70",
+                    "mean_risk_utilization": "0.99",
+                    "mean_full_size_risk_ratio": "1.18",
+                    "mean_risk_capacity_fraction": "0.85",
+                    "mean_unit_risk_change_fraction": "0.18",
+                    "risk_clipped": 2,
+                    "full_size_risk_above_ceiling": 2,
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_evaluated_filled_attempts": 20,
+                "min_risk_clipped_attempts": 5,
+                "missing_evaluated_filled_attempts": 10,
+                "missing_risk_clipped_attempts": 3,
+            },
+            "error": None,
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -2706,6 +2791,23 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| Cause: risk_ceiling_clip | 1 | 0.5 | 2 | 0.2 | "
         "-3.2 | -1 | -0.1 |" in output
     )
+    assert "### 60s delayed-entry risk geometry" in output
+    assert "delayed_average_fill_risk_vs_actual_position_risk" in output
+    assert "filled attempts / no-fill outcomes" in output
+    assert "`10 / 1`" in output
+    assert "evidence gate (filled / risk-clipped)" in output
+    assert "`20 / 5`" in output
+    assert "still needed filled / risk-clipped" in output
+    assert "`10 / 3`" in output
+    assert (
+        "| Risk-clipped | 2 | 0.70 | 0.99 | 1.18 | 0.85 | 0.18 | 2 | 2 |"
+        in output
+    )
+    assert (
+        "| Cause: risk_ceiling_clip | 2 | 0.70 | 0.99 | 1.18 | "
+        "0.85 | 0.18 | 2 | 2 |" in output
+    )
+    assert "Full-size risk / ceiling above 1" in output
     assert (
         "| 120s delayed entry | collecting | "
         "closed=10, full=6, better=4, worse=2 | "
