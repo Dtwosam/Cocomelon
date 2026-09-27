@@ -227,3 +227,55 @@ def test_new_exposure_is_blocked_at_cutoff_but_management_still_runs(
     finally:
         facts.close()
         execution.close()
+
+
+def test_runtime_pause_blocks_new_exposure_but_management_runs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timestamp_ms = CUTOFF_MS - 1
+    pipeline, execution, facts, opening = _pipeline(
+        tmp_path,
+        monkeypatch,
+        decision_timestamp_ms=timestamp_ms,
+    )
+    managed_at_ms: list[int] = []
+
+    def manage(_book: object, now_ms: int) -> tuple[object, ...]:
+        managed_at_ms.append(now_ms)
+        return ()
+
+    monkeypatch.setattr(pipeline, "_manage_book", manage)
+    pipeline.set_new_exposure_paused(True)
+    try:
+        assert pipeline.new_exposure_paused is True
+        pipeline.on_record(_book(timestamp_ms), timestamp_ms)
+        assert managed_at_ms == [timestamp_ms]
+        assert opening.staged_at_ms == []
+        assert opening.books_at_ms == []
+        assert len(tuple(facts.iter_decision_facts())) == 1
+    finally:
+        facts.close()
+        execution.close()
+
+
+def test_runtime_pause_can_resume_new_exposure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    timestamp_ms = CUTOFF_MS - 1
+    pipeline, execution, facts, opening = _pipeline(
+        tmp_path,
+        monkeypatch,
+        decision_timestamp_ms=timestamp_ms,
+    )
+    pipeline.set_new_exposure_paused(True)
+    pipeline.set_new_exposure_paused(False)
+    try:
+        assert pipeline.new_exposure_paused is False
+        pipeline.on_record(_book(timestamp_ms), timestamp_ms)
+        assert opening.staged_at_ms == [timestamp_ms]
+        assert opening.books_at_ms == [timestamp_ms]
+    finally:
+        facts.close()
+        execution.close()
