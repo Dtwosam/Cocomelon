@@ -1307,3 +1307,18 @@ The exact-path 1m / 5m / 15m post-entry markout diagnostic now also groups fresh
 This is attribution only. It does not delay, reject, or reprioritize entries and has no promotion or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Live research readiness board — 2026-09-27
+
+Issue #469 now includes one compact board that summarizes the frozen evidence gates for the active paper-trading research studies.
+
+- each study is shown as `collecting`, `review-ready`, `error`, or `disabled`;
+- the board surfaces current evidence counts plus data-integrity counters such as missing attribution, lineage mismatches, orphaned restored state, and stale rank evidence;
+- the current board covers fixed profit-lock, visible-book IOC profit-lock, LONG+trend filter, top-10 rank filter, exact-path entry markouts, allMids entry markouts, and decision age at fill;
+- `review-ready` means only that the study's precommitted evidence gate is satisfied;
+- the board has no promotion or execution authority and cannot change paper behavior.
+
+This is intended to keep operational status and future-chat interpretation aligned with the actual evidence gates instead of treating small samples as strategy decisions.
+
+**LIVE TRADING: DISABLED.**
