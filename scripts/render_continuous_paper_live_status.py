@@ -1142,6 +1142,11 @@ def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
                 f"{str(bool(reconciliation.get('equity_bridge_matches_account'))).lower()}`"
             ),
             (
+                "- account cash bridge delta: "
+                f"`{reconciliation.get('cash_bridge_delta')}` · match: "
+                f"`{str(bool(reconciliation.get('cash_bridge_matches_account'))).lower()}`"
+            ),
+            (
                 "- closed gross / fees / funding / net deltas: "
                 f"`{reconciliation.get('closed_gross_delta')} / "
                 f"{reconciliation.get('closed_fees_delta')} / "
