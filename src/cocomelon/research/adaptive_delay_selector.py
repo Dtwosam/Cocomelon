@@ -63,7 +63,7 @@ class AdaptiveDelaySelectorState:
             "candidate_id": self.candidate_id,
             "started_at_ms": self.started_at_ms,
             "rule": (
-                "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+                "if_fresh_available_1m_mid_gross_r_lt_0_choose_120s_"
                 "else_choose_60s"
             ),
         }
@@ -100,7 +100,7 @@ class AdaptiveDelaySelectorState:
                 "adaptive-delay candidate_id must be a string"
             )
         expected_rule = (
-            "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+            "if_fresh_available_1m_mid_gross_r_lt_0_choose_120s_"
             "else_choose_60s"
         )
         if rule != expected_rule:
@@ -123,8 +123,10 @@ class AdaptiveDelayOutcome:
     opening_plan_id: str
     market: str
     direction: str
-    markout_gross_r: Decimal
-    markout_observed_at_ms: int
+    markout_status: str
+    markout_gross_r: Decimal | None
+    markout_observed_at_ms: int | None
+    signal_available_at_decision: bool
     base_attempted_at_ms: int
     selected_delay_ms: int
     actual_net_pnl: Decimal
@@ -161,16 +163,38 @@ class AdaptiveDelayOutcome:
             raise ValueError(
                 "adaptive-delay selection is unsupported"
             )
-        if self.markout_observed_at_ms > self.base_attempted_at_ms:
+        if not self.markout_status.strip():
+            raise ValueError("markout_status must not be empty")
+        if self.signal_available_at_decision:
+            if (
+                self.markout_status != "fresh"
+                or self.markout_gross_r is None
+                or self.markout_observed_at_ms is None
+                or self.markout_observed_at_ms
+                > self.base_attempted_at_ms
+            ):
+                raise ValueError(
+                    "available adaptive signal is inconsistent"
+                )
+        if (
+            self.markout_observed_at_ms is not None
+            and self.markout_observed_at_ms < 0
+        ):
             raise ValueError(
-                "adaptive-delay signal arrives after 60s attempt"
+                "markout_observed_at_ms must be non-negative"
             )
         if not ZERO <= self.adaptive_fill_fraction <= Decimal("1"):
             raise ValueError(
                 "adaptive fill fraction must be within [0, 1]"
             )
+        if (
+            self.markout_gross_r is not None
+            and not self.markout_gross_r.is_finite()
+        ):
+            raise ValueError(
+                "adaptive markout gross R must be finite"
+            )
         for metric in (
-            self.markout_gross_r,
             self.actual_net_pnl,
             self.base_candidate_net_pnl,
             self.challenger_candidate_net_pnl,
@@ -268,14 +292,6 @@ def _item(
     challenger: DelayedEntryOutcome,
 ) -> AdaptiveDelayOutcome:
     _validate_mid_lineage(trade, mid)
-    if (
-        mid.status != "fresh"
-        or mid.observed_timestamp_ms is None
-        or mid.gross_r is None
-    ):
-        raise AdaptiveDelaySelectorError(
-            "adaptive-delay requires fresh 1m mid markout"
-        )
     if base.observation_lag_ms is None:
         raise AdaptiveDelaySelectorError(
             "60s delayed attempt is missing observation lag"
@@ -285,14 +301,20 @@ def _item(
         + BASE_DELAY_MS
         + base.observation_lag_ms
     )
-    if mid.observed_timestamp_ms > base_attempted_at_ms:
-        raise AdaptiveDelaySelectorError(
-            "1m mid markout was not available before 60s attempt"
-        )
+    signal_available = (
+        mid.status == "fresh"
+        and mid.observed_timestamp_ms is not None
+        and mid.gross_r is not None
+        and mid.observed_timestamp_ms <= base_attempted_at_ms
+    )
 
     base_item = _evaluate_delayed(trade, base)
     challenger_item = _evaluate_delayed(trade, challenger)
-    choose_challenger = mid.gross_r < ZERO
+    choose_challenger = (
+        signal_available
+        and mid.gross_r is not None
+        and mid.gross_r < ZERO
+    )
     selected = (
         challenger_item
         if choose_challenger
@@ -309,8 +331,10 @@ def _item(
         opening_plan_id=trade.opening_plan_id,
         market=trade.market.canonical,
         direction=trade.direction.value,
+        markout_status=mid.status,
         markout_gross_r=mid.gross_r,
         markout_observed_at_ms=mid.observed_timestamp_ms,
+        signal_available_at_decision=signal_available,
         base_attempted_at_ms=base_attempted_at_ms,
         selected_delay_ms=selected_delay_ms,
         actual_net_pnl=trade.net_pnl,
@@ -508,7 +532,6 @@ def adaptive_delay_selector_summary(
             or mid.gross_r is None
         ):
             non_fresh_mid += 1
-            continue
         if base is None:
             missing_base += 1
             continue
@@ -529,9 +552,12 @@ def adaptive_delay_selector_summary(
             + BASE_DELAY_MS
             + base.observation_lag_ms
         )
-        if mid.observed_timestamp_ms > base_attempted_at_ms:
+        if (
+            mid.status == "fresh"
+            and mid.observed_timestamp_ms is not None
+            and mid.observed_timestamp_ms > base_attempted_at_ms
+        ):
             late_mid += 1
-            continue
         try:
             evaluated.append(
                 _item(
@@ -557,8 +583,6 @@ def adaptive_delay_selector_summary(
         and selected_60s >= MIN_SELECT_60S_TRADES
         and selected_120s >= MIN_SELECT_120S_TRADES
         and missing_mid == 0
-        and non_fresh_mid == 0
-        and late_mid == 0
         and missing_base == 0
         and missing_challenger == 0
         and lineage_mismatches == 0
@@ -573,11 +597,11 @@ def adaptive_delay_selector_summary(
             "fill_weighted_same_exit_trade_contribution_only"
         ),
         "rule": (
-            "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+            "if_fresh_available_1m_mid_gross_r_lt_0_choose_120s_"
             "else_choose_60s"
         ),
         "causality_rule": (
-            "1m_mid_observed_at_or_before_60s_ioc_observation"
+            "late_or_nonfresh_mid_falls_back_to_60s"
         ),
         "base_delay_ms": BASE_DELAY_MS,
         "challenger_delay_ms": CHALLENGER_DELAY_MS,
@@ -606,18 +630,22 @@ def adaptive_delay_selector_summary(
             for side in ("long", "short")
         },
         "by_signal": {
-            "adverse_choose_120s": _summary(
+            "adverse_available_choose_120s": _summary(
                 tuple(
                     item
                     for item in items
-                    if item.markout_gross_r < ZERO
+                    if (
+                        item.signal_available_at_decision
+                        and item.markout_gross_r is not None
+                        and item.markout_gross_r < ZERO
+                    )
                 )
             ),
-            "non_adverse_choose_60s": _summary(
+            "otherwise_choose_60s": _summary(
                 tuple(
                     item
                     for item in items
-                    if item.markout_gross_r >= ZERO
+                    if item.selected_delay_ms == BASE_DELAY_MS
                 )
             ),
         },
