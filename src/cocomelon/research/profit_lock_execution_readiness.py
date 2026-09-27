@@ -65,15 +65,29 @@ class ProfitLockExecutionRuleReadiness:
 @dataclass(frozen=True, slots=True)
 class ProfitLockExecutionReadiness:
     rules: tuple[ProfitLockExecutionRuleReadiness, ...]
+    lineage_mismatch_closed_trades: int
+    orphaned_restored_positions: int
     all_rules_ready_for_review: bool
     promotion_authority: bool = False
     execution_authority: bool = False
 
     def __post_init__(self) -> None:
-        expected = bool(self.rules) and all(
-            rule.status
-            is ProfitLockExecutionReadinessStatus.READY_FOR_REVIEW
-            for rule in self.rules
+        if (
+            self.lineage_mismatch_closed_trades < 0
+            or self.orphaned_restored_positions < 0
+        ):
+            raise ValueError(
+                "research integrity counters must be non-negative"
+            )
+        expected = (
+            bool(self.rules)
+            and self.lineage_mismatch_closed_trades == 0
+            and self.orphaned_restored_positions == 0
+            and all(
+                rule.status
+                is ProfitLockExecutionReadinessStatus.READY_FOR_REVIEW
+                for rule in self.rules
+            )
         )
         if self.all_rules_ready_for_review != expected:
             raise ValueError(
@@ -201,12 +215,42 @@ def profit_lock_execution_readiness(
         raise ProfitLockExecutionReadinessError(
             "execution shadow rule ids must be unique"
         )
+    lineage_mismatch = shadow_summary.get(
+        "lineage_mismatch_closed_trades",
+        0,
+    )
+    orphaned_restored = shadow_summary.get(
+        "orphaned_restored_positions",
+        0,
+    )
+    if (
+        isinstance(lineage_mismatch, bool)
+        or not isinstance(lineage_mismatch, int)
+        or lineage_mismatch < 0
+    ):
+        raise ProfitLockExecutionReadinessError(
+            "lineage_mismatch_closed_trades must be non-negative integer"
+        )
+    if (
+        isinstance(orphaned_restored, bool)
+        or not isinstance(orphaned_restored, int)
+        or orphaned_restored < 0
+    ):
+        raise ProfitLockExecutionReadinessError(
+            "orphaned_restored_positions must be non-negative integer"
+        )
     return ProfitLockExecutionReadiness(
         rules=resolved,
-        all_rules_ready_for_review=bool(resolved)
-        and all(
-            rule.status
-            is ProfitLockExecutionReadinessStatus.READY_FOR_REVIEW
-            for rule in resolved
+        lineage_mismatch_closed_trades=lineage_mismatch,
+        orphaned_restored_positions=orphaned_restored,
+        all_rules_ready_for_review=(
+            bool(resolved)
+            and lineage_mismatch == 0
+            and orphaned_restored == 0
+            and all(
+                rule.status
+                is ProfitLockExecutionReadinessStatus.READY_FOR_REVIEW
+                for rule in resolved
+            )
         ),
     )
