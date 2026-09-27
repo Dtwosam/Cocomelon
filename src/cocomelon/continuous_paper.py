@@ -93,7 +93,13 @@ from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
+    DELAY_MS,
+    MAX_DELAY_OBSERVATION_LAG_MS,
     DelayedEntryExecutionShadow,
+)
+from cocomelon.research.delayed_entry_pair import (
+    CHALLENGER_DELAY_MS,
+    delayed_entry_pair_summary,
 )
 from cocomelon.research.delayed_entry_same_exit import (
     delayed_entry_same_exit_contribution,
@@ -172,6 +178,9 @@ ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
 )
 DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
     "delayed-entry-execution-shadow-state.json"
+)
+DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (
+    "delayed-entry-120s-execution-shadow-state.json"
 )
 DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 
@@ -1127,10 +1136,14 @@ def _restore_delayed_entry_execution_shadow(
     execution_config: PaperExecutionConfig,
     *,
     started_at_ms: int,
+    delay_ms: int = DELAY_MS,
+    max_observation_lag_ms: int = MAX_DELAY_OBSERVATION_LAG_MS,
 ) -> DelayedEntryExecutionShadow:
     shadow = DelayedEntryExecutionShadow(
         execution_config,
         started_at_ms=started_at_ms,
+        delay_ms=delay_ms,
+        max_observation_lag_ms=max_observation_lag_ms,
     )
     if not path.exists():
         return shadow
@@ -1141,6 +1154,8 @@ def _restore_delayed_entry_execution_shadow(
         shadow = DelayedEntryExecutionShadow(
             execution_config,
             started_at_ms=started_at_ms,
+            delay_ms=delay_ms,
+            max_observation_lag_ms=max_observation_lag_ms,
         )
         shadow.mark_state_restore_error(
             f"{type(exc).__name__}: {exc}"
@@ -2185,6 +2200,56 @@ def _delayed_entry_same_exit_payload(
     return payload
 
 
+def _delayed_entry_pair_payload(
+    journal: JournalStore,
+    base_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    challenger_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if base_shadow.shadow is None or challenger_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": "delayed-entry pair requires both shadows",
+        }
+    try:
+        challenger_summary = challenger_shadow.shadow.summary_payload()
+        raw_started_at_ms = challenger_summary.get("started_at_ms")
+        if (
+            isinstance(raw_started_at_ms, bool)
+            or not isinstance(raw_started_at_ms, int)
+        ):
+            raise ValueError(
+                "challenger delayed-entry start must be an integer"
+            )
+        started_at_ms = raw_started_at_ms
+        payload = delayed_entry_pair_summary(
+            journal,
+            base_shadow.shadow.outcomes,
+            challenger_shadow.shadow.outcomes,
+            started_at_ms=started_at_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["base_error"] = base_shadow.error
+    payload["challenger_error"] = challenger_shadow.error
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2358,6 +2423,7 @@ def _live_status_payload(
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
@@ -2505,6 +2571,11 @@ def _live_status_payload(
         pump.journal,
         delayed_entry_execution_shadow,
     )
+    delayed_entry_pair = _delayed_entry_pair_payload(
+        pump.journal,
+        delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -2630,6 +2701,10 @@ def _live_status_payload(
         "delayed_entry_execution_shadow": (
             delayed_entry_execution_shadow.summary_payload()
         ),
+        "delayed_entry_120s_execution_shadow": (
+            delayed_entry_120s_execution_shadow.summary_payload()
+        ),
+        "delayed_entry_pair": delayed_entry_pair,
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
@@ -2671,6 +2746,7 @@ def _emit_live_status(
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
@@ -2695,6 +2771,7 @@ def _emit_live_status(
         opening_fill_liquidity_store,
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
         entry_mid_markout_shadow,
         drawdown_tracker,
         prospective_entry_filter_state,
@@ -2855,6 +2932,18 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    delayed_entry_120s_execution_shadow = (
+        _ContinuousDelayedEntryExecutionShadowSink(
+            _restore_delayed_entry_execution_shadow(
+                root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                delay_ms=CHALLENGER_DELAY_MS,
+                max_observation_lag_ms=MAX_DELAY_OBSERVATION_LAG_MS,
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
         _restore_entry_mid_markout_shadow(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -2870,6 +2959,9 @@ async def run_continuous_paper_session(
             execution.account.positions
         )
     delayed_entry_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    delayed_entry_120s_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )
     if entry_mid_markout_shadow.shadow is not None:
@@ -2950,6 +3042,7 @@ async def run_continuous_paper_session(
                 _CompositePositionResearchObserver(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
+                    delayed_entry_120s_execution_shadow,
                 )
             ),
         )
@@ -3043,6 +3136,11 @@ async def run_continuous_paper_session(
                     root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
                     delayed_entry_execution_shadow.shadow.state_payload(),
                 )
+            if delayed_entry_120s_execution_shadow.shadow is not None:
+                _write_json_atomic(
+                    root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
+                    delayed_entry_120s_execution_shadow.shadow.state_payload(),
+                )
             _write_json_atomic(
                 root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                 prospective_entry_filter_state.payload(),
@@ -3073,6 +3171,7 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store,
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
+            delayed_entry_120s_execution_shadow,
             entry_mid_markout_shadow,
             drawdown_tracker,
             prospective_entry_filter_state,
@@ -3233,6 +3332,7 @@ async def run_continuous_paper_session(
                     opening_fill_liquidity_store,
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
+                    delayed_entry_120s_execution_shadow,
                     entry_mid_markout_shadow,
                     drawdown_tracker,
                     prospective_entry_filter_state,

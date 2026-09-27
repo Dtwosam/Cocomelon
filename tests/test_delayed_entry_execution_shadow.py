@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pytest
+
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     PaperExecutionConfig,
@@ -19,6 +21,7 @@ from cocomelon.execution.accounting import (
 from cocomelon.research.delayed_entry_execution_shadow import (
     DELAY_MS,
     DelayedEntryExecutionShadow,
+    DelayedEntryShadowError,
 )
 
 MARKET = MarketId("", "SOL")
@@ -404,3 +407,62 @@ def test_delayed_entry_reconciles_orphaned_restored_position() -> None:
     assert summary["open_tracked_positions"] == 0
     assert summary["orphaned_restored_positions"] == 1
     assert summary["readiness"]["ready_for_review"] is False
+
+
+def test_custom_120s_delay_is_durable_and_independent() -> None:
+    position = _position()
+    delay_ms = 120_000
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+        delay_ms=delay_ms,
+        max_observation_lag_ms=60_000,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+    attempt_ms = position.opened_at_ms + delay_ms + 300
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book(
+            attempt_ms,
+            bid="97.9",
+            ask="98.1",
+        ),
+        reference_price=Decimal("98"),
+        now_ms=attempt_ms,
+    )
+
+    payload = shadow.state_payload()
+    assert payload["delay_ms"] == delay_ms
+    assert payload["max_observation_lag_ms"] == 60_000
+
+    restored = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=999_999,
+        delay_ms=delay_ms,
+        max_observation_lag_ms=60_000,
+    )
+    restored.restore_state(payload)
+    restored.record_closed_trade(
+        _trade(position, closed_at_ms=240_000)
+    )
+    summary = restored.summary_payload()
+    assert summary["delay_ms"] == delay_ms
+    assert summary["full_delayed_fills"] == 1
+    assert Decimal(
+        str(summary["mean_gross_r_improvement"])
+    ) == Decimal("0.19")
+
+    incompatible = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    with pytest.raises(
+        DelayedEntryShadowError,
+        match="delay mismatch",
+    ):
+        incompatible.restore_state(payload)

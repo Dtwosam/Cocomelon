@@ -1543,3 +1543,21 @@ The continuous-paper workflow now minimizes worker restart gaps without allowing
 This changes workflow orchestration only. It does not alter market scanning, strategy decisions, position management, risk, fills, accounting, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective paired 60s vs 120s delayed-entry study — 2026-09-27
+
+A second delayed-entry execution horizon is frozen prospectively to test whether waiting one additional minute improves or degrades the already-running 60-second entry shadow.
+
+- the existing 60-second shadow remains unchanged and keeps its original durable evidence;
+- a separate 120-second shadow uses the same visible-book IOC simulator, original paper quantity, original opening stop, risk ceiling, latency, slippage, and fee model;
+- the 120-second shadow has its own durable state file and begins from its own first-deployment timestamp;
+- only trades opened after the 120-second study begins are eligible for the paired comparison;
+- paired economics are evaluated only when both 60-second and 120-second shadows obtained full visible-book IOC fills for the same paper trade;
+- the paired same-exit estimate holds the actual observed exit price, exit fee, and funding constant and isolates only the incremental entry-price/entry-fee contribution of 120 seconds versus 60 seconds;
+- non-full, missing, censored, or lineage-mismatched pairs are reported and never imputed;
+- the review gate requires 30 prospective closed trades, 20 paired full fills, at least 5 LONG pairs, at least 5 SHORT pairs, zero missing shadow outcomes, and zero lineage mismatches.
+
+This is an adaptive but prospectively frozen challenger created after the 60-second shadow showed early favorable entry-price evidence. Historical 60-second outcomes are not reused as paired 120-second evidence. Reaching the gate grants review readiness only and cannot alter the active paper entry timing.
+
+**LIVE TRADING: DISABLED.**
