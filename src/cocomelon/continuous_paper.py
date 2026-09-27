@@ -70,6 +70,9 @@ from cocomelon.research.closed_trade_robustness import (
 from cocomelon.research.closed_trade_stability import (
     closed_trade_stability,
 )
+from cocomelon.research.closed_trade_utc_hour import (
+    closed_trade_utc_hour_summary,
+)
 from cocomelon.research.continuous_paper_drawdown import (
     ContinuousPaperDrawdownTracker,
     drawdown_summary,
@@ -1968,6 +1971,29 @@ def _closed_trade_concentration_payload(
     return payload
 
 
+def _closed_trade_utc_hour_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_utc_hour_summary(
+            tuple(journal.iter_trades()),
+            fact_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2298,6 +2324,10 @@ def _live_status_payload(
             fact_store,
         )
     )
+    closed_trade_utc_hour = _closed_trade_utc_hour_payload(
+        pump.journal,
+        fact_store,
+    )
     closed_trade_friction = _closed_trade_friction_payload(
         pump.journal,
         fact_store,
@@ -2402,6 +2432,7 @@ def _live_status_payload(
         "account_lifecycle_economics": account_lifecycle_economics,
         "drawdown": drawdown,
         "closed_trade_concentration": closed_trade_concentration,
+        "closed_trade_utc_hour": closed_trade_utc_hour,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
             closed_trade_robustness_payload

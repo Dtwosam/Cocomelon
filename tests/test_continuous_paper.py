@@ -17,6 +17,7 @@ from cocomelon.continuous_paper import (
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
     _closed_trade_stability_payload,
+    _closed_trade_utc_hour_payload,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
@@ -200,6 +201,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "closed_trade_robustness(" in source
     assert '"closed_trade_stability": (' in source
     assert "closed_trade_stability(" in source
+    assert '"closed_trade_utc_hour": closed_trade_utc_hour' in source
+    assert "closed_trade_utc_hour_summary(" in source
     assert '"entry_decision_age": entry_decision_age' in source
     assert "entry_decision_age_summary(" in source
     assert 'DRAWDOWN_STATE_FILENAME = "drawdown-state.json"' in source
@@ -335,6 +338,28 @@ def test_closed_trade_concentration_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: concentration boom"
+
+
+def test_closed_trade_utc_hour_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("utc hour boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.closed_trade_utc_hour_summary",
+        fail,
+    )
+    payload = _closed_trade_utc_hour_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: utc hour boom"
 
 
 def test_closed_trade_friction_telemetry_fails_open(

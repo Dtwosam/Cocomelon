@@ -715,6 +715,62 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 ],
             },
         },
+        "closed_trade_utc_hour": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "strategy_decision_timestamp_utc_hour",
+            "closed_trades": 4,
+            "attributed_trades": 4,
+            "attribution_misses": 0,
+            "active_utc_hours": 3,
+            "positive_net_pnl_hours": 1,
+            "negative_net_pnl_hours": 2,
+            "trade_count_hhi": "0.375",
+            "rows": [
+                {
+                    "utc_hour": 0,
+                    "label": "00:00-00:59",
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "10",
+                    "mean_net_r": "1",
+                    "win_rate": "1",
+                    "profit_factor": None,
+                    "trade_count_share": "0.25",
+                },
+                {
+                    "utc_hour": 8,
+                    "label": "08:00-08:59",
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-3",
+                    "mean_net_r": "-0.15",
+                    "win_rate": "0.5",
+                    "profit_factor": "0.4",
+                    "trade_count_share": "0.5",
+                },
+                {
+                    "utc_hour": 23,
+                    "label": "23:00-23:59",
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-1",
+                    "mean_net_r": "-0.1",
+                    "win_rate": "0",
+                    "profit_factor": "0",
+                    "trade_count_share": "0.25",
+                },
+            ],
+        },
         "closed_trade_friction": {
             "enabled": True,
             "research_only": True,
@@ -1947,6 +2003,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### UTC seven-day concentration" in output
     assert "| 0 | 2 | 1 | 1 | 0 | 30 | 1.5 | 0.4 | 0.6 |" in output
     assert "35% market and 50% seven-day values are reference limits only" in output
+    assert "### Closed-trade UTC decision-hour attribution" in output
+    assert "strategy_decision_timestamp_utc_hour" in output
+    assert "closed / attributed / misses" in output
+    assert "`4 / 4 / 0`" in output
+    assert "active UTC hours / positive / negative hours" in output
+    assert "`3 / 1 / 2`" in output
+    assert "trade-count HHI across active UTC hours" in output
+    assert "`0.375`" in output
+    assert "| 00:00-00:59 | 1 | 1 | 0 | 0 | 10 | 1 | 1 | None | 0.25 |" in output
+    assert "| 08:00-08:59 | 2 | 1 | 1 | 0 | -3 | -0.15 | 0.5 | 0.4 | 0.5 |" in output
+    assert "| 23:00-23:59 | 1 | 0 | 1 | 0 | -1 | -0.1 | 0 | 0 | 0.25 |" in output
+    assert "immutable strategy-decision timestamp" in output
     assert "### Closed-trade friction attribution" in output
     assert "reference_gross_minus_slippage_minus_fees_plus_funding" in output
     assert "| 6 | 1 | 5 | 5.5 | 2 | 1.5 | 4.5 |" in output
