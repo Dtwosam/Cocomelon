@@ -13,7 +13,6 @@ from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
-    _adaptive_delay_selector_payload,
     _closed_trade_concentration_payload,
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
