@@ -174,7 +174,7 @@ def _evaluate_pair(
         challenger_minus_base_pnl=challenger_pnl - base_pnl,
         challenger_minus_base_r=challenger_r - base_r,
         challenger_minus_base_bps=(
-            signed_increment / base.delayed_average_fill_price * BPS
+            signed_increment / trade.entry_price * BPS
         ),
     )
 
