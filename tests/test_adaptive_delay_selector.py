@@ -3,12 +3,17 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.adaptive_delay_selector import (
+    ADAPTIVE_DELAY_SELECTOR_ID,
+    AdaptiveDelaySelectorError,
+    AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
@@ -285,3 +290,21 @@ def test_late_mid_signal_is_excluded_from_adaptive_choice(
     overall = result["overall"]
     assert isinstance(overall, dict)
     assert overall["trades"] == 0
+
+
+def test_adaptive_delay_state_round_trip_freezes_rule() -> None:
+    state = AdaptiveDelaySelectorState(started_at_ms=123)
+    restored = AdaptiveDelaySelectorState.from_payload(
+        state.payload()
+    )
+
+    assert restored == state
+    assert restored.candidate_id == ADAPTIVE_DELAY_SELECTOR_ID
+
+    payload = state.payload()
+    payload["rule"] = "always_120s"
+    with pytest.raises(
+        AdaptiveDelaySelectorError,
+        match="frozen candidate",
+    ):
+        AdaptiveDelaySelectorState.from_payload(payload)
