@@ -440,10 +440,14 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
-def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
+def _delayed_entry_execution_shadow_lines(
+    raw: object,
+    *,
+    title: str = "60s delayed-entry execution shadow",
+) -> list[str]:
     lines = [
         "",
-        "### 60s delayed-entry execution shadow",
+        f"### {title}",
         "",
         "- authority: `RESEARCH ONLY / NO EXECUTION`",
     ]
@@ -554,6 +558,140 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
                 "paper size, stop, and risk ceiling. Full fills compare entry "
                 "price only; it does not claim portfolio PnL or alter the "
                 "actual paper entry._"
+            ),
+        ]
+    )
+    return lines
+
+
+def _delayed_entry_pair_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Paired 60s vs 120s delayed-entry study",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No paired delayed-entry telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    by_side = raw.get("by_side", {})
+    if not isinstance(by_side, dict):
+        by_side = {}
+
+    lines.extend(
+        [
+            (
+                "- prospective start / delays: "
+                f"`{raw.get('started_at_ms')}` / "
+                f"`{raw.get('base_delay_ms')}ms → "
+                f"{raw.get('challenger_delay_ms')}ms`"
+            ),
+            (
+                "- prospective closed / paired full fills: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('paired_full_fills', 0)}`"
+            ),
+            (
+                "- missing 60s / 120s outcomes: "
+                f"`{raw.get('missing_base_outcome', 0)} / "
+                f"{raw.get('missing_challenger_outcome', 0)}`"
+            ),
+            (
+                "- non-full 60s / 120s: "
+                f"`{raw.get('non_full_base', 0)} / "
+                f"{raw.get('non_full_challenger', 0)}`"
+            ),
+            (
+                "- lineage mismatches: "
+                f"`{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- 120s better / 60s better / equal: "
+                f"`{overall.get('challenger_better', 0)} / "
+                f"{overall.get('base_better', 0)} / "
+                f"{overall.get('equal', 0)}`"
+            ),
+            (
+                "- 60s / 120s same-exit PnL / incremental: "
+                f"`{overall.get('base_same_exit_net_pnl', '0')}` / "
+                f"`{overall.get('challenger_same_exit_net_pnl', '0')}` / "
+                f"`{overall.get('challenger_minus_base_pnl', '0')}`"
+            ),
+            (
+                "- mean 120s−60s entry improvement: "
+                f"`{overall.get('mean_challenger_minus_base_bps')}` bps / "
+                f"`{overall.get('mean_challenger_minus_base_r')}` R"
+            ),
+            (
+                "- evidence gate closed / paired / LONG / SHORT: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_paired_full_fills', 0)} / "
+                f"{readiness.get('min_long_paired_full_fills', 0)} / "
+                f"{readiness.get('min_short_paired_full_fills', 0)}`"
+            ),
+            (
+                "- still needed C/P/L/S: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_paired_full_fills', 0)} / "
+                f"{readiness.get('missing_long_paired_full_fills', 0)} / "
+                f"{readiness.get('missing_short_paired_full_fills', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Side | Paired | 120s better | 60s better | "
+                "Δ same-exit PnL | Mean ΔR | Mean Δbps |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (("long", "LONG"), ("short", "SHORT")):
+        item = by_side.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {n} | {better120} | {better60} | "
+                "{pnl} | {r} | {bps} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                better120=item.get("challenger_better", 0),
+                better60=item.get("base_better", 0),
+                pnl=item.get("challenger_minus_base_pnl", "0"),
+                r=item.get("mean_challenger_minus_base_r"),
+                bps=item.get("mean_challenger_minus_base_bps"),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective paired visible-book IOC comparison only. "
+                "The same observed exit is held constant so the result "
+                "isolates 120s versus 60s entry contribution; it does not "
+                "model changed stops, capacity, missed trades, or replacements._"
             ),
         ]
     )
@@ -3232,6 +3370,17 @@ def render_live_status(
     lines.extend(
         _delayed_entry_execution_shadow_lines(
             payload.get("delayed_entry_execution_shadow")
+        )
+    )
+    lines.extend(
+        _delayed_entry_execution_shadow_lines(
+            payload.get("delayed_entry_120s_execution_shadow"),
+            title="120s delayed-entry execution shadow",
+        )
+    )
+    lines.extend(
+        _delayed_entry_pair_lines(
+            payload.get("delayed_entry_pair")
         )
     )
     lines.extend(
