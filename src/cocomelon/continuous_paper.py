@@ -73,6 +73,11 @@ from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
     entry_markout_readiness,
 )
+from cocomelon.research.entry_mid_markout_readiness import (
+    MAX_NON_FRESH_FRACTION,
+    MIN_FRESH_OBSERVATIONS_PER_HORIZON,
+    entry_mid_markout_readiness,
+)
 from cocomelon.research.entry_mid_markout_shadow import (
     EntryMidMarkoutShadow,
 )
@@ -363,7 +368,7 @@ class _ContinuousEntryMidMarkoutSink:
         self,
         fact_store: EvaluationFactStore,
     ) -> dict[str, object]:
-        if self.shadow is None:
+        def disabled_payload() -> dict[str, object]:
             return {
                 "enabled": False,
                 "research_only": True,
@@ -372,20 +377,63 @@ class _ContinuousEntryMidMarkoutSink:
                 "durable_state": True,
                 "error": self.error,
             }
+
+        if self.shadow is None:
+            return disabled_payload()
         try:
             payload = dict(
                 self.shadow.summary_payload(fact_store)
             )
+            readiness = entry_mid_markout_readiness(payload)
+            readiness_by_horizon = {
+                item.horizon_ms: item
+                for item in readiness.horizons
+            }
+            raw_horizons = payload.get("by_horizon_ms")
+            if not isinstance(raw_horizons, dict):
+                raise RuntimeError(
+                    "allMids markout summary lost by_horizon_ms"
+                )
+            for horizon_ms, item in (
+                readiness_by_horizon.items()
+            ):
+                raw = raw_horizons.get(str(horizon_ms))
+                if not isinstance(raw, dict):
+                    raise RuntimeError(
+                        "allMids markout horizon summary disappeared"
+                    )
+                raw["readiness_status"] = item.status.value
+                raw["missing_fresh_observations"] = (
+                    item.missing_fresh_observations
+                )
+                raw["non_fresh_fraction"] = (
+                    None
+                    if item.non_fresh_fraction is None
+                    else str(item.non_fresh_fraction)
+                )
+                raw["coverage_quality_ready"] = (
+                    item.coverage_quality_ready
+                )
+            payload["readiness"] = {
+                "all_horizons_ready_for_review": (
+                    readiness.all_horizons_ready_for_review
+                ),
+                "min_fresh_observations_per_horizon": (
+                    MIN_FRESH_OBSERVATIONS_PER_HORIZON
+                ),
+                "max_non_fresh_fraction": str(
+                    MAX_NON_FRESH_FRACTION
+                ),
+                "unmatched_closed_trades": (
+                    readiness.unmatched_closed_trades
+                ),
+                "promotion_authority": False,
+                "execution_authority": False,
+            }
         except Exception as exc:
             self._disable(exc)
-            return {
-                "enabled": False,
-                "research_only": True,
-                "execution_authority": False,
-                "promotion_authority": False,
-                "durable_state": True,
-                "error": self.error,
-            }
+            return disabled_payload()
+
         payload["enabled"] = True
         payload["error"] = self.error
         return payload

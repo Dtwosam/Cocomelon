@@ -420,14 +420,26 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "horizons_ms": [60000, 300000, 900000],
             "max_observation_lag_ms": 60000,
             "eligible_open_positions": 1,
-            "excluded_pre_observer_open_positions": 0,
+            "excluded_open_positions": 0,
             "excluded_closed_trades": 0,
             "unmatched_closed_trades": 0,
             "closed_trade_count": 3,
             "error": None,
+            "readiness": {
+                "all_horizons_ready_for_review": False,
+                "min_fresh_observations_per_horizon": 30,
+                "max_non_fresh_fraction": "0.10",
+                "unmatched_closed_trades": 0,
+                "promotion_authority": False,
+                "execution_authority": False,
+            },
             "by_horizon_ms": {
                 "60000": {
                     "horizon_ms": 60000,
+                    "readiness_status": "collecting",
+                    "missing_fresh_observations": 27,
+                    "non_fresh_fraction": "0",
+                    "coverage_quality_ready": True,
                     "observations": 3,
                     "fresh": 3,
                     "stale": 0,
@@ -488,6 +500,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
                 "300000": {
                     "horizon_ms": 300000,
+                    "readiness_status": "collecting",
+                    "missing_fresh_observations": 28,
+                    "non_fresh_fraction": "0.3333333333333333333333333333",
+                    "coverage_quality_ready": False,
                     "observations": 2,
                     "fresh": 2,
                     "stale": 1,
@@ -506,6 +522,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
                 "900000": {
                     "horizon_ms": 900000,
+                    "readiness_status": "collecting",
+                    "missing_fresh_observations": 29,
+                    "non_fresh_fraction": "0",
+                    "coverage_quality_ready": True,
                     "observations": 1,
                     "fresh": 1,
                     "stale": 0,
@@ -805,17 +825,22 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "allMids_mid_px" in output
     assert "completed prospective trades / excluded / unmatched closes" in output
     assert "`3 / 0 / 0`" in output
+    assert "evidence gate:" in output
+    assert "`30` fresh observations per horizon" in output
+    assert "max non-fresh `0.10`" in output
+    assert "all horizons ready for review: `false`" in output
     assert (
-        "| 1m | 3 | 0 | 0 | 0 | 2 | 1 | 30 | 0.06 | "
-        "800ms | 1400ms |"
+        "| 1m | collecting | 3 | 27 | 0 | ok | 0 | 0 | 0 | "
+        "2 | 1 | 30 | 0.06 | 800ms | 1400ms |"
     ) in output
     assert (
-        "| 5m | 2 | 1 | 0 | 0 | 1 | 1 | 20 | 0.04 | "
-        "1000ms | 1600ms |"
+        "| 5m | collecting | 2 | 28 | "
+        "0.3333333333333333333333333333 | collecting | 1 | 0 | 0 | "
+        "1 | 1 | 20 | 0.04 | 1000ms | 1600ms |"
     ) in output
     assert (
-        "| 15m | 1 | 0 | 2 | 0 | 1 | 0 | 50 | 0.1 | "
-        "500ms | 500ms |"
+        "| 15m | collecting | 1 | 29 | 0 | ok | 0 | 2 | 0 | "
+        "1 | 0 | 50 | 0.1 | 500ms | 500ms |"
     ) in output
     assert "long: n=2, meanR=-0.01, meanbps=-5" in output
     assert "short: n=1, meanR=0.2, meanbps=100" in output

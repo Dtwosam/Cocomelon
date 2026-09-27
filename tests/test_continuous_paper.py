@@ -147,6 +147,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"opening_rank_count": self.opening_rank_count' in source
     assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
     assert '"entry_markout": entry_markout' in source
+    assert "entry_mid_markout_readiness(payload)" in source
+    assert '"min_fresh_observations_per_horizon"' in source
+    assert '"max_non_fresh_fraction"' in source
     assert "entry_markout_summary(" in source
     assert "entry_markout_readiness(payload)" in source
     assert '"min_observations_per_horizon"' in source
@@ -273,6 +276,39 @@ def test_entry_mid_markout_shadow_sink_fails_open() -> None:
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: mid shadow boom"
+
+
+def test_entry_mid_markout_readiness_failure_is_fail_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Shadow:
+        def summary_payload(
+            self,
+            *_args: object,
+        ) -> dict[str, object]:
+            return {"fixture": True}
+
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("mid readiness boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.entry_mid_markout_readiness",
+        fail,
+    )
+    sink = _ContinuousEntryMidMarkoutSink(
+        Shadow(),  # type: ignore[arg-type]
+    )
+
+    payload = sink.summary_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert sink.shadow is None
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: mid readiness boom"
 
 
 def test_entry_mid_markout_restore_failure_is_fail_open(

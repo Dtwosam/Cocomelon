@@ -1172,3 +1172,20 @@ A denser research-only entry-timing observer now measures public mid-price movem
 This shadow uses public midpoint observations. It is not a mark-price claim, an executable fill simulation, an entry filter, or promotion evidence. The authoritative strategy, scanner, risk engine, paper execution, stops, accounting, and live-order lock remain unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### allMids markout evidence-quality readiness boundary — 2026-09-27
+
+The prospective allMids 1m / 5m / 15m entry markout shadow now has a frozen evidence-quality gate before any timing rule can be reviewed.
+
+Each horizon remains `collecting` until all of the following are true:
+
+- at least 30 fresh allMids observations exist at that horizon;
+- among trades that reached the horizon, the combined stale + missing-at-close fraction is at most 10%;
+- decision-fact attribution misses are zero.
+
+The shadow as a whole is `ready_for_review` only when all three horizons meet those conditions and unmatched closed trades are zero. Trades that close before a horizon remain censored and do not count against coverage quality.
+
+This gate is deliberately economic-blind: positive and negative markouts count equally. Reaching the gate grants neither promotion authority nor execution authority and does not choose an entry delay, reject trades, change scanner ranking, or alter paper execution.
+
+**LIVE TRADING: DISABLED.**
