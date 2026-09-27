@@ -138,6 +138,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"profit_lock_execution_shadow": (' in source
     assert "profit_lock_execution_shadow.shadow.state_payload()" in source
     assert "profit_lock_execution_readiness(payload)" in source
+    assert "reconcile_open_positions(" in source
+    assert '"lineage_mismatch_closed_trades"' in source
+    assert '"orphaned_restored_positions"' in source
     assert '"min_economically_evaluated_trades_per_rule"' in source
     assert '"min_simulated_full_closes_per_rule"' in source
     assert (

@@ -340,6 +340,11 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
                 f"`{raw.get('closed_outcome_count', 0)} / "
                 f"{raw.get('excluded_closed_trades', 0)}`"
             ),
+            (
+                "- lineage-mismatch closes / orphaned restored positions: "
+                f"`{raw.get('lineage_mismatch_closed_trades', 0)} / "
+                f"{raw.get('orphaned_restored_positions', 0)}`"
+            ),
         ]
     )
     readiness = raw.get("readiness", {})
@@ -969,6 +974,11 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
                 f"`{raw.get('closed_trade_count', 0)} / "
                 f"{raw.get('excluded_closed_trades', 0)} / "
                 f"{raw.get('unmatched_closed_trades', 0)}`"
+            ),
+            (
+                "- lineage-mismatch closes / orphaned restored positions: "
+                f"`{raw.get('lineage_mismatch_closed_trades', 0)} / "
+                f"{raw.get('orphaned_restored_positions', 0)}`"
             ),
             (
                 "- evidence gate: "

@@ -352,3 +352,44 @@ def test_execution_shadow_rejects_config_mismatch_on_restore() -> None:
         match="config mismatch",
     ):
         different.restore_state(state)
+
+
+def test_execution_shadow_contains_closed_trade_lineage_mismatch() -> None:
+    tracked = _position()
+    shadow = _shadow()
+    shadow.observe_mark(
+        (tracked,),
+        _mark("102", 1_500),
+        now_ms=1_500,
+    )
+    mismatched = _position(quantity="2", planned_risk="20")
+
+    shadow.record_closed_trade(_trade(mismatched))
+
+    summary = shadow.summary_payload()
+    assert summary["closed_outcome_count"] == 0
+    assert summary["lineage_mismatch_closed_trades"] == 1
+
+
+def test_execution_shadow_reconciles_orphaned_restored_position() -> None:
+    position = _position()
+    shadow = _shadow()
+    shadow.observe_mark(
+        (position,),
+        _mark("102", 1_500),
+        now_ms=1_500,
+    )
+
+    restored = _shadow(started_at_ms=99_999)
+    restored.restore_state(shadow.state_payload())
+    restored.reconcile_open_positions(())
+
+    summary = restored.summary_payload()
+    assert summary["eligible_open_positions"] == 0
+    assert summary["orphaned_restored_positions"] == 1
+    round_trip = _shadow(started_at_ms=99_999)
+    round_trip.restore_state(restored.state_payload())
+    assert (
+        round_trip.summary_payload()["orphaned_restored_positions"]
+        == 1
+    )

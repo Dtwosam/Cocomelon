@@ -92,6 +92,8 @@ class EntryMidMarkoutHorizonReadiness:
 class EntryMidMarkoutReadiness:
     horizons: tuple[EntryMidMarkoutHorizonReadiness, ...]
     unmatched_closed_trades: int
+    lineage_mismatch_closed_trades: int
+    orphaned_restored_positions: int
     all_horizons_ready_for_review: bool
     promotion_authority: bool = False
     execution_authority: bool = False
@@ -103,12 +105,18 @@ class EntryMidMarkoutReadiness:
             raise ValueError(
                 "allMids readiness horizons must match protocol"
             )
-        if self.unmatched_closed_trades < 0:
+        if (
+            self.unmatched_closed_trades < 0
+            or self.lineage_mismatch_closed_trades < 0
+            or self.orphaned_restored_positions < 0
+        ):
             raise ValueError(
-                "unmatched_closed_trades must be non-negative"
+                "research integrity counters must be non-negative"
             )
         expected = (
             self.unmatched_closed_trades == 0
+            and self.lineage_mismatch_closed_trades == 0
+            and self.orphaned_restored_positions == 0
             and all(
                 item.status
                 is EntryMidMarkoutReadinessStatus.READY_FOR_REVIEW
@@ -249,12 +257,40 @@ def entry_mid_markout_readiness(
         summary,
         "unmatched_closed_trades",
     )
+    lineage_raw = summary.get(
+        "lineage_mismatch_closed_trades",
+        0,
+    )
+    orphaned_raw = summary.get(
+        "orphaned_restored_positions",
+        0,
+    )
+    if (
+        isinstance(lineage_raw, bool)
+        or not isinstance(lineage_raw, int)
+        or lineage_raw < 0
+    ):
+        raise EntryMidMarkoutReadinessError(
+            "lineage_mismatch_closed_trades must be non-negative integer"
+        )
+    if (
+        isinstance(orphaned_raw, bool)
+        or not isinstance(orphaned_raw, int)
+        or orphaned_raw < 0
+    ):
+        raise EntryMidMarkoutReadinessError(
+            "orphaned_restored_positions must be non-negative integer"
+        )
     resolved = tuple(horizons)
     return EntryMidMarkoutReadiness(
         horizons=resolved,
         unmatched_closed_trades=unmatched_closed,
+        lineage_mismatch_closed_trades=lineage_raw,
+        orphaned_restored_positions=orphaned_raw,
         all_horizons_ready_for_review=(
             unmatched_closed == 0
+            and lineage_raw == 0
+            and orphaned_raw == 0
             and all(
                 item.status
                 is EntryMidMarkoutReadinessStatus.READY_FOR_REVIEW
