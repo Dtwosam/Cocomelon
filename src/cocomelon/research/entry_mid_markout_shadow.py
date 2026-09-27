@@ -824,9 +824,7 @@ class EntryMidMarkoutShadow:
                 ENTRY_MID_MARKOUT_MAX_LAG_MS
             ),
             "eligible_open_positions": eligible_open,
-            "excluded_pre_observer_open_positions": (
-                excluded_open
-            ),
+            "excluded_open_positions": excluded_open,
             "excluded_closed_trades": (
                 self._excluded_closed_trades
             ),
