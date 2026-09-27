@@ -418,7 +418,15 @@ def delayed_entry_fixed_schedule_portfolio(
             ),
         ).equity_before
     )
-    actual_overlap = int(actual["overlap_openings"])
+    raw_actual_overlap = actual["overlap_openings"]
+    if isinstance(raw_actual_overlap, bool) or not isinstance(
+        raw_actual_overlap,
+        int,
+    ):
+        raise DelayedEntryFixedSchedulePortfolioError(
+            "actual overlap count must be an integer"
+        )
+    actual_overlap = raw_actual_overlap
 
     ready = (
         len(outcomes) >= MIN_CLOSED_SHADOW_OUTCOMES
