@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -116,6 +117,17 @@ def _plan(trade: TradeJournalEntry) -> PaperOrderPlan:
     )
 
 
+def _trade_with_canonical_plan(
+    trade: TradeJournalEntry,
+) -> tuple[TradeJournalEntry, PaperOrderPlan]:
+    provisional = _plan(trade)
+    resolved = replace(
+        trade,
+        opening_plan_id=provisional.plan_id,
+    )
+    return resolved, _plan(resolved)
+
+
 def _outcome(
     trade: TradeJournalEntry,
     *,
@@ -148,33 +160,39 @@ def test_fixed_schedule_portfolio_tracks_overlap_exposure_and_drawdown(
 ) -> None:
     journal = JournalStore(tmp_path / "journal.sqlite3")
     try:
-        first = _trade(
-            suffix="first",
-            direction=Direction.LONG,
-            opened_at_ms=100_000,
-            closed_at_ms=400_000,
-            exit_price="102",
+        first, first_plan = _trade_with_canonical_plan(
+            _trade(
+                suffix="first",
+                direction=Direction.LONG,
+                opened_at_ms=100_000,
+                closed_at_ms=400_000,
+                exit_price="102",
+            )
         )
-        second = _trade(
-            suffix="second",
-            direction=Direction.SHORT,
-            opened_at_ms=130_000,
-            closed_at_ms=430_000,
-            exit_price="98",
+        second, second_plan = _trade_with_canonical_plan(
+            _trade(
+                suffix="second",
+                direction=Direction.SHORT,
+                opened_at_ms=130_000,
+                closed_at_ms=430_000,
+                exit_price="98",
+            )
         )
-        third = _trade(
-            suffix="third",
-            direction=Direction.LONG,
-            opened_at_ms=160_000,
-            closed_at_ms=460_000,
-            exit_price="98",
+        third, third_plan = _trade_with_canonical_plan(
+            _trade(
+                suffix="third",
+                direction=Direction.LONG,
+                opened_at_ms=160_000,
+                closed_at_ms=460_000,
+                exit_price="98",
+            )
         )
         for trade in (first, second, third):
             journal.record_trade(trade)
 
         plans = {
-            trade.opening_plan_id: _plan(trade)
-            for trade in (first, second, third)
+            plan.plan_id: plan
+            for plan in (first_plan, second_plan, third_plan)
         }
         result = delayed_entry_fixed_schedule_portfolio(
             journal,
