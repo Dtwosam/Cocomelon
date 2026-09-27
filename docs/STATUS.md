@@ -1342,3 +1342,17 @@ The review gate is frozen at 30 prospective eligible closed trades and 20 full d
 This study has no execution or promotion authority. It does not delay the real paper entry, alter position size, change stops/risk, or submit an order.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry original-stop lineage hardening — 2026-09-27
+
+The fixed 60-second delayed-entry shadow now resolves its stop from the immutable persisted opening `PaperOrderPlan`, not from the mutable current `PaperPosition.stop_price`.
+
+- a later profit-protection/tightening action cannot rewrite the delayed-entry candidate's original risk geometry;
+- the opening plan must exist, be non-reduce-only, match the position market, and contain a stop;
+- any lineage failure disables only the research shadow and remains visible as a research error;
+- the delayed-entry state schema is bumped to v2, so any v1 state is rejected and restarted prospectively rather than mixed into the corrected protocol.
+
+This changes research integrity only. It does not modify the authoritative paper stop or any order behavior.
+
+**LIVE TRADING: DISABLED.**

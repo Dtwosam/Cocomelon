@@ -24,7 +24,7 @@ ONE: Final = Decimal("1")
 BPS: Final = Decimal("10000")
 DELAY_MS: Final = 60_000
 MAX_DELAY_OBSERVATION_LAG_MS: Final = 60_000
-STATE_SCHEMA_VERSION: Final = 1
+STATE_SCHEMA_VERSION: Final = 2
 MIN_CLOSED_ELIGIBLE_TRADES: Final = 30
 MIN_FULL_DELAYED_FILLS: Final = 20
 
@@ -656,6 +656,8 @@ class DelayedEntryExecutionShadow:
             "durable_state": True,
             "state_restored": self._state_restored,
             "state_restore_error": self._state_restore_error,
+            "state_schema_version": STATE_SCHEMA_VERSION,
+            "started_at_ms": self._started_at_ms,
             "delay_ms": DELAY_MS,
             "max_observation_lag_ms": (
                 MAX_DELAY_OBSERVATION_LAG_MS
