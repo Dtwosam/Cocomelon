@@ -292,6 +292,7 @@ class DelayedEntryExecutionShadow:
         self._outcomes: list[DelayedEntryOutcome] = []
         self._excluded_closed_trades = 0
         self._lineage_mismatch_closed_trades = 0
+        self._orphaned_restored_positions = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -498,6 +499,26 @@ class DelayedEntryExecutionShadow:
         )
         state.delayed_fee = simulation.attempt.fee
 
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        current_ids = {
+            position.opening_plan_id
+            for position in positions
+        }
+        if self._state_restored:
+            orphaned = tuple(
+                opening_plan_id
+                for opening_plan_id in self._open
+                if opening_plan_id not in current_ids
+            )
+            for opening_plan_id in orphaned:
+                del self._open[opening_plan_id]
+                self._orphaned_restored_positions += 1
+        for position in positions:
+            self._state_for_position(position)
+
     def record_closed_trade(
         self,
         trade: TradeJournalEntry,
@@ -625,6 +646,7 @@ class DelayedEntryExecutionShadow:
             len(outcomes) >= MIN_CLOSED_ELIGIBLE_TRADES
             and len(full) >= MIN_FULL_DELAYED_FILLS
             and self._lineage_mismatch_closed_trades == 0
+            and self._orphaned_restored_positions == 0
         )
         return {
             "research_only": True,
@@ -715,6 +737,9 @@ class DelayedEntryExecutionShadow:
             ),
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
+            ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
             ),
             "readiness": {
                 "ready_for_review": ready,
@@ -814,6 +839,9 @@ class DelayedEntryExecutionShadow:
             ),
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
+            ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
             ),
         }
 
@@ -988,7 +1016,11 @@ class DelayedEntryExecutionShadow:
             raw.get("lineage_mismatch_closed_trades"),
             "lineage_mismatch_closed_trades",
         )
-        if excluded < 0 or mismatches < 0:
+        orphaned = _integer(
+            raw.get("orphaned_restored_positions", 0),
+            "orphaned_restored_positions",
+        )
+        if excluded < 0 or mismatches < 0 or orphaned < 0:
             raise DelayedEntryShadowError(
                 "delayed-entry counters must be non-negative"
             )
@@ -998,6 +1030,7 @@ class DelayedEntryExecutionShadow:
         self._outcomes = outcomes
         self._excluded_closed_trades = excluded
         self._lineage_mismatch_closed_trades = mismatches
+        self._orphaned_restored_positions = orphaned
         self._state_restored = True
         self._state_restore_error = None
 
