@@ -1356,3 +1356,18 @@ The fixed 60-second delayed-entry shadow now resolves its stop from the immutabl
 This changes research integrity only. It does not modify the authoritative paper stop or any order behavior.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade outlier robustness sensitivity — 2026-09-27
+
+The continuous-paper live status now includes a deterministic sensitivity check for winner concentration.
+
+- it reports the largest realized winner and the top-one/top-two shares of gross profit;
+- it recomputes net PnL, mean/median net R, and profit factor after removing the single best winner and the two best winners from the same closed-trade sample;
+- it explicitly reports whether positive net PnL survives those removals;
+- it does not invent replacement trades, alter chronology, resample outcomes, or claim a portfolio counterfactual;
+- review readiness remains `collecting` until at least 30 closed paper trades.
+
+This diagnostic has no execution or promotion authority. Its purpose is to prevent a small number of outlier winners from being mistaken for a durable edge.
+
+**LIVE TRADING: DISABLED.**
