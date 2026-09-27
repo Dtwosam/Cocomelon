@@ -125,6 +125,10 @@ def test_drawdown_summary_keeps_sampled_and_realized_scopes_separate() -> None:
     )
     assert sampled["checkpoint_seconds"] == 30
     assert sampled["observation_count"] == 2
+    assert sampled["first_timestamp_ms"] == 10_000
+    assert sampled["last_timestamp_ms"] == 40_000
+    assert sampled["peak_timestamp_ms"] == 10_000
+    assert sampled["mean_observation_interval_ms"] == 30_000
     assert sampled["max_drawdown_amount"] == "2"
     assert realized["ending_realized_equity"] == "101"
     assert result["execution_authority"] is False
