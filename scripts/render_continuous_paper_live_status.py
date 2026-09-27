@@ -440,6 +440,111 @@ def _profit_lock_execution_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry execution shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry execution telemetry in this heartbeat._"
+        )
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    lines.append(
+        "- durable across workers: "
+        f"`{str(bool(raw.get('durable_state'))).lower()}` · "
+        "restored this worker: "
+        f"`{str(bool(raw.get('state_restored'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            (
+                "- frozen delay / max observation lag: "
+                f"`{raw.get('delay_ms', 0)}ms / "
+                f"{raw.get('max_observation_lag_ms', 0)}ms`"
+            ),
+            (
+                "- eligible / excluded open positions: "
+                f"`{raw.get('eligible_open_positions', 0)} / "
+                f"{raw.get('excluded_open_positions', 0)}`"
+            ),
+            (
+                "- closed eligible / excluded closes: "
+                f"`{raw.get('closed_eligible_trades', 0)} / "
+                f"{raw.get('excluded_closed_trades', 0)}`"
+            ),
+            (
+                "- full / partial / no-fill / rejected / expired: "
+                f"`{raw.get('full_delayed_fills', 0)} / "
+                f"{raw.get('partial_delayed_fills', 0)} / "
+                f"{raw.get('no_fills', 0)} / "
+                f"{raw.get('rejections', 0)} / "
+                f"{raw.get('expired', 0)}`"
+            ),
+            (
+                "- censored-before-delay / missing delayed book: "
+                f"`{raw.get('censored_before_delay', 0)} / "
+                f"{raw.get('missing_delayed_book', 0)}`"
+            ),
+            (
+                "- better / worse price among full delayed fills: "
+                f"`{raw.get('better_price_full_fills', 0)} / "
+                f"{raw.get('worse_price_full_fills', 0)}`"
+            ),
+            (
+                "- mean signed price improvement / gross-R improvement: "
+                f"`{raw.get('mean_signed_price_improvement_bps')}` bps / "
+                f"`{raw.get('mean_gross_r_improvement')}` R"
+            ),
+            (
+                "- lineage-mismatch closes / orphaned restored positions: "
+                f"`{raw.get('lineage_mismatch_closed_trades', 0)} / "
+                f"{raw.get('orphaned_restored_positions', 0)}`"
+            ),
+            (
+                "- evidence gate (closed eligible / full delayed fills): "
+                f"`{readiness.get('min_closed_eligible_trades', 0)} / "
+                f"{readiness.get('min_full_delayed_fills', 0)}`"
+            ),
+            (
+                "- still needed closed / full: "
+                f"`{readiness.get('missing_closed_eligible_trades', 0)} / "
+                f"{readiness.get('missing_full_delayed_fills', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_One fixed +60s visible-book IOC shadow using the original "
+                "paper size, stop, and risk ceiling. Full fills compare entry "
+                "price only; it does not claim portfolio PnL or alter the "
+                "actual paper entry._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -1594,6 +1699,16 @@ def _research_readiness_board_lines(
         f"orphan={execution.get('orphaned_restored_positions', 0)}"
     )
 
+    delayed = mapping("delayed_entry_execution_shadow")
+    delayed_gate = readiness(delayed)
+    delayed_ready = bool(
+        delayed_gate.get("ready_for_review")
+    )
+    delayed_integrity = (
+        f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
+        f"orphan={delayed.get('orphaned_restored_positions', 0)}"
+    )
+
     entry_filter = mapping("prospective_entry_filter")
     entry_filter_gate = readiness(entry_filter)
     entry_filter_ready = bool(
@@ -1661,6 +1776,17 @@ def _research_readiness_board_lines(
             status(execution, ready=execution_ready),
             f"closed={execution.get('closed_outcome_count', 0)}",
             execution_integrity,
+        ),
+        (
+            "60s delayed entry",
+            status(delayed, ready=delayed_ready),
+            (
+                f"closed={delayed.get('closed_eligible_trades', 0)}, "
+                f"full={delayed.get('full_delayed_fills', 0)}, "
+                f"better={delayed.get('better_price_full_fills', 0)}, "
+                f"worse={delayed.get('worse_price_full_fills', 0)}"
+            ),
+            delayed_integrity,
         ),
         (
             "LONG+trend filter",
@@ -1869,6 +1995,11 @@ def render_live_status(
     lines.extend(
         _profit_lock_execution_shadow_lines(
             payload.get("profit_lock_execution_shadow")
+        )
+    )
+    lines.extend(
+        _delayed_entry_execution_shadow_lines(
+            payload.get("delayed_entry_execution_shadow")
         )
     )
     lines.extend(
