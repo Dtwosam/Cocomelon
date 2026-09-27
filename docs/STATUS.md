@@ -1527,3 +1527,19 @@ The existing fixed +60s delayed-entry execution shadow now has a second derived 
 This is a **trade-contribution estimate**, not a portfolio counterfactual. A real 60-second delayed entry could change stop timing, funding exposure, later risk capacity, concurrent positions, missed entries, or replacement opportunities. The study therefore cannot authorize an execution change.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-paper queued successor handoff — 2026-09-27
+
+The continuous-paper workflow now minimizes worker restart gaps without allowing concurrent paper writers.
+
+- the workflow uses one repository-level non-cancelling concurrency group, so push/schedule/manual successors queue behind the active continuous-paper run instead of racing it;
+- the duplicate-run guard blocks only another genuinely `in_progress` worker; merely queued/pending successors no longer cause the starting run to skip;
+- after the trader exits successfully and the durable state artifact is uploaded, the **same paper job** dispatches the exact successor run with the predecessor run ID and attempt;
+- the old separate `continue` job is removed, eliminating an extra hosted-runner queue hop between durable-state upload and successor dispatch;
+- the queued exact successor cannot begin until the active concurrency holder finishes, preserving the single-writer account-state boundary;
+- watchdog/schedule/push runs remain available as recovery paths and still restore only trusted main-branch artifacts.
+
+This changes workflow orchestration only. It does not alter market scanning, strategy decisions, position management, risk, fills, accounting, or execution authority.
+
+**LIVE TRADING: DISABLED.**
