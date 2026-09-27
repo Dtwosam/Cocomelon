@@ -28,6 +28,8 @@ MIN_PROSPECTIVE_CLOSED_TRADES: Final = 30
 MIN_CAUSAL_EVALUABLE_TRADES: Final = 20
 MIN_SELECT_60S_TRADES: Final = 5
 MIN_SELECT_120S_TRADES: Final = 5
+TEMPORAL_BLOCKS: Final = 4
+MIN_TEMPORAL_TRADES_PER_BLOCK: Final = 5
 
 
 class FillAwareDelaySelectorError(RuntimeError):
@@ -374,6 +376,263 @@ def _summary(
     }
 
 
+def _edge_robustness(
+    items: tuple[FillAwareDelayOutcome, ...],
+    *,
+    field: str,
+) -> dict[str, object]:
+    values: list[Decimal] = []
+    by_market: dict[str, Decimal] = {}
+    for item in items:
+        value = getattr(item, field)
+        if not isinstance(value, Decimal):
+            raise FillAwareDelaySelectorError(
+                "fill-aware robustness field must be Decimal"
+            )
+        values.append(value)
+        by_market[item.market] = (
+            by_market.get(item.market, ZERO) + value
+        )
+
+    typed = tuple(values)
+    total = sum(typed, ZERO)
+    abs_trade_total = sum(
+        (abs(value) for value in typed),
+        ZERO,
+    )
+    abs_market_total = sum(
+        (abs(value) for value in by_market.values()),
+        ZERO,
+    )
+    largest_trade = (
+        None
+        if not typed
+        else max(typed, key=abs)
+    )
+    largest_market = (
+        None
+        if not by_market
+        else max(
+            by_market.items(),
+            key=lambda item: abs(item[1]),
+        )
+    )
+    leave_one_trade_out = tuple(
+        total - value
+        for value in typed
+    )
+    leave_one_market_out = tuple(
+        total - value
+        for value in by_market.values()
+    )
+    return {
+        "trades": len(items),
+        "markets": len(by_market),
+        "total_delta_pnl": str(total),
+        "largest_abs_trade_contribution": (
+            None
+            if largest_trade is None
+            else str(largest_trade)
+        ),
+        "largest_abs_trade_share": (
+            None
+            if largest_trade is None
+            or abs_trade_total == ZERO
+            else str(abs(largest_trade) / abs_trade_total)
+        ),
+        "leave_one_trade_out_min_delta": (
+            None
+            if not leave_one_trade_out
+            else str(min(leave_one_trade_out))
+        ),
+        "positive_after_any_single_trade_removed": (
+            None
+            if len(items) < 2
+            else min(leave_one_trade_out) > ZERO
+        ),
+        "largest_abs_market": (
+            None
+            if largest_market is None
+            else largest_market[0]
+        ),
+        "largest_abs_market_contribution": (
+            None
+            if largest_market is None
+            else str(largest_market[1])
+        ),
+        "largest_abs_market_share": (
+            None
+            if largest_market is None
+            or abs_market_total == ZERO
+            else str(
+                abs(largest_market[1]) / abs_market_total
+            )
+        ),
+        "leave_one_market_out_min_delta": (
+            None
+            if not leave_one_market_out
+            else str(min(leave_one_market_out))
+        ),
+        "positive_after_any_single_market_removed": (
+            None
+            if len(by_market) < 2
+            else min(leave_one_market_out) > ZERO
+        ),
+    }
+
+
+def _block_trade_count(
+    block: dict[str, object],
+) -> int:
+    value = block.get("trades")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise FillAwareDelaySelectorError(
+            "fill-aware temporal block trade count is invalid"
+        )
+    return value
+
+
+def _temporal_robustness(
+    items: tuple[FillAwareDelayOutcome, ...],
+    trades: dict[str, TradeJournalEntry],
+) -> dict[str, object]:
+    if not items:
+        return {
+            "chronological_blocks": [],
+            "full_blocks": 0,
+            "positive_blocks_vs_60s": 0,
+            "positive_blocks_vs_120s": 0,
+            "all_full_blocks_positive_vs_60s": False,
+            "all_full_blocks_positive_vs_120s": False,
+            "configured_blocks": TEMPORAL_BLOCKS,
+            "min_trades_per_full_block": (
+                MIN_TEMPORAL_TRADES_PER_BLOCK
+            ),
+        }
+
+    try:
+        ordered = tuple(
+            sorted(
+                items,
+                key=lambda item: (
+                    trades[item.trade_id].closed_at_ms,
+                    trades[item.trade_id].opened_at_ms,
+                    item.trade_id,
+                ),
+            )
+        )
+    except KeyError as exc:
+        raise FillAwareDelaySelectorError(
+            "fill-aware temporal robustness is missing journal trade"
+        ) from exc
+
+    quotient, remainder = divmod(
+        len(ordered),
+        TEMPORAL_BLOCKS,
+    )
+    blocks: list[dict[str, object]] = []
+    start = 0
+    for index in range(TEMPORAL_BLOCKS):
+        count = quotient + (1 if index < remainder else 0)
+        stop = start + count
+        block_items = ordered[start:stop]
+        start = stop
+        if not block_items:
+            continue
+        first_trade = trades[block_items[0].trade_id]
+        last_trade = trades[block_items[-1].trade_id]
+        versus_60s = sum(
+            (
+                item.selected_minus_60s_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        versus_120s = sum(
+            (
+                item.selected_minus_120s_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        versus_actual = sum(
+            (
+                item.selected_minus_actual_pnl
+                for item in block_items
+            ),
+            ZERO,
+        )
+        blocks.append(
+            {
+                "block": index + 1,
+                "trades": len(block_items),
+                "first_closed_at_ms": (
+                    first_trade.closed_at_ms
+                ),
+                "last_closed_at_ms": (
+                    last_trade.closed_at_ms
+                ),
+                "selected_60s": sum(
+                    1
+                    for item in block_items
+                    if item.selected_delay_ms == BASE_DELAY_MS
+                ),
+                "selected_120s": sum(
+                    1
+                    for item in block_items
+                    if item.selected_delay_ms
+                    == CHALLENGER_DELAY_MS
+                ),
+                "fill_aware_minus_60s_pnl": str(
+                    versus_60s
+                ),
+                "fill_aware_minus_120s_pnl": str(
+                    versus_120s
+                ),
+                "fill_aware_minus_actual_pnl": str(
+                    versus_actual
+                ),
+                "positive_vs_60s": versus_60s > ZERO,
+                "positive_vs_120s": versus_120s > ZERO,
+            }
+        )
+
+    full_blocks = tuple(
+        block
+        for block in blocks
+        if _block_trade_count(block)
+        >= MIN_TEMPORAL_TRADES_PER_BLOCK
+    )
+    positive_60 = sum(
+        1
+        for block in full_blocks
+        if block["positive_vs_60s"] is True
+    )
+    positive_120 = sum(
+        1
+        for block in full_blocks
+        if block["positive_vs_120s"] is True
+    )
+    return {
+        "chronological_blocks": blocks,
+        "full_blocks": len(full_blocks),
+        "positive_blocks_vs_60s": positive_60,
+        "positive_blocks_vs_120s": positive_120,
+        "all_full_blocks_positive_vs_60s": (
+            len(full_blocks) == TEMPORAL_BLOCKS
+            and positive_60 == TEMPORAL_BLOCKS
+        ),
+        "all_full_blocks_positive_vs_120s": (
+            len(full_blocks) == TEMPORAL_BLOCKS
+            and positive_120 == TEMPORAL_BLOCKS
+        ),
+        "configured_blocks": TEMPORAL_BLOCKS,
+        "min_trades_per_full_block": (
+            MIN_TEMPORAL_TRADES_PER_BLOCK
+        ),
+    }
+
+
 def fill_aware_delay_selector_summary(
     journal: JournalStore,
     base_outcomes: tuple[DelayedEntryOutcome, ...],
@@ -490,6 +749,22 @@ def fill_aware_delay_selector_summary(
                 )
             )
             for source in sorted(EVALUABLE_SOURCES)
+        },
+        "robustness": {
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "fill_aware_minus_60s": _edge_robustness(
+                items,
+                field="selected_minus_60s_pnl",
+            ),
+            "fill_aware_minus_120s": _edge_robustness(
+                items,
+                field="selected_minus_120s_pnl",
+            ),
+            "temporal": _temporal_robustness(
+                items,
+                trades,
+            ),
         },
         "readiness": {
             "ready_for_review": ready,
