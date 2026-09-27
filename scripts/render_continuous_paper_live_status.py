@@ -2025,6 +2025,125 @@ def _closed_trade_stability_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_concentration_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade concentration",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No concentration telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    market = raw.get("market", {})
+    strategy = raw.get("lead_strategy", {})
+    seven_day = raw.get("seven_day", {})
+    if not isinstance(market, dict):
+        market = {}
+    if not isinstance(strategy, dict):
+        strategy = {}
+    if not isinstance(seven_day, dict):
+        seven_day = {}
+
+    lines.extend(
+        [
+            (
+                "- closed trades / review gate / still needed: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{readiness.get('min_closed_trades', 0)} / "
+                f"{readiness.get('missing_closed_trades', 0)}`"
+            ),
+            (
+                "- strategy attribution misses: "
+                f"`{raw.get('strategy_attribution_misses', 0)}`"
+            ),
+            (
+                "- market max positive-PnL share / formal limit: "
+                f"`{market.get('max_positive_pnl_share')} / "
+                f"{market.get('formal_limit')}` · group "
+                f"`{market.get('max_positive_group')}`"
+            ),
+            (
+                "- current sample within market limit: "
+                f"`{market.get('within_formal_limit_current_sample')}`"
+            ),
+            (
+                "- 7d max positive-PnL share / formal limit: "
+                f"`{seven_day.get('max_positive_pnl_share')} / "
+                f"{seven_day.get('formal_limit')}` · bucket "
+                f"`{seven_day.get('max_positive_group')}`"
+            ),
+            (
+                "- current sample within 7d limit: "
+                f"`{seven_day.get('within_formal_limit_current_sample')}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    def add_groups(label: str, raw_groups: dict[str, object]) -> None:
+        groups = raw_groups.get("groups", [])
+        if not isinstance(groups, list) or not groups:
+            return
+        lines.extend(
+            [
+                "",
+                f"#### {label}",
+                "",
+                "| Group | Trades | W | L | Net PnL | Positive share |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for item in groups:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                (
+                    "| {group} | {trades} | {wins} | {losses} | "
+                    "{pnl} | {share} |"
+                ).format(
+                    group=item.get("group"),
+                    trades=item.get("trades", 0),
+                    wins=item.get("wins", 0),
+                    losses=item.get("losses", 0),
+                    pnl=item.get("net_pnl"),
+                    share=item.get("positive_group_pnl_share"),
+                )
+            )
+
+    add_groups("Market concentration", market)
+    add_groups("Lead-strategy concentration", strategy)
+    add_groups("Seven-day concentration", seven_day)
+    lines.extend(
+        [
+            "",
+            (
+                "_This uses the formal evaluation definition: net PnL is "
+                "first aggregated by group, then only positive-contributing "
+                "groups form the concentration denominator. Current-sample "
+                "limit checks are diagnostic only until evidence gates mature._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2291,6 +2410,15 @@ def _research_readiness_board_lines(
         )
     ).lower()
 
+    concentration = mapping("closed_trade_concentration")
+    concentration_gate = readiness(concentration)
+    concentration_ready = bool(
+        concentration_gate.get("ready_for_review")
+    )
+    concentration_market = concentration.get("market", {})
+    if not isinstance(concentration_market, dict):
+        concentration_market = {}
+
     rows = (
         (
             "fixed profit-lock",
@@ -2392,6 +2520,21 @@ def _research_readiness_board_lines(
             (
                 f"full_blocks={trade_stability_state.get('full_blocks', 0)}, "
                 f"all_pnl_positive={trade_stability_all_pnl_positive}"
+            ),
+        ),
+        (
+            "market concentration",
+            status(
+                concentration,
+                ready=concentration_ready,
+            ),
+            (
+                f"closed={concentration.get('closed_trades', 0)}, "
+                f"need={concentration_gate.get('missing_closed_trades', 0)}"
+            ),
+            (
+                f"max_share={concentration_market.get('max_positive_pnl_share')}, "
+                f"limit={concentration_market.get('formal_limit')}"
             ),
         ),
     )
@@ -2703,6 +2846,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_stability_lines(
             payload.get("closed_trade_stability")
+        )
+    )
+    lines.extend(
+        _closed_trade_concentration_lines(
+            payload.get("closed_trade_concentration")
         )
     )
     lines.extend(["", "### Closed trade performance", ""])
