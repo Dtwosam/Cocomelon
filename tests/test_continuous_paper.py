@@ -158,16 +158,25 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert (
         'DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (' in source
     )
+    assert (
+        'DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (' in source
+    )
     assert "position_research_observer=(" in source
     assert "_CompositePositionResearchObserver(" in source
     assert "opening_plan_loader=execution.store.load_plan" in source
     assert "_position_with_original_stop(" in source
     assert '"profit_lock_execution_shadow": (' in source
     assert '"delayed_entry_execution_shadow": (' in source
+    assert '"delayed_entry_120s_execution_shadow": (' in source
+    assert '"delayed_entry_pair": delayed_entry_pair' in source
     assert '"delayed_entry_same_exit": delayed_entry_same_exit' in source
     assert "delayed_entry_same_exit_contribution(" in source
     assert "profit_lock_execution_shadow.shadow.state_payload()" in source
     assert "delayed_entry_execution_shadow.shadow.state_payload()" in source
+    assert (
+        "delayed_entry_120s_execution_shadow.shadow.state_payload()"
+        in source
+    )
     assert "profit_lock_execution_readiness(payload)" in source
     assert "reconcile_open_positions(" in source
     assert '"lineage_mismatch_closed_trades"' in source
@@ -896,6 +905,27 @@ def test_delayed_entry_execution_shadow_restore_failure_is_fail_open(
     )
 
     payload = shadow.summary_payload()
+    assert payload["state_restored"] is False
+    assert payload["state_restore_error"] is not None
+    assert "JSONDecodeError" in str(payload["state_restore_error"])
+
+
+def test_120s_delayed_entry_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "delayed-entry-120s-execution-shadow-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    shadow = _restore_delayed_entry_execution_shadow(
+        path,
+        PaperExecutionConfig(),
+        started_at_ms=789,
+        delay_ms=120_000,
+        max_observation_lag_ms=60_000,
+    )
+
+    payload = shadow.summary_payload()
+    assert payload["delay_ms"] == 120_000
     assert payload["state_restored"] is False
     assert payload["state_restore_error"] is not None
     assert "JSONDecodeError" in str(payload["state_restore_error"])
