@@ -91,6 +91,13 @@ class ClosedLifecycleSink(Protocol):
     ) -> bool: ...
 
 
+class OpeningResearchObserver(Protocol):
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None: ...
+
+
 class PositionResearchObserver(Protocol):
     def observe_mark(
         self,
@@ -203,6 +210,7 @@ class BaselineReplayPipeline:
         feature_snapshot_sink: FeatureSnapshotSink | None = None,
         opening_lifecycle_sink: OpenLifecycleSink | None = None,
         closed_lifecycle_sink: ClosedLifecycleSink | None = None,
+        opening_research_observer: OpeningResearchObserver | None = None,
         position_research_observer: PositionResearchObserver | None = None,
     ) -> None:
         if not replay_run_id.strip():
@@ -226,6 +234,7 @@ class BaselineReplayPipeline:
         self._feature_snapshot_sink = feature_snapshot_sink
         self._opening_lifecycle_sink = opening_lifecycle_sink
         self._closed_lifecycle_sink = closed_lifecycle_sink
+        self._opening_research_observer = opening_research_observer
         self._position_research_observer = position_research_observer
         self._decision_engine = decision_engine or BaselineDecisionEngine(
             markets,
@@ -694,6 +703,9 @@ class BaselineReplayPipeline:
                 else EquityFactKind.ACCOUNT_UPDATE
             )
         )
+
+        if self._opening_research_observer is not None:
+            self._opening_research_observer.record_opening_trace(trace)
 
         if submission.plan is None or simulation is None or not simulation.fills:
             return tuple(observations)
