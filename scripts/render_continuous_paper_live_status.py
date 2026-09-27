@@ -3149,6 +3149,12 @@ def _research_readiness_board_lines(
     delayed_fill_weighted_ready = bool(
         delayed_fill_weighted_gate.get("ready_for_review")
     )
+    delayed_fill_weighted_overall = delayed_fill_weighted.get(
+        "overall",
+        {},
+    )
+    if not isinstance(delayed_fill_weighted_overall, dict):
+        delayed_fill_weighted_overall = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -3326,7 +3332,7 @@ def _research_readiness_board_lines(
             (
                 f"closed={delayed_fill_weighted.get('closed_shadow_outcomes', 0)}, "
                 f"eval={delayed_fill_weighted.get('evaluated_delayed_attempts', 0)}, "
-                f"fill={mapping('delayed_entry_fill_weighted').get('overall', {}).get('mean_fill_fraction') if isinstance(mapping('delayed_entry_fill_weighted').get('overall', {}), dict) else None}"
+                f"fill={delayed_fill_weighted_overall.get('mean_fill_fraction')}"
             ),
             (
                 f"missing={delayed_fill_weighted.get('missing_journal_trades', 0)}, "
