@@ -1746,6 +1746,11 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
         [
             f"- source: `{raw.get('source', 'unknown')}`",
             (
+                "- R / quantity basis: "
+                f"`{raw.get('risk_basis', 'unknown')}` / "
+                f"`{raw.get('quantity_basis', 'unknown')}`"
+            ),
+            (
                 "- maximum accepted observation lag: "
                 f"`{raw.get('max_observation_lag_ms')}`ms"
             ),
