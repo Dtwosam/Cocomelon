@@ -2573,6 +2573,10 @@ async def run_continuous_paper_session(
             started_at_ms=started_at_ms,
         )
     )
+    drawdown_tracker = _restore_drawdown_tracker(
+        root / DRAWDOWN_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
     if profit_lock_execution_shadow.shadow is not None:
         profit_lock_execution_shadow.shadow.reconcile_open_positions(
             execution.account.positions
@@ -2715,6 +2719,11 @@ async def run_continuous_paper_session(
         await refresh_funding()
 
         def persist_checkpoint() -> None:
+            checkpoint_timestamp_ms = utc_now_ms()
+            drawdown_tracker.observe(
+                execution.account.equity,
+                timestamp_ms=checkpoint_timestamp_ms,
+            )
             trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
             _write_json_atomic(
                 checkpoint_path,
@@ -2756,6 +2765,10 @@ async def run_continuous_paper_session(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
                     entry_mid_markout_shadow.shadow.state_payload(),
                 )
+            _write_json_atomic(
+                root / DRAWDOWN_STATE_FILENAME,
+                drawdown_tracker.state_payload(),
+            )
 
         persist_checkpoint()
         _emit_live_status(
@@ -2769,6 +2782,7 @@ async def run_continuous_paper_session(
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
             entry_mid_markout_shadow,
+            drawdown_tracker,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
             trade_path_capture_error=trade_path_sink.error,
@@ -2783,6 +2797,7 @@ async def run_continuous_paper_session(
             prospective_top10_rank_filter_restore_error=(
                 prospective_top10_rank_filter_restore_error
             ),
+            checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
 
@@ -2923,6 +2938,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     entry_mid_markout_shadow,
+                    drawdown_tracker,
                     prospective_entry_filter_state,
                     prospective_top10_rank_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
@@ -2937,6 +2953,7 @@ async def run_continuous_paper_session(
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
                     ),
+                    checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
 
