@@ -43,6 +43,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/research/account_lifecycle_bridge.py" in source
     assert "src/cocomelon/research/cadence_shadow.py" in source
     assert "src/cocomelon/research/closed_trade_concentration.py" in source
+    assert "src/cocomelon/research/closed_trade_entry_concurrency.py" in source
     assert "src/cocomelon/research/closed_trade_friction.py" in source
     assert "src/cocomelon/research/closed_trade_robustness.py" in source
     assert "src/cocomelon/research/closed_trade_stability.py" in source
@@ -77,6 +78,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/account_lifecycle_bridge.py"' in source
     assert '"src/cocomelon/research/cadence_shadow.py"' in source
     assert '"src/cocomelon/research/closed_trade_concentration.py"' in source
+    assert '"src/cocomelon/research/closed_trade_entry_concurrency.py"' in source
     assert '"src/cocomelon/research/closed_trade_friction.py"' in source
     assert '"src/cocomelon/research/closed_trade_robustness.py"' in source
     assert '"src/cocomelon/research/closed_trade_stability.py"' in source
