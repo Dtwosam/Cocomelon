@@ -2275,6 +2275,15 @@ def _research_readiness_board_lines(
         excursion_gate.get("ready_for_review")
     )
 
+    trade_stability = mapping("closed_trade_stability")
+    trade_stability_gate = readiness(trade_stability)
+    trade_stability_ready = bool(
+        trade_stability_gate.get("ready_for_review")
+    )
+    trade_stability_state = trade_stability.get("stability", {})
+    if not isinstance(trade_stability_state, dict):
+        trade_stability_state = {}
+
     rows = (
         (
             "fixed profit-lock",
@@ -2362,6 +2371,22 @@ def _research_readiness_board_lines(
                 f"need={decision_age.get('still_needed_for_review', 0)}"
             ),
             f"misses={decision_age.get('attribution_misses', 0)}",
+        ),
+        (
+            "closed-trade stability",
+            status(
+                trade_stability,
+                ready=trade_stability_ready,
+            ),
+            (
+                f"closed={trade_stability.get('closed_trades', 0)}, "
+                f"need={trade_stability_gate.get('missing_closed_trades', 0)}"
+            ),
+            (
+                f"full_blocks={trade_stability_state.get('full_blocks', 0)}, "
+                f"all_pnl_positive="
+                f"{str(bool(trade_stability_state.get('all_full_blocks_positive_net_pnl'))).lower()}"
+            ),
         ),
     )
 
