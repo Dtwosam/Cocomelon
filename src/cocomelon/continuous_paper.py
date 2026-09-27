@@ -92,13 +92,13 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.delayed_entry_contribution_decomposition import (
+    delayed_entry_contribution_decomposition,
+)
 from cocomelon.research.delayed_entry_execution_shadow import (
     DELAY_MS,
     MAX_DELAY_OBSERVATION_LAG_MS,
     DelayedEntryExecutionShadow,
-)
-from cocomelon.research.delayed_entry_contribution_decomposition import (
-    delayed_entry_contribution_decomposition,
 )
 from cocomelon.research.delayed_entry_fill_capacity import (
     delayed_entry_fill_capacity_summary,
