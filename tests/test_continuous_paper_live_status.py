@@ -567,6 +567,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "state_restore_error": None,
             "delay_ms": 60000,
             "max_observation_lag_ms": 60000,
+            "stop_source": "persisted_opening_plan",
             "open_tracked_positions": 1,
             "eligible_open_positions": 1,
             "excluded_open_positions": 0,
@@ -1267,6 +1268,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "### 60s delayed-entry execution shadow" in output
     assert "frozen delay / max observation lag" in output
     assert "`60000ms / 60000ms`" in output
+    assert "stop source" in output
+    assert "`persisted_opening_plan`" in output
     assert "closed eligible / excluded closes" in output
     assert "`12 / 1`" in output
     assert "full / partial / no-fill / rejected / expired" in output
