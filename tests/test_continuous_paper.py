@@ -14,6 +14,7 @@ from cocomelon.continuous_paper import (
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
     _closed_trade_friction_payload,
+    _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
@@ -31,12 +32,17 @@ from cocomelon.continuous_paper import (
     _record_payload,
     _RecordPump,
     _restore_cadence_shadow,
+    _restore_delayed_entry_execution_shadow,
     _restore_entry_mid_markout_shadow,
     _restore_profit_lock_execution_shadow,
     _restore_prospective_entry_filter,
     _restore_prospective_top10_rank_filter,
 )
-from cocomelon.domain.execution import PositionAction, PositionActionType
+from cocomelon.domain.execution import (
+    PaperExecutionConfig,
+    PositionAction,
+    PositionActionType,
+)
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -134,9 +140,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert (
         'PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (' in source
     )
+    assert (
+        'DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (' in source
+    )
     assert "position_research_observer=(" in source
+    assert "_CompositePositionResearchObserver(" in source
     assert '"profit_lock_execution_shadow": (' in source
+    assert '"delayed_entry_execution_shadow": (' in source
     assert "profit_lock_execution_shadow.shadow.state_payload()" in source
+    assert "delayed_entry_execution_shadow.shadow.state_payload()" in source
     assert "profit_lock_execution_readiness(payload)" in source
     assert "reconcile_open_positions(" in source
     assert '"lineage_mismatch_closed_trades"' in source
@@ -511,6 +523,50 @@ def test_profit_lock_execution_shadow_sink_fails_open() -> None:
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: shadow boom"
+
+
+def test_delayed_entry_execution_shadow_sink_fails_open() -> None:
+    class FailingShadow:
+        def observe_mark(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("delay shadow boom")
+
+        def summary_payload(self) -> dict[str, object]:
+            return {}
+
+    sink = _ContinuousDelayedEntryExecutionShadowSink(
+        FailingShadow(),  # type: ignore[arg-type]
+    )
+    sink.observe_mark(
+        (),
+        SimpleNamespace(),  # type: ignore[arg-type]
+        now_ms=1,
+    )
+
+    assert sink.shadow is None
+    payload = sink.summary_payload()
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: delay shadow boom"
+
+
+def test_delayed_entry_execution_shadow_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "delayed-entry-execution-shadow-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    shadow = _restore_delayed_entry_execution_shadow(
+        path,
+        PaperExecutionConfig(),
+        started_at_ms=456,
+    )
+
+    payload = shadow.summary_payload()
+    assert payload["state_restored"] is False
+    assert payload["state_restore_error"] is not None
+    assert "JSONDecodeError" in str(payload["state_restore_error"])
 
 
 def test_profit_lock_execution_shadow_restore_failure_is_fail_open(

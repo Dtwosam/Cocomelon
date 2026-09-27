@@ -557,6 +557,43 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 }
             ],
         },
+        "delayed_entry_execution_shadow": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "durable_state": True,
+            "state_restored": True,
+            "state_restore_error": None,
+            "delay_ms": 60000,
+            "max_observation_lag_ms": 60000,
+            "open_tracked_positions": 1,
+            "eligible_open_positions": 1,
+            "excluded_open_positions": 0,
+            "closed_eligible_trades": 12,
+            "full_delayed_fills": 8,
+            "partial_delayed_fills": 1,
+            "no_fills": 1,
+            "rejections": 1,
+            "expired": 1,
+            "censored_before_delay": 0,
+            "missing_delayed_book": 0,
+            "better_price_full_fills": 5,
+            "worse_price_full_fills": 3,
+            "mean_signed_price_improvement_bps": "12.5",
+            "mean_gross_r_improvement": "0.08",
+            "excluded_closed_trades": 1,
+            "lineage_mismatch_closed_trades": 0,
+            "orphaned_restored_positions": 0,
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_eligible_trades": 30,
+                "min_full_delayed_fills": 20,
+                "missing_closed_eligible_trades": 18,
+                "missing_full_delayed_fills": 12,
+            },
+            "error": None,
+        },
         "opening_scanner_rank": {
             "enabled": True,
             "research_only": True,
@@ -1193,6 +1230,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "mismatch=0, orphan=0 |" in output
     )
     assert (
+        "| 60s delayed entry | collecting | "
+        "closed=12, full=8, better=5, worse=3 | "
+        "mismatch=0, orphan=0 |" in output
+    )
+    assert (
         "| LONG+trend filter | collecting | "
         "closed=12, blocked=5, allowed=7 | misses=0 |" in output
     )
@@ -1215,13 +1257,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| decision age at fill | collecting | "
         "attributed=4, need=26 | misses=0 |" in output
     )
-    assert "review-ready studies: `0 / 7`" in output
+    assert "review-ready studies: `0 / 8`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
     assert "`3`" in output
     assert "`1`" in output
     assert "### Fixed profit-lock counterfactual" in output
+    assert "### 60s delayed-entry execution shadow" in output
+    assert "frozen delay / max observation lag" in output
+    assert "`60000ms / 60000ms`" in output
+    assert "closed eligible / excluded closes" in output
+    assert "`12 / 1`" in output
+    assert "full / partial / no-fill / rejected / expired" in output
+    assert "`8 / 1 / 1 / 1 / 1`" in output
+    assert "better / worse price among full delayed fills" in output
+    assert "`5 / 3`" in output
+    assert "mean signed price improvement / gross-R improvement" in output
+    assert "`12.5` bps / `0.08` R" in output
+    assert "evidence gate (closed eligible / full delayed fills)" in output
+    assert "`30 / 20`" in output
+    assert "still needed closed / full" in output
+    assert "`18 / 12`" in output
     assert "### Prospective LONG-trend entry filter" in output
     assert "### Prospective top-10 scanner-rank filter" in output
     assert "prospective-admit-top10-rank-v1" in output

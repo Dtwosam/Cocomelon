@@ -32,6 +32,7 @@ from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
     OpenLifecycleCheckpoint,
     OpenLifecycleMarkPath,
+    PositionResearchObserver,
 )
 from cocomelon.evidence.recording import (
     RecordedPublicEvent,
@@ -73,6 +74,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
+)
+from cocomelon.research.delayed_entry_execution_shadow import (
+    DelayedEntryExecutionShadow,
 )
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
@@ -136,6 +140,9 @@ PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
 )
 ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
     "entry-mid-markout-shadow-state.json"
+)
+DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
+    "delayed-entry-execution-shadow-state.json"
 )
 
 
@@ -205,6 +212,132 @@ class _ContinuousTradePathSink:
         except Exception as exc:
             self._capture_error(exc)
             return False
+
+
+class _CompositePositionResearchObserver:
+    def __init__(
+        self,
+        *observers: PositionResearchObserver,
+    ) -> None:
+        self._observers = observers
+
+    def observe_mark(
+        self,
+        positions: Sequence[PaperPosition],
+        mark_event: StreamEvent,
+        *,
+        now_ms: int,
+    ) -> None:
+        for observer in self._observers:
+            observer.observe_mark(
+                positions,
+                mark_event,
+                now_ms=now_ms,
+            )
+
+    def observe_book(
+        self,
+        positions: Sequence[PaperPosition],
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        now_ms: int,
+    ) -> None:
+        for observer in self._observers:
+            observer.observe_book(
+                positions,
+                instrument,
+                book,
+                reference_price=reference_price,
+                now_ms=now_ms,
+            )
+
+    def record_closed_trade(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None:
+        for observer in self._observers:
+            observer.record_closed_trade(trade)
+
+
+class _ContinuousDelayedEntryExecutionShadowSink:
+    def __init__(
+        self,
+        shadow: DelayedEntryExecutionShadow,
+    ) -> None:
+        self.shadow: DelayedEntryExecutionShadow | None = shadow
+        self.error: str | None = None
+
+    def _disable(self, exc: Exception) -> None:
+        if self.error is None:
+            self.error = f"{type(exc).__name__}: {exc}"
+        self.shadow = None
+
+    def observe_mark(
+        self,
+        positions: Sequence[PaperPosition],
+        mark_event: StreamEvent,
+        *,
+        now_ms: int,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.observe_mark(
+                positions,
+                mark_event,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            self._disable(exc)
+
+    def observe_book(
+        self,
+        positions: Sequence[PaperPosition],
+        instrument: InstrumentExecutionSpec,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        now_ms: int,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.observe_book(
+                positions,
+                instrument,
+                book,
+                reference_price=reference_price,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            self._disable(exc)
+
+    def record_closed_trade(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.record_closed_trade(trade)
+        except Exception as exc:
+            self._disable(exc)
+
+    def summary_payload(self) -> dict[str, object]:
+        if self.shadow is None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "durable_state": True,
+                "error": self.error,
+            }
+        payload = dict(self.shadow.summary_payload())
+        payload["error"] = self.error
+        return payload
 
 
 class _ContinuousProfitLockExecutionShadowSink:
@@ -861,6 +994,32 @@ def _restore_profit_lock_execution_shadow(
         shadow.restore_state(raw)
     except Exception as exc:
         shadow = ProfitLockExecutionShadow(
+            execution_config,
+            started_at_ms=started_at_ms,
+        )
+        shadow.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+    return shadow
+
+
+def _restore_delayed_entry_execution_shadow(
+    path: Path,
+    execution_config: PaperExecutionConfig,
+    *,
+    started_at_ms: int,
+) -> DelayedEntryExecutionShadow:
+    shadow = DelayedEntryExecutionShadow(
+        execution_config,
+        started_at_ms=started_at_ms,
+    )
+    if not path.exists():
+        return shadow
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        shadow.restore_state(raw)
+    except Exception as exc:
+        shadow = DelayedEntryExecutionShadow(
             execution_config,
             started_at_ms=started_at_ms,
         )
@@ -1836,6 +1995,7 @@ def _live_status_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
@@ -2047,6 +2207,9 @@ def _live_status_payload(
         "profit_lock_execution_shadow": (
             profit_lock_execution_shadow.summary_payload()
         ),
+        "delayed_entry_execution_shadow": (
+            delayed_entry_execution_shadow.summary_payload()
+        ),
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter
@@ -2080,6 +2243,7 @@ def _emit_live_status(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
@@ -2099,6 +2263,7 @@ def _emit_live_status(
         trade_path_store,
         opening_rank_store,
         profit_lock_execution_shadow,
+        delayed_entry_execution_shadow,
         entry_mid_markout_shadow,
         prospective_entry_filter_state,
         prospective_top10_rank_filter_state,
@@ -2236,6 +2401,15 @@ async def run_continuous_paper_session(
             )
         )
     )
+    delayed_entry_execution_shadow = (
+        _ContinuousDelayedEntryExecutionShadowSink(
+            _restore_delayed_entry_execution_shadow(
+                root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+            )
+        )
+    )
     entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
         _restore_entry_mid_markout_shadow(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -2244,6 +2418,10 @@ async def run_continuous_paper_session(
     )
     if profit_lock_execution_shadow.shadow is not None:
         profit_lock_execution_shadow.shadow.reconcile_open_positions(
+            execution.account.positions
+        )
+    if delayed_entry_execution_shadow.shadow is not None:
+        delayed_entry_execution_shadow.shadow.reconcile_open_positions(
             execution.account.positions
         )
     if entry_mid_markout_shadow.shadow is not None:
@@ -2318,7 +2496,10 @@ async def run_continuous_paper_session(
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
             position_research_observer=(
-                profit_lock_execution_shadow
+                _CompositePositionResearchObserver(
+                    profit_lock_execution_shadow,
+                    delayed_entry_execution_shadow,
+                )
             ),
         )
         pipeline.restore_gap_intervals(gap_intervals)
@@ -2401,6 +2582,11 @@ async def run_continuous_paper_session(
                     root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
                     profit_lock_execution_shadow.shadow.state_payload(),
                 )
+            if delayed_entry_execution_shadow.shadow is not None:
+                _write_json_atomic(
+                    root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
+                    delayed_entry_execution_shadow.shadow.state_payload(),
+                )
             _write_json_atomic(
                 root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                 prospective_entry_filter_state.payload(),
@@ -2425,6 +2611,7 @@ async def run_continuous_paper_session(
             trade_path_store,
             opening_rank_store,
             profit_lock_execution_shadow,
+            delayed_entry_execution_shadow,
             entry_mid_markout_shadow,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
@@ -2578,6 +2765,7 @@ async def run_continuous_paper_session(
                     trade_path_store,
                     opening_rank_store,
                     profit_lock_execution_shadow,
+                    delayed_entry_execution_shadow,
                     entry_mid_markout_shadow,
                     prospective_entry_filter_state,
                     prospective_top10_rank_filter_state,

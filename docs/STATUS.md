@@ -1322,3 +1322,23 @@ Issue #469 now includes one compact board that summarizes the frozen evidence ga
 This is intended to keep operational status and future-chat interpretation aligned with the actual evidence gates instead of treating small samples as strategy decisions.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed 60-second delayed-entry execution shadow — 2026-09-27
+
+A single prospective entry-timing challenger is frozen before its future results are observed.
+
+- candidate: wait exactly 60 seconds after the actual paper opening timestamp, then attempt the same opening size once against the first fresh eligible L2 book;
+- the delayed shadow keeps the original paper stop and planned-risk ceiling and uses the same paper IOC latency, slippage, fee, size-quantum, visible-depth, and risk-envelope rules;
+- the observation window is capped at 60 seconds after the delayed target. If no usable book arrives inside that window, the attempt is recorded as expired/missing rather than assigned an invented price;
+- full delayed fills are compared with the actual paper entry using direction-normalized price improvement in basis points and gross R;
+- partial fills, no-fills, execution rejections, trades closed before the delayed target, and missing delayed books remain separate evidence classes and are never promoted into a full-fill comparison;
+- positions already open before the shadow begins are excluded prospectively;
+- shadow state survives continuous-paper worker handoffs and reconciles restored positions against the authoritative paper account;
+- lineage mismatches and orphaned restored positions block research readiness instead of being repaired silently.
+
+The review gate is frozen at 30 prospective eligible closed trades and 20 full delayed IOC fills, with zero unresolved lineage/orphan integrity failures. Reaching that gate grants review readiness only.
+
+This study has no execution or promotion authority. It does not delay the real paper entry, alter position size, change stops/risk, or submit an order.
+
+**LIVE TRADING: DISABLED.**
