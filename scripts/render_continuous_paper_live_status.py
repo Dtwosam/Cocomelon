@@ -1579,7 +1579,10 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
                 f"{raw.get('top_two_winner_share_of_gross_profit')}`"
             ),
             "",
-            "| Scenario | Remaining | Net PnL | Mean R | Median R | Profit factor | Positive PnL? |",
+            (
+                "| Scenario | Remaining | Net PnL | Mean R | Median R | "
+                "Profit factor | Positive PnL? |"
+            ),
             "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
             (
                 "| Remove best 1 | {n} | {pnl} | {mean} | {median} | "
