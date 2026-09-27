@@ -4014,6 +4014,11 @@ def _research_readiness_board_lines(
     delayed_pair_fill_weighted_ready = bool(
         delayed_pair_fill_weighted_gate.get("ready_for_review")
     )
+    adaptive_delay = mapping("adaptive_delay_selector")
+    adaptive_delay_gate = readiness(adaptive_delay)
+    adaptive_delay_ready = bool(
+        adaptive_delay_gate.get("ready_for_review")
+    )
     delayed_integrity = (
         f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
         f"orphan={delayed.get('orphaned_restored_positions', 0)}"
@@ -4181,6 +4186,19 @@ def _research_readiness_board_lines(
                 f"missing60={delayed_pair_fill_weighted.get('missing_base_outcome', 0)}, "
                 f"missing120={delayed_pair_fill_weighted.get('missing_challenger_outcome', 0)}, "
                 f"mismatch={delayed_pair_fill_weighted.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "adaptive 60s/120s delay",
+            status(adaptive_delay, ready=adaptive_delay_ready),
+            (
+                f"closed={adaptive_delay.get('prospective_closed_trades', 0)}, "
+                f"causal={adaptive_delay.get('causal_evaluable_trades', 0)}"
+            ),
+            (
+                f"midmiss={adaptive_delay.get('missing_mid_outcome', 0)}, "
+                f"late={adaptive_delay.get('late_mid_signal', 0)}, "
+                f"mismatch={adaptive_delay.get('lineage_mismatches', 0)}"
             ),
         ),
         (
