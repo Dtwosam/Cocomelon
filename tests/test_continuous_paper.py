@@ -52,6 +52,7 @@ from cocomelon.continuous_paper import (
     _restore_entry_mid_markout_shadow,
     _restore_profit_lock_execution_shadow,
     _restore_adaptive_delay_selector,
+    _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
     _restore_prospective_top10_rank_filter,
 )
@@ -213,6 +214,16 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert '"prospective_entry_filter": prospective_entry_filter' in source
     assert "prospective_entry_filter_state.payload()" in source
+    assert (
+        'PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (' in source
+    )
+    assert (
+        '"prospective_delayed_price_confirmation": (' in source
+    )
+    assert (
+        "prospective_delayed_price_confirmation_state.payload()"
+        in source
+    )
     assert (
         'PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (' in source
     )
@@ -1205,6 +1216,22 @@ def test_prospective_entry_filter_restore_failure_is_fail_open(
     )
 
     assert state.started_at_ms == 456
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+def test_prospective_delayed_price_confirmation_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "prospective-delayed-price-confirm-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_prospective_delayed_price_confirmation(
+        path,
+        started_at_ms=789,
+    )
+
+    assert state.started_at_ms == 789
     assert error is not None
     assert "JSONDecodeError" in error
 
