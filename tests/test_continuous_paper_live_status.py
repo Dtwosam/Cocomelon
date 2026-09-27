@@ -200,6 +200,117 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "by_volatility_regime": {},
         },
+        "closed_trade_friction": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": (
+                "reference_gross_minus_slippage_minus_fees_plus_funding"
+            ),
+            "decision_fact_attribution_misses": 0,
+            "overall": {
+                "trades": 3,
+                "reference_gross_pnl": "6",
+                "signed_slippage_amount": "1",
+                "adverse_slippage_amount": "3",
+                "favorable_slippage_amount": "2",
+                "actual_gross_realized_pnl": "5",
+                "fees": "5.5",
+                "funding_cash_pnl": "2",
+                "net_pnl": "1.5",
+                "net_cost_drag": "4.5",
+                "reference_gross_positive_trades": 2,
+                "actual_gross_positive_trades": 2,
+                "net_positive_trades": 2,
+                "friction_flipped_trades": 1,
+                "fee_funding_flipped_trades": 1,
+                "friction_rescued_trades": 1,
+                "mean_reference_gross_r": "0.2",
+                "mean_slippage_drag_r": "0.03333333333333333333333333333",
+                "mean_fee_drag_r": "0.1833333333333333333333333333",
+                "mean_funding_r": "0.06666666666666666666666666667",
+                "mean_net_r": "0.05",
+                "mean_net_cost_drag_r": "0.15",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "reference_gross_pnl": "9",
+                    "signed_slippage_amount": "3",
+                    "adverse_slippage_amount": "3",
+                    "favorable_slippage_amount": "0",
+                    "actual_gross_realized_pnl": "6",
+                    "fees": "5",
+                    "funding_cash_pnl": "0",
+                    "net_pnl": "1",
+                    "net_cost_drag": "8",
+                    "reference_gross_positive_trades": 2,
+                    "actual_gross_positive_trades": 2,
+                    "net_positive_trades": 1,
+                    "friction_flipped_trades": 1,
+                    "fee_funding_flipped_trades": 1,
+                    "friction_rescued_trades": 0,
+                    "mean_reference_gross_r": "0.45",
+                    "mean_slippage_drag_r": "0.15",
+                    "mean_fee_drag_r": "0.25",
+                    "mean_funding_r": "0",
+                    "mean_net_r": "0.05",
+                    "mean_net_cost_drag_r": "0.4",
+                },
+                "short": {
+                    "trades": 1,
+                    "reference_gross_pnl": "-3",
+                    "signed_slippage_amount": "-2",
+                    "adverse_slippage_amount": "0",
+                    "favorable_slippage_amount": "2",
+                    "actual_gross_realized_pnl": "-1",
+                    "fees": "0.5",
+                    "funding_cash_pnl": "2",
+                    "net_pnl": "0.5",
+                    "net_cost_drag": "-3.5",
+                    "reference_gross_positive_trades": 0,
+                    "actual_gross_positive_trades": 0,
+                    "net_positive_trades": 1,
+                    "friction_flipped_trades": 0,
+                    "fee_funding_flipped_trades": 0,
+                    "friction_rescued_trades": 1,
+                    "mean_reference_gross_r": "-0.3",
+                    "mean_slippage_drag_r": "-0.2",
+                    "mean_fee_drag_r": "0.05",
+                    "mean_funding_r": "0.2",
+                    "mean_net_r": "0.05",
+                    "mean_net_cost_drag_r": "-0.35",
+                },
+            },
+            "by_lead_strategy": {
+                "breakout": {
+                    "trades": 1,
+                    "reference_gross_pnl": "-3",
+                    "signed_slippage_amount": "-2",
+                    "fees": "0.5",
+                    "funding_cash_pnl": "2",
+                    "net_pnl": "0.5",
+                    "friction_flipped_trades": 0,
+                    "mean_reference_gross_r": "-0.3",
+                    "mean_net_cost_drag_r": "-0.35",
+                    "mean_net_r": "0.05",
+                },
+                "trend": {
+                    "trades": 2,
+                    "reference_gross_pnl": "9",
+                    "signed_slippage_amount": "3",
+                    "fees": "5",
+                    "funding_cash_pnl": "0",
+                    "net_pnl": "1",
+                    "friction_flipped_trades": 1,
+                    "mean_reference_gross_r": "0.45",
+                    "mean_net_cost_drag_r": "0.4",
+                    "mean_net_r": "0.05",
+                },
+            },
+        },
         "trade_path_evidence": {
             "research_only": True,
             "durable_across_workers": True,
@@ -1010,6 +1121,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "2.5" in output
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
+    assert "### Closed-trade friction attribution" in output
+    assert "reference_gross_minus_slippage_minus_fees_plus_funding" in output
+    assert "| 6 | 1 | 5 | 5.5 | 2 | 1.5 | 4.5 |" in output
+    assert "adverse / favorable slippage amounts" in output
+    assert "`3 / 2`" in output
+    assert "friction-flipped / fee+funding-flipped / rescued" in output
+    assert "`1 / 1 / 1`" in output
+    assert "#### Side friction" in output
+    assert "| long | 2 | 9 | 3 | 5 | 0 | 1 | 1 | 0.45 | 0.4 | 0.05 |" in output
+    assert "#### Lead strategy friction" in output
+    assert "| trend | 2 | 9 | 3 | 5 | 0 | 1 | 1 | 0.45 | 0.4 | 0.05 |" in output
+    assert "Positive signed slippage is adverse" in output
     assert "### Closed trade performance" in output
     assert "decision-fact attribution" in output
     assert "`3 / 3` trades" in output
