@@ -1276,3 +1276,19 @@ The continuous paper runtime now measures how old the persisted strategy decisio
 - this diagnostic does not delay entries, reject stale decisions, change execution latency, or grant promotion/execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Research lineage mismatch containment — 2026-09-27
+
+Research-only position observers now contain close-lineage mismatches instead of disabling their entire evidence stream.
+
+- profit-lock execution shadow and prospective allMids markout shadow still require exact close lineage for a trade to contribute economics;
+- a mismatched close is excluded from that study and increments a durable `lineage_mismatch_closed_trades` counter;
+- restored research positions no longer present in the authoritative paper account are dropped at worker startup and counted as `orphaned_restored_positions`;
+- these counters survive worker handoffs and block `ready_for_review` until they are zero;
+- no mismatched trade is repaired, reconstructed, or allowed into research economics;
+- the authoritative paper account, journal, fills, risk, stops, and execution behavior are unchanged.
+
+This lets a single research-lineage discrepancy remain visible without permanently disabling future evidence collection.
+
+**LIVE TRADING: DISABLED.**
