@@ -1122,3 +1122,16 @@ The continuous paper runtime now measures signed post-entry markout at fixed 1-m
 This is a measurement layer only. It does not delay entries, reject trades, modify scanner ranking, alter stops, or grant promotion/execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry-markout evidence readiness boundary — 2026-09-27
+
+The 1m / 5m / 15m post-entry markout diagnostic now has a precommitted sample-volume gate frozen before its first live results were reviewed.
+
+Each fixed horizon remains `collecting` until it has at least 30 actual observed markouts. Trades that close before a horizon are censored and do not count toward that horizon; missing marks are not imputed.
+
+The gate is deliberately economic-blind: positive and negative markouts count equally. Reaching 30 observations changes only that horizon to `ready_for_review`. All three horizons must independently reach 30 before the diagnostic is labeled fully ready for review.
+
+This readiness state does not choose an entry-delay rule, reject trades, change strategy thresholds, promote a candidate, or grant execution authority.
+
+**LIVE TRADING: DISABLED.**

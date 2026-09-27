@@ -297,12 +297,20 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "error": None,
             "definition": "first_observed_mark_at_or_after_horizon",
             "horizons_ms": [60000, 300000, 900000],
+            "readiness": {
+                "all_horizons_ready_for_review": False,
+                "min_observations_per_horizon": 30,
+                "promotion_authority": False,
+                "execution_authority": False,
+            },
             "complete_path_records": 3,
             "incomplete_paths_skipped": 0,
             "missing_journal_trade": 0,
             "missing_decision_attribution": 0,
             "by_horizon_ms": {
                 "60000": {
+                    "readiness_status": "collecting",
+                    "missing_observations": 27,
                     "observations": 3,
                     "positive": 2,
                     "negative": 1,
@@ -359,6 +367,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     },
                 },
                 "300000": {
+                    "readiness_status": "collecting",
+                    "missing_observations": 28,
                     "observations": 2,
                     "positive": 1,
                     "negative": 1,
@@ -373,6 +383,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "by_lead_strategy": {},
                 },
                 "900000": {
+                    "readiness_status": "collecting",
+                    "missing_observations": 29,
                     "observations": 1,
                     "positive": 1,
                     "negative": 0,
@@ -642,9 +654,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "first_observed_mark_at_or_after_horizon" in output
     assert "complete paths / incomplete skipped" in output
     assert "`3 / 0`" in output
-    assert "| 1m | 3 | 2 | 1 | 25 | 0.05 | 0 | 0 | 1000ms | 3000ms |" in output
-    assert "| 5m | 2 | 1 | 1 | -10 | -0.02 | 1 | 0 | 1500ms | 2500ms |" in output
-    assert "| 15m | 1 | 1 | 0 | 80 | 0.16 | 2 | 0 | 500ms | 500ms |" in output
+    assert "evidence gate (observations per horizon)" in output
+    assert "`30`" in output
+    assert "all horizons ready for review: `false`" in output
+    assert "| 1m | collecting | 3 | 27 | 2 | 1 | 25 | 0.05 | 0 | 0 | 1000ms | 3000ms |" in output
+    assert "| 5m | collecting | 2 | 28 | 1 | 1 | -10 | -0.02 | 1 | 0 | 1500ms | 2500ms |" in output
+    assert "| 15m | collecting | 1 | 29 | 1 | 0 | 80 | 0.16 | 2 | 0 | 500ms | 500ms |" in output
     assert "1m by side:" in output
     assert "long: n=2, meanR=-0.02, meanbps=-10" in output
     assert "short: n=1, meanR=0.19, meanbps=95" in output
