@@ -1357,6 +1357,7 @@ def _fill_aware_delay_selector_lines(
     overall = raw.get("overall", {})
     by_side = raw.get("by_side", {})
     by_source = raw.get("by_60s_source", {})
+    robustness = raw.get("robustness", {})
     readiness = raw.get("readiness", {})
     if not isinstance(overall, dict):
         overall = {}
@@ -1364,8 +1365,25 @@ def _fill_aware_delay_selector_lines(
         by_side = {}
     if not isinstance(by_source, dict):
         by_source = {}
+    if not isinstance(robustness, dict):
+        robustness = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    robustness_60 = robustness.get(
+        "fill_aware_minus_60s",
+        {},
+    )
+    robustness_120 = robustness.get(
+        "fill_aware_minus_120s",
+        {},
+    )
+    temporal = robustness.get("temporal", {})
+    if not isinstance(robustness_60, dict):
+        robustness_60 = {}
+    if not isinstance(robustness_120, dict):
+        robustness_120 = {}
+    if not isinstance(temporal, dict):
+        temporal = {}
 
     lines.extend(
         [
@@ -1413,6 +1431,39 @@ def _fill_aware_delay_selector_lines(
             (
                 "- lineage mismatches: "
                 f"`{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- robustness descriptive / changes gate: "
+                f"`{str(bool(robustness.get('descriptive_only'))).lower()} / "
+                f"{str(bool(robustness.get('changes_readiness_gate'))).lower()}`"
+            ),
+            (
+                "- Δ vs 60s robustness total / LOTO trade / LOMO market: "
+                f"`{robustness_60.get('total_delta_pnl')} / "
+                f"{robustness_60.get('leave_one_trade_out_min_delta')} / "
+                f"{robustness_60.get('leave_one_market_out_min_delta')}`"
+            ),
+            (
+                "- Δ vs 120s robustness total / LOTO trade / LOMO market: "
+                f"`{robustness_120.get('total_delta_pnl')} / "
+                f"{robustness_120.get('leave_one_trade_out_min_delta')} / "
+                f"{robustness_120.get('leave_one_market_out_min_delta')}`"
+            ),
+            (
+                "- temporal full / positive vs 60s / positive vs 120s: "
+                f"`{temporal.get('full_blocks', 0)} / "
+                f"{temporal.get('positive_blocks_vs_60s', 0)} / "
+                f"{temporal.get('positive_blocks_vs_120s', 0)}`"
+            ),
+            (
+                "- all full temporal blocks positive vs 60s / 120s: "
+                f"`{temporal.get('all_full_blocks_positive_vs_60s')} / "
+                f"{temporal.get('all_full_blocks_positive_vs_120s')}`"
+            ),
+            (
+                "- temporal block design: "
+                f"`{temporal.get('configured_blocks', 0)} × "
+                f"{temporal.get('min_trades_per_full_block', 0)} trades`"
             ),
             (
                 "- evidence gate closed / causal / 60s / 120s: "
@@ -1469,6 +1520,29 @@ def _fill_aware_delay_selector_lines(
     row("60s partial fill", by_source.get("partial_visible_book_ioc"))
     row("60s no fill", by_source.get("no_fill"))
 
+    temporal_blocks = temporal.get("chronological_blocks", [])
+    if isinstance(temporal_blocks, list) and temporal_blocks:
+        lines.extend(
+            [
+                "",
+                "| Time block | N | 60s | 120s | Δ vs 60s | Δ vs 120s |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for block in temporal_blocks:
+            if not isinstance(block, dict):
+                continue
+            lines.append(
+                "| {block} | {n} | {s60} | {s120} | {d60} | {d120} |".format(
+                    block=block.get("block"),
+                    n=block.get("trades", 0),
+                    s60=block.get("selected_60s", 0),
+                    s120=block.get("selected_120s", 0),
+                    d60=block.get("fill_aware_minus_60s_pnl", "0"),
+                    d120=block.get("fill_aware_minus_120s_pnl", "0"),
+                )
+            )
+
     lines.extend(
         [
             "",
@@ -1477,7 +1551,8 @@ def _fill_aware_delay_selector_lines(
                 "uses 60s; a partial or no-fill 60s attempt waits for the 120s "
                 "shadow. Same observed exits are held constant, unfilled "
                 "quantity contributes zero, and no replacement trades or "
-                "changed stops are modeled._"
+                "changed stops are modeled. Robustness checks are descriptive "
+                "only and do not change the frozen readiness gate._"
             ),
         ]
     )
