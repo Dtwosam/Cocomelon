@@ -82,11 +82,26 @@ def test_robustness_handles_no_winners_without_infinite_pf() -> None:
 
     assert result["largest_winner_net_pnl"] is None
     assert result["top_one_winner_share_of_gross_profit"] is None
+    assert result["top_positive_market"] is None
+    assert result["top_positive_market_net_pnl"] is None
+    assert result["top_positive_market_trade_count"] == 0
+    assert (
+        result["top_positive_market_share_of_positive_market_pnl"]
+        is None
+    )
     remove_one = result["remove_best_one"]
     assert isinstance(remove_one, dict)
     assert remove_one["removed_trade_count"] == 0
     assert remove_one["net_pnl"] == "-5"
     assert remove_one["profit_factor"] == "0"
+    remove_market = result["remove_top_positive_market"]
+    assert isinstance(remove_market, dict)
+    assert remove_market["removed_trade_count"] == 0
+    assert remove_market["net_pnl"] == "-5"
+    assert (
+        result["positive_pnl_survives_remove_top_positive_market"]
+        is False
+    )
 
 
 def test_robustness_exposes_whole_market_dependence() -> None:
