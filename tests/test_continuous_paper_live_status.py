@@ -997,6 +997,112 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_120s_execution_shadow": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "durable_state": True,
+            "state_restored": True,
+            "state_restore_error": None,
+            "state_schema_version": 2,
+            "started_at_ms": 1700000500000,
+            "delay_ms": 120000,
+            "max_observation_lag_ms": 60000,
+            "stop_source": "persisted_opening_plan",
+            "open_tracked_positions": 1,
+            "eligible_open_positions": 1,
+            "excluded_open_positions": 0,
+            "closed_eligible_trades": 10,
+            "full_delayed_fills": 6,
+            "partial_delayed_fills": 1,
+            "no_fills": 1,
+            "rejections": 1,
+            "expired": 1,
+            "censored_before_delay": 0,
+            "missing_delayed_book": 0,
+            "better_price_full_fills": 4,
+            "worse_price_full_fills": 2,
+            "mean_signed_price_improvement_bps": "18.5",
+            "mean_gross_r_improvement": "0.11",
+            "excluded_closed_trades": 0,
+            "lineage_mismatch_closed_trades": 0,
+            "orphaned_restored_positions": 0,
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_eligible_trades": 30,
+                "min_full_delayed_fills": 20,
+                "missing_closed_eligible_trades": 20,
+                "missing_full_delayed_fills": 14,
+            },
+            "error": None,
+        },
+        "delayed_entry_pair": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": "paired_same_exit_trade_contribution_only",
+            "base_delay_ms": 60000,
+            "challenger_delay_ms": 120000,
+            "started_at_ms": 1700000500000,
+            "prospective_closed_trades": 10,
+            "paired_full_fills": 5,
+            "missing_base_outcome": 0,
+            "missing_challenger_outcome": 0,
+            "non_full_base": 2,
+            "non_full_challenger": 3,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 5,
+                "challenger_better": 3,
+                "base_better": 2,
+                "equal": 0,
+                "base_same_exit_net_pnl": "-4",
+                "challenger_same_exit_net_pnl": "1",
+                "challenger_minus_base_pnl": "5",
+                "mean_challenger_minus_base_r": "0.07",
+                "mean_challenger_minus_base_bps": "6.5",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "challenger_better": 1,
+                    "base_better": 1,
+                    "equal": 0,
+                    "base_same_exit_net_pnl": "-2",
+                    "challenger_same_exit_net_pnl": "-1",
+                    "challenger_minus_base_pnl": "1",
+                    "mean_challenger_minus_base_r": "0.02",
+                    "mean_challenger_minus_base_bps": "2.5",
+                },
+                "short": {
+                    "trades": 3,
+                    "challenger_better": 2,
+                    "base_better": 1,
+                    "equal": 0,
+                    "base_same_exit_net_pnl": "-2",
+                    "challenger_same_exit_net_pnl": "2",
+                    "challenger_minus_base_pnl": "4",
+                    "mean_challenger_minus_base_r": "0.10",
+                    "mean_challenger_minus_base_bps": "9.1",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_paired_full_fills": 20,
+                "min_long_paired_full_fills": 5,
+                "min_short_paired_full_fills": 5,
+                "missing_prospective_closed_trades": 20,
+                "missing_paired_full_fills": 15,
+                "missing_long_paired_full_fills": 3,
+                "missing_short_paired_full_fills": 2,
+            },
+            "base_error": None,
+            "challenger_error": None,
+            "error": None,
+        },
         "delayed_entry_same_exit": {
             "enabled": True,
             "research_only": True,
@@ -2077,7 +2183,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 12`" in output
+    assert "review-ready studies: `0 / 14`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
@@ -2099,6 +2205,21 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`5 / 3`" in output
     assert "mean signed price improvement / gross-R improvement" in output
     assert "`12.5` bps / `0.08` R" in output
+    assert "### 120s delayed-entry execution shadow" in output
+    assert "`120000ms / 60000ms`" in output
+    assert "`18.5` bps / `0.11` R" in output
+    assert "### Paired 60s vs 120s delayed-entry study" in output
+    assert "paired_same_exit_trade_contribution_only" not in output
+    assert "120s better / 60s better / equal" in output
+    assert "`3 / 2 / 0`" in output
+    assert "60s / 120s same-exit PnL / incremental" in output
+    assert "`-4` / `1` / `5`" in output
+    assert "evidence gate closed / paired / LONG / SHORT" in output
+    assert "`30 / 20 / 5 / 5`" in output
+    assert "still needed C/P/L/S" in output
+    assert "`20 / 15 / 3 / 2`" in output
+    assert "| LONG | 2 | 1 | 1 | 1 | 0.02 | 2.5 |" in output
+    assert "| SHORT | 3 | 2 | 1 | 4 | 0.10 | 9.1 |" in output
     assert "### 60s delayed-entry same-exit contribution" in output
     assert "same_exit_trade_contribution_only" in output
     assert "closed shadow / full fills / evaluated" in output
@@ -2111,6 +2232,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`-10` / `6` / `16`" in output
     assert "| LONG | 3 | 1/2 | 2/1 | 1 | -4 | 2 | 6 | 0.17 |" in output
     assert "| SHORT | 5 | 1/4 | 2/3 | 1 | -6 | 4 | 10 | 0.16 |" in output
+    assert (
+        "| 120s delayed entry | collecting | "
+        "closed=10, full=6, better=4, worse=2 | "
+        "mismatch=0, orphan=0 |" in output
+    )
+    assert (
+        "| 60s vs 120s paired | collecting | "
+        "closed=10, paired=5 | "
+        "missing60=0, missing120=0, mismatch=0 |" in output
+    )
     assert (
         "| 60s delayed same-exit | collecting | "
         "closed=12, full=8 | missing=0, mismatch=0 |" in output
