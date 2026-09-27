@@ -87,6 +87,7 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
+from cocomelon.research.excursion_timing import excursion_timing_summary
 from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
     entry_markout_readiness,
@@ -2121,6 +2122,31 @@ def _entry_markout_payload(
     return payload
 
 
+def _excursion_timing_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    try:
+        payload = excursion_timing_summary(
+            journal,
+            fact_store,
+            trade_path_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -2269,6 +2295,11 @@ def _live_status_payload(
         trade_path_store,
         opening_rank_store,
     )
+    excursion_timing = _excursion_timing_payload(
+        pump.journal,
+        fact_store,
+        trade_path_store,
+    )
     entry_mid_markout = (
         entry_mid_markout_shadow.summary_payload(
             fact_store
@@ -2368,6 +2399,7 @@ def _live_status_payload(
         ),
         "opening_scanner_rank": opening_rank,
         "entry_markout": entry_markout,
+        "excursion_timing": excursion_timing,
         "entry_mid_markout_shadow": entry_mid_markout,
         "open_position_count": len(positions),
         "positions": positions,
