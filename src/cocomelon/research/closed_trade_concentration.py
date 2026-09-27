@@ -69,7 +69,6 @@ def _group_rows(
     for label, items in sorted(grouped.items()):
         count = len(items)
         net_pnl = grouped_net[label]
-        total_r = _sum(tuple(item.net_r for item in items))
         positive_share = (
             ZERO
             if net_pnl <= ZERO or positive_total <= ZERO
