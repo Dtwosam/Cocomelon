@@ -1105,3 +1105,20 @@ The continuous paper runtime now records the market's latest **coarse universe r
 This diagnostic does not change the deep-watch shortlist, scanner weights, strategy decisions, risk, sizing, stops, or execution. It exists to determine whether losses are concentrated in lower-ranked opportunities before any selection rule is changed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact-path post-entry markout diagnostic — 2026-09-27
+
+The continuous paper runtime now measures signed post-entry markout at fixed 1-minute, 5-minute, and 15-minute horizons from the actual paper entry price.
+
+- each horizon uses the first observed exact-path mark at or after that fixed timestamp;
+- markout sign is normalized by trade direction, so positive means favorable for both LONG and SHORT;
+- outputs include mean signed basis points, gross R, positive/negative counts, and observation lag;
+- results are split by side and persisted lead strategy;
+- trades that close before a horizon are censored rather than assigned an invented price;
+- incomplete trade paths and missing observed marks are reported explicitly;
+- decision lineage mismatches fail the diagnostic, while runtime publication failure remains fail-open for the paper trader.
+
+This is a measurement layer only. It does not delay entries, reject trades, modify scanner ranking, alter stops, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**
