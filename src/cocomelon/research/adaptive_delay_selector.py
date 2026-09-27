@@ -608,6 +608,17 @@ def _edge_robustness(
     }
 
 
+def _temporal_block_trade_count(
+    block: dict[str, object],
+) -> int:
+    value = block.get("trades")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise AdaptiveDelaySelectorError(
+            "adaptive temporal block trade count is invalid"
+        )
+    return value
+
+
 def _temporal_robustness(
     items: tuple[AdaptiveDelayOutcome, ...],
     trades: dict[str, TradeJournalEntry],
@@ -720,7 +731,8 @@ def _temporal_robustness(
     full_blocks = tuple(
         block
         for block in blocks
-        if block["trades"] >= MIN_TEMPORAL_TRADES_PER_BLOCK
+        if _temporal_block_trade_count(block)
+        >= MIN_TEMPORAL_TRADES_PER_BLOCK
     )
     positive_vs_60s = sum(
         1
