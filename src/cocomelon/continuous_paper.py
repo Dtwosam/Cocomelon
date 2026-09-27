@@ -70,6 +70,10 @@ from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperOpeningLineageStore,
     ContinuousPaperRuntimeIdentity,
 )
+from cocomelon.research.continuous_paper_drawdown import (
+    ContinuousPaperDrawdownTracker,
+    drawdown_summary,
+)
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
     LatestCoarseRankTracker,
@@ -147,6 +151,7 @@ ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
 DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
     "delayed-entry-execution-shadow-state.json"
 )
+DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1090,6 +1095,26 @@ def _restore_delayed_entry_execution_shadow(
     return shadow
 
 
+def _restore_drawdown_tracker(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> ContinuousPaperDrawdownTracker:
+    tracker = ContinuousPaperDrawdownTracker(
+        started_at_ms=started_at_ms,
+    )
+    if not path.exists():
+        return tracker
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ContinuousPaperDrawdownTracker.from_payload(raw)
+    except Exception as exc:
+        tracker.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+        return tracker
+
+
 def _restore_entry_mid_markout_shadow(
     path: Path,
     *,
@@ -1805,6 +1830,34 @@ def _account_lifecycle_bridge_payload(
         payload = account_lifecycle_bridge(
             execution.account,
             tuple(journal.iter_trades()),
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _drawdown_payload(
+    execution: PaperExecutionAdapter,
+    journal: JournalStore,
+    tracker: ContinuousPaperDrawdownTracker,
+    *,
+    checkpoint_seconds: int,
+) -> dict[str, object]:
+    try:
+        payload = drawdown_summary(
+            tracker,
+            tuple(journal.iter_trades()),
+            starting_equity=execution.account.starting_cash,
+            checkpoint_seconds=checkpoint_seconds,
         )
     except Exception as exc:
         return {
