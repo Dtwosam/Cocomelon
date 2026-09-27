@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -5262,10 +5263,14 @@ def render_live_status(
 def main() -> None:
     raw = os.environ.get("HEARTBEAT_JSON", "")
     if not raw:
-        raise RuntimeError("HEARTBEAT_JSON is required")
+        raw = sys.stdin.read()
+    if not raw.strip():
+        raise RuntimeError(
+            "heartbeat JSON is required via stdin or HEARTBEAT_JSON"
+        )
     decoded: object = json.loads(raw)
     if not isinstance(decoded, dict):
-        raise RuntimeError("HEARTBEAT_JSON must be an object")
+        raise RuntimeError("heartbeat JSON must be an object")
     print(
         render_live_status(
             decoded,
