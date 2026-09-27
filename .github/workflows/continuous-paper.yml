@@ -272,9 +272,9 @@ jobs:
                   printf '%s\n' "$changed_runtime"
                   touch /tmp/continuous-paper-upgrade-requested
                 fi
-                if HEARTBEAT_JSON="$heartbeat" \
-                  python scripts/render_continuous_paper_live_status.py \
-                  > /tmp/continuous-paper-live.md; then
+                if printf '%s\n' "$heartbeat" \
+                  | python scripts/render_continuous_paper_live_status.py \
+                    > /tmp/continuous-paper-live.md; then
                   if gh issue edit "$LIVE_STATUS_ISSUE" \
                     --repo "$GITHUB_REPOSITORY" \
                     --title "Continuous Paper Trader — Live Status" \
