@@ -9,7 +9,6 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
 
 ZERO: Final = Decimal("0")
-ONE: Final = Decimal("1")
 DAY_MS: Final = 86_400_000
 SEVEN_DAYS_MS: Final = 7 * DAY_MS
 MARKET_POSITIVE_PNL_SHARE_REFERENCE_MAX: Final = Decimal("0.35")
@@ -40,6 +39,13 @@ def _hhi(shares: tuple[Decimal, ...]) -> Decimal | None:
         return None
     with localcontext(AUTHORITATIVE_CONTEXT):
         return sum((share * share for share in shares), ZERO)
+
+
+def _mean(values: tuple[Decimal, ...]) -> Decimal | None:
+    if not values:
+        return None
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        return _sum(values) / Decimal(len(values))
 
 
 def _group_rows(
@@ -82,7 +88,9 @@ def _group_rows(
                 "losses": sum(1 for item in items if item.net_pnl < ZERO),
                 "breakeven": sum(1 for item in items if item.net_pnl == ZERO),
                 "net_pnl": str(net_pnl),
-                "mean_net_r": str(total_r / Decimal(count)),
+                "mean_net_r": str(
+                    _mean(tuple(item.net_r for item in items))
+                ),
                 "trade_count_share": (
                     None if trade_share is None else str(trade_share)
                 ),
@@ -132,6 +140,8 @@ def _max_positive_share(
         if raw is None:
             continue
         value = Decimal(str(raw))
+        if value <= ZERO:
+            continue
         if best_share is None or value > best_share:
             best_label = str(row["label"])
             best_share = value
