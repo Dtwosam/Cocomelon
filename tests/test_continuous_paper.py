@@ -14,6 +14,7 @@ from cocomelon.continuous_paper import (
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
     _closed_trade_concentration_payload,
+    _closed_trade_entry_concurrency_payload,
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
     _closed_trade_stability_payload,
@@ -196,6 +197,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         in source
     )
     assert "closed_trade_concentration_summary(" in source
+    assert (
+        '"closed_trade_entry_concurrency": ('
+        in source
+    )
+    assert "closed_trade_entry_concurrency(" in source
     assert '"closed_trade_friction": closed_trade_friction' in source
     assert "closed_trade_friction_summary(" in source
     assert '"closed_trade_robustness": (' in source
@@ -319,6 +325,28 @@ def test_entry_decision_age_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: entry age boom"
+
+
+def test_closed_trade_entry_concurrency_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("concurrency boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.closed_trade_entry_concurrency",
+        fail,
+    )
+    payload = _closed_trade_entry_concurrency_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        (),
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: concurrency boom"
 
 
 def test_closed_trade_concentration_telemetry_fails_open(
