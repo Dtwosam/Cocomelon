@@ -485,6 +485,127 @@ def _summary(
     }
 
 
+def _edge_robustness(
+    items: tuple[AdaptiveDelayOutcome, ...],
+    *,
+    field: str,
+) -> dict[str, object]:
+    contributions = tuple(
+        getattr(item, field)
+        for item in items
+    )
+    if any(
+        not isinstance(value, Decimal)
+        for value in contributions
+    ):
+        raise AdaptiveDelaySelectorError(
+            "adaptive robustness field must be Decimal"
+        )
+    typed = tuple(
+        value
+        for value in contributions
+        if isinstance(value, Decimal)
+    )
+    total = sum(typed, ZERO)
+    by_market: dict[str, Decimal] = {}
+    for item in items:
+        value = getattr(item, field)
+        if not isinstance(value, Decimal):
+            raise AdaptiveDelaySelectorError(
+                "adaptive robustness field must be Decimal"
+            )
+        by_market[item.market] = (
+            by_market.get(item.market, ZERO) + value
+        )
+
+    abs_trade_total = sum(
+        (abs(value) for value in typed),
+        ZERO,
+    )
+    abs_market_total = sum(
+        (abs(value) for value in by_market.values()),
+        ZERO,
+    )
+    largest_abs_trade = (
+        None
+        if not typed
+        else max(typed, key=abs)
+    )
+    largest_abs_market_item = (
+        None
+        if not by_market
+        else max(
+            by_market.items(),
+            key=lambda item: abs(item[1]),
+        )
+    )
+    leave_one_trade_out = tuple(
+        total - value
+        for value in typed
+    )
+    leave_one_market_out = tuple(
+        total - value
+        for value in by_market.values()
+    )
+    return {
+        "trades": len(items),
+        "markets": len(by_market),
+        "total_delta_pnl": str(total),
+        "largest_abs_trade_contribution": (
+            None
+            if largest_abs_trade is None
+            else str(largest_abs_trade)
+        ),
+        "largest_abs_trade_share": (
+            None
+            if largest_abs_trade is None
+            or abs_trade_total == ZERO
+            else str(
+                abs(largest_abs_trade) / abs_trade_total
+            )
+        ),
+        "leave_one_trade_out_min_delta": (
+            None
+            if not leave_one_trade_out
+            else str(min(leave_one_trade_out))
+        ),
+        "positive_after_any_single_trade_removed": (
+            None
+            if len(items) < 2
+            else min(leave_one_trade_out) > ZERO
+        ),
+        "largest_abs_market": (
+            None
+            if largest_abs_market_item is None
+            else largest_abs_market_item[0]
+        ),
+        "largest_abs_market_contribution": (
+            None
+            if largest_abs_market_item is None
+            else str(largest_abs_market_item[1])
+        ),
+        "largest_abs_market_share": (
+            None
+            if largest_abs_market_item is None
+            or abs_market_total == ZERO
+            else str(
+                abs(largest_abs_market_item[1])
+                / abs_market_total
+            )
+        ),
+        "leave_one_market_out_min_delta": (
+            None
+            if not leave_one_market_out
+            else str(min(leave_one_market_out))
+        ),
+        "positive_after_any_single_market_removed": (
+            None
+            if len(by_market) < 2
+            else min(leave_one_market_out) > ZERO
+        ),
+    }
+
+
 def adaptive_delay_selector_summary(
     journal: JournalStore,
     mid_outcomes: tuple[EntryMidMarkoutOutcome, ...],
@@ -630,6 +751,30 @@ def adaptive_delay_selector_summary(
                 )
             )
             for side in ("long", "short")
+        },
+        "by_market": {
+            market: _summary(
+                tuple(
+                    item
+                    for item in items
+                    if item.market == market
+                )
+            )
+            for market in sorted(
+                {item.market for item in items}
+            )
+        },
+        "robustness": {
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "adaptive_minus_60s": _edge_robustness(
+                items,
+                field="adaptive_minus_base_pnl",
+            ),
+            "adaptive_minus_120s": _edge_robustness(
+                items,
+                field="adaptive_minus_challenger_pnl",
+            ),
         },
         "by_signal": {
             "adverse_available_choose_120s": _summary(

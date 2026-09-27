@@ -1755,3 +1755,19 @@ The durable candidate start timestamp survives worker handoffs. Review readiness
 The study is research-only and grants no execution or promotion authority. It cannot delay or place the actual paper order.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Adaptive delayed-entry concentration robustness — 2026-09-27
+
+The causal 60s/120s adaptive delayed-entry selector now reports descriptive concentration stress tests without changing its frozen prospective rule or readiness gate.
+
+- adaptive edge versus always-60s and always-120s is decomposed by market;
+- the study reports the largest absolute single-trade and single-market contribution to each incremental edge;
+- leave-one-trade-out minimum delta shows the worst remaining edge after removing any one evaluated trade;
+- leave-one-market-out minimum delta shows the worst remaining edge after removing any one market;
+- explicit booleans report whether a positive edge survives every single-trade removal and every single-market removal;
+- robustness output is descriptive only and cannot turn a collecting study into review-ready.
+
+This prevents a future small-sample adaptive advantage from looking broad when it is actually concentrated in one lucky trade or one token.
+
+**LIVE TRADING: DISABLED.**

@@ -33,6 +33,7 @@ def _trade(
     direction: Direction,
     opened_at_ms: int,
     exit_price: str,
+    market: MarketId = MARKET,
 ) -> TradeJournalEntry:
     entry = Decimal("100")
     exit_px = Decimal(exit_price)
@@ -42,7 +43,7 @@ def _trade(
         else entry - exit_px
     )
     return TradeJournalEntry(
-        market=MARKET,
+        market=market,
         direction=direction,
         opened_at_ms=opened_at_ms,
         closed_at_ms=opened_at_ms + 300_000,
@@ -175,6 +176,7 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
             direction=Direction.SHORT,
             opened_at_ms=2_000_000,
             exit_price="95",
+            market=MarketId("", "BTC"),
         )
         for trade in (adverse, favorable):
             journal.record_trade(trade)
@@ -232,6 +234,44 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
     assert adverse_group["selected_120s"] == 1
     assert non_adverse["trades"] == 1
     assert non_adverse["selected_60s"] == 1
+
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    assert robustness["descriptive_only"] is True
+    assert robustness["changes_readiness_gate"] is False
+
+    vs_60 = robustness["adaptive_minus_60s"]
+    assert isinstance(vs_60, dict)
+    assert vs_60["trades"] == 2
+    assert vs_60["markets"] == 2
+    assert vs_60["total_delta_pnl"] == "1"
+    assert vs_60["largest_abs_trade_contribution"] == "1"
+    assert vs_60["largest_abs_trade_share"] == "1"
+    assert vs_60["leave_one_trade_out_min_delta"] == "0"
+    assert (
+        vs_60["positive_after_any_single_trade_removed"]
+        is False
+    )
+    assert vs_60["largest_abs_market"] == "SOL"
+    assert vs_60["largest_abs_market_contribution"] == "1"
+    assert vs_60["largest_abs_market_share"] == "1"
+    assert vs_60["leave_one_market_out_min_delta"] == "0"
+    assert (
+        vs_60["positive_after_any_single_market_removed"]
+        is False
+    )
+
+    vs_120 = robustness["adaptive_minus_120s"]
+    assert isinstance(vs_120, dict)
+    assert vs_120["total_delta_pnl"] == "0.5"
+    assert vs_120["largest_abs_trade_contribution"] == "0.5"
+    assert vs_120["leave_one_trade_out_min_delta"] == "0.0"
+
+    by_market = result["by_market"]
+    assert isinstance(by_market, dict)
+    assert set(by_market) == {"BTC", "SOL"}
+    assert by_market["SOL"]["adaptive_minus_60s_pnl"] == "1"
+    assert by_market["BTC"]["adaptive_minus_120s_pnl"] == "0.5"
 
     readiness = result["readiness"]
     assert isinstance(readiness, dict)

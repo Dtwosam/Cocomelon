@@ -1262,6 +1262,38 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "mean_adaptive_fill_fraction": "0.95",
                 },
             },
+            "robustness": {
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "adaptive_minus_60s": {
+                    "trades": 6,
+                    "markets": 4,
+                    "total_delta_pnl": "3",
+                    "largest_abs_trade_contribution": "1.2",
+                    "largest_abs_trade_share": "0.30",
+                    "leave_one_trade_out_min_delta": "1.8",
+                    "positive_after_any_single_trade_removed": True,
+                    "largest_abs_market": "SOL",
+                    "largest_abs_market_contribution": "1.4",
+                    "largest_abs_market_share": "0.35",
+                    "leave_one_market_out_min_delta": "1.6",
+                    "positive_after_any_single_market_removed": True,
+                },
+                "adaptive_minus_120s": {
+                    "trades": 6,
+                    "markets": 4,
+                    "total_delta_pnl": "2",
+                    "largest_abs_trade_contribution": "1.0",
+                    "largest_abs_trade_share": "0.40",
+                    "leave_one_trade_out_min_delta": "1.0",
+                    "positive_after_any_single_trade_removed": True,
+                    "largest_abs_market": "BTC",
+                    "largest_abs_market_contribution": "1.1",
+                    "largest_abs_market_share": "0.44",
+                    "leave_one_market_out_min_delta": "0.9",
+                    "positive_after_any_single_market_removed": True,
+                },
+            },
             "readiness": {
                 "ready_for_review": False,
                 "min_prospective_closed_trades": 30,
@@ -2870,6 +2902,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`7` / `3` / `2`" in output
     assert "missing mid / non-fresh / late signal" in output
     assert "`0 / 1 / 1`" in output
+    assert "robustness is descriptive only / changes gate" in output
+    assert "`true / false`" in output
+    assert "Δ vs 60s robustness total / LOTO trade / LOMO market" in output
+    assert "`3 / 1.8 / 1.6`" in output
+    assert "Δ vs 60s survives any one trade / market removal" in output
+    assert "`True / True`" in output
+    assert "Δ vs 120s robustness total / LOTO trade / LOMO market" in output
+    assert "`2 / 1.0 / 0.9`" in output
+    assert "largest |Δ| market vs 60s / share" in output
+    assert "`SOL / 0.35`" in output
+    assert "largest |Δ| market vs 120s / share" in output
+    assert "`BTC / 0.44`" in output
     assert "evidence gate closed / causal / 60s / 120s" in output
     assert "`30 / 20 / 5 / 5`" in output
     assert "still needed C/E/60/120" in output
