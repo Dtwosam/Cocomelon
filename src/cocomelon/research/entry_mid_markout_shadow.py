@@ -421,6 +421,7 @@ class EntryMidMarkoutShadow:
         self._excluded_closed_trades = 0
         self._unmatched_closed_trades = 0
         self._lineage_mismatch_closed_trades = 0
+        self._orphaned_restored_positions = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -565,6 +566,23 @@ class EntryMidMarkoutShadow:
             horizon.mid_px = mid_px
             horizon.signed_return_bps = signed_bps
             horizon.gross_r = gross_r
+
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        active = {
+            position.opening_plan_id
+            for position in positions
+        }
+        orphaned = tuple(
+            opening_plan_id
+            for opening_plan_id in self._positions
+            if opening_plan_id not in active
+        )
+        for opening_plan_id in orphaned:
+            del self._positions[opening_plan_id]
+        self._orphaned_restored_positions += len(orphaned)
 
     def record_closed_trade(
         self,
@@ -834,6 +852,9 @@ class EntryMidMarkoutShadow:
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
             ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
+            ),
             "closed_trade_count": len(
                 {
                     outcome.trade_id
@@ -922,6 +943,9 @@ class EntryMidMarkoutShadow:
             ),
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
+            ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
             ),
         }
 
@@ -1079,10 +1103,15 @@ class EntryMidMarkoutShadow:
             raw.get("lineage_mismatch_closed_trades", 0),
             "lineage_mismatch_closed_trades",
         )
+        orphaned_restored = _integer(
+            raw.get("orphaned_restored_positions", 0),
+            "orphaned_restored_positions",
+        )
         if (
             excluded < 0
             or unmatched < 0
             or lineage_mismatch < 0
+            or orphaned_restored < 0
         ):
             raise EntryMidMarkoutShadowError(
                 "closed trade counters must be non-negative"
@@ -1096,6 +1125,7 @@ class EntryMidMarkoutShadow:
         self._lineage_mismatch_closed_trades = (
             lineage_mismatch
         )
+        self._orphaned_restored_positions = orphaned_restored
         self._state_restored = True
         self._state_restore_error = None
 
