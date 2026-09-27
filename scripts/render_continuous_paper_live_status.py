@@ -1183,6 +1183,149 @@ def _delayed_entry_fill_weighted_lines(
     return lines
 
 
+def _delayed_entry_contribution_decomposition_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry contribution decomposition",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry decomposition telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    by_side = raw.get("by_side", {})
+    by_source = raw.get("by_source", {})
+    by_cause = raw.get("by_capacity_cause", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(by_side, dict):
+        by_side = {}
+    if not isinstance(by_source, dict):
+        by_source = {}
+    if not isinstance(by_cause, dict):
+        by_cause = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            f"- identity: `{raw.get('identity', 'unknown')}`",
+            (
+                "- closed shadow / evaluated attempts: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- missing journal / lineage mismatch: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- price / entry-fee / exposure / total Δ PnL: "
+                f"`{overall.get('price_effect_pnl', '0')}` / "
+                f"`{overall.get('entry_fee_effect_pnl', '0')}` / "
+                f"`{overall.get('exposure_effect_pnl', '0')}` / "
+                f"`{overall.get('total_delta_pnl', '0')}`"
+            ),
+            (
+                "- mean price / fee / exposure / total ΔR: "
+                f"`{overall.get('mean_price_effect_r')}` / "
+                f"`{overall.get('mean_entry_fee_effect_r')}` / "
+                f"`{overall.get('mean_exposure_effect_r')}` / "
+                f"`{overall.get('mean_total_delta_r')}`"
+            ),
+            (
+                "- price benefit +/− / exposure effect +/−: "
+                f"`{overall.get('price_benefit_positive', 0)} / "
+                f"{overall.get('price_benefit_negative', 0)} / "
+                f"{overall.get('exposure_effect_positive', 0)} / "
+                f"{overall.get('exposure_effect_negative', 0)}`"
+            ),
+            (
+                "- evidence gate (closed / evaluated): "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- still needed closed / evaluated: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Cohort | N | Fill | Price Δ | Fee Δ | Exposure Δ | "
+                "Total Δ | Mean total ΔR |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    def row(label: str, item: object) -> None:
+        if not isinstance(item, dict):
+            return
+        lines.append(
+            (
+                "| {label} | {n} | {fill} | {price} | {fee} | "
+                "{exposure} | {total} | {total_r} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                fill=item.get("mean_fill_fraction"),
+                price=item.get("price_effect_pnl", "0"),
+                fee=item.get("entry_fee_effect_pnl", "0"),
+                exposure=item.get("exposure_effect_pnl", "0"),
+                total=item.get("total_delta_pnl", "0"),
+                total_r=item.get("mean_total_delta_r"),
+            )
+        )
+
+    row("Overall", overall)
+    row("LONG", by_side.get("long"))
+    row("SHORT", by_side.get("short"))
+    row("Full fill", by_source.get("full_visible_book_ioc"))
+    row("Partial fill", by_source.get("partial_visible_book_ioc"))
+    row("No fill", by_source.get("no_fill"))
+    for cause, item in sorted(by_cause.items()):
+        row(f"Cause: {cause}", item)
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Accounting decomposition of the existing fill-weighted "
+                "same-exit estimate. Price and entry-fee effects apply only "
+                "to filled quantity; exposure effect measures the observed "
+                "trade contribution removed by unfilled quantity. The three "
+                "effects reconcile exactly to total delayed-entry Δ PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_same_exit_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -3975,6 +4118,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_fill_weighted_lines(
             payload.get("delayed_entry_fill_weighted")
+        )
+    )
+    lines.extend(
+        _delayed_entry_contribution_decomposition_lines(
+            payload.get("delayed_entry_contribution_decomposition")
         )
     )
     lines.extend(
