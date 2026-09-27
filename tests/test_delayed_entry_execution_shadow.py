@@ -139,6 +139,44 @@ def _book(
     )
 
 
+def _book_levels(
+    receive_ms: int,
+    *,
+    bids: tuple[tuple[str, str], ...],
+    asks: tuple[tuple[str, str], ...],
+) -> StreamEvent:
+    return StreamEvent(
+        kind=StreamKind.L2_BOOK,
+        market=MARKET,
+        exchange_time_ms=receive_ms - 1,
+        receive_time=datetime.fromtimestamp(
+            receive_ms / 1000,
+            tz=UTC,
+        ),
+        schema_version=1,
+        source="hyperliquid-mainnet-ws",
+        event_key=f"book-levels:{receive_ms}:{bids}:{asks}",
+        payload={
+            "bids": tuple(
+                {
+                    "px": Decimal(px),
+                    "sz": Decimal(sz),
+                    "n": 1,
+                }
+                for px, sz in bids
+            ),
+            "asks": tuple(
+                {
+                    "px": Decimal(px),
+                    "sz": Decimal(sz),
+                    "n": 1,
+                }
+                for px, sz in asks
+            ),
+        },
+    )
+
+
 def _trade(
     position: PaperPosition,
     *,
@@ -295,6 +333,68 @@ def test_delayed_entry_partial_fill_is_not_scored_as_full() -> None:
     assert summary["partial_delayed_fills"] == 1
     assert summary["mean_signed_price_improvement_bps"] is None
     assert summary["mean_gross_r_improvement"] is None
+
+
+def test_delayed_partial_distinguishes_slippage_boundary() -> None:
+    position = _position(quantity="2")
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+    attempt_ms = position.opened_at_ms + DELAY_MS + 300
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book_levels(
+            attempt_ms,
+            bids=(("99.7", "10"),),
+            asks=(("99.9", "1"), ("100.5", "10")),
+        ),
+        reference_price=Decimal("100"),
+        now_ms=attempt_ms,
+    )
+    shadow.record_closed_trade(_trade(position))
+
+    outcome = shadow.outcomes[0]
+    assert outcome.source == "partial_visible_book_ioc"
+    assert outcome.delayed_filled_quantity == Decimal("1")
+    assert outcome.capacity_cause == "slippage_boundary_reached"
+
+
+def test_delayed_partial_distinguishes_visible_depth_exhaustion() -> None:
+    position = _position(quantity="2")
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+    attempt_ms = position.opened_at_ms + DELAY_MS + 300
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book_levels(
+            attempt_ms,
+            bids=(("99.7", "10"),),
+            asks=(("99.9", "1"),),
+        ),
+        reference_price=Decimal("100"),
+        now_ms=attempt_ms,
+    )
+    shadow.record_closed_trade(_trade(position))
+
+    outcome = shadow.outcomes[0]
+    assert outcome.source == "partial_visible_book_ioc"
+    assert outcome.delayed_filled_quantity == Decimal("1")
+    assert outcome.capacity_cause == "visible_depth_exhausted"
 
 
 def test_delayed_entry_state_survives_restart_before_target() -> None:
