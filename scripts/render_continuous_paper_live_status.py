@@ -2134,6 +2134,17 @@ def _research_readiness_board_lines(
         decision_age.get("ready_for_review")
     )
 
+    excursion = mapping("excursion_timing")
+    excursion_gate = mapping("excursion_timing").get(
+        "evidence_gate",
+        {},
+    )
+    if not isinstance(excursion_gate, dict):
+        excursion_gate = {}
+    excursion_ready = bool(
+        excursion_gate.get("ready_for_review")
+    )
+
     rows = (
         (
             "fixed profit-lock",
@@ -2198,6 +2209,20 @@ def _research_readiness_board_lines(
             status(mid, ready=mid_ready),
             "fresh 1m/5m/15m=" + "/".join(mid_counts),
             mid_integrity,
+        ),
+        (
+            "excursion timing",
+            status(excursion, ready=excursion_ready),
+            (
+                f"paths={excursion.get('complete_paths_evaluated', 0)}, "
+                f"need={excursion_gate.get('missing_complete_paths', 0)}"
+            ),
+            (
+                f"decision_miss="
+                f"{excursion.get('missing_decision_attribution', 0)}, "
+                f"excursion_miss="
+                f"{excursion.get('missing_excursion_metric', 0)}"
+            ),
         ),
         (
             "decision age at fill",
