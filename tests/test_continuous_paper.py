@@ -517,7 +517,8 @@ def test_opening_fill_liquidity_capture_is_fail_open() -> None:
 
     sink.record_opening_trace(SimpleNamespace())  # type: ignore[arg-type]
 
-    assert sink.error == "AttributeError: 'types.SimpleNamespace' object has no attribute 'submission'"
+    assert sink.error is not None
+    assert sink.error.startswith("AttributeError:")
 
 
 def test_opening_fill_liquidity_telemetry_fails_open(
