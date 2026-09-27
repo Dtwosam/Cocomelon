@@ -192,8 +192,8 @@ class DelayedEntryOutcome:
             raise ValueError(
                 "delayed-entry comparison metrics must reconcile"
             )
-        for value in metrics:
-            if value is not None and not value.is_finite():
+        for metric in metrics:
+            if metric is not None and not metric.is_finite():
                 raise ValueError(
                     "delayed-entry comparison metric must be finite"
                 )
