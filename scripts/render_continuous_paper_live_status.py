@@ -476,8 +476,6 @@ def _delayed_entry_execution_shadow_lines(
     readiness = raw.get("readiness", {})
     if not isinstance(readiness, dict):
         readiness = {}
-    if not isinstance(open_attempts, dict):
-        open_attempts = {}
 
     lines.extend(
         [
@@ -902,6 +900,8 @@ def _delayed_entry_fill_capacity_lines(
         by_cause = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    if not isinstance(open_attempts, dict):
+        open_attempts = {}
 
     lines.extend(
         [
