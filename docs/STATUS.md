@@ -1209,3 +1209,19 @@ The study remains `collecting` until it has at least 30 prospective closed trade
 Reaching the gate means only `ready_for_review`. The candidate has no promotion authority and no execution authority and cannot change the live paper shortlist or entry decision.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry markout attribution by scanner rank — 2026-09-27
+
+The exact-path 1m / 5m / 15m post-entry markout diagnostic now also attributes fresh observations by the scanner rank recorded at the actual paper opening.
+
+- rank buckets are `1-5`, `6-10`, `11-20`, and `21+`;
+- rank evidence must match the opening plan, market, and opening timestamp exactly;
+- rank evidence older than 5 minutes is labeled `stale` rather than assigned to a fresh bucket;
+- missing rank evidence is labeled `unknown` rather than dropped;
+- missing/stale rank-attribution counts and rank-age statistics are published beside the horizon markouts;
+- this lets the research layer distinguish immediate adverse selection in lower-ranked markets from later lifecycle/exit giveback.
+
+This is measurement only. It does not change scanner ranking, shortlist membership, entries, stops, risk, sizing, cadence, or execution authority.
+
+**LIVE TRADING: DISABLED.**
