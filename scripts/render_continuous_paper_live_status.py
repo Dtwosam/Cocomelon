@@ -538,6 +538,10 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
                 f"{readiness.get('missing_full_delayed_fills', 0)}`"
             ),
             (
+                "- positive PnL survives remove top positive market: "
+                f"`{str(bool(raw.get('positive_pnl_survives_remove_top_positive_market'))).lower()}`"
+            ),
+            (
                 "- ready for review: "
                 f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
             ),
@@ -1827,6 +1831,9 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
     two = raw.get("remove_best_two", {})
     if not isinstance(two, dict):
         two = {}
+    market = raw.get("remove_top_positive_market", {})
+    if not isinstance(market, dict):
+        market = {}
 
     lines.extend(
         [
@@ -1845,6 +1852,14 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
                 "- top-1 / top-2 share of gross profit: "
                 f"`{raw.get('top_one_winner_share_of_gross_profit')} / "
                 f"{raw.get('top_two_winner_share_of_gross_profit')}`"
+            ),
+            (
+                "- top positive market / net PnL / trades / "
+                "positive-market-PnL share: "
+                f"`{raw.get('top_positive_market')} / "
+                f"{raw.get('top_positive_market_net_pnl')} / "
+                f"{raw.get('top_positive_market_trade_count', 0)} / "
+                f"{raw.get('top_positive_market_share_of_positive_market_pnl')}`"
             ),
             "",
             (
@@ -1875,6 +1890,20 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
                 positive=str(bool(two.get("positive_net_pnl"))).lower(),
             ),
             (
+                "| Remove top positive market ({market_name}) | {n} | "
+                "{pnl} | {mean} | {median} | {pf} | {positive} |"
+            ).format(
+                market_name=raw.get("top_positive_market"),
+                n=market.get("remaining_trades", 0),
+                pnl=market.get("net_pnl", "0"),
+                mean=market.get("mean_net_r"),
+                median=market.get("median_net_r"),
+                pf=market.get("profit_factor"),
+                positive=str(
+                    bool(market.get("positive_net_pnl"))
+                ).lower(),
+            ),
+            (
                 "- positive PnL survives remove best 1 / best 2: "
                 f"`{str(bool(raw.get('positive_pnl_survives_remove_best_one'))).lower()} / "
                 f"{str(bool(raw.get('positive_pnl_survives_remove_best_two'))).lower()}`"
@@ -1887,8 +1916,9 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
             "",
             (
                 "_Deterministic sensitivity only: it removes the largest "
-                "realized winners from the same closed-trade sample. It does "
-                "not invent replacement trades or claim portfolio PnL._"
+                "realized winners or every trade from the top positive market "
+                "inside the same closed-trade sample. It does not invent "
+                "replacement trades or claim portfolio PnL._"
             ),
         ]
     )
