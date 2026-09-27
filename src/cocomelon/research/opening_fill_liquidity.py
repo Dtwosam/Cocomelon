@@ -437,7 +437,7 @@ def evidence_from_opening_trace(
         raise OpeningFillLiquidityError(
             "entry-side 25bps depth must be positive"
         )
-    opened_at_ms = min(
+    opened_at_ms = max(
         fill.timestamp_ms for fill in simulation.fills
     )
     return OpeningFillLiquidityEvidence(
