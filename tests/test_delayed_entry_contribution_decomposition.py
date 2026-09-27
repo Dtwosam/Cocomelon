@@ -237,6 +237,55 @@ def test_exposure_effect_is_positive_when_unfilled_trade_was_loser(
     assert overall["exposure_effect_negative"] == 0
 
 
+def test_r_decomposition_reconciles_with_repeating_division(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        trade = _trade(
+            suffix="repeat-risk",
+            direction=Direction.LONG,
+            exit_price="102",
+        )
+        trade = TradeJournalEntry(
+            **{
+                field: getattr(trade, field)
+                for field in trade.__dataclass_fields__
+                if field not in {"initial_risk_amount", "net_r"}
+            },
+            initial_risk_amount=Decimal("7"),
+            net_r=trade.net_pnl / Decimal("7"),
+        )
+        journal.record_trade(trade)
+        result = delayed_entry_contribution_decomposition(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="partial_visible_book_ioc",
+                    quantity="1",
+                    price="99",
+                    fee="0.2",
+                    reason=(
+                        "IOC_REMAINDER_CANCELLED,"
+                        "RISK_CEILING_REACHED"
+                    ),
+                ),
+            ),
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    components = (
+        Decimal(str(overall["mean_price_effect_r"]))
+        + Decimal(str(overall["mean_entry_fee_effect_r"]))
+        + Decimal(str(overall["mean_exposure_effect_r"]))
+    )
+    assert components == Decimal(str(overall["mean_total_delta_r"]))
+
+
 def test_unresolved_outcomes_are_excluded_not_zeroed(
     tmp_path: Path,
 ) -> None:
