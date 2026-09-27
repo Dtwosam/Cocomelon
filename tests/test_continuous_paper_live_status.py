@@ -1074,6 +1074,102 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "requires_zero_stale_rank_evidence": True,
             },
         },
+        "excursion_timing": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "complete_paths_evaluated": 12,
+            "incomplete_paths_skipped": 2,
+            "missing_journal_trade": 0,
+            "missing_decision_attribution": 0,
+            "missing_excursion_metric": 0,
+            "evidence_gate": {
+                "min_complete_paths": 30,
+                "missing_complete_paths": 18,
+                "ready_for_review": False,
+            },
+            "overall": {
+                "trades": 12,
+                "wins": 4,
+                "losses": 8,
+                "mean_time_to_mfe_ms": 240000,
+                "median_time_to_mfe_ms": 180000,
+                "mean_time_to_mae_ms": 150000,
+                "mean_peak_to_close_ms": 420000,
+                "median_peak_to_close_ms": 360000,
+                "mean_peak_to_close_fraction_of_hold": "0.42",
+                "thresholds": {
+                    "0.25": {
+                        "reached": 9,
+                        "reach_fraction": "0.75",
+                        "mean_first_hit_ms": 90000,
+                        "median_first_hit_ms": 60000,
+                        "losing_closes_after_reach": 5,
+                        "mean_reach_to_close_ms_for_losers": 600000,
+                    },
+                    "0.5": {
+                        "reached": 7,
+                        "reach_fraction": "0.5833333333333333333333333333",
+                        "mean_first_hit_ms": 150000,
+                        "median_first_hit_ms": 120000,
+                        "losing_closes_after_reach": 4,
+                        "mean_reach_to_close_ms_for_losers": 540000,
+                    },
+                    "1": {
+                        "reached": 5,
+                        "reach_fraction": "0.4166666666666666666666666667",
+                        "mean_first_hit_ms": 300000,
+                        "median_first_hit_ms": 240000,
+                        "losing_closes_after_reach": 3,
+                        "mean_reach_to_close_ms_for_losers": 480000,
+                    },
+                },
+            },
+            "by_side": {
+                "long": {
+                    "trades": 7,
+                    "mean_time_to_mfe_ms": 210000,
+                    "mean_peak_to_close_ms": 390000,
+                    "thresholds": {
+                        "0.5": {"reached": 4},
+                        "1": {"reached": 3},
+                    },
+                },
+                "short": {
+                    "trades": 5,
+                    "mean_time_to_mfe_ms": 282000,
+                    "mean_peak_to_close_ms": 462000,
+                    "thresholds": {
+                        "0.5": {"reached": 3},
+                        "1": {"reached": 2},
+                    },
+                },
+            },
+            "by_lead_strategy": {
+                "trend": {
+                    "trades": 9,
+                    "mean_time_to_mfe_ms": 260000,
+                    "mean_peak_to_close_ms": 450000,
+                    "thresholds": {
+                        "0.5": {"reached": 5},
+                        "1": {"reached": 3},
+                    },
+                }
+            },
+            "by_exit_reason": {
+                "MARK_STOP_TRIGGERED": {
+                    "trades": 8,
+                    "mean_time_to_mfe_ms": 230000,
+                    "mean_peak_to_close_ms": 500000,
+                    "thresholds": {
+                        "0.5": {"reached": 5},
+                        "1": {"reached": 4},
+                    },
+                }
+            },
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -1408,6 +1504,22 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
     assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
     assert "### Post-entry markout diagnostic" in output
+    assert "### Exact-path excursion timing" in output
+    assert "complete paths / incomplete skipped" in output
+    assert "`12 / 2`" in output
+    assert "evidence gate / still needed" in output
+    assert "`30 / 18`" in output
+    assert "ready for review: `false`" in output
+    assert "mean / median time-to-MFE" in output
+    assert "`240000ms / 180000ms`" in output
+    assert "| +0.5R | 7 |" in output
+    assert "| +1R | 5 |" in output
+    assert "by side:" in output
+    assert "long: n=7, MFE=210000ms" in output
+    assert "by lead strategy:" in output
+    assert "trend: n=9, MFE=260000ms" in output
+    assert "by exit path:" in output
+    assert "MARK_STOP_TRIGGERED: n=8" in output
     assert "first_observed_mark_at_or_after_horizon_within_max_lag" in output
     assert "maximum accepted observation lag" in output
     assert "`60000`ms" in output
