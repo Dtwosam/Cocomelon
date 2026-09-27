@@ -216,3 +216,46 @@ def test_closed_trade_concentration_reports_missing_decision_facts(
     assert isinstance(rows, list)
     assert rows[0]["label"] == "unknown"
     assert rows[0]["positive_net_pnl_share"] == "1"
+
+
+def test_concentration_has_no_positive_contributor_when_all_groups_lose(
+    tmp_path: Path,
+) -> None:
+    trades = (
+        _trade(
+            suffix="sol-loss-only",
+            market=SOL,
+            day=0,
+            pnl="-3",
+            equity_before="10000",
+        ),
+        _trade(
+            suffix="eth-loss-only",
+            market=ETH,
+            day=7,
+            pnl="-2",
+            equity_before="9997",
+        ),
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    try:
+        for trade in trades:
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy="trend")
+            )
+        result = closed_trade_concentration_summary(trades, facts)
+    finally:
+        facts.close()
+
+    market = result["market"]
+    assert isinstance(market, dict)
+    assert market["largest_positive_contributor"] is None
+    assert market["max_positive_net_pnl_share"] is None
+    assert market["positive_net_pnl_hhi"] is None
+    assert result["market_reference_met"] is None
+
+    seven_day = result["seven_day"]
+    assert isinstance(seven_day, dict)
+    assert seven_day["largest_positive_contributor"] is None
+    assert seven_day["max_positive_net_pnl_share"] is None
+    assert result["seven_day_reference_met"] is None
