@@ -258,37 +258,37 @@ class OpeningFillLiquidityEvidence:
             raise OpeningFillLiquidityError(
                 "fill-liquidity record must be an object"
             )
-        expected = set(
-            cls(
-                opening_plan_id="x",
-                strategy_decision_id="x",
-                feature_snapshot_id="x",
-                market="X",
-                direction="long",
-                opened_at_ms=1,
-                attempt_timestamp_ms=1,
-                book_event_key="x",
-                book_exchange_ms=1,
-                book_received_ms=1,
-                book_exchange_age_ms=0,
-                book_receive_age_ms=0,
-                spread_bps=Decimal("1"),
-                bid_depth_25bps=Decimal("1"),
-                ask_depth_25bps=Decimal("1"),
-                book_imbalance=ZERO,
-                mid_px=Decimal("1"),
-                entry_side_depth_25bps=Decimal("1"),
-                exit_side_depth_25bps=Decimal("1"),
-                requested_quantity=Decimal("1"),
-                filled_quantity=Decimal("1"),
-                gross_fill_notional=Decimal("1"),
-                average_fill_price=Decimal("1"),
-                fill_slippage_bps=ZERO,
-                entry_depth_usage_fraction=Decimal("1"),
-                decision_spread_bps=None,
-                decision_book_age_ms=None,
-            ).to_dict()
-        )
+        expected = {
+            "opening_plan_id",
+            "strategy_decision_id",
+            "feature_snapshot_id",
+            "market",
+            "direction",
+            "opened_at_ms",
+            "attempt_timestamp_ms",
+            "book_event_key",
+            "book_exchange_ms",
+            "book_received_ms",
+            "book_exchange_age_ms",
+            "book_receive_age_ms",
+            "spread_bps",
+            "bid_depth_25bps",
+            "ask_depth_25bps",
+            "book_imbalance",
+            "mid_px",
+            "entry_side_depth_25bps",
+            "exit_side_depth_25bps",
+            "requested_quantity",
+            "filled_quantity",
+            "gross_fill_notional",
+            "average_fill_price",
+            "fill_slippage_bps",
+            "entry_depth_usage_fraction",
+            "decision_spread_bps",
+            "decision_book_age_ms",
+            "schema_version",
+            "evidence_id",
+        }
         if set(raw) != expected:
             raise OpeningFillLiquidityError(
                 "fill-liquidity record fields are invalid"
