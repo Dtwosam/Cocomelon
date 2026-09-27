@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, Mapping
+from typing import Final
 
 from cocomelon.research.entry_markout import (
     ENTRY_MARKOUT_HORIZONS_MS,
