@@ -2025,6 +2025,142 @@ def _closed_trade_stability_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_concentration_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade concentration",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No concentration telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    market = raw.get("market", {})
+    strategy = raw.get("lead_strategy", {})
+    seven_day = raw.get("seven_day", {})
+    if not isinstance(market, dict):
+        market = {}
+    if not isinstance(strategy, dict):
+        strategy = {}
+    if not isinstance(seven_day, dict):
+        seven_day = {}
+
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- trades / markets / lead strategies / 7d buckets: "
+                f"`{raw.get('trade_count', 0)} / "
+                f"{raw.get('distinct_markets', 0)} / "
+                f"{raw.get('distinct_lead_strategies', 0)} / "
+                f"{raw.get('distinct_seven_day_buckets', 0)}`"
+            ),
+            (
+                "- decision-fact attribution misses: "
+                f"`{raw.get('decision_fact_misses', 0)}`"
+            ),
+            (
+                "- market positive-PnL share / reference max / met: "
+                f"`{market.get('max_positive_net_pnl_share')} / "
+                f"{raw.get('market_reference_max_share')} / "
+                f"{str(raw.get('market_reference_met')).lower()}`"
+            ),
+            (
+                "- seven-day positive-PnL share / reference max / met: "
+                f"`{seven_day.get('max_positive_net_pnl_share')} / "
+                f"{raw.get('seven_day_reference_max_share')} / "
+                f"{str(raw.get('seven_day_reference_met')).lower()}`"
+            ),
+            (
+                "- market trade-count HHI / positive-PnL HHI: "
+                f"`{market.get('trade_count_hhi')} / "
+                f"{market.get('positive_net_pnl_hhi')}`"
+            ),
+            (
+                "- largest positive market / strategy / 7d bucket: "
+                f"`{market.get('largest_positive_contributor')} / "
+                f"{strategy.get('largest_positive_contributor')} / "
+                f"{seven_day.get('largest_positive_contributor')}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    def render_rows(
+        title: str,
+        bucket_label: str,
+        section: dict[str, object],
+    ) -> None:
+        rows = section.get("rows", [])
+        if not isinstance(rows, list) or not rows:
+            return
+        lines.extend(
+            [
+                "",
+                f"#### {title}",
+                "",
+                (
+                    f"| {bucket_label} | Trades | W | L | BE | Net PnL | "
+                    "Mean R | Trade share | Positive-PnL share |"
+                ),
+                (
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: |"
+                ),
+            ]
+        )
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                (
+                    "| {label} | {trades} | {wins} | {losses} | "
+                    "{breakeven} | {net_pnl} | {mean_r} | "
+                    "{trade_share} | {positive_share} |"
+                ).format(
+                    label=row.get("label"),
+                    trades=row.get("trades", 0),
+                    wins=row.get("wins", 0),
+                    losses=row.get("losses", 0),
+                    breakeven=row.get("breakeven", 0),
+                    net_pnl=row.get("net_pnl", "0"),
+                    mean_r=row.get("mean_net_r"),
+                    trade_share=row.get("trade_count_share"),
+                    positive_share=row.get("positive_net_pnl_share"),
+                )
+            )
+
+    render_rows("Market concentration", "Market", market)
+    render_rows("Lead-strategy concentration", "Strategy", strategy)
+    render_rows("UTC seven-day concentration", "7d bucket", seven_day)
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Positive-PnL concentration matches the Phase 9 rule: first "
+                "net PnL inside each group, then divide the largest positive "
+                "group by the sum of all positive groups. The 35% market and "
+                "50% seven-day values are reference limits only; this "
+                "diagnostic cannot block or promote trades._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2688,6 +2824,11 @@ def render_live_status(
     lines.extend(
         _entry_decision_age_lines(
             payload.get("entry_decision_age")
+        )
+    )
+    lines.extend(
+        _closed_trade_concentration_lines(
+            payload.get("closed_trade_concentration")
         )
     )
     lines.extend(

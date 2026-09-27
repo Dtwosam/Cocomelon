@@ -1423,3 +1423,21 @@ The continuous paper runtime now measures whether realized net economics persist
 This complements the outlier-robustness test: robustness asks whether one winner dominates aggregate PnL, while chronological stability asks whether economics repeat across time.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade concentration diagnostic — 2026-09-27
+
+The continuous-paper live status now reports whether realized positive economics are concentrated in a small number of markets or time buckets.
+
+- concentration uses the exact Phase 9 definition: first net PnL inside each group, keep only groups whose net PnL is positive, then divide each positive group by the sum of all positive groups;
+- market, persisted lead-strategy, and UTC fixed seven-day buckets are reported with trade count, W/L/BE, net PnL, mean net R, trade-count share, and positive-net-PnL share;
+- the report includes trade-count HHI and positive-PnL HHI so both sample concentration and economic concentration are visible;
+- the largest positive contributor is surfaced for market, lead strategy, and seven-day bucket;
+- the existing later-live reference limits are shown without granting authority: no single market above 35% of total positive grouped net PnL and no single seven-day bucket above 50%;
+- when there is no positive group, the positive-contributor/share fields remain unavailable rather than choosing an arbitrary zero-PnL group;
+- lead-strategy grouping uses immutable decision facts and reports attribution misses;
+- any concentration calculation failure disables only this research diagnostic and cannot interrupt paper execution.
+
+This is observability only. It does not block markets, modify scanner ranking, change risk, alter entries/exits, or authorize promotion.
+
+**LIVE TRADING: DISABLED.**

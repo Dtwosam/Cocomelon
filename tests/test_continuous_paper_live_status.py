@@ -583,6 +583,138 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "closed_trade_concentration": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "phase9_positive_group_net_pnl_share",
+            "trade_count": 5,
+            "distinct_markets": 3,
+            "distinct_lead_strategies": 2,
+            "distinct_seven_day_buckets": 3,
+            "decision_fact_misses": 0,
+            "market_reference_max_share": "0.35",
+            "seven_day_reference_max_share": "0.50",
+            "market_reference_met": False,
+            "seven_day_reference_met": False,
+            "market": {
+                "group_count": 3,
+                "largest_positive_contributor": "SOL",
+                "max_positive_net_pnl_share": "0.6",
+                "trade_count_hhi": "0.36",
+                "positive_net_pnl_hhi": "0.52",
+                "rows": [
+                    {
+                        "label": "BTC",
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "breakeven": 0,
+                        "net_pnl": "0",
+                        "mean_net_r": "0",
+                        "trade_count_share": "0.4",
+                        "positive_net_pnl_share": "0",
+                    },
+                    {
+                        "label": "ETH",
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "breakeven": 0,
+                        "net_pnl": "20",
+                        "mean_net_r": "2",
+                        "trade_count_share": "0.2",
+                        "positive_net_pnl_share": "0.4",
+                    },
+                    {
+                        "label": "SOL",
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "breakeven": 0,
+                        "net_pnl": "30",
+                        "mean_net_r": "1.5",
+                        "trade_count_share": "0.4",
+                        "positive_net_pnl_share": "0.6",
+                    },
+                ],
+            },
+            "lead_strategy": {
+                "group_count": 2,
+                "largest_positive_contributor": "breakout",
+                "max_positive_net_pnl_share": "0.5",
+                "trade_count_hhi": "0.52",
+                "positive_net_pnl_hhi": "0.50",
+                "rows": [
+                    {
+                        "label": "breakout",
+                        "trades": 2,
+                        "wins": 2,
+                        "losses": 0,
+                        "breakeven": 0,
+                        "net_pnl": "25",
+                        "mean_net_r": "1.25",
+                        "trade_count_share": "0.4",
+                        "positive_net_pnl_share": "0.5",
+                    },
+                    {
+                        "label": "trend",
+                        "trades": 3,
+                        "wins": 1,
+                        "losses": 2,
+                        "breakeven": 0,
+                        "net_pnl": "25",
+                        "mean_net_r": "0.8333333333333333333333333333",
+                        "trade_count_share": "0.6",
+                        "positive_net_pnl_share": "0.5",
+                    },
+                ],
+            },
+            "seven_day": {
+                "group_count": 3,
+                "largest_positive_contributor": "0",
+                "max_positive_net_pnl_share": "0.6",
+                "trade_count_hhi": "0.36",
+                "positive_net_pnl_hhi": "0.46",
+                "rows": [
+                    {
+                        "label": "0",
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "breakeven": 0,
+                        "net_pnl": "30",
+                        "mean_net_r": "1.5",
+                        "trade_count_share": "0.4",
+                        "positive_net_pnl_share": "0.6",
+                    },
+                    {
+                        "label": "1",
+                        "trades": 2,
+                        "wins": 1,
+                        "losses": 1,
+                        "breakeven": 0,
+                        "net_pnl": "15",
+                        "mean_net_r": "0.75",
+                        "trade_count_share": "0.4",
+                        "positive_net_pnl_share": "0.3",
+                    },
+                    {
+                        "label": "2",
+                        "trades": 1,
+                        "wins": 1,
+                        "losses": 0,
+                        "breakeven": 0,
+                        "net_pnl": "5",
+                        "mean_net_r": "0.5",
+                        "trade_count_share": "0.2",
+                        "positive_net_pnl_share": "0.1",
+                    },
+                ],
+            },
+        },
         "closed_trade_friction": {
             "enabled": True,
             "research_only": True,
@@ -1796,6 +1928,25 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 30-<60s | 1 | 0 | 1 | 0 | -4 | -0.4 | 35000ms |" in output
     assert "by lead strategy:" in output
     assert "trend: n=2, meanAge=21000ms, meanR=-0.3, net=-6" in output
+    assert "### Closed-trade concentration" in output
+    assert "phase9_positive_group_net_pnl_share" in output
+    assert "trades / markets / lead strategies / 7d buckets" in output
+    assert "`5 / 3 / 2 / 3`" in output
+    assert "market positive-PnL share / reference max / met" in output
+    assert "`0.6 / 0.35 / false`" in output
+    assert "seven-day positive-PnL share / reference max / met" in output
+    assert "`0.6 / 0.50 / false`" in output
+    assert "market trade-count HHI / positive-PnL HHI" in output
+    assert "`0.36 / 0.52`" in output
+    assert "largest positive market / strategy / 7d bucket" in output
+    assert "`SOL / breakout / 0`" in output
+    assert "#### Market concentration" in output
+    assert "| SOL | 2 | 1 | 1 | 0 | 30 | 1.5 | 0.4 | 0.6 |" in output
+    assert "#### Lead-strategy concentration" in output
+    assert "| breakout | 2 | 2 | 0 | 0 | 25 | 1.25 | 0.4 | 0.5 |" in output
+    assert "#### UTC seven-day concentration" in output
+    assert "| 0 | 2 | 1 | 1 | 0 | 30 | 1.5 | 0.4 | 0.6 |" in output
+    assert "35% market and 50% seven-day values are reference limits only" in output
     assert "### Closed-trade friction attribution" in output
     assert "reference_gross_minus_slippage_minus_fees_plus_funding" in output
     assert "| 6 | 1 | 5 | 5.5 | 2 | 1.5 | 4.5 |" in output
