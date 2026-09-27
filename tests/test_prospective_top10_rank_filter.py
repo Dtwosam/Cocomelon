@@ -82,7 +82,7 @@ def _rank(
     trade: TradeJournalEntry,
     *,
     ordinal: int,
-    age_ms: int = 30_000,
+    age_ms: int = 1_000,
 ) -> ContinuousPaperOpeningRankEvidence:
     return ContinuousPaperOpeningRankEvidence(
         opening_plan_id=trade.opening_plan_id,
