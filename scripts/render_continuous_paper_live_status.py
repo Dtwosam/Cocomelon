@@ -1895,6 +1895,136 @@ def _closed_trade_robustness_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_stability_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade chronological stability",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No stability telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    stability = raw.get("stability", {})
+    if not isinstance(stability, dict):
+        stability = {}
+    rolling = raw.get("rolling", {})
+    if not isinstance(rolling, dict):
+        rolling = {}
+
+    lines.extend(
+        [
+            (
+                "- closed trades / review gate / still needed: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{readiness.get('min_closed_trades', 0)} / "
+                f"{readiness.get('missing_closed_trades', 0)}`"
+            ),
+            (
+                "- chronological blocks / min trades per block: "
+                f"`{readiness.get('chronological_blocks', 0)} / "
+                f"{readiness.get('min_trades_per_block', 0)}`"
+            ),
+            (
+                "- full blocks / all positive PnL / all positive mean R: "
+                f"`{stability.get('full_blocks', 0)} / "
+                f"{str(bool(stability.get('all_full_blocks_positive_net_pnl'))).lower()} / "
+                f"{str(bool(stability.get('all_full_blocks_positive_mean_net_r'))).lower()}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Window | N windows | Positive PnL fraction | "
+                "Positive mean-R fraction | Latest PnL | Latest mean R | "
+                "Worst mean R | Best mean R |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+    for key in ("5", "10"):
+        item = rolling.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        latest = item.get("latest", {})
+        if not isinstance(latest, dict):
+            latest = {}
+        lines.append(
+            (
+                "| {size} trades | {count} | {pnl_fraction} | "
+                "{r_fraction} | {latest_pnl} | {latest_r} | "
+                "{worst_r} | {best_r} |"
+            ).format(
+                size=key,
+                count=item.get("window_count", 0),
+                pnl_fraction=item.get("positive_pnl_fraction"),
+                r_fraction=item.get("positive_mean_r_fraction"),
+                latest_pnl=latest.get("net_pnl"),
+                latest_r=latest.get("mean_net_r"),
+                worst_r=item.get("worst_mean_net_r"),
+                best_r=item.get("best_mean_net_r"),
+            )
+        )
+
+    blocks = raw.get("chronological_blocks", [])
+    if not isinstance(blocks, list):
+        blocks = []
+    lines.extend(
+        [
+            "",
+            "| Block | Trades | W | L | Net PnL | Mean R | PF |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        lines.append(
+            (
+                "| {block} | {trades} | {wins} | {losses} | "
+                "{pnl} | {mean_r} | {pf} |"
+            ).format(
+                block=block.get("block"),
+                trades=block.get("trades", 0),
+                wins=block.get("wins", 0),
+                losses=block.get("losses", 0),
+                pnl=block.get("net_pnl"),
+                mean_r=block.get("mean_net_r"),
+                pf=block.get("profit_factor"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Rolling windows overlap and are descriptive. The fixed "
+                "review gate requires 40 chronological closed trades so all "
+                "four blocks contain at least 10 trades. Review readiness "
+                "does not authorize strategy promotion._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2537,6 +2667,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_robustness_lines(
             payload.get("closed_trade_robustness")
+        )
+    )
+    lines.extend(
+        _closed_trade_stability_lines(
+            payload.get("closed_trade_stability")
         )
     )
     lines.extend(["", "### Closed trade performance", ""])
