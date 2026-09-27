@@ -698,6 +698,173 @@ def _delayed_entry_pair_lines(raw: object) -> list[str]:
     return lines
 
 
+def _delayed_entry_fill_weighted_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry fill-weighted contribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry fill-weighted telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    by_side = raw.get("by_side", {})
+    if not isinstance(by_side, dict):
+        by_side = {}
+    by_source = raw.get("by_source", {})
+    if not isinstance(by_source, dict):
+        by_source = {}
+    source_counts = raw.get("source_counts", {})
+    if not isinstance(source_counts, dict):
+        source_counts = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- exit / funding assumptions: "
+                f"`{raw.get('exit_assumption', 'unknown')}` / "
+                f"`{raw.get('funding_assumption', 'unknown')}`"
+            ),
+            (
+                "- unfilled assumption: "
+                f"`{raw.get('unfilled_assumption', 'unknown')}`"
+            ),
+            (
+                "- closed shadow / evaluated attempts: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- full / partial / no-fill: "
+                f"`{source_counts.get('full_visible_book_ioc', 0)} / "
+                f"{source_counts.get('partial_visible_book_ioc', 0)} / "
+                f"{source_counts.get('no_fill', 0)}`"
+            ),
+            (
+                "- unresolved censored / missing / rejected / expired: "
+                f"`{source_counts.get('censored_before_delay', 0)} / "
+                f"{source_counts.get('missing_delayed_book', 0)} / "
+                f"{source_counts.get('rejected', 0)} / "
+                f"{source_counts.get('expired', 0)}`"
+            ),
+            (
+                "- missing journal / lineage mismatch: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- mean delayed fill fraction: "
+                f"`{overall.get('mean_fill_fraction')}`"
+            ),
+            (
+                "- actual / fill-weighted candidate PnL / delta: "
+                f"`{overall.get('actual_net_pnl', '0')}` / "
+                f"`{overall.get('candidate_fill_weighted_net_pnl', '0')}` / "
+                f"`{overall.get('delta_net_pnl_estimate', '0')}`"
+            ),
+            (
+                "- actual W/L → candidate +/−/0 contribution: "
+                f"`{overall.get('actual_wins', 0)}/"
+                f"{overall.get('actual_losses', 0)} → "
+                f"{overall.get('candidate_positive_contributions', 0)}/"
+                f"{overall.get('candidate_negative_contributions', 0)}/"
+                f"{overall.get('candidate_zero_contributions', 0)}`"
+            ),
+            (
+                "- candidate better / worse / equal to actual: "
+                f"`{overall.get('candidate_better_than_actual', 0)} / "
+                f"{overall.get('candidate_worse_than_actual', 0)} / "
+                f"{overall.get('candidate_equal_to_actual', 0)}`"
+            ),
+            (
+                "- actual winner→nonpositive / loss→nonnegative: "
+                f"`{overall.get('actual_win_to_nonpositive_contribution', 0)} / "
+                f"{overall.get('actual_loss_to_nonnegative_contribution', 0)}`"
+            ),
+            (
+                "- evidence gate (closed / evaluated): "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- still needed closed / evaluated: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            "| Cohort | N | Fill fraction | Actual PnL | Candidate PnL | Δ PnL | Mean ΔR |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+
+    def row(label: str, item: object) -> None:
+        if not isinstance(item, dict):
+            return
+        lines.append(
+            (
+                "| {label} | {n} | {fill} | {actual} | {candidate} | "
+                "{delta} | {delta_r} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                fill=item.get("mean_fill_fraction"),
+                actual=item.get("actual_net_pnl", "0"),
+                candidate=item.get(
+                    "candidate_fill_weighted_net_pnl",
+                    "0",
+                ),
+                delta=item.get("delta_net_pnl_estimate", "0"),
+                delta_r=item.get("mean_delta_r_contribution"),
+            )
+        )
+
+    row("Overall", overall)
+    row("LONG", by_side.get("long"))
+    row("SHORT", by_side.get("short"))
+    row("Full fill", by_source.get("full_visible_book_ioc"))
+    row("Partial fill", by_source.get("partial_visible_book_ioc"))
+    row("No fill", by_source.get("no_fill"))
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Contribution estimate only. Partial fills keep only the "
+                "simulated filled quantity; genuine no-fills contribute zero. "
+                "Unresolved stale/missing/censored evidence is excluded, not "
+                "treated as a missed trade. This does not model replacement "
+                "trades, changed exits, capacity, or stop timing._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_same_exit_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2977,6 +3144,17 @@ def _research_readiness_board_lines(
     delayed_same_exit_ready = bool(
         delayed_same_exit_gate.get("ready_for_review")
     )
+    delayed_fill_weighted = mapping("delayed_entry_fill_weighted")
+    delayed_fill_weighted_gate = readiness(delayed_fill_weighted)
+    delayed_fill_weighted_ready = bool(
+        delayed_fill_weighted_gate.get("ready_for_review")
+    )
+    delayed_fill_weighted_overall = delayed_fill_weighted.get(
+        "overall",
+        {},
+    )
+    if not isinstance(delayed_fill_weighted_overall, dict):
+        delayed_fill_weighted_overall = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -3143,6 +3321,22 @@ def _research_readiness_board_lines(
             (
                 f"missing={delayed_same_exit.get('missing_journal_trades', 0)}, "
                 f"mismatch={delayed_same_exit.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "60s delayed fill-weighted",
+            status(
+                delayed_fill_weighted,
+                ready=delayed_fill_weighted_ready,
+            ),
+            (
+                f"closed={delayed_fill_weighted.get('closed_shadow_outcomes', 0)}, "
+                f"eval={delayed_fill_weighted.get('evaluated_delayed_attempts', 0)}, "
+                f"fill={delayed_fill_weighted_overall.get('mean_fill_fraction')}"
+            ),
+            (
+                f"missing={delayed_fill_weighted.get('missing_journal_trades', 0)}, "
+                f"mismatch={delayed_fill_weighted.get('lineage_mismatches', 0)}"
             ),
         ),
         (
@@ -3423,6 +3617,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_same_exit_lines(
             payload.get("delayed_entry_same_exit")
+        )
+    )
+    lines.extend(
+        _delayed_entry_fill_weighted_lines(
+            payload.get("delayed_entry_fill_weighted")
         )
     )
     lines.extend(

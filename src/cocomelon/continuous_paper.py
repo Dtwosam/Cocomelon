@@ -97,6 +97,9 @@ from cocomelon.research.delayed_entry_execution_shadow import (
     MAX_DELAY_OBSERVATION_LAG_MS,
     DelayedEntryExecutionShadow,
 )
+from cocomelon.research.delayed_entry_fill_weighted import (
+    delayed_entry_fill_weighted_contribution,
+)
 from cocomelon.research.delayed_entry_pair import (
     CHALLENGER_DELAY_MS,
     delayed_entry_pair_summary,
@@ -2169,6 +2172,37 @@ def _profit_lock_counterfactual_payload(
     }
 
 
+def _delayed_entry_fill_weighted_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_fill_weighted_contribution(
+            journal,
+            delayed_shadow.shadow.outcomes,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_same_exit_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -2567,6 +2601,12 @@ def _live_status_payload(
             ),
         )
     )
+    delayed_entry_fill_weighted = (
+        _delayed_entry_fill_weighted_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+        )
+    )
     delayed_entry_same_exit = _delayed_entry_same_exit_payload(
         pump.journal,
         delayed_entry_execution_shadow,
@@ -2706,6 +2746,7 @@ def _live_status_payload(
         ),
         "delayed_entry_pair": delayed_entry_pair,
         "delayed_entry_same_exit": delayed_entry_same_exit,
+        "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter

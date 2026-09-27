@@ -23,6 +23,7 @@ from cocomelon.continuous_paper import (
     _ContinuousOpeningFillLiquiditySink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
+    _delayed_entry_fill_weighted_payload,
     _delayed_entry_same_exit_payload,
     _drawdown_payload,
     _entry_decision_age_payload,
@@ -170,7 +171,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"delayed_entry_120s_execution_shadow": (' in source
     assert '"delayed_entry_pair": delayed_entry_pair' in source
     assert '"delayed_entry_same_exit": delayed_entry_same_exit' in source
+    assert '"delayed_entry_fill_weighted": delayed_entry_fill_weighted' in source
     assert "delayed_entry_same_exit_contribution(" in source
+    assert "delayed_entry_fill_weighted_contribution(" in source
     assert "profit_lock_execution_shadow.shadow.state_payload()" in source
     assert "delayed_entry_execution_shadow.shadow.state_payload()" in source
     assert (
@@ -793,6 +796,31 @@ def test_profit_lock_execution_shadow_sink_fails_open() -> None:
     assert payload["research_only"] is True
     assert payload["execution_authority"] is False
     assert payload["error"] == "RuntimeError: shadow boom"
+
+
+def test_delayed_entry_fill_weighted_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("fill weighted boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.delayed_entry_fill_weighted_contribution",
+        fail,
+    )
+    payload = _delayed_entry_fill_weighted_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(
+            shadow=SimpleNamespace(outcomes=()),
+            error=None,
+        ),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: fill weighted boom"
 
 
 def test_delayed_entry_same_exit_telemetry_fails_open(
