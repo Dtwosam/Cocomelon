@@ -1133,7 +1133,8 @@ def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
         [
             (
                 "- fully closed journal matches account-implied closed "
-                f"economics: `{str(bool(reconciliation.get('closed_journal_matches_account'))).lower()}`"
+                "economics: "
+                f"`{str(bool(reconciliation.get('closed_journal_matches_account'))).lower()}`"
             ),
             (
                 "- realized cash bridge / equity bridge match: "
