@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -350,12 +351,53 @@ def test_allmids_shadow_state_round_trip_preserves_open_observation(
     assert payload["by_horizon_ms"]["300000"]["fresh"] == 1
 
 
-def test_allmids_shadow_contains_closed_trade_lineage_mismatch(
+def test_allmids_shadow_rebases_r_on_closed_trade_initial_risk(
     tmp_path: Path,
 ) -> None:
     shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
     tracked = _position(
-        suffix="mismatch",
+        suffix="risk-rebase",
+        side=PositionSide.LONG,
+        opened_at_ms=1_100_000,
+    )
+    shadow.observe(
+        _record(1_160_000, "101"),
+        (tracked,),
+        now_ms=1_160_000,
+    )
+    trade = _trade(
+        tracked,
+        suffix="risk-rebase",
+        closed_at_ms=1_500_000,
+    )
+    trade = replace(
+        trade,
+        initial_risk_amount=Decimal("20"),
+    )
+    shadow.record_closed_trade(trade)
+
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    try:
+        facts.record_decision_fact(
+            _fact(trade, lead_strategy="trend")
+        )
+        payload = shadow.summary_payload(facts)
+    finally:
+        facts.close()
+
+    assert payload["closed_trade_count"] == 1
+    assert payload["lineage_mismatch_closed_trades"] == 0
+    assert payload["risk_basis"] == "closed_trade_initial_risk_amount"
+    assert payload["quantity_basis"] == "closed_trade_filled_quantity"
+    assert payload["by_horizon_ms"]["60000"]["mean_gross_r"] == "0.1"
+
+
+def test_allmids_shadow_still_rejects_true_identity_drift(
+    tmp_path: Path,
+) -> None:
+    shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
+    tracked = _position(
+        suffix="identity-mismatch",
         side=PositionSide.LONG,
         opened_at_ms=1_100_000,
     )
@@ -367,19 +409,19 @@ def test_allmids_shadow_contains_closed_trade_lineage_mismatch(
     mismatched = PaperPosition(
         market=tracked.market,
         side=tracked.side,
-        quantity=Decimal("1"),
-        average_entry_price=tracked.average_entry_price,
+        quantity=tracked.quantity,
+        average_entry_price=Decimal("101"),
         stop_price=tracked.stop_price,
         opening_plan_id=tracked.opening_plan_id,
         opened_at_ms=tracked.opened_at_ms,
         updated_at_ms=tracked.updated_at_ms,
         initial_risk_decision_id=tracked.initial_risk_decision_id,
-        planned_risk=Decimal("5"),
+        planned_risk=tracked.planned_risk,
     )
     shadow.record_closed_trade(
         _trade(
             mismatched,
-            suffix="mismatch",
+            suffix="identity-mismatch",
             closed_at_ms=1_500_000,
         )
     )
