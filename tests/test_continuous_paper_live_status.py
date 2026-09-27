@@ -1999,7 +1999,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| closed-trade stability | collecting | closed=20, need=20 | "
         "full_blocks=0, all_pnl_positive=false |" in output
     )
-    assert "review-ready studies: `0 / 10`" in output
+    assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
+    assert "review-ready studies: `0 / 11`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
