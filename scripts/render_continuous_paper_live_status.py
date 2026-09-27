@@ -1475,6 +1475,124 @@ def _delayed_entry_same_exit_lines(raw: object) -> list[str]:
     return lines
 
 
+def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry risk geometry",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No delayed-entry risk-geometry telemetry in this heartbeat._")
+        return lines
+
+    lines.append(f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    overall = raw.get("overall", {})
+    clipped = raw.get("risk_clipped", {})
+    by_side = raw.get("by_side", {})
+    by_cause = raw.get("by_cause", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(clipped, dict):
+        clipped = {}
+    if not isinstance(by_side, dict):
+        by_side = {}
+    if not isinstance(by_cause, dict):
+        by_cause = {}
+
+    lines.extend(
+        [
+            f"- definition: `{raw.get('definition', 'unknown')}`",
+            (
+                "- filled attempts / no-fill outcomes: "
+                f"`{raw.get('evaluated_filled_attempts', 0)} / "
+                f"{raw.get('no_fill_outcomes', 0)}`"
+            ),
+            (
+                "- missing journal / opening plan / lineage / fill price: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_opening_plans', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)} / "
+                f"{raw.get('missing_delayed_fill_price', 0)}`"
+            ),
+            (
+                "- evidence gate (filled / risk-clipped): "
+                f"`{readiness.get('min_evaluated_filled_attempts', 0)} / "
+                f"{readiness.get('min_risk_clipped_attempts', 0)}`"
+            ),
+            (
+                "- still needed filled / risk-clipped: "
+                f"`{readiness.get('missing_evaluated_filled_attempts', 0)} / "
+                f"{readiness.get('missing_risk_clipped_attempts', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Cohort | N | Fill | Risk used / ceiling | "
+                "Full-size risk / ceiling | Risk-capacity fraction | "
+                "Unit-risk change | Risk clipped | Full-size > ceiling |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: |"
+            ),
+        ]
+    )
+
+    def row(label: str, item: object) -> None:
+        if not isinstance(item, dict):
+            return
+        lines.append(
+            (
+                "| {label} | {n} | {fill} | {util} | {full} | "
+                "{capacity} | {unit} | {clipped} | {over} |"
+            ).format(
+                label=label,
+                n=item.get("attempts", 0),
+                fill=item.get("mean_fill_fraction"),
+                util=item.get("mean_risk_utilization"),
+                full=item.get("mean_full_size_risk_ratio"),
+                capacity=item.get("mean_risk_capacity_fraction"),
+                unit=item.get("mean_unit_risk_change_fraction"),
+                clipped=item.get("risk_clipped", 0),
+                over=item.get("full_size_risk_above_ceiling", 0),
+            )
+        )
+
+    row("Overall", overall)
+    row("Risk-clipped", clipped)
+    row("LONG", by_side.get("long"))
+    row("SHORT", by_side.get("short"))
+    for cause, item in sorted(by_cause.items()):
+        row(f"Cause: {cause}", item)
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Risk used is delayed filled risk divided by the original "
+                "paper trade risk ceiling. Full-size risk / ceiling above 1 "
+                "means the original quantity could not fit the original risk "
+                "budget at the observed delayed average fill. This diagnostic "
+                "does not change size, stops, risk, delay, or execution._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -4123,6 +4241,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_contribution_decomposition_lines(
             payload.get("delayed_entry_contribution_decomposition")
+        )
+    )
+    lines.extend(
+        _delayed_entry_risk_geometry_lines(
+            payload.get("delayed_entry_risk_geometry")
         )
     )
     lines.extend(
