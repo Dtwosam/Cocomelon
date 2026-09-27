@@ -47,6 +47,10 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.execution.accounting import PaperPosition, PositionSide
+from cocomelon.research.delayed_entry_execution_shadow import (
+    DelayedEntryExecutionShadow,
+)
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
@@ -145,6 +149,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "position_research_observer=(" in source
     assert "_CompositePositionResearchObserver(" in source
+    assert "opening_plan_loader=execution.store.load_plan" in source
+    assert "_position_with_original_stop(" in source
     assert '"profit_lock_execution_shadow": (' in source
     assert '"delayed_entry_execution_shadow": (' in source
     assert "profit_lock_execution_shadow.shadow.state_payload()" in source
@@ -535,6 +541,7 @@ def test_delayed_entry_execution_shadow_sink_fails_open() -> None:
 
     sink = _ContinuousDelayedEntryExecutionShadowSink(
         FailingShadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _plan_id: None,
     )
     sink.observe_mark(
         (),
@@ -549,6 +556,51 @@ def test_delayed_entry_execution_shadow_sink_fails_open() -> None:
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: delay shadow boom"
+
+
+def test_delayed_entry_shadow_uses_persisted_opening_stop() -> None:
+    market = MarketId("", "BTC")
+    position = PaperPosition(
+        market=market,
+        side=PositionSide.LONG,
+        quantity=Decimal("1"),
+        average_entry_price=Decimal("100"),
+        stop_price=Decimal("98"),
+        opening_plan_id="opening-plan-1",
+        opened_at_ms=1_000,
+        updated_at_ms=2_000,
+        initial_risk_decision_id="risk-1",
+        correlation_bucket="crypto_beta",
+        cost_buffer_fraction=Decimal("0"),
+        planned_risk=Decimal("10"),
+        venue_max_leverage=Decimal("20"),
+        latest_mark=Decimal("101"),
+    )
+    opening_plan = SimpleNamespace(
+        reduce_only=False,
+        market=market,
+        stop_price=Decimal("90"),
+    )
+    shadow = DelayedEntryExecutionShadow(
+        PaperExecutionConfig(),
+        started_at_ms=0,
+    )
+    sink = _ContinuousDelayedEntryExecutionShadowSink(
+        shadow,
+        opening_plan_loader=lambda _plan_id: opening_plan,  # type: ignore[arg-type]
+    )
+
+    sink.reconcile_open_positions((position,))
+
+    assert sink.error is None
+    state = shadow.state_payload()
+    open_state = state["open"]
+    assert isinstance(open_state, list)
+    assert len(open_state) == 1
+    assert open_state[0]["initial_stop_price"] == "90"
+    assert open_state[0]["initial_stop_price"] != str(
+        position.stop_price
+    )
 
 
 def test_delayed_entry_execution_shadow_restore_failure_is_fail_open(
