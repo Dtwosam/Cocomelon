@@ -1182,6 +1182,40 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "Stop-lock R" in output
     assert "| BTC | long | 0.01 | 65000 | 64000 | 65200 | 2 | 0.2 | 4 | 0.4 | yes | 10 |" in output
     assert "gross open notional" in output
+    assert "### Research readiness board" in output
+    assert "OBSERVABILITY ONLY" in output
+    assert (
+        "| fixed profit-lock | collecting | paths=2/3 | skipped=1 |"
+        in output
+    )
+    assert (
+        "| IOC profit-lock | collecting | closed=2 | "
+        "mismatch=0, orphan=0 |" in output
+    )
+    assert (
+        "| LONG+trend filter | collecting | "
+        "closed=12, blocked=5, allowed=7 | misses=0 |" in output
+    )
+    assert (
+        "| top-10 rank filter | collecting | "
+        "closed=12, blocked=5, allowed=6 | missing=1, stale=0 |"
+        in output
+    )
+    assert (
+        "| exact-path entry markout | collecting | "
+        "1m/5m/15m=3/2/1 | decision_miss=0, rank_miss=0 |"
+        in output
+    )
+    assert (
+        "| allMids entry markout | collecting | "
+        "fresh 1m/5m/15m=3/2/1 | "
+        "unmatched=0, mismatch=0, orphan=0 |" in output
+    )
+    assert (
+        "| decision age at fill | collecting | "
+        "attributed=4, need=26 | misses=0 |" in output
+    )
+    assert "review-ready studies: `0 / 7`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
