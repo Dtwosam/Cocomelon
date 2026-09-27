@@ -1259,6 +1259,135 @@ def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
     return lines
 
 
+def _entry_decision_age_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Entry decision age at fill",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No decision-age telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- attributed closed trades / misses: "
+                f"`{raw.get('attributed_closed_trades', 0)} / "
+                f"{raw.get('attribution_misses', 0)}`"
+            ),
+            (
+                "- review gate / still needed: "
+                f"`{raw.get('minimum_attributed_trades_for_review', 0)} / "
+                f"{raw.get('still_needed_for_review', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(raw.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            (
+                "- mean / median / p90 / max age: "
+                f"`{overall.get('mean_decision_age_ms')}` / "
+                f"`{overall.get('median_decision_age_ms')}` / "
+                f"`{overall.get('p90_decision_age_ms')}` / "
+                f"`{overall.get('max_decision_age_ms')}` ms"
+            ),
+            (
+                "- age >=5s / >=15s / >=30s / >=60s: "
+                f"`{raw.get('older_than_5s', 0)} / "
+                f"{raw.get('older_than_15s', 0)} / "
+                f"{raw.get('older_than_30s', 0)} / "
+                f"{raw.get('older_than_60s', 0)}`"
+            ),
+        ]
+    )
+
+    groups = raw.get("by_age_band", {})
+    if not isinstance(groups, dict):
+        groups = {}
+    lines.extend(
+        [
+            "",
+            "| Decision age | Trades | W | L | BE | Net PnL | Mean R | Mean age |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for label in (
+        "<1s",
+        "1-<5s",
+        "5-<15s",
+        "15-<30s",
+        "30-<60s",
+        "60s+",
+    ):
+        item = groups.get(label, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {trades} | {wins} | {losses} | {be} | "
+                "{pnl} | {mean_r} | {mean_age}ms |"
+            ).format(
+                label=label,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                be=item.get("breakeven", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+                mean_age=item.get("mean_decision_age_ms"),
+            )
+        )
+
+    def grouped_line(field: str, label: str) -> None:
+        values = raw.get(field, {})
+        if not isinstance(values, dict) or not values:
+            return
+        parts: list[str] = []
+        for name, item in sorted(values.items()):
+            if not isinstance(item, dict):
+                continue
+            parts.append(
+                f"{name}: n={item.get('trades', 0)}, "
+                f"meanAge={item.get('mean_decision_age_ms')}ms, "
+                f"meanR={item.get('mean_net_r')}, "
+                f"net={item.get('net_pnl')}"
+            )
+        if parts:
+            lines.append(f"- {label}: " + "; ".join(parts))
+
+    lines.append("")
+    grouped_line("by_side", "by side")
+    grouped_line("by_lead_strategy", "by lead strategy")
+    lines.extend(
+        [
+            "",
+            (
+                "_Age is measured from the persisted strategy decision "
+                "timestamp to the first actual opening fill. This diagnostic "
+                "does not delay, reject, or reprioritize entries._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -1639,6 +1768,11 @@ def render_live_status(
     else:
         lines.append("_No closed paper trades in durable state yet._")
 
+    lines.extend(
+        _entry_decision_age_lines(
+            payload.get("entry_decision_age")
+        )
+    )
     lines.extend(
         _closed_trade_friction_lines(
             payload.get("closed_trade_friction")
