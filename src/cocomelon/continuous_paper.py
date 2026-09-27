@@ -92,6 +92,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.delayed_entry_contribution_decomposition import (
+    delayed_entry_contribution_decomposition,
+)
 from cocomelon.research.delayed_entry_execution_shadow import (
     DELAY_MS,
     MAX_DELAY_OBSERVATION_LAG_MS,
@@ -99,6 +102,9 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.delayed_entry_fill_capacity import (
     delayed_entry_fill_capacity_summary,
+)
+from cocomelon.research.delayed_entry_risk_geometry import (
+    delayed_entry_risk_geometry_summary,
 )
 from cocomelon.research.delayed_entry_fill_weighted import (
     delayed_entry_fill_weighted_contribution,
@@ -2281,6 +2287,70 @@ def _delayed_entry_fill_capacity_payload(
     return payload
 
 
+def _delayed_entry_contribution_decomposition_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_contribution_decomposition(
+            journal,
+            delayed_shadow.shadow.outcomes,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _delayed_entry_risk_geometry_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_risk_geometry_summary(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            plan_loader,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_fill_weighted_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -2771,6 +2841,19 @@ def _live_status_payload(
             delayed_entry_execution_shadow,
         )
     )
+    delayed_entry_contribution_decomposition = (
+        _delayed_entry_contribution_decomposition_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+        )
+    )
+    delayed_entry_risk_geometry = (
+        _delayed_entry_risk_geometry_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            execution.store.load_plan,
+        )
+    )
     delayed_entry_same_exit = _delayed_entry_same_exit_payload(
         pump.journal,
         delayed_entry_execution_shadow,
@@ -2922,6 +3005,10 @@ def _live_status_payload(
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "delayed_entry_fill_capacity": delayed_entry_fill_capacity,
         "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
+        "delayed_entry_contribution_decomposition": (
+            delayed_entry_contribution_decomposition
+        ),
+        "delayed_entry_risk_geometry": delayed_entry_risk_geometry,
         "prospective_entry_filter": prospective_entry_filter,
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter
