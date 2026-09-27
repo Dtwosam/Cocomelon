@@ -997,6 +997,83 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_same_exit": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": "same_exit_trade_contribution_only",
+            "funding_assumption": "actual_trade_funding_held_constant",
+            "exit_assumption": (
+                "actual_trade_exit_price_and_exit_fee_held_constant"
+            ),
+            "closed_shadow_outcomes": 12,
+            "full_delayed_fill_outcomes": 8,
+            "evaluated_full_delayed_fills": 8,
+            "missing_journal_trades": 0,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 8,
+                "actual_wins": 2,
+                "actual_losses": 6,
+                "candidate_wins_estimate": 4,
+                "candidate_losses_estimate": 4,
+                "loss_to_win_flips_estimate": 2,
+                "win_to_loss_flips_estimate": 0,
+                "actual_net_pnl": "-10",
+                "candidate_net_pnl_estimate": "6",
+                "delta_net_pnl_estimate": "16",
+                "actual_mean_net_r": "-0.10",
+                "candidate_mean_net_r_estimate": "0.06",
+                "mean_delta_net_r_estimate": "0.16",
+                "mean_gross_entry_improvement": "2.1",
+                "mean_entry_fee_improvement": "-0.1",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 3,
+                    "actual_wins": 1,
+                    "actual_losses": 2,
+                    "candidate_wins_estimate": 2,
+                    "candidate_losses_estimate": 1,
+                    "loss_to_win_flips_estimate": 1,
+                    "win_to_loss_flips_estimate": 0,
+                    "actual_net_pnl": "-4",
+                    "candidate_net_pnl_estimate": "2",
+                    "delta_net_pnl_estimate": "6",
+                    "actual_mean_net_r": "-0.12",
+                    "candidate_mean_net_r_estimate": "0.05",
+                    "mean_delta_net_r_estimate": "0.17",
+                    "mean_gross_entry_improvement": "2.1",
+                    "mean_entry_fee_improvement": "-0.1",
+                },
+                "short": {
+                    "trades": 5,
+                    "actual_wins": 1,
+                    "actual_losses": 4,
+                    "candidate_wins_estimate": 2,
+                    "candidate_losses_estimate": 3,
+                    "loss_to_win_flips_estimate": 1,
+                    "win_to_loss_flips_estimate": 0,
+                    "actual_net_pnl": "-6",
+                    "candidate_net_pnl_estimate": "4",
+                    "delta_net_pnl_estimate": "10",
+                    "actual_mean_net_r": "-0.09",
+                    "candidate_mean_net_r_estimate": "0.07",
+                    "mean_delta_net_r_estimate": "0.16",
+                    "mean_gross_entry_improvement": "2.1",
+                    "mean_entry_fee_improvement": "-0.1",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_full_delayed_fills": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_full_delayed_fills": 12,
+            },
+            "error": None,
+        },
         "opening_scanner_rank": {
             "enabled": True,
             "research_only": True,
@@ -2000,7 +2077,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 11`" in output
+    assert "review-ready studies: `0 / 12`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
@@ -2022,6 +2099,22 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`5 / 3`" in output
     assert "mean signed price improvement / gross-R improvement" in output
     assert "`12.5` bps / `0.08` R" in output
+    assert "### 60s delayed-entry same-exit contribution" in output
+    assert "same_exit_trade_contribution_only" in output
+    assert "closed shadow / full fills / evaluated" in output
+    assert "`12 / 8 / 8`" in output
+    assert "actual W/L → estimated W/L" in output
+    assert "`2/6 → 4/4`" in output
+    assert "estimated loss→win / win→loss flips" in output
+    assert "`2 / 0`" in output
+    assert "actual / same-exit estimated PnL / delta" in output
+    assert "`-10` / `6` / `16`" in output
+    assert "| LONG | 3 | 1/2 | 2/1 | 1 | -4 | 2 | 6 | 0.17 |" in output
+    assert "| SHORT | 5 | 1/4 | 2/3 | 1 | -6 | 4 | 10 | 0.16 |" in output
+    assert (
+        "| 60s delayed same-exit | collecting | "
+        "closed=12, full=8 | missing=0, mismatch=0 |" in output
+    )
     assert "evidence gate (closed eligible / full delayed fills)" in output
     assert "`30 / 20`" in output
     assert "still needed closed / full" in output
