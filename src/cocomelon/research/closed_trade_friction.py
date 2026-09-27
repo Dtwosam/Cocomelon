@@ -8,8 +8,12 @@ from typing import Final
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankStore,
+)
 
 ZERO: Final = Decimal("0")
+MAX_FRICTION_RANK_AGE_MS: Final = 300_000
 
 
 class ClosedTradeFrictionError(RuntimeError):
@@ -41,6 +45,37 @@ def _decision_fact(
             "friction feature lineage does not match trade"
         )
     return fact
+
+
+def _rank_bucket(ordinal: int) -> str:
+    if ordinal <= 0:
+        raise ValueError("scanner rank ordinal must be positive")
+    if ordinal <= 5:
+        return "1-5"
+    if ordinal <= 10:
+        return "6-10"
+    if ordinal <= 20:
+        return "11-20"
+    return "21+"
+
+
+def _fresh_rank_bucket(
+    trade: TradeJournalEntry,
+    rank_store: ContinuousPaperOpeningRankStore,
+) -> tuple[str | None, str | None]:
+    evidence = rank_store.load(trade.opening_plan_id)
+    if evidence is None:
+        return None, "missing"
+    if (
+        evidence.market != trade.market.canonical
+        or evidence.opened_at_ms != trade.opened_at_ms
+    ):
+        raise ClosedTradeFrictionError(
+            "friction opening-rank evidence does not match trade"
+        )
+    if evidence.rank_age_ms > MAX_FRICTION_RANK_AGE_MS:
+        return None, "stale"
+    return _rank_bucket(evidence.ordinal), None
 
 
 def _trade_reference_gross(trade: TradeJournalEntry) -> Decimal:
@@ -209,11 +244,16 @@ def _group_summary(
 def closed_trade_friction_summary(
     trades: Sequence[TradeJournalEntry],
     fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore | None = None,
 ) -> dict[str, object]:
     items = tuple(trades)
     by_side: dict[str, list[TradeJournalEntry]] = defaultdict(list)
     by_strategy: dict[str, list[TradeJournalEntry]] = defaultdict(list)
+    by_rank: dict[str, list[TradeJournalEntry]] = defaultdict(list)
     attribution_misses = 0
+    fresh_rank_attributions = 0
+    missing_rank_evidence = 0
+    stale_rank_evidence = 0
 
     for trade in items:
         by_side[trade.direction.value].append(trade)
@@ -224,6 +264,19 @@ def closed_trade_friction_summary(
         else:
             by_strategy[fact.lead_strategy].append(trade)
 
+        if rank_store is not None:
+            bucket, rank_error = _fresh_rank_bucket(
+                trade,
+                rank_store,
+            )
+            if rank_error == "missing":
+                missing_rank_evidence += 1
+            elif rank_error == "stale":
+                stale_rank_evidence += 1
+            elif bucket is not None:
+                fresh_rank_attributions += 1
+                by_rank[bucket].append(trade)
+
     return {
         "research_only": True,
         "execution_authority": False,
@@ -232,6 +285,13 @@ def closed_trade_friction_summary(
             "reference_gross_minus_slippage_minus_fees_plus_funding"
         ),
         "decision_fact_attribution_misses": attribution_misses,
+        "opening_rank_attribution": {
+            "enabled": rank_store is not None,
+            "max_rank_age_ms": MAX_FRICTION_RANK_AGE_MS,
+            "fresh_attributed_trades": fresh_rank_attributions,
+            "missing_rank_evidence": missing_rank_evidence,
+            "stale_rank_evidence": stale_rank_evidence,
+        },
         "overall": _group_summary(items),
         "by_side": {
             label: _group_summary(group)
@@ -240,5 +300,9 @@ def closed_trade_friction_summary(
         "by_lead_strategy": {
             label: _group_summary(group)
             for label, group in sorted(by_strategy.items())
+        },
+        "by_scanner_rank_bucket": {
+            label: _group_summary(group)
+            for label, group in sorted(by_rank.items())
         },
     }
