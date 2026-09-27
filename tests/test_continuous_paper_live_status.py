@@ -258,6 +258,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "state_restored": True,
                 "state_restore_error": None,
                 "observation_count": 12,
+                "first_timestamp_ms": 1_699_999_000_000,
+                "last_timestamp_ms": 1_699_999_660_000,
+                "peak_timestamp_ms": 1_699_999_600_000,
+                "mean_observation_interval_ms": 60000,
                 "first_equity": "10000",
                 "last_equity": "10002.5",
                 "peak_equity": "10020",
@@ -1521,6 +1525,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "### Drawdown / high-water" in output
     assert "#### Sampled account equity" in output
     assert "prospective_runtime_checkpoint_equity" in output
+    assert "configured checkpoint interval" in output
+    assert "first / last / peak sample timestamps" in output
+    assert "observed mean sample interval" in output
+    assert "`60000ms`" in output
     assert "observations / first / latest / peak equity" in output
     assert "`12 / 10000 / 10002.5 / 10020`" in output
     assert "current drawdown amount / fraction" in output
@@ -1530,7 +1538,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### Realized closed-trade equity" in output
     assert "`3 / 10000 / 9993 / 10005`" in output
     assert "`12 / 0.001199400299850074962518740630`" in output
-    assert "intra-checkpoint extremes can be missed" in output
+    assert "scheduling can make observations coarser" in output
+    assert "intra-sample extremes can be missed" in output
     assert "### Account lifecycle reconciliation" in output
     assert "absolute reconciliation tolerance" in output
     assert "`1E-18`" in output
