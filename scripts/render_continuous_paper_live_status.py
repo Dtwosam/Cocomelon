@@ -2158,6 +2158,135 @@ def _closed_trade_stability_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_entry_concurrency_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade entry concurrency",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No entry-concurrency telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    solo = raw.get("solo", {})
+    overlap = raw.get("overlapping", {})
+    buckets = raw.get("by_concurrency_bucket", {})
+    same_side = raw.get("by_same_side_overlap", {})
+    for value in (readiness, solo, overlap, buckets, same_side):
+        if not isinstance(value, dict):
+            raise ValueError(
+                "entry-concurrency summary fields must be objects"
+            )
+
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- closed trades / current open positions used: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{raw.get('currently_open_positions_used_for_history', 0)}`"
+            ),
+            (
+                "- solo / overlap trades: "
+                f"`{solo.get('trades', 0)} / {overlap.get('trades', 0)}`"
+            ),
+            (
+                "- solo / overlap net PnL: "
+                f"`{solo.get('net_pnl', '0')} / "
+                f"{overlap.get('net_pnl', '0')}`"
+            ),
+            (
+                "- solo / overlap mean R: "
+                f"`{solo.get('mean_net_r')} / "
+                f"{overlap.get('mean_net_r')}`"
+            ),
+            (
+                "- evidence gate (closed / solo / overlap): "
+                f"`{readiness.get('min_closed_trades', 0)} / "
+                f"{readiness.get('min_solo_trades', 0)} / "
+                f"{readiness.get('min_overlap_trades', 0)}`"
+            ),
+            (
+                "- still needed C/S/O: "
+                f"`{readiness.get('missing_closed_trades', 0)} / "
+                f"{readiness.get('missing_solo_trades', 0)} / "
+                f"{readiness.get('missing_overlap_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            "| Prior open | Trades | W | L | BE | Net PnL | Mean R | PF |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key in ("0", "1", "2", "3+"):
+        group = buckets.get(key, {})
+        if not isinstance(group, dict):
+            group = {}
+        lines.append(
+            (
+                "| {key} | {trades} | {wins} | {losses} | {be} | "
+                "{pnl} | {mean_r} | {pf} |"
+            ).format(
+                key=key,
+                trades=group.get("trades", 0),
+                wins=group.get("wins", 0),
+                losses=group.get("losses", 0),
+                be=group.get("breakeven", 0),
+                pnl=group.get("net_pnl", "0"),
+                mean_r=group.get("mean_net_r"),
+                pf=group.get("profit_factor"),
+            )
+        )
+
+    zero_same = same_side.get("0", {})
+    one_same = same_side.get("1+", {})
+    if not isinstance(zero_same, dict):
+        zero_same = {}
+    if not isinstance(one_same, dict):
+        one_same = {}
+    lines.extend(
+        [
+            "",
+            (
+                "- no same-side prior overlap: "
+                f"`n={zero_same.get('trades', 0)}, "
+                f"PnL={zero_same.get('net_pnl', '0')}, "
+                f"meanR={zero_same.get('mean_net_r')}`"
+            ),
+            (
+                "- same-side prior overlap: "
+                f"`n={one_same.get('trades', 0)}, "
+                f"PnL={one_same.get('net_pnl', '0')}, "
+                f"meanR={one_same.get('mean_net_r')}`"
+            ),
+            "",
+            (
+                "_Counts only positions already open before the fill; "
+                "same-timestamp openings are not treated as prior exposure. "
+                "This is attribution only and does not change risk limits._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_concentration_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -3064,6 +3193,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_concentration_lines(
             payload.get("closed_trade_concentration")
+        )
+    )
+    lines.extend(
+        _closed_trade_entry_concurrency_lines(
+            payload.get("closed_trade_entry_concurrency")
         )
     )
     lines.extend(
