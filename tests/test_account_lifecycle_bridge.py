@@ -153,12 +153,14 @@ def test_bridge_separates_open_realized_cash_from_closed_journal() -> None:
         "net_pnl": "-10",
     }
     assert journal == closed
+    assert reconciliation["cash_bridge_delta"] == "0"
     assert reconciliation["closed_gross_delta"] == "0"
     assert reconciliation["closed_fees_delta"] == "0"
     assert reconciliation["closed_funding_delta"] == "0"
     assert reconciliation["closed_net_delta"] == "0"
     assert reconciliation["realized_bridge_delta"] == "0"
     assert reconciliation["equity_bridge_delta"] == "0"
+    assert reconciliation["cash_bridge_matches_account"] is True
     assert reconciliation["closed_journal_matches_account"] is True
     assert reconciliation["realized_bridge_matches_account"] is True
     assert reconciliation["equity_bridge_matches_account"] is True
@@ -180,18 +182,18 @@ def test_bridge_reports_missing_closed_journal_without_guessing() -> None:
     assert reconciliation["closed_journal_matches_account"] is False
 
 
-def test_bridge_rejects_account_cash_reconciliation_failure() -> None:
-    with pytest.raises(
-        AccountLifecycleBridgeError,
-        match="cash balance",
-    ):
-        account_lifecycle_bridge(
-            _account(
-                position=_open_position(),
-                cash=Decimal("10048"),
-            ),
-            (_closed_trade(),),
-        )
+def test_bridge_reports_account_cash_reconciliation_failure() -> None:
+    payload = account_lifecycle_bridge(
+        _account(
+            position=_open_position(),
+            cash=Decimal("10048"),
+        ),
+        (_closed_trade(),),
+    )
+    reconciliation = payload["reconciliation"]
+    assert isinstance(reconciliation, dict)
+    assert reconciliation["cash_bridge_delta"] == "-1"
+    assert reconciliation["cash_bridge_matches_account"] is False
 
 
 def test_bridge_requires_latest_mark_for_open_position() -> None:
