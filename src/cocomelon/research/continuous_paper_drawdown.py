@@ -404,6 +404,20 @@ def drawdown_summary(
             "state_restored": tracker.state_restored,
             "state_restore_error": tracker.state_restore_error,
             "observation_count": tracker.observation_count,
+            "first_timestamp_ms": tracker.first_timestamp_ms,
+            "last_timestamp_ms": tracker.last_timestamp_ms,
+            "peak_timestamp_ms": tracker.peak_timestamp_ms,
+            "mean_observation_interval_ms": (
+                None
+                if tracker.observation_count <= 1
+                or tracker.first_timestamp_ms is None
+                or tracker.last_timestamp_ms is None
+                else (
+                    tracker.last_timestamp_ms
+                    - tracker.first_timestamp_ms
+                )
+                // (tracker.observation_count - 1)
+            ),
             "first_equity": (
                 None
                 if tracker.first_equity is None
