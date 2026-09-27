@@ -20,10 +20,14 @@ def _summary(
     triggered: int,
     full: int,
     incomplete: int = 0,
+    lineage_mismatch: int = 0,
+    orphaned: int = 0,
 ) -> dict[str, object]:
     return {
         "research_only": True,
         "execution_authority": False,
+        "lineage_mismatch_closed_trades": lineage_mismatch,
+        "orphaned_restored_positions": orphaned,
         "rules": [
             {
                 "rule_id": "breakeven_after_0_5r",
@@ -128,3 +132,20 @@ def test_execution_readiness_rejects_authoritative_or_inconsistent_input() -> No
         match="completion counts",
     ):
         profit_lock_execution_readiness(inconsistent)
+
+
+def test_execution_readiness_blocks_research_integrity_mismatch() -> None:
+    readiness = profit_lock_execution_readiness(
+        _summary(
+            evaluated=MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE,
+            activated=MIN_ACTIVATED_TRADES_PER_RULE,
+            triggered=MIN_TRIGGERED_TRADES_PER_RULE,
+            full=MIN_SIMULATED_FULL_CLOSES_PER_RULE,
+            lineage_mismatch=1,
+            orphaned=1,
+        )
+    )
+
+    assert readiness.lineage_mismatch_closed_trades == 1
+    assert readiness.orphaned_restored_positions == 1
+    assert readiness.all_rules_ready_for_review is False
