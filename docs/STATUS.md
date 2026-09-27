@@ -1371,3 +1371,19 @@ The continuous-paper live status now includes a deterministic sensitivity check 
 This diagnostic has no execution or promotion authority. Its purpose is to prevent a small number of outlier winners from being mistaken for a durable edge.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-paper drawdown / high-water telemetry — 2026-09-27
+
+The continuous-paper runtime now maintains two separate drawdown views.
+
+- sampled account drawdown observes full paper equity, including unrealized PnL, at the existing durable runtime checkpoint cadence;
+- the sampled high-water state survives worker handoffs and preserves first/latest/peak equity plus maximum drawdown peak and trough;
+- corrupt or incompatible drawdown state restarts only the research diagnostic and cannot interrupt the paper trader;
+- realized closed-trade drawdown is recomputed exactly from starting cash plus chronological closed-trade net PnL;
+- the live status keeps sampled mark-to-market drawdown and realized closed-trade drawdown separate because they answer different questions;
+- sampled account drawdown may miss extremes that occur between checkpoint observations, and the live status states that limitation explicitly.
+
+This is observability only. It has no execution or promotion authority and does not change risk limits, sizing, stops, entries, exits, or cadence.
+
+**LIVE TRADING: DISABLED.**
