@@ -86,10 +86,6 @@ def _group_summary(
             "mean_net_cost_drag_r": None,
         }
 
-    reference_gross = sum(
-        (_trade_reference_gross(trade) for trade in items),
-        ZERO,
-    )
     signed_slippage = sum(
         (_trade_signed_slippage(trade) for trade in items),
         ZERO,
@@ -123,27 +119,8 @@ def _group_summary(
         ZERO,
     )
     net_pnl = sum((trade.net_pnl for trade in items), ZERO)
-
-    expected_actual_gross = reference_gross - signed_slippage
-    expected_net = actual_gross - fees + funding
-    if expected_actual_gross != actual_gross:
-        raise ClosedTradeFrictionError(
-            "reference gross does not reconcile through slippage"
-        )
-    if expected_net != net_pnl:
-        raise ClosedTradeFrictionError(
-            "actual gross does not reconcile to net PnL"
-        )
-
+    reference_gross = actual_gross + signed_slippage
     net_cost_drag = reference_gross - net_pnl
-    mean_reference_gross_r = sum(
-        (
-            _trade_reference_gross(trade)
-            / trade.initial_risk_amount
-            for trade in items
-        ),
-        ZERO,
-    ) / Decimal(count)
     mean_slippage_drag_r = sum(
         (
             _trade_signed_slippage(trade)
@@ -172,7 +149,12 @@ def _group_summary(
         ZERO,
     ) / Decimal(count)
     mean_net_cost_drag_r = (
-        mean_reference_gross_r - mean_net_r
+        mean_slippage_drag_r
+        + mean_fee_drag_r
+        - mean_funding_r
+    )
+    mean_reference_gross_r = (
+        mean_net_r + mean_net_cost_drag_r
     )
 
     return {
