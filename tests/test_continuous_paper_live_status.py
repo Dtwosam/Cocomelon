@@ -2190,6 +2190,125 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_contribution_decomposition": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "fill_weighted_same_exit_delta_decomposition"
+            ),
+            "identity": (
+                "price_effect + entry_fee_effect + "
+                "exposure_effect = total_delta"
+            ),
+            "closed_shadow_outcomes": 12,
+            "evaluated_delayed_attempts": 10,
+            "missing_journal_trades": 0,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 10,
+                "mean_fill_fraction": "0.85",
+                "price_effect_pnl": "14",
+                "entry_fee_effect_pnl": "1.2",
+                "exposure_effect_pnl": "0.8",
+                "total_delta_pnl": "16",
+                "mean_price_effect_r": "0.20",
+                "mean_entry_fee_effect_r": "0.02",
+                "mean_exposure_effect_r": "0.03",
+                "mean_total_delta_r": "0.25",
+                "price_benefit_positive": 8,
+                "price_benefit_negative": 1,
+                "exposure_effect_positive": 4,
+                "exposure_effect_negative": 3,
+            },
+            "by_side": {
+                "long": {
+                    "trades": 4,
+                    "mean_fill_fraction": "0.75",
+                    "price_effect_pnl": "4",
+                    "entry_fee_effect_pnl": "0.4",
+                    "exposure_effect_pnl": "-0.4",
+                    "total_delta_pnl": "4",
+                    "mean_total_delta_r": "0.1",
+                },
+                "short": {
+                    "trades": 6,
+                    "mean_fill_fraction": "0.9166666666666666666666666667",
+                    "price_effect_pnl": "10",
+                    "entry_fee_effect_pnl": "0.8",
+                    "exposure_effect_pnl": "1.2",
+                    "total_delta_pnl": "12",
+                    "mean_total_delta_r": "0.35",
+                },
+            },
+            "by_source": {
+                "full_visible_book_ioc": {
+                    "trades": 8,
+                    "mean_fill_fraction": "1",
+                    "price_effect_pnl": "12",
+                    "entry_fee_effect_pnl": "1",
+                    "exposure_effect_pnl": "0",
+                    "total_delta_pnl": "13",
+                    "mean_total_delta_r": "0.2",
+                },
+                "partial_visible_book_ioc": {
+                    "trades": 1,
+                    "mean_fill_fraction": "0.5",
+                    "price_effect_pnl": "2",
+                    "entry_fee_effect_pnl": "0.2",
+                    "exposure_effect_pnl": "-3.2",
+                    "total_delta_pnl": "-1",
+                    "mean_total_delta_r": "-0.1",
+                },
+                "no_fill": {
+                    "trades": 1,
+                    "mean_fill_fraction": "0",
+                    "price_effect_pnl": "0",
+                    "entry_fee_effect_pnl": "0",
+                    "exposure_effect_pnl": "4",
+                    "total_delta_pnl": "4",
+                    "mean_total_delta_r": "0.4",
+                },
+            },
+            "by_capacity_cause": {
+                "full_fill": {
+                    "trades": 8,
+                    "mean_fill_fraction": "1",
+                    "price_effect_pnl": "12",
+                    "entry_fee_effect_pnl": "1",
+                    "exposure_effect_pnl": "0",
+                    "total_delta_pnl": "13",
+                    "mean_total_delta_r": "0.2",
+                },
+                "risk_ceiling_clip": {
+                    "trades": 1,
+                    "mean_fill_fraction": "0.5",
+                    "price_effect_pnl": "2",
+                    "entry_fee_effect_pnl": "0.2",
+                    "exposure_effect_pnl": "-3.2",
+                    "total_delta_pnl": "-1",
+                    "mean_total_delta_r": "-0.1",
+                },
+                "no_fill": {
+                    "trades": 1,
+                    "mean_fill_fraction": "0",
+                    "price_effect_pnl": "0",
+                    "entry_fee_effect_pnl": "0",
+                    "exposure_effect_pnl": "4",
+                    "total_delta_pnl": "4",
+                    "mean_total_delta_r": "0.4",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_delayed_attempts": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_delayed_attempts": 10,
+            },
+            "error": None,
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -2575,6 +2694,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`18 / 10`" in output
     assert "| Partial fill | 1 | 0.5 | 2 | 1 | -1 | -0.1 |" in output
     assert "| No fill | 1 | 0 | -4 | 0 | 4 | 0.4 |" in output
+    assert "### 60s delayed-entry contribution decomposition" in output
+    assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
+    assert "price / entry-fee / exposure / total Δ PnL" in output
+    assert "`14` / `1.2` / `0.8` / `16`" in output
+    assert (
+        "| Partial fill | 1 | 0.5 | 2 | 0.2 | -3.2 | -1 | -0.1 |"
+        in output
+    )
+    assert (
+        "| Cause: risk_ceiling_clip | 1 | 0.5 | 2 | 0.2 | "
+        "-3.2 | -1 | -0.1 |" in output
+    )
     assert (
         "| 120s delayed entry | collecting | "
         "closed=10, full=6, better=4, worse=2 | "
