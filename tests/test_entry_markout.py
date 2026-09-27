@@ -89,6 +89,7 @@ def _fact(
     trade: TradeJournalEntry,
     *,
     lead_strategy: str,
+    decision_age_ms: int = 1,
 ) -> DecisionEvaluationFact:
     return DecisionEvaluationFact(
         strategy_decision_id=trade.strategy_decision_id,
@@ -96,7 +97,7 @@ def _fact(
         replay_run_id=RUN_ID,
         market=trade.market,
         direction=trade.direction,
-        timestamp_ms=trade.opened_at_ms - 1,
+        timestamp_ms=trade.opened_at_ms - decision_age_ms,
         score=Decimal("75"),
         lead_strategy=lead_strategy,
         signal_ids=(f"signal-{trade.strategy_decision_id}",),
@@ -190,7 +191,11 @@ def test_entry_markout_uses_signed_long_short_economics_and_censors(
             _fact(long_trade, lead_strategy="trend")
         )
         facts.record_decision_fact(
-            _fact(short_trade, lead_strategy="breakout")
+            _fact(
+                short_trade,
+                lead_strategy="breakout",
+                decision_age_ms=7_000,
+            )
         )
 
         paths.record(
@@ -238,6 +243,12 @@ def test_entry_markout_uses_signed_long_short_economics_and_censors(
     assert isinstance(by_side, dict)
     assert by_side["long"]["mean_gross_r"] == "0.1"
     assert by_side["short"]["mean_gross_r"] == "0.1"
+    by_age = one["by_decision_age_bucket"]
+    assert isinstance(by_age, dict)
+    assert by_age["<1s"]["observations"] == 1
+    assert by_age["5-<15s"]["observations"] == 1
+    assert by_age["<1s"]["mean_gross_r"] == "0.1"
+    assert by_age["5-<15s"]["mean_gross_r"] == "0.1"
 
     five = horizons["300000"]
     assert isinstance(five, dict)
