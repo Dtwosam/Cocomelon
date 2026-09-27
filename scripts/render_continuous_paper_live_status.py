@@ -2702,6 +2702,11 @@ def _research_readiness_board_lines(
         rank_filter_gate.get("ready_for_review")
     )
 
+    fill_liquidity = mapping("opening_fill_liquidity")
+    fill_liquidity_ready = bool(
+        fill_liquidity.get("ready_for_review")
+    )
+
     markout = mapping("entry_markout")
     markout_gate = readiness(markout)
     markout_ready = bool(
@@ -2817,6 +2822,22 @@ def _research_readiness_board_lines(
             (
                 f"missing={rank_filter.get('missing_rank_evidence', 0)}, "
                 f"stale={rank_filter.get('stale_rank_evidence', 0)}"
+            ),
+        ),
+        (
+            "opening fill liquidity",
+            status(
+                fill_liquidity,
+                ready=fill_liquidity_ready,
+            ),
+            (
+                f"closed={fill_liquidity.get('attributed_closed_trades', 0)}, "
+                f"need={fill_liquidity.get('still_needed_closed_trades', 0)}"
+            ),
+            (
+                f"historical_missing="
+                f"{fill_liquidity.get('closed_trades_without_fill_liquidity_evidence', 0)}, "
+                f"capture={fill_liquidity.get('capture_error')}"
             ),
         ),
         (
