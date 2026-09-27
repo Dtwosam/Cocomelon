@@ -200,6 +200,51 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "by_volatility_regime": {},
         },
+        "closed_trade_robustness": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "closed_trades": 4,
+            "net_pnl": "4",
+            "gross_profit": "15",
+            "median_net_r": "0.1",
+            "largest_winner_net_pnl": "10",
+            "largest_winner_net_r": "1.0",
+            "largest_winner_trade_id": "best",
+            "top_one_winner_share_of_gross_profit": "0.6666666666666666666666666667",
+            "top_two_winner_share_of_gross_profit": "1",
+            "remove_best_one": {
+                "remaining_trades": 3,
+                "removed_trade_count": 1,
+                "removed_trade_ids": ["best"],
+                "removed_net_pnl": "10",
+                "net_pnl": "-6",
+                "mean_net_r": "-0.2",
+                "median_net_r": "-0.3",
+                "profit_factor": "0.4545454545454545454545454545",
+                "positive_net_pnl": False,
+            },
+            "remove_best_two": {
+                "remaining_trades": 2,
+                "removed_trade_count": 2,
+                "removed_trade_ids": ["best", "second"],
+                "removed_net_pnl": "15",
+                "net_pnl": "-11",
+                "mean_net_r": "-0.55",
+                "median_net_r": "-0.55",
+                "profit_factor": "0",
+                "positive_net_pnl": False,
+            },
+            "positive_pnl_survives_remove_best_one": False,
+            "positive_pnl_survives_remove_best_two": False,
+            "readiness": {
+                "min_closed_trades": 30,
+                "missing_closed_trades": 26,
+                "ready_for_review": False,
+            },
+        },
         "account_lifecycle_economics": {
             "enabled": True,
             "research_only": True,
@@ -1476,6 +1521,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### Lead strategy friction" in output
     assert "| trend | 2 | 9 | 3 | 5 | 0 | 1 | 1 | 0.45 | 0.4 | 0.05 |" in output
     assert "Positive signed slippage is adverse" in output
+    assert "### Closed-trade robustness sensitivity" in output
+    assert "largest winner PnL / R" in output
+    assert "`10 / 1.0`" in output
+    assert "top-1 / top-2 share of gross profit" in output
+    assert "`0.6666666666666666666666666667 / 1`" in output
+    assert "| Remove best 1 | 3 | -6 | -0.2 | -0.3 | 0.4545454545454545454545454545 | false |" in output
+    assert "| Remove best 2 | 2 | -11 | -0.55 | -0.55 | 0 | false |" in output
+    assert "positive PnL survives remove best 1 / best 2" in output
+    assert "`false / false`" in output
+    assert "Deterministic sensitivity only" in output
     assert "### Closed trade performance" in output
     assert "decision-fact attribution" in output
     assert "`3 / 3` trades" in output
