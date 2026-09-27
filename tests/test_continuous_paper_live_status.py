@@ -245,6 +245,113 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "ready_for_review": False,
             },
         },
+        "closed_trade_stability": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "chronological_closed_trade_net_economics",
+            "closed_trades": 20,
+            "overall": {
+                "trades": 20,
+                "wins": 5,
+                "losses": 15,
+                "breakeven": 0,
+                "net_pnl": "12",
+                "mean_net_r": "0.03",
+                "median_net_r": "-0.2",
+                "profit_factor": "1.2",
+                "positive_net_pnl": True,
+                "positive_mean_net_r": True,
+                "first_closed_at_ms": 1000,
+                "last_closed_at_ms": 20000,
+            },
+            "rolling": {
+                "5": {
+                    "window_size": 5,
+                    "window_count": 16,
+                    "positive_pnl_windows": 8,
+                    "positive_mean_r_windows": 6,
+                    "positive_pnl_fraction": "0.5",
+                    "positive_mean_r_fraction": "0.375",
+                    "worst_mean_net_r": "-0.4",
+                    "best_mean_net_r": "1.0",
+                    "worst_net_pnl": "-15",
+                    "best_net_pnl": "30",
+                    "latest": {
+                        "net_pnl": "-10",
+                        "mean_net_r": "-0.2",
+                    },
+                },
+                "10": {
+                    "window_size": 10,
+                    "window_count": 11,
+                    "positive_pnl_windows": 6,
+                    "positive_mean_r_windows": 5,
+                    "positive_pnl_fraction": "0.5454545454545454545454545455",
+                    "positive_mean_r_fraction": "0.4545454545454545454545454545",
+                    "worst_mean_net_r": "-0.25",
+                    "best_mean_net_r": "0.45",
+                    "worst_net_pnl": "-20",
+                    "best_net_pnl": "35",
+                    "latest": {
+                        "net_pnl": "-5",
+                        "mean_net_r": "-0.1",
+                    },
+                },
+            },
+            "chronological_blocks": [
+                {
+                    "block": 1,
+                    "trades": 5,
+                    "wins": 2,
+                    "losses": 3,
+                    "net_pnl": "10",
+                    "mean_net_r": "0.2",
+                    "profit_factor": "2",
+                },
+                {
+                    "block": 2,
+                    "trades": 5,
+                    "wins": 1,
+                    "losses": 4,
+                    "net_pnl": "5",
+                    "mean_net_r": "0.1",
+                    "profit_factor": "1.3",
+                },
+                {
+                    "block": 3,
+                    "trades": 5,
+                    "wins": 1,
+                    "losses": 4,
+                    "net_pnl": "-2",
+                    "mean_net_r": "-0.04",
+                    "profit_factor": "0.9",
+                },
+                {
+                    "block": 4,
+                    "trades": 5,
+                    "wins": 1,
+                    "losses": 4,
+                    "net_pnl": "-1",
+                    "mean_net_r": "-0.02",
+                    "profit_factor": "0.95",
+                },
+            ],
+            "stability": {
+                "all_full_blocks_positive_net_pnl": False,
+                "all_full_blocks_positive_mean_net_r": False,
+                "full_blocks": 0,
+            },
+            "readiness": {
+                "min_closed_trades": 40,
+                "chronological_blocks": 4,
+                "min_trades_per_block": 10,
+                "missing_closed_trades": 20,
+                "ready_for_review": False,
+            },
+        },
         "drawdown": {
             "enabled": True,
             "research_only": True,
@@ -1447,7 +1554,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| excursion timing | collecting | paths=12, need=18 | "
         "decision_miss=0, excursion_miss=0 |" in output
     )
-    assert "review-ready studies: `0 / 9`" in output
+    assert (
+        "| closed-trade stability | collecting | closed=20, need=20 | "
+        "full_blocks=0, all_pnl_positive=false |" in output
+    )
+    assert "review-ready studies: `0 / 10`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
@@ -1710,6 +1821,17 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "positive PnL survives remove best 1 / best 2" in output
     assert "`false / false`" in output
     assert "Deterministic sensitivity only" in output
+    assert "### Closed-trade chronological stability" in output
+    assert "closed trades / review gate / still needed" in output
+    assert "`20 / 40 / 20`" in output
+    assert "chronological blocks / min trades per block" in output
+    assert "`4 / 10`" in output
+    assert "full blocks / all positive PnL / all positive mean R" in output
+    assert "`0 / false / false`" in output
+    assert "| 5 trades | 16 | 0.5 | 0.375 | -10 | -0.2 | -0.4 | 1.0 |" in output
+    assert "| 10 trades | 11 |" in output
+    assert "| 3 | 5 | 1 | 4 | -2 | -0.04 | 0.9 |" in output
+    assert "review gate requires 40 chronological closed trades" in output
     assert "### Closed trade performance" in output
     assert "decision-fact attribution" in output
     assert "`3 / 3` trades" in output
