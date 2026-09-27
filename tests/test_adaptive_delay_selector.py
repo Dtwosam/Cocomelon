@@ -91,7 +91,6 @@ def _delayed(
     trade: TradeJournalEntry,
     *,
     price: str,
-    delay_ms: int,
     lag_ms: int = 1_000,
 ) -> DelayedEntryOutcome:
     px = Decimal(price)
@@ -190,24 +189,20 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
                 _delayed(
                     adverse,
                     price="99",
-                    delay_ms=60_000,
                 ),
                 _delayed(
                     favorable,
                     price="101",
-                    delay_ms=60_000,
                 ),
             ),
             (
                 _delayed(
                     adverse,
                     price="98",
-                    delay_ms=120_000,
                 ),
                 _delayed(
                     favorable,
                     price="100.5",
-                    delay_ms=120_000,
                 ),
             ),
             started_at_ms=900_000,
@@ -269,7 +264,6 @@ def test_late_mid_signal_is_excluded_from_adaptive_choice(
                 _delayed(
                     trade,
                     price="99",
-                    delay_ms=60_000,
                     lag_ms=1_000,
                 ),
             ),
@@ -277,7 +271,6 @@ def test_late_mid_signal_is_excluded_from_adaptive_choice(
                 _delayed(
                     trade,
                     price="98",
-                    delay_ms=120_000,
                 ),
             ),
             started_at_ms=900_000,
