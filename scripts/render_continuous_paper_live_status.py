@@ -3864,6 +3864,16 @@ def _research_readiness_board_lines(
         entry_filter_gate.get("ready_for_review")
     )
 
+    delayed_price_confirm = mapping(
+        "prospective_delayed_price_confirmation"
+    )
+    delayed_price_confirm_gate = readiness(
+        delayed_price_confirm
+    )
+    delayed_price_confirm_ready = bool(
+        delayed_price_confirm_gate.get("ready_for_review")
+    )
+
     rank_filter = mapping("prospective_top10_rank_filter")
     rank_filter_gate = readiness(rank_filter)
     rank_filter_ready = bool(
@@ -4052,6 +4062,23 @@ def _research_readiness_board_lines(
                 f"allowed={entry_filter.get('allowed_trades', 0)}"
             ),
             f"misses={entry_filter.get('attribution_misses', 0)}",
+        ),
+        (
+            "60s price confirmation",
+            status(
+                delayed_price_confirm,
+                ready=delayed_price_confirm_ready,
+            ),
+            (
+                f"eval={delayed_price_confirm.get('evaluated_trades', 0)}, "
+                f"confirmed={delayed_price_confirm.get('confirmed_trades', 0)}, "
+                f"skipped={delayed_price_confirm.get('skipped_trades', 0)}"
+            ),
+            (
+                f"missing={delayed_price_confirm.get('missing_outcomes', 0)}, "
+                f"plan={delayed_price_confirm.get('missing_opening_plans', 0)}, "
+                f"mismatch={delayed_price_confirm.get('lineage_mismatches', 0)}"
+            ),
         ),
         (
             "top-10 rank filter",
