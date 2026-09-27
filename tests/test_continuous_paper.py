@@ -12,6 +12,7 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
     _entry_markout_payload,
@@ -27,6 +28,7 @@ from cocomelon.continuous_paper import (
     _record_payload,
     _RecordPump,
     _restore_cadence_shadow,
+    _restore_entry_mid_markout_shadow,
     _restore_profit_lock_execution_shadow,
     _restore_prospective_entry_filter,
 )
@@ -150,6 +152,12 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"min_observations_per_horizon"' in source
     assert '"readiness_status"' in source
     assert '"missing_observations"' in source
+    assert (
+        'ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (' in source
+    )
+    assert 'entry_mid_markout_shadow=' in source
+    assert '"entry_mid_markout_shadow": entry_mid_markout' in source
+    assert "entry_mid_markout_shadow.shadow.state_payload()" in source
 
 
 def test_opening_rank_telemetry_fails_open(
@@ -218,6 +226,140 @@ def test_profit_lock_counterfactual_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: counterfactual boom"
+
+
+def test_entry_mid_markout_shadow_sink_fails_open() -> None:
+    class FailingShadow:
+        def observe(
+            self,
+            *_args: object,
+            **_kwargs: object,
+        ) -> None:
+            raise RuntimeError("mid shadow boom")
+
+        def summary_payload(
+            self,
+            *_args: object,
+        ) -> dict[str, object]:
+            return {}
+
+    sink = _ContinuousEntryMidMarkoutSink(
+        FailingShadow(),  # type: ignore[arg-type]
+    )
+    sink.observe(
+        ReplayRecord(
+            record_kind=SourceRecordKind.DATA_GAP,
+            available_at_ms=1,
+            source="fixture",
+            schema_version=1,
+            market=None,
+            exchange_time_ms=None,
+            event_key="gap-mid-shadow",
+            payload_json=(
+                '{"started_ms":1,"ended_ms":1,'
+                '"reason":"fixture","stream_id":"x"}'
+            ),
+            event_kind=None,
+        ),
+        (),
+        now_ms=1,
+    )
+
+    assert sink.shadow is None
+    payload = sink.summary_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+    assert payload["enabled"] is False
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: mid shadow boom"
+
+
+def test_entry_mid_markout_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "entry-mid-markout-shadow-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    shadow = _restore_entry_mid_markout_shadow(
+        path,
+        started_at_ms=789,
+    )
+
+    facts = SimpleNamespace()
+    payload = shadow.summary_payload(  # type: ignore[arg-type]
+        facts,
+    )
+    assert payload["state_restored"] is False
+    assert payload["started_at_ms"] == 789
+    assert "JSONDecodeError" in str(
+        payload["state_restore_error"]
+    )
+
+
+def test_record_pump_mid_markout_failure_does_not_block_paper() -> None:
+    class Pipeline:
+        def on_record(
+            self,
+            _record: ReplayRecord,
+            _now_ms: int,
+        ) -> tuple[object, ...]:
+            return ()
+
+        def finalize(
+            self,
+            _end_ms: int,
+        ) -> tuple[object, ...]:
+            return ()
+
+    class Journal:
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(
+            self,
+            _observation: object,
+        ) -> None:
+            raise AssertionError("no observations expected")
+
+    class FailingShadow:
+        def observe(
+            self,
+            *_args: object,
+            **_kwargs: object,
+        ) -> None:
+            raise RuntimeError("mid observer boom")
+
+    sink = _ContinuousEntryMidMarkoutSink(
+        FailingShadow(),  # type: ignore[arg-type]
+    )
+    pump = _RecordPump(
+        Pipeline(),  # type: ignore[arg-type]
+        Journal(),  # type: ignore[arg-type]
+        last_available_at_ms=0,
+        entry_mid_markout_shadow=sink,
+        position_provider=lambda: (),
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=1,
+        source="fixture",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key="gap-mid-pump",
+        payload_json=(
+            '{"started_ms":1,"ended_ms":1,'
+            '"reason":"fixture","stream_id":"x"}'
+        ),
+        event_kind=None,
+    )
+
+    asyncio.run(pump.process(record))
+
+    assert pump.processed_records == 1
+    assert sink.shadow is None
+    assert sink.error == "RuntimeError: mid observer boom"
 
 
 def test_profit_lock_execution_shadow_sink_fails_open() -> None:
