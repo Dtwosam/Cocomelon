@@ -153,6 +153,7 @@ def test_bridge_separates_open_realized_cash_from_closed_journal() -> None:
         "net_pnl": "-10",
     }
     assert journal == closed
+    assert reconciliation["absolute_tolerance"] == "1E-18"
     assert reconciliation["cash_bridge_delta"] == "0"
     assert reconciliation["closed_gross_delta"] == "0"
     assert reconciliation["closed_fees_delta"] == "0"
@@ -205,3 +206,40 @@ def test_bridge_requires_latest_mark_for_open_position() -> None:
             _account(position=_open_position(latest_mark=None)),
             (_closed_trade(),),
         )
+
+
+def test_bridge_accepts_sub_tolerance_decimal_dust() -> None:
+    position = _open_position()
+    account = _account(
+        position=position,
+        cash=Decimal("10049.0000000000000000000001"),
+    )
+    payload = account_lifecycle_bridge(
+        account,
+        (_closed_trade(),),
+    )
+    reconciliation = payload["reconciliation"]
+    assert isinstance(reconciliation, dict)
+
+    assert reconciliation["cash_bridge_delta"] == "1E-22"
+    assert reconciliation["cash_bridge_matches_account"] is True
+    assert reconciliation["closed_journal_matches_account"] is True
+    assert reconciliation["realized_bridge_matches_account"] is True
+    assert reconciliation["equity_bridge_matches_account"] is True
+
+
+def test_bridge_rejects_above_tolerance_decimal_delta() -> None:
+    position = _open_position()
+    account = _account(
+        position=position,
+        cash=Decimal("10049.000000000000001"),
+    )
+    payload = account_lifecycle_bridge(
+        account,
+        (_closed_trade(),),
+    )
+    reconciliation = payload["reconciliation"]
+    assert isinstance(reconciliation, dict)
+
+    assert reconciliation["cash_bridge_delta"] == "1E-15"
+    assert reconciliation["cash_bridge_matches_account"] is False
