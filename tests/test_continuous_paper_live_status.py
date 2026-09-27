@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import json
 import os
 import subprocess
@@ -3594,10 +3593,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| downtrend | 2 | 0 | 2 | 0 | -12 |" in output
 
 
-def test_renderer_main_accepts_heartbeat_from_stdin(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_renderer_main_accepts_heartbeat_from_stdin() -> None:
     payload = {
         "kind": "continuous-paper-heartbeat",
         "timestamp_ms": 1,
@@ -3636,12 +3632,15 @@ def test_renderer_main_accepts_heartbeat_from_stdin(
         "session_opening_execution_attempts": 0,
         "session_opening_fills": 0,
     }
-    monkeypatch.delenv("HEARTBEAT_JSON", raising=False)
-    monkeypatch.setattr(
-        "scripts.render_continuous_paper_live_status.sys.stdin",
-        io.StringIO(json.dumps(payload)),
+    env = dict(os.environ)
+    env.pop("HEARTBEAT_JSON", None)
+    completed = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env,
     )
 
-    live_status.main()
-
-    assert "Continuous Paper Trader" in capsys.readouterr().out
+    assert "Continuous Paper Trader" in completed.stdout
