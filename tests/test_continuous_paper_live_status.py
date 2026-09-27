@@ -1369,6 +1369,110 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "missing_selected_120s_trades": 2,
             },
         },
+        "fill_aware_delay_selector": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "nonfull-60s-waits-to-120s-v1",
+            "started_at_ms": 1700000700000,
+            "state_restore_error": None,
+            "error": None,
+            "claim_scope": (
+                "fill_weighted_same_exit_trade_contribution_only"
+            ),
+            "rule": (
+                "if_60s_full_visible_book_ioc_choose_60s_"
+                "else_if_60s_partial_or_no_fill_choose_120s"
+            ),
+            "base_delay_ms": 60000,
+            "challenger_delay_ms": 120000,
+            "prospective_closed_trades": 8,
+            "causal_evaluable_trades": 6,
+            "missing_base_outcome": 0,
+            "missing_challenger_outcome": 0,
+            "non_evaluable_base": 1,
+            "non_evaluable_challenger": 1,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 6,
+                "selected_60s": 3,
+                "selected_120s": 3,
+                "actual_net_pnl": "-6",
+                "always_60s_net_pnl": "-2",
+                "always_120s_net_pnl": "-1",
+                "fill_aware_net_pnl": "2",
+                "fill_aware_minus_actual_pnl": "8",
+                "fill_aware_minus_60s_pnl": "4",
+                "fill_aware_minus_120s_pnl": "3",
+                "fill_aware_better_than_60s": 2,
+                "fill_aware_worse_than_60s": 0,
+                "fill_aware_better_than_120s": 2,
+                "fill_aware_worse_than_120s": 1,
+                "mean_selected_fill_fraction": "0.92",
+                "mean_selected_r_contribution": "0.03",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 3,
+                    "selected_60s": 1,
+                    "selected_120s": 2,
+                    "fill_aware_net_pnl": "0.5",
+                    "fill_aware_minus_60s_pnl": "2",
+                    "fill_aware_minus_120s_pnl": "1",
+                    "mean_selected_fill_fraction": "0.88",
+                },
+                "short": {
+                    "trades": 3,
+                    "selected_60s": 2,
+                    "selected_120s": 1,
+                    "fill_aware_net_pnl": "1.5",
+                    "fill_aware_minus_60s_pnl": "2",
+                    "fill_aware_minus_120s_pnl": "2",
+                    "mean_selected_fill_fraction": "0.96",
+                },
+            },
+            "by_60s_source": {
+                "full_visible_book_ioc": {
+                    "trades": 3,
+                    "selected_60s": 3,
+                    "selected_120s": 0,
+                    "fill_aware_net_pnl": "3",
+                    "fill_aware_minus_60s_pnl": "0",
+                    "fill_aware_minus_120s_pnl": "1",
+                    "mean_selected_fill_fraction": "1",
+                },
+                "partial_visible_book_ioc": {
+                    "trades": 2,
+                    "selected_60s": 0,
+                    "selected_120s": 2,
+                    "fill_aware_net_pnl": "-0.5",
+                    "fill_aware_minus_60s_pnl": "3",
+                    "fill_aware_minus_120s_pnl": "0",
+                    "mean_selected_fill_fraction": "0.9",
+                },
+                "no_fill": {
+                    "trades": 1,
+                    "selected_60s": 0,
+                    "selected_120s": 1,
+                    "fill_aware_net_pnl": "-0.5",
+                    "fill_aware_minus_60s_pnl": "1",
+                    "fill_aware_minus_120s_pnl": "0",
+                    "mean_selected_fill_fraction": "0.8",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_causal_evaluable_trades": 20,
+                "min_selected_60s_trades": 5,
+                "min_selected_120s_trades": 5,
+                "missing_prospective_closed_trades": 22,
+                "missing_causal_evaluable_trades": 14,
+                "missing_selected_60s_trades": 2,
+                "missing_selected_120s_trades": 2,
+            },
+        },
         "delayed_entry_same_exit": {
             "enabled": True,
             "research_only": True,
@@ -2998,6 +3102,19 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| SHORT | 3 | 2 | 1 | 0.5 | 1.5 | 1.5 | 0.95 |"
         in output
     )
+    assert "### Fill-aware 60s/120s delayed-entry selector" in output
+    assert "nonfull-60s-waits-to-120s-v1" in output
+    assert "prospective closed / causal evaluable" in output
+    assert "`8 / 6`" in output
+    assert "actual / always-60 / always-120 / fill-aware PnL" in output
+    assert "`-6` / `-2` / `-1` / `2`" in output
+    assert "fill-aware Δ vs actual / 60s / 120s" in output
+    assert "`8` / `4` / `3`" in output
+    assert "missing 60s / 120s, non-evaluable 60s / 120s" in output
+    assert "`0 / 0 / 1 / 1`" in output
+    assert "| 60s full fill | 3 | 3 | 0 | 3 | 0 | 1 | 1 |" in output
+    assert "| 60s partial fill | 2 | 0 | 2 | -0.5 | 3 | 0 | 0.9 |" in output
+    assert "| 60s no fill | 1 | 0 | 1 | -0.5 | 1 | 0 | 0.8 |" in output
     assert "### 60s delayed-entry same-exit contribution" in output
     assert "same_exit_trade_contribution_only" in output
     assert "closed shadow / full fills / evaluated" in output
@@ -3091,6 +3208,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert (
         "| adaptive 60s/120s delay | collecting | "
         "closed=8, causal=6 | midmiss=0, late=1, mismatch=0 |"
+        in output
+    )
+    assert (
+        "| fill-aware 60s/120s delay | collecting | "
+        "closed=8, causal=6 | non60=1, non120=1, mismatch=0 |"
         in output
     )
     assert (
