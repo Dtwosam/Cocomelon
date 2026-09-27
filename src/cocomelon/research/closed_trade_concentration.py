@@ -6,6 +6,7 @@ from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.evaluation.store import EvaluationFactStore
 
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
@@ -161,8 +162,32 @@ def _section(
     }
 
 
+def _lead_strategy(
+    trade: TradeJournalEntry,
+    fact_store: EvaluationFactStore,
+) -> str | None:
+    if trade.replay_run_id is None:
+        return None
+    fact = fact_store.load_decision_by_strategy_id(
+        trade.strategy_decision_id,
+        trade.replay_run_id,
+    )
+    if fact is None:
+        return None
+    if (
+        fact.market != trade.market
+        or fact.direction is not trade.direction
+        or fact.feature_snapshot_id != trade.feature_snapshot_id
+    ):
+        raise ValueError(
+            "closed-trade concentration decision lineage mismatch"
+        )
+    return fact.lead_strategy
+
+
 def closed_trade_concentration_summary(
     trades: tuple[TradeJournalEntry, ...],
+    fact_store: EvaluationFactStore,
 ) -> dict[str, object]:
     ordered = tuple(
         sorted(
@@ -174,13 +199,18 @@ def closed_trade_concentration_summary(
         ordered,
         lambda trade: trade.market.canonical,
     )
+    lead_strategy_by_trade: dict[str, str] = {}
+    decision_fact_misses = 0
+    for trade in ordered:
+        lead_strategy = _lead_strategy(trade, fact_store)
+        if lead_strategy is None:
+            decision_fact_misses += 1
+            lead_strategy = "unknown"
+        lead_strategy_by_trade[trade.trade_id] = lead_strategy
+
     strategy_rows = _group_rows(
         ordered,
-        lambda trade: (
-            "unknown"
-            if not trade.strategy_names
-            else trade.strategy_names[0]
-        ),
+        lambda trade: lead_strategy_by_trade[trade.trade_id],
     )
     seven_day_rows = _group_rows(
         ordered,
@@ -213,6 +243,7 @@ def closed_trade_concentration_summary(
         "distinct_markets": len(market_rows),
         "distinct_lead_strategies": len(strategy_rows),
         "distinct_seven_day_buckets": len(seven_day_rows),
+        "decision_fact_misses": decision_fact_misses,
         "market_reference_max_share": str(
             MARKET_POSITIVE_PNL_SHARE_REFERENCE_MAX
         ),
