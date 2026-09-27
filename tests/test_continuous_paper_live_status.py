@@ -2066,6 +2066,27 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "missing_evaluated_attempts": 20,
                 "missing_cause_known_partial_fills": 10,
             },
+            "open_attempts": {
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "attempted_open_positions": 1,
+                "rows": [
+                    {
+                        "opening_plan_id": "open-live-1",
+                        "market": "SOL",
+                        "side": "long",
+                        "attempted_at_ms": 1700000060300,
+                        "result": "partial",
+                        "attempt_reason": "IOC_REMAINDER_CANCELLED",
+                        "capacity_cause": "slippage_boundary_reached",
+                        "requested_quantity": "2",
+                        "filled_quantity": "1",
+                        "fill_fraction": "0.5",
+                        "observation_lag_ms": 300,
+                    }
+                ],
+            },
             "error": None,
         },
         "delayed_entry_fill_weighted": {
@@ -2530,6 +2551,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "legacy_unknown_partial: n=1, mean_fill=0.5" in output
     assert "visible_depth_exhausted: n=1, mean_fill=0.7" in output
     assert "slippage_boundary_reached: n=1, mean_fill=0.8" in output
+    assert "current open positions with completed +60s attempt" in output
+    assert "`1`" in output
+    assert (
+        "| SOL | long | partial | 0.5 | slippage_boundary_reached | "
+        "IOC_REMAINDER_CANCELLED | 300ms |" in output
+    )
     assert "### 60s delayed-entry fill-weighted contribution" in output
     assert "fill_weighted_same_exit_trade_contribution_only" in output
     assert "closed shadow / evaluated attempts" in output
