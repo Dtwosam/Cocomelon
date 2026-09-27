@@ -214,6 +214,17 @@ def test_fill_aware_selector_uses_60s_only_for_full_fill(
     assert by_source["partial_visible_book_ioc"]["selected_120s"] == 1
     assert by_source["no_fill"]["selected_120s"] == 1
 
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    vs_60 = robustness["fill_aware_minus_60s"]
+    assert isinstance(vs_60, dict)
+    assert vs_60["trades"] == 3
+    assert vs_60["markets"] == 3
+    temporal = robustness["temporal"]
+    assert isinstance(temporal, dict)
+    assert temporal["configured_blocks"] == 4
+    assert temporal["full_blocks"] == 0
+
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
     assert readiness["ready_for_review"] is False
@@ -301,3 +312,91 @@ def test_fill_aware_delay_state_round_trip_freezes_rule() -> None:
         match="frozen candidate",
     ):
         FillAwareDelaySelectorState.from_payload(payload)
+
+
+def test_fill_aware_temporal_robustness_exposes_late_block_failure(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    base_outcomes: list[DelayedEntryOutcome] = []
+    challenger_outcomes: list[DelayedEntryOutcome] = []
+    try:
+        for index in range(20):
+            trade = _trade(
+                suffix=f"temporal-{index:02d}",
+                direction=Direction.LONG,
+                opened_at_ms=1_000_000 + index * 1_000_000,
+                exit_price="101",
+                market=MarketId("", f"T{index % 4}"),
+            )
+            journal.record_trade(trade)
+
+            late_bad = index >= 15
+            choose_120 = index % 5 < 3
+            if choose_120:
+                base_outcomes.append(
+                    _outcome(
+                        trade,
+                        source="partial_visible_book_ioc",
+                        price="99",
+                        quantity="0.5",
+                    )
+                )
+                challenger_outcomes.append(
+                    _outcome(
+                        trade,
+                        source="full_visible_book_ioc",
+                        price=("101" if late_bad else "98"),
+                        quantity="1",
+                    )
+                )
+            else:
+                base_outcomes.append(
+                    _outcome(
+                        trade,
+                        source="full_visible_book_ioc",
+                        price="99",
+                        quantity="1",
+                    )
+                )
+                challenger_outcomes.append(
+                    _outcome(
+                        trade,
+                        source="full_visible_book_ioc",
+                        price=("98" if late_bad else "100"),
+                        quantity="1",
+                    )
+                )
+
+        result = fill_aware_delay_selector_summary(
+            journal,
+            tuple(base_outcomes),
+            tuple(challenger_outcomes),
+            started_at_ms=900_000,
+        )
+    finally:
+        journal.close()
+
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    temporal = robustness["temporal"]
+    assert isinstance(temporal, dict)
+    assert temporal["full_blocks"] == 4
+    assert temporal["positive_blocks_vs_60s"] == 3
+    assert temporal["positive_blocks_vs_120s"] == 3
+    assert temporal["all_full_blocks_positive_vs_60s"] is False
+    assert temporal["all_full_blocks_positive_vs_120s"] is False
+
+    blocks = temporal["chronological_blocks"]
+    assert isinstance(blocks, list)
+    assert [block["trades"] for block in blocks] == [5, 5, 5, 5]
+    assert blocks[0]["fill_aware_minus_60s_pnl"] == "6.0"
+    assert blocks[0]["fill_aware_minus_120s_pnl"] == "2"
+    assert blocks[3]["fill_aware_minus_60s_pnl"] == "-3.0"
+    assert blocks[3]["fill_aware_minus_120s_pnl"] == "-2"
+    assert blocks[3]["positive_vs_60s"] is False
+    assert blocks[3]["positive_vs_120s"] is False
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["ready_for_review"] is True
