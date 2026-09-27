@@ -295,7 +295,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "execution_authority": False,
             "promotion_authority": False,
             "error": None,
-            "definition": "first_observed_mark_at_or_after_horizon",
+            "definition": (
+                "first_observed_mark_at_or_after_horizon_within_max_lag"
+            ),
+            "max_observation_lag_ms": 60000,
             "horizons_ms": [60000, 300000, 900000],
             "readiness": {
                 "all_horizons_ready_for_review": False,
@@ -321,6 +324,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "max_observation_lag_ms": 3000,
                     "censored_before_horizon": 0,
                     "missing_observed_mark": 0,
+                    "stale_observed_mark": 0,
                     "by_side": {
                         "long": {
                             "observations": 2,
@@ -379,6 +383,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "max_observation_lag_ms": 2500,
                     "censored_before_horizon": 1,
                     "missing_observed_mark": 0,
+                    "stale_observed_mark": 0,
                     "by_side": {},
                     "by_lead_strategy": {},
                 },
@@ -395,6 +400,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "max_observation_lag_ms": 500,
                     "censored_before_horizon": 2,
                     "missing_observed_mark": 0,
+                    "stale_observed_mark": 0,
                     "by_side": {},
                     "by_lead_strategy": {},
                 },
@@ -651,21 +657,23 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
     assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
     assert "### Post-entry markout diagnostic" in output
-    assert "first_observed_mark_at_or_after_horizon" in output
+    assert "first_observed_mark_at_or_after_horizon_within_max_lag" in output
+    assert "maximum accepted observation lag" in output
+    assert "`60000`ms" in output
     assert "complete paths / incomplete skipped" in output
     assert "`3 / 0`" in output
     assert "evidence gate (observations per horizon)" in output
     assert "`30`" in output
     assert "all horizons ready for review: `false`" in output
-    assert "| 1m | collecting | 3 | 27 | 2 | 1 | 25 | 0.05 | 0 | 0 | 1000ms | 3000ms |" in output
-    assert "| 5m | collecting | 2 | 28 | 1 | 1 | -10 | -0.02 | 1 | 0 | 1500ms | 2500ms |" in output
-    assert "| 15m | collecting | 1 | 29 | 1 | 0 | 80 | 0.16 | 2 | 0 | 500ms | 500ms |" in output
+    assert "| 1m | collecting | 3 | 27 | 2 | 1 | 25 | 0.05 | 0 | 0 | 0 | 1000ms | 3000ms |" in output
+    assert "| 5m | collecting | 2 | 28 | 1 | 1 | -10 | -0.02 | 1 | 0 | 0 | 1500ms | 2500ms |" in output
+    assert "| 15m | collecting | 1 | 29 | 1 | 0 | 80 | 0.16 | 2 | 0 | 0 | 500ms | 500ms |" in output
     assert "1m by side:" in output
     assert "long: n=2, meanR=-0.02, meanbps=-10" in output
     assert "short: n=1, meanR=0.19, meanbps=95" in output
     assert "1m by lead strategy:" in output
     assert "trend: n=2, meanR=-0.02, meanbps=-10" in output
-    assert "Short-lived trades are censored, not imputed" in output
+    assert "stale/missing marks are reported and never imputed" in output
     assert "prospective-reject-long-trend-v1" in output
     assert "reject `long` + `trend`" in output
     assert "allowed / blocked trades" in output
