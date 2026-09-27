@@ -31,6 +31,7 @@ from cocomelon.continuous_paper import (
     _restore_entry_mid_markout_shadow,
     _restore_profit_lock_execution_shadow,
     _restore_prospective_entry_filter,
+    _restore_prospective_top10_rank_filter,
 )
 from cocomelon.domain.execution import PositionAction, PositionActionType
 from cocomelon.domain.market import MarketId
@@ -141,6 +142,13 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert '"prospective_entry_filter": prospective_entry_filter' in source
     assert "prospective_entry_filter_state.payload()" in source
+    assert (
+        'PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (' in source
+    )
+    assert (
+        '"prospective_top10_rank_filter": (' in source
+    )
+    assert "prospective_top10_rank_filter_state.payload()" in source
     assert 'ContinuousPaperOpeningRankStore(' in source
     assert 'root / "opening-ranks"' in source
     assert '"opening_scanner_rank": opening_rank' in source
@@ -454,6 +462,22 @@ def test_prospective_entry_filter_restore_failure_is_fail_open(
     )
 
     assert state.started_at_ms == 456
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+def test_prospective_top10_rank_filter_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "prospective-top10-rank-filter-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_prospective_top10_rank_filter(
+        path,
+        started_at_ms=654,
+    )
+
+    assert state.started_at_ms == 654
     assert error is not None
     assert "JSONDecodeError" in error
 
