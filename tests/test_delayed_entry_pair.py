@@ -51,7 +51,7 @@ def _trade(
         entry_price=Decimal("100"),
         exit_price=Decimal("100"),
         filled_quantity=Decimal("1"),
-        gross_realized_pnl=Decimal("0"),
+        gross_realized_pnl=pnl + Decimal("0.05"),
         entry_fees=Decimal("0.05"),
         exit_fees=Decimal("0"),
         funding_cash_pnl=Decimal("0"),
