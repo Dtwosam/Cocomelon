@@ -62,10 +62,6 @@ from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
-from cocomelon.research.delay_selector_comparison import (
-    DelaySelectorComparisonState,
-    delay_selector_comparison_summary,
-)
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
@@ -99,6 +95,10 @@ from cocomelon.research.continuous_paper_opening_rank import (
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
+)
+from cocomelon.research.delay_selector_comparison import (
+    DelaySelectorComparisonState,
+    delay_selector_comparison_summary,
 )
 from cocomelon.research.delayed_entry_contribution_decomposition import (
     delayed_entry_contribution_decomposition,
