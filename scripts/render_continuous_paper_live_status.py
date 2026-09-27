@@ -869,6 +869,109 @@ def _delayed_entry_pair_fill_weighted_lines(
     return lines
 
 
+def _delayed_entry_fill_capacity_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry fill-capacity diagnostic",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No delayed-entry fill-capacity telemetry in this heartbeat._")
+        return lines
+    lines.append(f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    by_side = raw.get("by_side", {})
+    by_cause = raw.get("by_cause", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(by_side, dict):
+        by_side = {}
+    if not isinstance(by_cause, dict):
+        by_cause = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            (
+                "- attempts / mean fill fraction: "
+                f"`{raw.get('evaluated_attempts', 0)} / "
+                f"{overall.get('mean_fill_fraction')}`"
+            ),
+            (
+                "- full / partial / no-fill: "
+                f"`{overall.get('full', 0)} / "
+                f"{overall.get('partial', 0)} / "
+                f"{overall.get('no_fill', 0)}`"
+            ),
+            (
+                "- cause-known / legacy-unknown partials: "
+                f"`{raw.get('cause_known_partial_fills', 0)} / "
+                f"{raw.get('legacy_unknown_partial_fills', 0)}`"
+            ),
+            (
+                "- missing journal / lineage mismatch: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- evidence gate attempts / cause-known partials: "
+                f"`{readiness.get('min_evaluated_attempts', 0)} / "
+                f"{readiness.get('min_cause_known_partial_fills', 0)}`"
+            ),
+            (
+                "- still needed attempts / partials: "
+                f"`{readiness.get('missing_evaluated_attempts', 0)} / "
+                f"{readiness.get('missing_cause_known_partial_fills', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            "| Cohort | Attempts | Mean fill | Full | Partial | No fill |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for label, data in (("LONG", by_side.get("long")), ("SHORT", by_side.get("short"))):
+        if not isinstance(data, dict):
+            continue
+        lines.append(
+            f"| {label} | {data.get('attempts', 0)} | "
+            f"{data.get('mean_fill_fraction')} | {data.get('full', 0)} | "
+            f"{data.get('partial', 0)} | {data.get('no_fill', 0)} |"
+        )
+    if by_cause:
+        lines.extend(["", "Partial/fill cause breakdown:"])
+        for cause, data in sorted(by_cause.items()):
+            if not isinstance(data, dict):
+                continue
+            lines.append(
+                f"- {cause}: n={data.get('attempts', 0)}, "
+                f"mean_fill={data.get('mean_fill_fraction')}"
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "_This diagnoses why delayed IOC attempts lose size. "
+                "It does not change delay, order size, slippage, risk, or execution._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_fill_weighted_lines(
     raw: object,
 ) -> list[str]:
@@ -3818,6 +3921,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_same_exit_lines(
             payload.get("delayed_entry_same_exit")
+        )
+    )
+    lines.extend(
+        _delayed_entry_fill_capacity_lines(
+            payload.get("delayed_entry_fill_capacity")
         )
     )
     lines.extend(

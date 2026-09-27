@@ -1604,3 +1604,19 @@ The frozen review gate requires 30 prospective closed trades, 20 paired evaluabl
 This is research-only and has no execution or promotion authority. It cannot alter the active paper entry delay, quantity, stop, risk, or order flow.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry fill-capacity diagnostic — 2026-09-27
+
+The +60s delayed-entry shadow now preserves IOC attempt reason codes on completed outcomes and reports why delayed size is not fully filled.
+
+- full, partial, and no-fill attempts are measured against the original paper position quantity;
+- each partial fill reports its fill fraction;
+- new partials are classified as visible-depth/slippage-boundary limited, risk-ceiling clipped, notional-ceiling clipped, or mixed risk/notional clipping;
+- older partial outcomes that predate reason capture remain explicitly labeled `legacy_unknown_partial` and are never guessed;
+- summaries are split by LONG/SHORT and by causal fill bucket;
+- review readiness requires 30 evaluable delayed attempts and 10 cause-known partial fills with clean journal lineage.
+
+This diagnostic cannot alter delay, order size, slippage, risk limits, scanner selection, or execution.
+
+**LIVE TRADING: DISABLED.**

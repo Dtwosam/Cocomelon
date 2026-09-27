@@ -139,6 +139,7 @@ class DelayedEntryOutcome:
     observation_lag_ms: int | None
     signed_price_improvement_bps: Decimal | None
     gross_r_improvement: Decimal | None
+    attempt_reason: str | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -197,6 +198,10 @@ class DelayedEntryOutcome:
                 raise ValueError(
                     "delayed-entry comparison metric must be finite"
                 )
+        if self.attempt_reason is not None and not self.attempt_reason.strip():
+            raise ValueError(
+                "delayed-entry attempt_reason must be null or non-empty"
+            )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -225,6 +230,7 @@ class DelayedEntryOutcome:
                 if self.gross_r_improvement is None
                 else str(self.gross_r_improvement)
             ),
+            "attempt_reason": self.attempt_reason,
         }
 
     @classmethod
@@ -271,6 +277,14 @@ class DelayedEntryOutcome:
             gross_r_improvement=_optional_decimal(
                 raw.get("gross_r_improvement"),
                 "gross_r_improvement",
+            ),
+            attempt_reason=(
+                None
+                if raw.get("attempt_reason") is None
+                else _string(
+                    raw.get("attempt_reason"),
+                    "attempt_reason",
+                )
             ),
         )
 
@@ -614,6 +628,7 @@ class DelayedEntryExecutionShadow:
                 observation_lag_ms=state.observation_lag_ms,
                 signed_price_improvement_bps=improvement_bps,
                 gross_r_improvement=improvement_r,
+                attempt_reason=state.attempt_reason,
             )
         )
 
