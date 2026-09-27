@@ -420,6 +420,7 @@ class EntryMidMarkoutShadow:
         self._outcomes: list[EntryMidMarkoutOutcome] = []
         self._excluded_closed_trades = 0
         self._unmatched_closed_trades = 0
+        self._lineage_mismatch_closed_trades = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -589,9 +590,8 @@ class EntryMidMarkoutShadow:
             or state.initial_quantity
             != trade.filled_quantity
         ):
-            raise EntryMidMarkoutShadowError(
-                "mid-markout closed trade lineage mismatch"
-            )
+            self._lineage_mismatch_closed_trades += 1
+            return
 
         for horizon_ms in ENTRY_MID_MARKOUT_HORIZONS_MS:
             horizon = state.horizons[horizon_ms]
@@ -831,6 +831,9 @@ class EntryMidMarkoutShadow:
             "unmatched_closed_trades": (
                 self._unmatched_closed_trades
             ),
+            "lineage_mismatch_closed_trades": (
+                self._lineage_mismatch_closed_trades
+            ),
             "closed_trade_count": len(
                 {
                     outcome.trade_id
@@ -916,6 +919,9 @@ class EntryMidMarkoutShadow:
             ),
             "unmatched_closed_trades": (
                 self._unmatched_closed_trades
+            ),
+            "lineage_mismatch_closed_trades": (
+                self._lineage_mismatch_closed_trades
             ),
         }
 
@@ -1069,7 +1075,15 @@ class EntryMidMarkoutShadow:
             raw.get("unmatched_closed_trades"),
             "unmatched_closed_trades",
         )
-        if excluded < 0 or unmatched < 0:
+        lineage_mismatch = _integer(
+            raw.get("lineage_mismatch_closed_trades", 0),
+            "lineage_mismatch_closed_trades",
+        )
+        if (
+            excluded < 0
+            or unmatched < 0
+            or lineage_mismatch < 0
+        ):
             raise EntryMidMarkoutShadowError(
                 "closed trade counters must be non-negative"
             )
@@ -1079,6 +1093,9 @@ class EntryMidMarkoutShadow:
         self._outcomes = outcomes
         self._excluded_closed_trades = excluded
         self._unmatched_closed_trades = unmatched
+        self._lineage_mismatch_closed_trades = (
+            lineage_mismatch
+        )
         self._state_restored = True
         self._state_restore_error = None
 
