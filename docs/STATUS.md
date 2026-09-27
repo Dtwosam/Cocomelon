@@ -1261,3 +1261,18 @@ The continuous paper live status now separates account cash already realized ins
 This resolves the ambiguity where partial reductions can increase account realized gross PnL while the closed-trade count remains unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry decision age at fill diagnostic — 2026-09-27
+
+The continuous paper runtime now measures how old the persisted strategy decision is when the first actual opening fill occurs.
+
+- the authoritative decision timestamp comes from the stored decision fact;
+- the authoritative opening timestamp is the first opening fill timestamp used by the trade journal assembler;
+- impossible time regressions fail the research diagnostic rather than being normalized;
+- fixed descriptive bands are `<1s`, `1-<5s`, `5-<15s`, `15-<30s`, `30-<60s`, and `60s+`;
+- outcomes are summarized by age band, side, and lead strategy, plus mean/median/p90/max decision age;
+- review remains `collecting` until at least 30 attributed closed trades with zero attribution misses;
+- this diagnostic does not delay entries, reject stale decisions, change execution latency, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**

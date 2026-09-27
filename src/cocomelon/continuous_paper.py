@@ -74,6 +74,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
 from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
@@ -1587,6 +1588,29 @@ def _account_lifecycle_bridge_payload(
     return payload
 
 
+def _entry_decision_age_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    try:
+        payload = entry_decision_age_summary(
+            journal,
+            fact_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -1887,6 +1911,10 @@ def _live_status_payload(
         pump.journal,
         fact_store,
     )
+    entry_decision_age = _entry_decision_age_payload(
+        pump.journal,
+        fact_store,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -1961,6 +1989,7 @@ def _live_status_payload(
         "closed_trade_performance": closed_trade_performance,
         "account_lifecycle_economics": account_lifecycle_economics,
         "closed_trade_friction": closed_trade_friction,
+        "entry_decision_age": entry_decision_age,
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(
             open_planned_risk_fraction

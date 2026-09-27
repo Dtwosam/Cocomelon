@@ -264,6 +264,131 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "equity_bridge_matches_account": True,
             },
         },
+        "entry_decision_age": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "strategy_decision_timestamp_to_first_opening_fill",
+            "attributed_closed_trades": 4,
+            "attribution_misses": 0,
+            "minimum_attributed_trades_for_review": 30,
+            "ready_for_review": False,
+            "still_needed_for_review": 26,
+            "older_than_5s": 3,
+            "older_than_15s": 2,
+            "older_than_30s": 2,
+            "older_than_60s": 1,
+            "overall": {
+                "trades": 4,
+                "wins": 2,
+                "losses": 2,
+                "breakeven": 0,
+                "net_pnl": "2",
+                "mean_net_r": "0.05",
+                "mean_decision_age_ms": 26875,
+                "median_decision_age_ms": 35000,
+                "p90_decision_age_ms": 65000,
+                "max_decision_age_ms": 65000,
+            },
+            "by_age_band": {
+                "<1s": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "5",
+                    "mean_net_r": "0.5",
+                    "mean_decision_age_ms": 500,
+                },
+                "1-<5s": {
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "0",
+                    "mean_net_r": None,
+                    "mean_decision_age_ms": None,
+                },
+                "5-<15s": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-2",
+                    "mean_net_r": "-0.2",
+                    "mean_decision_age_ms": 7000,
+                },
+                "15-<30s": {
+                    "trades": 0,
+                    "wins": 0,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "0",
+                    "mean_net_r": None,
+                    "mean_decision_age_ms": None,
+                },
+                "30-<60s": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-4",
+                    "mean_net_r": "-0.4",
+                    "mean_decision_age_ms": 35000,
+                },
+                "60s+": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_r": "0.3",
+                    "mean_decision_age_ms": 65000,
+                },
+            },
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "1",
+                    "mean_net_r": "0.05",
+                    "mean_decision_age_ms": 17750,
+                },
+                "short": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "1",
+                    "mean_net_r": "0.05",
+                    "mean_decision_age_ms": 36000,
+                },
+            },
+            "by_lead_strategy": {
+                "breakout": {
+                    "trades": 2,
+                    "wins": 2,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "8",
+                    "mean_net_r": "0.4",
+                    "mean_decision_age_ms": 32750,
+                },
+                "trend": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "breakeven": 0,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.3",
+                    "mean_decision_age_ms": 21000,
+                },
+            },
+        },
         "closed_trade_friction": {
             "enabled": True,
             "research_only": True,
@@ -1202,6 +1327,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### Open lifecycle cumulative economics" in output
     assert "| BTC | long | 1 | 60 | 1 | 0 | 59 | 1 | 60 |" in output
     assert "can move account cash before the lifecycle is fully closed" in output
+    assert "### Entry decision age at fill" in output
+    assert "strategy_decision_timestamp_to_first_opening_fill" in output
+    assert "attributed closed trades / misses" in output
+    assert "`4 / 0`" in output
+    assert "review gate / still needed" in output
+    assert "`30 / 26`" in output
+    assert "mean / median / p90 / max age" in output
+    assert "`26875` / `35000` / `65000` / `65000` ms" in output
+    assert "| <1s | 1 | 1 | 0 | 0 | 5 | 0.5 | 500ms |" in output
+    assert "| 30-<60s | 1 | 0 | 1 | 0 | -4 | -0.4 | 35000ms |" in output
+    assert "by lead strategy:" in output
+    assert "trend: n=2, meanAge=21000ms, meanR=-0.3, net=-6" in output
     assert "### Closed-trade friction attribution" in output
     assert "reference_gross_minus_slippage_minus_fees_plus_funding" in output
     assert "| 6 | 1 | 5 | 5.5 | 2 | 1.5 | 4.5 |" in output

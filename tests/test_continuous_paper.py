@@ -17,6 +17,7 @@ from cocomelon.continuous_paper import (
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
+    _entry_decision_age_payload,
     _entry_markout_payload,
     _load_checkpoint,
     _opening_rank_attribution_payload,
@@ -163,6 +164,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "account_lifecycle_bridge(" in source
     assert '"closed_trade_friction": closed_trade_friction' in source
     assert "closed_trade_friction_summary(" in source
+    assert '"entry_decision_age": entry_decision_age' in source
+    assert "entry_decision_age_summary(" in source
     assert '"entry_markout": entry_markout' in source
     assert "entry_mid_markout_readiness(payload)" in source
     assert '"min_fresh_observations_per_horizon"' in source
@@ -201,6 +204,28 @@ def test_account_lifecycle_bridge_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: bridge boom"
+
+
+def test_entry_decision_age_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("entry age boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.entry_decision_age_summary",
+        fail,
+    )
+    payload = _entry_decision_age_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: entry age boom"
 
 
 def test_closed_trade_friction_telemetry_fails_open(
