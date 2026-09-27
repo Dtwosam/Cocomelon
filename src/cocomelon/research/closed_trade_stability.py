@@ -176,6 +176,15 @@ def _chronological_blocks(
     return tuple(blocks)
 
 
+def _trade_count(
+    summary: dict[str, object],
+) -> int:
+    value = summary.get("trades")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise RuntimeError("stability trade count is invalid")
+    return value
+
+
 def closed_trade_stability(
     trades: Sequence[TradeJournalEntry],
 ) -> dict[str, object]:
@@ -184,7 +193,7 @@ def closed_trade_stability(
     full_blocks = tuple(
         block
         for block in blocks
-        if int(block["trades"]) >= MIN_TRADES_PER_BLOCK
+        if _trade_count(block) >= MIN_TRADES_PER_BLOCK
     )
     all_blocks_positive_pnl = (
         len(full_blocks) == CHRONOLOGICAL_BLOCKS
