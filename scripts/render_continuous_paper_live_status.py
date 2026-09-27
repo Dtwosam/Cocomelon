@@ -1266,9 +1266,19 @@ def _drawdown_lines(raw: object) -> list[str]:
             "#### Sampled account equity",
             "",
             (
-                "- definition / cadence: "
+                "- definition / configured checkpoint interval: "
                 f"`{sampled.get('definition', 'unknown')}` / "
                 f"`{sampled.get('checkpoint_seconds')}s`"
+            ),
+            (
+                "- first / last / peak sample timestamps: "
+                f"`{sampled.get('first_timestamp_ms')} / "
+                f"{sampled.get('last_timestamp_ms')} / "
+                f"{sampled.get('peak_timestamp_ms')}`"
+            ),
+            (
+                "- observed mean sample interval: "
+                f"`{sampled.get('mean_observation_interval_ms')}ms`"
             ),
             (
                 "- durable state restored / restore warning: "
@@ -1330,9 +1340,11 @@ def _drawdown_lines(raw: object) -> list[str]:
             "- promotion authority: `false`",
             "",
             (
-                "_Sampled account drawdown includes unrealized PnL only at "
-                "the durable checkpoint cadence, so intra-checkpoint extremes "
-                "can be missed. Realized drawdown is the exact chronological "
+                "_Sampled account drawdown includes unrealized PnL only when "
+                "the durable checkpoint is actually persisted; scheduling can "
+                "make observations coarser than the configured interval, and "
+                "intra-sample extremes can be missed. Realized drawdown is the "
+                "exact chronological "
                 "closed-trade equity curve._"
             ),
         ]
