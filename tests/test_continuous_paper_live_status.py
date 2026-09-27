@@ -245,6 +245,44 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "ready_for_review": False,
             },
         },
+        "drawdown": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "sampled_account": {
+                "definition": "prospective_runtime_checkpoint_equity",
+                "checkpoint_seconds": 30,
+                "started_at_ms": 1_699_999_000_000,
+                "state_restored": True,
+                "state_restore_error": None,
+                "observation_count": 12,
+                "first_equity": "10000",
+                "last_equity": "10002.5",
+                "peak_equity": "10020",
+                "current_drawdown_fraction": "0.001746506986027944111776447106",
+                "current_drawdown_amount": "17.5",
+                "max_drawdown_fraction": "0.004",
+                "max_drawdown_amount": "40",
+                "max_drawdown_peak_equity": "10000",
+                "max_drawdown_trough_equity": "9960",
+                "max_drawdown_peak_timestamp_ms": 1_699_999_000_000,
+                "max_drawdown_trough_timestamp_ms": 1_699_999_300_000,
+            },
+            "realized_closed_trade": {
+                "closed_trades": 3,
+                "starting_equity": "10000",
+                "ending_realized_equity": "9993",
+                "peak_realized_equity": "10005",
+                "max_drawdown_fraction": "0.001199400299850074962518740630",
+                "max_drawdown_amount": "12",
+                "max_drawdown_peak_equity": "10005",
+                "max_drawdown_trough_equity": "9993",
+                "max_drawdown_peak_timestamp_ms": 1_699_999_100_000,
+                "max_drawdown_trough_timestamp_ms": 1_699_999_300_000,
+            },
+        },
         "account_lifecycle_economics": {
             "enabled": True,
             "research_only": True,
@@ -1480,6 +1518,19 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "2.5" in output
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
+    assert "### Drawdown / high-water" in output
+    assert "#### Sampled account equity" in output
+    assert "prospective_runtime_checkpoint_equity" in output
+    assert "observations / first / latest / peak equity" in output
+    assert "`12 / 10000 / 10002.5 / 10020`" in output
+    assert "current drawdown amount / fraction" in output
+    assert "`17.5 / 0.001746506986027944111776447106`" in output
+    assert "maximum drawdown amount / fraction" in output
+    assert "`40 / 0.004`" in output
+    assert "#### Realized closed-trade equity" in output
+    assert "`3 / 10000 / 9993 / 10005`" in output
+    assert "`12 / 0.001199400299850074962518740630`" in output
+    assert "intra-checkpoint extremes can be missed" in output
     assert "### Account lifecycle reconciliation" in output
     assert "absolute reconciliation tolerance" in output
     assert "`1E-18`" in output
