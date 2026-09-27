@@ -86,7 +86,7 @@ class OpeningFillLiquidityEvidence:
     schema_version: int = OPENING_FILL_LIQUIDITY_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        for value, field in (
+        for text_value, field in (
             (self.opening_plan_id, "opening_plan_id"),
             (self.strategy_decision_id, "strategy_decision_id"),
             (self.feature_snapshot_id, "feature_snapshot_id"),
@@ -94,11 +94,11 @@ class OpeningFillLiquidityEvidence:
             (self.direction, "direction"),
             (self.book_event_key, "book_event_key"),
         ):
-            if not value.strip():
+            if not text_value.strip():
                 raise ValueError(f"{field} must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
-        for value, field in (
+        for timestamp_value, field in (
             (self.opened_at_ms, "opened_at_ms"),
             (self.attempt_timestamp_ms, "attempt_timestamp_ms"),
             (self.book_exchange_ms, "book_exchange_ms"),
@@ -106,7 +106,7 @@ class OpeningFillLiquidityEvidence:
             (self.book_exchange_age_ms, "book_exchange_age_ms"),
             (self.book_receive_age_ms, "book_receive_age_ms"),
         ):
-            if value < 0:
+            if timestamp_value < 0:
                 raise ValueError(f"{field} must be non-negative")
         if self.attempt_timestamp_ms < self.opened_at_ms:
             raise ValueError(
