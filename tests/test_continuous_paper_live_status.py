@@ -1926,6 +1926,47 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "prospective_delayed_price_confirmation": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "prospective-60s-price-confirm-v1",
+            "started_at_ms": 1_700_000_000_000,
+            "state_restore_error": None,
+            "error": None,
+            "claim_scope": "closed_trade_contribution_only",
+            "portfolio_counterfactual": False,
+            "rule": {
+                "delay_ms": 60000,
+                "minimum_signed_improvement_bps": "0",
+                "on_pass": "take_delayed_visible_book_ioc",
+                "on_fail": "skip_trade_contribution",
+            },
+            "prospective_closed_trades": 12,
+            "evaluated_trades": 10,
+            "confirmed_trades": 6,
+            "skipped_trades": 4,
+            "no_fill_skips": 1,
+            "worse_price_skips": 3,
+            "missing_outcomes": 0,
+            "missing_opening_plans": 0,
+            "lineage_mismatches": 0,
+            "unresolved_outcomes": 2,
+            "actual_net_pnl": "-18",
+            "candidate_trade_contribution_pnl": "-9",
+            "delta_trade_contribution_pnl": "9",
+            "mean_confirmed_signed_improvement_bps": "18",
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_evaluated_trades": 30,
+                "min_confirmed_trades": 10,
+                "min_skipped_trades": 10,
+                "missing_prospective_evaluated_trades": 20,
+                "missing_confirmed_trades": 4,
+                "missing_skipped_trades": 6,
+            },
+        },
         "prospective_top10_rank_filter": {
             "enabled": True,
             "research_only": True,
@@ -2759,7 +2800,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 16`" in output
+    assert "review-ready studies: `0 / 17`" in output
+    assert "| 60s price confirmation | collecting | eval=10, confirmed=6, skipped=4 |" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
@@ -2944,6 +2986,21 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "still needed closed / full" in output
     assert "`18 / 12`" in output
     assert "### Prospective LONG-trend entry filter" in output
+    assert "### Prospective 60s delayed price confirmation" in output
+    assert "prospective-60s-price-confirm-v1" in output
+    assert "simulated average fill is no worse" in output
+    assert "prospective closed / evaluated" in output
+    assert "`12 / 10`" in output
+    assert "confirmed / skipped" in output
+    assert "`6 / 4`" in output
+    assert "worse-price / no-fill skips" in output
+    assert "`3 / 1`" in output
+    assert "actual / candidate trade-contribution PnL" in output
+    assert "`-18` / `-9`" in output
+    assert "evidence gate (evaluated / confirmed / skipped)" in output
+    assert "`30 / 10 / 10`" in output
+    assert "still needed E/C/S" in output
+    assert "`20 / 4 / 6`" in output
     assert "### Prospective top-10 scanner-rank filter" in output
     assert "prospective-admit-top10-rank-v1" in output
     assert "admit scanner rank `1-10`" in output
