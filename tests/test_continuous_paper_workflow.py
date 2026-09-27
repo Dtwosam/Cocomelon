@@ -51,6 +51,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/research/entry_decision_age.py" in source
     assert "src/cocomelon/research/entry_markout.py" in source
     assert "src/cocomelon/research/entry_markout_readiness.py" in source
+    assert "src/cocomelon/research/excursion_timing.py" in source
     assert "src/cocomelon/research/entry_mid_markout_shadow.py" in source
     assert "src/cocomelon/research/entry_mid_markout_readiness.py" in source
     assert "src/cocomelon/research/profit_lock_counterfactual.py" in source
@@ -80,6 +81,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/entry_decision_age.py"' in source
     assert '"src/cocomelon/research/entry_markout.py"' in source
     assert '"src/cocomelon/research/entry_markout_readiness.py"' in source
+    assert '"src/cocomelon/research/excursion_timing.py"' in source
     assert '"src/cocomelon/research/entry_mid_markout_shadow.py"' in source
     assert '"src/cocomelon/research/entry_mid_markout_readiness.py"' in source
     assert '"src/cocomelon/research/profit_lock_counterfactual.py"' in source
