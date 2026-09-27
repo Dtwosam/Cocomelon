@@ -1625,9 +1625,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "durable_state": True,
             "state_restored": True,
             "state_restore_error": None,
-            "state_schema_version": 1,
+            "state_schema_version": 2,
             "started_at_ms": 1_699_999_500_000,
             "source": "allMids_mid_px",
+            "risk_basis": "closed_trade_initial_risk_amount",
+            "quantity_basis": "closed_trade_filled_quantity",
             "horizons_ms": [60000, 300000, 900000],
             "max_observation_lag_ms": 60000,
             "eligible_open_positions": 1,
@@ -2366,6 +2368,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "5-<15s: n=2, meanR=-0.02, meanbps=-10" in output
     assert "stale/missing marks are reported and never imputed" in output
     assert "### Prospective allMids entry markout shadow" in output
+    assert "closed_trade_initial_risk_amount" in output
+    assert "closed_trade_filled_quantity" in output
     assert "allMids_mid_px" in output
     assert "completed prospective trades / excluded / unmatched closes" in output
     assert "`3 / 0 / 0`" in output
