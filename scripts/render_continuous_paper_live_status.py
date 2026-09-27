@@ -1326,6 +1326,167 @@ def _delayed_entry_contribution_decomposition_lines(
     return lines
 
 
+def _adaptive_delay_selector_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Adaptive 60s/120s delayed-entry selector",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No adaptive-delay telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    by_side = raw.get("by_side", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(by_side, dict):
+        by_side = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- prospective start / rule: "
+                f"`{raw.get('started_at_ms')}` / "
+                f"`{raw.get('rule', 'unknown')}`"
+            ),
+            (
+                "- causal guard: "
+                f"`{raw.get('causality_rule', 'unknown')}`"
+            ),
+            (
+                "- prospective closed / causal evaluable: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('causal_evaluable_trades', 0)}`"
+            ),
+            (
+                "- selected 60s / 120s: "
+                f"`{overall.get('selected_60s', 0)} / "
+                f"{overall.get('selected_120s', 0)}`"
+            ),
+            (
+                "- actual / always-60 / always-120 / adaptive PnL: "
+                f"`{overall.get('actual_net_pnl', '0')}` / "
+                f"`{overall.get('always_60s_net_pnl', '0')}` / "
+                f"`{overall.get('always_120s_net_pnl', '0')}` / "
+                f"`{overall.get('adaptive_net_pnl', '0')}`"
+            ),
+            (
+                "- adaptive Δ vs actual / 60s / 120s: "
+                f"`{overall.get('adaptive_minus_actual_pnl', '0')}` / "
+                f"`{overall.get('adaptive_minus_60s_pnl', '0')}` / "
+                f"`{overall.get('adaptive_minus_120s_pnl', '0')}`"
+            ),
+            (
+                "- mean adaptive fill / R contribution: "
+                f"`{overall.get('mean_adaptive_fill_fraction')}` / "
+                f"`{overall.get('mean_adaptive_r_contribution')}`"
+            ),
+            (
+                "- missing mid / non-fresh / late signal: "
+                f"`{raw.get('missing_mid_outcome', 0)} / "
+                f"{raw.get('non_fresh_mid_outcome', 0)} / "
+                f"{raw.get('late_mid_signal', 0)}`"
+            ),
+            (
+                "- missing 60s / 120s, non-evaluable 60s / 120s: "
+                f"`{raw.get('missing_base_outcome', 0)} / "
+                f"{raw.get('missing_challenger_outcome', 0)} / "
+                f"{raw.get('non_evaluable_base', 0)} / "
+                f"{raw.get('non_evaluable_challenger', 0)}`"
+            ),
+            (
+                "- lineage mismatches: "
+                f"`{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- evidence gate closed / causal / 60s / 120s: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('min_selected_60s_trades', 0)} / "
+                f"{readiness.get('min_selected_120s_trades', 0)}`"
+            ),
+            (
+                "- still needed C/E/60/120: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('missing_selected_60s_trades', 0)} / "
+                f"{readiness.get('missing_selected_120s_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Side | N | Select 60s | Select 120s | Adaptive PnL | "
+                "Δ vs 60s | Δ vs 120s | Mean fill |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+    for key, label in (("long", "LONG"), ("short", "SHORT")):
+        item = by_side.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {n} | {s60} | {s120} | {pnl} | "
+                "{d60} | {d120} | {fill} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                s60=item.get("selected_60s", 0),
+                s120=item.get("selected_120s", 0),
+                pnl=item.get("adaptive_net_pnl", "0"),
+                d60=item.get("adaptive_minus_60s_pnl", "0"),
+                d120=item.get(
+                    "adaptive_minus_120s_pnl",
+                    "0",
+                ),
+                fill=item.get("mean_adaptive_fill_fraction"),
+            )
+        )
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective causal selector only. At the 60s decision point, "
+                "a fresh adverse 1m mid-markout waits to 120s; otherwise the "
+                "60s entry is used. Same observed exits are held constant, "
+                "unfilled quantity contributes zero, and no replacement trades "
+                "or changed stops are modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_same_exit_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -4221,6 +4382,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_pair_fill_weighted_lines(
             payload.get("delayed_entry_pair_fill_weighted")
+        )
+    )
+    lines.extend(
+        _adaptive_delay_selector_lines(
+            payload.get("adaptive_delay_selector")
         )
     )
     lines.extend(
