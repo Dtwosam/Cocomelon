@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
+from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
@@ -14,6 +15,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
+from cocomelon.research.entry_decision_age import LATENCY_BANDS_MS
 
 ZERO: Final = Decimal("0")
 BPS: Final = Decimal("10000")
@@ -37,6 +39,7 @@ class EntryMarkoutObservation:
     direction: str
     lead_strategy: str
     scanner_rank_bucket: str
+    decision_age_bucket: str
     horizon_ms: int
     target_timestamp_ms: int
     observed_timestamp_ms: int
@@ -53,6 +56,7 @@ class EntryMarkoutObservation:
             self.direction,
             self.lead_strategy,
             self.scanner_rank_bucket,
+            self.decision_age_bucket,
         ):
             if not value.strip():
                 raise ValueError("markout identity must not be empty")
@@ -121,10 +125,10 @@ def _trade_map(
     return by_id
 
 
-def _lead_strategy(
+def _decision_fact(
     trade: TradeJournalEntry,
     fact_store: EvaluationFactStore,
-) -> str | None:
+) -> DecisionEvaluationFact | None:
     if trade.replay_run_id is None:
         return None
     fact = fact_store.load_decision_by_strategy_id(
@@ -141,7 +145,26 @@ def _lead_strategy(
         raise EntryMarkoutError(
             "entry markout decision lineage mismatch"
         )
-    return fact.lead_strategy
+    return fact
+
+
+def _decision_age_bucket(
+    trade: TradeJournalEntry,
+    fact: DecisionEvaluationFact | None,
+) -> str:
+    if fact is None:
+        return "unknown"
+    age_ms = trade.opened_at_ms - fact.timestamp_ms
+    if age_ms < 0:
+        raise EntryMarkoutError(
+            "entry fill timestamp precedes strategy decision"
+        )
+    for lower, upper, label in LATENCY_BANDS_MS:
+        if age_ms < lower:
+            continue
+        if upper is None or age_ms < upper:
+            return label
+    raise AssertionError("unreachable decision-age band")
 
 
 def _scanner_rank_bucket(
@@ -239,6 +262,7 @@ def _observation(
     *,
     lead_strategy: str,
     scanner_rank_bucket: str,
+    decision_age_bucket: str,
     horizon_ms: int,
     marks: tuple[tuple[int, Decimal], ...],
 ) -> EntryMarkoutObservation | None:
@@ -270,6 +294,7 @@ def _observation(
         direction=trade.direction.value,
         lead_strategy=lead_strategy,
         scanner_rank_bucket=scanner_rank_bucket,
+        decision_age_bucket=decision_age_bucket,
         horizon_ms=horizon_ms,
         target_timestamp_ms=target_ms,
         observed_timestamp_ms=timestamp_ms,
@@ -394,10 +419,16 @@ def entry_markout_summary(
         if raw.get("path_complete") is not True:
             incomplete_paths += 1
             continue
-        lead_strategy = _lead_strategy(trade, fact_store)
-        if lead_strategy is None:
+        fact = _decision_fact(trade, fact_store)
+        if fact is None or fact.lead_strategy is None:
             missing_decision_attribution += 1
             lead_strategy = "unknown"
+        else:
+            lead_strategy = fact.lead_strategy
+        decision_age_bucket = _decision_age_bucket(
+            trade,
+            fact,
+        )
         (
             scanner_rank_bucket,
             rank_issue,
@@ -420,6 +451,7 @@ def entry_markout_summary(
                 trade,
                 lead_strategy=lead_strategy,
                 scanner_rank_bucket=scanner_rank_bucket,
+                decision_age_bucket=decision_age_bucket,
                 horizon_ms=horizon_ms,
                 marks=marks,
             )
@@ -463,6 +495,10 @@ def entry_markout_summary(
             "by_scanner_rank_bucket": _grouped(
                 horizon_observations,
                 "scanner_rank_bucket",
+            ),
+            "by_decision_age_bucket": _grouped(
+                horizon_observations,
+                "decision_age_bucket",
             ),
         }
 
