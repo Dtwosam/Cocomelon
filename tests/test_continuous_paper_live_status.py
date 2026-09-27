@@ -250,12 +250,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "net_pnl": "-10",
             },
             "reconciliation": {
+                "cash_bridge_delta": "0",
                 "closed_gross_delta": "0",
                 "closed_fees_delta": "0",
                 "closed_funding_delta": "0",
                 "closed_net_delta": "0",
                 "realized_bridge_delta": "0",
                 "equity_bridge_delta": "0",
+                "cash_bridge_matches_account": True,
                 "closed_journal_matches_account": True,
                 "realized_bridge_matches_account": True,
                 "equity_bridge_matches_account": True,
@@ -1186,6 +1188,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "fully closed journal matches account-implied closed economics" in output
     assert "realized cash bridge / equity bridge match" in output
     assert "`true / true`" in output
+    assert "account cash bridge delta" in output
+    assert "`0` · match: `true`" in output
     assert "closed gross / fees / funding / net deltas" in output
     assert "`0 / 0 / 0 / 0`" in output
     assert "| Open lifecycles | 60 | 1 | 0 | 59 | 1 | 60 |" in output
