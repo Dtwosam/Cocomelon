@@ -96,6 +96,9 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
+from cocomelon.research.entry_markout_predictiveness import (
+    entry_markout_predictiveness,
+)
 from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
     entry_markout_readiness,
@@ -2137,6 +2140,29 @@ def _opening_rank_attribution_payload(
     return payload
 
 
+def _entry_markout_predictiveness_payload(
+    journal: JournalStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    try:
+        payload = entry_markout_predictiveness(
+            journal,
+            trade_path_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _entry_markout_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2386,6 +2412,12 @@ def _live_status_payload(
         trade_path_store,
         opening_rank_store,
     )
+    entry_markout_predictive = (
+        _entry_markout_predictiveness_payload(
+            pump.journal,
+            trade_path_store,
+        )
+    )
     excursion_timing = _excursion_timing_payload(
         pump.journal,
         fact_store,
@@ -2495,6 +2527,9 @@ def _live_status_payload(
         ),
         "opening_scanner_rank": opening_rank,
         "entry_markout": entry_markout,
+        "entry_markout_predictiveness": (
+            entry_markout_predictive
+        ),
         "excursion_timing": excursion_timing,
         "entry_mid_markout_shadow": entry_mid_markout,
         "open_position_count": len(positions),
