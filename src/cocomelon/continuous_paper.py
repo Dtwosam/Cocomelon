@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -73,6 +73,9 @@ from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
     entry_markout_readiness,
 )
+from cocomelon.research.entry_mid_markout_shadow import (
+    EntryMidMarkoutShadow,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
@@ -111,6 +114,9 @@ PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
+)
+ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
+    "entry-mid-markout-shadow-state.json"
 )
 
 
@@ -307,6 +313,80 @@ class _ContinuousProfitLockExecutionShadowSink:
             "promotion_authority": False,
             "execution_authority": False,
         }
+        payload["error"] = self.error
+        return payload
+
+
+class _ContinuousEntryMidMarkoutSink:
+    def __init__(
+        self,
+        shadow: EntryMidMarkoutShadow,
+    ) -> None:
+        self.shadow: EntryMidMarkoutShadow | None = shadow
+        self.error: str | None = None
+
+    def _disable(self, exc: Exception) -> None:
+        if self.error is None:
+            self.error = f"{type(exc).__name__}: {exc}"
+        self.shadow = None
+
+    def observe(
+        self,
+        record: ReplayRecord,
+        positions: Sequence[PaperPosition],
+        *,
+        now_ms: int,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.observe(
+                record,
+                positions,
+                now_ms=now_ms,
+            )
+        except Exception as exc:
+            self._disable(exc)
+
+    def record_closed_trade(
+        self,
+        trade: TradeJournalEntry,
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.record_closed_trade(trade)
+        except Exception as exc:
+            self._disable(exc)
+
+    def summary_payload(
+        self,
+        fact_store: EvaluationFactStore,
+    ) -> dict[str, object]:
+        if self.shadow is None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "durable_state": True,
+                "error": self.error,
+            }
+        try:
+            payload = dict(
+                self.shadow.summary_payload(fact_store)
+            )
+        except Exception as exc:
+            self._disable(exc)
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "durable_state": True,
+                "error": self.error,
+            }
+        payload["enabled"] = True
         payload["error"] = self.error
         return payload
 
@@ -716,6 +796,29 @@ def _restore_profit_lock_execution_shadow(
     return shadow
 
 
+def _restore_entry_mid_markout_shadow(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> EntryMidMarkoutShadow:
+    shadow = EntryMidMarkoutShadow(
+        started_at_ms=started_at_ms,
+    )
+    if not path.exists():
+        return shadow
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        shadow.restore_state(raw)
+    except Exception as exc:
+        shadow = EntryMidMarkoutShadow(
+            started_at_ms=started_at_ms,
+        )
+        shadow.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+    return shadow
+
+
 def _restore_prospective_entry_filter(
     path: Path,
     *,
@@ -845,11 +948,28 @@ class _RecordPump:
         *,
         last_available_at_ms: int,
         cadence_shadow: CadenceShadowComparator | None = None,
+        entry_mid_markout_shadow: (
+            _ContinuousEntryMidMarkoutSink | None
+        ) = None,
+        position_provider: (
+            Callable[[], Sequence[PaperPosition]] | None
+        ) = None,
     ) -> None:
         self.pipeline = pipeline
         self.journal = journal
         self.cadence_shadow = cadence_shadow
         self.cadence_shadow_error: str | None = None
+        self.entry_mid_markout_shadow = (
+            entry_mid_markout_shadow
+        )
+        self._position_provider = position_provider
+        if (
+            self.entry_mid_markout_shadow is not None
+            and self._position_provider is None
+        ):
+            raise ValueError(
+                "entry mid markout shadow requires position provider"
+            )
         self.last_available_at_ms = last_available_at_ms
         self.processed_records = 0
         self.journal_observations = 0
@@ -887,10 +1007,25 @@ class _RecordPump:
                 self.journal.record_observation(observation)
             if observations:
                 self.last_observation = observations[-1]
+            if self.entry_mid_markout_shadow is not None:
+                provider = self._position_provider
+                if provider is None:
+                    raise RuntimeError(
+                        "entry mid markout position provider disappeared"
+                    )
+                self.entry_mid_markout_shadow.observe(
+                    record,
+                    provider(),
+                    now_ms=available,
+                )
             for trade in self.pipeline.finalize(available):
                 if trade.trade_id in self._known_trade_ids:
                     continue
                 self.journal.record_trade(trade)
+                if self.entry_mid_markout_shadow is not None:
+                    self.entry_mid_markout_shadow.record_closed_trade(
+                        trade
+                    )
                 self._known_trade_ids.add(trade.trade_id)
                 self._recent_closed_trades.append(trade)
                 self.closed_trades += 1
@@ -1852,6 +1987,12 @@ async def run_continuous_paper_session(
             )
         )
     )
+    entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
+        _restore_entry_mid_markout_shadow(
+            root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
+            started_at_ms=started_at_ms,
+        )
+    )
     (
         prospective_entry_filter_state,
         prospective_entry_filter_restore_error,
@@ -1928,6 +2069,8 @@ async def run_continuous_paper_session(
             journal,
             last_available_at_ms=restored_available_at_ms,
             cadence_shadow=cadence_shadow,
+            entry_mid_markout_shadow=entry_mid_markout_shadow,
+            position_provider=lambda: execution.account.positions,
         )
 
         selected_keys = {market.canonical for market in selected}
@@ -1998,6 +2141,11 @@ async def run_continuous_paper_session(
                 root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                 prospective_entry_filter_state.payload(),
             )
+            if entry_mid_markout_shadow.shadow is not None:
+                _write_json_atomic(
+                    root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
+                    entry_mid_markout_shadow.shadow.state_payload(),
+                )
 
         persist_checkpoint()
         _emit_live_status(
