@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Final
 
 from cocomelon.domain.evaluation import DecisionEvaluationFact
@@ -106,7 +106,7 @@ def _nearest_rank(values: Sequence[int], fraction: Decimal) -> int | None:
     rank = int(
         (
             Decimal(len(ordered) - 1) * fraction
-        ).to_integral_value(rounding="ROUND_HALF_UP")
+        ).to_integral_value(rounding=ROUND_HALF_UP)
     )
     return ordered[rank]
 
