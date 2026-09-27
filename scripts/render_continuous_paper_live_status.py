@@ -560,6 +560,155 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _delayed_entry_same_exit_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry same-exit contribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry same-exit telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    by_side = raw.get("by_side", {})
+    if not isinstance(by_side, dict):
+        by_side = {}
+
+    lines.extend(
+        [
+            (
+                "- scope: "
+                f"`{raw.get('claim_scope', 'unknown')}`"
+            ),
+            (
+                "- funding / exit assumptions: "
+                f"`{raw.get('funding_assumption', 'unknown')}` / "
+                f"`{raw.get('exit_assumption', 'unknown')}`"
+            ),
+            (
+                "- closed shadow / full fills / evaluated: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('full_delayed_fill_outcomes', 0)} / "
+                f"{raw.get('evaluated_full_delayed_fills', 0)}`"
+            ),
+            (
+                "- missing journal / lineage mismatch: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- actual W/L → estimated W/L: "
+                f"`{overall.get('actual_wins', 0)}/"
+                f"{overall.get('actual_losses', 0)} → "
+                f"{overall.get('candidate_wins_estimate', 0)}/"
+                f"{overall.get('candidate_losses_estimate', 0)}`"
+            ),
+            (
+                "- estimated loss→win / win→loss flips: "
+                f"`{overall.get('loss_to_win_flips_estimate', 0)} / "
+                f"{overall.get('win_to_loss_flips_estimate', 0)}`"
+            ),
+            (
+                "- actual / same-exit estimated PnL / delta: "
+                f"`{overall.get('actual_net_pnl', '0')}` / "
+                f"`{overall.get('candidate_net_pnl_estimate', '0')}` / "
+                f"`{overall.get('delta_net_pnl_estimate', '0')}`"
+            ),
+            (
+                "- actual / estimated mean R / mean delta R: "
+                f"`{overall.get('actual_mean_net_r')}` / "
+                f"`{overall.get('candidate_mean_net_r_estimate')}` / "
+                f"`{overall.get('mean_delta_net_r_estimate')}`"
+            ),
+            (
+                "- evidence gate (closed shadow / full fills): "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_full_delayed_fills', 0)}`"
+            ),
+            (
+                "- still needed closed / full: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_full_delayed_fills', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    rows = (
+        ("long", "LONG"),
+        ("short", "SHORT"),
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "| Side | N | Actual W/L | Est W/L | Loss→win | "
+                "Actual PnL | Est PnL | Δ PnL | Mean ΔR |"
+            ),
+            (
+                "| --- | ---: | --- | --- | ---: | ---: | ---: | "
+                "---: | ---: |"
+            ),
+        ]
+    )
+    for key, label in rows:
+        item = by_side.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            (
+                "| {label} | {n} | {aw}/{al} | {cw}/{cl} | {flip} | "
+                "{actual} | {candidate} | {delta} | {delta_r} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                aw=item.get("actual_wins", 0),
+                al=item.get("actual_losses", 0),
+                cw=item.get("candidate_wins_estimate", 0),
+                cl=item.get("candidate_losses_estimate", 0),
+                flip=item.get("loss_to_win_flips_estimate", 0),
+                actual=item.get("actual_net_pnl", "0"),
+                candidate=item.get("candidate_net_pnl_estimate", "0"),
+                delta=item.get("delta_net_pnl_estimate", "0"),
+                delta_r=item.get("mean_delta_net_r_estimate"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Contribution estimate only: the delayed entry price/fee is "
+                "substituted while the observed exit price, exit fee, and "
+                "funding are held constant. It does not model changed stop "
+                "timing, capacity, missed trades, or replacement trades._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2685,6 +2834,11 @@ def _research_readiness_board_lines(
     delayed_ready = bool(
         delayed_gate.get("ready_for_review")
     )
+    delayed_same_exit = mapping("delayed_entry_same_exit")
+    delayed_same_exit_gate = readiness(delayed_same_exit)
+    delayed_same_exit_ready = bool(
+        delayed_same_exit_gate.get("ready_for_review")
+    )
     delayed_integrity = (
         f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
         f"orphan={delayed.get('orphaned_restored_positions', 0)}"
@@ -2800,6 +2954,21 @@ def _research_readiness_board_lines(
                 f"worse={delayed.get('worse_price_full_fills', 0)}"
             ),
             delayed_integrity,
+        ),
+        (
+            "60s delayed same-exit",
+            status(
+                delayed_same_exit,
+                ready=delayed_same_exit_ready,
+            ),
+            (
+                f"closed={delayed_same_exit.get('closed_shadow_outcomes', 0)}, "
+                f"full={delayed_same_exit.get('evaluated_full_delayed_fills', 0)}"
+            ),
+            (
+                f"missing={delayed_same_exit.get('missing_journal_trades', 0)}, "
+                f"mismatch={delayed_same_exit.get('lineage_mismatches', 0)}"
+            ),
         ),
         (
             "LONG+trend filter",
@@ -3063,6 +3232,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_execution_shadow_lines(
             payload.get("delayed_entry_execution_shadow")
+        )
+    )
+    lines.extend(
+        _delayed_entry_same_exit_lines(
+            payload.get("delayed_entry_same_exit")
         )
     )
     lines.extend(

@@ -607,6 +607,10 @@ class DelayedEntryExecutionShadow:
             )
         )
 
+    @property
+    def outcomes(self) -> tuple[DelayedEntryOutcome, ...]:
+        return tuple(self._outcomes)
+
     def summary_payload(self) -> dict[str, object]:
         outcomes = tuple(self._outcomes)
         full = tuple(
