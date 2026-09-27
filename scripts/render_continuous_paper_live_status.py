@@ -647,6 +647,10 @@ def _entry_markout_lines(raw: object) -> list[str]:
                 f"{raw.get('incomplete_paths_skipped', 0)}`"
             ),
             (
+                "- maximum accepted observation lag: "
+                f"`{raw.get('max_observation_lag_ms')}`ms"
+            ),
+            (
                 "- missing journal / decision attribution: "
                 f"`{raw.get('missing_journal_trade', 0)} / "
                 f"{raw.get('missing_decision_attribution', 0)}`"
@@ -676,11 +680,12 @@ def _entry_markout_lines(raw: object) -> list[str]:
             "",
             (
                 "| Horizon | Status | N | Need | + | - | Mean bps | "
-                "Mean gross R | Censored | Missing mark | Mean lag | Max lag |"
+                "Mean gross R | Censored | Missing mark | Stale mark | "
+                "Mean lag | Max lag |"
             ),
             (
                 "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
-                "---: | ---: | ---: | ---: | ---: |"
+                "---: | ---: | ---: | ---: | ---: | ---: |"
             ),
         ]
     )
@@ -692,7 +697,7 @@ def _entry_markout_lines(raw: object) -> list[str]:
             (
                 "| {label} | {status} | {n} | {need} | {positive} | "
                 "{negative} | {bps} | {r} | {censored} | {missing} | "
-                "{mean_lag}ms | {max_lag}ms |"
+                "{stale} | {mean_lag}ms | {max_lag}ms |"
             ).format(
                 label=label,
                 status=item.get("readiness_status", "collecting"),
@@ -704,6 +709,7 @@ def _entry_markout_lines(raw: object) -> list[str]:
                 r=item.get("mean_gross_r"),
                 censored=item.get("censored_before_horizon", 0),
                 missing=item.get("missing_observed_mark", 0),
+                stale=item.get("stale_observed_mark", 0),
                 mean_lag=item.get("mean_observation_lag_ms"),
                 max_lag=item.get("max_observation_lag_ms"),
             )
@@ -757,7 +763,9 @@ def _entry_markout_lines(raw: object) -> list[str]:
             (
                 "_Signed markout from the actual paper entry price using the "
                 "first observed exact-path mark at or after each fixed "
-                "horizon. Short-lived trades are censored, not imputed._"
+                "horizon, only when it arrives within the freshness bound. "
+                "Short-lived trades are censored; stale/missing marks are "
+                "reported and never imputed._"
             ),
         ]
     )

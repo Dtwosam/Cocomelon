@@ -19,6 +19,7 @@ ENTRY_MARKOUT_HORIZONS_MS: Final = (
     300_000,
     900_000,
 )
+MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS: Final = 60_000
 
 
 class EntryMarkoutError(RuntimeError):
@@ -337,6 +338,10 @@ def entry_markout_summary(
         str(horizon): 0
         for horizon in ENTRY_MARKOUT_HORIZONS_MS
     }
+    stale_mark_by_horizon = {
+        str(horizon): 0
+        for horizon in ENTRY_MARKOUT_HORIZONS_MS
+    }
 
     for raw in path_payloads:
         trade_id = _string(raw.get("trade_id"), "trade_id")
@@ -368,6 +373,12 @@ def entry_markout_summary(
             if item is None:
                 missing_mark_by_horizon[str(horizon_ms)] += 1
                 continue
+            if (
+                item.observation_lag_ms
+                > MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS
+            ):
+                stale_mark_by_horizon[str(horizon_ms)] += 1
+                continue
             observations.append(item)
 
     by_horizon: dict[str, dict[str, object]] = {}
@@ -385,6 +396,9 @@ def entry_markout_summary(
             "missing_observed_mark": (
                 missing_mark_by_horizon[str(horizon_ms)]
             ),
+            "stale_observed_mark": (
+                stale_mark_by_horizon[str(horizon_ms)]
+            ),
             "by_side": _grouped(
                 horizon_observations,
                 "direction",
@@ -399,7 +413,12 @@ def entry_markout_summary(
         "research_only": True,
         "execution_authority": False,
         "promotion_authority": False,
-        "definition": "first_observed_mark_at_or_after_horizon",
+        "definition": (
+            "first_observed_mark_at_or_after_horizon_within_max_lag"
+        ),
+        "max_observation_lag_ms": (
+            MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS
+        ),
         "horizons_ms": list(ENTRY_MARKOUT_HORIZONS_MS),
         "complete_path_records": (
             len(path_payloads) - incomplete_paths
