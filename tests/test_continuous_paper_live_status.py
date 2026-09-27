@@ -215,6 +215,24 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "largest_winner_trade_id": "best",
             "top_one_winner_share_of_gross_profit": "0.6666666666666666666666666667",
             "top_two_winner_share_of_gross_profit": "1",
+            "top_positive_market": "NIL",
+            "top_positive_market_net_pnl": "70",
+            "top_positive_market_trade_count": 3,
+            "top_positive_market_share_of_positive_market_pnl": (
+                "0.8235294117647058823529411765"
+            ),
+            "remove_top_positive_market": {
+                "remaining_trades": 17,
+                "removed_trade_count": 3,
+                "removed_trade_ids": ["nil-a", "nil-b", "nil-c"],
+                "removed_net_pnl": "70",
+                "net_pnl": "-58",
+                "mean_net_r": "-0.22",
+                "median_net_r": "-0.2",
+                "profit_factor": "0.45",
+                "positive_net_pnl": False,
+            },
+            "positive_pnl_survives_remove_top_positive_market": False,
             "remove_best_one": {
                 "remaining_trades": 3,
                 "removed_trade_count": 1,
@@ -2032,6 +2050,20 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`10 / 1.0`" in output
     assert "top-1 / top-2 share of gross profit" in output
     assert "`0.6666666666666666666666666667 / 1`" in output
+    assert (
+        "top positive market / net PnL / trades / "
+        "positive-market-PnL share" in output
+    )
+    assert (
+        "`NIL / 70 / 3 / 0.8235294117647058823529411765`"
+        in output
+    )
+    assert (
+        "| Remove top positive market (NIL) | 17 | -58 | -0.22 | "
+        "-0.2 | 0.45 | false |" in output
+    )
+    assert "positive PnL survives remove top positive market" in output
+    assert "`false`" in output
     assert (
         "| Remove best 1 | 3 | -6 | -0.2 | -0.3 | "
         "0.4545454545454545454545454545 | false |"

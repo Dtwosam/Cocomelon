@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Sequence
 from decimal import Decimal
 from statistics import median
@@ -105,6 +106,51 @@ def closed_trade_robustness(
     remove_best_one = _scenario(items, removed=top_one)
     remove_best_two = _scenario(items, removed=top_two)
 
+    market_groups: dict[str, list[TradeJournalEntry]] = defaultdict(list)
+    for trade in items:
+        market_groups[trade.market.canonical].append(trade)
+    market_net_pnl = {
+        market: sum(
+            (trade.net_pnl for trade in trades_for_market),
+            ZERO,
+        )
+        for market, trades_for_market in market_groups.items()
+    }
+    positive_market_net_pnl = {
+        market: pnl
+        for market, pnl in market_net_pnl.items()
+        if pnl > ZERO
+    }
+    positive_market_total = sum(
+        positive_market_net_pnl.values(),
+        ZERO,
+    )
+    top_positive_market = (
+        None
+        if not positive_market_net_pnl
+        else max(
+            positive_market_net_pnl,
+            key=lambda market: (
+                positive_market_net_pnl[market],
+                market,
+            ),
+        )
+    )
+    top_positive_market_trades = (
+        ()
+        if top_positive_market is None
+        else tuple(market_groups[top_positive_market])
+    )
+    top_positive_market_pnl = (
+        None
+        if top_positive_market is None
+        else positive_market_net_pnl[top_positive_market]
+    )
+    remove_top_positive_market = _scenario(
+        items,
+        removed=top_positive_market_trades,
+    )
+
     return {
         "research_only": True,
         "execution_authority": False,
@@ -142,13 +188,35 @@ def closed_trade_robustness(
             if gross_profit == ZERO
             else str(top_two_pnl / gross_profit)
         ),
+        "top_positive_market": top_positive_market,
+        "top_positive_market_net_pnl": (
+            None
+            if top_positive_market_pnl is None
+            else str(top_positive_market_pnl)
+        ),
+        "top_positive_market_trade_count": len(
+            top_positive_market_trades
+        ),
+        "top_positive_market_share_of_positive_market_pnl": (
+            None
+            if top_positive_market_pnl is None
+            or positive_market_total == ZERO
+            else str(
+                top_positive_market_pnl
+                / positive_market_total
+            )
+        ),
         "remove_best_one": remove_best_one,
         "remove_best_two": remove_best_two,
+        "remove_top_positive_market": remove_top_positive_market,
         "positive_pnl_survives_remove_best_one": bool(
             remove_best_one["positive_net_pnl"]
         ),
         "positive_pnl_survives_remove_best_two": bool(
             remove_best_two["positive_net_pnl"]
+        ),
+        "positive_pnl_survives_remove_top_positive_market": bool(
+            remove_top_positive_market["positive_net_pnl"]
         ),
         "readiness": {
             "min_closed_trades": MIN_CLOSED_TRADES_FOR_REVIEW,

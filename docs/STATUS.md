@@ -1457,3 +1457,19 @@ The continuous-paper live status now attributes realized closed-trade economics 
 This completes the Phase 9 deterministic live slice for UTC hour. It is observability only and does not suppress, delay, reprioritize, size, or promote trades.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Whole-market robustness sensitivity — 2026-09-27
+
+The existing closed-trade robustness diagnostic now tests whether aggregate paper profitability survives removing every trade from the single highest positive-net-PnL market.
+
+- markets are grouped by realized net PnL across the same closed-trade sample;
+- only markets with positive grouped net PnL can become the removed market;
+- the report exposes the top positive market, its grouped net PnL, trade count, and share of total positive market-level PnL;
+- it then removes every closed trade from that market and recomputes remaining trade count, net PnL, mean/median net R, profit factor, and whether net PnL remains positive;
+- when no market has positive grouped net PnL, no market is selected and the scenario removes nothing;
+- this is deterministic sensitivity over the realized sample, not a claim that the removed market would have been replaced by other trades.
+
+The purpose is to detect whole-market dependence that single-best-trade sensitivity can miss. It cannot block a market or change scanner ranking, risk, sizing, entries, or exits.
+
+**LIVE TRADING: DISABLED.**
