@@ -185,7 +185,7 @@ class ContinuousPaperDrawdownTracker:
                 raise ContinuousPaperDrawdownError(
                     f"{name} must be an integer or null"
                 )
-            return value
+            return int(value)
 
         def decimal(name: str) -> Decimal | None:
             value = raw.get(name)
