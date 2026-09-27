@@ -476,6 +476,8 @@ def _delayed_entry_execution_shadow_lines(
     readiness = raw.get("readiness", {})
     if not isinstance(readiness, dict):
         readiness = {}
+    if not isinstance(open_attempts, dict):
+        open_attempts = {}
 
     lines.extend(
         [
@@ -891,6 +893,7 @@ def _delayed_entry_fill_capacity_lines(
     by_side = raw.get("by_side", {})
     by_cause = raw.get("by_cause", {})
     readiness = raw.get("readiness", {})
+    open_attempts = raw.get("open_attempts", {})
     if not isinstance(overall, dict):
         overall = {}
     if not isinstance(by_side, dict):
@@ -959,6 +962,47 @@ def _delayed_entry_fill_capacity_lines(
             lines.append(
                 f"- {cause}: n={data.get('attempts', 0)}, "
                 f"mean_fill={data.get('mean_fill_fraction')}"
+            )
+
+    open_rows = open_attempts.get("rows", [])
+    if not isinstance(open_rows, list):
+        open_rows = []
+    lines.extend(
+        [
+            "",
+            (
+                "- current open positions with completed +60s attempt: "
+                f"`{open_attempts.get('attempted_open_positions', 0)}`"
+            ),
+        ]
+    )
+    if open_rows:
+        lines.extend(
+            [
+                "",
+                (
+                    "| Open market | Side | Result | Fill fraction | "
+                    "Capacity cause | IOC reason | Lag |"
+                ),
+                (
+                    "| --- | --- | --- | ---: | --- | --- | ---: |"
+                ),
+            ]
+        )
+        for item in open_rows:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| {market} | {side} | {result} | {fill} | "
+                "{cause} | {reason} | {lag}ms |".format(
+                    market=item.get("market", "unknown"),
+                    side=item.get("side", "unknown"),
+                    result=item.get("result", "unknown"),
+                    fill=item.get("fill_fraction"),
+                    cause=item.get("capacity_cause") or "n/a",
+                    reason=item.get("attempt_reason") or "n/a",
+                    lag=item.get("observation_lag_ms"),
+                )
             )
     lines.extend(
         [
