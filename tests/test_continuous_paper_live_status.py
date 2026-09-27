@@ -544,6 +544,56 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "prospective_top10_rank_filter": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "prospective-admit-top10-rank-v1",
+            "started_at_ms": 1_699_999_600_000,
+            "state_restore_error": None,
+            "error": None,
+            "rule": {
+                "max_admitted_ordinal": 10,
+                "action_above_threshold": "reject",
+                "max_rank_age_ms": 300000,
+            },
+            "claim_scope": "closed_trade_contribution_only",
+            "portfolio_counterfactual": False,
+            "prospective_closed_trades": 12,
+            "attributed_trades": 11,
+            "missing_rank_evidence": 1,
+            "stale_rank_evidence": 0,
+            "allowed_trades": 6,
+            "blocked_trades": 5,
+            "allowed_wins": 3,
+            "allowed_losses": 3,
+            "blocked_wins": 0,
+            "blocked_losses": 5,
+            "allowed_net_pnl": "20",
+            "blocked_net_pnl": "-30",
+            "actual_net_pnl": "-10",
+            "candidate_trade_contribution_pnl": "20",
+            "delta_trade_contribution_pnl": "30",
+            "actual_mean_net_r": "-0.08",
+            "allowed_mean_net_r": "0.25",
+            "blocked_mean_net_r": "-0.5",
+            "allowed_mean_ordinal": "6.5",
+            "blocked_mean_ordinal": "15",
+            "mean_rank_age_ms": 32000,
+            "max_rank_age_ms": 58000,
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_blocked_trades": 10,
+                "min_allowed_trades": 10,
+                "missing_prospective_closed_trades": 18,
+                "missing_blocked_trades": 5,
+                "missing_allowed_trades": 4,
+                "requires_zero_missing_rank_evidence": True,
+                "requires_zero_stale_rank_evidence": True,
+            },
+        },
         "prospective_entry_filter": {
             "enabled": True,
             "research_only": True,
@@ -786,6 +836,31 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1`" in output
     assert "### Fixed profit-lock counterfactual" in output
     assert "### Prospective LONG-trend entry filter" in output
+    assert "### Prospective top-10 scanner-rank filter" in output
+    assert "prospective-admit-top10-rank-v1" in output
+    assert "admit scanner rank `1-10`" in output
+    assert "maximum accepted rank age" in output
+    assert "`300000`ms" in output
+    assert "prospective closed / attributed" in output
+    assert "`12 / 11`" in output
+    assert "missing / stale rank evidence" in output
+    assert "`1 / 0`" in output
+    assert "allowed / blocked trades" in output
+    assert "`6 / 5`" in output
+    assert "allowed W/L · blocked W/L" in output
+    assert "`3/3 · 0/5`" in output
+    assert "allowed / blocked net PnL" in output
+    assert "`20` / `-30`" in output
+    assert "allowed / blocked mean R" in output
+    assert "`0.25` / `-0.5`" in output
+    assert "allowed / blocked mean rank" in output
+    assert "`6.5` / `15`" in output
+    assert "evidence gate (prospective / blocked / allowed)" in output
+    assert "`30 / 10 / 10`" in output
+    assert "still needed P/B/A" in output
+    assert "`18 / 5 / 4`" in output
+    assert "ready for review: `false`" in output
+    assert "Existing rank-11–20 losses from before this study do not count" in output
     assert "### Opening scanner-rank attribution" in output
     assert "latest_coarse_rank_before_open" in output
     assert "rank evidence records / attributed closed trades" in output

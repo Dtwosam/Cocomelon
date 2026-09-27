@@ -107,6 +107,10 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_top10_rank_filter import (
+    ProspectiveTop10RankFilterState,
+    evaluate_prospective_top10_rank_filter,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -119,6 +123,9 @@ PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
 )
 PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-entry-filter-state.json"
+)
+PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
+    "prospective-top10-rank-filter-state.json"
 )
 ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
     "entry-mid-markout-shadow-state.json"
@@ -889,6 +896,64 @@ def _restore_prospective_entry_filter(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_top10_rank_filter(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveTop10RankFilterState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveTop10RankFilterState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveTop10RankFilterState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveTop10RankFilterState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_top10_rank_filter_payload(
+    journal: JournalStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore,
+    state: ProspectiveTop10RankFilterState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_top10_rank_filter(
+            journal,
+            opening_rank_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _prospective_entry_filter_payload(
@@ -1683,10 +1748,12 @@ def _live_status_payload(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
+    prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
+    prospective_top10_rank_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
@@ -1770,6 +1837,16 @@ def _live_status_payload(
         fact_store,
         prospective_entry_filter_state,
         restore_error=prospective_entry_filter_restore_error,
+    )
+    prospective_top10_rank_filter = (
+        _prospective_top10_rank_filter_payload(
+            pump.journal,
+            opening_rank_store,
+            prospective_top10_rank_filter_state,
+            restore_error=(
+                prospective_top10_rank_filter_restore_error
+            ),
+        )
     )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
@@ -1865,6 +1942,9 @@ def _live_status_payload(
             profit_lock_execution_shadow.summary_payload()
         ),
         "prospective_entry_filter": prospective_entry_filter,
+        "prospective_top10_rank_filter": (
+            prospective_top10_rank_filter
+        ),
         "opening_scanner_rank": opening_rank,
         "entry_markout": entry_markout,
         "entry_mid_markout_shadow": entry_mid_markout,
@@ -1896,10 +1976,12 @@ def _emit_live_status(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
+    prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
+    prospective_top10_rank_filter_restore_error: str | None,
     timestamp_ms: int,
 ) -> None:
     payload = _live_status_payload(
@@ -1913,10 +1995,14 @@ def _emit_live_status(
         profit_lock_execution_shadow,
         entry_mid_markout_shadow,
         prospective_entry_filter_state,
+        prospective_top10_rank_filter_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
+        ),
+        prospective_top10_rank_filter_restore_error=(
+            prospective_top10_rank_filter_restore_error
         ),
         timestamp_ms=timestamp_ms,
     )
@@ -2055,6 +2141,13 @@ async def run_continuous_paper_session(
         prospective_entry_filter_restore_error,
     ) = _restore_prospective_entry_filter(
         root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
+        prospective_top10_rank_filter_state,
+        prospective_top10_rank_filter_restore_error,
+    ) = _restore_prospective_top10_rank_filter(
+        root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
 
@@ -2198,6 +2291,10 @@ async def run_continuous_paper_session(
                 root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
                 prospective_entry_filter_state.payload(),
             )
+            _write_json_atomic(
+                root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
+                prospective_top10_rank_filter_state.payload(),
+            )
             if entry_mid_markout_shadow.shadow is not None:
                 _write_json_atomic(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -2216,6 +2313,7 @@ async def run_continuous_paper_session(
             profit_lock_execution_shadow,
             entry_mid_markout_shadow,
             prospective_entry_filter_state,
+            prospective_top10_rank_filter_state,
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
                 None
@@ -2224,6 +2322,9 @@ async def run_continuous_paper_session(
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
+            ),
+            prospective_top10_rank_filter_restore_error=(
+                prospective_top10_rank_filter_restore_error
             ),
             timestamp_ms=utc_now_ms(),
         )
@@ -2365,6 +2466,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     entry_mid_markout_shadow,
                     prospective_entry_filter_state,
+                    prospective_top10_rank_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
                         None
@@ -2373,6 +2475,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
+                    ),
+                    prospective_top10_rank_filter_restore_error=(
+                        prospective_top10_rank_filter_restore_error
                     ),
                     timestamp_ms=now_ms,
                 )
