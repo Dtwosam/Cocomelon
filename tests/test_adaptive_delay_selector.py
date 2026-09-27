@@ -265,7 +265,7 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
     assert isinstance(vs_120, dict)
     assert vs_120["total_delta_pnl"] == "0.5"
     assert vs_120["largest_abs_trade_contribution"] == "0.5"
-    assert vs_120["leave_one_trade_out_min_delta"] == "0"
+    assert vs_120["leave_one_trade_out_min_delta"] == "0.0"
 
     by_market = result["by_market"]
     assert isinstance(by_market, dict)
