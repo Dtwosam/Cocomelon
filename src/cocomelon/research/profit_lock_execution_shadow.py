@@ -505,6 +505,7 @@ class ProfitLockExecutionShadow:
         self._outcomes: list[ProfitLockExecutionOutcome] = []
         self._excluded_closed_trades = 0
         self._lineage_mismatch_closed_trades = 0
+        self._orphaned_restored_positions = 0
         self._state_restored = False
         self._state_restore_error: str | None = None
 
@@ -764,6 +765,23 @@ class ProfitLockExecutionShadow:
                 )
             if rule_state.remaining_quantity == ZERO:
                 rule_state.completed_at_ms = now_ms
+
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        active = {
+            position.opening_plan_id
+            for position in positions
+        }
+        orphaned = tuple(
+            opening_plan_id
+            for opening_plan_id in self._positions
+            if opening_plan_id not in active
+        )
+        for opening_plan_id in orphaned:
+            del self._positions[opening_plan_id]
+        self._orphaned_restored_positions += len(orphaned)
 
     def record_closed_trade(
         self,
@@ -1031,6 +1049,9 @@ class ProfitLockExecutionShadow:
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
             ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
+            ),
             "closed_outcome_count": len(self._outcomes),
             "rules": [
                 self._rule_summary(rule)
@@ -1129,6 +1150,9 @@ class ProfitLockExecutionShadow:
             ),
             "lineage_mismatch_closed_trades": (
                 self._lineage_mismatch_closed_trades
+            ),
+            "orphaned_restored_positions": (
+                self._orphaned_restored_positions
             ),
         }
 
@@ -1436,7 +1460,15 @@ class ProfitLockExecutionShadow:
             raw.get("lineage_mismatch_closed_trades", 0),
             "lineage_mismatch_closed_trades",
         )
-        if excluded_closed < 0 or lineage_mismatch_closed < 0:
+        orphaned_restored = _integer(
+            raw.get("orphaned_restored_positions", 0),
+            "orphaned_restored_positions",
+        )
+        if (
+            excluded_closed < 0
+            or lineage_mismatch_closed < 0
+            or orphaned_restored < 0
+        ):
             raise ProfitLockExecutionShadowError(
                 "closed trade counters must be non-negative"
             )
@@ -1448,6 +1480,7 @@ class ProfitLockExecutionShadow:
         self._lineage_mismatch_closed_trades = (
             lineage_mismatch_closed
         )
+        self._orphaned_restored_positions = orphaned_restored
         self._state_restored = True
         self._state_restore_error = None
 
