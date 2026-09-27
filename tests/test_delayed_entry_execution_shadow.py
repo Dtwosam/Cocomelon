@@ -397,6 +397,41 @@ def test_delayed_partial_distinguishes_visible_depth_exhaustion() -> None:
     assert outcome.capacity_cause == "visible_depth_exhausted"
 
 
+def test_delayed_capacity_cause_survives_restart_before_close() -> None:
+    position = _position(quantity="2")
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+    attempt_ms = position.opened_at_ms + DELAY_MS + 300
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book_levels(
+            attempt_ms,
+            bids=(("99.7", "10"),),
+            asks=(("99.9", "1"), ("100.5", "10")),
+        ),
+        reference_price=Decimal("100"),
+        now_ms=attempt_ms,
+    )
+
+    restored = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=999_999,
+    )
+    restored.restore_state(shadow.state_payload())
+    restored.record_closed_trade(_trade(position))
+
+    outcome = restored.outcomes[0]
+    assert outcome.capacity_cause == "slippage_boundary_reached"
+
+
 def test_delayed_entry_state_survives_restart_before_target() -> None:
     position = _position()
     shadow = DelayedEntryExecutionShadow(
