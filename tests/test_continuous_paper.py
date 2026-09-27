@@ -64,6 +64,9 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryExecutionShadow,
 )
+from cocomelon.research.profit_lock_execution_shadow import (
+    ProfitLockExecutionShadow,
+)
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
@@ -165,7 +168,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "position_research_observer=(" in source
     assert "_CompositePositionResearchObserver(" in source
-    assert "opening_plan_loader=execution.store.load_plan" in source
+    assert source.count(
+        "opening_plan_loader=execution.store.load_plan"
+    ) >= 3
+    assert "opening_lineage_source" in source
     assert "_position_with_original_stop(" in source
     assert '"profit_lock_execution_shadow": (' in source
     assert '"delayed_entry_execution_shadow": (' in source
@@ -788,6 +794,7 @@ def test_profit_lock_execution_shadow_sink_fails_open() -> None:
 
     sink = _ContinuousProfitLockExecutionShadowSink(
         FailingShadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _plan_id: None,
     )
     sink.observe_mark(
         (),
@@ -907,6 +914,69 @@ def test_delayed_entry_execution_shadow_sink_fails_open() -> None:
     assert payload["error"] == "RuntimeError: delay shadow boom"
 
 
+def test_profit_lock_shadow_uses_persisted_opening_risk_envelope() -> None:
+    market = MarketId("", "BTC")
+    position = PaperPosition(
+        market=market,
+        side=PositionSide.LONG,
+        quantity=Decimal("1"),
+        average_entry_price=Decimal("100"),
+        stop_price=Decimal("98"),
+        opening_plan_id="opening-plan-profit-lock",
+        opened_at_ms=1_000,
+        updated_at_ms=2_000,
+        initial_risk_decision_id="risk-1",
+        correlation_bucket="crypto_beta",
+        cost_buffer_fraction=Decimal("0.001"),
+        planned_risk=Decimal("2.2"),
+        venue_max_leverage=Decimal("20"),
+        latest_mark=Decimal("101"),
+    )
+    opening_plan = SimpleNamespace(
+        reduce_only=False,
+        market=market,
+        stop_price=Decimal("90"),
+        approved_risk_amount_ceiling=Decimal("10"),
+        cost_buffer_fraction=Decimal("0.002"),
+    )
+
+    class RecordingShadow:
+        positions: tuple[PaperPosition, ...] = ()
+
+        def observe_mark(
+            self,
+            positions: tuple[PaperPosition, ...],
+            _mark_event: object,
+            *,
+            now_ms: int,
+        ) -> None:
+            assert now_ms == 2_000
+            self.positions = positions
+
+        def summary_payload(self) -> dict[str, object]:
+            return {}
+
+    shadow = RecordingShadow()
+    sink = _ContinuousProfitLockExecutionShadowSink(
+        shadow,  # type: ignore[arg-type]
+        opening_plan_loader=lambda _plan_id: opening_plan,  # type: ignore[arg-type]
+    )
+    sink.observe_mark(
+        (position,),
+        SimpleNamespace(),  # type: ignore[arg-type]
+        now_ms=2_000,
+    )
+
+    assert sink.error is None
+    assert len(shadow.positions) == 1
+    canonical = shadow.positions[0]
+    assert canonical.quantity == position.quantity
+    assert canonical.average_entry_price == position.average_entry_price
+    assert canonical.stop_price == Decimal("90")
+    assert canonical.planned_risk == Decimal("10")
+    assert canonical.cost_buffer_fraction == Decimal("0.002")
+
+
 def test_delayed_entry_shadow_uses_persisted_opening_stop() -> None:
     market = MarketId("", "BTC")
     position = PaperPosition(
@@ -989,6 +1059,33 @@ def test_120s_delayed_entry_restore_failure_is_fail_open(
     assert payload["state_restored"] is False
     assert payload["state_restore_error"] is not None
     assert "JSONDecodeError" in str(payload["state_restore_error"])
+
+
+def test_profit_lock_v1_state_restarts_cleanly_on_v2_protocol(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "profit-lock-execution-shadow-state.json"
+    old = ProfitLockExecutionShadow(
+        BaselineReplayConfig().execution,
+        started_at_ms=123,
+    ).state_payload()
+    old["schema_version"] = 1
+    path.write_text(json.dumps(old), encoding="utf-8")
+
+    restored = _restore_profit_lock_execution_shadow(
+        path,
+        BaselineReplayConfig().execution,
+        started_at_ms=456,
+    )
+
+    payload = restored.summary_payload()
+    assert payload["state_restored"] is False
+    assert payload["started_at_ms"] == 456
+    assert payload["closed_outcome_count"] == 0
+    assert payload["lineage_mismatch_closed_trades"] == 0
+    assert "unsupported execution-shadow state schema" in str(
+        payload["state_restore_error"]
+    )
 
 
 def test_profit_lock_execution_shadow_restore_failure_is_fail_open(

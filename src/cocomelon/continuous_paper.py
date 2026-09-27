@@ -471,14 +471,79 @@ class _ContinuousProfitLockExecutionShadowSink:
     def __init__(
         self,
         shadow: ProfitLockExecutionShadow,
+        *,
+        opening_plan_loader: Callable[
+            [str],
+            PaperOrderPlan | None,
+        ],
     ) -> None:
         self.shadow: ProfitLockExecutionShadow | None = shadow
+        self._opening_plan_loader = opening_plan_loader
         self.error: str | None = None
 
     def _disable(self, exc: Exception) -> None:
         if self.error is None:
             self.error = f"{type(exc).__name__}: {exc}"
         self.shadow = None
+
+    def _position_with_opening_lineage(
+        self,
+        position: PaperPosition,
+    ) -> PaperPosition:
+        plan = self._opening_plan_loader(
+            position.opening_plan_id
+        )
+        if plan is None:
+            raise RuntimeError(
+                "profit-lock opening plan is missing"
+            )
+        if plan.reduce_only:
+            raise RuntimeError(
+                "profit-lock opening plan is reduce-only"
+            )
+        if plan.market != position.market:
+            raise RuntimeError(
+                "profit-lock opening plan market mismatch"
+            )
+        if (
+            plan.stop_price is None
+            or plan.approved_risk_amount_ceiling is None
+        ):
+            raise RuntimeError(
+                "profit-lock opening plan risk envelope is incomplete"
+            )
+        return replace(
+            position,
+            stop_price=plan.stop_price,
+            planned_risk=plan.approved_risk_amount_ceiling,
+            cost_buffer_fraction=(
+                position.cost_buffer_fraction
+                if plan.cost_buffer_fraction is None
+                else plan.cost_buffer_fraction
+            ),
+        )
+
+    def _positions_with_opening_lineage(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> tuple[PaperPosition, ...]:
+        return tuple(
+            self._position_with_opening_lineage(position)
+            for position in positions
+        )
+
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.reconcile_open_positions(
+                self._positions_with_opening_lineage(positions)
+            )
+        except Exception as exc:
+            self._disable(exc)
 
     def observe_mark(
         self,
@@ -491,7 +556,7 @@ class _ContinuousProfitLockExecutionShadowSink:
             return
         try:
             self.shadow.observe_mark(
-                positions,
+                self._positions_with_opening_lineage(positions),
                 mark_event,
                 now_ms=now_ms,
             )
@@ -511,7 +576,7 @@ class _ContinuousProfitLockExecutionShadowSink:
             return
         try:
             self.shadow.observe_book(
-                positions,
+                self._positions_with_opening_lineage(positions),
                 instrument,
                 book,
                 reference_price=reference_price,
@@ -538,6 +603,7 @@ class _ContinuousProfitLockExecutionShadowSink:
                 "research_only": True,
                 "execution_authority": False,
                 "durable_state": True,
+                "opening_lineage_source": "persisted_opening_plan",
                 "error": self.error,
             }
         payload = dict(self.shadow.summary_payload())
@@ -598,6 +664,9 @@ class _ContinuousProfitLockExecutionShadowSink:
             "promotion_authority": False,
             "execution_authority": False,
         }
+        payload["opening_lineage_source"] = (
+            "persisted_opening_plan"
+        )
         payload["error"] = self.error
         return payload
 
@@ -3066,7 +3135,8 @@ async def run_continuous_paper_session(
                 root / PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME,
                 replay_config.execution,
                 started_at_ms=started_at_ms,
-            )
+            ),
+            opening_plan_loader=execution.store.load_plan,
         )
     )
     delayed_entry_execution_shadow = (
@@ -3101,10 +3171,9 @@ async def run_continuous_paper_session(
         root / DRAWDOWN_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
-    if profit_lock_execution_shadow.shadow is not None:
-        profit_lock_execution_shadow.shadow.reconcile_open_positions(
-            execution.account.positions
-        )
+    profit_lock_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
     delayed_entry_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )

@@ -1649,3 +1649,19 @@ The +60s delayed-entry fill-capacity diagnostic now exposes completed delayed at
 This preview has no execution or promotion authority and cannot alter order timing, quantity, slippage, risk, account state, or live trading.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Profit-lock execution shadow opening-lineage correction — 2026-09-27
+
+The execution-aware profit-lock research stream now binds its opening risk envelope to the persisted opening plan, matching the authoritative journal contract.
+
+- the actual paper position still supplies the filled quantity, VWAP entry price, side, and opening timestamp;
+- the persisted opening plan supplies the original stop, cost buffer, and approved risk amount ceiling;
+- this fixes a systematic research-only mismatch where `PaperPosition.planned_risk` represented actual fill risk while `TradeJournalEntry.initial_risk_amount` represented the approved opening risk ceiling;
+- exact close-lineage checks remain strict; no mismatched historical close is repaired or admitted;
+- the profit-lock execution-shadow state schema advances to v2, so the previously contaminated v1 mismatch counters are not carried into the corrected prospective sample;
+- an incompatible v1 checkpoint starts a fresh research stream with an explicit restore warning, while the paper trader continues normally.
+
+This changes only profit-lock research evidence. It does not change paper account risk, stops, fills, position management, strategy decisions, or execution authority.
+
+**LIVE TRADING: DISABLED.**

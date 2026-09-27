@@ -25,7 +25,7 @@ from cocomelon.research.profit_lock_counterfactual import (
 )
 
 ZERO: Final = Decimal("0")
-EXECUTION_SHADOW_STATE_SCHEMA_VERSION: Final = 1
+EXECUTION_SHADOW_STATE_SCHEMA_VERSION: Final = 2
 
 
 class ProfitLockExecutionShadowError(RuntimeError):
