@@ -1473,6 +1473,108 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "missing_selected_120s_trades": 2,
             },
         },
+        "delay_selector_comparison": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "markout-vs-fill-aware-delay-v1",
+            "started_at_ms": 1700000800000,
+            "state_restore_error": None,
+            "error": None,
+            "claim_scope": (
+                "paired_fill_weighted_same_exit_trade_contribution_only"
+            ),
+            "prospective_closed_trades": 9,
+            "causal_evaluable_trades": 7,
+            "disagreement_trades": 4,
+            "missing_mid_outcome": 0,
+            "missing_base_outcome": 0,
+            "missing_challenger_outcome": 0,
+            "non_evaluable_base": 1,
+            "non_evaluable_challenger": 1,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 7,
+                "agreements": 3,
+                "disagreements": 4,
+                "both_60s": 2,
+                "both_120s": 1,
+                "markout_60s_fill_120s": 3,
+                "markout_120s_fill_60s": 1,
+                "fill_aware_better": 2,
+                "markout_better": 1,
+                "equal_contribution": 4,
+                "markout_selector_pnl": "1",
+                "fill_aware_selector_pnl": "3",
+                "fill_aware_minus_markout_pnl": "2",
+                "mean_fill_aware_minus_markout_pnl": (
+                    "0.2857142857142857142857142857"
+                ),
+            },
+            "disagreements": {
+                "trades": 4,
+                "agreements": 0,
+                "disagreements": 4,
+                "both_60s": 0,
+                "both_120s": 0,
+                "markout_60s_fill_120s": 3,
+                "markout_120s_fill_60s": 1,
+                "fill_aware_better": 2,
+                "markout_better": 1,
+                "equal_contribution": 1,
+                "markout_selector_pnl": "-2",
+                "fill_aware_selector_pnl": "1",
+                "fill_aware_minus_markout_pnl": "3",
+                "mean_fill_aware_minus_markout_pnl": "0.75",
+            },
+            "by_side": {},
+            "by_disagreement_type": {
+                "markout_60s_fill_120s": {
+                    "trades": 3,
+                    "agreements": 0,
+                    "disagreements": 3,
+                    "both_60s": 0,
+                    "both_120s": 0,
+                    "markout_60s_fill_120s": 3,
+                    "markout_120s_fill_60s": 0,
+                    "fill_aware_better": 2,
+                    "markout_better": 0,
+                    "equal_contribution": 1,
+                    "markout_selector_pnl": "-2",
+                    "fill_aware_selector_pnl": "2",
+                    "fill_aware_minus_markout_pnl": "4",
+                    "mean_fill_aware_minus_markout_pnl": (
+                        "1.333333333333333333333333333"
+                    ),
+                },
+                "markout_120s_fill_60s": {
+                    "trades": 1,
+                    "agreements": 0,
+                    "disagreements": 1,
+                    "both_60s": 0,
+                    "both_120s": 0,
+                    "markout_60s_fill_120s": 0,
+                    "markout_120s_fill_60s": 1,
+                    "fill_aware_better": 0,
+                    "markout_better": 1,
+                    "equal_contribution": 0,
+                    "markout_selector_pnl": "0",
+                    "fill_aware_selector_pnl": "-1",
+                    "fill_aware_minus_markout_pnl": "-1",
+                    "mean_fill_aware_minus_markout_pnl": "-1",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_causal_evaluable_trades": 20,
+                "min_disagreement_trades": 10,
+                "missing_prospective_closed_trades": 21,
+                "missing_causal_evaluable_trades": 13,
+                "missing_disagreement_trades": 6,
+            },
+        },
         "delayed_entry_same_exit": {
             "enabled": True,
             "research_only": True,
@@ -3115,6 +3217,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 60s full fill | 3 | 3 | 0 | 3 | 0 | 1 | 1 |" in output
     assert "| 60s partial fill | 2 | 0 | 2 | -0.5 | 3 | 0 | 0.9 |" in output
     assert "| 60s no fill | 1 | 0 | 1 | -0.5 | 1 | 0 | 0.8 |" in output
+    assert "### Markout vs fill-aware delay selector" in output
+    assert "markout-vs-fill-aware-delay-v1" in output
+    assert "prospective closed / causal evaluable / disagreements" in output
+    assert "`9 / 7 / 4`" in output
+    assert "agreement / disagreement" in output
+    assert "`3 / 4`" in output
+    assert "disagreements: fill-aware better / markout better / equal" in output
+    assert "`2 / 1 / 1`" in output
+    assert "disagreement PnL markout / fill-aware / delta" in output
+    assert "`-2` / `1` / `3`" in output
+    assert "evidence gate closed / evaluable / disagreements" in output
+    assert "`30 / 20 / 10`" in output
+    assert "still needed C/E/D" in output
+    assert "`21 / 13 / 6`" in output
+    assert (
+        "| Markout 60s / Fill-aware 120s | 3 | 2 | 0 | 4 |"
+        in output
+    )
+    assert (
+        "| Markout 120s / Fill-aware 60s | 1 | 0 | 1 | -1 |"
+        in output
+    )
     assert "### 60s delayed-entry same-exit contribution" in output
     assert "same_exit_trade_contribution_only" in output
     assert "closed shadow / full fills / evaluated" in output
