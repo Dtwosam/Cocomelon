@@ -281,13 +281,23 @@ class DelayedEntryExecutionShadow:
         config: PaperExecutionConfig,
         *,
         started_at_ms: int,
+        delay_ms: int = DELAY_MS,
+        max_observation_lag_ms: int = MAX_DELAY_OBSERVATION_LAG_MS,
     ) -> None:
         if started_at_ms < 0:
             raise ValueError(
                 "started_at_ms must be non-negative"
             )
+        if delay_ms <= 0:
+            raise ValueError("delay_ms must be positive")
+        if max_observation_lag_ms <= 0:
+            raise ValueError(
+                "max_observation_lag_ms must be positive"
+            )
         self._config = config
         self._started_at_ms = started_at_ms
+        self._delay_ms = delay_ms
+        self._max_observation_lag_ms = max_observation_lag_ms
         self._open: dict[str, _OpenState] = {}
         self._outcomes: list[DelayedEntryOutcome] = []
         self._excluded_closed_trades = 0
@@ -339,7 +349,7 @@ class DelayedEntryExecutionShadow:
             ),
             planned_risk=position.planned_risk,
             opened_at_ms=position.opened_at_ms,
-            target_ms=position.opened_at_ms + DELAY_MS,
+            target_ms=position.opened_at_ms + self._delay_ms,
             eligible=eligible,
             exclusion_reason=reason,
         )
@@ -394,10 +404,10 @@ class DelayedEntryExecutionShadow:
         )
         return PaperOrderPlan(
             risk_decision_id=(
-                f"delay-shadow:{state.opening_plan_id}"
+                f"delay-shadow:{self._delay_ms}:{state.opening_plan_id}"
             ),
             strategy_decision_id=(
-                f"delay-shadow:{state.opening_plan_id}"
+                f"delay-shadow:{self._delay_ms}:{state.opening_plan_id}"
             ),
             market=state.market,
             side=side,
@@ -464,7 +474,7 @@ class DelayedEntryExecutionShadow:
         if now_ms < state.target_ms + self._config.latency_ms:
             return
         lag_ms = now_ms - state.target_ms
-        if lag_ms > MAX_DELAY_OBSERVATION_LAG_MS:
+        if lag_ms > self._max_observation_lag_ms:
             state.attempted_at_ms = now_ms
             state.attempt_result = "expired"
             state.attempt_reason = "NO_FRESH_BOOK_WITHIN_WINDOW"
@@ -662,9 +672,9 @@ class DelayedEntryExecutionShadow:
             "state_restore_error": self._state_restore_error,
             "state_schema_version": STATE_SCHEMA_VERSION,
             "started_at_ms": self._started_at_ms,
-            "delay_ms": DELAY_MS,
+            "delay_ms": self._delay_ms,
             "max_observation_lag_ms": (
-                MAX_DELAY_OBSERVATION_LAG_MS
+                self._max_observation_lag_ms
             ),
             "open_tracked_positions": len(self._open),
             "eligible_open_positions": sum(
@@ -774,9 +784,9 @@ class DelayedEntryExecutionShadow:
             "execution_config": _config_payload(
                 self._config
             ),
-            "delay_ms": DELAY_MS,
+            "delay_ms": self._delay_ms,
             "max_observation_lag_ms": (
-                MAX_DELAY_OBSERVATION_LAG_MS
+                self._max_observation_lag_ms
             ),
             "open": [
                 {
@@ -866,12 +876,12 @@ class DelayedEntryExecutionShadow:
             raise DelayedEntryShadowError(
                 "delayed-entry execution config mismatch"
             )
-        if raw.get("delay_ms") != DELAY_MS:
+        if raw.get("delay_ms") != self._delay_ms:
             raise DelayedEntryShadowError(
                 "delayed-entry delay mismatch"
             )
         if raw.get("max_observation_lag_ms") != (
-            MAX_DELAY_OBSERVATION_LAG_MS
+            self._max_observation_lag_ms
         ):
             raise DelayedEntryShadowError(
                 "delayed-entry lag bound mismatch"
@@ -990,7 +1000,7 @@ class DelayedEntryExecutionShadow:
                 or state.planned_risk < ZERO
                 or state.opened_at_ms < 0
                 or state.target_ms
-                != state.opened_at_ms + DELAY_MS
+                != state.opened_at_ms + self._delay_ms
             ):
                 raise DelayedEntryShadowError(
                     "invalid restored delayed-entry economics"
