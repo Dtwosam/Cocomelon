@@ -37,13 +37,13 @@ class DelayedEntrySameExitOutcome:
     delta_net_r_estimate: Decimal
 
     def __post_init__(self) -> None:
-        for value in (
+        for identity in (
             self.trade_id,
             self.opening_plan_id,
             self.market,
             self.direction,
         ):
-            if not value.strip():
+            if not identity.strip():
                 raise ValueError("same-exit outcome identity must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
@@ -52,7 +52,7 @@ class DelayedEntrySameExitOutcome:
             or self.delayed_entry_price <= ZERO
         ):
             raise ValueError("delayed_entry_price must be positive")
-        for value in (
+        for metric in (
             self.actual_net_pnl,
             self.actual_net_r,
             self.delayed_entry_fee,
@@ -63,7 +63,7 @@ class DelayedEntrySameExitOutcome:
             self.delta_net_pnl_estimate,
             self.delta_net_r_estimate,
         ):
-            if not value.is_finite():
+            if not metric.is_finite():
                 raise ValueError("same-exit economics must be finite")
         if self.delayed_entry_fee < ZERO:
             raise ValueError("delayed_entry_fee must be non-negative")
