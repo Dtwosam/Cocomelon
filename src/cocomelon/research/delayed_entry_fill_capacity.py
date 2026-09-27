@@ -17,7 +17,9 @@ class DelayedEntryFillCapacityError(RuntimeError):
     pass
 
 
-def _cause(outcome: DelayedEntryOutcome) -> str:
+def delayed_entry_capacity_cause(
+    outcome: DelayedEntryOutcome,
+) -> str:
     if outcome.source == "full_visible_book_ioc":
         return "full_fill"
     if outcome.source == "no_fill":
@@ -82,7 +84,7 @@ def delayed_entry_fill_capacity_summary(
                 outcome.direction,
                 outcome.source,
                 fraction,
-                _cause(outcome),
+                delayed_entry_capacity_cause(outcome),
             )
         )
 

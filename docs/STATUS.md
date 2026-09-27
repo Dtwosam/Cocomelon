@@ -1665,3 +1665,19 @@ The execution-aware profit-lock research stream now binds its opening risk envel
 This changes only profit-lock research evidence. It does not change paper account risk, stops, fills, position management, strategy decisions, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### 60s delayed-entry contribution decomposition — 2026-09-27
+
+The fill-weighted +60s delayed-entry study now decomposes each evaluated trade's candidate-minus-actual contribution into an exact accounting identity:
+
+- **price effect**: delayed simulated entry-price improvement or deterioration on only the quantity that actually filled;
+- **entry-fee effect**: delayed simulated entry fee versus the actual paper entry fee scaled to the same filled quantity;
+- **exposure effect**: the observed paper trade contribution removed or retained because the delayed IOC filled less than the original quantity;
+- **total delta**: price effect + entry-fee effect + exposure effect, which must reconcile exactly to the existing fill-weighted same-exit candidate delta.
+
+The diagnostic reports the decomposition overall, by LONG/SHORT, by full/partial/no-fill source, and by the causal fill-capacity bucket when known.
+
+This does not simulate replacement trades or change order quantity, delay, slippage, stops, risk ceilings, or execution. It is research-only accounting over the already-frozen delayed-entry shadow.
+
+**LIVE TRADING: DISABLED.**
