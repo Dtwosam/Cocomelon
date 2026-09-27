@@ -1703,6 +1703,34 @@ Review readiness requires 20 filled delayed attempts, including 5 risk-ceiling-c
 **LIVE TRADING: DISABLED.**
 
 
+### Prospective 60s delayed price-confirmation study — 2026-09-27
+
+A deployable delayed-entry hypothesis is frozen prospectively after the existing +60s research separated favorable full fills from harmful partial-price outcomes.
+
+- candidate ID: `prospective-60s-price-confirm-v1`;
+- wait exactly 60 seconds, using the already-frozen delayed visible-book IOC evidence;
+- compare the simulated delayed average fill with the immutable original opening-plan execution reference;
+- for LONG, confirm only when the delayed average fill is no higher than the original reference;
+- for SHORT, confirm only when the delayed average fill is no lower than the original reference;
+- a confirmed full or partial delayed attempt keeps the existing fill-weighted same-exit contribution estimate;
+- a worse-price delayed attempt or genuine no-fill is shadow-skipped and contributes zero;
+- unresolved/censored delayed outcomes are not imputed;
+- only paper trades opened after this study's durable `started_at_ms` count. Existing touched delayed-entry outcomes cannot validate the candidate;
+- exact trade/outcome/opening-plan lineage is required.
+
+The candidate reports **closed-trade contribution only**, not portfolio PnL. A skipped trade could change later risk capacity, cooldowns, concurrent positions, replacement opportunities, and exit timing.
+
+The frozen review gate requires:
+
+- 30 prospectively evaluated closed trades;
+- 10 price-confirmed delayed trades;
+- 10 skipped trades;
+- zero missing opening plans, lineage mismatches, unresolved outcomes, or missing delayed outcomes.
+
+Meeting the gate means `ready_for_review` only. It grants no promotion or execution authority and cannot delay or skip an actual paper trade.
+
+**LIVE TRADING: DISABLED.**
+
 ### Prospective adaptive 60s/120s delayed-entry selector — 2026-09-27
 
 A new adaptive delay candidate is frozen prospectively after the first fixed 60s-versus-120s results were already observed. Earlier paired outcomes are therefore excluded from this study.
