@@ -476,6 +476,11 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
     lines.extend(
         [
             (
+                "- prospective start / state schema: "
+                f"`{raw.get('started_at_ms')}` / "
+                f"`v{raw.get('state_schema_version')}`"
+            ),
+            (
                 "- frozen delay / max observation lag: "
                 f"`{raw.get('delay_ms', 0)}ms / "
                 f"{raw.get('max_observation_lag_ms', 0)}ms`"
