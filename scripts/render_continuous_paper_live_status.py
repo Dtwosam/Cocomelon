@@ -1184,6 +1184,141 @@ def _delayed_entry_fill_weighted_lines(
     return lines
 
 
+def _delayed_entry_fixed_schedule_portfolio_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry fixed-schedule portfolio shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No fixed-schedule portfolio telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    actual = raw.get("actual", {})
+    candidate = raw.get("candidate", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(actual, dict):
+        actual = {}
+    if not isinstance(candidate, dict):
+        candidate = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- closed shadow / evaluated / unresolved: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_delayed_attempts', 0)} / "
+                f"{raw.get('unresolved_outcomes', 0)}`"
+            ),
+            (
+                "- missing journal / opening plan / lineage: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_opening_plans', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- candidate no-fill trades / risk ceiling exceeded: "
+                f"`{raw.get('candidate_no_fill_trades', 0)} / "
+                f"{raw.get('candidate_risk_ceiling_exceeded', 0)}`"
+            ),
+            (
+                "- actual / candidate realized contribution / delta: "
+                f"`{actual.get('final_realized_contribution', '0')}` / "
+                f"`{candidate.get('final_realized_contribution', '0')}` / "
+                f"`{raw.get('delta_final_realized_contribution', '0')}`"
+            ),
+            (
+                "- actual / candidate max realized drawdown / delta: "
+                f"`{actual.get('max_realized_drawdown', '0')}` / "
+                f"`{candidate.get('max_realized_drawdown', '0')}` / "
+                f"`{raw.get('delta_max_realized_drawdown', '0')}`"
+            ),
+            (
+                "- actual / candidate max concurrent positions: "
+                f"`{actual.get('max_concurrent_positions', 0)} / "
+                f"{candidate.get('max_concurrent_positions', 0)}`"
+            ),
+            (
+                "- actual / candidate overlap openings: "
+                f"`{actual.get('overlap_openings', 0)} / "
+                f"{candidate.get('overlap_openings', 0)}`"
+            ),
+            (
+                "- actual / candidate max gross notional / delta: "
+                f"`{actual.get('max_gross_notional', '0')}` / "
+                f"`{candidate.get('max_gross_notional', '0')}` / "
+                f"`{raw.get('delta_max_gross_notional', '0')}`"
+            ),
+            (
+                "- actual / candidate max planned risk / delta: "
+                f"`{actual.get('max_planned_risk', '0')}` / "
+                f"`{candidate.get('max_planned_risk', '0')}` / "
+                f"`{raw.get('delta_max_planned_risk', '0')}`"
+            ),
+            (
+                "- position exposure-hours actual / candidate: "
+                f"`{actual.get('position_exposure_hours', '0')} / "
+                f"{candidate.get('position_exposure_hours', '0')}`"
+            ),
+            (
+                "- notional exposure-hours actual / candidate: "
+                f"`{actual.get('notional_exposure_hours', '0')} / "
+                f"{candidate.get('notional_exposure_hours', '0')}`"
+            ),
+            (
+                "- risk exposure-hours actual / candidate: "
+                f"`{actual.get('risk_exposure_hours', '0')} / "
+                f"{candidate.get('risk_exposure_hours', '0')}`"
+            ),
+            (
+                "- complete cohort required (unresolved must be zero): "
+                f"`{raw.get('unresolved_outcomes', 0)} unresolved`"
+            ),
+            (
+                "- evidence gate closed / evaluated / overlap: "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_delayed_attempts', 0)} / "
+                f"{readiness.get('min_actual_overlap_openings', 0)}`"
+            ),
+            (
+                "- still needed C/E/O: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_evaluated_delayed_attempts', 0)} / "
+                f"{readiness.get('missing_actual_overlap_openings', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Fixed observed schedule only: delayed fills change exposure "
+                "timing/size, but observed close times stay fixed. No "
+                "replacement trades, changed exits, or unrealized MTM equity "
+                "are invented._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_contribution_decomposition_lines(
     raw: object,
 ) -> list[str]:
@@ -4961,6 +5096,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_fill_weighted_lines(
             payload.get("delayed_entry_fill_weighted")
+        )
+    )
+    lines.extend(
+        _delayed_entry_fixed_schedule_portfolio_lines(
+            payload.get("delayed_entry_fixed_schedule_portfolio")
         )
     )
     lines.extend(
