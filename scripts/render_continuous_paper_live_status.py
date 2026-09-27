@@ -1132,6 +1132,10 @@ def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
     lines.extend(
         [
             (
+                "- absolute reconciliation tolerance: "
+                f"`{reconciliation.get('absolute_tolerance')}`"
+            ),
+            (
                 "- fully closed journal matches account-implied closed "
                 "economics: "
                 f"`{str(bool(reconciliation.get('closed_journal_matches_account'))).lower()}`"
