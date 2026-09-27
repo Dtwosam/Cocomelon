@@ -317,6 +317,12 @@ class _ContinuousProfitLockExecutionShadowSink:
             "all_rules_ready_for_review": (
                 readiness.all_rules_ready_for_review
             ),
+            "lineage_mismatch_closed_trades": (
+                readiness.lineage_mismatch_closed_trades
+            ),
+            "orphaned_restored_positions": (
+                readiness.orphaned_restored_positions
+            ),
             "min_economically_evaluated_trades_per_rule": (
                 MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE
             ),
@@ -431,6 +437,12 @@ class _ContinuousEntryMidMarkoutSink:
             payload["readiness"] = {
                 "all_horizons_ready_for_review": (
                     readiness.all_horizons_ready_for_review
+                ),
+                "lineage_mismatch_closed_trades": (
+                    readiness.lineage_mismatch_closed_trades
+                ),
+                "orphaned_restored_positions": (
+                    readiness.orphaned_restored_positions
                 ),
                 "min_fresh_observations_per_horizon": (
                     MIN_FRESH_OBSERVATIONS_PER_HORIZON
@@ -2230,6 +2242,14 @@ async def run_continuous_paper_session(
             started_at_ms=started_at_ms,
         )
     )
+    if profit_lock_execution_shadow.shadow is not None:
+        profit_lock_execution_shadow.shadow.reconcile_open_positions(
+            execution.account.positions
+        )
+    if entry_mid_markout_shadow.shadow is not None:
+        entry_mid_markout_shadow.shadow.reconcile_open_positions(
+            execution.account.positions
+        )
     (
         prospective_entry_filter_state,
         prospective_entry_filter_restore_error,
