@@ -139,7 +139,7 @@ def _validate_lineage(
         )
 
 
-def _evaluate_one(
+def evaluate_delayed_entry_fill_weighted_outcome(
     trade: TradeJournalEntry,
     outcome: DelayedEntryOutcome,
 ) -> DelayedEntryFillWeightedOutcome:
@@ -365,7 +365,12 @@ def delayed_entry_fill_weighted_contribution(
             missing_journal += 1
             continue
         try:
-            evaluated.append(_evaluate_one(trade, outcome))
+            evaluated.append(
+                evaluate_delayed_entry_fill_weighted_outcome(
+                    trade,
+                    outcome,
+                )
+            )
         except DelayedEntryFillWeightedError:
             lineage_mismatches += 1
 
