@@ -1461,6 +1461,101 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "mean_selected_fill_fraction": "0.8",
                 },
             },
+            "robustness": {
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "fill_aware_minus_60s": {
+                    "trades": 6,
+                    "markets": 4,
+                    "total_delta_pnl": "4",
+                    "largest_abs_trade_contribution": "1.5",
+                    "largest_abs_trade_share": "0.30",
+                    "leave_one_trade_out_min_delta": "2.5",
+                    "positive_after_any_single_trade_removed": True,
+                    "largest_abs_market": "SOL",
+                    "largest_abs_market_contribution": "1.8",
+                    "largest_abs_market_share": "0.36",
+                    "leave_one_market_out_min_delta": "2.2",
+                    "positive_after_any_single_market_removed": True,
+                },
+                "fill_aware_minus_120s": {
+                    "trades": 6,
+                    "markets": 4,
+                    "total_delta_pnl": "3",
+                    "largest_abs_trade_contribution": "1.2",
+                    "largest_abs_trade_share": "0.32",
+                    "leave_one_trade_out_min_delta": "1.8",
+                    "positive_after_any_single_trade_removed": True,
+                    "largest_abs_market": "BTC",
+                    "largest_abs_market_contribution": "1.4",
+                    "largest_abs_market_share": "0.38",
+                    "leave_one_market_out_min_delta": "1.6",
+                    "positive_after_any_single_market_removed": True,
+                },
+                "temporal": {
+                    "configured_blocks": 4,
+                    "min_trades_per_full_block": 5,
+                    "full_blocks": 0,
+                    "positive_blocks_vs_60s": 0,
+                    "positive_blocks_vs_120s": 0,
+                    "all_full_blocks_positive_vs_60s": False,
+                    "all_full_blocks_positive_vs_120s": False,
+                    "chronological_blocks": [
+                        {
+                            "block": 1,
+                            "trades": 2,
+                            "first_closed_at_ms": 1700000900000,
+                            "last_closed_at_ms": 1700001900000,
+                            "selected_60s": 1,
+                            "selected_120s": 1,
+                            "fill_aware_minus_60s_pnl": "1.5",
+                            "fill_aware_minus_120s_pnl": "0.8",
+                            "fill_aware_minus_actual_pnl": "2",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 2,
+                            "trades": 2,
+                            "first_closed_at_ms": 1700002900000,
+                            "last_closed_at_ms": 1700003900000,
+                            "selected_60s": 1,
+                            "selected_120s": 1,
+                            "fill_aware_minus_60s_pnl": "1.3",
+                            "fill_aware_minus_120s_pnl": "0.7",
+                            "fill_aware_minus_actual_pnl": "2",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 3,
+                            "trades": 1,
+                            "first_closed_at_ms": 1700004900000,
+                            "last_closed_at_ms": 1700004900000,
+                            "selected_60s": 1,
+                            "selected_120s": 0,
+                            "fill_aware_minus_60s_pnl": "0",
+                            "fill_aware_minus_120s_pnl": "0.9",
+                            "fill_aware_minus_actual_pnl": "2",
+                            "positive_vs_60s": False,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 4,
+                            "trades": 1,
+                            "first_closed_at_ms": 1700005900000,
+                            "last_closed_at_ms": 1700005900000,
+                            "selected_60s": 0,
+                            "selected_120s": 1,
+                            "fill_aware_minus_60s_pnl": "1.2",
+                            "fill_aware_minus_120s_pnl": "0",
+                            "fill_aware_minus_actual_pnl": "2",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": False,
+                        },
+                    ],
+                },
+            },
             "readiness": {
                 "ready_for_review": False,
                 "min_prospective_closed_trades": 30,
@@ -3115,6 +3210,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 60s full fill | 3 | 3 | 0 | 3 | 0 | 1 | 1 |" in output
     assert "| 60s partial fill | 2 | 0 | 2 | -0.5 | 3 | 0 | 0.9 |" in output
     assert "| 60s no fill | 1 | 0 | 1 | -0.5 | 1 | 0 | 0.8 |" in output
+    assert "robustness descriptive / changes gate" in output
+    assert "`true / false`" in output
+    assert "Δ vs 60s robustness total / LOTO trade / LOMO market" in output
+    assert "`4 / 2.5 / 2.2`" in output
+    assert "Δ vs 120s robustness total / LOTO trade / LOMO market" in output
+    assert "`3 / 1.8 / 1.6`" in output
+    assert "temporal full / positive vs 60s / positive vs 120s" in output
+    assert "`0 / 0 / 0`" in output
+    assert "temporal block design" in output
+    assert "`4 × 5 trades`" in output
+    assert "| 1 | 2 | 1 | 1 | 1.5 | 0.8 |" in output
+    assert "| 4 | 1 | 0 | 1 | 1.2 | 0 |" in output
     assert "### 60s delayed-entry same-exit contribution" in output
     assert "same_exit_trade_contribution_only" in output
     assert "closed shadow / full fills / evaluated" in output
