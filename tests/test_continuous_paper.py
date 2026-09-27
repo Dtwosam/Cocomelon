@@ -47,6 +47,7 @@ from cocomelon.continuous_paper import (
     _RecordPump,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
+    _restore_delay_selector_comparison,
     _restore_delayed_entry_execution_shadow,
     _restore_drawdown_tracker,
     _restore_entry_mid_markout_shadow,
@@ -242,6 +243,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "fill_aware_delay_selector_state.payload()" in source
     assert "fill_aware_delay_selector_summary(" in source
+    assert (
+        'DELAY_SELECTOR_COMPARISON_STATE_FILENAME = (' in source
+    )
+    assert (
+        '"delay_selector_comparison": delay_selector_comparison'
+        in source
+    )
+    assert "delay_selector_comparison_state.payload()" in source
+    assert "delay_selector_comparison_summary(" in source
     assert (
         '"prospective_top10_rank_filter": (' in source
     )
@@ -1225,6 +1235,23 @@ def test_fill_aware_delay_selector_restore_failure_is_fail_open(
     )
 
     assert state.started_at_ms == 987
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+
+def test_delay_selector_comparison_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "delay-selector-comparison-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_delay_selector_comparison(
+        path,
+        started_at_ms=789,
+    )
+
+    assert state.started_at_ms == 789
     assert error is not None
     assert "JSONDecodeError" in error
 
