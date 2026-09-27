@@ -64,6 +64,9 @@ from cocomelon.research.closed_trade_friction import (
 from cocomelon.research.closed_trade_robustness import (
     closed_trade_robustness,
 )
+from cocomelon.research.closed_trade_stability import (
+    closed_trade_stability,
+)
 from cocomelon.research.continuous_paper_drawdown import (
     ContinuousPaperDrawdownTracker,
     drawdown_summary,
@@ -1918,6 +1921,27 @@ def _closed_trade_robustness_payload(
     return payload
 
 
+def _closed_trade_stability_payload(
+    journal: JournalStore,
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_stability(
+            tuple(journal.iter_trades())
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2251,6 +2275,11 @@ def _live_status_payload(
             pump.journal,
         )
     )
+    closed_trade_stability_payload = (
+        _closed_trade_stability_payload(
+            pump.journal,
+        )
+    )
     entry_decision_age = _entry_decision_age_payload(
         pump.journal,
         fact_store,
@@ -2343,6 +2372,9 @@ def _live_status_payload(
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
             closed_trade_robustness_payload
+        ),
+        "closed_trade_stability": (
+            closed_trade_stability_payload
         ),
         "entry_decision_age": entry_decision_age,
         "open_planned_risk": str(open_planned_risk),
