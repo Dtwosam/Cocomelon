@@ -310,6 +310,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "incomplete_paths_skipped": 0,
             "missing_journal_trade": 0,
             "missing_decision_attribution": 0,
+            "missing_rank_attribution": 0,
+            "stale_rank_attribution": 0,
+            "max_accepted_rank_age_ms": 300000,
+            "mean_rank_age_ms": 32000,
+            "max_rank_age_ms": 58000,
             "by_horizon_ms": {
                 "60000": {
                     "readiness_status": "collecting",
@@ -369,6 +374,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                             "max_observation_lag_ms": 1000,
                         },
                     },
+                    "by_scanner_rank_bucket": {
+                        "1-5": {
+                            "observations": 1,
+                            "positive": 1,
+                            "negative": 0,
+                            "flat": 0,
+                            "mean_signed_return_bps": "95",
+                            "mean_gross_r": "0.19",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 1000,
+                        },
+                        "11-20": {
+                            "observations": 2,
+                            "positive": 1,
+                            "negative": 1,
+                            "flat": 0,
+                            "mean_signed_return_bps": "-10",
+                            "mean_gross_r": "-0.02",
+                            "mean_observation_lag_ms": 1000,
+                            "max_observation_lag_ms": 2000,
+                        },
+                    },
                 },
                 "300000": {
                     "readiness_status": "collecting",
@@ -386,6 +413,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "stale_observed_mark": 0,
                     "by_side": {},
                     "by_lead_strategy": {},
+                    "by_scanner_rank_bucket": {},
                 },
                 "900000": {
                     "readiness_status": "collecting",
@@ -403,6 +431,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "stale_observed_mark": 0,
                     "by_side": {},
                     "by_lead_strategy": {},
+                    "by_scanner_rank_bucket": {},
                 },
             },
         },
@@ -875,6 +904,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`60000`ms" in output
     assert "complete paths / incomplete skipped" in output
     assert "`3 / 0`" in output
+    assert "missing / stale scanner-rank attribution" in output
+    assert "`0 / 0`" in output
+    assert "accepted scanner-rank age / observed mean / max" in output
+    assert "`300000`ms / `32000`ms / `58000`ms" in output
     assert "evidence gate (observations per horizon)" in output
     assert "`30`" in output
     assert "all horizons ready for review: `false`" in output
@@ -895,6 +928,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "short: n=1, meanR=0.19, meanbps=95" in output
     assert "1m by lead strategy:" in output
     assert "trend: n=2, meanR=-0.02, meanbps=-10" in output
+    assert "1m by scanner rank:" in output
+    assert "1-5: n=1, meanR=0.19, meanbps=95" in output
+    assert "11-20: n=2, meanR=-0.02, meanbps=-10" in output
     assert "stale/missing marks are reported and never imputed" in output
     assert "### Prospective allMids entry markout shadow" in output
     assert "allMids_mid_px" in output
