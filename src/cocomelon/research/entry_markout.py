@@ -69,12 +69,12 @@ class EntryMarkoutObservation:
             raise ValueError("markout observation lag must reconcile")
         if not self.mark_px.is_finite() or self.mark_px <= ZERO:
             raise ValueError("mark_px must be positive and finite")
-        for value in (
+        for metric in (
             self.signed_return_fraction,
             self.signed_return_bps,
             self.gross_r,
         ):
-            if not value.is_finite():
+            if not metric.is_finite():
                 raise ValueError("markout economics must be finite")
 
 
