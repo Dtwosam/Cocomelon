@@ -777,6 +777,17 @@ def _entry_markout_lines(raw: object) -> list[str]:
                 f"{raw.get('missing_decision_attribution', 0)}`"
             ),
             (
+                "- missing / stale scanner-rank attribution: "
+                f"`{raw.get('missing_rank_attribution', 0)} / "
+                f"{raw.get('stale_rank_attribution', 0)}`"
+            ),
+            (
+                "- accepted scanner-rank age / observed mean / max: "
+                f"`{raw.get('max_accepted_rank_age_ms')}`ms / "
+                f"`{raw.get('mean_rank_age_ms')}`ms / "
+                f"`{raw.get('max_rank_age_ms')}`ms"
+            ),
+            (
                 "- evidence gate (observations per horizon): "
                 f"`{readiness.get('min_observations_per_horizon', 0)}`"
             ),
@@ -866,17 +877,32 @@ def _entry_markout_lines(raw: object) -> list[str]:
         "1m by lead strategy",
         "by_lead_strategy",
     )
+    grouped_line(
+        "60000",
+        "1m by scanner rank",
+        "by_scanner_rank_bucket",
+    )
     grouped_line("300000", "5m by side", "by_side")
     grouped_line(
         "300000",
         "5m by lead strategy",
         "by_lead_strategy",
     )
+    grouped_line(
+        "300000",
+        "5m by scanner rank",
+        "by_scanner_rank_bucket",
+    )
     grouped_line("900000", "15m by side", "by_side")
     grouped_line(
         "900000",
         "15m by lead strategy",
         "by_lead_strategy",
+    )
+    grouped_line(
+        "900000",
+        "15m by scanner rank",
+        "by_scanner_rank_bucket",
     )
     lines.extend(
         [
