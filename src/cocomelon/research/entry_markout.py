@@ -8,6 +8,9 @@ from typing import Final
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankStore,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
@@ -20,6 +23,7 @@ ENTRY_MARKOUT_HORIZONS_MS: Final = (
     900_000,
 )
 MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS: Final = 60_000
+MAX_ENTRY_MARKOUT_RANK_AGE_MS: Final = 300_000
 
 
 class EntryMarkoutError(RuntimeError):
@@ -32,6 +36,7 @@ class EntryMarkoutObservation:
     market: str
     direction: str
     lead_strategy: str
+    scanner_rank_bucket: str
     horizon_ms: int
     target_timestamp_ms: int
     observed_timestamp_ms: int
@@ -47,6 +52,7 @@ class EntryMarkoutObservation:
             self.market,
             self.direction,
             self.lead_strategy,
+            self.scanner_rank_bucket,
         ):
             if not value.strip():
                 raise ValueError("markout identity must not be empty")
@@ -138,6 +144,35 @@ def _lead_strategy(
     return fact.lead_strategy
 
 
+def _scanner_rank_bucket(
+    trade: TradeJournalEntry,
+    rank_store: ContinuousPaperOpeningRankStore | None,
+) -> tuple[str, str | None, int | None]:
+    if rank_store is None:
+        return "unknown", None, None
+    evidence = rank_store.load(trade.opening_plan_id)
+    if evidence is None:
+        return "unknown", "missing", None
+    if (
+        evidence.market != trade.market.canonical
+        or evidence.opened_at_ms != trade.opened_at_ms
+    ):
+        raise EntryMarkoutError(
+            "entry markout opening-rank lineage mismatch"
+        )
+    if evidence.rank_age_ms > MAX_ENTRY_MARKOUT_RANK_AGE_MS:
+        return "stale", "stale", evidence.rank_age_ms
+    if evidence.ordinal <= 5:
+        bucket = "1-5"
+    elif evidence.ordinal <= 10:
+        bucket = "6-10"
+    elif evidence.ordinal <= 20:
+        bucket = "11-20"
+    else:
+        bucket = "21+"
+    return bucket, None, evidence.rank_age_ms
+
+
 def _verify_path_identity(
     raw: Mapping[str, object],
     trade: TradeJournalEntry,
@@ -203,6 +238,7 @@ def _observation(
     trade: TradeJournalEntry,
     *,
     lead_strategy: str,
+    scanner_rank_bucket: str,
     horizon_ms: int,
     marks: tuple[tuple[int, Decimal], ...],
 ) -> EntryMarkoutObservation | None:
@@ -233,6 +269,7 @@ def _observation(
         market=trade.market.canonical,
         direction=trade.direction.value,
         lead_strategy=lead_strategy,
+        scanner_rank_bucket=scanner_rank_bucket,
         horizon_ms=horizon_ms,
         target_timestamp_ms=target_ms,
         observed_timestamp_ms=timestamp_ms,
@@ -323,6 +360,7 @@ def entry_markout_summary(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
     path_store: ContinuousPaperTradePathStore,
+    rank_store: ContinuousPaperOpeningRankStore | None = None,
 ) -> dict[str, object]:
     trades = _trade_map(journal)
     path_payloads = path_store.iter_payloads()
@@ -330,6 +368,9 @@ def entry_markout_summary(
     incomplete_paths = 0
     missing_journal_trade = 0
     missing_decision_attribution = 0
+    missing_rank_attribution = 0
+    stale_rank_attribution = 0
+    rank_ages: list[int] = []
     censored_by_horizon = {
         str(horizon): 0
         for horizon in ENTRY_MARKOUT_HORIZONS_MS
@@ -357,6 +398,17 @@ def entry_markout_summary(
         if lead_strategy is None:
             missing_decision_attribution += 1
             lead_strategy = "unknown"
+        (
+            scanner_rank_bucket,
+            rank_issue,
+            rank_age_ms,
+        ) = _scanner_rank_bucket(trade, rank_store)
+        if rank_issue == "missing":
+            missing_rank_attribution += 1
+        elif rank_issue == "stale":
+            stale_rank_attribution += 1
+        if rank_age_ms is not None:
+            rank_ages.append(rank_age_ms)
         marks = _marks(raw)
 
         for horizon_ms in ENTRY_MARKOUT_HORIZONS_MS:
@@ -367,6 +419,7 @@ def entry_markout_summary(
             item = _observation(
                 trade,
                 lead_strategy=lead_strategy,
+                scanner_rank_bucket=scanner_rank_bucket,
                 horizon_ms=horizon_ms,
                 marks=marks,
             )
@@ -407,6 +460,10 @@ def entry_markout_summary(
                 horizon_observations,
                 "lead_strategy",
             ),
+            "by_scanner_rank_bucket": _grouped(
+                horizon_observations,
+                "scanner_rank_bucket",
+            ),
         }
 
     return {
@@ -427,6 +484,17 @@ def entry_markout_summary(
         "missing_journal_trade": missing_journal_trade,
         "missing_decision_attribution": (
             missing_decision_attribution
+        ),
+        "missing_rank_attribution": missing_rank_attribution,
+        "stale_rank_attribution": stale_rank_attribution,
+        "max_accepted_rank_age_ms": MAX_ENTRY_MARKOUT_RANK_AGE_MS,
+        "mean_rank_age_ms": (
+            None
+            if not rank_ages
+            else sum(rank_ages) // len(rank_ages)
+        ),
+        "max_rank_age_ms": (
+            None if not rank_ages else max(rank_ages)
         ),
         "by_horizon_ms": by_horizon,
     }

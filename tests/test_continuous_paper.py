@@ -159,6 +159,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"min_fresh_observations_per_horizon"' in source
     assert '"max_non_fresh_fraction"' in source
     assert "entry_markout_summary(" in source
+    assert "opening_rank_store," in source
     assert "entry_markout_readiness(payload)" in source
     assert '"min_observations_per_horizon"' in source
     assert '"readiness_status"' in source

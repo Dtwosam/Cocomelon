@@ -1682,12 +1682,14 @@ def _entry_markout_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore | None = None,
 ) -> dict[str, object]:
     try:
         payload = entry_markout_summary(
             journal,
             fact_store,
             trade_path_store,
+            opening_rank_store,
         )
         readiness = entry_markout_readiness(payload)
     except Exception as exc:
@@ -1857,6 +1859,7 @@ def _live_status_payload(
         pump.journal,
         fact_store,
         trade_path_store,
+        opening_rank_store,
     )
     entry_mid_markout = (
         entry_mid_markout_shadow.summary_payload(

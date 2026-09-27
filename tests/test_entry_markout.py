@@ -11,6 +11,10 @@ from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.continuous_paper_opening_rank import (
+    ContinuousPaperOpeningRankEvidence,
+    ContinuousPaperOpeningRankStore,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePath,
     ContinuousPaperTradePathMark,
@@ -103,6 +107,25 @@ def _fact(
             else TrendRegime.DOWN
         ),
         volatility_regime=VolatilityRegime.NORMAL,
+    )
+
+
+def _rank(
+    trade: TradeJournalEntry,
+    *,
+    ordinal: int,
+    age_ms: int = 30_000,
+) -> ContinuousPaperOpeningRankEvidence:
+    return ContinuousPaperOpeningRankEvidence(
+        opening_plan_id=trade.opening_plan_id,
+        market=trade.market.canonical,
+        opened_at_ms=trade.opened_at_ms,
+        rank_observed_at_ms=trade.opened_at_ms - age_ms,
+        rank_age_ms=age_ms,
+        ordinal=ordinal,
+        score=Decimal("0.7"),
+        rank_pool_size=20,
+        reason_codes=("fixture",),
     )
 
 
@@ -353,3 +376,147 @@ def test_entry_markout_skips_incomplete_paths_and_tracks_missing_fact(
     by_strategy = one["by_lead_strategy"]
     assert isinstance(by_strategy, dict)
     assert by_strategy["unknown"]["observations"] == 1
+
+
+def test_entry_markout_groups_fresh_scanner_rank_buckets(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "trade-paths"
+    )
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        top5 = _trade(
+            suffix="top5",
+            direction=Direction.LONG,
+            opened_at_ms=1_000_000,
+            closed_at_ms=2_000_000,
+        )
+        lower = _trade(
+            suffix="lower",
+            direction=Direction.SHORT,
+            opened_at_ms=3_000_000,
+            closed_at_ms=4_000_000,
+        )
+        for trade in (top5, lower):
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy="trend")
+            )
+        ranks.record(_rank(top5, ordinal=4))
+        ranks.record(_rank(lower, ordinal=14))
+        paths.record(
+            _path(
+                top5,
+                (
+                    (1_060_000, "101"),
+                    (1_300_000, "102"),
+                    (1_900_000, "103"),
+                ),
+            )
+        )
+        paths.record(
+            _path(
+                lower,
+                (
+                    (3_060_000, "101"),
+                    (3_300_000, "102"),
+                    (3_900_000, "103"),
+                ),
+            )
+        )
+
+        result = entry_markout_summary(
+            journal,
+            facts,
+            paths,
+            ranks,
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    assert result["missing_rank_attribution"] == 0
+    assert result["stale_rank_attribution"] == 0
+    assert result["mean_rank_age_ms"] == 30_000
+    assert result["max_rank_age_ms"] == 30_000
+
+    horizons = result["by_horizon_ms"]
+    assert isinstance(horizons, dict)
+    one = horizons["60000"]
+    assert isinstance(one, dict)
+    grouped = one["by_scanner_rank_bucket"]
+    assert isinstance(grouped, dict)
+    assert grouped["1-5"]["observations"] == 1
+    assert grouped["1-5"]["mean_gross_r"] == "0.1"
+    assert grouped["11-20"]["observations"] == 1
+    assert grouped["11-20"]["mean_gross_r"] == "-0.1"
+
+
+def test_entry_markout_tracks_missing_and_stale_scanner_rank(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "trade-paths"
+    )
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        missing = _trade(
+            suffix="rank-missing",
+            direction=Direction.LONG,
+            opened_at_ms=1_000_000,
+            closed_at_ms=2_000_000,
+        )
+        stale = _trade(
+            suffix="rank-stale",
+            direction=Direction.LONG,
+            opened_at_ms=3_000_000,
+            closed_at_ms=4_000_000,
+        )
+        for trade in (missing, stale):
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy="trend")
+            )
+            paths.record(
+                _path(
+                    trade,
+                    (
+                        (trade.opened_at_ms + 60_000, "101"),
+                        (trade.opened_at_ms + 300_000, "102"),
+                        (trade.opened_at_ms + 900_000, "103"),
+                    ),
+                )
+            )
+        ranks.record(
+            _rank(
+                stale,
+                ordinal=15,
+                age_ms=300_001,
+            )
+        )
+
+        result = entry_markout_summary(
+            journal,
+            facts,
+            paths,
+            ranks,
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    assert result["missing_rank_attribution"] == 1
+    assert result["stale_rank_attribution"] == 1
+    one = result["by_horizon_ms"]["60000"]
+    grouped = one["by_scanner_rank_bucket"]
+    assert grouped["unknown"]["observations"] == 1
+    assert grouped["stale"]["observations"] == 1
