@@ -95,10 +95,7 @@ def account_lifecycle_bridge(
         + account.cumulative_funding
     )
     cash_delta = account.cash - account.starting_cash
-    if account_realized_net != cash_delta:
-        raise AccountLifecycleBridgeError(
-            "account realized cash does not reconcile to cash balance"
-        )
+    cash_bridge_delta = cash_delta - account_realized_net
 
     implied_closed_gross = (
         account.realized_gross_pnl - open_realized_gross
@@ -168,12 +165,14 @@ def account_lifecycle_bridge(
             "net_pnl": str(journal_net),
         },
         "reconciliation": {
+            "cash_bridge_delta": str(cash_bridge_delta),
             "closed_gross_delta": str(gross_delta),
             "closed_fees_delta": str(fees_delta),
             "closed_funding_delta": str(funding_delta),
             "closed_net_delta": str(net_delta),
             "realized_bridge_delta": str(realized_bridge_delta),
             "equity_bridge_delta": str(equity_bridge_delta),
+            "cash_bridge_matches_account": cash_bridge_delta == ZERO,
             "closed_journal_matches_account": (
                 gross_delta == ZERO
                 and fees_delta == ZERO
