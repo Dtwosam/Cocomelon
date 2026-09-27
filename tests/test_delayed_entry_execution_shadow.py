@@ -397,6 +397,51 @@ def test_delayed_partial_distinguishes_visible_depth_exhaustion() -> None:
     assert outcome.capacity_cause == "visible_depth_exhausted"
 
 
+def test_open_attempt_capacity_payload_exposes_partial_cause() -> None:
+    position = _position(quantity="2")
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+    attempt_ms = position.opened_at_ms + DELAY_MS + 300
+    shadow.observe_book(
+        (position,),
+        _instrument(),
+        _book_levels(
+            attempt_ms,
+            bids=(("99.7", "10"),),
+            asks=(("99.9", "1"), ("100.5", "10")),
+        ),
+        reference_price=Decimal("100"),
+        now_ms=attempt_ms,
+    )
+
+    payload = shadow.open_attempt_capacity_payload()
+    assert payload["attempted_open_positions"] == 1
+    rows = payload["rows"]
+    assert isinstance(rows, list)
+    assert rows == [
+        {
+            "opening_plan_id": position.opening_plan_id,
+            "market": MARKET.canonical,
+            "side": "long",
+            "attempted_at_ms": attempt_ms,
+            "result": "partial",
+            "attempt_reason": "IOC_REMAINDER_CANCELLED",
+            "capacity_cause": "slippage_boundary_reached",
+            "requested_quantity": "2",
+            "filled_quantity": "1.00",
+            "fill_fraction": "0.50",
+            "observation_lag_ms": 300,
+        }
+    ]
+
+
 def test_delayed_capacity_cause_survives_restart_before_close() -> None:
     position = _position(quantity="2")
     shadow = DelayedEntryExecutionShadow(
