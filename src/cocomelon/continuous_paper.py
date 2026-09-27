@@ -62,10 +62,6 @@ from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
-from cocomelon.research.fill_aware_delay_selector import (
-    FillAwareDelaySelectorState,
-    fill_aware_delay_selector_summary,
-)
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
@@ -145,6 +141,10 @@ from cocomelon.research.entry_mid_markout_shadow import (
     EntryMidMarkoutShadow,
 )
 from cocomelon.research.excursion_timing import excursion_timing_summary
+from cocomelon.research.fill_aware_delay_selector import (
+    FillAwareDelaySelectorState,
+    fill_aware_delay_selector_summary,
+)
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.opening_fill_liquidity import (
     OpeningFillLiquidityStore,
