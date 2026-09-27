@@ -25,6 +25,7 @@ from cocomelon.research.entry_mid_markout_shadow import (
 
 ZERO: Final = Decimal("0")
 ADAPTIVE_DELAY_SELECTOR_ID: Final = "adverse-1m-mid-waits-to-120s-v1"
+ADAPTIVE_DELAY_SELECTOR_STATE_SCHEMA_VERSION: Final = 1
 MIN_PROSPECTIVE_CLOSED_TRADES: Final = 30
 MIN_CAUSAL_EVALUABLE_TRADES: Final = 20
 MIN_SELECT_60S_TRADES: Final = 5
@@ -33,6 +34,87 @@ MIN_SELECT_120S_TRADES: Final = 5
 
 class AdaptiveDelaySelectorError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class AdaptiveDelaySelectorState:
+    started_at_ms: int
+    schema_version: int = ADAPTIVE_DELAY_SELECTOR_STATE_SCHEMA_VERSION
+    candidate_id: str = ADAPTIVE_DELAY_SELECTOR_ID
+
+    def __post_init__(self) -> None:
+        if self.started_at_ms < 0:
+            raise ValueError("started_at_ms must be non-negative")
+        if (
+            self.schema_version
+            != ADAPTIVE_DELAY_SELECTOR_STATE_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "unsupported adaptive-delay state schema"
+            )
+        if self.candidate_id != ADAPTIVE_DELAY_SELECTOR_ID:
+            raise ValueError(
+                "unsupported adaptive-delay candidate"
+            )
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "candidate_id": self.candidate_id,
+            "started_at_ms": self.started_at_ms,
+            "rule": (
+                "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+                "else_choose_60s"
+            ),
+        }
+
+    @classmethod
+    def from_payload(
+        cls,
+        raw: object,
+    ) -> AdaptiveDelaySelectorState:
+        if not isinstance(raw, dict):
+            raise AdaptiveDelaySelectorError(
+                "adaptive-delay state must be an object"
+            )
+        schema_version = raw.get("schema_version")
+        started_at_ms = raw.get("started_at_ms")
+        candidate_id = raw.get("candidate_id")
+        rule = raw.get("rule")
+        if (
+            isinstance(schema_version, bool)
+            or not isinstance(schema_version, int)
+        ):
+            raise AdaptiveDelaySelectorError(
+                "adaptive-delay schema_version must be an integer"
+            )
+        if (
+            isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+        ):
+            raise AdaptiveDelaySelectorError(
+                "adaptive-delay started_at_ms must be an integer"
+            )
+        if not isinstance(candidate_id, str):
+            raise AdaptiveDelaySelectorError(
+                "adaptive-delay candidate_id must be a string"
+            )
+        expected_rule = (
+            "if_fresh_1m_mid_gross_r_lt_0_choose_120s_"
+            "else_choose_60s"
+        )
+        if rule != expected_rule:
+            raise AdaptiveDelaySelectorError(
+                "adaptive-delay rule does not match frozen candidate"
+            )
+        try:
+            return cls(
+                started_at_ms=started_at_ms,
+                schema_version=schema_version,
+                candidate_id=candidate_id,
+            )
+        except ValueError as exc:
+            raise AdaptiveDelaySelectorError(str(exc)) from exc
 
 
 @dataclass(frozen=True, slots=True)
