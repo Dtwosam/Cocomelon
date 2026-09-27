@@ -2217,7 +2217,15 @@ def _delayed_entry_pair_payload(
         }
     try:
         challenger_summary = challenger_shadow.shadow.summary_payload()
-        started_at_ms = int(challenger_summary["started_at_ms"])
+        raw_started_at_ms = challenger_summary.get("started_at_ms")
+        if (
+            isinstance(raw_started_at_ms, bool)
+            or not isinstance(raw_started_at_ms, int)
+        ):
+            raise ValueError(
+                "challenger delayed-entry start must be an integer"
+            )
+        started_at_ms = raw_started_at_ms
         payload = delayed_entry_pair_summary(
             journal,
             base_shadow.shadow.outcomes,
