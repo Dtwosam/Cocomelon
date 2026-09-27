@@ -1406,3 +1406,20 @@ The continuous paper research layer now measures when favorable and adverse excu
 This is observability only. It does not move stops, delay entries, force exits, change strategy thresholds, or grant promotion/execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade chronological stability diagnostic — 2026-09-27
+
+The continuous paper runtime now measures whether realized net economics persist through time rather than relying on one aggregate result.
+
+- closed trades are ordered deterministically by close time;
+- overlapping rolling 5-trade and 10-trade windows report the latest net PnL / mean net R, the fraction of positive windows, and best/worst window economics;
+- the full chronological sample is split into four deterministic blocks;
+- each block reports wins/losses, net PnL, mean net R, and profit factor;
+- the frozen review gate requires 40 closed trades so all four chronological blocks contain at least 10 trades;
+- review telemetry separately reports whether every full block has positive net PnL and positive mean net R;
+- the gate is evidence readiness only. It does not promote a strategy or change execution.
+
+This complements the outlier-robustness test: robustness asks whether one winner dominates aggregate PnL, while chronological stability asks whether economics repeat across time.
+
+**LIVE TRADING: DISABLED.**
