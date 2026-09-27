@@ -292,8 +292,12 @@ def delayed_entry_pair_summary(
         )
         for side in ("long", "short")
     }
-    long_count = int(by_side["long"]["trades"])
-    short_count = int(by_side["short"]["trades"])
+    long_count = sum(
+        1 for item in items if item.direction == "long"
+    )
+    short_count = sum(
+        1 for item in items if item.direction == "short"
+    )
     ready = (
         len(prospective_trades) >= MIN_PROSPECTIVE_CLOSED_TRADES
         and len(items) >= MIN_PAIRED_FULL_FILLS
