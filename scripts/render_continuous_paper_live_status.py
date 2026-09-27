@@ -1095,6 +1095,164 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Account lifecycle reconciliation",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No lifecycle reconciliation in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- reconciliation error: `{error}`")
+        return lines
+
+    account = raw.get("account", {})
+    open_lifecycles = raw.get("open_lifecycles", {})
+    closed = raw.get("implied_fully_closed_lifecycles", {})
+    journal = raw.get("journal_closed_trades", {})
+    reconciliation = raw.get("reconciliation", {})
+    for item in (
+        account,
+        open_lifecycles,
+        closed,
+        journal,
+        reconciliation,
+    ):
+        if not isinstance(item, dict):
+            lines.append("_Lifecycle reconciliation payload is malformed._")
+            return lines
+
+    lines.extend(
+        [
+            (
+                "- fully closed journal matches account-implied closed "
+                f"economics: `{str(bool(reconciliation.get('closed_journal_matches_account'))).lower()}`"
+            ),
+            (
+                "- realized cash bridge / equity bridge match: "
+                f"`{str(bool(reconciliation.get('realized_bridge_matches_account'))).lower()} / "
+                f"{str(bool(reconciliation.get('equity_bridge_matches_account'))).lower()}`"
+            ),
+            (
+                "- closed gross / fees / funding / net deltas: "
+                f"`{reconciliation.get('closed_gross_delta')} / "
+                f"{reconciliation.get('closed_fees_delta')} / "
+                f"{reconciliation.get('closed_funding_delta')} / "
+                f"{reconciliation.get('closed_net_delta')}`"
+            ),
+            (
+                "- realized / equity bridge deltas: "
+                f"`{reconciliation.get('realized_bridge_delta')} / "
+                f"{reconciliation.get('equity_bridge_delta')}`"
+            ),
+            "",
+            (
+                "| Bucket | Realized gross | Fees | Funding | "
+                "Realized net | Unrealized | Mark-to-market |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+            (
+                "| Open lifecycles | {gross} | {fees} | {funding} | "
+                "{net} | {unrealized} | {mtm} |"
+            ).format(
+                gross=open_lifecycles.get("realized_gross_pnl", "0"),
+                fees=open_lifecycles.get("fees", "0"),
+                funding=open_lifecycles.get("funding", "0"),
+                net=open_lifecycles.get("realized_net_cash", "0"),
+                unrealized=open_lifecycles.get("unrealized_pnl", "0"),
+                mtm=open_lifecycles.get("mark_to_market_pnl", "0"),
+            ),
+            (
+                "| Fully closed (account implied) | {gross} | {fees} | "
+                "{funding} | {net} | — | — |"
+            ).format(
+                gross=closed.get("realized_gross_pnl", "0"),
+                fees=closed.get("fees", "0"),
+                funding=closed.get("funding", "0"),
+                net=closed.get("net_pnl", "0"),
+            ),
+            (
+                "| Closed journal | {gross} | {fees} | {funding} | "
+                "{net} | — | — |"
+            ).format(
+                gross=journal.get("realized_gross_pnl", "0"),
+                fees=journal.get("fees", "0"),
+                funding=journal.get("funding", "0"),
+                net=journal.get("net_pnl", "0"),
+            ),
+            (
+                "| Account total | {gross} | {fees} | {funding} | "
+                "{net} | {unrealized} | {total} |"
+            ).format(
+                gross=account.get("realized_gross_pnl", "0"),
+                fees=account.get("cumulative_fees", "0"),
+                funding=account.get("cumulative_funding", "0"),
+                net=account.get("realized_net_cash", "0"),
+                unrealized=account.get("unrealized_pnl", "0"),
+                total=account.get("total_account_pnl", "0"),
+            ),
+        ]
+    )
+
+    positions = open_lifecycles.get("positions", [])
+    if isinstance(positions, list) and positions:
+        lines.extend(
+            [
+                "",
+                "#### Open lifecycle cumulative economics",
+                "",
+                (
+                    "| Market | Side | Qty left | Realized gross | Fees | "
+                    "Funding | Realized net | Unrealized | Lifecycle MTM |"
+                ),
+                (
+                    "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: |"
+                ),
+            ]
+        )
+        for position in positions:
+            if not isinstance(position, dict):
+                continue
+            lines.append(
+                (
+                    "| {market} | {side} | {qty} | {gross} | {fees} | "
+                    "{funding} | {net} | {unrealized} | {mtm} |"
+                ).format(
+                    market=position.get("market"),
+                    side=position.get("side"),
+                    qty=position.get("remaining_quantity"),
+                    gross=position.get("cumulative_realized_gross_pnl"),
+                    fees=position.get("cumulative_fees"),
+                    funding=position.get("cumulative_funding"),
+                    net=position.get("realized_net_cash"),
+                    unrealized=position.get("unrealized_gross_pnl"),
+                    mtm=position.get("lifecycle_mark_to_market_pnl"),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Open-position cumulative realized PnL, fees, and funding "
+                "can move account cash before the lifecycle is fully closed. "
+                "This bridge separates those amounts from closed journal trades._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -1323,6 +1481,14 @@ def render_live_status(
             "- execution healthy: "
             f"`{str(payload['execution_healthy']).lower()}`"
         ),
+    ]
+    lines.extend(
+        _account_lifecycle_bridge_lines(
+            payload.get("account_lifecycle_economics")
+        )
+    )
+    lines.extend(
+        [
         "",
         "### Trade-path evidence",
         "",
@@ -1342,7 +1508,8 @@ def render_live_status(
             "- capture error: "
             f"`{trade_path_evidence.get('capture_error')}`"
         ),
-    ]
+        ]
+    )
     lines.extend(
         _profit_lock_lines(payload.get("profit_lock_counterfactual"))
     )
