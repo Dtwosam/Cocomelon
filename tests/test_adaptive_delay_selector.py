@@ -226,8 +226,8 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
 
     by_signal = result["by_signal"]
     assert isinstance(by_signal, dict)
-    adverse_group = by_signal["adverse_choose_120s"]
-    non_adverse = by_signal["non_adverse_choose_60s"]
+    adverse_group = by_signal["adverse_available_choose_120s"]
+    non_adverse = by_signal["otherwise_choose_60s"]
     assert adverse_group["trades"] == 1
     assert adverse_group["selected_120s"] == 1
     assert non_adverse["trades"] == 1
@@ -238,7 +238,7 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
     assert readiness["ready_for_review"] is False
 
 
-def test_late_mid_signal_is_excluded_from_adaptive_choice(
+def test_late_mid_signal_falls_back_to_60s_without_lookahead(
     tmp_path: Path,
 ) -> None:
     journal = JournalStore(tmp_path / "journal.sqlite3")
@@ -278,11 +278,15 @@ def test_late_mid_signal_is_excluded_from_adaptive_choice(
     finally:
         journal.close()
 
-    assert result["causal_evaluable_trades"] == 0
+    assert result["causal_evaluable_trades"] == 1
     assert result["late_mid_signal"] == 1
     overall = result["overall"]
     assert isinstance(overall, dict)
-    assert overall["trades"] == 0
+    assert overall["trades"] == 1
+    assert overall["selected_60s"] == 1
+    assert overall["selected_120s"] == 0
+    assert overall["adaptive_net_pnl"] == "-4"
+    assert overall["always_60s_net_pnl"] == "-4"
 
 
 def test_adaptive_delay_state_round_trip_freezes_rule() -> None:
