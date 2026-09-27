@@ -481,6 +481,10 @@ def _delayed_entry_execution_shadow_lines(raw: object) -> list[str]:
                 f"{raw.get('max_observation_lag_ms', 0)}ms`"
             ),
             (
+                "- stop source: "
+                f"`{raw.get('stop_source', 'unknown')}`"
+            ),
+            (
                 "- eligible / excluded open positions: "
                 f"`{raw.get('eligible_open_positions', 0)} / "
                 f"{raw.get('excluded_open_positions', 0)}`"
