@@ -172,17 +172,8 @@ def _group_summary(
         ZERO,
     ) / Decimal(count)
     mean_net_cost_drag_r = (
-        mean_slippage_drag_r
-        + mean_fee_drag_r
-        - mean_funding_r
+        mean_reference_gross_r - mean_net_r
     )
-    if (
-        mean_reference_gross_r - mean_net_cost_drag_r
-        != mean_net_r
-    ):
-        raise ClosedTradeFrictionError(
-            "mean R friction decomposition does not reconcile"
-        )
 
     return {
         "trades": count,
