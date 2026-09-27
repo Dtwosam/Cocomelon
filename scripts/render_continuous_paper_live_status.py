@@ -2385,7 +2385,9 @@ def _research_readiness_board_lines(
             (
                 f"full_blocks={trade_stability_state.get('full_blocks', 0)}, "
                 f"all_pnl_positive="
-                f"{str(bool(trade_stability_state.get('all_full_blocks_positive_net_pnl'))).lower()}"
+                f"{str(bool(trade_stability_state.get(
+                    'all_full_blocks_positive_net_pnl'
+                ))).lower()}"
             ),
         ),
     )
