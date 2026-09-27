@@ -1633,6 +1633,7 @@ def _live_status_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
@@ -1732,6 +1733,11 @@ def _live_status_payload(
         fact_store,
         trade_path_store,
     )
+    entry_mid_markout = (
+        entry_mid_markout_shadow.summary_payload(
+            fact_store
+        )
+    )
 
     observation = pump.last_observation
     last_observation: dict[str, object] | None = None
@@ -1813,6 +1819,7 @@ def _live_status_payload(
         "prospective_entry_filter": prospective_entry_filter,
         "opening_scanner_rank": opening_rank,
         "entry_markout": entry_markout,
+        "entry_mid_markout_shadow": entry_mid_markout,
         "open_position_count": len(positions),
         "positions": positions,
         "starting_cash": str(execution.account.starting_cash),
@@ -1839,6 +1846,7 @@ def _emit_live_status(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
+    entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     *,
     trade_path_capture_error: str | None,
@@ -1855,6 +1863,7 @@ def _emit_live_status(
         trade_path_store,
         opening_rank_store,
         profit_lock_execution_shadow,
+        entry_mid_markout_shadow,
         prospective_entry_filter_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
@@ -2157,6 +2166,7 @@ async def run_continuous_paper_session(
             trade_path_store,
             opening_rank_store,
             profit_lock_execution_shadow,
+            entry_mid_markout_shadow,
             prospective_entry_filter_state,
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
@@ -2305,6 +2315,7 @@ async def run_continuous_paper_session(
                     trade_path_store,
                     opening_rank_store,
                     profit_lock_execution_shadow,
+                    entry_mid_markout_shadow,
                     prospective_entry_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
