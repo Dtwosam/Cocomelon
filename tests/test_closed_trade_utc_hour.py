@@ -156,7 +156,7 @@ def test_closed_trade_utc_hour_uses_decision_time_not_close_time(
     assert result["active_utc_hours"] == 3
     assert result["positive_net_pnl_hours"] == 1
     assert result["negative_net_pnl_hours"] == 2
-    assert result["trade_count_hhi"] == "0.375"
+    assert result["trade_count_hhi"] == "0.3750"
 
     rows = result["rows"]
     assert isinstance(rows, list)
