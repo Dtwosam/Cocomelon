@@ -656,6 +656,8 @@ class DelayedEntryExecutionShadow:
             "durable_state": True,
             "state_restored": self._state_restored,
             "state_restore_error": self._state_restore_error,
+            "state_schema_version": STATE_SCHEMA_VERSION,
+            "started_at_ms": self._started_at_ms,
             "delay_ms": DELAY_MS,
             "max_observation_lag_ms": (
                 MAX_DELAY_OBSERVATION_LAG_MS
