@@ -742,6 +742,59 @@ class DelayedEntryExecutionShadow:
     def outcomes(self) -> tuple[DelayedEntryOutcome, ...]:
         return tuple(self._outcomes)
 
+    def open_attempt_capacity_payload(self) -> dict[str, object]:
+        rows: list[dict[str, object]] = []
+        for state in sorted(
+            self._open.values(),
+            key=lambda item: (
+                item.market.canonical,
+                item.opening_plan_id,
+            ),
+        ):
+            if (
+                not state.eligible
+                or state.attempt_result is None
+            ):
+                continue
+            fill_fraction = (
+                ZERO
+                if state.quantity <= ZERO
+                else (
+                    state.delayed_filled_quantity
+                    / state.quantity
+                )
+            )
+            rows.append(
+                {
+                    "opening_plan_id": state.opening_plan_id,
+                    "market": state.market.canonical,
+                    "side": state.side.value,
+                    "attempted_at_ms": state.attempted_at_ms,
+                    "result": state.attempt_result,
+                    "attempt_reason": state.attempt_reason,
+                    "capacity_cause": (
+                        state.attempt_capacity_cause
+                    ),
+                    "requested_quantity": str(
+                        state.quantity
+                    ),
+                    "filled_quantity": str(
+                        state.delayed_filled_quantity
+                    ),
+                    "fill_fraction": str(fill_fraction),
+                    "observation_lag_ms": (
+                        state.observation_lag_ms
+                    ),
+                }
+            )
+        return {
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "attempted_open_positions": len(rows),
+            "rows": rows,
+        }
+
     def summary_payload(self) -> dict[str, object]:
         outcomes = tuple(self._outcomes)
         full = tuple(

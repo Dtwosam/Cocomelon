@@ -2204,6 +2204,9 @@ def _delayed_entry_fill_capacity_payload(
             "error": f"{type(exc).__name__}: {exc}",
         }
     payload = dict(payload)
+    payload["open_attempts"] = (
+        delayed_shadow.shadow.open_attempt_capacity_payload()
+    )
     payload["enabled"] = True
     payload["error"] = None
     return payload

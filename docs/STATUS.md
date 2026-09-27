@@ -1634,3 +1634,18 @@ Risk-ceiling and notional-ceiling clipping still take precedence when the IOC si
 The capacity cause survives continuous-paper worker handoffs if the delayed attempt occurs before rotation and the actual paper trade closes afterward.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Live delayed-entry attempt capacity preview — 2026-09-27
+
+The +60s delayed-entry fill-capacity diagnostic now exposes completed delayed attempts for paper positions that are still open.
+
+- the preview reads the same durable delayed-shadow state that will later become a closed outcome;
+- each open attempted position reports market, side, IOC result, fill fraction, market-capacity cause, IOC reason codes, and observation lag;
+- the preview survives worker handoffs because the underlying open delayed-shadow state is already durable;
+- it exists only to reveal fill mechanics sooner; it does not create a second evidence record;
+- formal fill-capacity readiness continues to count finalized closed outcomes only, so open attempts cannot be double-counted or accelerate the review gate.
+
+This preview has no execution or promotion authority and cannot alter order timing, quantity, slippage, risk, account state, or live trading.
+
+**LIVE TRADING: DISABLED.**
