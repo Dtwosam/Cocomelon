@@ -2161,6 +2161,103 @@ def _closed_trade_concentration_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_utc_hour_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade UTC decision-hour attribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No UTC-hour telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- closed / attributed / misses: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{raw.get('attributed_trades', 0)} / "
+                f"{raw.get('attribution_misses', 0)}`"
+            ),
+            (
+                "- active UTC hours / positive / negative hours: "
+                f"`{raw.get('active_utc_hours', 0)} / "
+                f"{raw.get('positive_net_pnl_hours', 0)} / "
+                f"{raw.get('negative_net_pnl_hours', 0)}`"
+            ),
+            (
+                "- trade-count HHI across active UTC hours: "
+                f"`{raw.get('trade_count_hhi')}`"
+            ),
+            "- promotion authority: `false`",
+        ]
+    )
+
+    rows = raw.get("rows", [])
+    if not isinstance(rows, list):
+        rows = []
+    if rows:
+        lines.extend(
+            [
+                "",
+                (
+                    "| UTC decision hour | Trades | W | L | BE | Net PnL | "
+                    "Mean R | Win rate | PF | Trade share |"
+                ),
+                (
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: |"
+                ),
+            ]
+        )
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                (
+                    "| {label} | {trades} | {wins} | {losses} | "
+                    "{breakeven} | {net_pnl} | {mean_r} | {win_rate} | "
+                    "{pf} | {share} |"
+                ).format(
+                    label=row.get("label"),
+                    trades=row.get("trades", 0),
+                    wins=row.get("wins", 0),
+                    losses=row.get("losses", 0),
+                    breakeven=row.get("breakeven", 0),
+                    net_pnl=row.get("net_pnl", "0"),
+                    mean_r=row.get("mean_net_r"),
+                    win_rate=row.get("win_rate"),
+                    pf=row.get("profit_factor"),
+                    share=row.get("trade_count_share"),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_UTC hour is derived from the immutable strategy-decision "
+                "timestamp, not the fill or close timestamp. This diagnostic "
+                "does not suppress, delay, or reprioritize trades._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_friction_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2829,6 +2926,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_concentration_lines(
             payload.get("closed_trade_concentration")
+        )
+    )
+    lines.extend(
+        _closed_trade_utc_hour_lines(
+            payload.get("closed_trade_utc_hour")
         )
     )
     lines.extend(
