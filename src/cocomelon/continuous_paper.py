@@ -93,7 +93,13 @@ from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
+    DELAY_MS,
+    MAX_DELAY_OBSERVATION_LAG_MS,
     DelayedEntryExecutionShadow,
+)
+from cocomelon.research.delayed_entry_pair import (
+    CHALLENGER_DELAY_MS,
+    delayed_entry_pair_summary,
 )
 from cocomelon.research.delayed_entry_same_exit import (
     delayed_entry_same_exit_contribution,
@@ -172,6 +178,9 @@ ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
 )
 DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
     "delayed-entry-execution-shadow-state.json"
+)
+DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME = (
+    "delayed-entry-120s-execution-shadow-state.json"
 )
 DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 
@@ -1127,10 +1136,14 @@ def _restore_delayed_entry_execution_shadow(
     execution_config: PaperExecutionConfig,
     *,
     started_at_ms: int,
+    delay_ms: int = DELAY_MS,
+    max_observation_lag_ms: int = MAX_DELAY_OBSERVATION_LAG_MS,
 ) -> DelayedEntryExecutionShadow:
     shadow = DelayedEntryExecutionShadow(
         execution_config,
         started_at_ms=started_at_ms,
+        delay_ms=delay_ms,
+        max_observation_lag_ms=max_observation_lag_ms,
     )
     if not path.exists():
         return shadow
@@ -1141,6 +1154,8 @@ def _restore_delayed_entry_execution_shadow(
         shadow = DelayedEntryExecutionShadow(
             execution_config,
             started_at_ms=started_at_ms,
+            delay_ms=delay_ms,
+            max_observation_lag_ms=max_observation_lag_ms,
         )
         shadow.mark_state_restore_error(
             f"{type(exc).__name__}: {exc}"
@@ -2855,6 +2870,18 @@ async def run_continuous_paper_session(
             opening_plan_loader=execution.store.load_plan,
         )
     )
+    delayed_entry_120s_execution_shadow = (
+        _ContinuousDelayedEntryExecutionShadowSink(
+            _restore_delayed_entry_execution_shadow(
+                root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
+                replay_config.execution,
+                started_at_ms=started_at_ms,
+                delay_ms=CHALLENGER_DELAY_MS,
+                max_observation_lag_ms=MAX_DELAY_OBSERVATION_LAG_MS,
+            ),
+            opening_plan_loader=execution.store.load_plan,
+        )
+    )
     entry_mid_markout_shadow = _ContinuousEntryMidMarkoutSink(
         _restore_entry_mid_markout_shadow(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -2870,6 +2897,9 @@ async def run_continuous_paper_session(
             execution.account.positions
         )
     delayed_entry_execution_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
+    delayed_entry_120s_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )
     if entry_mid_markout_shadow.shadow is not None:
@@ -2950,6 +2980,7 @@ async def run_continuous_paper_session(
                 _CompositePositionResearchObserver(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
+                    delayed_entry_120s_execution_shadow,
                 )
             ),
         )
@@ -3042,6 +3073,11 @@ async def run_continuous_paper_session(
                 _write_json_atomic(
                     root / DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME,
                     delayed_entry_execution_shadow.shadow.state_payload(),
+                )
+            if delayed_entry_120s_execution_shadow.shadow is not None:
+                _write_json_atomic(
+                    root / DELAYED_ENTRY_120S_EXECUTION_SHADOW_STATE_FILENAME,
+                    delayed_entry_120s_execution_shadow.shadow.state_payload(),
                 )
             _write_json_atomic(
                 root / PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME,
