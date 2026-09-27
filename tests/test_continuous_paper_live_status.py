@@ -1103,6 +1103,94 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "challenger_error": None,
             "error": None,
         },
+        "delayed_entry_pair_fill_weighted": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "paired_fill_weighted_same_exit_trade_contribution_only"
+            ),
+            "base_delay_ms": 60000,
+            "challenger_delay_ms": 120000,
+            "started_at_ms": 1700000500000,
+            "prospective_closed_trades": 10,
+            "paired_evaluable_attempts": 7,
+            "missing_base_outcome": 0,
+            "missing_challenger_outcome": 0,
+            "non_evaluable_base": 1,
+            "non_evaluable_challenger": 2,
+            "lineage_mismatches": 0,
+            "source_pairs": {
+                "full_visible_book_ioc->full_visible_book_ioc": 4,
+                "partial_visible_book_ioc->partial_visible_book_ioc": 2,
+                "partial_visible_book_ioc->no_fill": 1,
+            },
+            "overall": {
+                "trades": 7,
+                "challenger_better": 3,
+                "base_better": 4,
+                "equal": 0,
+                "actual_net_pnl": "-8",
+                "base_fill_weighted_net_pnl": "2",
+                "challenger_fill_weighted_net_pnl": "0.5",
+                "challenger_minus_base_pnl": "-1.5",
+                "mean_challenger_minus_base_r": "-0.03",
+                "mean_base_fill_fraction": "0.8",
+                "mean_challenger_fill_fraction": "0.65",
+                "challenger_loses_fill_fraction": 3,
+                "challenger_gains_fill_fraction": 1,
+                "equal_fill_fraction": 3,
+            },
+            "by_side": {
+                "long": {
+                    "trades": 3,
+                    "challenger_better": 1,
+                    "base_better": 2,
+                    "equal": 0,
+                    "actual_net_pnl": "-5",
+                    "base_fill_weighted_net_pnl": "0",
+                    "challenger_fill_weighted_net_pnl": "-1",
+                    "challenger_minus_base_pnl": "-1",
+                    "mean_challenger_minus_base_r": "-0.04",
+                    "mean_base_fill_fraction": "0.75",
+                    "mean_challenger_fill_fraction": "0.5",
+                    "challenger_loses_fill_fraction": 2,
+                    "challenger_gains_fill_fraction": 0,
+                    "equal_fill_fraction": 1,
+                },
+                "short": {
+                    "trades": 4,
+                    "challenger_better": 2,
+                    "base_better": 2,
+                    "equal": 0,
+                    "actual_net_pnl": "-3",
+                    "base_fill_weighted_net_pnl": "2",
+                    "challenger_fill_weighted_net_pnl": "1.5",
+                    "challenger_minus_base_pnl": "-0.5",
+                    "mean_challenger_minus_base_r": "-0.02",
+                    "mean_base_fill_fraction": "0.8375",
+                    "mean_challenger_fill_fraction": "0.7625",
+                    "challenger_loses_fill_fraction": 1,
+                    "challenger_gains_fill_fraction": 1,
+                    "equal_fill_fraction": 2,
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_paired_evaluable_attempts": 20,
+                "min_long_paired_evaluable_attempts": 5,
+                "min_short_paired_evaluable_attempts": 5,
+                "missing_prospective_closed_trades": 20,
+                "missing_paired_evaluable_attempts": 13,
+                "missing_long_paired_evaluable_attempts": 2,
+                "missing_short_paired_evaluable_attempts": 1,
+            },
+            "base_error": None,
+            "challenger_error": None,
+            "error": None,
+        },
         "delayed_entry_same_exit": {
             "enabled": True,
             "research_only": True,
@@ -2284,7 +2372,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 15`" in output
+    assert "review-ready studies: `0 / 16`" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
     assert "staged open trade paths" in output
@@ -2321,6 +2409,26 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`20 / 15 / 3 / 2`" in output
     assert "| LONG | 2 | 1 | 1 | 1 | 0.02 | 2.5 |" in output
     assert "| SHORT | 3 | 2 | 1 | 4 | 0.10 | 9.1 |" in output
+    assert "### Paired 60s vs 120s fill-weighted delay" in output
+    assert "paired_fill_weighted_same_exit_trade_contribution_only" in output
+    assert "prospective closed / paired evaluable" in output
+    assert "`10 / 7`" in output
+    assert "non-evaluable 60s / 120s" in output
+    assert "`1 / 2`" in output
+    assert "60s / 120s fill-weighted PnL / incremental" in output
+    assert "`2` / `0.5` / `-1.5`" in output
+    assert "mean 60s / 120s fill fraction" in output
+    assert "`0.8 / 0.65`" in output
+    assert "120s loses / gains / matches fill fraction" in output
+    assert "`3 / 1 / 3`" in output
+    assert "evidence gate closed / paired / LONG / SHORT" in output
+    assert "`30 / 20 / 5 / 5`" in output
+    assert "still needed C/P/L/S" in output
+    assert "`20 / 13 / 2 / 1`" in output
+    assert (
+        "| LONG | 3 | 1 | 2 | 0 | 0.75 | 0.5 | 0 | -1 | -1 | -0.04 |"
+        in output
+    )
     assert "### 60s delayed-entry same-exit contribution" in output
     assert "same_exit_trade_contribution_only" in output
     assert "closed shadow / full fills / evaluated" in output
@@ -2359,6 +2467,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert (
         "| 60s vs 120s paired | collecting | "
         "closed=10, paired=5 | "
+        "missing60=0, missing120=0, mismatch=0 |" in output
+    )
+    assert (
+        "| 60s vs 120s fill-weighted | collecting | "
+        "closed=10, paired=7 | "
         "missing60=0, missing120=0, mismatch=0 |" in output
     )
     assert (
