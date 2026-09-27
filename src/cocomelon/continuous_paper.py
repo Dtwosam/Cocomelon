@@ -59,6 +59,10 @@ from cocomelon.research.account_lifecycle_bridge import (
     account_lifecycle_bridge,
 )
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
+from cocomelon.research.adaptive_delay_selector import (
+    AdaptiveDelaySelectorState,
+    adaptive_delay_selector_summary,
+)
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
 )
@@ -187,6 +191,9 @@ PROSPECTIVE_ENTRY_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
     "prospective-top10-rank-filter-state.json"
+)
+ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
+    "adaptive-delay-selector-state.json"
 )
 ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
     "entry-mid-markout-shadow-state.json"
@@ -1308,6 +1315,30 @@ def _restore_prospective_entry_filter(
     except Exception as exc:
         return (
             ProspectiveEntryFilterState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_adaptive_delay_selector(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[AdaptiveDelaySelectorState, str | None]:
+    if not path.exists():
+        return (
+            AdaptiveDelaySelectorState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return AdaptiveDelaySelectorState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            AdaptiveDelaySelectorState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
@@ -2512,6 +2543,56 @@ def _delayed_entry_pair_fill_weighted_payload(
     return payload
 
 
+def _adaptive_delay_selector_payload(
+    journal: JournalStore,
+    mid_shadow: _ContinuousEntryMidMarkoutSink,
+    base_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    challenger_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    state: AdaptiveDelaySelectorState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    if (
+        mid_shadow.shadow is None
+        or base_shadow.shadow is None
+        or challenger_shadow.shadow is None
+    ):
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": "adaptive delay requires all three research streams",
+        }
+    try:
+        payload = adaptive_delay_selector_summary(
+            journal,
+            mid_shadow.shadow.outcomes,
+            base_shadow.shadow.outcomes,
+            challenger_shadow.shadow.outcomes,
+            started_at_ms=state.started_at_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2690,12 +2771,14 @@ def _live_status_payload(
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    adaptive_delay_selector_restore_error: str | None,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -2870,6 +2953,14 @@ def _live_status_payload(
             delayed_entry_120s_execution_shadow,
         )
     )
+    adaptive_delay_selector = _adaptive_delay_selector_payload(
+        pump.journal,
+        entry_mid_markout_shadow,
+        delayed_entry_execution_shadow,
+        delayed_entry_120s_execution_shadow,
+        adaptive_delay_selector_state,
+        restore_error=adaptive_delay_selector_restore_error,
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -3002,6 +3093,7 @@ def _live_status_payload(
         "delayed_entry_pair_fill_weighted": (
             delayed_entry_pair_fill_weighted
         ),
+        "adaptive_delay_selector": adaptive_delay_selector,
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "delayed_entry_fill_capacity": delayed_entry_fill_capacity,
         "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
@@ -3054,12 +3146,14 @@ def _emit_live_status(
     drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    adaptive_delay_selector_restore_error: str | None,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3079,6 +3173,7 @@ def _emit_live_status(
         drawdown_tracker,
         prospective_entry_filter_state,
         prospective_top10_rank_filter_state,
+        adaptive_delay_selector_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
         opening_fill_liquidity_capture_error=(
@@ -3089,6 +3184,9 @@ def _emit_live_status(
         ),
         prospective_top10_rank_filter_restore_error=(
             prospective_top10_rank_filter_restore_error
+        ),
+        adaptive_delay_selector_restore_error=(
+            adaptive_delay_selector_restore_error
         ),
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
@@ -3285,6 +3383,13 @@ async def run_continuous_paper_session(
         root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    (
+        adaptive_delay_selector_state,
+        adaptive_delay_selector_restore_error,
+    ) = _restore_adaptive_delay_selector(
+        root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -3452,6 +3557,10 @@ async def run_continuous_paper_session(
                 root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
                 prospective_top10_rank_filter_state.payload(),
             )
+            _write_json_atomic(
+                root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
+                adaptive_delay_selector_state.payload(),
+            )
             if entry_mid_markout_shadow.shadow is not None:
                 _write_json_atomic(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -3479,6 +3588,7 @@ async def run_continuous_paper_session(
             drawdown_tracker,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
+            adaptive_delay_selector_state,
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
                 None
@@ -3493,6 +3603,9 @@ async def run_continuous_paper_session(
             ),
             prospective_top10_rank_filter_restore_error=(
                 prospective_top10_rank_filter_restore_error
+            ),
+            adaptive_delay_selector_restore_error=(
+                adaptive_delay_selector_restore_error
             ),
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
@@ -3640,6 +3753,7 @@ async def run_continuous_paper_session(
                     drawdown_tracker,
                     prospective_entry_filter_state,
                     prospective_top10_rank_filter_state,
+                    adaptive_delay_selector_state,
                     trade_path_capture_error=trade_path_sink.error,
                     opening_rank_capture_error=(
                         None
@@ -3654,6 +3768,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
+                    ),
+                    adaptive_delay_selector_restore_error=(
+                        adaptive_delay_selector_restore_error
                     ),
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
