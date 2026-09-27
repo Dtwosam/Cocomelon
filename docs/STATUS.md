@@ -1189,3 +1189,23 @@ The shadow as a whole is `ready_for_review` only when all three horizons meet th
 This gate is deliberately economic-blind: positive and negative markouts count equally. Reaching the gate grants neither promotion authority nor execution authority and does not choose an entry delay, reject trades, change scanner ranking, or alter paper execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective top-10 scanner-rank filter study — 2026-09-27
+
+A single scanner-selection hypothesis is frozen prospectively before future outcomes are reviewed:
+
+- candidate ID: `prospective-admit-top10-rank-v1`;
+- admit only openings whose latest coarse scanner rank is 1–10;
+- shadow-reject openings ranked 11 or worse;
+- use only rank evidence observed at or before the actual paper opening and no older than 5 minutes;
+- start from a durable timestamp after this candidate is deployed, so earlier rank-11–20 losses do not count as proof;
+- missing or stale rank evidence prevents review readiness rather than being guessed.
+
+The reported delta is **closed-trade contribution only**. A blocked trade contributes zero while allowed trades retain their observed paper PnL. This is not a portfolio counterfactual because skipping an opening can change later risk capacity, cooldowns, concurrency, and replacement opportunities.
+
+The study remains `collecting` until it has at least 30 prospective closed trades, including at least 10 allowed top-10 trades and 10 blocked rank-11+ trades, with zero missing or stale rank evidence.
+
+Reaching the gate means only `ready_for_review`. The candidate has no promotion authority and no execution authority and cannot change the live paper shortlist or entry decision.
+
+**LIVE TRADING: DISABLED.**
