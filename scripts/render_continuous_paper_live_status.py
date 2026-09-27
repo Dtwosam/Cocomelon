@@ -1288,7 +1288,7 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
             ),
             (
                 "- complete cohort required (unresolved must be zero): "
-                f"`{readiness.get('unresolved_outcomes', 0)} unresolved`"
+                f"`{raw.get('unresolved_outcomes', 0)} unresolved`"
             ),
             (
                 "- evidence gate closed / evaluated / overlap: "
