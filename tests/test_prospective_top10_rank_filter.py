@@ -107,17 +107,17 @@ def test_top10_filter_blocks_only_prospective_rank_above_10(
     try:
         old = _trade(
             suffix="old",
-            opened_at_ms=9_000,
+            opened_at_ms=90_000,
             pnl="-20",
         )
         allowed = _trade(
             suffix="allowed",
-            opened_at_ms=11_000,
+            opened_at_ms=110_000,
             pnl="5",
         )
         blocked = _trade(
             suffix="blocked",
-            opened_at_ms=12_000,
+            opened_at_ms=120_000,
             pnl="-8",
         )
         for trade in (old, allowed, blocked):
@@ -130,7 +130,7 @@ def test_top10_filter_blocks_only_prospective_rank_above_10(
             journal,
             ranks,
             ProspectiveTop10RankFilterState(
-                started_at_ms=10_000
+                started_at_ms=100_000
             ),
         )
     finally:
