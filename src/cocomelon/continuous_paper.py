@@ -61,6 +61,9 @@ from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
 )
+from cocomelon.research.closed_trade_entry_concurrency import (
+    closed_trade_entry_concurrency,
+)
 from cocomelon.research.closed_trade_friction import (
     closed_trade_friction_summary,
 )
@@ -1951,6 +1954,29 @@ def _closed_trade_stability_payload(
     return payload
 
 
+def _closed_trade_entry_concurrency_payload(
+    journal: JournalStore,
+    positions: Sequence[PaperPosition],
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_entry_concurrency(
+            tuple(journal.iter_trades()),
+            positions,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_concentration_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2350,6 +2376,12 @@ def _live_status_payload(
             fact_store,
         )
     )
+    closed_trade_entry_concurrency_payload = (
+        _closed_trade_entry_concurrency_payload(
+            pump.journal,
+            execution.account.positions,
+        )
+    )
     closed_trade_utc_hour = _closed_trade_utc_hour_payload(
         pump.journal,
         fact_store,
@@ -2464,6 +2496,9 @@ def _live_status_payload(
         "account_lifecycle_economics": account_lifecycle_economics,
         "drawdown": drawdown,
         "closed_trade_concentration": closed_trade_concentration,
+        "closed_trade_entry_concurrency": (
+            closed_trade_entry_concurrency_payload
+        ),
         "closed_trade_utc_hour": closed_trade_utc_hour,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
