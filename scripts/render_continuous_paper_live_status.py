@@ -711,11 +711,9 @@ def _entry_markout_lines(raw: object) -> list[str]:
             if not isinstance(value, dict):
                 continue
             parts.append(
-                (
-                    f"{name}: n={value.get('observations', 0)}, "
-                    f"meanR={value.get('mean_gross_r')}, "
-                    f"meanbps={value.get('mean_signed_return_bps')}"
-                )
+                f"{name}: n={value.get('observations', 0)}, "
+                f"meanR={value.get('mean_gross_r')}, "
+                f"meanbps={value.get('mean_signed_return_bps')}"
             )
         if parts:
             lines.append(f"- {label}: " + "; ".join(parts))
