@@ -267,6 +267,19 @@ def test_adaptive_selector_uses_120s_for_adverse_and_60s_otherwise(
     assert vs_120["largest_abs_trade_contribution"] == "0.5"
     assert vs_120["leave_one_trade_out_min_delta"] == "0.0"
 
+    temporal = robustness["temporal"]
+    assert isinstance(temporal, dict)
+    assert temporal["configured_blocks"] == 4
+    assert temporal["min_trades_per_full_block"] == 5
+    assert temporal["full_blocks"] == 0
+    blocks = temporal["chronological_blocks"]
+    assert isinstance(blocks, list)
+    assert [block["trades"] for block in blocks] == [1, 1]
+    assert [
+        block["first_closed_at_ms"]
+        for block in blocks
+    ] == [1_300_000, 2_300_000]
+
     by_market = result["by_market"]
     assert isinstance(by_market, dict)
     assert set(by_market) == {"BTC", "SOL"}
@@ -345,3 +358,70 @@ def test_adaptive_delay_state_round_trip_freezes_rule() -> None:
         match="frozen candidate",
     ):
         AdaptiveDelaySelectorState.from_payload(payload)
+
+
+def test_adaptive_temporal_robustness_exposes_late_block_failure(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    trades: list[TradeJournalEntry] = []
+    mids: list[EntryMidMarkoutOutcome] = []
+    base: list[DelayedEntryOutcome] = []
+    challenger: list[DelayedEntryOutcome] = []
+    try:
+        for index in range(20):
+            trade = _trade(
+                suffix=f"temporal-{index:02d}",
+                direction=Direction.LONG,
+                opened_at_ms=1_000_000 + index * 1_000_000,
+                exit_price="101",
+            )
+            journal.record_trade(trade)
+            trades.append(trade)
+
+            if index >= 15:
+                mids.append(_mid(trade, gross_r="-0.1"))
+                base.append(_delayed(trade, price="99"))
+                challenger.append(_delayed(trade, price="100"))
+            elif index % 2 == 0:
+                mids.append(_mid(trade, gross_r="-0.1"))
+                base.append(_delayed(trade, price="99"))
+                challenger.append(_delayed(trade, price="98"))
+            else:
+                mids.append(_mid(trade, gross_r="0.1"))
+                base.append(_delayed(trade, price="99"))
+                challenger.append(_delayed(trade, price="100"))
+
+        result = adaptive_delay_selector_summary(
+            journal,
+            tuple(mids),
+            tuple(base),
+            tuple(challenger),
+            started_at_ms=900_000,
+        )
+    finally:
+        journal.close()
+
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    temporal = robustness["temporal"]
+    assert isinstance(temporal, dict)
+    assert temporal["full_blocks"] == 4
+    assert temporal["positive_blocks_vs_60s"] == 3
+    assert temporal["positive_blocks_vs_120s"] == 3
+    assert temporal["all_full_blocks_positive_vs_60s"] is False
+    assert temporal["all_full_blocks_positive_vs_120s"] is False
+
+    blocks = temporal["chronological_blocks"]
+    assert isinstance(blocks, list)
+    assert [block["trades"] for block in blocks] == [5, 5, 5, 5]
+    assert blocks[0]["adaptive_minus_60s_pnl"] == "3"
+    assert blocks[0]["adaptive_minus_120s_pnl"] == "2"
+    assert blocks[3]["adaptive_minus_60s_pnl"] == "-5"
+    assert blocks[3]["adaptive_minus_120s_pnl"] == "0"
+    assert blocks[3]["positive_vs_60s"] is False
+    assert blocks[3]["positive_vs_120s"] is False
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["ready_for_review"] is False

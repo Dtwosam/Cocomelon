@@ -1293,6 +1293,69 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "leave_one_market_out_min_delta": "0.9",
                     "positive_after_any_single_market_removed": True,
                 },
+                "temporal": {
+                    "configured_blocks": 4,
+                    "min_trades_per_full_block": 5,
+                    "full_blocks": 0,
+                    "positive_blocks_vs_60s": 0,
+                    "positive_blocks_vs_120s": 0,
+                    "all_full_blocks_positive_vs_60s": False,
+                    "all_full_blocks_positive_vs_120s": False,
+                    "chronological_blocks": [
+                        {
+                            "block": 1,
+                            "trades": 2,
+                            "first_closed_at_ms": 1700000900000,
+                            "last_closed_at_ms": 1700001900000,
+                            "selected_60s": 1,
+                            "selected_120s": 1,
+                            "adaptive_minus_60s_pnl": "1.2",
+                            "adaptive_minus_120s_pnl": "0.8",
+                            "adaptive_minus_actual_pnl": "3",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 2,
+                            "trades": 2,
+                            "first_closed_at_ms": 1700002900000,
+                            "last_closed_at_ms": 1700003900000,
+                            "selected_60s": 1,
+                            "selected_120s": 1,
+                            "adaptive_minus_60s_pnl": "1.0",
+                            "adaptive_minus_120s_pnl": "0.7",
+                            "adaptive_minus_actual_pnl": "2",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 3,
+                            "trades": 1,
+                            "first_closed_at_ms": 1700004900000,
+                            "last_closed_at_ms": 1700004900000,
+                            "selected_60s": 1,
+                            "selected_120s": 0,
+                            "adaptive_minus_60s_pnl": "0",
+                            "adaptive_minus_120s_pnl": "0.3",
+                            "adaptive_minus_actual_pnl": "1",
+                            "positive_vs_60s": False,
+                            "positive_vs_120s": True,
+                        },
+                        {
+                            "block": 4,
+                            "trades": 1,
+                            "first_closed_at_ms": 1700005900000,
+                            "last_closed_at_ms": 1700005900000,
+                            "selected_60s": 0,
+                            "selected_120s": 1,
+                            "adaptive_minus_60s_pnl": "0.8",
+                            "adaptive_minus_120s_pnl": "0.2",
+                            "adaptive_minus_actual_pnl": "1",
+                            "positive_vs_60s": True,
+                            "positive_vs_120s": True,
+                        },
+                    ],
+                },
             },
             "readiness": {
                 "ready_for_review": False,
@@ -2914,6 +2977,15 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`SOL / 0.35`" in output
     assert "largest |Δ| market vs 120s / share" in output
     assert "`BTC / 0.44`" in output
+    assert "temporal full / positive vs 60s / positive vs 120s" in output
+    assert "`0 / 0 / 0`" in output
+    assert "all full temporal blocks positive vs 60s / 120s" in output
+    assert "`False / False`" in output
+    assert "temporal block design" in output
+    assert "`4 × 5 trades`" in output
+    assert "| Time block | N | 60s | 120s | Δ vs 60s | Δ vs 120s |" in output
+    assert "| 1 | 2 | 1 | 1 | 1.2 | 0.8 |" in output
+    assert "| 4 | 1 | 0 | 1 | 0.8 | 0.2 |" in output
     assert "evidence gate closed / causal / 60s / 120s" in output
     assert "`30 / 20 / 5 / 5`" in output
     assert "still needed C/E/60/120" in output
