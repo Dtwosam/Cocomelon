@@ -1687,6 +1687,106 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_delayed_price_confirmation_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective 60s delayed price confirmation",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective delayed price-confirmation telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- frozen rule: after `60s`, take the delayed visible-book "
+                "IOC only when its simulated average fill is no worse than "
+                "the immutable opening-plan reference price; otherwise skip"
+            ),
+            (
+                "- prospective closed / evaluated: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('evaluated_trades', 0)}`"
+            ),
+            (
+                "- confirmed / skipped: "
+                f"`{raw.get('confirmed_trades', 0)} / "
+                f"{raw.get('skipped_trades', 0)}`"
+            ),
+            (
+                "- worse-price / no-fill skips: "
+                f"`{raw.get('worse_price_skips', 0)} / "
+                f"{raw.get('no_fill_skips', 0)}`"
+            ),
+            (
+                "- missing outcomes / plans / lineage / unresolved: "
+                f"`{raw.get('missing_outcomes', 0)} / "
+                f"{raw.get('missing_opening_plans', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)} / "
+                f"{raw.get('unresolved_outcomes', 0)}`"
+            ),
+            (
+                "- actual / candidate trade-contribution PnL: "
+                f"`{raw.get('actual_net_pnl', '0')}` / "
+                f"`{raw.get('candidate_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- delta trade contribution: "
+                f"`{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- mean confirmed price improvement: "
+                f"`{raw.get('mean_confirmed_signed_improvement_bps')}` bps"
+            ),
+            (
+                "- evidence gate (evaluated / confirmed / skipped): "
+                f"`{readiness.get('min_prospective_evaluated_trades', 0)} / "
+                f"{readiness.get('min_confirmed_trades', 0)} / "
+                f"{readiness.get('min_skipped_trades', 0)}`"
+            ),
+            (
+                "- still needed E/C/S: "
+                f"`{readiness.get('missing_prospective_evaluated_trades', 0)} / "
+                f"{readiness.get('missing_confirmed_trades', 0)} / "
+                f"{readiness.get('missing_skipped_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Prospective closed-trade contribution study only. A skipped "
+                "trade contributes zero; replacement trades, changed capacity, "
+                "and changed exits are not modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_top10_rank_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -3764,6 +3864,16 @@ def _research_readiness_board_lines(
         entry_filter_gate.get("ready_for_review")
     )
 
+    delayed_price_confirm = mapping(
+        "prospective_delayed_price_confirmation"
+    )
+    delayed_price_confirm_gate = readiness(
+        delayed_price_confirm
+    )
+    delayed_price_confirm_ready = bool(
+        delayed_price_confirm_gate.get("ready_for_review")
+    )
+
     rank_filter = mapping("prospective_top10_rank_filter")
     rank_filter_gate = readiness(rank_filter)
     rank_filter_ready = bool(
@@ -3952,6 +4062,23 @@ def _research_readiness_board_lines(
                 f"allowed={entry_filter.get('allowed_trades', 0)}"
             ),
             f"misses={entry_filter.get('attribution_misses', 0)}",
+        ),
+        (
+            "60s price confirmation",
+            status(
+                delayed_price_confirm,
+                ready=delayed_price_confirm_ready,
+            ),
+            (
+                f"eval={delayed_price_confirm.get('evaluated_trades', 0)}, "
+                f"confirmed={delayed_price_confirm.get('confirmed_trades', 0)}, "
+                f"skipped={delayed_price_confirm.get('skipped_trades', 0)}"
+            ),
+            (
+                f"missing={delayed_price_confirm.get('missing_outcomes', 0)}, "
+                f"plan={delayed_price_confirm.get('missing_opening_plans', 0)}, "
+                f"mismatch={delayed_price_confirm.get('lineage_mismatches', 0)}"
+            ),
         ),
         (
             "top-10 rank filter",
@@ -4251,6 +4378,11 @@ def render_live_status(
     lines.extend(
         _prospective_entry_filter_lines(
             payload.get("prospective_entry_filter")
+        )
+    )
+    lines.extend(
+        _prospective_delayed_price_confirmation_lines(
+            payload.get("prospective_delayed_price_confirmation")
         )
     )
     lines.extend(
