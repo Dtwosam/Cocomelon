@@ -200,6 +200,67 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "by_volatility_regime": {},
         },
+        "account_lifecycle_economics": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "closed_trade_count": 1,
+            "open_position_count": 1,
+            "account": {
+                "realized_gross_pnl": "52",
+                "cumulative_fees": "3",
+                "cumulative_funding": "0",
+                "realized_net_cash": "49",
+                "unrealized_pnl": "1",
+                "total_account_pnl": "50",
+            },
+            "open_lifecycles": {
+                "realized_gross_pnl": "60",
+                "fees": "1",
+                "funding": "0",
+                "realized_net_cash": "59",
+                "unrealized_pnl": "1",
+                "mark_to_market_pnl": "60",
+                "positions": [
+                    {
+                        "market": "BTC",
+                        "side": "long",
+                        "remaining_quantity": "1",
+                        "cumulative_realized_gross_pnl": "60",
+                        "cumulative_fees": "1",
+                        "cumulative_funding": "0",
+                        "realized_net_cash": "59",
+                        "unrealized_gross_pnl": "1",
+                        "lifecycle_mark_to_market_pnl": "60",
+                    }
+                ],
+            },
+            "implied_fully_closed_lifecycles": {
+                "realized_gross_pnl": "-8",
+                "fees": "2",
+                "funding": "0",
+                "net_pnl": "-10",
+            },
+            "journal_closed_trades": {
+                "realized_gross_pnl": "-8",
+                "fees": "2",
+                "funding": "0",
+                "net_pnl": "-10",
+            },
+            "reconciliation": {
+                "closed_gross_delta": "0",
+                "closed_fees_delta": "0",
+                "closed_funding_delta": "0",
+                "closed_net_delta": "0",
+                "realized_bridge_delta": "0",
+                "equity_bridge_delta": "0",
+                "closed_journal_matches_account": True,
+                "realized_bridge_matches_account": True,
+                "equity_bridge_matches_account": True,
+            },
+        },
         "closed_trade_friction": {
             "enabled": True,
             "research_only": True,
@@ -1121,6 +1182,19 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "2.5" in output
     assert "total return fraction" in output
     assert "gross open notional / equity" in output
+    assert "### Account lifecycle reconciliation" in output
+    assert "fully closed journal matches account-implied closed economics" in output
+    assert "realized cash bridge / equity bridge match" in output
+    assert "`true / true`" in output
+    assert "closed gross / fees / funding / net deltas" in output
+    assert "`0 / 0 / 0 / 0`" in output
+    assert "| Open lifecycles | 60 | 1 | 0 | 59 | 1 | 60 |" in output
+    assert "| Fully closed (account implied) | -8 | 2 | 0 | -10 | — | — |" in output
+    assert "| Closed journal | -8 | 2 | 0 | -10 | — | — |" in output
+    assert "| Account total | 52 | 3 | 0 | 49 | 1 | 50 |" in output
+    assert "#### Open lifecycle cumulative economics" in output
+    assert "| BTC | long | 1 | 60 | 1 | 0 | 59 | 1 | 60 |" in output
+    assert "can move account cash before the lifecycle is fully closed" in output
     assert "### Closed-trade friction attribution" in output
     assert "reference_gross_minus_slippage_minus_fees_plus_funding" in output
     assert "| 6 | 1 | 5 | 5.5 | 2 | 1.5 | 4.5 |" in output
