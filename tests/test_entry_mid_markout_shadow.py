@@ -348,3 +348,75 @@ def test_allmids_shadow_state_round_trip_preserves_open_observation(
     assert payload["started_at_ms"] == 1_000_000
     assert payload["by_horizon_ms"]["60000"]["fresh"] == 1
     assert payload["by_horizon_ms"]["300000"]["fresh"] == 1
+
+
+def test_allmids_shadow_contains_closed_trade_lineage_mismatch(
+    tmp_path: Path,
+) -> None:
+    shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
+    tracked = _position(
+        suffix="mismatch",
+        side=PositionSide.LONG,
+        opened_at_ms=1_100_000,
+    )
+    shadow.observe(
+        _record(1_160_000, "101"),
+        (tracked,),
+        now_ms=1_160_000,
+    )
+    mismatched = PaperPosition(
+        market=tracked.market,
+        side=tracked.side,
+        quantity=Decimal("1"),
+        average_entry_price=tracked.average_entry_price,
+        stop_price=tracked.stop_price,
+        opening_plan_id=tracked.opening_plan_id,
+        opened_at_ms=tracked.opened_at_ms,
+        updated_at_ms=tracked.updated_at_ms,
+        initial_risk_decision_id=tracked.initial_risk_decision_id,
+        planned_risk=Decimal("5"),
+    )
+    shadow.record_closed_trade(
+        _trade(
+            mismatched,
+            suffix="mismatch",
+            closed_at_ms=1_500_000,
+        )
+    )
+
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    try:
+        payload = shadow.summary_payload(facts)
+    finally:
+        facts.close()
+
+    assert payload["closed_trade_count"] == 0
+    assert payload["lineage_mismatch_closed_trades"] == 1
+
+
+def test_allmids_shadow_reconciles_orphaned_restored_position(
+    tmp_path: Path,
+) -> None:
+    shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
+    position = _position(
+        suffix="orphan",
+        side=PositionSide.LONG,
+        opened_at_ms=1_100_000,
+    )
+    shadow.observe(
+        _record(1_160_000, "101"),
+        (position,),
+        now_ms=1_160_000,
+    )
+
+    restored = EntryMidMarkoutShadow(started_at_ms=9_999_999)
+    restored.restore_state(shadow.state_payload())
+    restored.reconcile_open_positions(())
+
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    try:
+        payload = restored.summary_payload(facts)
+    finally:
+        facts.close()
+    assert payload["eligible_open_positions"] == 0
+    assert payload["orphaned_restored_positions"] == 1
