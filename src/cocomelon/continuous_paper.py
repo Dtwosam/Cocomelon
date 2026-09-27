@@ -2132,6 +2132,7 @@ def _live_status_payload(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
+    drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
@@ -2139,6 +2140,7 @@ def _live_status_payload(
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
@@ -2227,6 +2229,12 @@ def _live_status_payload(
         pump.journal,
         fact_store,
     )
+    drawdown = _drawdown_payload(
+        execution,
+        pump.journal,
+        drawdown_tracker,
+        checkpoint_seconds=checkpoint_seconds,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -2300,6 +2308,7 @@ def _live_status_payload(
         ],
         "closed_trade_performance": closed_trade_performance,
         "account_lifecycle_economics": account_lifecycle_economics,
+        "drawdown": drawdown,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
             closed_trade_robustness_payload
@@ -2388,6 +2397,7 @@ def _emit_live_status(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
+    drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
@@ -2395,6 +2405,7 @@ def _emit_live_status(
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
     payload = _live_status_payload(
@@ -2408,6 +2419,7 @@ def _emit_live_status(
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
         entry_mid_markout_shadow,
+        drawdown_tracker,
         prospective_entry_filter_state,
         prospective_top10_rank_filter_state,
         trade_path_capture_error=trade_path_capture_error,
@@ -2418,6 +2430,7 @@ def _emit_live_status(
         prospective_top10_rank_filter_restore_error=(
             prospective_top10_rank_filter_restore_error
         ),
+        checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
     print(
