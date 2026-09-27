@@ -3643,4 +3643,4 @@ def test_renderer_main_accepts_heartbeat_from_stdin() -> None:
         env=env,
     )
 
-    assert "Continuous Paper Trader" in completed.stdout
+    assert "Continuous paper runtime live status" in completed.stdout
