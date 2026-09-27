@@ -1388,3 +1388,21 @@ The continuous-paper runtime now maintains two separate drawdown views.
 This is observability only. It has no execution or promotion authority and does not change risk limits, sizing, stops, entries, exits, or cadence.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact-path excursion timing diagnostic — 2026-09-27
+
+The continuous paper research layer now measures when favorable and adverse excursion happens, not only how large the eventual MFE/MAE becomes.
+
+- only completed exact trade paths with complete MFE/MAE evidence are evaluated;
+- first-hit timing is frozen at +0.25R, +0.5R, and +1R gross favorable excursion;
+- the diagnostic reports mean/median first-hit time, how many trades later closed negative after each threshold, and the mean remaining time from threshold hit to those losing closes;
+- it reports time-to-MFE, time-to-MAE, peak-to-close duration, and the fraction of the total holding period spent after peak favorable excursion;
+- the same timing summaries are split by side, persisted lead strategy, and actual exit reason;
+- path/journal identity mismatches fail the diagnostic instead of being guessed;
+- missing decision or excursion attribution blocks review readiness;
+- the frozen review gate is 30 complete exact paths with clean attribution.
+
+This is observability only. It does not move stops, delay entries, force exits, change strategy thresholds, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**
