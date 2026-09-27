@@ -1225,3 +1225,22 @@ The exact-path 1m / 5m / 15m post-entry markout diagnostic now also attributes f
 This is measurement only. It does not change scanner ranking, shortlist membership, entries, stops, risk, sizing, cadence, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Closed-trade execution-friction attribution — 2026-09-27
+
+The continuous paper live status now decomposes each closed trade into an exact accounting waterfall:
+
+`reference-price gross - signed slippage = actual gross; actual gross - fees + funding = net PnL`.
+
+- reference-price gross adds the journal's signed entry/exit slippage back to actual realized gross;
+- positive signed slippage is adverse execution drag and negative signed slippage is favorable execution;
+- fees and funding are kept separate from slippage so costs are not double-counted;
+- the diagnostic reports adverse/favorable slippage amounts, fee drag, funding contribution, net cost drag, and mean-R equivalents;
+- it counts trades that were positive before execution friction but non-positive after it, plus trades rescued by favorable friction;
+- the same decomposition is reported by side and persisted lead strategy;
+- decision-fact lineage mismatches fail the research diagnostic, while heartbeat publication remains fail-open for paper trading.
+
+This is attribution only. It does not alter strategy thresholds, scanner ranking, entries, exits, stops, sizing, cadence, risk, or execution authority.
+
+**LIVE TRADING: DISABLED.**

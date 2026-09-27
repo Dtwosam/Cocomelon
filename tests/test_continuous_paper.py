@@ -12,6 +12,7 @@ import pytest
 from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
+    _closed_trade_friction_payload,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
@@ -154,6 +155,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"opening_scanner_rank": opening_rank' in source
     assert '"opening_rank_count": self.opening_rank_count' in source
     assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
+    assert '"closed_trade_friction": closed_trade_friction' in source
+    assert "closed_trade_friction_summary(" in source
     assert '"entry_markout": entry_markout' in source
     assert "entry_mid_markout_readiness(payload)" in source
     assert '"min_fresh_observations_per_horizon"' in source
@@ -170,6 +173,28 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'entry_mid_markout_shadow=' in source
     assert '"entry_mid_markout_shadow": entry_mid_markout' in source
     assert "entry_mid_markout_shadow.shadow.state_payload()" in source
+
+
+def test_closed_trade_friction_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("friction boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.closed_trade_friction_summary",
+        fail,
+    )
+    payload = _closed_trade_friction_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: friction boom"
 
 
 def test_opening_rank_telemetry_fails_open(

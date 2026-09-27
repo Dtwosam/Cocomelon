@@ -1095,6 +1095,146 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_friction_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Closed-trade friction attribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No friction telemetry in this heartbeat._")
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    lines.extend(
+        [
+            (
+                "- definition: "
+                f"`{raw.get('definition', 'unknown')}`"
+            ),
+            (
+                "- decision-fact attribution misses: "
+                f"`{raw.get('decision_fact_attribution_misses', 0)}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Ref-price gross | Signed slippage | Actual gross | Fees | "
+                "Funding | Net PnL | Net cost drag |"
+            ),
+            (
+                "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+            (
+                "| {reference} | {slippage} | {gross} | {fees} | "
+                "{funding} | {net} | {drag} |"
+            ).format(
+                reference=overall.get("reference_gross_pnl", "0"),
+                slippage=overall.get("signed_slippage_amount", "0"),
+                gross=overall.get("actual_gross_realized_pnl", "0"),
+                fees=overall.get("fees", "0"),
+                funding=overall.get("funding_cash_pnl", "0"),
+                net=overall.get("net_pnl", "0"),
+                drag=overall.get("net_cost_drag", "0"),
+            ),
+            (
+                "- adverse / favorable slippage amounts: "
+                f"`{overall.get('adverse_slippage_amount', '0')} / "
+                f"{overall.get('favorable_slippage_amount', '0')}`"
+            ),
+            (
+                "- positive trades before slippage / after slippage / net: "
+                f"`{overall.get('reference_gross_positive_trades', 0)} / "
+                f"{overall.get('actual_gross_positive_trades', 0)} / "
+                f"{overall.get('net_positive_trades', 0)}`"
+            ),
+            (
+                "- friction-flipped / fee+funding-flipped / rescued: "
+                f"`{overall.get('friction_flipped_trades', 0)} / "
+                f"{overall.get('fee_funding_flipped_trades', 0)} / "
+                f"{overall.get('friction_rescued_trades', 0)}`"
+            ),
+            (
+                "- mean R: reference gross / slippage drag / fee drag / "
+                "funding / total cost drag / net: "
+                f"`{overall.get('mean_reference_gross_r')} / "
+                f"{overall.get('mean_slippage_drag_r')} / "
+                f"{overall.get('mean_fee_drag_r')} / "
+                f"{overall.get('mean_funding_r')} / "
+                f"{overall.get('mean_net_cost_drag_r')} / "
+                f"{overall.get('mean_net_r')}`"
+            ),
+        ]
+    )
+
+    for field, label in (
+        ("by_side", "Side"),
+        ("by_lead_strategy", "Lead strategy"),
+    ):
+        groups = raw.get(field, {})
+        if not isinstance(groups, dict) or not groups:
+            continue
+        lines.extend(
+            [
+                "",
+                f"#### {label} friction",
+                "",
+                (
+                    "| Bucket | N | Ref gross | Slippage | Fees | Funding | "
+                    "Net | Flipped | Mean ref R | Mean drag R | Mean net R |"
+                ),
+                (
+                    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: | ---: |"
+                ),
+            ]
+        )
+        for bucket, value in sorted(groups.items()):
+            if not isinstance(value, dict):
+                continue
+            lines.append(
+                (
+                    "| {bucket} | {trades} | {reference} | {slippage} | "
+                    "{fees} | {funding} | {net} | {flipped} | "
+                    "{mean_ref} | {mean_drag} | {mean_net} |"
+                ).format(
+                    bucket=bucket,
+                    trades=value.get("trades", 0),
+                    reference=value.get("reference_gross_pnl", "0"),
+                    slippage=value.get("signed_slippage_amount", "0"),
+                    fees=value.get("fees", "0"),
+                    funding=value.get("funding_cash_pnl", "0"),
+                    net=value.get("net_pnl", "0"),
+                    flipped=value.get("friction_flipped_trades", 0),
+                    mean_ref=value.get("mean_reference_gross_r"),
+                    mean_drag=value.get("mean_net_cost_drag_r"),
+                    mean_net=value.get("mean_net_r"),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Waterfall identity: reference-price gross − signed slippage "
+                "= actual gross; actual gross − fees + funding = net PnL. "
+                "Positive signed slippage is adverse; negative is favorable._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -1325,6 +1465,11 @@ def render_live_status(
     else:
         lines.append("_No closed paper trades in durable state yet._")
 
+    lines.extend(
+        _closed_trade_friction_lines(
+            payload.get("closed_trade_friction")
+        )
+    )
     lines.extend(["", "### Closed trade performance", ""])
     if performance:
         profit_factor = performance.get("profit_factor")

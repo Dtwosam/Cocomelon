@@ -54,6 +54,9 @@ from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
+from cocomelon.research.closed_trade_friction import (
+    closed_trade_friction_summary,
+)
 from cocomelon.research.continuous_paper_learning import (
     CONTINUOUS_PAPER_REPLAY_RUN_ID,
     ContinuousPaperOpeningLineage,
@@ -1558,6 +1561,29 @@ def _position_protection_metrics(
     }
 
 
+def _closed_trade_friction_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+) -> dict[str, object]:
+    try:
+        payload = closed_trade_friction_summary(
+            tuple(journal.iter_trades()),
+            fact_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _profit_lock_counterfactual_payload(
     journal: JournalStore,
     trade_path_store: ContinuousPaperTradePathStore,
@@ -1827,6 +1853,10 @@ def _live_status_payload(
         feature_store,
         fact_store,
     )
+    closed_trade_friction = _closed_trade_friction_payload(
+        pump.journal,
+        fact_store,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -1899,6 +1929,7 @@ def _live_status_payload(
             for trade in reversed(pump.recent_closed_trades)
         ],
         "closed_trade_performance": closed_trade_performance,
+        "closed_trade_friction": closed_trade_friction,
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(
             open_planned_risk_fraction
