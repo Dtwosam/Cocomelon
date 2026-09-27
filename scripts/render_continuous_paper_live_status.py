@@ -860,6 +860,118 @@ def _opening_rank_lines(raw: object) -> list[str]:
     return lines
 
 
+def _opening_fill_liquidity_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Opening fill liquidity",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No fill-liquidity telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    capture_error = raw.get("capture_error")
+    if capture_error:
+        lines.append(f"- capture warning: `{capture_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- evidence source: "
+                f"`{raw.get('evidence_source', 'unknown')}`"
+            ),
+            (
+                "- records / attributed closed / historical without evidence: "
+                f"`{raw.get('evidence_records', 0)} / "
+                f"{raw.get('attributed_closed_trades', 0)} / "
+                f"{raw.get('closed_trades_without_fill_liquidity_evidence', 0)}`"
+            ),
+            (
+                "- open or pending evidence records: "
+                f"`{raw.get('unmatched_open_or_pending_records', 0)}`"
+            ),
+            (
+                "- review gate / still needed: "
+                f"`{raw.get('review_gate_closed_trades', 0)} / "
+                f"{raw.get('still_needed_closed_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(raw.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Cohort | N | W | L | Net PnL | Mean R | Spread bps | "
+                "Fill slip bps | Entry depth | Depth used | Dir imbalance | "
+                "Book recv age |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    cohorts = (
+        ("overall", "Overall"),
+        ("winners", "Winners"),
+        ("losers", "Losers"),
+    )
+    by_side = raw.get("by_side", {})
+    if not isinstance(by_side, dict):
+        by_side = {}
+
+    def row(label: str, item: object) -> None:
+        if not isinstance(item, dict):
+            return
+        lines.append(
+            (
+                "| {label} | {n} | {wins} | {losses} | {pnl} | {r} | "
+                "{spread} | {slip} | {depth} | {usage} | {imbalance} | "
+                "{age}ms |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                r=item.get("mean_net_r"),
+                spread=item.get("mean_spread_bps"),
+                slip=item.get("mean_fill_slippage_bps"),
+                depth=item.get("mean_entry_depth_25bps"),
+                usage=item.get("mean_entry_depth_usage_fraction"),
+                imbalance=item.get("mean_directional_book_imbalance"),
+                age=item.get("mean_book_receive_age_ms"),
+            )
+        )
+
+    for key, label in cohorts:
+        row(label, raw.get(key))
+    row("LONG", by_side.get("long"))
+    row("SHORT", by_side.get("short"))
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective exact L2 book consumed by the opening IOC. "
+                "Historical trades are not backfilled from decision snapshots. "
+                "This is descriptive liquidity attribution only, not an entry filter._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _entry_markout_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2945,6 +3057,11 @@ def render_live_status(
     lines.extend(
         _opening_rank_lines(
             payload.get("opening_scanner_rank")
+        )
+    )
+    lines.extend(
+        _opening_fill_liquidity_lines(
+            payload.get("opening_fill_liquidity")
         )
     )
     lines.extend(
