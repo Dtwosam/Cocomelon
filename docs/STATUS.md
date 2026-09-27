@@ -1135,3 +1135,20 @@ The gate is deliberately economic-blind: positive and negative markouts count eq
 This readiness state does not choose an entry-delay rule, reject trades, change strategy thresholds, promote a candidate, or grant execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry markout freshness bound — 2026-09-27
+
+The exact-path entry markout diagnostic now accepts a horizon observation only when the first available mark at or after the target arrives within 60 seconds of that target.
+
+- the fixed horizons remain 1 minute, 5 minutes, and 15 minutes after the actual paper entry;
+- marks arriving more than 60 seconds after the requested horizon are classified as `stale_observed_mark` and excluded from markout economics;
+- stale marks do not count toward the 30-observation-per-horizon readiness gate;
+- trades closed before a horizon remain censored;
+- trades with no later mark remain missing;
+- no interpolation or backfilling is allowed;
+- Issue #469 reports the freshness bound and stale count separately for each horizon.
+
+This corrects a measurement-quality problem where a much later mark could previously be labeled as a 1m/5m/15m markout. It changes research telemetry only and does not change paper entries, exits, risk, sizing, cadence, or live-order controls.
+
+**LIVE TRADING: DISABLED.**
