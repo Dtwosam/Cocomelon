@@ -79,6 +79,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     LatestCoarseRankTracker,
     opening_rank_attribution,
 )
+from cocomelon.research.continuous_paper_promotion_guard import (
+    continuous_paper_promotion_guard,
+)
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
@@ -1873,6 +1876,37 @@ def _drawdown_payload(
     return payload
 
 
+def _promotion_guard_payload(
+    journal: JournalStore,
+    drawdown: object,
+    *,
+    timestamp_ms: int,
+    execution_healthy: bool,
+    execution_reason_codes: Sequence[str],
+) -> dict[str, object]:
+    try:
+        payload = continuous_paper_promotion_guard(
+            tuple(journal.iter_trades()),
+            drawdown,
+            timestamp_ms=timestamp_ms,
+            execution_healthy=execution_healthy,
+            execution_reason_codes=execution_reason_codes,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "observability_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "live_promotion_ready": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _entry_decision_age_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2235,6 +2269,13 @@ def _live_status_payload(
         drawdown_tracker,
         checkpoint_seconds=checkpoint_seconds,
     )
+    promotion_guard = _promotion_guard_payload(
+        pump.journal,
+        drawdown,
+        timestamp_ms=timestamp_ms,
+        execution_healthy=execution.health.healthy_for_new_exposure,
+        execution_reason_codes=execution.health.reason_codes,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -2309,6 +2350,7 @@ def _live_status_payload(
         "closed_trade_performance": closed_trade_performance,
         "account_lifecycle_economics": account_lifecycle_economics,
         "drawdown": drawdown,
+        "promotion_guard": promotion_guard,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
             closed_trade_robustness_payload
