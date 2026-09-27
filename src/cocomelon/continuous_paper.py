@@ -87,7 +87,6 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
-from cocomelon.research.excursion_timing import excursion_timing_summary
 from cocomelon.research.entry_markout_readiness import (
     MIN_OBSERVATIONS_PER_HORIZON,
     entry_markout_readiness,
@@ -100,6 +99,7 @@ from cocomelon.research.entry_mid_markout_readiness import (
 from cocomelon.research.entry_mid_markout_shadow import (
     EntryMidMarkoutShadow,
 )
+from cocomelon.research.excursion_timing import excursion_timing_summary
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
