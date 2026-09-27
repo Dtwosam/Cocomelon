@@ -2028,6 +2028,20 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                     "partial": 1,
                     "no_fill": 0,
                 },
+                "visible_depth_exhausted": {
+                    "attempts": 1,
+                    "mean_fill_fraction": "0.7",
+                    "full": 0,
+                    "partial": 1,
+                    "no_fill": 0,
+                },
+                "slippage_boundary_reached": {
+                    "attempts": 1,
+                    "mean_fill_fraction": "0.8",
+                    "full": 0,
+                    "partial": 1,
+                    "no_fill": 0,
+                },
                 "full_fill": {
                     "attempts": 8,
                     "mean_fill_fraction": "1",
@@ -2514,6 +2528,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| LONG | 4 | 0.75 | 3 | 1 | 0 |" in output
     assert "| SHORT | 6 | 0.9166666666666666666666666667 | 5 | 0 | 1 |" in output
     assert "legacy_unknown_partial: n=1, mean_fill=0.5" in output
+    assert "visible_depth_exhausted: n=1, mean_fill=0.7" in output
+    assert "slippage_boundary_reached: n=1, mean_fill=0.8" in output
     assert "### 60s delayed-entry fill-weighted contribution" in output
     assert "fill_weighted_same_exit_trade_contribution_only" in output
     assert "closed shadow / evaluated attempts" in output
