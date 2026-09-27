@@ -389,9 +389,11 @@ class _ContinuousDelayedEntryExecutionShadowSink:
                 "execution_authority": False,
                 "promotion_authority": False,
                 "durable_state": True,
+                "stop_source": "persisted_opening_plan",
                 "error": self.error,
             }
         payload = dict(self.shadow.summary_payload())
+        payload["stop_source"] = "persisted_opening_plan"
         payload["error"] = self.error
         return payload
 
