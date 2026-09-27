@@ -20,6 +20,7 @@ from cocomelon.continuous_paper import (
     _closed_trade_utc_hour_payload,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
+    _ContinuousOpeningFillLiquiditySink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
     _drawdown_payload,
@@ -28,6 +29,7 @@ from cocomelon.continuous_paper import (
     _entry_markout_predictiveness_payload,
     _excursion_timing_payload,
     _load_checkpoint,
+    _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
     _position_action_from_payload,
     _position_action_payload,
@@ -186,6 +188,14 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"opening_scanner_rank": opening_rank' in source
     assert '"opening_rank_count": self.opening_rank_count' in source
     assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
+    assert "OpeningFillLiquidityStore(" in source
+    assert 'root / "opening-fill-liquidity"' in source
+    assert "opening_research_observer=(" in source
+    assert '"opening_fill_liquidity": opening_fill_liquidity' in source
+    assert '"opening_fill_liquidity_count": self.opening_fill_liquidity_count' in source
+    assert (
+        '"opening_fill_liquidity_state_digest": (' in source
+    )
     assert (
         '"account_lifecycle_economics": account_lifecycle_economics'
         in source
@@ -494,6 +504,45 @@ def test_entry_markout_predictiveness_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: predictiveness boom"
+
+
+def test_opening_fill_liquidity_capture_is_fail_open() -> None:
+    class Store:
+        def record(self, _evidence: object) -> bool:
+            raise RuntimeError("liquidity store boom")
+
+    sink = _ContinuousOpeningFillLiquiditySink(  # type: ignore[arg-type]
+        Store()
+    )
+
+    sink.record_opening_trace(SimpleNamespace())  # type: ignore[arg-type]
+
+    assert sink.error is not None
+    assert sink.error.startswith("AttributeError:")
+
+
+def test_opening_fill_liquidity_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("liquidity boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.opening_fill_liquidity_attribution",
+        fail,
+    )
+    payload = _opening_fill_liquidity_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        capture_error="capture-warning",
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["capture_error"] == "capture-warning"
+    assert payload["error"] == "RuntimeError: liquidity boom"
 
 
 def test_entry_markout_telemetry_fails_open(

@@ -42,6 +42,7 @@ class BaselineOpeningTrace:
     evaluation: EpochMarketEvaluation
     submission: OpeningSubmission
     equity_before: Decimal
+    book_event: StreamEvent
 
     def __post_init__(self) -> None:
         if not self.equity_before.is_finite() or self.equity_before <= ZERO:
@@ -51,6 +52,10 @@ class BaselineOpeningTrace:
             != self.submission.risk_decision.strategy_decision_id
         ):
             raise ValueError("opening trace strategy lineage mismatch")
+        if self.book_event.kind is not StreamKind.L2_BOOK:
+            raise ValueError("opening trace requires an L2 book event")
+        if self.book_event.market != self.evaluation.decision.market:
+            raise ValueError("opening trace book market mismatch")
 
 
 def _receive_ms(event: StreamEvent) -> int:
@@ -305,6 +310,7 @@ class BaselineOpeningEngine:
                     evaluation=pending.evaluation,
                     submission=submission,
                     equity_before=equity_before,
+                    book_event=candidate_book,
                 )
             )
             self._pending.pop(0)

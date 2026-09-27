@@ -92,6 +92,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/excursion_timing.py"' in source
     assert '"src/cocomelon/research/entry_mid_markout_shadow.py"' in source
     assert '"src/cocomelon/research/entry_mid_markout_readiness.py"' in source
+    assert '"src/cocomelon/research/opening_fill_liquidity.py"' in source
     assert '"src/cocomelon/research/profit_lock_counterfactual.py"' in source
     assert '"src/cocomelon/research/profit_lock_execution_readiness.py"' in source
     assert '"src/cocomelon/research/profit_lock_execution_shadow.py"' in source
@@ -113,6 +114,9 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert "opening scanner-rank records:" in source
     assert "opening_rank_state_digest" in source
     assert "opening_rank_capture_error" in source
+    assert "opening fill-liquidity records:" in source
+    assert "opening_fill_liquidity_state_digest" in source
+    assert "opening_fill_liquidity_capture_error" in source
     assert "closed trade paths:" in source
     assert "staged open trade paths:" in source
     assert "trade_path_open_count" in source

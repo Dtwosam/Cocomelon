@@ -25,6 +25,7 @@ from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline
+from cocomelon.evidence.openings import BaselineOpeningTrace
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.replay.engine import ReplayInvariantError
 
@@ -243,6 +244,7 @@ def _pipeline(
     config: BaselineReplayConfig | None = None,
     suffix: str = "first",
     closed_lifecycle_sink: object | None = None,
+    opening_research_observer: object | None = None,
     position_research_observer: object | None = None,
 ) -> tuple[BaselineReplayPipeline, PaperExecutionAdapter, EvaluationFactStore]:
     replay_config = config or _config()
@@ -262,6 +264,9 @@ def _pipeline(
         evidence_class=EvidenceClass.MICROSTRUCTURE,
         decision_engine=_ScriptedDecisionEngine(replay_config),
         closed_lifecycle_sink=closed_lifecycle_sink,  # type: ignore[arg-type]
+        opening_research_observer=(
+            opening_research_observer  # type: ignore[arg-type]
+        ),
         position_research_observer=(
             position_research_observer  # type: ignore[arg-type]
         ),
@@ -322,6 +327,47 @@ def test_long_lifecycle_applies_funding_closes_and_records_evaluation_facts(
     assert EquityFactKind.FILL in equity_kinds
     assert EquityFactKind.MARK in equity_kinds
     assert EquityFactKind.FUNDING in equity_kinds
+
+    execution.close()
+    facts.close()
+
+
+def test_opening_research_observer_receives_exact_ioc_book(
+    tmp_path: Path,
+) -> None:
+    traces: list[BaselineOpeningTrace] = []
+
+    class Observer:
+        def record_opening_trace(
+            self,
+            trace: BaselineOpeningTrace,
+        ) -> None:
+            traces.append(trace)
+
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="opening-research-observer",
+        opening_research_observer=Observer(),
+    )
+    open_book = _book(
+        OPEN_BOOK_MS,
+        bid="99.9",
+        ask="100.1",
+    )
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            open_book,
+        ),
+    )
+
+    assert len(traces) == 1
+    trace = traces[0]
+    assert trace.book_event.event_key == open_book.event_key
+    assert trace.submission.simulation is not None
+    assert trace.submission.simulation.fills
 
     execution.close()
     facts.close()

@@ -34,6 +34,7 @@ from cocomelon.evidence.lifecycle import (
     OpenLifecycleMarkPath,
     PositionResearchObserver,
 )
+from cocomelon.evidence.openings import BaselineOpeningTrace
 from cocomelon.evidence.recording import (
     RecordedPublicEvent,
     _startup_ranks,
@@ -113,6 +114,11 @@ from cocomelon.research.entry_mid_markout_shadow import (
 )
 from cocomelon.research.excursion_timing import excursion_timing_summary
 from cocomelon.research.learning_feature_snapshots import LearningFeatureSnapshotStore
+from cocomelon.research.opening_fill_liquidity import (
+    OpeningFillLiquidityStore,
+    evidence_from_opening_trace,
+    opening_fill_liquidity_attribution,
+)
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE as EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE,
@@ -233,6 +239,27 @@ class _ContinuousTradePathSink:
         except Exception as exc:
             self._capture_error(exc)
             return False
+
+
+class _ContinuousOpeningFillLiquiditySink:
+    def __init__(
+        self,
+        store: OpeningFillLiquidityStore,
+    ) -> None:
+        self._store = store
+        self.error: str | None = None
+
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        try:
+            evidence = evidence_from_opening_trace(trace)
+            if evidence is not None:
+                self._store.record(evidence)
+        except Exception as exc:
+            if self.error is None:
+                self.error = f"{type(exc).__name__}: {exc}"
 
 
 class _CompositePositionResearchObserver:
@@ -735,6 +762,9 @@ class ContinuousPaperSummary:
     opening_rank_count: int
     opening_rank_state_digest: str
     opening_rank_capture_error: str | None
+    opening_fill_liquidity_count: int
+    opening_fill_liquidity_state_digest: str
+    opening_fill_liquidity_capture_error: str | None
     trade_path_count: int
     trade_path_open_count: int
     trade_path_state_digest: str
@@ -763,6 +793,13 @@ class ContinuousPaperSummary:
             "opening_rank_count": self.opening_rank_count,
             "opening_rank_state_digest": self.opening_rank_state_digest,
             "opening_rank_capture_error": self.opening_rank_capture_error,
+            "opening_fill_liquidity_count": self.opening_fill_liquidity_count,
+            "opening_fill_liquidity_state_digest": (
+                self.opening_fill_liquidity_state_digest
+            ),
+            "opening_fill_liquidity_capture_error": (
+                self.opening_fill_liquidity_capture_error
+            ),
             "trade_path_count": self.trade_path_count,
             "trade_path_open_count": self.trade_path_open_count,
             "trade_path_state_digest": self.trade_path_state_digest,
@@ -2140,6 +2177,33 @@ def _opening_rank_attribution_payload(
     return payload
 
 
+def _opening_fill_liquidity_payload(
+    journal: JournalStore,
+    store: OpeningFillLiquidityStore,
+    *,
+    capture_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = opening_fill_liquidity_attribution(
+            tuple(journal.iter_trades()),
+            store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "capture_error": capture_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["capture_error"] = capture_error
+    payload["error"] = None
+    return payload
+
+
 def _entry_markout_predictiveness_payload(
     journal: JournalStore,
     trade_path_store: ContinuousPaperTradePathStore,
@@ -2257,6 +2321,7 @@ def _live_status_payload(
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
+    opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
@@ -2266,6 +2331,7 @@ def _live_status_payload(
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
+    opening_fill_liquidity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     checkpoint_seconds: int,
@@ -2406,6 +2472,11 @@ def _live_status_payload(
         opening_rank_store,
         capture_error=opening_rank_capture_error,
     )
+    opening_fill_liquidity = _opening_fill_liquidity_payload(
+        pump.journal,
+        opening_fill_liquidity_store,
+        capture_error=opening_fill_liquidity_capture_error,
+    )
     entry_markout = _entry_markout_payload(
         pump.journal,
         fact_store,
@@ -2526,6 +2597,7 @@ def _live_status_payload(
             prospective_top10_rank_filter
         ),
         "opening_scanner_rank": opening_rank,
+        "opening_fill_liquidity": opening_fill_liquidity,
         "entry_markout": entry_markout,
         "entry_markout_predictiveness": (
             entry_markout_predictive
@@ -2557,6 +2629,7 @@ def _emit_live_status(
     fact_store: EvaluationFactStore,
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
+    opening_fill_liquidity_store: OpeningFillLiquidityStore,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
@@ -2566,6 +2639,7 @@ def _emit_live_status(
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
+    opening_fill_liquidity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     checkpoint_seconds: int,
@@ -2579,6 +2653,7 @@ def _emit_live_status(
         fact_store,
         trade_path_store,
         opening_rank_store,
+        opening_fill_liquidity_store,
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
         entry_mid_markout_shadow,
@@ -2587,6 +2662,9 @@ def _emit_live_status(
         prospective_top10_rank_filter_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
+        opening_fill_liquidity_capture_error=(
+            opening_fill_liquidity_capture_error
+        ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
         ),
@@ -2707,6 +2785,14 @@ async def run_continuous_paper_session(
     opening_rank_store = ContinuousPaperOpeningRankStore(
         root / "opening-ranks"
     )
+    opening_fill_liquidity_store = OpeningFillLiquidityStore(
+        root / "opening-fill-liquidity"
+    )
+    opening_fill_liquidity_sink = (
+        _ContinuousOpeningFillLiquiditySink(
+            opening_fill_liquidity_store
+        )
+    )
     rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
@@ -2818,6 +2904,9 @@ async def run_continuous_paper_session(
             feature_snapshot_sink=feature_store,
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
+            opening_research_observer=(
+                opening_fill_liquidity_sink
+            ),
             position_research_observer=(
                 _CompositePositionResearchObserver(
                     profit_lock_execution_shadow,
@@ -2942,6 +3031,7 @@ async def run_continuous_paper_session(
             facts,
             trade_path_store,
             opening_rank_store,
+            opening_fill_liquidity_store,
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
             entry_mid_markout_shadow,
@@ -2953,6 +3043,9 @@ async def run_continuous_paper_session(
                 None
                 if opening_lineage_sink is None
                 else opening_lineage_sink.rank_error
+            ),
+            opening_fill_liquidity_capture_error=(
+                opening_fill_liquidity_sink.error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -3098,6 +3191,7 @@ async def run_continuous_paper_session(
                     facts,
                     trade_path_store,
                     opening_rank_store,
+                    opening_fill_liquidity_store,
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     entry_mid_markout_shadow,
@@ -3109,6 +3203,9 @@ async def run_continuous_paper_session(
                         None
                         if opening_lineage_sink is None
                         else opening_lineage_sink.rank_error
+                    ),
+                    opening_fill_liquidity_capture_error=(
+                        opening_fill_liquidity_sink.error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
@@ -3158,6 +3255,15 @@ async def run_continuous_paper_session(
                 None
                 if opening_lineage_sink is None
                 else opening_lineage_sink.rank_error
+            ),
+            opening_fill_liquidity_count=(
+                opening_fill_liquidity_store.record_count
+            ),
+            opening_fill_liquidity_state_digest=(
+                opening_fill_liquidity_store.state_digest
+            ),
+            opening_fill_liquidity_capture_error=(
+                opening_fill_liquidity_sink.error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,

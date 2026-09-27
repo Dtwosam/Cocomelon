@@ -25,6 +25,9 @@ from cocomelon.evidence.openings import (
     paper_liquidation_surrogate,
 )
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.research.opening_fill_liquidity import (
+    evidence_from_opening_trace,
+)
 
 EVALUATED_AT_MS = 2_000_000
 BTC = MarketId("", "BTC")
@@ -235,6 +238,48 @@ def test_books_before_latency_never_fill_and_later_recorded_book_may_fill(
         for fill in submission.simulation.fills
     )
     assert len(adapter.account.positions) == 1
+    adapter.close()
+
+
+def test_opening_trace_preserves_exact_fill_book_liquidity(
+    tmp_path: Path,
+) -> None:
+    adapter = _adapter(tmp_path / "fill-liquidity.sqlite3")
+    state = _state(BTC)
+    engine = BaselineOpeningEngine(
+        BaselineReplayConfig(),
+        adapter,
+        state,
+    )
+    engine.stage_epoch(_epoch(BTC))
+    eligible_ms = EVALUATED_AT_MS + 250
+    book = _book(
+        BTC,
+        receive_ms=eligible_ms,
+        bid="99.9",
+        ask="100.1",
+        size="1000",
+    )
+
+    outcomes = engine.on_book(book, eligible_ms)
+    traces = engine.take_traces()
+
+    assert len(outcomes) == 1
+    assert len(traces) == 1
+    evidence = evidence_from_opening_trace(traces[0])
+    assert evidence is not None
+    assert evidence.book_event_key == book.event_key
+    assert evidence.market == BTC.canonical
+    assert evidence.direction == "long"
+    assert evidence.spread_bps == Decimal("20.000")
+    assert evidence.entry_side_depth_25bps == Decimal("100100.0")
+    assert evidence.exit_side_depth_25bps == Decimal("99900.0")
+    assert evidence.fill_slippage_bps == Decimal("10.000")
+    assert evidence.decision_spread_bps == Decimal("2")
+    assert evidence.decision_book_age_ms == 10
+    assert evidence.book_receive_age_ms == 0
+    assert evidence.entry_depth_usage_fraction > Decimal("0")
+
     adapter.close()
 
 
