@@ -26,6 +26,7 @@ from cocomelon.continuous_paper import (
     _delayed_entry_contribution_decomposition_payload,
     _delayed_entry_fill_weighted_payload,
     _delayed_entry_pair_fill_weighted_payload,
+    _delayed_entry_risk_geometry_payload,
     _delayed_entry_same_exit_payload,
     _drawdown_payload,
     _entry_decision_age_payload,
@@ -187,6 +188,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"delayed_entry_contribution_decomposition": (' in source
     )
     assert "delayed_entry_contribution_decomposition(" in source
+    assert '"delayed_entry_risk_geometry": delayed_entry_risk_geometry' in source
+    assert "delayed_entry_risk_geometry_summary(" in source
+    assert "execution.store.load_plan" in source
     assert "delayed_entry_same_exit_contribution(" in source
     assert "delayed_entry_fill_weighted_contribution(" in source
     assert "delayed_entry_pair_fill_weighted_summary(" in source
@@ -866,6 +870,33 @@ def test_delayed_entry_contribution_decomposition_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: decomposition boom"
+
+
+def test_delayed_entry_risk_geometry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("risk geometry boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "delayed_entry_risk_geometry_summary",
+        fail,
+    )
+    payload = _delayed_entry_risk_geometry_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(
+            shadow=SimpleNamespace(outcomes=()),
+            error=None,
+        ),  # type: ignore[arg-type]
+        lambda _plan_id: None,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: risk geometry boom"
 
 
 def test_delayed_entry_fill_weighted_telemetry_fails_open(

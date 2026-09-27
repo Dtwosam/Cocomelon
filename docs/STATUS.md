@@ -1681,3 +1681,23 @@ The diagnostic reports the decomposition overall, by LONG/SHORT, by full/partial
 This does not simulate replacement trades or change order quantity, delay, slippage, stops, risk ceilings, or execution. It is research-only accounting over the already-frozen delayed-entry shadow.
 
 **LIVE TRADING: DISABLED.**
+
+
+### 60s delayed-entry risk geometry — 2026-09-27
+
+The +60s delayed-entry research now measures how the delayed fill price interacts with the original paper trade's risk budget.
+
+- the persisted opening plan supplies the original stop and cost-buffer fraction;
+- the closed paper journal supplies the actual entry quantity and original approved risk ceiling;
+- the delayed shadow supplies the observed delayed average fill and filled quantity;
+- risk utilization is delayed filled risk divided by the original paper risk ceiling;
+- full-size risk ratio is the risk that the original quantity would consume at the delayed average fill divided by the original risk ceiling;
+- risk-capacity fraction is the maximum fraction of original size that can fit that risk ceiling at the delayed average fill;
+- unit-risk change compares delayed per-unit stop-and-cost risk with the actual entry's per-unit risk;
+- the report separates risk-ceiling clips from full fills and splits results by side/cause.
+
+A full-size risk ratio above 1 means the original size cannot fit the original risk budget at that delayed price/stop geometry. This diagnostic does not change the stop, risk ceiling, delayed quantity, delay, IOC simulator, or actual paper execution.
+
+Review readiness requires 20 filled delayed attempts, including 5 risk-ceiling-clipped attempts, with clean journal/opening-plan lineage.
+
+**LIVE TRADING: DISABLED.**
