@@ -665,9 +665,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "evidence gate (observations per horizon)" in output
     assert "`30`" in output
     assert "all horizons ready for review: `false`" in output
-    assert "| 1m | collecting | 3 | 27 | 2 | 1 | 25 | 0.05 | 0 | 0 | 0 | 1000ms | 3000ms |" in output
-    assert "| 5m | collecting | 2 | 28 | 1 | 1 | -10 | -0.02 | 1 | 0 | 0 | 1500ms | 2500ms |" in output
-    assert "| 15m | collecting | 1 | 29 | 1 | 0 | 80 | 0.16 | 2 | 0 | 0 | 500ms | 500ms |" in output
+    assert (
+        "| 1m | collecting | 3 | 27 | 2 | 1 | 25 | 0.05 | "
+        "0 | 0 | 0 | 1000ms | 3000ms |"
+    ) in output
+    assert (
+        "| 5m | collecting | 2 | 28 | 1 | 1 | -10 | -0.02 | "
+        "1 | 0 | 0 | 1500ms | 2500ms |"
+    ) in output
+    assert (
+        "| 15m | collecting | 1 | 29 | 1 | 0 | 80 | 0.16 | "
+        "2 | 0 | 0 | 500ms | 500ms |"
+    ) in output
     assert "1m by side:" in output
     assert "long: n=2, meanR=-0.02, meanbps=-10" in output
     assert "short: n=1, meanR=0.19, meanbps=95" in output
