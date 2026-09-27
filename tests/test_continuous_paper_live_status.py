@@ -3360,6 +3360,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1500` / `1100` / `-400`" in output
     assert "actual / candidate max planned risk / delta" in output
     assert "`45` / `34` / `-11`" in output
+    assert "complete cohort required (unresolved must be zero)" in output
+    assert "`2 unresolved`" in output
     assert "evidence gate closed / evaluated / overlap" in output
     assert "`30 / 20 / 5`" in output
     assert "Fixed observed schedule only" in output
