@@ -1234,6 +1234,124 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _drawdown_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Drawdown / high-water",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No drawdown telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    sampled = raw.get("sampled_account", {})
+    realized = raw.get("realized_closed_trade", {})
+    if not isinstance(sampled, dict):
+        sampled = {}
+    if not isinstance(realized, dict):
+        realized = {}
+
+    lines.extend(
+        [
+            "",
+            "#### Sampled account equity",
+            "",
+            (
+                "- definition / configured checkpoint interval: "
+                f"`{sampled.get('definition', 'unknown')}` / "
+                f"`{sampled.get('checkpoint_seconds')}s`"
+            ),
+            (
+                "- first / last / peak sample timestamps: "
+                f"`{sampled.get('first_timestamp_ms')} / "
+                f"{sampled.get('last_timestamp_ms')} / "
+                f"{sampled.get('peak_timestamp_ms')}`"
+            ),
+            (
+                "- observed mean sample interval: "
+                f"`{sampled.get('mean_observation_interval_ms')}ms`"
+            ),
+            (
+                "- durable state restored / restore warning: "
+                f"`{str(bool(sampled.get('state_restored'))).lower()}` / "
+                f"`{sampled.get('state_restore_error')}`"
+            ),
+            (
+                "- observations / first / latest / peak equity: "
+                f"`{sampled.get('observation_count', 0)} / "
+                f"{sampled.get('first_equity')} / "
+                f"{sampled.get('last_equity')} / "
+                f"{sampled.get('peak_equity')}`"
+            ),
+            (
+                "- current drawdown amount / fraction: "
+                f"`{sampled.get('current_drawdown_amount')} / "
+                f"{sampled.get('current_drawdown_fraction')}`"
+            ),
+            (
+                "- maximum drawdown amount / fraction: "
+                f"`{sampled.get('max_drawdown_amount')} / "
+                f"{sampled.get('max_drawdown_fraction')}`"
+            ),
+            (
+                "- max-DD peak / trough equity: "
+                f"`{sampled.get('max_drawdown_peak_equity')} / "
+                f"{sampled.get('max_drawdown_trough_equity')}`"
+            ),
+            (
+                "- max-DD peak / trough timestamps: "
+                f"`{sampled.get('max_drawdown_peak_timestamp_ms')} / "
+                f"{sampled.get('max_drawdown_trough_timestamp_ms')}`"
+            ),
+            "",
+            "#### Realized closed-trade equity",
+            "",
+            (
+                "- closed trades / starting / ending / peak equity: "
+                f"`{realized.get('closed_trades', 0)} / "
+                f"{realized.get('starting_equity')} / "
+                f"{realized.get('ending_realized_equity')} / "
+                f"{realized.get('peak_realized_equity')}`"
+            ),
+            (
+                "- maximum drawdown amount / fraction: "
+                f"`{realized.get('max_drawdown_amount')} / "
+                f"{realized.get('max_drawdown_fraction')}`"
+            ),
+            (
+                "- max-DD peak / trough equity: "
+                f"`{realized.get('max_drawdown_peak_equity')} / "
+                f"{realized.get('max_drawdown_trough_equity')}`"
+            ),
+            (
+                "- max-DD peak / trough timestamps: "
+                f"`{realized.get('max_drawdown_peak_timestamp_ms')} / "
+                f"{realized.get('max_drawdown_trough_timestamp_ms')}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Sampled account drawdown includes unrealized PnL only when "
+                "the durable checkpoint is actually persisted; scheduling can "
+                "make observations coarser than the configured interval, and "
+                "intra-sample extremes can be missed. Realized drawdown is the "
+                "exact chronological "
+                "closed-trade equity curve._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _account_lifecycle_bridge_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -2064,6 +2182,11 @@ def render_live_status(
             f"`{str(payload['execution_healthy']).lower()}`"
         ),
     ]
+    lines.extend(
+        _drawdown_lines(
+            payload.get("drawdown")
+        )
+    )
     lines.extend(
         _account_lifecycle_bridge_lines(
             payload.get("account_lifecycle_economics")

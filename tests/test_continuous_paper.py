@@ -19,6 +19,7 @@ from cocomelon.continuous_paper import (
     _ContinuousEntryMidMarkoutSink,
     _ContinuousProfitLockExecutionShadowSink,
     _ContinuousTradePathSink,
+    _drawdown_payload,
     _entry_decision_age_payload,
     _entry_markout_payload,
     _load_checkpoint,
@@ -34,6 +35,7 @@ from cocomelon.continuous_paper import (
     _RecordPump,
     _restore_cadence_shadow,
     _restore_delayed_entry_execution_shadow,
+    _restore_drawdown_tracker,
     _restore_entry_mid_markout_shadow,
     _restore_profit_lock_execution_shadow,
     _restore_prospective_entry_filter,
@@ -190,6 +192,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "closed_trade_robustness(" in source
     assert '"entry_decision_age": entry_decision_age' in source
     assert "entry_decision_age_summary(" in source
+    assert 'DRAWDOWN_STATE_FILENAME = "drawdown-state.json"' in source
+    assert '"drawdown": drawdown' in source
+    assert "drawdown_tracker.state_payload()" in source
+    assert "drawdown_tracker.observe(" in source
     assert '"entry_markout": entry_markout' in source
     assert "entry_mid_markout_readiness(payload)" in source
     assert '"min_fresh_observations_per_horizon"' in source
@@ -228,6 +234,51 @@ def test_account_lifecycle_bridge_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: bridge boom"
+
+
+def test_drawdown_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("drawdown boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.drawdown_summary",
+        fail,
+    )
+    payload = _drawdown_payload(
+        SimpleNamespace(
+            account=SimpleNamespace(
+                starting_cash=Decimal("10000")
+            )
+        ),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        checkpoint_seconds=30,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: drawdown boom"
+
+
+def test_drawdown_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "drawdown-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    tracker = _restore_drawdown_tracker(
+        path,
+        started_at_ms=123,
+    )
+
+    assert tracker.started_at_ms == 123
+    assert tracker.observation_count == 0
+    assert tracker.state_restore_error is not None
+    assert "JSONDecodeError" in tracker.state_restore_error
 
 
 def test_entry_decision_age_telemetry_fails_open(

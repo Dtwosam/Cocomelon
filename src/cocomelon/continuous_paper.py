@@ -64,6 +64,10 @@ from cocomelon.research.closed_trade_friction import (
 from cocomelon.research.closed_trade_robustness import (
     closed_trade_robustness,
 )
+from cocomelon.research.continuous_paper_drawdown import (
+    ContinuousPaperDrawdownTracker,
+    drawdown_summary,
+)
 from cocomelon.research.continuous_paper_learning import (
     CONTINUOUS_PAPER_REPLAY_RUN_ID,
     ContinuousPaperOpeningLineage,
@@ -147,6 +151,7 @@ ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
 DELAYED_ENTRY_EXECUTION_SHADOW_STATE_FILENAME = (
     "delayed-entry-execution-shadow-state.json"
 )
+DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1090,6 +1095,26 @@ def _restore_delayed_entry_execution_shadow(
     return shadow
 
 
+def _restore_drawdown_tracker(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> ContinuousPaperDrawdownTracker:
+    tracker = ContinuousPaperDrawdownTracker(
+        started_at_ms=started_at_ms,
+    )
+    if not path.exists():
+        return tracker
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return ContinuousPaperDrawdownTracker.from_payload(raw)
+    except Exception as exc:
+        tracker.mark_state_restore_error(
+            f"{type(exc).__name__}: {exc}"
+        )
+        return tracker
+
+
 def _restore_entry_mid_markout_shadow(
     path: Path,
     *,
@@ -1820,6 +1845,34 @@ def _account_lifecycle_bridge_payload(
     return payload
 
 
+def _drawdown_payload(
+    execution: PaperExecutionAdapter,
+    journal: JournalStore,
+    tracker: ContinuousPaperDrawdownTracker,
+    *,
+    checkpoint_seconds: int,
+) -> dict[str, object]:
+    try:
+        payload = drawdown_summary(
+            tracker,
+            tuple(journal.iter_trades()),
+            starting_equity=execution.account.starting_cash,
+            checkpoint_seconds=checkpoint_seconds,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _entry_decision_age_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2079,6 +2132,7 @@ def _live_status_payload(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
+    drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
@@ -2086,6 +2140,7 @@ def _live_status_payload(
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
@@ -2174,6 +2229,12 @@ def _live_status_payload(
         pump.journal,
         fact_store,
     )
+    drawdown = _drawdown_payload(
+        execution,
+        pump.journal,
+        drawdown_tracker,
+        checkpoint_seconds=checkpoint_seconds,
+    )
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
@@ -2247,6 +2308,7 @@ def _live_status_payload(
         ],
         "closed_trade_performance": closed_trade_performance,
         "account_lifecycle_economics": account_lifecycle_economics,
+        "drawdown": drawdown,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
             closed_trade_robustness_payload
@@ -2335,6 +2397,7 @@ def _emit_live_status(
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     entry_mid_markout_shadow: _ContinuousEntryMidMarkoutSink,
+    drawdown_tracker: ContinuousPaperDrawdownTracker,
     prospective_entry_filter_state: ProspectiveEntryFilterState,
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     *,
@@ -2342,6 +2405,7 @@ def _emit_live_status(
     opening_rank_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
     payload = _live_status_payload(
@@ -2355,6 +2419,7 @@ def _emit_live_status(
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
         entry_mid_markout_shadow,
+        drawdown_tracker,
         prospective_entry_filter_state,
         prospective_top10_rank_filter_state,
         trade_path_capture_error=trade_path_capture_error,
@@ -2365,6 +2430,7 @@ def _emit_live_status(
         prospective_top10_rank_filter_restore_error=(
             prospective_top10_rank_filter_restore_error
         ),
+        checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -2506,6 +2572,10 @@ async def run_continuous_paper_session(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
             started_at_ms=started_at_ms,
         )
+    )
+    drawdown_tracker = _restore_drawdown_tracker(
+        root / DRAWDOWN_STATE_FILENAME,
+        started_at_ms=started_at_ms,
     )
     if profit_lock_execution_shadow.shadow is not None:
         profit_lock_execution_shadow.shadow.reconcile_open_positions(
@@ -2649,6 +2719,11 @@ async def run_continuous_paper_session(
         await refresh_funding()
 
         def persist_checkpoint() -> None:
+            checkpoint_timestamp_ms = utc_now_ms()
+            drawdown_tracker.observe(
+                execution.account.equity,
+                timestamp_ms=checkpoint_timestamp_ms,
+            )
             trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)
             _write_json_atomic(
                 checkpoint_path,
@@ -2690,6 +2765,10 @@ async def run_continuous_paper_session(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
                     entry_mid_markout_shadow.shadow.state_payload(),
                 )
+            _write_json_atomic(
+                root / DRAWDOWN_STATE_FILENAME,
+                drawdown_tracker.state_payload(),
+            )
 
         persist_checkpoint()
         _emit_live_status(
@@ -2703,6 +2782,7 @@ async def run_continuous_paper_session(
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
             entry_mid_markout_shadow,
+            drawdown_tracker,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
             trade_path_capture_error=trade_path_sink.error,
@@ -2717,6 +2797,7 @@ async def run_continuous_paper_session(
             prospective_top10_rank_filter_restore_error=(
                 prospective_top10_rank_filter_restore_error
             ),
+            checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
 
@@ -2857,6 +2938,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     entry_mid_markout_shadow,
+                    drawdown_tracker,
                     prospective_entry_filter_state,
                     prospective_top10_rank_filter_state,
                     trade_path_capture_error=trade_path_sink.error,
@@ -2871,6 +2953,7 @@ async def run_continuous_paper_session(
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
                     ),
+                    checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
 
