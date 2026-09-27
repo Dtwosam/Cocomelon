@@ -733,6 +733,103 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 ],
             },
         },
+        "closed_trade_entry_concurrency": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+            "definition": "positions_already_open_before_fill",
+            "same_timestamp_openings_count_as_prior": False,
+            "closed_trades": 5,
+            "currently_open_positions_used_for_history": 2,
+            "solo": {
+                "trades": 2,
+                "wins": 2,
+                "losses": 0,
+                "breakeven": 0,
+                "net_pnl": "12",
+                "mean_net_r": "0.6",
+                "profit_factor": None,
+            },
+            "overlapping": {
+                "trades": 3,
+                "wins": 1,
+                "losses": 2,
+                "breakeven": 0,
+                "net_pnl": "-9",
+                "mean_net_r": "-0.3",
+                "profit_factor": "0.25",
+            },
+            "by_concurrency_bucket": {
+                "0": {
+                    "trades": 2,
+                    "wins": 2,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "12",
+                    "mean_net_r": "0.6",
+                    "profit_factor": None,
+                },
+                "1": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-4",
+                    "mean_net_r": "-0.4",
+                    "profit_factor": "0",
+                },
+                "2": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "breakeven": 0,
+                    "net_pnl": "3",
+                    "mean_net_r": "0.3",
+                    "profit_factor": None,
+                },
+                "3+": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-8",
+                    "mean_net_r": "-0.8",
+                    "profit_factor": "0",
+                },
+            },
+            "by_same_side_overlap": {
+                "0": {
+                    "trades": 3,
+                    "wins": 2,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "8",
+                    "mean_net_r": "0.2666666666666666666666666667",
+                    "profit_factor": "3",
+                },
+                "1+": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "breakeven": 0,
+                    "net_pnl": "-5",
+                    "mean_net_r": "-0.25",
+                    "profit_factor": "0.375",
+                },
+            },
+            "observations": [],
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_trades": 30,
+                "min_solo_trades": 10,
+                "min_overlap_trades": 10,
+                "missing_closed_trades": 25,
+                "missing_solo_trades": 8,
+                "missing_overlap_trades": 7,
+            },
+        },
         "closed_trade_utc_hour": {
             "enabled": True,
             "research_only": True,
@@ -2177,6 +2274,23 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "#### UTC seven-day concentration" in output
     assert "| 0 | 2 | 1 | 1 | 0 | 30 | 1.5 | 0.4 | 0.6 |" in output
     assert "35% market and 50% seven-day values are reference limits only" in output
+    assert "### Closed-trade entry concurrency" in output
+    assert "positions_already_open_before_fill" in output
+    assert "solo / overlap trades" in output
+    assert "`2 / 3`" in output
+    assert "solo / overlap net PnL" in output
+    assert "`12 / -9`" in output
+    assert "evidence gate (closed / solo / overlap)" in output
+    assert "`30 / 10 / 10`" in output
+    assert "still needed C/S/O" in output
+    assert "`25 / 8 / 7`" in output
+    assert "| 0 | 2 | 2 | 0 | 0 | 12 | 0.6 | None |" in output
+    assert "| 1 | 1 | 0 | 1 | 0 | -4 | -0.4 | 0 |" in output
+    assert "| 2 | 1 | 1 | 0 | 0 | 3 | 0.3 | None |" in output
+    assert "| 3+ | 1 | 0 | 1 | 0 | -8 | -0.8 | 0 |" in output
+    assert "same-side prior overlap" in output
+    assert "n=2, PnL=-5, meanR=-0.25" in output
+    assert "same-timestamp openings are not treated as prior exposure" in output
     assert "### Closed-trade UTC decision-hour attribution" in output
     assert "strategy_decision_timestamp_utc_hour" in output
     assert "closed / attributed / misses" in output
