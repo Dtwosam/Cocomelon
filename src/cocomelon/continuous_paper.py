@@ -103,9 +103,6 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 from cocomelon.research.delayed_entry_fill_capacity import (
     delayed_entry_fill_capacity_summary,
 )
-from cocomelon.research.delayed_entry_risk_geometry import (
-    delayed_entry_risk_geometry_summary,
-)
 from cocomelon.research.delayed_entry_fill_weighted import (
     delayed_entry_fill_weighted_contribution,
 )
@@ -115,6 +112,9 @@ from cocomelon.research.delayed_entry_pair import (
 )
 from cocomelon.research.delayed_entry_pair_fill_weighted import (
     delayed_entry_pair_fill_weighted_summary,
+)
+from cocomelon.research.delayed_entry_risk_geometry import (
+    delayed_entry_risk_geometry_summary,
 )
 from cocomelon.research.delayed_entry_same_exit import (
     delayed_entry_same_exit_contribution,
