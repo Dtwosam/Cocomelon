@@ -371,6 +371,28 @@ def test_execution_shadow_contains_closed_trade_lineage_mismatch() -> None:
     assert summary["lineage_mismatch_closed_trades"] == 1
 
 
+def test_execution_shadow_reconcile_tracks_current_eligible_position() -> None:
+    position = _position(opened_at_ms=1_000)
+    shadow = _shadow(started_at_ms=500)
+
+    shadow.reconcile_open_positions((position,))
+
+    summary = shadow.summary_payload()
+    assert summary["eligible_open_positions"] == 1
+    assert summary["excluded_pre_observer_open_positions"] == 0
+
+
+def test_execution_shadow_reconcile_tracks_pre_observer_position_as_excluded() -> None:
+    position = _position(opened_at_ms=400)
+    shadow = _shadow(started_at_ms=500)
+
+    shadow.reconcile_open_positions((position,))
+
+    summary = shadow.summary_payload()
+    assert summary["eligible_open_positions"] == 0
+    assert summary["excluded_pre_observer_open_positions"] == 1
+
+
 def test_execution_shadow_reconciles_orphaned_restored_position() -> None:
     position = _position()
     shadow = _shadow()
