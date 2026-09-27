@@ -801,6 +801,10 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
         lines.append(f"- research error: `{error}`")
         return lines
 
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+
     lines.extend(
         [
             f"- source: `{raw.get('source', 'unknown')}`",
@@ -811,13 +815,23 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
             (
                 "- eligible / excluded open positions: "
                 f"`{raw.get('eligible_open_positions', 0)} / "
-                f"{raw.get('excluded_pre_observer_open_positions', 0)}`"
+                f"{raw.get('excluded_open_positions', 0)}`"
             ),
             (
                 "- completed prospective trades / excluded / unmatched closes: "
                 f"`{raw.get('closed_trade_count', 0)} / "
                 f"{raw.get('excluded_closed_trades', 0)} / "
                 f"{raw.get('unmatched_closed_trades', 0)}`"
+            ),
+            (
+                "- evidence gate: "
+                f"`{readiness.get('min_fresh_observations_per_horizon', 0)}` "
+                "fresh observations per horizon · max non-fresh "
+                f"`{readiness.get('max_non_fresh_fraction')}`"
+            ),
+            (
+                "- all horizons ready for review: "
+                f"`{str(bool(readiness.get('all_horizons_ready_for_review'))).lower()}`"
             ),
             "- promotion authority: `false`",
         ]
@@ -830,12 +844,13 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
         [
             "",
             (
-                "| Horizon | Fresh | Stale | Censored | Missing close | "
-                "+ | - | Mean bps | Mean gross R | Mean lag | Max lag |"
+                "| Horizon | Status | Fresh | Need | Non-fresh | Coverage | "
+                "Stale | Censored | Missing close | + | - | Mean bps | "
+                "Mean gross R | Mean lag | Max lag |"
             ),
             (
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
-                "---: | ---: | ---: | ---: |"
+                "| --- | --- | ---: | ---: | ---: | --- | ---: | ---: | "
+                "---: | ---: | ---: | ---: | ---: | ---: | ---: |"
             ),
         ]
     )
@@ -849,12 +864,21 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
             item = {}
         lines.append(
             (
-                "| {label} | {fresh} | {stale} | {censored} | "
-                "{missing} | {positive} | {negative} | {bps} | {r} | "
+                "| {label} | {status} | {fresh} | {need} | {non_fresh} | "
+                "{coverage} | {stale} | {censored} | {missing} | "
+                "{positive} | {negative} | {bps} | {r} | "
                 "{mean_lag}ms | {max_lag}ms |"
             ).format(
                 label=label,
+                status=item.get("readiness_status", "collecting"),
                 fresh=item.get("fresh", 0),
+                need=item.get("missing_fresh_observations", 0),
+                non_fresh=item.get("non_fresh_fraction"),
+                coverage=(
+                    "ok"
+                    if item.get("coverage_quality_ready") is True
+                    else "collecting"
+                ),
                 stale=item.get("stale", 0),
                 censored=item.get("censored", 0),
                 missing=item.get("missing_at_close", 0),
@@ -914,8 +938,10 @@ def _entry_mid_markout_shadow_lines(raw: object) -> list[str]:
             "",
             (
                 "_Prospective public mid-price observation from the existing "
-                "allMids feed. It is not a mark-price claim, executable fill, "
-                "entry rule, or promotion signal._"
+                "allMids feed. Review readiness also requires adequate fresh "
+                "coverage, clean lineage, and zero unmatched closes. It is not "
+                "a mark-price claim, executable fill, entry rule, or promotion "
+                "signal._"
             ),
         ]
     )
