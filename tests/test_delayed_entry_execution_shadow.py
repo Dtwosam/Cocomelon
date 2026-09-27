@@ -21,6 +21,7 @@ from cocomelon.execution.accounting import (
 from cocomelon.research.delayed_entry_execution_shadow import (
     DELAY_MS,
     DelayedEntryExecutionShadow,
+    DelayedEntryShadowError,
 )
 
 MARKET = MarketId("", "SOL")
@@ -461,7 +462,7 @@ def test_custom_120s_delay_is_durable_and_independent() -> None:
         started_at_ms=500,
     )
     with pytest.raises(
-        Exception,
+        DelayedEntryShadowError,
         match="delay mismatch",
     ):
         incompatible.restore_state(payload)
