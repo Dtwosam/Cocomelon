@@ -50,6 +50,7 @@ from cocomelon.continuous_paper import (
     _restore_delayed_entry_execution_shadow,
     _restore_drawdown_tracker,
     _restore_entry_mid_markout_shadow,
+    _restore_fill_aware_delay_selector,
     _restore_profit_lock_execution_shadow,
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
@@ -232,6 +233,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"adaptive_delay_selector": adaptive_delay_selector' in source
     assert "adaptive_delay_selector_state.payload()" in source
     assert "adaptive_delay_selector_summary(" in source
+    assert (
+        'FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME = (' in source
+    )
+    assert (
+        '"fill_aware_delay_selector": fill_aware_delay_selector'
+        in source
+    )
+    assert "fill_aware_delay_selector_state.payload()" in source
+    assert "fill_aware_delay_selector_summary(" in source
     assert (
         '"prospective_top10_rank_filter": (' in source
     )
@@ -1199,6 +1209,22 @@ def test_adaptive_delay_selector_restore_failure_is_fail_open(
     )
 
     assert state.started_at_ms == 456
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+def test_fill_aware_delay_selector_restore_failure_is_fail_open(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "fill-aware-delay-selector-state.json"
+    path.write_text("{not-json", encoding="utf-8")
+
+    state, error = _restore_fill_aware_delay_selector(
+        path,
+        started_at_ms=987,
+    )
+
+    assert state.started_at_ms == 987
     assert error is not None
     assert "JSONDecodeError" in error
 

@@ -1326,6 +1326,164 @@ def _delayed_entry_contribution_decomposition_lines(
     return lines
 
 
+def _fill_aware_delay_selector_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Fill-aware 60s/120s delayed-entry selector",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No fill-aware delay telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    by_side = raw.get("by_side", {})
+    by_source = raw.get("by_60s_source", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(by_side, dict):
+        by_side = {}
+    if not isinstance(by_source, dict):
+        by_source = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- prospective start / rule: "
+                f"`{raw.get('started_at_ms')}` / "
+                f"`{raw.get('rule', 'unknown')}`"
+            ),
+            (
+                "- prospective closed / causal evaluable: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('causal_evaluable_trades', 0)}`"
+            ),
+            (
+                "- selected 60s / 120s: "
+                f"`{overall.get('selected_60s', 0)} / "
+                f"{overall.get('selected_120s', 0)}`"
+            ),
+            (
+                "- actual / always-60 / always-120 / fill-aware PnL: "
+                f"`{overall.get('actual_net_pnl', '0')}` / "
+                f"`{overall.get('always_60s_net_pnl', '0')}` / "
+                f"`{overall.get('always_120s_net_pnl', '0')}` / "
+                f"`{overall.get('fill_aware_net_pnl', '0')}`"
+            ),
+            (
+                "- fill-aware Δ vs actual / 60s / 120s: "
+                f"`{overall.get('fill_aware_minus_actual_pnl', '0')}` / "
+                f"`{overall.get('fill_aware_minus_60s_pnl', '0')}` / "
+                f"`{overall.get('fill_aware_minus_120s_pnl', '0')}`"
+            ),
+            (
+                "- mean selected fill / R contribution: "
+                f"`{overall.get('mean_selected_fill_fraction')}` / "
+                f"`{overall.get('mean_selected_r_contribution')}`"
+            ),
+            (
+                "- missing 60s / 120s, non-evaluable 60s / 120s: "
+                f"`{raw.get('missing_base_outcome', 0)} / "
+                f"{raw.get('missing_challenger_outcome', 0)} / "
+                f"{raw.get('non_evaluable_base', 0)} / "
+                f"{raw.get('non_evaluable_challenger', 0)}`"
+            ),
+            (
+                "- lineage mismatches: "
+                f"`{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- evidence gate closed / causal / 60s / 120s: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('min_selected_60s_trades', 0)} / "
+                f"{readiness.get('min_selected_120s_trades', 0)}`"
+            ),
+            (
+                "- still needed C/E/60/120: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_causal_evaluable_trades', 0)} / "
+                f"{readiness.get('missing_selected_60s_trades', 0)} / "
+                f"{readiness.get('missing_selected_120s_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "| Cohort | N | Select 60s | Select 120s | Fill-aware PnL | "
+                "Δ vs 60s | Δ vs 120s | Mean fill |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    def row(label: str, item: object) -> None:
+        if not isinstance(item, dict):
+            return
+        lines.append(
+            (
+                "| {label} | {n} | {s60} | {s120} | {pnl} | "
+                "{d60} | {d120} | {fill} |"
+            ).format(
+                label=label,
+                n=item.get("trades", 0),
+                s60=item.get("selected_60s", 0),
+                s120=item.get("selected_120s", 0),
+                pnl=item.get("fill_aware_net_pnl", "0"),
+                d60=item.get("fill_aware_minus_60s_pnl", "0"),
+                d120=item.get("fill_aware_minus_120s_pnl", "0"),
+                fill=item.get("mean_selected_fill_fraction"),
+            )
+        )
+
+    row("LONG", by_side.get("long"))
+    row("SHORT", by_side.get("short"))
+    row("60s full fill", by_source.get("full_visible_book_ioc"))
+    row("60s partial fill", by_source.get("partial_visible_book_ioc"))
+    row("60s no fill", by_source.get("no_fill"))
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Prospective causal selector only. A full 60s visible-book IOC "
+                "uses 60s; a partial or no-fill 60s attempt waits for the 120s "
+                "shadow. Same observed exits are held constant, unfilled "
+                "quantity contributes zero, and no replacement trades or "
+                "changed stops are modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _adaptive_delay_selector_lines(
     raw: object,
 ) -> list[str]:
@@ -4116,6 +4274,11 @@ def _research_readiness_board_lines(
     adaptive_delay_ready = bool(
         adaptive_delay_gate.get("ready_for_review")
     )
+    fill_aware_delay = mapping("fill_aware_delay_selector")
+    fill_aware_delay_gate = readiness(fill_aware_delay)
+    fill_aware_delay_ready = bool(
+        fill_aware_delay_gate.get("ready_for_review")
+    )
     delayed_integrity = (
         f"mismatch={delayed.get('lineage_mismatch_closed_trades', 0)}, "
         f"orphan={delayed.get('orphaned_restored_positions', 0)}"
@@ -4296,6 +4459,19 @@ def _research_readiness_board_lines(
                 f"midmiss={adaptive_delay.get('missing_mid_outcome', 0)}, "
                 f"late={adaptive_delay.get('late_mid_signal', 0)}, "
                 f"mismatch={adaptive_delay.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "fill-aware 60s/120s delay",
+            status(fill_aware_delay, ready=fill_aware_delay_ready),
+            (
+                f"closed={fill_aware_delay.get('prospective_closed_trades', 0)}, "
+                f"causal={fill_aware_delay.get('causal_evaluable_trades', 0)}"
+            ),
+            (
+                f"non60={fill_aware_delay.get('non_evaluable_base', 0)}, "
+                f"non120={fill_aware_delay.get('non_evaluable_challenger', 0)}, "
+                f"mismatch={fill_aware_delay.get('lineage_mismatches', 0)}"
             ),
         ),
         (
@@ -4629,6 +4805,11 @@ def render_live_status(
     lines.extend(
         _adaptive_delay_selector_lines(
             payload.get("adaptive_delay_selector")
+        )
+    )
+    lines.extend(
+        _fill_aware_delay_selector_lines(
+            payload.get("fill_aware_delay_selector")
         )
     )
     lines.extend(

@@ -1787,3 +1787,29 @@ The adaptive 60s/120s selector now also reports chronological stability without 
 This is descriptive robustness only. It cannot make the selector review-ready, cannot alter paper entry timing, and has no promotion or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective fill-aware 60s/120s delayed-entry selector — 2026-09-27
+
+A second adaptive delayed-entry hypothesis is frozen prospectively after the existing 60-second fill-quality results were already observed. Earlier outcomes are excluded from this candidate.
+
+Frozen causal rule:
+
+- if the 60-second visible-book IOC shadow fully fills the original quantity, select the 60-second delayed-entry contribution;
+- if the 60-second shadow partial-fills or genuinely no-fills, keep waiting and select the existing 120-second delayed-entry contribution;
+- if either required delayed-entry stream is missing or non-evaluable, the trade is not counted as causally evaluable;
+- no fill-fraction threshold sweep, optimizer, market exception, or side exception is permitted inside this candidate.
+
+Economic accounting reuses the existing fill-weighted same-exit research contract. Filled quantity keeps the observed trade exit, scaled exit fee, and scaled funding; unfilled quantity contributes zero and is not replaced. This is therefore a trade-contribution study, not a portfolio counterfactual.
+
+The candidate has its own durable start timestamp so the partial-fill pattern that motivated it cannot enter prospective validation. Review readiness requires:
+
+- 30 prospective closed trades;
+- 20 causally evaluable trades;
+- at least 5 selections of 60 seconds;
+- at least 5 selections of 120 seconds;
+- no missing required 60s/120s outcomes, non-evaluable delayed outcomes, or lineage mismatches.
+
+Meeting the gate means only `ready_for_review`. The selector has no execution or promotion authority and cannot delay or place the actual paper order.
+
+**LIVE TRADING: DISABLED.**
