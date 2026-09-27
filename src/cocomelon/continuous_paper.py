@@ -104,6 +104,9 @@ from cocomelon.research.delayed_entry_pair import (
     CHALLENGER_DELAY_MS,
     delayed_entry_pair_summary,
 )
+from cocomelon.research.delayed_entry_pair_fill_weighted import (
+    delayed_entry_pair_fill_weighted_summary,
+)
 from cocomelon.research.delayed_entry_same_exit import (
     delayed_entry_same_exit_contribution,
 )
@@ -2284,6 +2287,55 @@ def _delayed_entry_pair_payload(
     return payload
 
 
+def _delayed_entry_pair_fill_weighted_payload(
+    journal: JournalStore,
+    base_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    challenger_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+) -> dict[str, object]:
+    if base_shadow.shadow is None or challenger_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": "fill-weighted delayed-entry pair requires both shadows",
+        }
+    try:
+        challenger_summary = challenger_shadow.shadow.summary_payload()
+        raw_started_at_ms = challenger_summary.get("started_at_ms")
+        if (
+            isinstance(raw_started_at_ms, bool)
+            or not isinstance(raw_started_at_ms, int)
+        ):
+            raise ValueError(
+                "challenger delayed-entry start must be an integer"
+            )
+        payload = delayed_entry_pair_fill_weighted_summary(
+            journal,
+            base_shadow.shadow.outcomes,
+            challenger_shadow.shadow.outcomes,
+            started_at_ms=raw_started_at_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "base_error": base_shadow.error,
+            "challenger_error": challenger_shadow.error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["base_error"] = base_shadow.error
+    payload["challenger_error"] = challenger_shadow.error
+    payload["error"] = None
+    return payload
+
+
 def _opening_rank_attribution_payload(
     journal: JournalStore,
     rank_store: ContinuousPaperOpeningRankStore,
@@ -2616,6 +2668,13 @@ def _live_status_payload(
         delayed_entry_execution_shadow,
         delayed_entry_120s_execution_shadow,
     )
+    delayed_entry_pair_fill_weighted = (
+        _delayed_entry_pair_fill_weighted_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            delayed_entry_120s_execution_shadow,
+        )
+    )
     opening_rank = _opening_rank_attribution_payload(
         pump.journal,
         opening_rank_store,
@@ -2745,6 +2804,9 @@ def _live_status_payload(
             delayed_entry_120s_execution_shadow.summary_payload()
         ),
         "delayed_entry_pair": delayed_entry_pair,
+        "delayed_entry_pair_fill_weighted": (
+            delayed_entry_pair_fill_weighted
+        ),
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
         "prospective_entry_filter": prospective_entry_filter,
