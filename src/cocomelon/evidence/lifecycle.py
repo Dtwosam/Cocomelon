@@ -231,6 +231,7 @@ class BaselineReplayPipeline:
         self._run_id = replay_run_id
         self._evidence_class = evidence_class
         self._new_exposure_cutoff_ms = new_exposure_cutoff_ms
+        self._new_exposure_paused = False
         self._feature_snapshot_sink = feature_snapshot_sink
         self._opening_lifecycle_sink = opening_lifecycle_sink
         self._closed_lifecycle_sink = closed_lifecycle_sink
@@ -492,7 +493,16 @@ class BaselineReplayPipeline:
             restored.append((started_ms, ended_ms))
         self._gap_intervals = restored
 
+    def set_new_exposure_paused(self, paused: bool) -> None:
+        self._new_exposure_paused = paused
+
+    @property
+    def new_exposure_paused(self) -> bool:
+        return self._new_exposure_paused
+
     def _new_exposure_allowed(self, timestamp_ms: int) -> bool:
+        if self._new_exposure_paused:
+            return False
         cutoff_ms = self._new_exposure_cutoff_ms
         return cutoff_ms is None or timestamp_ms < cutoff_ms
 
