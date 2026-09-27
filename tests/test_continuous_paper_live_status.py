@@ -2800,7 +2800,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 17`" in output
+    assert "review-ready studies: `0 / 18`" in output
     assert "| 60s price confirmation | collecting | eval=10, confirmed=6, skipped=4 |" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
@@ -2971,6 +2971,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| 60s vs 120s fill-weighted | collecting | "
         "closed=10, paired=7 | "
         "missing60=0, missing120=0, mismatch=0 |" in output
+    )
+    assert (
+        "| adaptive 60s/120s delay | collecting | "
+        "closed=8, causal=6 | midmiss=0, late=1, mismatch=0 |"
+        in output
     )
     assert (
         "| 60s delayed same-exit | collecting | "
