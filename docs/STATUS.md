@@ -1244,3 +1244,20 @@ The continuous paper live status now decomposes each closed trade into an exact 
 This is attribution only. It does not alter strategy thresholds, scanner ranking, entries, exits, stops, sizing, cadence, risk, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Account lifecycle realized-economics bridge — 2026-09-27
+
+The continuous paper live status now separates account cash already realized inside still-open positions from economics belonging to fully closed journal trades.
+
+- each open paper position already carries cumulative realized gross PnL, fees, and funding from partial/reduce-only execution plus funding accruals;
+- the bridge computes open-lifecycle realized net cash as `realized gross - fees + funding`, then adds current unrealized PnL for mark-to-market lifecycle contribution;
+- subtracting those open-lifecycle cumulative amounts from account-wide realized gross, fees, and funding yields the account-implied fully closed lifecycle economics;
+- those implied closed totals are compared directly with the durable trade journal;
+- the bridge also verifies `starting cash + realized net cash = cash` and reconciles total account PnL as `closed journal net + open-lifecycle realized net + open unrealized`;
+- all gross/fee/funding/net and equity reconciliation deltas are published explicitly instead of silently assuming that account realized PnL came only from completed trades;
+- a mismatch disables only this diagnostic and never changes paper execution authority.
+
+This resolves the ambiguity where partial reductions can increase account realized gross PnL while the closed-trade count remains unchanged.
+
+**LIVE TRADING: DISABLED.**

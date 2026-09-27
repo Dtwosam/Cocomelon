@@ -53,6 +53,9 @@ from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
 from cocomelon.hyperliquid.ws_client import connect_mainnet_ws
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.account_lifecycle_bridge import (
+    account_lifecycle_bridge,
+)
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_friction import (
     closed_trade_friction_summary,
@@ -1561,6 +1564,29 @@ def _position_protection_metrics(
     }
 
 
+def _account_lifecycle_bridge_payload(
+    execution: PaperExecutionAdapter,
+    journal: JournalStore,
+) -> dict[str, object]:
+    try:
+        payload = account_lifecycle_bridge(
+            execution.account,
+            tuple(journal.iter_trades()),
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_friction_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -1853,6 +1879,10 @@ def _live_status_payload(
         feature_store,
         fact_store,
     )
+    account_lifecycle_economics = _account_lifecycle_bridge_payload(
+        execution,
+        pump.journal,
+    )
     closed_trade_friction = _closed_trade_friction_payload(
         pump.journal,
         fact_store,
@@ -1929,6 +1959,7 @@ def _live_status_payload(
             for trade in reversed(pump.recent_closed_trades)
         ],
         "closed_trade_performance": closed_trade_performance,
+        "account_lifecycle_economics": account_lifecycle_economics,
         "closed_trade_friction": closed_trade_friction,
         "open_planned_risk": str(open_planned_risk),
         "open_planned_risk_fraction_of_equity": str(
