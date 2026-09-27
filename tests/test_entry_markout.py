@@ -17,6 +17,7 @@ from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.entry_markout import (
+    MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS,
     entry_markout_summary,
 )
 
@@ -209,6 +210,7 @@ def test_entry_markout_uses_signed_long_short_economics_and_censors(
     assert one["mean_signed_return_bps"] == "100.00"
     assert one["mean_gross_r"] == "0.1"
     assert one["mean_observation_lag_ms"] == 0
+    assert one["stale_observed_mark"] == 0
     by_side = one["by_side"]
     assert isinstance(by_side, dict)
     assert by_side["long"]["mean_gross_r"] == "0.1"
@@ -221,6 +223,7 @@ def test_entry_markout_uses_signed_long_short_economics_and_censors(
     assert five["negative"] == 2
     assert five["mean_signed_return_bps"] == "-100.00"
     assert five["mean_gross_r"] == "-0.1"
+    assert five["stale_observed_mark"] == 0
 
     fifteen = horizons["900000"]
     assert isinstance(fifteen, dict)
@@ -229,9 +232,66 @@ def test_entry_markout_uses_signed_long_short_economics_and_censors(
     assert fifteen["censored_before_horizon"] == 1
     assert fifteen["mean_signed_return_bps"] == "200.00"
     assert fifteen["mean_gross_r"] == "0.2"
+    assert fifteen["stale_observed_mark"] == 0
     by_strategy = fifteen["by_lead_strategy"]
     assert isinstance(by_strategy, dict)
     assert by_strategy["trend"]["observations"] == 1
+
+
+
+
+
+def test_entry_markout_rejects_marks_beyond_freshness_bound(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "trade-paths"
+    )
+    try:
+        trade = _trade(
+            suffix="stale",
+            direction=Direction.LONG,
+            opened_at_ms=1_000_000,
+            closed_at_ms=2_000_000,
+        )
+        journal.record_trade(trade)
+        facts.record_decision_fact(
+            _fact(trade, lead_strategy="trend")
+        )
+        paths.record(
+            _path(
+                trade,
+                (
+                    (
+                        1_060_000
+                        + MAX_ENTRY_MARKOUT_OBSERVATION_LAG_MS
+                        + 1,
+                        "101",
+                    ),
+                ),
+            )
+        )
+
+        result = entry_markout_summary(
+            journal,
+            facts,
+            paths,
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    assert result["max_observation_lag_ms"] == 60_000
+    horizons = result["by_horizon_ms"]
+    assert isinstance(horizons, dict)
+    one = horizons["60000"]
+    assert isinstance(one, dict)
+    assert one["observations"] == 0
+    assert one["stale_observed_mark"] == 1
+    assert one["missing_observed_mark"] == 0
+    assert one["mean_gross_r"] is None
 
 
 def test_entry_markout_skips_incomplete_paths_and_tracks_missing_fact(
