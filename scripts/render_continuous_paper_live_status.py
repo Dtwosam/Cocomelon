@@ -632,6 +632,9 @@ def _entry_markout_lines(raw: object) -> list[str]:
         lines.append(f"- research error: `{error}`")
         return lines
 
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
     lines.extend(
         [
             (
@@ -648,6 +651,15 @@ def _entry_markout_lines(raw: object) -> list[str]:
                 f"`{raw.get('missing_journal_trade', 0)} / "
                 f"{raw.get('missing_decision_attribution', 0)}`"
             ),
+            (
+                "- evidence gate (observations per horizon): "
+                f"`{readiness.get('min_observations_per_horizon', 0)}`"
+            ),
+            (
+                "- all horizons ready for review: "
+                f"`{str(bool(readiness.get('all_horizons_ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
         ]
     )
 
@@ -663,12 +675,12 @@ def _entry_markout_lines(raw: object) -> list[str]:
         [
             "",
             (
-                "| Horizon | N | + | - | Mean bps | Mean gross R | "
-                "Censored | Missing mark | Mean lag | Max lag |"
+                "| Horizon | Status | N | Need | + | - | Mean bps | "
+                "Mean gross R | Censored | Missing mark | Mean lag | Max lag |"
             ),
             (
-                "| --- | ---: | ---: | ---: | ---: | ---: | "
-                "---: | ---: | ---: | ---: |"
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: | ---: |"
             ),
         ]
     )
@@ -678,12 +690,14 @@ def _entry_markout_lines(raw: object) -> list[str]:
             item = {}
         lines.append(
             (
-                "| {label} | {n} | {positive} | {negative} | "
-                "{bps} | {r} | {censored} | {missing} | "
+                "| {label} | {status} | {n} | {need} | {positive} | "
+                "{negative} | {bps} | {r} | {censored} | {missing} | "
                 "{mean_lag}ms | {max_lag}ms |"
             ).format(
                 label=label,
+                status=item.get("readiness_status", "collecting"),
                 n=item.get("observations", 0),
+                need=item.get("missing_observations", 0),
                 positive=item.get("positive", 0),
                 negative=item.get("negative", 0),
                 bps=item.get("mean_signed_return_bps"),
