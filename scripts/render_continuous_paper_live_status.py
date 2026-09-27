@@ -529,6 +529,127 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_top10_rank_filter_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective top-10 scanner-rank filter",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective top-10 rank-filter telemetry in this heartbeat._"
+        )
+        return lines
+
+    enabled = bool(raw.get("enabled"))
+    lines.append(f"- enabled: `{str(enabled).lower()}`")
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    rule = raw.get("rule", {})
+    if not isinstance(rule, dict):
+        rule = {}
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- frozen rule: admit scanner rank "
+                f"`1-{rule.get('max_admitted_ordinal', 'unknown')}`; "
+                "shadow-reject lower-ranked openings"
+            ),
+            (
+                "- maximum accepted rank age: "
+                f"`{rule.get('max_rank_age_ms')}`ms"
+            ),
+            (
+                "- prospective closed / attributed: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('attributed_trades', 0)}`"
+            ),
+            (
+                "- missing / stale rank evidence: "
+                f"`{raw.get('missing_rank_evidence', 0)} / "
+                f"{raw.get('stale_rank_evidence', 0)}`"
+            ),
+            (
+                "- allowed / blocked trades: "
+                f"`{raw.get('allowed_trades', 0)} / "
+                f"{raw.get('blocked_trades', 0)}`"
+            ),
+            (
+                "- allowed W/L · blocked W/L: "
+                f"`{raw.get('allowed_wins', 0)}/"
+                f"{raw.get('allowed_losses', 0)} · "
+                f"{raw.get('blocked_wins', 0)}/"
+                f"{raw.get('blocked_losses', 0)}`"
+            ),
+            (
+                "- allowed / blocked net PnL: "
+                f"`{raw.get('allowed_net_pnl', '0')}` / "
+                f"`{raw.get('blocked_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / candidate trade-contribution PnL: "
+                f"`{raw.get('actual_net_pnl', '0')}` / "
+                f"`{raw.get('candidate_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- delta trade contribution: "
+                f"`{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- allowed / blocked mean R: "
+                f"`{raw.get('allowed_mean_net_r')}` / "
+                f"`{raw.get('blocked_mean_net_r')}`"
+            ),
+            (
+                "- allowed / blocked mean rank: "
+                f"`{raw.get('allowed_mean_ordinal')}` / "
+                f"`{raw.get('blocked_mean_ordinal')}`"
+            ),
+            (
+                "- evidence gate (prospective / blocked / allowed): "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_blocked_trades', 0)} / "
+                f"{readiness.get('min_allowed_trades', 0)}`"
+            ),
+            (
+                "- still needed P/B/A: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_blocked_trades', 0)} / "
+                f"{readiness.get('missing_allowed_trades', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Prospective closed-trade contribution study only. Existing "
+                "rank-11–20 losses from before this study do not count toward "
+                "the candidate. It does not claim portfolio PnL or alter the "
+                "scanner, shortlist, or entry decision._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _opening_rank_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -1067,6 +1188,11 @@ def render_live_status(
     lines.extend(
         _prospective_entry_filter_lines(
             payload.get("prospective_entry_filter")
+        )
+    )
+    lines.extend(
+        _prospective_top10_rank_filter_lines(
+            payload.get("prospective_top10_rank_filter")
         )
     )
     lines.extend(
