@@ -585,6 +585,8 @@ def adaptive_delay_selector_summary(
         and missing_mid == 0
         and missing_base == 0
         and missing_challenger == 0
+        and non_evaluable_base == 0
+        and non_evaluable_challenger == 0
         and lineage_mismatches == 0
     )
 
