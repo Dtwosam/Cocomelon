@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.execution import OrderSide, PaperOrderPlan
@@ -91,18 +91,14 @@ def _summarize(
         }
 
     def mean(field: str) -> str:
-        values = [
-            value
-            for row in rows
-            if isinstance(
-                (value := row.get(field)),
-                Decimal,
-            )
-        ]
-        if len(values) != len(rows):
-            raise DelayedEntryRiskGeometryError(
-                f"missing risk geometry field: {field}"
-            )
+        values: list[Decimal] = []
+        for row in rows:
+            value = row.get(field)
+            if not isinstance(value, Decimal):
+                raise DelayedEntryRiskGeometryError(
+                    f"missing risk geometry field: {field}"
+                )
+            values.append(value)
         return _decimal(
             sum(values, ZERO) / Decimal(len(values))
         )
