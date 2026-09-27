@@ -146,6 +146,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"opening_rank_state_digest": self.opening_rank_state_digest' in source
     assert '"entry_markout": entry_markout' in source
     assert "entry_markout_summary(" in source
+    assert "entry_markout_readiness(payload)" in source
+    assert '"min_observations_per_horizon"' in source
+    assert '"readiness_status"' in source
+    assert '"missing_observations"' in source
 
 
 def test_opening_rank_telemetry_fails_open(
