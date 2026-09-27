@@ -8,10 +8,19 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.execution.accounting import PaperAccountState, PaperPosition, PositionSide
 
 ZERO: Final = Decimal("0")
+RECONCILIATION_ABS_TOLERANCE: Final = Decimal("1e-18")
 
 
 class AccountLifecycleBridgeError(RuntimeError):
     pass
+
+
+def _matches_zero(value: Decimal) -> bool:
+    if not value.is_finite():
+        raise AccountLifecycleBridgeError(
+            "reconciliation delta must be finite"
+        )
+    return abs(value) <= RECONCILIATION_ABS_TOLERANCE
 
 
 def _position_unrealized(position: PaperPosition) -> Decimal:
@@ -172,14 +181,23 @@ def account_lifecycle_bridge(
             "closed_net_delta": str(net_delta),
             "realized_bridge_delta": str(realized_bridge_delta),
             "equity_bridge_delta": str(equity_bridge_delta),
-            "cash_bridge_matches_account": cash_bridge_delta == ZERO,
-            "closed_journal_matches_account": (
-                gross_delta == ZERO
-                and fees_delta == ZERO
-                and funding_delta == ZERO
-                and net_delta == ZERO
+            "absolute_tolerance": str(
+                RECONCILIATION_ABS_TOLERANCE
             ),
-            "realized_bridge_matches_account": realized_bridge_delta == ZERO,
-            "equity_bridge_matches_account": equity_bridge_delta == ZERO,
+            "cash_bridge_matches_account": _matches_zero(
+                cash_bridge_delta
+            ),
+            "closed_journal_matches_account": (
+                _matches_zero(gross_delta)
+                and _matches_zero(fees_delta)
+                and _matches_zero(funding_delta)
+                and _matches_zero(net_delta)
+            ),
+            "realized_bridge_matches_account": _matches_zero(
+                realized_bridge_delta
+            ),
+            "equity_bridge_matches_account": _matches_zero(
+                equity_bridge_delta
+            ),
         },
     }
