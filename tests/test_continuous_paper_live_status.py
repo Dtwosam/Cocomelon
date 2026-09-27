@@ -1029,6 +1029,94 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 },
             },
         },
+        "opening_fill_liquidity": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "evidence_source": "exact_opening_ioc_l2_book",
+            "evidence_records": 5,
+            "attributed_closed_trades": 3,
+            "closed_trades_without_fill_liquidity_evidence": 9,
+            "unmatched_open_or_pending_records": 2,
+            "review_gate_closed_trades": 30,
+            "still_needed_closed_trades": 27,
+            "ready_for_review": False,
+            "capture_error": None,
+            "error": None,
+            "overall": {
+                "trades": 3,
+                "wins": 1,
+                "losses": 2,
+                "net_pnl": "-4",
+                "mean_net_r": "-0.13",
+                "mean_spread_bps": "3",
+                "mean_fill_slippage_bps": "1.5",
+                "mean_entry_depth_25bps": "100000",
+                "mean_exit_depth_25bps": "90000",
+                "mean_entry_depth_usage_fraction": "0.01",
+                "mean_directional_book_imbalance": "-0.1",
+                "mean_book_receive_age_ms": 12,
+            },
+            "winners": {
+                "trades": 1,
+                "wins": 1,
+                "losses": 0,
+                "net_pnl": "5",
+                "mean_net_r": "0.5",
+                "mean_spread_bps": "1",
+                "mean_fill_slippage_bps": "0.5",
+                "mean_entry_depth_25bps": "150000",
+                "mean_exit_depth_25bps": "140000",
+                "mean_entry_depth_usage_fraction": "0.005",
+                "mean_directional_book_imbalance": "0.3",
+                "mean_book_receive_age_ms": 5,
+            },
+            "losers": {
+                "trades": 2,
+                "wins": 0,
+                "losses": 2,
+                "net_pnl": "-9",
+                "mean_net_r": "-0.45",
+                "mean_spread_bps": "4",
+                "mean_fill_slippage_bps": "2",
+                "mean_entry_depth_25bps": "75000",
+                "mean_exit_depth_25bps": "65000",
+                "mean_entry_depth_usage_fraction": "0.02",
+                "mean_directional_book_imbalance": "-0.3",
+                "mean_book_receive_age_ms": 16,
+            },
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "net_pnl": "1",
+                    "mean_net_r": "0.05",
+                    "mean_spread_bps": "2",
+                    "mean_fill_slippage_bps": "1",
+                    "mean_entry_depth_25bps": "120000",
+                    "mean_exit_depth_25bps": "110000",
+                    "mean_entry_depth_usage_fraction": "0.01",
+                    "mean_directional_book_imbalance": "0.1",
+                    "mean_book_receive_age_ms": 10,
+                },
+                "short": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-5",
+                    "mean_net_r": "-0.5",
+                    "mean_spread_bps": "5",
+                    "mean_fill_slippage_bps": "2.5",
+                    "mean_entry_depth_25bps": "60000",
+                    "mean_exit_depth_25bps": "50000",
+                    "mean_entry_depth_usage_fraction": "0.03",
+                    "mean_directional_book_imbalance": "-0.5",
+                    "mean_book_receive_age_ms": 20,
+                },
+            },
+        },
         "entry_markout_predictiveness": {
             "enabled": True,
             "research_only": True,
@@ -1971,6 +2059,25 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`32000`ms / `58000`ms" in output
     assert "| 1-5 | 1 | 1 | 0 | 0 | 5 | 0.5 |" in output
     assert "| 11-20 | 2 | 0 | 2 | 0 | -7 | -0.35 |" in output
+    assert "### Opening fill liquidity" in output
+    assert "exact_opening_ioc_l2_book" in output
+    assert "records / attributed closed / historical without evidence" in output
+    assert "`5 / 3 / 9`" in output
+    assert "review gate / still needed" in output
+    assert "`30 / 27`" in output
+    assert (
+        "| Overall | 3 | 1 | 2 | -4 | -0.13 | 3 | 1.5 | "
+        "100000 | 0.01 | -0.1 | 12ms |"
+    ) in output
+    assert (
+        "| Winners | 1 | 1 | 0 | 5 | 0.5 | 1 | 0.5 | "
+        "150000 | 0.005 | 0.3 | 5ms |"
+    ) in output
+    assert (
+        "| Losers | 2 | 0 | 2 | -9 | -0.45 | 4 | 2 | "
+        "75000 | 0.02 | -0.3 | 16ms |"
+    ) in output
+    assert "Historical trades are not backfilled" in output
     assert "### Entry markout → final outcome" in output
     assert "early_markout_sign_vs_final_closed_trade_outcome" in output
     assert "| 1m | 4 | 0.5 | 2/1/1 | 0.05 | 2/1/1 | -0.15 | 26/8/8 |" in output
