@@ -364,7 +364,6 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
                 ((200_000, "105"),),
             )
         )
-        plan = _plan(candidate)
         limits = RiskLimits(
             max_open_risk=Decimal("1"),
             correlation_bucket_risk_limit=Decimal("1"),
@@ -410,7 +409,6 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
         paths.record(
             _path(candidate, ((200_000, "100"),))
         )
-        plan = _plan(candidate)
         no_fill = DelayedEntryOutcome(
             trade_id=candidate.trade_id,
             opening_plan_id=candidate.opening_plan_id,
