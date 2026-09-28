@@ -70,6 +70,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
         in source
     )
     assert "src/cocomelon/research/delayed_entry_mtm_portfolio.py" in source
+    assert "src/cocomelon/research/delayed_entry_portfolio_capacity.py" in source
     assert "src/cocomelon/research/delayed_entry_risk_geometry.py" in source
     assert "src/cocomelon/research/delayed_entry_pair.py" in source
     assert "src/cocomelon/research/delayed_entry_pair_fill_weighted.py" in source
@@ -120,6 +121,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
         in source
     )
     assert '"src/cocomelon/research/delayed_entry_mtm_portfolio.py"' in source
+    assert '"src/cocomelon/research/delayed_entry_portfolio_capacity.py"' in source
     assert '"src/cocomelon/research/delayed_entry_risk_geometry.py"' in source
     assert '"src/cocomelon/research/delayed_entry_pair.py"' in source
     assert '"src/cocomelon/research/delayed_entry_pair_fill_weighted.py"' in source

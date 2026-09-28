@@ -25,6 +25,7 @@ from cocomelon.domain.execution import (
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
 from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
+from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
@@ -126,6 +127,9 @@ from cocomelon.research.delayed_entry_pair import (
 )
 from cocomelon.research.delayed_entry_pair_fill_weighted import (
     delayed_entry_pair_fill_weighted_summary,
+)
+from cocomelon.research.delayed_entry_portfolio_capacity import (
+    delayed_entry_portfolio_capacity_overlay,
 )
 from cocomelon.research.delayed_entry_risk_geometry import (
     delayed_entry_risk_geometry_summary,
@@ -2630,6 +2634,43 @@ def _delayed_entry_mtm_portfolio_payload(
     return payload
 
 
+def _delayed_entry_portfolio_capacity_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    trade_path_store: ContinuousPaperTradePathStore,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    limits: RiskLimits,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            trade_path_store,
+            plan_loader,
+            limits=limits,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_same_exit_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3101,6 +3142,7 @@ def _live_status_payload(
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
+    risk_limits: RiskLimits,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -3269,6 +3311,15 @@ def _live_status_payload(
             pump.journal,
             delayed_entry_execution_shadow,
             trade_path_store,
+        )
+    )
+    delayed_entry_portfolio_capacity = (
+        _delayed_entry_portfolio_capacity_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            trade_path_store,
+            execution.store.load_plan,
+            risk_limits,
         )
     )
     delayed_entry_contribution_decomposition = (
@@ -3467,6 +3518,9 @@ def _live_status_payload(
         "delayed_entry_mtm_portfolio": (
             delayed_entry_mtm_portfolio_payload
         ),
+        "delayed_entry_portfolio_capacity": (
+            delayed_entry_portfolio_capacity
+        ),
         "delayed_entry_contribution_decomposition": (
             delayed_entry_contribution_decomposition
         ),
@@ -3535,6 +3589,7 @@ def _emit_live_status(
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
+    risk_limits: RiskLimits,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3581,6 +3636,7 @@ def _emit_live_status(
         delay_selector_comparison_restore_error=(
             delay_selector_comparison_restore_error
         ),
+        risk_limits=risk_limits,
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
@@ -4045,6 +4101,7 @@ async def run_continuous_paper_session(
             delay_selector_comparison_restore_error=(
                 delay_selector_comparison_restore_error
             ),
+            risk_limits=replay_config.risk_limits,
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
@@ -4222,6 +4279,7 @@ async def run_continuous_paper_session(
                     delay_selector_comparison_restore_error=(
                         delay_selector_comparison_restore_error
                     ),
+                    risk_limits=replay_config.risk_limits,
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
