@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.domain.market import MarketId
-from cocomelon.execution.funding import (
-    FundingAccrual,
-    funding_cash_delta,
-)
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -24,6 +19,13 @@ from cocomelon.research.delayed_entry_fill_weighted import (
     DelayedEntryFillWeightedError,
     evaluate_delayed_entry_fill_weighted_outcome,
 )
+from cocomelon.research.delayed_entry_funding import (
+    DelayedEntryFundingError,
+    DelayedEntryFundingMissingError,
+    FundingLoader,
+    scaled_funding_events,
+    trade_funding_accruals,
+)
 
 ZERO: Final = Decimal("0")
 MIN_CLOSED_SHADOW_OUTCOMES: Final = 30
@@ -32,12 +34,6 @@ MIN_ACTUAL_OVERLAP_OPENINGS: Final = 5
 
 
 class DelayedEntryMtmPortfolioError(RuntimeError):
-    pass
-
-
-class DelayedEntryMtmFundingMissingError(
-    DelayedEntryMtmPortfolioError
-):
     pass
 
 
@@ -417,92 +413,11 @@ def _timeline(
     }
 
 
-def _trade_funding_events(
-    trade: TradeJournalEntry,
-    funding_loader: Callable[
-        [MarketId, int],
-        tuple[FundingAccrual, ...],
-    ],
-) -> tuple[FundingAccrual, ...]:
-    accruals = funding_loader(
-        trade.market,
-        trade.opened_at_ms,
-    )
-    relevant = tuple(
-        accrual
-        for accrual in accruals
-        if accrual.boundary_ms <= trade.closed_at_ms
-    )
-    by_id = {
-        accrual.accrual_id: accrual
-        for accrual in relevant
-    }
-    if len(by_id) != len(relevant):
-        raise DelayedEntryMtmPortfolioError(
-            "duplicate funding accrual ids"
-        )
-
-    selected: list[FundingAccrual] = []
-    for accrual_id in trade.funding_event_ids:
-        accrual = by_id.get(accrual_id)
-        if accrual is None:
-            raise DelayedEntryMtmFundingMissingError(
-                "journal funding event is missing from execution store"
-            )
-        if (
-            accrual.market != trade.market
-            or not (
-                trade.opened_at_ms
-                < accrual.boundary_ms
-                <= trade.closed_at_ms
-            )
-        ):
-            raise DelayedEntryMtmPortfolioError(
-                "funding accrual is outside journal lifecycle"
-            )
-        expected_sign = (
-            Decimal("1")
-            if trade.direction.value == "long"
-            else Decimal("-1")
-        )
-        if accrual.signed_quantity * expected_sign <= ZERO:
-            raise DelayedEntryMtmPortfolioError(
-                "funding accrual direction mismatches journal"
-            )
-        if funding_cash_delta(
-            accrual.signed_quantity,
-            accrual.oracle_price,
-            accrual.funding_rate,
-        ) != accrual.cash_delta:
-            raise DelayedEntryMtmPortfolioError(
-                "funding accrual cash delta is inconsistent"
-            )
-        selected.append(accrual)
-
-    selected.sort(
-        key=lambda item: (
-            item.boundary_ms,
-            item.accrual_id,
-        )
-    )
-    if sum(
-        (item.cash_delta for item in selected),
-        ZERO,
-    ) != trade.funding_cash_pnl:
-        raise DelayedEntryMtmPortfolioError(
-            "journal funding pnl does not match execution accruals"
-        )
-    return tuple(selected)
-
-
 def delayed_entry_mtm_portfolio(
     journal: JournalStore,
     outcomes: tuple[DelayedEntryOutcome, ...],
     path_store: ContinuousPaperTradePathStore,
-    funding_loader: Callable[
-        [MarketId, int],
-        tuple[FundingAccrual, ...],
-    ],
+    funding_loader: FundingLoader,
     *,
     delay_ms: int = DELAY_MS,
 ) -> dict[str, object]:
@@ -553,14 +468,17 @@ def delayed_entry_mtm_portfolio(
                 trade,
                 outcome,
             )
-            funding = _trade_funding_events(
+            funding = trade_funding_accruals(
                 trade,
                 funding_loader,
             )
-        except DelayedEntryMtmFundingMissingError:
+        except DelayedEntryFundingMissingError:
             missing_funding_events += 1
             continue
-        except DelayedEntryMtmPortfolioError:
+        except (
+            DelayedEntryMtmPortfolioError,
+            DelayedEntryFundingError,
+        ):
             lineage_mismatches += 1
             continue
         except DelayedEntryFillWeightedError:
@@ -618,18 +536,10 @@ def delayed_entry_mtm_portfolio(
             for timestamp_ms, mark_px in marks
             if candidate_open_ms <= timestamp_ms <= trade.closed_at_ms
         )
-        candidate_funding_events = tuple(
-            (
-                accrual.boundary_ms,
-                funding_cash_delta(
-                    accrual.signed_quantity
-                    * weighted.fill_fraction,
-                    accrual.oracle_price,
-                    accrual.funding_rate,
-                ),
-            )
-            for accrual in funding
-            if accrual.boundary_ms > candidate_open_ms
+        candidate_funding_events = scaled_funding_events(
+            funding,
+            fill_fraction=weighted.fill_fraction,
+            open_ms=candidate_open_ms,
         )
         candidate_positions.append(
             _PositionPath(
