@@ -2245,3 +2245,19 @@ For each attributed cohort the diagnostics report:
 This is a concentration/stability check, not a new promotion rule. It does not alter the candidate definition, prospective start boundary, evidence gate, paper admission, sizing, stops, risk, cadence, or execution. A candidate may be review-ready while still showing weak robustness, and the dashboard now keeps those statements separate.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Stop-L2 prospective cohort integrity — 2026-09-28
+
+The exact delayed-entry stop-L2 replay now defines its integrity cohort at the correct stage boundary.
+
+- the durable stop-book capture start is applied before delayed-entry source classification, so every pre-capture outcome is excluded as legacy regardless of whether the delayed entry later filled, expired, was rejected, or lacked a usable delayed book;
+- post-capture delayed-entry outcomes that never created an evaluable delayed position remain counted by source, but they no longer poison stop-exit integrity because there is no counterfactual position to stop;
+- the backward-compatible `unresolved_outcomes` fields remain present for existing consumers, while new `non_evaluable_entry_outcomes` and `non_evaluable_source_counts` fields state the semantics directly;
+- actual stop-replay integrity still fails closed on missing journal/path/funding lineage, path gaps, invalid timing, stop-book capture errors, pending stop evidence, or a degraded capture observer;
+- Issue #469 now renders the full delayed-entry source mix, post-capture non-evaluable source counts, and every upstream stop-L2 integrity counter.
+
+This changes research cohort accounting only. It does not make rejected or expired entries profitable, does not synthesize a position, does not change delayed-entry readiness elsewhere, and has no execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**
