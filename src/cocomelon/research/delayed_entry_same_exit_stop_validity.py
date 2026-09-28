@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -252,11 +252,9 @@ def _summary(
             None
             if not crossed
             else sum(
-                (
-                    item.time_to_stop_ms
-                    for item in crossed
-                    if item.time_to_stop_ms is not None
-                )
+                item.time_to_stop_ms
+                for item in crossed
+                if item.time_to_stop_ms is not None
             )
             // len(crossed)
         ),
