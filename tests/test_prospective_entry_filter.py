@@ -199,6 +199,21 @@ def test_filter_blocks_only_prospective_long_trend_contribution(
     assert by_strategy["breakout"]["net_pnl"] == "4"
     assert by_strategy["trend"]["net_pnl"] == "6"
     assert residual["changes_readiness_gate"] is False
+    portfolio = result["fixed_schedule_portfolio"]
+    assert isinstance(portfolio, dict)
+    assert portfolio["attributed_trades"] == 3
+    assert portfolio["admitted_trades"] == 2
+    assert portfolio["blocked_trades"] == 1
+    actual_timeline = portfolio["actual"]
+    candidate_timeline = portfolio["candidate"]
+    assert isinstance(actual_timeline, dict)
+    assert isinstance(candidate_timeline, dict)
+    assert actual_timeline["final_realized_contribution"] == "2"
+    assert candidate_timeline["final_realized_contribution"] == "10"
+    assert portfolio["delta_final_realized_contribution"] == "8"
+    assert portfolio["replacement_trades_modeled"] is False
+    assert portfolio["candidate_equity_resizing_modeled"] is False
+    assert portfolio["changes_readiness_gate"] is False
     assert result["portfolio_counterfactual"] is False
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
