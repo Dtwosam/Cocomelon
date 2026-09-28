@@ -295,7 +295,7 @@ def test_admission_shadow_can_reject_later_background_opening(
 
         result = delayed_entry_portfolio_capacity_overlay(
             journal,
-            (_outcome(candidate),),
+            (_outcome(candidate, price="101"),),
             paths,
             lambda plan_id: (
                 plan if plan_id == candidate.opening_plan_id else None
