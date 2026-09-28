@@ -21,7 +21,7 @@ def test_exact_decimal_sum_ignores_ambient_precision() -> None:
         resolved = exact_decimal_sum(values)
 
     assert resolved == Decimal(
-        "516473753900921096.8706334596"
+        "516473753900921096.870633459883743"
     )
 
 
