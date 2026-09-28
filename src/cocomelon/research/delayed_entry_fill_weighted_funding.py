@@ -98,7 +98,7 @@ def _trade_map(
     return by_id
 
 
-def _corrected_outcome(
+def evaluate_delayed_entry_funding_corrected_fill_weighted_outcome(
     trade: TradeJournalEntry,
     outcome: DelayedEntryOutcome,
     weighted: DelayedEntryFillWeightedOutcome,
@@ -312,7 +312,7 @@ def delayed_entry_funding_corrected_fill_weighted(
                 )
             )
             evaluated.append(
-                _corrected_outcome(
+                evaluate_delayed_entry_funding_corrected_fill_weighted_outcome(
                     trade,
                     outcome,
                     weighted,
