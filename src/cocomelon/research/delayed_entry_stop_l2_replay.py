@@ -38,6 +38,7 @@ from cocomelon.research.delayed_entry_fill_weighted import (
 )
 from cocomelon.research.delayed_entry_fill_weighted_funding import (
     DelayedEntryFundingCorrectedFillError,
+    FundingCorrectedFillOutcome,
     evaluate_delayed_entry_funding_corrected_fill_weighted_outcome,
 )
 from cocomelon.research.delayed_entry_funding import (
@@ -459,7 +460,7 @@ def _same_exit_outcome(
     funding_loader: FundingLoader,
     *,
     delay_ms: int,
-):
+) -> FundingCorrectedFillOutcome:
     return evaluate_delayed_entry_funding_corrected_fill_weighted_outcome(
         trade,
         outcome,
@@ -677,34 +678,31 @@ def evaluate_delayed_entry_stop_l2_outcome(
         reference_price=evidence.reference_price,
         created_at_ms=crossing.crossing_mark_received_ms,
     )
-    base_kwargs = {
-        "trade_id": trade.trade_id,
-        "market": trade.market.canonical,
-        "direction": trade.direction.value,
-        "source": outcome.source,
-        "mark_stop_crossed": stop.stop_hit,
-        "stop_plan_captured": True,
-        "actual_net_pnl": trade.net_pnl,
-        "same_exit_candidate_net_pnl": (
-            corrected.corrected_candidate_net_pnl
-        ),
-        "candidate_open_ms": stop.candidate_open_ms,
-        "delayed_entry_price": stop.delayed_entry_price,
-        "delayed_filled_quantity": (
-            stop.delayed_filled_quantity
-        ),
-        "first_mark_cross_ms": stop.first_stop_hit_ms,
-        "stop_action_mark_ms": (
-            crossing.crossing_mark_received_ms
-        ),
-        "stop_action_mark_price": (
-            crossing.crossing_mark_price
-        ),
-    }
     if isinstance(planned, PlanningRejection):
         return DelayedEntryStopL2Outcome(
-            **base_kwargs,
+            trade_id=trade.trade_id,
+            market=trade.market.canonical,
+            direction=trade.direction.value,
+            source=outcome.source,
             status="planning_rejected",
+            mark_stop_crossed=stop.stop_hit,
+            stop_plan_captured=True,
+            actual_net_pnl=trade.net_pnl,
+            same_exit_candidate_net_pnl=(
+                corrected.corrected_candidate_net_pnl
+            ),
+            candidate_open_ms=stop.candidate_open_ms,
+            delayed_entry_price=stop.delayed_entry_price,
+            delayed_filled_quantity=(
+                stop.delayed_filled_quantity
+            ),
+            first_mark_cross_ms=stop.first_stop_hit_ms,
+            stop_action_mark_ms=(
+                crossing.crossing_mark_received_ms
+            ),
+            stop_action_mark_price=(
+                crossing.crossing_mark_price
+            ),
         )
 
     execution_ms = evidence.execution_book_received_ms
@@ -750,8 +748,29 @@ def evaluate_delayed_entry_stop_l2_outcome(
         )
 
     return DelayedEntryStopL2Outcome(
-        **base_kwargs,
+        trade_id=trade.trade_id,
+        market=trade.market.canonical,
+        direction=trade.direction.value,
+        source=outcome.source,
         status=status,
+        mark_stop_crossed=stop.stop_hit,
+        stop_plan_captured=True,
+        actual_net_pnl=trade.net_pnl,
+        same_exit_candidate_net_pnl=(
+            corrected.corrected_candidate_net_pnl
+        ),
+        candidate_open_ms=stop.candidate_open_ms,
+        delayed_entry_price=stop.delayed_entry_price,
+        delayed_filled_quantity=(
+            stop.delayed_filled_quantity
+        ),
+        first_mark_cross_ms=stop.first_stop_hit_ms,
+        stop_action_mark_ms=(
+            crossing.crossing_mark_received_ms
+        ),
+        stop_action_mark_price=(
+            crossing.crossing_mark_price
+        ),
         execution_result=attempt.result.value,
         stop_requested_quantity=(
             attempt.requested_quantity
