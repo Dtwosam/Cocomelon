@@ -35,6 +35,12 @@ class DelayedEntryMtmPortfolioError(RuntimeError):
     pass
 
 
+class DelayedEntryMtmFundingMissingError(
+    DelayedEntryMtmPortfolioError
+):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class _PositionPath:
     trade_id: str
@@ -422,18 +428,16 @@ def _trade_funding_events(
         trade.market,
         trade.opened_at_ms,
     )
-    by_id = {
-        accrual.accrual_id: accrual
+    relevant = tuple(
+        accrual
         for accrual in accruals
         if accrual.boundary_ms <= trade.closed_at_ms
+    )
+    by_id = {
+        accrual.accrual_id: accrual
+        for accrual in relevant
     }
-    if len(by_id) != len(
-        {
-            accrual.accrual_id
-            for accrual in accruals
-            if accrual.boundary_ms <= trade.closed_at_ms
-        }
-    ):
+    if len(by_id) != len(relevant):
         raise DelayedEntryMtmPortfolioError(
             "duplicate funding accrual ids"
         )
@@ -442,7 +446,7 @@ def _trade_funding_events(
     for accrual_id in trade.funding_event_ids:
         accrual = by_id.get(accrual_id)
         if accrual is None:
-            raise DelayedEntryMtmPortfolioError(
+            raise DelayedEntryMtmFundingMissingError(
                 "journal funding event is missing from execution store"
             )
         if (
@@ -553,11 +557,11 @@ def delayed_entry_mtm_portfolio(
                 trade,
                 funding_loader,
             )
-        except DelayedEntryMtmPortfolioError as exc:
-            if "missing from execution store" in str(exc):
-                missing_funding_events += 1
-            else:
-                lineage_mismatches += 1
+        except DelayedEntryMtmFundingMissingError:
+            missing_funding_events += 1
+            continue
+        except DelayedEntryMtmPortfolioError:
+            lineage_mismatches += 1
             continue
         except DelayedEntryFillWeightedError:
             lineage_mismatches += 1
