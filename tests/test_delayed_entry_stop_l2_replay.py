@@ -792,7 +792,7 @@ def test_no_mark_crossing_is_observed_path_survivor(
 
 
 
-def test_stop_l2_replay_names_non_evaluable_source_blocker(
+def test_post_capture_non_evaluable_entry_is_excluded_not_integrity_failure(
     tmp_path: Path,
 ) -> None:
     journal = JournalStore(tmp_path / "journal.sqlite3")
@@ -829,10 +829,60 @@ def test_stop_l2_replay_names_non_evaluable_source_blocker(
         journal.close()
 
     assert result["source_counts"] == {"expired": 1}
-    assert result["unresolved_outcomes"] == 1
-    assert result["unresolved_source_counts"] == {
+    assert result["non_evaluable_entry_outcomes"] == 1
+    assert result["non_evaluable_source_counts"] == {
         "expired": 1,
     }
+    assert result["unresolved_outcomes"] == 1
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
-    assert readiness["integrity_clean"] is False
+    assert readiness["integrity_clean"] is True
+    assert readiness["complete_counterfactual_cohort"] is True
+
+
+def test_pre_capture_non_evaluable_entry_is_legacy_not_current_cohort(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "paths"
+    )
+    books = _stop_books(tmp_path / "stop-books")
+    try:
+        trade = _trade(
+            suffix="legacy-expired",
+            opened_at_ms=CAPTURE_START_MS - 1,
+        )
+        journal.record_trade(trade)
+        outcome = DelayedEntryOutcome(
+            trade_id=trade.trade_id,
+            opening_plan_id=trade.opening_plan_id,
+            market=trade.market.canonical,
+            direction=trade.direction.value,
+            source="expired",
+            delayed_filled_quantity=Decimal("0"),
+            delayed_average_fill_price=None,
+            delayed_fee=Decimal("0"),
+            observation_lag_ms=None,
+            signed_price_improvement_bps=None,
+            gross_r_improvement=None,
+            attempt_reason="NO_FRESH_BOOK_WITHIN_WINDOW",
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (outcome,),
+            paths,
+            books,
+            EMPTY_FUNDING_LOADER,
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    assert result["source_counts"] == {"expired": 1}
+    assert result["pre_capture_legacy_outcomes"] == 1
+    assert result["non_evaluable_entry_outcomes"] == 0
+    assert result["non_evaluable_source_counts"] == {}
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["integrity_clean"] is True
