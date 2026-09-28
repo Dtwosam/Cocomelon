@@ -7,6 +7,7 @@ import sys
 
 from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
+    _prospective_allowed_residual_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_filter_robustness_lines,
 )
@@ -4875,3 +4876,68 @@ def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
     assert "chronological full blocks / positive / all positive" in output
     assert "`4 / 3 / false`" in output
     assert "does not change the frozen prospective readiness gate" in output
+
+
+
+def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
+    lines = _prospective_allowed_residual_lines(
+        {
+            "overall": {
+                "trades": 6,
+                "net_pnl": "-4",
+                "winner_pnl": "12",
+                "loser_pnl": "-16",
+            },
+            "by_side": {
+                "long": {
+                    "trades": 2,
+                    "net_pnl": "-9",
+                },
+                "short": {
+                    "trades": 4,
+                    "net_pnl": "5",
+                },
+            },
+            "by_lead_strategy": {
+                "breakout": {
+                    "trades": 3,
+                    "net_pnl": "-7",
+                },
+                "trend": {
+                    "trades": 3,
+                    "net_pnl": "3",
+                },
+            },
+            "by_rank_band": {
+                "1-5": {
+                    "trades": 2,
+                    "net_pnl": "-6",
+                },
+                "6-10": {
+                    "trades": 4,
+                    "net_pnl": "2",
+                },
+            },
+            "worst_side_lead_strategy": {
+                "label": "long:breakout",
+                "net_pnl": "-8",
+                "trades": 2,
+            },
+            "worst_market": {
+                "label": "SOL",
+                "net_pnl": "-10",
+                "trades": 2,
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "allowed residual trades / net / winner PnL / loser PnL" in output
+    assert "`6 / -4 / 12 / -16`" in output
+    assert "long=n2/pnl-9" in output
+    assert "short=n4/pnl5" in output
+    assert "breakout=n3/pnl-7" in output
+    assert "1-5=n2/pnl-6" in output
+    assert "long:breakout / -8 / n2" in output
+    assert "SOL / -10 / n2" in output
+    assert "does not change the frozen filter or readiness gate" in output
