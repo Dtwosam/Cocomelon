@@ -2167,3 +2167,22 @@ The 60-second delayed-entry risk diagnostic now separates risk that already exis
 This is research-only attribution. It does not resize orders, change stops, loosen risk ceilings, alter paper execution, or enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Original-stop executable-book capture — 2026-09-28
+
+The continuous paper trader now preserves the exact L2 evidence needed to replay an original-stop reduce-only IOC without bypassing the paper engine's latency contract.
+
+- the observer reads the original stop from the persisted opening plan, not the mutable current position stop;
+- the crossing is staged durably as soon as the mark reaches the original stop;
+- the first subsequent mainnet L2 snapshot stages the stop-exit plan reference price and exact plan-time instrument metadata;
+- if that first book arrives before paper IOC latency has elapsed, the pending plan remains durable across worker restarts and capture continues until the first latency-eligible L2 book;
+- the execution book preserves full bid/ask levels, source/schema provenance, timestamps, and its own instrument metadata so later replay can detect instrument-version drift exactly as paper execution would;
+- when the first post-crossing book is already latency-eligible, the same snapshot serves as both plan and execution evidence;
+- the capture runs before paper position management but has no execution authority and fails open if its own research state breaks;
+- non-crossed positions create no stop-book record, avoiding continuous full-book storage.
+
+This closes the evidence-collection prerequisite behind the delayed stop-exit proxy. Existing historical trades without this prospective capture remain explicitly unmodeled; no L2 history is synthesized from marks or candles.
+
+**LIVE TRADING: DISABLED.**

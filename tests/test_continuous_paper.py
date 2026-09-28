@@ -154,6 +154,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
     assert "pump.cadence_shadow.state_payload()" in source
     assert 'ContinuousPaperTradePathStore(root / "trade-paths")' in source
+    assert 'OriginalStopBookEvidenceStore(' in source
+    assert 'root / "original-stop-books"' in source
+    assert "original_stop_book_capture" in source
     assert "closed_lifecycle_sink=trade_path_sink" in source
     assert '"trade_path_count": self.trade_path_count' in source
     assert '"trade_path_open_count": self.trade_path_open_count' in source
@@ -161,6 +164,10 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "trade_path_sink.checkpoint(pipeline.open_lifecycle_mark_paths)" in source
     assert '"trade_path_capture_error": self.trade_path_capture_error' in source
     assert '"trade_path_evidence": {' in source
+    assert '"original_stop_book_evidence": {' in source
+    assert '"captured_books": original_stop_book_store.record_count' in source
+    assert '"pending_crossings": original_stop_book_store.pending_count' in source
+    assert '"capture_error": original_stop_book_capture.error' in source
     assert '"closed_path_count": trade_path_store.record_count' in source
     assert '"staged_open_path_count": trade_path_store.open_path_count' in source
     assert '"capture_error": trade_path_capture_error' in source

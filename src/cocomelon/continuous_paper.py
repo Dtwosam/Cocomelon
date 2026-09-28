@@ -182,6 +182,10 @@ from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
     opening_fill_liquidity_attribution,
 )
+from cocomelon.research.original_stop_book_evidence import (
+    OriginalStopBookCapture,
+    OriginalStopBookEvidenceStore,
+)
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE as EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE,
@@ -3447,6 +3451,8 @@ def _live_status_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
+    original_stop_book_store: OriginalStopBookEvidenceStore,
+    original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3896,6 +3902,16 @@ def _live_status_payload(
             "staged_open_path_count": trade_path_store.open_path_count,
             "capture_error": trade_path_capture_error,
         },
+        "original_stop_book_evidence": {
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "durable_across_workers": True,
+            "captured_books": original_stop_book_store.record_count,
+            "pending_crossings": original_stop_book_store.pending_count,
+            "state_digest": original_stop_book_store.state_digest,
+            "capture_error": original_stop_book_capture.error,
+        },
         "profit_lock_counterfactual": profit_lock_counterfactual,
         "profit_lock_execution_shadow": (
             profit_lock_execution_shadow.summary_payload()
@@ -3985,6 +4001,8 @@ def _emit_live_status(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
+    original_stop_book_store: OriginalStopBookEvidenceStore,
+    original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -4024,6 +4042,8 @@ def _emit_live_status(
         trade_path_store,
         opening_rank_store,
         opening_fill_liquidity_store,
+        original_stop_book_store,
+        original_stop_book_capture,
         profit_lock_execution_shadow,
         delayed_entry_execution_shadow,
         delayed_entry_120s_execution_shadow,
@@ -4184,10 +4204,18 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store
         )
     )
+    original_stop_book_store = OriginalStopBookEvidenceStore(
+        root / "original-stop-books"
+    )
     rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
     replay_config = BaselineReplayConfig()
+    original_stop_book_capture = OriginalStopBookCapture(
+        original_stop_book_store,
+        opening_plan_loader=execution.store.load_plan,
+        config=replay_config.execution,
+    )
     profit_lock_execution_shadow = (
         _ContinuousProfitLockExecutionShadowSink(
             _restore_profit_lock_execution_shadow(
@@ -4349,6 +4377,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
+                    original_stop_book_capture,
                 )
             ),
         )
@@ -4491,6 +4520,8 @@ async def run_continuous_paper_session(
             trade_path_store,
             opening_rank_store,
             opening_fill_liquidity_store,
+            original_stop_book_store,
+            original_stop_book_capture,
             profit_lock_execution_shadow,
             delayed_entry_execution_shadow,
             delayed_entry_120s_execution_shadow,
@@ -4676,6 +4707,8 @@ async def run_continuous_paper_session(
                     trade_path_store,
                     opening_rank_store,
                     opening_fill_liquidity_store,
+                    original_stop_book_store,
+                    original_stop_book_capture,
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
