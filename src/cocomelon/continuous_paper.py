@@ -2781,6 +2781,9 @@ def _delayed_entry_portfolio_capacity_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     plan_loader: Callable[[str], PaperOrderPlan | None],
     limits: RiskLimits,
+    state: DelayedEntryMarginCapacityState,
+    *,
+    restore_error: str | None,
 ) -> dict[str, object]:
     if delayed_shadow.shadow is None:
         return {
@@ -2797,6 +2800,7 @@ def _delayed_entry_portfolio_capacity_payload(
             trade_path_store,
             plan_loader,
             limits=limits,
+            margin_evidence_start_ms=state.started_at_ms,
         )
     except Exception as exc:
         return {
@@ -2808,6 +2812,8 @@ def _delayed_entry_portfolio_capacity_payload(
         }
     payload = dict(payload)
     payload["enabled"] = True
+    payload["candidate_id"] = state.candidate_id
+    payload["state_restore_error"] = restore_error
     payload["error"] = None
     return payload
 
