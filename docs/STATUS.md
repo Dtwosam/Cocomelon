@@ -1857,3 +1857,21 @@ The 60-second delayed-entry research now includes a portfolio-level accounting s
 This closes the concurrency/exposure blind spot in per-trade delayed-entry contribution studies, but it remains a **fixed observed schedule** study. It does not invent replacement trades, change exit timestamps, replay strategy decisions under altered capacity, or model unrealized mark-to-market equity. Those limitations are surfaced live and prevent this study from claiming a full alternate portfolio backtest.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed-schedule delayed-entry mark-to-market portfolio shadow — 2026-09-28
+
+The existing 60-second delayed-entry fixed-schedule portfolio study now has a stricter observed-mark equity companion.
+
+- the same evaluable delayed-entry outcomes are matched to complete exact trade paths;
+- actual positions begin at the observed paper entry, while candidate positions begin at the observed delayed fill timestamp and use the delayed filled quantity/price;
+- entry fees are applied at open; exit fees and total observed funding settle at the actual close;
+- while positions are open, contribution equity uses each position's latest observed exact-path mark carried forward until its next mark;
+- the study reports maximum observed contribution-equity drawdown, minimum/maximum observed contribution equity, concurrent positions, overlap openings, and maximum carried-mark age;
+- no-fill delayed outcomes create no candidate position;
+- incomplete or missing exact paths, unresolved delayed outcomes, and lineage mismatches remain explicit and block review readiness;
+- review readiness requires 30 closed shadow outcomes, 20 complete-path evaluated trades, at least 5 actual overlap openings, and zero integrity gaps.
+
+This closes the unrealized-equity blind spot in the fixed-schedule delayed-entry portfolio study, but it still does not replay strategy decisions under altered capacity, invent replacement trades, or change exit timing. Intratrade funding timing is also not reconstructed; observed total funding settles at the actual close.
+
+**LIVE TRADING: DISABLED.**
