@@ -2690,6 +2690,60 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_same_exit_stop_validity": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "funding_corrected_same_exit_stop_validity_partition_only"
+            ),
+            "delay_ms": 60000,
+            "same_exit_pnl_interpretation": (
+                "stop_crossed_candidate_pnl_is_flagged_as_path_invalid_"
+                "rather_than_repriced"
+            ),
+            "stop_fill_price_modeled": False,
+            "changed_exit_timing_modeled": False,
+            "replacement_trades_modeled": False,
+            "closed_shadow_outcomes": 12,
+            "evaluated_filled_candidates": 8,
+            "candidate_no_fill_trades": 1,
+            "unresolved_outcomes": 2,
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 1,
+            "incomplete_or_gapped_paths": 0,
+            "missing_funding_events": 0,
+            "lineage_mismatches": 0,
+            "invalid_candidate_timing": 0,
+            "overall": {
+                "filled_candidates": 8,
+                "definite_original_stop_crossings": 3,
+                "survived_observed_path_to_actual_close": 5,
+                "crossing_fraction": "0.375",
+                "actual_net_pnl": "-10",
+                "same_exit_candidate_net_pnl": "5",
+                "same_exit_delta_vs_actual": "15",
+                "same_exit_candidate_pnl_on_definite_stop_crossings": "4",
+                "same_exit_candidate_pnl_on_observed_survivors": "1",
+                "same_exit_delta_on_definite_stop_crossings": "8",
+                "same_exit_delta_on_observed_survivors": "7",
+                "absolute_candidate_pnl_on_stop_crossings_fraction": "0.8",
+                "positive_same_exit_candidate_pnl_on_stop_crossings": "4",
+                "negative_same_exit_candidate_pnl_on_stop_crossings": "0",
+                "mean_time_to_stop_ms": 42000,
+            },
+            "by_side": {},
+            "by_source": {},
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_filled_candidates": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_filled_candidates": 12,
+            },
+            "error": None,
+        },
         "delayed_entry_portfolio_capacity": {
             "enabled": True,
             "research_only": True,
@@ -3846,6 +3900,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`2 / 0 / 1 / 0 / 0 / 0`" in output
     assert "same-millisecond marks are excluded" in output
     assert "stop fill price and the full exit policy are not modeled" in output
+    assert "corrected same-exit candidate PnL all / stop-crossed / survived" in output
+    assert "`5 / 4 / 1`" in output
+    assert "same-exit Δ vs actual all / stop-crossed / survived" in output
+    assert "`15 / 8 / 7`" in output
+    assert "absolute candidate PnL on definite stop crossings" in output
+    assert "`0.8`" in output
+    assert "stop-validity missing path / funding / lineage" in output
+    assert "`1 / 0 / 0`" in output
+    assert "flagged as path-invalid" in output
+    assert "not repriced into a synthetic stop-fill result" in output
     assert "### 60s delayed-entry portfolio capacity overlay" in output
     assert "fixed_observed_schedule_portfolio_capacity_overlay" in output
     assert (
