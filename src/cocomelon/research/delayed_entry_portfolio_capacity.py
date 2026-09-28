@@ -1198,6 +1198,7 @@ def delayed_entry_portfolio_capacity_overlay(
     reference_equity = earliest.equity_before
 
     exact_marks: dict[str, tuple[tuple[int, Decimal], ...]] = {}
+    venue_leverage_by_trade_id: dict[str, Decimal | None] = {}
     missing_paths = 0
     incomplete_paths = 0
     lineage_mismatches = 0
@@ -1211,6 +1212,9 @@ def delayed_entry_portfolio_capacity_overlay(
             continue
         try:
             exact_marks[trade.trade_id] = _marks(trade, raw)
+            venue_leverage_by_trade_id[trade.trade_id] = (
+                _path_venue_max_leverage(raw)
+            )
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
 
@@ -1231,6 +1235,13 @@ def delayed_entry_portfolio_capacity_overlay(
                 trade,
                 marks,
                 plan,
+                venue_max_leverage=(
+                    venue_leverage_by_trade_id.get(trade.trade_id)
+                ),
+                margin_policy_eligible=(
+                    margin_evidence_start_ms is not None
+                    and trade.opened_at_ms >= margin_evidence_start_ms
+                ),
             )
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
@@ -1258,7 +1269,19 @@ def delayed_entry_portfolio_capacity_overlay(
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
             candidate_positions.append(
-                _actual_position(trade, marks, plan)
+                _actual_position(
+                    trade,
+                    marks,
+                    plan,
+                    venue_max_leverage=(
+                        venue_leverage_by_trade_id.get(trade.trade_id)
+                    ),
+                    margin_policy_eligible=(
+                        margin_evidence_start_ms is not None
+                        and trade.opened_at_ms
+                        >= margin_evidence_start_ms
+                    ),
+                )
             )
             background_positions += 1
             continue
@@ -1318,6 +1341,13 @@ def delayed_entry_portfolio_capacity_overlay(
                 ),
                 marks=marks,
                 opening_kind="delayed_candidate",
+                venue_max_leverage=(
+                    venue_leverage_by_trade_id.get(trade.trade_id)
+                ),
+                margin_policy_eligible=(
+                    margin_evidence_start_ms is not None
+                    and trade.opened_at_ms >= margin_evidence_start_ms
+                ),
             )
         )
         candidate_filled += 1
