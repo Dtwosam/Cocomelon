@@ -228,6 +228,21 @@ def test_combined_filter_requires_both_frozen_conditions(
     assert isinstance(by_rank, dict)
     assert by_rank["1-5"]["net_pnl"] == "5"
     assert residual["changes_readiness_gate"] is False
+    portfolio = result["fixed_schedule_portfolio"]
+    assert isinstance(portfolio, dict)
+    assert portfolio["attributed_trades"] == 4
+    assert portfolio["admitted_trades"] == 1
+    assert portfolio["blocked_trades"] == 3
+    actual_timeline = portfolio["actual"]
+    candidate_timeline = portfolio["candidate"]
+    assert isinstance(actual_timeline, dict)
+    assert isinstance(candidate_timeline, dict)
+    assert actual_timeline["final_realized_contribution"] == "-16"
+    assert candidate_timeline["final_realized_contribution"] == "5"
+    assert portfolio["delta_final_realized_contribution"] == "21"
+    assert portfolio["replacement_trades_modeled"] is False
+    assert portfolio["candidate_equity_resizing_modeled"] is False
+    assert portfolio["changes_readiness_gate"] is False
 
     reasons = result["by_block_reason"]
     assert isinstance(reasons, dict)
