@@ -195,6 +195,45 @@ def test_capture_persists_first_book_after_original_stop_crossing(
     assert spec.metadata_received_at_ms == 800
 
 
+def test_pending_crossing_survives_store_restart_before_book(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    first = OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(root),
+        opening_plan_loader=lambda _plan_id: plan,
+    )
+
+    first.observe_mark(
+        (position,),
+        _mark("94.9", 1_200),
+        now_ms=1_200,
+    )
+    assert first.store.pending_count == 1
+
+    restored_store = OriginalStopBookEvidenceStore(root)
+    restored = OriginalStopBookCapture(
+        restored_store,
+        opening_plan_loader=lambda _plan_id: plan,
+    )
+    restored.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_240),
+        reference_price=Decimal("95"),
+        now_ms=1_240,
+    )
+
+    assert restored.error is None
+    assert restored_store.pending_count == 0
+    evidence = restored_store.evidence_for(plan.plan_id)
+    assert evidence is not None
+    assert evidence.crossing.crossing_mark_event_key == "mark:1200"
+    assert evidence.book_event_key == "book:1240"
+
+
 def test_short_crossing_captures_ask_side_book(
     tmp_path: Path,
 ) -> None:
