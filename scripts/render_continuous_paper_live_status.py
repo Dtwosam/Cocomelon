@@ -2969,6 +2969,63 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_filter_fixed_schedule_lines(
+    raw: object,
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return ["- fixed-schedule portfolio: `not available`"]
+    actual = raw.get("actual", {})
+    candidate = raw.get("candidate", {})
+    if not isinstance(actual, dict):
+        actual = {}
+    if not isinstance(candidate, dict):
+        candidate = {}
+    return [
+        (
+            "- fixed-schedule actual / candidate / delta realized contribution: "
+            f"`{actual.get('final_realized_contribution', '0')} / "
+            f"{candidate.get('final_realized_contribution', '0')} / "
+            f"{raw.get('delta_final_realized_contribution', '0')}`"
+        ),
+        (
+            "- fixed-schedule max realized drawdown actual / candidate / delta: "
+            f"`{actual.get('max_realized_drawdown', '0')} / "
+            f"{candidate.get('max_realized_drawdown', '0')} / "
+            f"{raw.get('delta_max_realized_drawdown', '0')}`"
+        ),
+        (
+            "- fixed-schedule max positions / overlap actual→candidate: "
+            f"`{actual.get('max_concurrent_positions', 0)} / "
+            f"{actual.get('overlap_openings', 0)} → "
+            f"{candidate.get('max_concurrent_positions', 0)} / "
+            f"{candidate.get('overlap_openings', 0)}`"
+        ),
+        (
+            "- fixed-schedule max gross notional actual / candidate / delta: "
+            f"`{actual.get('max_gross_notional', '0')} / "
+            f"{candidate.get('max_gross_notional', '0')} / "
+            f"{raw.get('delta_max_gross_notional', '0')}`"
+        ),
+        (
+            "- fixed-schedule max planned risk actual / candidate / delta: "
+            f"`{actual.get('max_planned_risk', '0')} / "
+            f"{candidate.get('max_planned_risk', '0')} / "
+            f"{raw.get('delta_max_planned_risk', '0')}`"
+        ),
+        (
+            "- fixed-schedule blocked PnL / admitted / blocked: "
+            f"`{raw.get('blocked_actual_net_pnl', '0')} / "
+            f"{raw.get('admitted_trades', 0)} / "
+            f"{raw.get('blocked_trades', 0)}`"
+        ),
+        (
+            "_Fixed observed schedule only: actual sizes and closes are reused; "
+            "replacement trades, equity-driven resizing, changed exits, and "
+            "unrealized equity are not modeled. This does not change readiness._"
+        ),
+    ]
+
+
 def _prospective_filter_robustness_lines(
     raw: object,
 ) -> list[str]:
@@ -3181,6 +3238,11 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines.extend(
         _prospective_allowed_residual_lines(
             raw.get("allowed_residual")
+        )
+    )
+    lines.extend(
+        _prospective_filter_fixed_schedule_lines(
+            raw.get("fixed_schedule_portfolio")
         )
     )
     return lines
@@ -3414,6 +3476,11 @@ def _prospective_top10_rank_filter_lines(
             raw.get("allowed_residual")
         )
     )
+    lines.extend(
+        _prospective_filter_fixed_schedule_lines(
+            raw.get("fixed_schedule_portfolio")
+        )
+    )
     return lines
 
 
@@ -3568,6 +3635,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_allowed_residual_lines(
             raw.get("allowed_residual")
+        )
+    )
+    lines.extend(
+        _prospective_filter_fixed_schedule_lines(
+            raw.get("fixed_schedule_portfolio")
         )
     )
     return lines
