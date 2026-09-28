@@ -2651,6 +2651,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "max_open_risk": "0.0075",
                 "correlation_bucket_risk_limit": "0.005",
                 "max_gross_leverage": "3",
+                "max_available_margin_fraction": "0.50",
+                "paper_max_gross_leverage": "3",
             },
             "changed_admissions_modeled": True,
             "admission_policy": (
@@ -2658,6 +2660,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             ),
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
+            "available_margin_capacity_modeled": True,
+            "visible_liquidity_capacity_modeled": False,
+            "liquidation_buffer_modeled": False,
             "closed_shadow_outcomes": 12,
             "candidate_filled_positions": 8,
             "candidate_no_fill_trades": 1,
@@ -2665,6 +2670,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "unresolved_outcomes": 2,
             "missing_journal_trades": 0,
             "missing_opening_plans": 0,
+            "missing_venue_max_leverage": 0,
             "missing_exact_paths": 1,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
@@ -2677,13 +2683,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "aggregate_risk_violations": 0,
                 "correlation_bucket_risk_violations": 0,
                 "gross_leverage_violations": 0,
+                "margin_capacity_violations": 0,
                 "non_positive_equity_events": 0,
                 "max_aggregate_risk_utilization": "0.66",
                 "max_correlation_bucket_risk_utilization": "0.99",
                 "max_gross_leverage": "0.18",
+                "max_margin_capacity_utilization": "0.22",
                 "min_aggregate_risk_headroom": "22",
                 "min_correlation_bucket_risk_headroom": "0.5",
                 "min_gross_notional_headroom": "28000",
+                "min_margin_notional_headroom": "12000",
             },
             "candidate": {
                 "opening_checks": 10,
@@ -2694,13 +2703,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "aggregate_risk_violations": 0,
                 "correlation_bucket_risk_violations": 2,
                 "gross_leverage_violations": 0,
+                "margin_capacity_violations": 1,
                 "non_positive_equity_events": 0,
                 "max_aggregate_risk_utilization": "0.68",
                 "max_correlation_bucket_risk_utilization": "1.02",
                 "max_gross_leverage": "0.16",
+                "max_margin_capacity_utilization": "1.01",
                 "min_aggregate_risk_headroom": "20",
                 "min_correlation_bucket_risk_headroom": "-1",
                 "min_gross_notional_headroom": "28500",
+                "min_margin_notional_headroom": "-25",
             },
             "actual_admission": {
                 "opening_opportunities": 10,
@@ -2714,11 +2726,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "aggregate_risk_rejections": 0,
                 "correlation_bucket_risk_rejections": 0,
                 "gross_leverage_rejections": 0,
+                "margin_capacity_rejections": 0,
                 "non_positive_equity_rejections": 0,
                 "max_concurrent_positions": 4,
                 "max_admitted_aggregate_risk_utilization": "0.66",
                 "max_admitted_correlation_bucket_risk_utilization": "0.99",
                 "max_admitted_gross_leverage": "0.18",
+                "max_admitted_margin_capacity_utilization": "0.22",
                 "final_realized_contribution": "-11",
             },
             "candidate_admission": {
@@ -2733,11 +2747,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "aggregate_risk_rejections": 0,
                 "correlation_bucket_risk_rejections": 2,
                 "gross_leverage_rejections": 0,
+                "margin_capacity_rejections": 1,
                 "non_positive_equity_rejections": 0,
                 "max_concurrent_positions": 3,
                 "max_admitted_aggregate_risk_utilization": "0.64",
                 "max_admitted_correlation_bucket_risk_utilization": "0.96",
                 "max_admitted_gross_leverage": "0.15",
+                "max_admitted_margin_capacity_utilization": "0.75",
                 "final_realized_contribution": "5",
             },
             "fixed_candidate_final_realized_contribution": "3",
@@ -3322,8 +3338,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert (
         "| 60s delayed capacity overlay | collecting | "
         "closed=12, fills=8, overlap=4, admit/reject=8/2 | "
-        "viol=2, actualrej=0, unresolved=2, missing=0/0/1, "
-        "incomplete=0, mismatch=0 |"
+        "viol=2, marginrej=1, actualrej=0, unresolved=2, "
+        "missing=0/0/0/1, incomplete=0, mismatch=0 |"
         in output
     )
     assert (
@@ -3581,18 +3597,27 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "Observed-mark contribution equity only" in output
     assert "### 60s delayed-entry portfolio capacity overlay" in output
     assert "fixed_observed_schedule_portfolio_capacity_overlay" in output
-    assert "frozen limits open-risk / bucket-risk / gross leverage" in output
-    assert "`0.0075 / 0.005 / 3`" in output
+    assert (
+        "frozen limits open-risk / bucket-risk / gross leverage / "
+        "margin fraction / paper leverage"
+    ) in output
+    assert "`0.0075 / 0.005 / 3 / 0.50 / 3`" in output
     assert "candidate opening checks / capacity violations" in output
     assert "`10 / 2`" in output
     assert "candidate violations delayed / background" in output
     assert "`1 / 1`" in output
-    assert "candidate violations aggregate / bucket / leverage" in output
-    assert "`0 / 2 / 0`" in output
-    assert "candidate max utilization aggregate / bucket / leverage" in output
-    assert "`0.68 / 1.02 / 0.16`" in output
-    assert "candidate min headroom aggregate / bucket / gross notional" in output
-    assert "`20 / -1 / 28500`" in output
+    assert "candidate violations aggregate / bucket / leverage / margin" in output
+    assert "`0 / 2 / 0 / 1`" in output
+    assert (
+        "candidate max utilization aggregate / bucket / leverage / margin"
+        in output
+    )
+    assert "`0.68 / 1.02 / 0.16 / 1.01`" in output
+    assert (
+        "candidate min headroom aggregate / bucket / gross / margin notional"
+        in output
+    )
+    assert "`20 / -1 / 28500 / -25`" in output
     assert "causal admissions modeled / replacement trades modeled" in output
     assert "`true / false`" in output
     assert "actual admission admitted / rejected" in output
@@ -3603,10 +3628,16 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`7 / 1`" in output
     assert "candidate observed-schedule admitted / rejected" in output
     assert "`1 / 1`" in output
-    assert "candidate admission rejection causes aggregate / bucket / leverage" in output
-    assert "`0 / 2 / 0 / 0`" in output
-    assert "candidate admitted max utilization aggregate / bucket / leverage" in output
-    assert "`0.64 / 0.96 / 0.15`" in output
+    assert (
+        "candidate admission rejection causes aggregate / bucket / "
+        "leverage / margin / non-positive-equity"
+    ) in output
+    assert "`0 / 2 / 0 / 1 / 0`" in output
+    assert (
+        "candidate admitted max utilization aggregate / bucket / leverage / margin"
+        in output
+    )
+    assert "`0.64 / 0.96 / 0.15 / 0.75`" in output
     assert "fixed / admitted candidate realized contribution / admission Δ" in output
     assert "`3 / 5 / 2`" in output
     assert "evidence gate closed / candidate fills / candidate overlap" in output
