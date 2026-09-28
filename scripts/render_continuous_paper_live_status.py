@@ -1216,11 +1216,6 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
         candidate = {}
     if not isinstance(readiness, dict):
         readiness = {}
-    admitted_bucket_utilization = candidate_admission.get(
-        "max_admitted_correlation_bucket_risk_utilization",
-        "0",
-    )
-
     lines.extend(
         [
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
@@ -1480,6 +1475,10 @@ def _delayed_entry_portfolio_capacity_lines(
         limits = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    admitted_bucket_utilization = candidate_admission.get(
+        "max_admitted_correlation_bucket_risk_utilization",
+        "0",
+    )
 
     lines.extend(
         [
