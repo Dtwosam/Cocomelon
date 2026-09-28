@@ -869,6 +869,14 @@ class DelayedEntryExecutionShadow:
                     "filled_quantity": str(
                         state.delayed_filled_quantity
                     ),
+                    "delayed_average_fill_price": (
+                        None
+                        if state.delayed_average_fill_price is None
+                        else str(state.delayed_average_fill_price)
+                    ),
+                    "delayed_entry_fee": str(
+                        state.delayed_fee
+                    ),
                     "fill_fraction": str(fill_fraction),
                     "observation_lag_ms": (
                         state.observation_lag_ms
