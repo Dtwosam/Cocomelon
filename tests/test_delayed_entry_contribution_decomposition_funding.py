@@ -14,8 +14,10 @@ from cocomelon.execution.funding import (
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.delayed_entry_contribution_decomposition_funding import (
     DelayedEntryFundingDecompositionOutcome,
-    _summary as _funding_decomposition_summary,
     delayed_entry_funding_decomposition,
+)
+from cocomelon.research.delayed_entry_contribution_decomposition_funding import (
+    _summary as _funding_decomposition_summary,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryOutcome,
