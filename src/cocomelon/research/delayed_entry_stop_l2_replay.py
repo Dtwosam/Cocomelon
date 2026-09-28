@@ -97,14 +97,14 @@ class DelayedEntryStopL2Outcome:
     exact_full_stop_candidate_net_pnl: Decimal | None
 
     def __post_init__(self) -> None:
-        for value, field in (
+        for text_value, field in (
             (self.trade_id, "trade_id"),
             (self.market, "market"),
             (self.direction, "direction"),
             (self.source, "source"),
             (self.status, "status"),
         ):
-            if not value.strip():
+            if not text_value.strip():
                 raise ValueError(f"{field} must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
@@ -112,13 +112,13 @@ class DelayedEntryStopL2Outcome:
             raise ValueError(
                 "candidate_open_ms must be non-negative"
             )
-        for value in (
+        for metric in (
             self.actual_net_pnl,
             self.same_exit_candidate_net_pnl,
             self.delayed_entry_price,
             self.delayed_filled_quantity,
         ):
-            if not value.is_finite():
+            if not metric.is_finite():
                 raise ValueError(
                     "stop L2 replay economics must be finite"
                 )
@@ -194,7 +194,7 @@ class DelayedEntryStopL2Outcome:
                 )
             return
 
-        for value, field in (
+        for optional_metric, field in (
             (
                 self.stop_requested_quantity,
                 "stop_requested_quantity",
@@ -213,7 +213,10 @@ class DelayedEntryStopL2Outcome:
                 "funding_through_execution",
             ),
         ):
-            if not isinstance(value, Decimal) or not value.is_finite():
+            if (
+                not isinstance(optional_metric, Decimal)
+                or not optional_metric.is_finite()
+            ):
                 raise ValueError(
                     f"{field} must be present and finite"
                 )
@@ -879,8 +882,15 @@ def delayed_entry_stop_l2_replay(
 
     items = tuple(evaluated)
     overall = _summary(items)
-    full_stop_exits = int(
-        overall["full_stop_exits"]
+    full_stop_exits = sum(
+        1
+        for item in items
+        if item.status == "full_stop_exit"
+    )
+    stop_book_missing = sum(
+        1
+        for item in items
+        if item.status == "stop_book_missing"
     )
     integrity_clean = (
         unresolved_outcomes == 0
@@ -956,7 +966,7 @@ def delayed_entry_stop_l2_replay(
                 >= MIN_FULL_STOP_EXITS_FOR_DESCRIPTIVE_REVIEW
             ),
             "complete_stop_crossing_cohort": (
-                int(overall["stop_book_missing"]) == 0
+                stop_book_missing == 0
             ),
         },
     }
