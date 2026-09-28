@@ -494,24 +494,6 @@ def _delayed_entry_execution_shadow_lines(
     readiness = raw.get("readiness", {})
     if not isinstance(readiness, dict):
         readiness = {}
-    source_counts = raw.get("source_counts", {})
-    non_evaluable_sources = raw.get(
-        "non_evaluable_source_counts",
-        raw.get("unresolved_source_counts", {}),
-    )
-    if not isinstance(source_counts, dict):
-        source_counts = {}
-    if not isinstance(non_evaluable_sources, dict):
-        non_evaluable_sources = {}
-
-    def source_summary(value: dict[object, object]) -> str:
-        if not value:
-            return "none"
-        return ", ".join(
-            f"{key}={value[key]}"
-            for key in sorted(value, key=str)
-        )
-
     lines.extend(
         [
             (
@@ -6003,6 +5985,23 @@ def _delayed_entry_stop_l2_lines(
         overall = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    source_counts = raw.get("source_counts", {})
+    non_evaluable_sources = raw.get(
+        "non_evaluable_source_counts",
+        raw.get("unresolved_source_counts", {}),
+    )
+    if not isinstance(source_counts, dict):
+        source_counts = {}
+    if not isinstance(non_evaluable_sources, dict):
+        non_evaluable_sources = {}
+
+    def source_summary(value: dict[object, object]) -> str:
+        if not value:
+            return "none"
+        return ", ".join(
+            f"{key}={value[key]}"
+            for key in sorted(value, key=str)
+        )
 
     lines.extend(
         [
