@@ -2188,3 +2188,22 @@ The continuous paper trader now preserves the exact L2 evidence needed to replay
 This closes the evidence-collection prerequisite behind the delayed stop-exit proxy. Existing historical trades without this prospective capture remain explicitly unmodeled; no L2 history is synthesized from marks or candles.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Delayed-entry exact stop-L2 heartbeat — 2026-09-28
+
+The continuous paper heartbeat now exposes the manager-triggered 60-second delayed-entry stop replay against prospectively captured L2 evidence.
+
+- the exact replay sits beside the older stop price-proxy range rather than replacing it;
+- it reuses the live paper engine's reduce-only planning and visible-book IOC semantics;
+- transient mark crossings that never create a paper-manager stop plan remain same-exit survivors when capture integrity is clean;
+- full stop exits receive exact visible-depth fill economics, including entry fee, stop fee, and funding available by execution time;
+- partial fills, no-fills, quantized position remainders, planning/execution rejections, and pending evidence remain explicitly unresolved;
+- trades opened before the durable stop-book capture boundary are excluded as legacy evidence instead of counted as missing;
+- the capture observer's own error is passed into the replay, so degraded stop-book collection blocks clean readiness;
+- the wrapper is fail-open for the runtime: a replay calculation failure disables only this research payload and cannot stop the paper trader heartbeat.
+
+This is research-only observability. It changes no strategy decisions, stops, sizing, risk limits, paper execution, cadence, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

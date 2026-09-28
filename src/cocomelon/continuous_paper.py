@@ -151,6 +151,9 @@ from cocomelon.research.delayed_entry_same_exit_stop_validity import (
 from cocomelon.research.delayed_entry_stop_exit_proxy import (
     delayed_entry_stop_exit_proxy_range,
 )
+from cocomelon.research.delayed_entry_stop_l2_replay import (
+    delayed_entry_stop_l2_replay,
+)
 from cocomelon.research.delayed_entry_stop_survivability import (
     delayed_entry_stop_survivability,
 )
@@ -2922,6 +2925,54 @@ def _delayed_entry_stop_exit_proxy_payload(
     return payload
 
 
+def _delayed_entry_stop_l2_replay_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    trade_path_store: ContinuousPaperTradePathStore,
+    stop_book_store: OriginalStopBookEvidenceStore,
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
+    execution_config: PaperExecutionConfig,
+    *,
+    capture_error: str | None,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "capture_error": capture_error,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_stop_l2_replay(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            trade_path_store,
+            stop_book_store,
+            funding_loader,
+            execution_config,
+            capture_error=capture_error,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "capture_error": capture_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["capture_error"] = capture_error
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_stop_survivability_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3702,6 +3753,22 @@ def _live_status_payload(
             paper_execution_config,
         )
     )
+    delayed_entry_stop_l2_replay_payload = (
+        _delayed_entry_stop_l2_replay_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            trade_path_store,
+            original_stop_book_store,
+            lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
+            paper_execution_config,
+            capture_error=original_stop_book_capture.error,
+        )
+    )
     delayed_entry_portfolio_capacity = (
         _delayed_entry_portfolio_capacity_payload(
             pump.journal,
@@ -3952,6 +4019,9 @@ def _live_status_payload(
         ),
         "delayed_entry_stop_exit_proxy": (
             delayed_entry_stop_exit_proxy_payload
+        ),
+        "delayed_entry_stop_l2_replay": (
+            delayed_entry_stop_l2_replay_payload
         ),
         "delayed_entry_portfolio_capacity": (
             delayed_entry_portfolio_capacity

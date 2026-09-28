@@ -5,6 +5,10 @@ import os
 import subprocess
 import sys
 
+from scripts.render_continuous_paper_live_status import (
+    _delayed_entry_stop_l2_lines,
+)
+
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
 
 
@@ -4615,3 +4619,63 @@ def test_renderer_omits_full_heartbeat_and_bounds_oversized_issue_body() -> None
     assert "Full heartbeat JSON" not in completed.stdout
     assert "body was compacted" in completed.stdout
     assert "audit authority" in completed.stdout
+
+
+
+def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
+    lines = _delayed_entry_stop_l2_lines(
+        {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "prospective_manager_triggered_original_stop_visible_l2_"
+                "first_ioc_replay"
+            ),
+            "capture_started_at_ms": 1_700_000_000_000,
+            "pre_capture_legacy_outcomes": 9,
+            "overall": {
+                "evaluated_filled_candidates": 8,
+                "mark_stop_crossings": 4,
+                "captured_stop_plans": 3,
+                "full_stop_exits": 2,
+                "partial_stop_exits": 1,
+                "no_fill_stop_exits": 0,
+                "full_ioc_position_remainders": 1,
+                "planning_or_execution_rejections": 0,
+                "pending_stop_evidence": 0,
+                "stop_capture_unreliable": 0,
+                "resolved_candidates": 6,
+                "unresolved_stop_actions": 2,
+                "resolved_actual_net_pnl": "-8",
+                "resolved_candidate_net_pnl": "-2",
+                "resolved_delta_vs_actual": "6",
+                "same_exit_pnl_on_full_stop_exits": "7",
+                "exact_pnl_on_full_stop_exits": "-3",
+                "same_exit_minus_exact_on_full_stop_exits": "10",
+                "transient_mark_crossings_without_stop_plan": 1,
+                "late_funding_boundaries_excluded": 2,
+            },
+            "readiness": {
+                "integrity_clean": True,
+                "complete_counterfactual_cohort": False,
+                "min_full_stop_exits": 5,
+                "missing_full_stop_exits": 3,
+                "ready_for_descriptive_review": False,
+            },
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "### 60s delayed-entry exact stop L2 replay" in output
+    assert "evaluated / mark crossings / captured stop plans" in output
+    assert "`8 / 4 / 3`" in output
+    assert "full / partial / no-fill / quantized remainder exits" in output
+    assert "`2 / 1 / 0 / 1`" in output
+    assert "resolved / unresolved stop actions" in output
+    assert "`6 / 2`" in output
+    assert "full-stop same-exit / exact PnL / removed edge" in output
+    assert "`7 / -3 / 10`" in output
+    assert "no synthetic remainder exit is invented" in output
