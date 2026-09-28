@@ -30,6 +30,35 @@ MARKET = MarketId("", "SOL")
 BACKGROUND = MarketId("", "BTC")
 
 
+def _plan_for(
+    *,
+    suffix: str,
+    market: MarketId,
+    opened_at_ms: int,
+    quantity: Decimal,
+) -> PaperOrderPlan:
+    return PaperOrderPlan(
+        risk_decision_id=f"risk-{suffix}",
+        strategy_decision_id=f"strategy-{suffix}",
+        market=market,
+        side=OrderSide.BUY,
+        requested_quantity=quantity,
+        order_type=OrderType.MARKETABLE_IOC,
+        reduce_only=False,
+        execution_reference_price=Decimal("100"),
+        max_slippage_bps=Decimal("25"),
+        stop_price=Decimal("90"),
+        approved_notional_ceiling=Decimal("1000"),
+        created_at_ms=opened_at_ms - 1_000,
+        earliest_execution_ms=opened_at_ms - 900,
+        execution_config_version="paper-v1",
+        instrument_metadata_received_at_ms=opened_at_ms - 2_000,
+        approved_risk_amount_ceiling=Decimal("25"),
+        stop_distance_fraction=Decimal("0.10"),
+        effective_loss_fraction=Decimal("0.10"),
+    )
+
+
 def _trade(
     *,
     suffix: str,
@@ -39,6 +68,12 @@ def _trade(
     quantity: str = "2.5",
 ) -> TradeJournalEntry:
     qty = Decimal(quantity)
+    opening_plan = _plan_for(
+        suffix=suffix,
+        market=market,
+        opened_at_ms=opened_at_ms,
+        quantity=qty,
+    )
     return TradeJournalEntry(
         market=market,
         direction=Direction.LONG,
@@ -47,7 +82,7 @@ def _trade(
         feature_snapshot_id=f"feature-{suffix}",
         strategy_decision_id=f"strategy-{suffix}",
         risk_decision_id=f"risk-{suffix}",
-        opening_plan_id=f"plan-{suffix}",
+        opening_plan_id=opening_plan.plan_id,
         opening_attempt_id=f"attempt-{suffix}",
         exit_plan_ids=(f"exit-plan-{suffix}",),
         exit_attempt_ids=(f"exit-attempt-{suffix}",),
@@ -112,25 +147,12 @@ def _path(
 
 
 def _plan(trade: TradeJournalEntry) -> PaperOrderPlan:
-    return PaperOrderPlan(
-        risk_decision_id=trade.risk_decision_id,
-        strategy_decision_id=trade.strategy_decision_id,
+    suffix = trade.risk_decision_id.removeprefix("risk-")
+    return _plan_for(
+        suffix=suffix,
         market=trade.market,
-        side=OrderSide.BUY,
-        requested_quantity=trade.filled_quantity,
-        order_type=OrderType.MARKETABLE_IOC,
-        reduce_only=False,
-        execution_reference_price=trade.entry_price,
-        max_slippage_bps=Decimal("25"),
-        stop_price=trade.initial_stop,
-        approved_notional_ceiling=Decimal("1000"),
-        created_at_ms=trade.opened_at_ms - 1_000,
-        earliest_execution_ms=trade.opened_at_ms - 900,
-        execution_config_version="paper-v1",
-        instrument_metadata_received_at_ms=trade.opened_at_ms - 2_000,
-        approved_risk_amount_ceiling=trade.initial_risk_amount,
-        stop_distance_fraction=Decimal("0.10"),
-        effective_loss_fraction=Decimal("0.10"),
+        opened_at_ms=trade.opened_at_ms,
+        quantity=trade.filled_quantity,
     )
 
 
@@ -203,7 +225,7 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             (_outcome(candidate),),
             paths,
             lambda plan_id: (
-                plan if plan_id == plan.plan_id else None
+                plan if plan_id == candidate.opening_plan_id else None
             ),
             limits=RiskLimits(),
         )
