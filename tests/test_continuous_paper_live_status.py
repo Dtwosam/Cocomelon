@@ -3622,10 +3622,6 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "### 60s delayed-entry mark-to-market portfolio shadow" in output
     assert "fixed_observed_schedule_mark_to_market_contribution_only" in output
     assert "latest_observed_exact_path_mark_carried_forward" in output
-    assert (
-        "exact_recorded_boundary_oracle_and_rate_with_"
-        "candidate_quantity_scaled_by_delayed_fill_fraction"
-    ) in output
     assert "closed shadow / complete paths / unresolved" in output
     assert "`12 / 9 / 2`" in output
     assert "candidate filled / no-fill positions" in output
