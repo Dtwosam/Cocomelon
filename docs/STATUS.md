@@ -1913,3 +1913,20 @@ The prospective allMids entry-markout shadow now receives the immutable approved
 This repair changes research evidence integrity only. It does not alter entries, stops, sizing, risk, fills, accounting, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry capacity baseline filled-risk repair — 2026-09-28
+
+The fixed-schedule delayed-entry capacity overlay now reconstructs observed paper risk from the actual filled position rather than the larger approved opening-risk ceiling.
+
+- every relevant observed position must resolve its persisted opening plan;
+- observed planned risk is recomputed with the same contract as paper accounting: actual fill notional times the actual entry-to-stop loss fraction plus the immutable plan cost buffer;
+- the reconstructed observed risk must remain at or below the approved opening-risk ceiling;
+- background positions and delayed-cohort positions use the same filled-risk reconstruction;
+- missing opening plans and plan/trade lineage mismatches remain explicit integrity gaps;
+- the runtime's single configured `crypto_beta` correlation bucket assumption remains unchanged and matches the current opening engine;
+- the actual admission baseline must reconstruct with zero rejected observed openings before the delayed-capacity study can become review-ready.
+
+This fixes research-only false capacity rejections caused by treating partially filled positions as if they consumed their full approved risk envelope. It does not change the paper risk engine, paper positions, sizing, entries, exits, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
