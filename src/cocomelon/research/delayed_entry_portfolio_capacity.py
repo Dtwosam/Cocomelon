@@ -736,7 +736,20 @@ def _fixed_realized_contribution(
 def _actual_position(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, Decimal], ...],
+    plan: PaperOrderPlan,
 ) -> _Position:
+    _validate_plan(trade, plan)
+    planned_risk = (
+        _risk_per_quantity(plan, trade.entry_price)
+        * trade.filled_quantity
+    )
+    if (
+        plan.approved_risk_amount_ceiling is not None
+        and planned_risk > plan.approved_risk_amount_ceiling
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "observed filled risk exceeds approved opening ceiling"
+        )
     return _Position(
         trade_id=trade.trade_id,
         market=trade.market.canonical,
@@ -745,7 +758,7 @@ def _actual_position(
         close_ms=trade.closed_at_ms,
         entry_price=trade.entry_price,
         quantity=trade.filled_quantity,
-        planned_risk=trade.initial_risk_amount,
+        planned_risk=planned_risk,
         entry_fee=trade.entry_fees,
         close_realized_increment=(
             trade.net_pnl + trade.entry_fees
@@ -901,17 +914,29 @@ def delayed_entry_portfolio_capacity_overlay(
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
 
+    missing_plan = 0
+    plans_by_trade_id: dict[str, PaperOrderPlan] = {}
     actual_positions: list[_Position] = []
     for trade in relevant_trades:
         marks = exact_marks.get(trade.trade_id)
         if marks is None:
             continue
-        actual_positions.append(_actual_position(trade, marks))
+        plan = plan_loader(trade.opening_plan_id)
+        if plan is None:
+            missing_plan += 1
+            continue
+        try:
+            _validate_plan(trade, plan)
+            actual = _actual_position(trade, marks, plan)
+        except DelayedEntryCapacityOverlayError:
+            lineage_mismatches += 1
+            continue
+        plans_by_trade_id[trade.trade_id] = plan
+        actual_positions.append(actual)
 
     candidate_positions: list[_Position] = []
     background_positions = 0
     missing_journal = 0
-    missing_plan = 0
     unresolved_outcomes = 0
     candidate_filled = 0
     candidate_no_fill = 0
@@ -923,10 +948,13 @@ def delayed_entry_portfolio_capacity_overlay(
         marks = exact_marks.get(trade.trade_id)
         if marks is None:
             continue
+        plan = plans_by_trade_id.get(trade.trade_id)
+        if plan is None:
+            continue
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
             candidate_positions.append(
-                _actual_position(trade, marks)
+                _actual_position(trade, marks, plan)
             )
             background_positions += 1
             continue
@@ -940,20 +968,12 @@ def delayed_entry_portfolio_capacity_overlay(
         ):
             lineage_mismatches += 1
             continue
-        plan = plan_loader(outcome.opening_plan_id)
-        if plan is None:
-            missing_plan += 1
-            continue
         try:
-            _validate_plan(trade, plan)
             weighted = evaluate_delayed_entry_fill_weighted_outcome(
                 trade,
                 outcome,
             )
-        except (
-            DelayedEntryCapacityOverlayError,
-            DelayedEntryFillWeightedError,
-        ):
+        except DelayedEntryFillWeightedError:
             lineage_mismatches += 1
             continue
 
@@ -1082,6 +1102,9 @@ def delayed_entry_portfolio_capacity_overlay(
         "reference_equity": str(reference_equity),
         "correlation_bucket_assumption": (
             "single_runtime_configured_bucket"
+        ),
+        "observed_planned_risk_basis": (
+            "actual_fill_notional_stop_distance_plus_plan_cost_buffer"
         ),
         "limits": {
             "max_open_risk": str(limits.max_open_risk),
