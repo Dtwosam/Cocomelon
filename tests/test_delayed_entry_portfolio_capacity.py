@@ -302,6 +302,8 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             (_outcome(candidate),),
             paths,
             _plan_loader(background, candidate),
+
+            _liquidity_loader(background, candidate),
             _liquidity_loader(background, candidate),
             _liquidity_loader(background, candidate),
             limits=RiskLimits(),
@@ -372,6 +374,8 @@ def test_admission_shadow_can_reject_later_background_opening(
             (_outcome(candidate, price="101"),),
             paths,
             _plan_loader(candidate, later_background),
+
+            _liquidity_loader(candidate, later_background),
             _liquidity_loader(candidate, later_background),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
@@ -448,6 +452,8 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             (_outcome(candidate, price="105"),),
             paths,
             _plan_loader(background, candidate),
+
+            _liquidity_loader(background, candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -504,6 +510,8 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             (no_fill,),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             _liquidity_loader(candidate),
             _liquidity_loader(candidate),
             _liquidity_loader(candidate),
@@ -564,6 +572,8 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             (_outcome(first),),
             paths,
             _plan_loader(first, second, third),
+
+            _liquidity_loader(first, second, third),
             _liquidity_loader(first, second, third),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
@@ -612,6 +622,8 @@ def test_capacity_overlay_detects_available_margin_violation(
             (_outcome(candidate, price="105"),),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -665,6 +677,8 @@ def test_capacity_overlay_detects_liquidation_buffer_violation(
             (_outcome(candidate, price="120"),),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -727,6 +741,8 @@ def test_capacity_overlay_detects_visible_liquidity_violation(
             ),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
@@ -782,6 +798,8 @@ def test_missing_delayed_liquidity_blocks_review(
             ),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
@@ -833,6 +851,8 @@ def test_legacy_path_leverage_gap_blocks_margin_review(
             (_outcome(candidate),),
             paths,
             _plan_loader(candidate),
+
+            _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
         )
