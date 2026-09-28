@@ -50,24 +50,24 @@ class _Position:
     opening_kind: str
 
     def __post_init__(self) -> None:
-        for value in (
+        for identity in (
             self.trade_id,
             self.market,
             self.direction,
             self.opening_kind,
         ):
-            if not value.strip():
+            if not identity.strip():
                 raise ValueError("position identity must not be empty")
         if self.direction not in {"long", "short"}:
             raise ValueError("direction must be long or short")
         if self.open_ms < 0 or self.close_ms <= self.open_ms:
             raise ValueError("position timestamps are invalid")
-        for value, field in (
+        for metric, field in (
             (self.entry_price, "entry_price"),
             (self.quantity, "quantity"),
             (self.planned_risk, "planned_risk"),
         ):
-            if not value.is_finite() or value <= ZERO:
+            if not metric.is_finite() or metric <= ZERO:
                 raise ValueError(f"{field} must be positive and finite")
         if not self.entry_fee.is_finite() or self.entry_fee < ZERO:
             raise ValueError("entry_fee must be non-negative")
