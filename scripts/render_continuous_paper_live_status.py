@@ -1460,12 +1460,18 @@ def _delayed_entry_portfolio_capacity_lines(
 
     actual = raw.get("actual", {})
     candidate = raw.get("candidate", {})
+    actual_admission = raw.get("actual_admission", {})
+    candidate_admission = raw.get("candidate_admission", {})
     limits = raw.get("limits", {})
     readiness = raw.get("readiness", {})
     if not isinstance(actual, dict):
         actual = {}
     if not isinstance(candidate, dict):
         candidate = {}
+    if not isinstance(actual_admission, dict):
+        actual_admission = {}
+    if not isinstance(candidate_admission, dict):
+        candidate_admission = {}
     if not isinstance(limits, dict):
         limits = {}
     if not isinstance(readiness, dict):
@@ -1530,6 +1536,51 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{candidate.get('min_gross_notional_headroom', '0')}`"
             ),
             (
+                "- causal admissions modeled / replacement trades modeled: "
+                f"`{str(bool(raw.get('changed_admissions_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_trades_modeled'))).lower()}`"
+            ),
+            (
+                "- actual admission admitted / rejected: "
+                f"`{actual_admission.get('admitted_openings', 0)} / "
+                f"{actual_admission.get('rejected_openings', 0)}`"
+            ),
+            (
+                "- candidate admission admitted / rejected: "
+                f"`{candidate_admission.get('admitted_openings', 0)} / "
+                f"{candidate_admission.get('rejected_openings', 0)}`"
+            ),
+            (
+                "- candidate delayed admitted / rejected: "
+                f"`{candidate_admission.get('delayed_candidate_admitted', 0)} / "
+                f"{candidate_admission.get('delayed_candidate_rejected', 0)}`"
+            ),
+            (
+                "- candidate observed-schedule admitted / rejected: "
+                f"`{candidate_admission.get('observed_schedule_admitted', 0)} / "
+                f"{candidate_admission.get('observed_schedule_rejected', 0)}`"
+            ),
+            (
+                "- candidate admission rejection causes aggregate / bucket / "
+                "leverage / non-positive-equity: "
+                f"`{candidate_admission.get('aggregate_risk_rejections', 0)} / "
+                f"{candidate_admission.get('correlation_bucket_risk_rejections', 0)} / "
+                f"{candidate_admission.get('gross_leverage_rejections', 0)} / "
+                f"{candidate_admission.get('non_positive_equity_rejections', 0)}`"
+            ),
+            (
+                "- candidate admitted max utilization aggregate / bucket / leverage: "
+                f"`{candidate_admission.get('max_admitted_aggregate_risk_utilization', '0')} / "
+                f"{candidate_admission.get('max_admitted_correlation_bucket_risk_utilization', '0')} / "
+                f"{candidate_admission.get('max_admitted_gross_leverage', '0')}`"
+            ),
+            (
+                "- fixed / admitted candidate realized contribution / admission Δ: "
+                f"`{raw.get('fixed_candidate_final_realized_contribution', '0')} / "
+                f"{raw.get('admitted_candidate_final_realized_contribution', '0')} / "
+                f"{raw.get('admission_delta_vs_fixed_schedule', '0')}`"
+            ),
+            (
                 "- evidence gate closed / candidate fills / candidate overlap: "
                 f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
                 f"{readiness.get('min_candidate_filled_positions', 0)} / "
@@ -1548,12 +1599,13 @@ def _delayed_entry_portfolio_capacity_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Diagnostic overlay only. It checks aggregate, "
-                "shared-bucket, and gross-leverage ceilings; violations are "
-                "not silently resized. Available-margin, visible-liquidity, "
-                "and liquidation-buffer caps are not replayed. Background "
-                "openings stay observed, so this is not a full alternate "
-                "admission replay._"
+                "_The fixed overlay still reports every opening opportunity. "
+                "The causal admission shadow separately skips any opening that "
+                "would breach aggregate risk, the shared bucket, or gross "
+                "leverage, then evaluates later openings against the surviving "
+                "portfolio. It does not invent replacement trades, changed exits, "
+                "available-margin capacity, visible-liquidity capacity, or "
+                "liquidation-buffer rules._"
             ),
         ]
     )
