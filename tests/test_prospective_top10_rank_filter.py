@@ -164,6 +164,21 @@ def test_top10_filter_blocks_only_prospective_rank_above_10(
     assert isinstance(by_rank, dict)
     assert by_rank["1-5"]["net_pnl"] == "5"
     assert residual["changes_readiness_gate"] is False
+    portfolio = result["fixed_schedule_portfolio"]
+    assert isinstance(portfolio, dict)
+    assert portfolio["attributed_trades"] == 2
+    assert portfolio["admitted_trades"] == 1
+    assert portfolio["blocked_trades"] == 1
+    actual_timeline = portfolio["actual"]
+    candidate_timeline = portfolio["candidate"]
+    assert isinstance(actual_timeline, dict)
+    assert isinstance(candidate_timeline, dict)
+    assert actual_timeline["final_realized_contribution"] == "-3"
+    assert candidate_timeline["final_realized_contribution"] == "5"
+    assert portfolio["delta_final_realized_contribution"] == "8"
+    assert portfolio["replacement_trades_modeled"] is False
+    assert portfolio["candidate_equity_resizing_modeled"] is False
+    assert portfolio["changes_readiness_gate"] is False
     assert result["allowed_mean_net_r"] == "0.5"
     assert result["blocked_mean_net_r"] == "-0.8"
     assert result["allowed_mean_ordinal"] == "5"
