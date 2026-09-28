@@ -4001,6 +4001,8 @@ def _emit_live_status(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
+    original_stop_book_store: OriginalStopBookEvidenceStore,
+    original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
     delayed_entry_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     delayed_entry_120s_execution_shadow: _ContinuousDelayedEntryExecutionShadowSink,
