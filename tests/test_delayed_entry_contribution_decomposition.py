@@ -11,8 +11,10 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.delayed_entry_contribution_decomposition import (
     DelayedEntryContributionDecompositionOutcome,
-    _summary as _decomposition_summary,
     delayed_entry_contribution_decomposition,
+)
+from cocomelon.research.delayed_entry_contribution_decomposition import (
+    _summary as _decomposition_summary,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryOutcome,
