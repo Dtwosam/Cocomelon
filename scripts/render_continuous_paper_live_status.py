@@ -2533,6 +2533,8 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
     readiness = raw.get("readiness", {})
     overall = raw.get("overall", {})
     clipped = raw.get("risk_clipped", {})
+    reference_overall = raw.get("reference_overall", {})
+    reference_clipped = raw.get("reference_risk_clipped", {})
     by_side = raw.get("by_side", {})
     by_cause = raw.get("by_cause", {})
     if not isinstance(readiness, dict):
@@ -2541,6 +2543,10 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
         overall = {}
     if not isinstance(clipped, dict):
         clipped = {}
+    if not isinstance(reference_overall, dict):
+        reference_overall = {}
+    if not isinstance(reference_clipped, dict):
+        reference_clipped = {}
     if not isinstance(by_side, dict):
         by_side = {}
     if not isinstance(by_cause, dict):
@@ -2550,16 +2556,38 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
         [
             f"- definition: `{raw.get('definition', 'unknown')}`",
             (
-                "- filled attempts / no-fill outcomes: "
+                "- fill-evaluable / reference-evaluable / no-fill outcomes: "
                 f"`{raw.get('evaluated_filled_attempts', 0)} / "
+                f"{raw.get('reference_evaluated_attempts', 0)} / "
                 f"{raw.get('no_fill_outcomes', 0)}`"
             ),
             (
-                "- missing journal / opening plan / lineage / fill price: "
+                "- missing journal / opening plan / lineage / fill price / reference: "
                 f"`{raw.get('missing_journal_trades', 0)} / "
                 f"{raw.get('missing_opening_plans', 0)} / "
                 f"{raw.get('lineage_mismatches', 0)} / "
-                f"{raw.get('missing_delayed_fill_price', 0)}`"
+                f"{raw.get('missing_delayed_fill_price', 0)} / "
+                f"{raw.get('missing_delayed_reference_price', 0)}`"
+            ),
+            (
+                "- pre-IOC reference resize-required / IOC risk-clipped: "
+                f"`{reference_overall.get('pre_ioc_resize_required', 0)} / "
+                f"{reference_overall.get('risk_clipped', 0)}`"
+            ),
+            (
+                "- reference full-size risk / ceiling overall / IOC-risk-clipped: "
+                f"`{reference_overall.get('mean_reference_full_size_risk_ratio')} / "
+                f"{reference_clipped.get('mean_reference_full_size_risk_ratio')}`"
+            ),
+            (
+                "- reference risk-capacity fraction overall / IOC-risk-clipped: "
+                f"`{reference_overall.get('mean_reference_risk_capacity_fraction')} / "
+                f"{reference_clipped.get('mean_reference_risk_capacity_fraction')}`"
+            ),
+            (
+                "- reference unit-risk change overall / IOC-risk-clipped: "
+                f"`{reference_overall.get('mean_reference_unit_risk_change_fraction')} / "
+                f"{reference_clipped.get('mean_reference_unit_risk_change_fraction')}`"
             ),
             (
                 "- evidence gate (filled / risk-clipped): "
@@ -2620,11 +2648,14 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
         [
             "",
             (
-                "_Risk used is delayed filled risk divided by the original "
-                "paper trade risk ceiling. Full-size risk / ceiling above 1 "
-                "means the original quantity could not fit the original risk "
-                "budget at the observed delayed average fill. This diagnostic "
-                "does not change size, stops, risk, delay, or execution._"
+                "_Risk used and the table's full-size ratio use the delayed "
+                "average fill and describe the IOC path that actually simulated. "
+                "The reference metrics use the exact delayed execution reference "
+                "price and describe pre-IOC sizing pressure. Reference full-size "
+                "risk / ceiling above 1 means the original quantity would require "
+                "a planner resize before execution; an IOC can still risk-clip "
+                "with a reference ratio at or below 1 when visible fills are worse. "
+                "This diagnostic does not change size, stops, risk, delay, or execution._"
             ),
         ]
     )
