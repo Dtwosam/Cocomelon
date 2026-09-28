@@ -13,6 +13,10 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.prospective_allowed_residual import (
+    AllowedResidualItem,
+    prospective_allowed_residual_attribution,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -262,6 +266,16 @@ def prospective_combined_entry_filter_summary(
             for trade, _rank, _lead_strategy, reason in attributed
         )
     )
+    allowed_residual = prospective_allowed_residual_attribution(
+        tuple(
+            AllowedResidualItem(
+                trade,
+                lead_strategy=lead_strategy,
+                ordinal=rank.ordinal,
+            )
+            for trade, rank, lead_strategy in allowed
+        )
+    )
 
     reason_names = (
         "long_trend",
@@ -366,6 +380,7 @@ def prospective_combined_entry_filter_summary(
         "allowed_net_pnl": str(allowed_net_pnl),
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
+        "allowed_residual": allowed_residual,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl
