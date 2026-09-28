@@ -210,6 +210,11 @@ def test_combined_filter_requires_both_frozen_conditions(
     assert result["actual_net_pnl"] == "-16"
     assert result["candidate_trade_contribution_pnl"] == "5"
     assert result["delta_trade_contribution_pnl"] == "21"
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    assert robustness["total_delta_trade_contribution_pnl"] == "21"
+    assert robustness["leave_one_trade_out_min_delta"] == "13"
+    assert robustness["changes_readiness_gate"] is False
 
     reasons = result["by_block_reason"]
     assert isinstance(reasons, dict)
