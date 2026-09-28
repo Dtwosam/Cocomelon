@@ -284,16 +284,30 @@ class _ContinuousTradePathSink:
         if plan is None or simulation is None or not simulation.fills:
             return
         try:
+            matches = tuple(
+                position
+                for position in trace.submission.account.positions
+                if position.opening_plan_id == plan.plan_id
+            )
+            if len(matches) != 1:
+                raise RuntimeError(
+                    "trade-path opening position lineage is missing"
+                )
+            position = matches[0]
+            if (
+                position.market != plan.market
+                or position.venue_max_leverage
+                != trace.instrument.venue_max_leverage
+            ):
+                raise RuntimeError(
+                    "trade-path opening instrument lineage mismatch"
+                )
             self._store.checkpoint_open_path(
                 opening_plan_id=plan.plan_id,
                 market=plan.market,
-                opened_at_ms=max(
-                    fill.timestamp_ms for fill in simulation.fills
-                ),
+                opened_at_ms=position.opened_at_ms,
                 mark_observations=(),
-                venue_max_leverage=(
-                    trace.instrument.venue_max_leverage
-                ),
+                venue_max_leverage=position.venue_max_leverage,
             )
         except Exception as exc:
             self._capture_error(exc)
