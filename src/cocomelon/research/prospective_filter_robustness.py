@@ -128,14 +128,18 @@ def prospective_filter_robustness(
             }
         )
 
+    def is_full_block(block: dict[str, object]) -> bool:
+        count = block.get("trades")
+        return (
+            isinstance(count, int)
+            and not isinstance(count, bool)
+            and count >= MIN_TRADES_PER_FULL_BLOCK
+        )
+
     full_blocks = tuple(
         block
         for block in blocks
-        if (
-            isinstance(block.get("trades"), int)
-            and not isinstance(block.get("trades"), bool)
-            and int(block["trades"]) >= MIN_TRADES_PER_FULL_BLOCK
-        )
+        if is_full_block(block)
     )
     positive_full_blocks = sum(
         1
