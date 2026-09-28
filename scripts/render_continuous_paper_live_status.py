@@ -1268,13 +1268,6 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
                 f"`{raw.get('delta_max_realized_drawdown', '0')}`"
             ),
             (
-                "- actual / candidate funding events / cash: "
-                f"`{actual.get('funding_events', 0)} / "
-                f"{candidate.get('funding_events', 0)} / "
-                f"{actual.get('funding_cash_pnl', '0')} / "
-                f"{candidate.get('funding_cash_pnl', '0')}`"
-            ),
-            (
                 "- actual / candidate max concurrent positions: "
                 f"`{actual.get('max_concurrent_positions', 0)} / "
                 f"{candidate.get('max_concurrent_positions', 0)}`"
@@ -1381,7 +1374,6 @@ def _delayed_entry_mtm_portfolio_lines(
         [
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             f"- mark model: `{raw.get('mark_model', 'unknown')}`",
-            f"- funding model: `{raw.get('funding_model', 'unknown')}`",
             (
                 "- closed shadow / complete paths / unresolved: "
                 f"`{raw.get('closed_shadow_outcomes', 0)} / "
@@ -1419,6 +1411,13 @@ def _delayed_entry_mtm_portfolio_lines(
                 f"{candidate.get('min_observed_equity_contribution', '0')}`"
             ),
             (
+                "- actual / candidate funding events / cash: "
+                f"`{actual.get('funding_events', 0)} / "
+                f"{candidate.get('funding_events', 0)} / "
+                f"{actual.get('funding_cash_pnl', '0')} / "
+                f"{candidate.get('funding_cash_pnl', '0')}`"
+            ),
+            (
                 "- actual / candidate max concurrent positions: "
                 f"`{actual.get('max_concurrent_positions', 0)} / "
                 f"{candidate.get('max_concurrent_positions', 0)}`"
@@ -1452,10 +1451,9 @@ def _delayed_entry_mtm_portfolio_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Observed-mark contribution equity only. Entry fees are timed "
-                "at open, funding is applied at exact recorded hourly boundaries, "
-                "and exit fees settle at the actual close. Replacement trades "
-                "and changed exit timing are not modeled._"
+                "_Observed-mark contribution equity only; funding is applied "
+                "at exact recorded hourly boundaries. No replacement trades or "
+                "changed exits are modeled._"
             ),
         ]
     )
@@ -1532,7 +1530,7 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{raw.get('background_positions', 0)}`"
             ),
             (
-                "- unresolved / missing journal-plan-leverage-openliq-delayliq-delayref-path / "
+                "- unresolved / missing journal-plan-leverage-openliq-delayliq-delayref-funding-path / "
                 "incomplete / lineage: "
                 f"`{raw.get('unresolved_outcomes', 0)} / "
                 f"{raw.get('missing_journal_trades', 0)}-"
@@ -1541,6 +1539,7 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{raw.get('missing_opening_liquidity_evidence', 0)}-"
                 f"{raw.get('missing_delayed_liquidity_evidence', 0)}-"
                 f"{raw.get('missing_delayed_reference_price', 0)}-"
+                f"{raw.get('missing_funding_events', 0)}-"
                 f"{raw.get('missing_exact_paths', 0)} / "
                 f"{raw.get('incomplete_exact_paths', 0)} / "
                 f"{raw.get('lineage_mismatches', 0)}`"
@@ -1645,6 +1644,17 @@ def _delayed_entry_portfolio_capacity_lines(
             (
                 "- admitted candidate minimum liquidation stop multiple: "
                 f"`{candidate_admission.get('min_admitted_liquidation_stop_multiple', '0')}`"
+            ),
+            (
+                "- funding events/cash fixed A/C · admitted A/C: "
+                f"`{actual.get('funding_events', 0)}/"
+                f"{candidate.get('funding_events', 0)} "
+                f"{actual.get('funding_cash_pnl', '0')}/"
+                f"{candidate.get('funding_cash_pnl', '0')} · "
+                f"{actual_admission.get('funding_events', 0)}/"
+                f"{candidate_admission.get('funding_events', 0)} "
+                f"{actual_admission.get('funding_cash_pnl', '0')}/"
+                f"{candidate_admission.get('funding_cash_pnl', '0')}`"
             ),
             (
                 "- fixed / admitted candidate realized contribution / admission Δ: "
