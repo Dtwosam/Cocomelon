@@ -3340,8 +3340,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`120000ms / 60000ms`" in output
     assert "`18.5` bps / `0.11` R" in output
     assert "### Paired 60s vs 120s delayed-entry study" in output
-    if "body was compacted" not in output:
-        assert "paired_same_exit_trade_contribution_only" in output
+    assert "paired_same_exit_trade_contribution_only" in output
     assert "120s better / 60s better / equal" in output
     assert "`3 / 2 / 0`" in output
     assert "60s / 120s same-exit PnL / incremental" in output
