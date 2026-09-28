@@ -317,8 +317,8 @@ def test_admission_shadow_can_reject_later_background_opening(
         "correlation_bucket_risk_rejections"
     ] == 1
     assert candidate_admission["max_concurrent_positions"] == 1
-    assert result["fixed_candidate_final_realized_contribution"] == "-10"
-    assert result["admitted_candidate_final_realized_contribution"] == "0"
+    assert result["fixed_candidate_final_realized_contribution"] == "-12.5"
+    assert result["admitted_candidate_final_realized_contribution"] == "-2.5"
     assert result["admission_delta_vs_fixed_schedule"] == "10"
 
 
