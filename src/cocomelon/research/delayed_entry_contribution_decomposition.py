@@ -19,6 +19,9 @@ from cocomelon.research.delayed_entry_fill_weighted import (
     DelayedEntryFillWeightedError,
     evaluate_delayed_entry_fill_weighted_outcome,
 )
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
+)
 
 ZERO: Final = Decimal("0")
 
@@ -212,21 +215,17 @@ def _summary(
     ],
 ) -> dict[str, object]:
     count = len(items)
-    price_effect = sum(
-        (item.price_effect_pnl for item in items),
-        ZERO,
+    price_effect = exact_decimal_sum(
+        item.price_effect_pnl for item in items
     )
-    fee_effect = sum(
-        (item.entry_fee_effect_pnl for item in items),
-        ZERO,
+    fee_effect = exact_decimal_sum(
+        item.entry_fee_effect_pnl for item in items
     )
-    exposure_effect = sum(
-        (item.exposure_effect_pnl for item in items),
-        ZERO,
+    exposure_effect = exact_decimal_sum(
+        item.exposure_effect_pnl for item in items
     )
-    total_delta = sum(
-        (item.total_delta_pnl for item in items),
-        ZERO,
+    total_delta = exact_decimal_sum(
+        item.total_delta_pnl for item in items
     )
     if price_effect + fee_effect + exposure_effect != total_delta:
         raise DelayedEntryContributionDecompositionError(

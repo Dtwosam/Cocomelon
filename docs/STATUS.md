@@ -2261,3 +2261,15 @@ The exact delayed-entry stop-L2 replay now defines its integrity cohort at the c
 This changes research cohort accounting only. It does not make rejected or expired entries profitable, does not synthesize a position, does not change delayed-entry readiness elsewhere, and has no execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Exact Decimal aggregation for delayed contribution decomposition — 2026-09-28
+
+The delayed-entry contribution decomposition now aggregates accounting components with exact base-10 coefficient alignment instead of relying on separate finite-precision Decimal summation paths.
+
+This fixes a live research-only failure where every per-trade decomposition reconciled exactly, but the aggregate price + entry-fee + exposure sums could differ from the separately accumulated total delta by a tiny rounding residue such as `1E-26`. The same exact aggregation is applied to the funding-corrected decomposition so its multi-part accounting identity cannot fail for the same reason.
+
+The change affects research aggregation only. Per-trade economics, fills, fees, funding, risk, paper execution, and all promotion gates are unchanged.
+
+**LIVE TRADING: DISABLED.**

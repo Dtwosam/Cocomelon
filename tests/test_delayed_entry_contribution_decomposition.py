@@ -10,7 +10,11 @@ from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.delayed_entry_contribution_decomposition import (
+    DelayedEntryContributionDecompositionOutcome,
     delayed_entry_contribution_decomposition,
+)
+from cocomelon.research.delayed_entry_contribution_decomposition import (
+    _summary as _decomposition_summary,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryOutcome,
@@ -315,3 +319,65 @@ def test_unresolved_outcomes_are_excluded_not_zeroed(
     assert isinstance(overall, dict)
     assert overall["trades"] == 0
     assert Decimal(str(overall["total_delta_pnl"])) == Decimal("0")
+
+
+
+def test_summary_reconciles_when_default_decimal_sums_round_differently() -> None:
+    rows = (
+        (
+            "-61.79181701745288526954939713",
+            "53.26287865350763390079987960",
+            "-31.88051929811547879706297324",
+            "-40.40945766206073016581249077",
+        ),
+        (
+            "97.15395567483577824256450709",
+            "-66.80773600876273495781810057",
+            "-92.78781362254566657740525614",
+            "-62.44159395647262329265884962",
+        ),
+        (
+            "-97.02566287103053593733501422",
+            "79.41184222519113199729057211",
+            "35.00649151432642571997655906",
+            "17.39267086848702177993211695",
+        ),
+    )
+    items = tuple(
+        DelayedEntryContributionDecompositionOutcome(
+            trade_id=f"trade-{index}",
+            opening_plan_id=f"plan-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            capacity_cause="full_requested_fill",
+            fill_fraction=Decimal("1"),
+            actual_net_pnl=Decimal("0"),
+            scaled_actual_net_pnl=Decimal("0"),
+            candidate_net_pnl_estimate=Decimal(total),
+            price_effect_pnl=Decimal(price),
+            entry_fee_effect_pnl=Decimal(fee),
+            exposure_effect_pnl=Decimal(exposure),
+            total_delta_pnl=Decimal(total),
+            price_effect_r=Decimal("0"),
+            entry_fee_effect_r=Decimal("0"),
+            exposure_effect_r=Decimal("0"),
+            total_delta_r=Decimal("0"),
+        )
+        for index, (price, fee, exposure, total) in enumerate(rows)
+    )
+
+    summary = _decomposition_summary(items)
+
+    assert summary["price_effect_pnl"] == (
+        "-61.66352421364764296431990426"
+    )
+    assert summary["entry_fee_effect_pnl"] == (
+        "65.86698486993603094027235114"
+    )
+    assert summary["exposure_effect_pnl"] == (
+        "-89.66184140633471965449167032"
+    )
+    assert summary["total_delta_pnl"] == (
+        "-85.45838075004633167853922344"
+    )
