@@ -2107,3 +2107,22 @@ The 60-second delayed-entry contribution decomposition now has a funding-aware c
 This remains a same-recorded-exit contribution study. It does not simulate stop fills, changed exits, replacement trades, or strategy changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry same-exit stop-validity partition — 2026-09-28
+
+The funding-corrected 60-second delayed-entry same-exit contribution is now partitioned by original-stop survivability.
+
+- filled delayed candidates reuse the exact complete, gap-free trade-path stop classifier;
+- candidate economics reuse the exact funding-corrected same-exit calculation;
+- candidates whose observed path definitely crosses the immutable original stop before the recorded close are classified separately from candidates that survive the observed path to that close;
+- telemetry reports total same-exit candidate PnL, PnL sitting on definite stop-crossed paths, PnL on observed survivors, and the same split for delta versus actual;
+- the absolute share of candidate PnL sitting on definite stop crossings is reported as a contamination diagnostic;
+- genuine no-fills require neither path nor funding evidence because no delayed position exists;
+- incomplete/gapped paths, missing funding lineage, invalid candidate timing, and lineage mismatches block review readiness.
+
+A stop-crossed candidate's recorded-close PnL is flagged as path-invalid evidence. It is not converted into a synthetic stop-fill PnL, because executable stop price/slippage is not modeled yet.
+
+This remains research-only and changes no stops, exits, sizing, risk, cadence, paper execution, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
