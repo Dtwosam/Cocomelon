@@ -9,6 +9,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _prospective_allowed_residual_lines,
     _prospective_combined_entry_filter_lines,
+    _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
 )
 
@@ -4965,3 +4966,49 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
     assert "long:breakout / -8 / n2" in output
     assert "SOL / -10 / n2" in output
     assert "does not change the frozen filter or readiness gate" in output
+
+
+
+def test_fixed_schedule_filter_renderer_exposes_portfolio_effects() -> None:
+    lines = _prospective_filter_fixed_schedule_lines(
+        {
+            "actual": {
+                "final_realized_contribution": "-20",
+                "max_realized_drawdown": "25",
+                "max_concurrent_positions": 3,
+                "overlap_openings": 2,
+                "max_gross_notional": "1200",
+                "max_planned_risk": "60",
+            },
+            "candidate": {
+                "final_realized_contribution": "5",
+                "max_realized_drawdown": "8",
+                "max_concurrent_positions": 2,
+                "overlap_openings": 1,
+                "max_gross_notional": "700",
+                "max_planned_risk": "35",
+            },
+            "delta_final_realized_contribution": "25",
+            "delta_max_realized_drawdown": "-17",
+            "delta_max_gross_notional": "-500",
+            "delta_max_planned_risk": "-25",
+            "blocked_actual_net_pnl": "-25",
+            "admitted_trades": 8,
+            "blocked_trades": 4,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "actual / candidate / delta realized contribution" in output
+    assert "`-20 / 5 / 25`" in output
+    assert "max realized drawdown actual / candidate / delta" in output
+    assert "`25 / 8 / -17`" in output
+    assert "max positions / overlap actual→candidate" in output
+    assert "`3 / 2 → 2 / 1`" in output
+    assert "max gross notional actual / candidate / delta" in output
+    assert "`1200 / 700 / -500`" in output
+    assert "max planned risk actual / candidate / delta" in output
+    assert "`60 / 35 / -25`" in output
+    assert "fixed-schedule blocked PnL / admitted / blocked" in output
+    assert "`-25 / 8 / 4`" in output
+    assert "replacement trades, equity-driven resizing" in output
