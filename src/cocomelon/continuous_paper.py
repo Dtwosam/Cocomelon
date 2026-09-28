@@ -121,15 +121,15 @@ from cocomelon.research.delayed_entry_fixed_schedule_portfolio import (
 from cocomelon.research.delayed_entry_mtm_portfolio import (
     delayed_entry_mtm_portfolio,
 )
-from cocomelon.research.delayed_entry_portfolio_capacity import (
-    delayed_entry_portfolio_capacity_overlay,
-)
 from cocomelon.research.delayed_entry_pair import (
     CHALLENGER_DELAY_MS,
     delayed_entry_pair_summary,
 )
 from cocomelon.research.delayed_entry_pair_fill_weighted import (
     delayed_entry_pair_fill_weighted_summary,
+)
+from cocomelon.research.delayed_entry_portfolio_capacity import (
+    delayed_entry_portfolio_capacity_overlay,
 )
 from cocomelon.research.delayed_entry_risk_geometry import (
     delayed_entry_risk_geometry_summary,
