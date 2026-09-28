@@ -245,9 +245,12 @@ def test_capture_uses_plan_book_then_first_latency_eligible_book(
         rebuilt.payload["bids"][0]["px"]
         == Decimal("94.9")
     )
-    spec = evidence.instrument_spec()
-    assert spec.size_quantum == Decimal("0.01")
-    assert spec.metadata_received_at_ms == 800
+    plan_spec = evidence.plan_instrument_spec()
+    execution_spec = evidence.execution_instrument_spec()
+    assert plan_spec.size_quantum == Decimal("0.01")
+    assert plan_spec.metadata_received_at_ms == 800
+    assert execution_spec.size_quantum == Decimal("0.01")
+    assert execution_spec.metadata_received_at_ms == 800
 
 
 def test_same_book_can_create_and_execute_plan_after_latency(
