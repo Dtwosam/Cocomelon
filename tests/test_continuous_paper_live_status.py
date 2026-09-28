@@ -3321,8 +3321,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     )
     assert (
         "| 60s delayed capacity overlay | collecting | "
-        "closed=12, fills=8, overlap=4 | "
-        "viol=2, unresolved=2, missing=0/0/1, incomplete=0, mismatch=0 |"
+        "closed=12, fills=8, overlap=4, admit/reject=8/2 | "
+        "viol=2, actualrej=0, unresolved=2, missing=0/0/1, "
+        "incomplete=0, mismatch=0 |"
         in output
     )
     assert (
