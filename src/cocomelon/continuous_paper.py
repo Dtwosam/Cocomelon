@@ -2753,6 +2753,7 @@ def _delayed_entry_portfolio_capacity_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     plan_loader: Callable[[str], PaperOrderPlan | None],
     limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
 ) -> dict[str, object]:
     if delayed_shadow.shadow is None:
         return {
@@ -2769,6 +2770,7 @@ def _delayed_entry_portfolio_capacity_payload(
             trade_path_store,
             plan_loader,
             limits=limits,
+            paper_max_gross_leverage=paper_max_gross_leverage,
         )
     except Exception as exc:
         return {
@@ -3256,6 +3258,7 @@ def _live_status_payload(
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
     risk_limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -3433,6 +3436,7 @@ def _live_status_payload(
             trade_path_store,
             execution.store.load_plan,
             risk_limits,
+            paper_max_gross_leverage,
         )
     )
     delayed_entry_contribution_decomposition = (
@@ -3703,6 +3707,7 @@ def _emit_live_status(
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
     risk_limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3750,6 +3755,7 @@ def _emit_live_status(
             delay_selector_comparison_restore_error
         ),
         risk_limits=risk_limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
@@ -4218,6 +4224,9 @@ async def run_continuous_paper_session(
                 delay_selector_comparison_restore_error
             ),
             risk_limits=replay_config.risk_limits,
+            paper_max_gross_leverage=(
+                replay_config.execution.paper_max_gross_leverage
+            ),
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
@@ -4396,6 +4405,9 @@ async def run_continuous_paper_session(
                         delay_selector_comparison_restore_error
                     ),
                     risk_limits=replay_config.risk_limits,
+                    paper_max_gross_leverage=(
+                        replay_config.execution.paper_max_gross_leverage
+                    ),
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
