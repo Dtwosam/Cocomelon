@@ -139,6 +139,9 @@ from cocomelon.research.delayed_entry_risk_geometry import (
 from cocomelon.research.delayed_entry_same_exit import (
     delayed_entry_same_exit_contribution,
 )
+from cocomelon.research.delayed_entry_stop_survivability import (
+    delayed_entry_stop_survivability,
+)
 from cocomelon.research.entry_decision_age import entry_decision_age_summary
 from cocomelon.research.entry_markout import entry_markout_summary
 from cocomelon.research.entry_markout_predictiveness import (
@@ -2753,6 +2756,39 @@ def _delayed_entry_mtm_portfolio_payload(
     return payload
 
 
+def _delayed_entry_stop_survivability_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_stop_survivability(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            trade_path_store,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_portfolio_capacity_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3451,6 +3487,13 @@ def _live_status_payload(
             ),
         )
     )
+    delayed_entry_stop_survivability_payload = (
+        _delayed_entry_stop_survivability_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            trade_path_store,
+        )
+    )
     delayed_entry_portfolio_capacity = (
         _delayed_entry_portfolio_capacity_payload(
             pump.journal,
@@ -3664,6 +3707,9 @@ def _live_status_payload(
         ),
         "delayed_entry_mtm_portfolio": (
             delayed_entry_mtm_portfolio_payload
+        ),
+        "delayed_entry_stop_survivability": (
+            delayed_entry_stop_survivability_payload
         ),
         "delayed_entry_portfolio_capacity": (
             delayed_entry_portfolio_capacity
