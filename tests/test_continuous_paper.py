@@ -65,7 +65,6 @@ from cocomelon.continuous_paper import (
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
     _restore_prospective_top10_rank_filter,
-    _restore_prospective_combined_entry_filter,
 )
 from cocomelon.domain.execution import (
     PaperExecutionConfig,
