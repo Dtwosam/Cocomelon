@@ -222,6 +222,18 @@ def _string(value: object, field: str) -> str:
     return value
 
 
+def _counter(
+    payload: Mapping[str, object],
+    field: str,
+) -> int:
+    value = payload.get(field)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise DelayedEntryCapacityOverlayError(
+            f"{field} must be an integer"
+        )
+    return value
+
+
 def _risk_per_quantity(
     plan: PaperOrderPlan,
     price: Decimal,
