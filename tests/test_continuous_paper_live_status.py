@@ -4724,6 +4724,25 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
             ),
             "capture_started_at_ms": 1_700_000_000_000,
             "pre_capture_legacy_outcomes": 9,
+            "closed_shadow_outcomes": 12,
+            "candidate_no_fill_trades": 1,
+            "unresolved_outcomes": 2,
+            "source_counts": {
+                "full_visible_book_ioc": 9,
+                "expired": 2,
+                "no_fill": 1,
+            },
+            "unresolved_source_counts": {
+                "expired": 2,
+            },
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 1,
+            "incomplete_or_gapped_paths": 0,
+            "missing_funding_events": 0,
+            "lineage_mismatches": 0,
+            "invalid_candidate_timing": 0,
+            "stop_book_capture_errors": 0,
+            "capture_error": None,
             "overall": {
                 "evaluated_filled_candidates": 8,
                 "mark_stop_crossings": 4,
@@ -4747,6 +4766,7 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
                 "late_funding_boundaries_excluded": 2,
             },
             "readiness": {
+                "prospective_protocol_present": True,
                 "integrity_clean": True,
                 "complete_counterfactual_cohort": False,
                 "min_full_stop_exits": 5,
@@ -4759,6 +4779,17 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     output = "\n".join(lines)
 
     assert "### 60s delayed-entry exact stop L2 replay" in output
+    assert "shadow outcomes / candidate no-fill / unresolved" in output
+    assert "`12 / 1 / 2`" in output
+    assert "delayed outcome sources" in output
+    assert "expired=2" in output
+    assert "full_visible_book_ioc=9" in output
+    assert "unresolved delayed sources" in output
+    assert "`expired=2`" in output
+    assert "integrity blockers journal / path / incomplete-gap" in output
+    assert "`0 / 1 / 0 / 0 / 0 / 0 / 0`" in output
+    assert "capture error / prospective protocol present" in output
+    assert "`None / true`" in output
     assert "evaluated / mark crossings / captured stop plans" in output
     assert "`8 / 4 / 3`" in output
     assert "full / partial / no-fill / quantized remainder exits" in output
