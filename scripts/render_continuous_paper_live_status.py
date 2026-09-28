@@ -1548,11 +1548,12 @@ def _delayed_entry_portfolio_capacity_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Diagnostic overlay only. It checks the observed alternate "
-                "schedule against aggregate, shared-bucket, and gross-leverage "
-                "ceilings; violations are not silently resized. Background "
-                "openings stay on their observed schedule, so this is not a "
-                "full alternate admission replay._"
+                "_Diagnostic overlay only. It checks aggregate, "
+                "shared-bucket, and gross-leverage ceilings; violations are "
+                "not silently resized. Available-margin, visible-liquidity, "
+                "and liquidation-buffer caps are not replayed. Background "
+                "openings stay observed, so this is not a full alternate "
+                "admission replay._"
             ),
         ]
     )
