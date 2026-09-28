@@ -2575,6 +2575,65 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_mtm_portfolio": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "fixed_observed_schedule_mark_to_market_contribution_only"
+            ),
+            "delay_ms": 60000,
+            "mark_model": (
+                "latest_observed_exact_path_mark_carried_forward"
+            ),
+            "entry_fee_timing_modeled": True,
+            "exit_fee_and_funding_settled_at_actual_close": True,
+            "intratrade_funding_timing_modeled": False,
+            "replacement_trades_modeled": False,
+            "changed_exit_timing_modeled": False,
+            "closed_shadow_outcomes": 12,
+            "evaluated_complete_path_trades": 9,
+            "candidate_filled_positions": 8,
+            "candidate_no_fill_trades": 1,
+            "unresolved_outcomes": 2,
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 1,
+            "incomplete_exact_paths": 0,
+            "lineage_mismatches": 0,
+            "actual": {
+                "final_realized_contribution": "-11",
+                "max_observed_equity_drawdown": "21",
+                "min_observed_equity_contribution": "-17",
+                "max_observed_equity_contribution": "6",
+                "max_concurrent_positions": 4,
+                "overlap_openings": 6,
+                "observation_events": 48,
+                "max_mark_carry_age_ms": 45000,
+            },
+            "candidate": {
+                "final_realized_contribution": "3",
+                "max_observed_equity_drawdown": "10",
+                "min_observed_equity_contribution": "-7",
+                "max_observed_equity_contribution": "8",
+                "max_concurrent_positions": 3,
+                "overlap_openings": 4,
+                "observation_events": 40,
+                "max_mark_carry_age_ms": 38000,
+            },
+            "delta_final_realized_contribution": "14",
+            "delta_max_observed_equity_drawdown": "-11",
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_complete_path_trades": 20,
+                "min_actual_overlap_openings": 5,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_complete_path_trades": 11,
+                "missing_actual_overlap_openings": 0,
+            },
+            "error": None,
+        },
         "delayed_entry_fill_weighted": {
             "enabled": True,
             "research_only": True,
@@ -3370,6 +3429,24 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "evidence gate closed / evaluated / overlap" in output
     assert "`30 / 20 / 5`" in output
     assert "Fixed observed schedule only" in output
+    assert "### 60s delayed-entry mark-to-market portfolio shadow" in output
+    assert "fixed_observed_schedule_mark_to_market_contribution_only" in output
+    assert "latest_observed_exact_path_mark_carried_forward" in output
+    assert "closed shadow / complete paths / unresolved" in output
+    assert "`12 / 9 / 2`" in output
+    assert "candidate filled / no-fill positions" in output
+    assert "`8 / 1`" in output
+    assert "actual / candidate observed equity drawdown / delta" in output
+    assert "`21` / `10` / `-11`" in output
+    assert "actual / candidate min observed equity contribution" in output
+    assert "`-17 / -7`" in output
+    assert "actual / candidate max carried-mark age" in output
+    assert "`45000ms / 38000ms`" in output
+    assert "evidence gate closed / complete-path / overlap" in output
+    assert "`30 / 20 / 5`" in output
+    assert "still needed C/P/O" in output
+    assert "`18 / 11 / 0`" in output
+    assert "Observed-mark contribution equity only" in output
     assert "### 60s delayed-entry contribution decomposition" in output
     assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
     assert "price / entry-fee / exposure / total Δ PnL" in output
