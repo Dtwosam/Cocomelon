@@ -9,6 +9,7 @@ from cocomelon.domain.execution import OrderSide, PaperOrderPlan
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.strategy import Direction
+from cocomelon.evidence.openings import paper_liquidation_surrogate
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -44,6 +45,7 @@ class _Position:
     entry_price: Decimal
     quantity: Decimal
     planned_risk: Decimal
+    stop_price: Decimal
     venue_max_leverage: Decimal
     entry_fee: Decimal
     close_realized_increment: Decimal
@@ -67,6 +69,7 @@ class _Position:
             (self.entry_price, "entry_price"),
             (self.quantity, "quantity"),
             (self.planned_risk, "planned_risk"),
+            (self.stop_price, "stop_price"),
         ):
             if not metric.is_finite() or metric <= ZERO:
                 raise ValueError(f"{field} must be positive and finite")
@@ -357,6 +360,41 @@ def _reserved_margin(
     )
 
 
+def _liquidation_buffer_check(
+    position: _Position,
+    *,
+    limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
+) -> tuple[Decimal, bool]:
+    direction = (
+        Direction.LONG
+        if position.direction == "long"
+        else Direction.SHORT
+    )
+    liquidation = paper_liquidation_surrogate(
+        position.entry_price,
+        direction,
+        paper_max_leverage=paper_max_gross_leverage,
+        venue_max_leverage=position.venue_max_leverage,
+    )
+    if direction is Direction.LONG:
+        side_safe = liquidation < position.stop_price
+        stop_distance = position.entry_price - position.stop_price
+        liquidation_distance = position.entry_price - liquidation
+    else:
+        side_safe = liquidation > position.stop_price
+        stop_distance = position.stop_price - position.entry_price
+        liquidation_distance = liquidation - position.entry_price
+    if stop_distance <= ZERO or liquidation_distance <= ZERO:
+        return ZERO, False
+    multiple = liquidation_distance / stop_distance
+    return (
+        multiple,
+        side_safe
+        and multiple >= limits.min_liquidation_stop_multiple,
+    )
+
+
 def _path_venue_max_leverage(
     raw: Mapping[str, object],
 ) -> Decimal | None:
@@ -401,6 +439,7 @@ def _capacity_timeline(
     bucket_risk_violations = 0
     gross_leverage_violations = 0
     margin_capacity_violations = 0
+    liquidation_buffer_violations = 0
     non_positive_equity = 0
     max_aggregate_risk_utilization = ZERO
     max_bucket_risk_utilization = ZERO
@@ -410,6 +449,8 @@ def _capacity_timeline(
     min_bucket_risk_headroom: Decimal | None = None
     min_gross_notional_headroom: Decimal | None = None
     min_margin_notional_headroom: Decimal | None = None
+    min_liquidation_stop_multiple: Decimal | None = None
+    min_liquidation_stop_headroom: Decimal | None = None
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -469,6 +510,35 @@ def _capacity_timeline(
             active,
             paper_max_gross_leverage=paper_max_gross_leverage,
         )
+        (
+            liquidation_multiple,
+            liquidation_ok,
+        ) = _liquidation_buffer_check(
+            position,
+            limits=limits,
+            paper_max_gross_leverage=paper_max_gross_leverage,
+        )
+        liquidation_bad = not liquidation_ok
+        liquidation_headroom = (
+            liquidation_multiple
+            - limits.min_liquidation_stop_multiple
+        )
+        min_liquidation_stop_multiple = (
+            liquidation_multiple
+            if min_liquidation_stop_multiple is None
+            else min(
+                min_liquidation_stop_multiple,
+                liquidation_multiple,
+            )
+        )
+        min_liquidation_stop_headroom = (
+            liquidation_headroom
+            if min_liquidation_stop_headroom is None
+            else min(
+                min_liquidation_stop_headroom,
+                liquidation_headroom,
+            )
+        )
 
         if equity <= ZERO:
             non_positive_equity += 1
@@ -509,6 +579,7 @@ def _capacity_timeline(
                 or bucket_bad
                 or gross_bad
                 or margin_bad
+                or liquidation_bad
             )
             max_aggregate_risk_utilization = max(
                 max_aggregate_risk_utilization,
@@ -575,6 +646,8 @@ def _capacity_timeline(
             gross_leverage_violations += 1
         if margin_bad:
             margin_capacity_violations += 1
+        if liquidation_bad:
+            liquidation_buffer_violations += 1
 
         realized -= position.entry_fee
         active[event.trade_id] = _Active(
@@ -601,6 +674,9 @@ def _capacity_timeline(
         ),
         "gross_leverage_violations": gross_leverage_violations,
         "margin_capacity_violations": margin_capacity_violations,
+        "liquidation_buffer_violations": (
+            liquidation_buffer_violations
+        ),
         "non_positive_equity_events": non_positive_equity,
         "max_aggregate_risk_utilization": str(
             max_aggregate_risk_utilization
@@ -631,6 +707,16 @@ def _capacity_timeline(
             ZERO
             if min_margin_notional_headroom is None
             else min_margin_notional_headroom
+        ),
+        "min_liquidation_stop_multiple": str(
+            ZERO
+            if min_liquidation_stop_multiple is None
+            else min_liquidation_stop_multiple
+        ),
+        "min_liquidation_stop_headroom": str(
+            ZERO
+            if min_liquidation_stop_headroom is None
+            else min_liquidation_stop_headroom
         ),
     }
 
@@ -669,12 +755,14 @@ def _admission_timeline(
     bucket_rejections = 0
     leverage_rejections = 0
     margin_rejections = 0
+    liquidation_rejections = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
     max_admitted_aggregate_utilization = ZERO
     max_admitted_bucket_utilization = ZERO
     max_admitted_gross_leverage = ZERO
     max_admitted_margin_utilization = ZERO
+    min_admitted_liquidation_multiple: Decimal | None = None
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -745,6 +833,15 @@ def _admission_timeline(
             active,
             paper_max_gross_leverage=paper_max_gross_leverage,
         )
+        (
+            liquidation_multiple,
+            liquidation_ok,
+        ) = _liquidation_buffer_check(
+            position,
+            limits=limits,
+            paper_max_gross_leverage=paper_max_gross_leverage,
+        )
+        liquidation_bad = not liquidation_ok
 
         if equity <= ZERO:
             aggregate_bad = True
@@ -778,6 +875,7 @@ def _admission_timeline(
             or bucket_bad
             or leverage_bad
             or margin_bad
+            or liquidation_bad
         )
         if rejected_now:
             rejected_openings += 1
@@ -794,6 +892,8 @@ def _admission_timeline(
                 leverage_rejections += 1
             if margin_bad:
                 margin_rejections += 1
+            if liquidation_bad:
+                liquidation_rejections += 1
             continue
 
         admitted_openings += 1
@@ -823,6 +923,14 @@ def _admission_timeline(
                     max_admitted_margin_utilization,
                     new_notional / margin_capacity,
                 )
+            min_admitted_liquidation_multiple = (
+                liquidation_multiple
+                if min_admitted_liquidation_multiple is None
+                else min(
+                    min_admitted_liquidation_multiple,
+                    liquidation_multiple,
+                )
+            )
 
         realized -= position.entry_fee
         active[position.trade_id] = _Active(
@@ -852,6 +960,7 @@ def _admission_timeline(
         "correlation_bucket_risk_rejections": bucket_rejections,
         "gross_leverage_rejections": leverage_rejections,
         "margin_capacity_rejections": margin_rejections,
+        "liquidation_buffer_rejections": liquidation_rejections,
         "non_positive_equity_rejections": (
             non_positive_equity_rejections
         ),
@@ -867,6 +976,11 @@ def _admission_timeline(
         ),
         "max_admitted_margin_capacity_utilization": str(
             max_admitted_margin_utilization
+        ),
+        "min_admitted_liquidation_stop_multiple": str(
+            ZERO
+            if min_admitted_liquidation_multiple is None
+            else min_admitted_liquidation_multiple
         ),
         "final_realized_contribution": str(realized),
     }
@@ -892,6 +1006,11 @@ def _actual_position(
     venue_max_leverage: Decimal,
 ) -> _Position:
     _validate_plan(trade, plan)
+    stop_price = plan.stop_price
+    if stop_price is None:
+        raise DelayedEntryCapacityOverlayError(
+            "opening plan is missing stop price"
+        )
     planned_risk = (
         _risk_per_quantity(plan, trade.entry_price)
         * trade.filled_quantity
@@ -912,6 +1031,7 @@ def _actual_position(
         entry_price=trade.entry_price,
         quantity=trade.filled_quantity,
         planned_risk=planned_risk,
+        stop_price=stop_price,
         venue_max_leverage=venue_max_leverage,
         entry_fee=trade.entry_fees,
         close_realized_increment=(
@@ -973,13 +1093,13 @@ def delayed_entry_portfolio_capacity_overlay(
             "delay_ms": delay_ms,
             "changed_admissions_modeled": True,
             "admission_policy": (
-                "reject_opening_when_configured_capacity_ceiling_breached"
+                "reject_opening_when_configured_risk_or_capacity_gate_breached"
             ),
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
             "available_margin_capacity_modeled": True,
             "visible_liquidity_capacity_modeled": False,
-            "liquidation_buffer_modeled": False,
+            "liquidation_buffer_modeled": True,
             "closed_shadow_outcomes": len(outcomes),
             "candidate_filled_positions": 0,
             "background_positions": 0,
@@ -1186,6 +1306,10 @@ def delayed_entry_portfolio_capacity_overlay(
         if open_ms >= trade.closed_at_ms:
             lineage_mismatches += 1
             continue
+        stop_price = plan.stop_price
+        if stop_price is None:
+            lineage_mismatches += 1
+            continue
         planned_risk = (
             _risk_per_quantity(plan, delayed_price)
             * weighted.delayed_filled_quantity
@@ -1200,6 +1324,7 @@ def delayed_entry_portfolio_capacity_overlay(
                 entry_price=delayed_price,
                 quantity=weighted.delayed_filled_quantity,
                 planned_risk=planned_risk,
+                stop_price=stop_price,
                 venue_max_leverage=venue_max_leverage,
                 entry_fee=weighted.delayed_entry_fee,
                 close_realized_increment=(
@@ -1319,16 +1444,19 @@ def delayed_entry_portfolio_capacity_overlay(
             "paper_max_gross_leverage": str(
                 paper_max_gross_leverage
             ),
+            "min_liquidation_stop_multiple": str(
+                limits.min_liquidation_stop_multiple
+            ),
         },
         "changed_admissions_modeled": True,
         "admission_policy": (
-            "reject_opening_when_configured_capacity_ceiling_breached"
+            "reject_opening_when_configured_risk_or_capacity_gate_breached"
         ),
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
         "available_margin_capacity_modeled": True,
         "visible_liquidity_capacity_modeled": False,
-        "liquidation_buffer_modeled": False,
+        "liquidation_buffer_modeled": True,
         "closed_shadow_outcomes": len(outcomes),
         "candidate_filled_positions": candidate_filled,
         "candidate_no_fill_trades": candidate_no_fill,
