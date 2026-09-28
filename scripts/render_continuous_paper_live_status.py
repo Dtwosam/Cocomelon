@@ -1381,7 +1381,6 @@ def _delayed_entry_mtm_portfolio_lines(
         [
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             f"- mark model: `{raw.get('mark_model', 'unknown')}`",
-            f"- funding model: `{raw.get('funding_model', 'unknown')}`",
             (
                 "- closed shadow / complete paths / unresolved: "
                 f"`{raw.get('closed_shadow_outcomes', 0)} / "
@@ -1452,10 +1451,9 @@ def _delayed_entry_mtm_portfolio_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Observed-mark contribution equity only. Entry fees are timed "
-                "at open, funding is applied at exact recorded hourly boundaries, "
-                "and exit fees settle at the actual close. Replacement trades "
-                "and changed exit timing are not modeled._"
+                "_Observed-mark contribution equity only; funding is applied "
+                "at exact recorded hourly boundaries. No replacement trades or "
+                "changed exits are modeled._"
             ),
         ]
     )
