@@ -789,3 +789,50 @@ def test_no_mark_crossing_is_observed_path_survivor(
     assert overall["observed_path_survivors"] == 1
     assert overall["mark_stop_crossings"] == 0
     assert overall["resolved_candidates"] == 1
+
+
+
+def test_stop_l2_replay_names_non_evaluable_source_blocker(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "paths"
+    )
+    books = _stop_books(tmp_path / "stop-books")
+    try:
+        trade = _trade(suffix="expired")
+        journal.record_trade(trade)
+        outcome = DelayedEntryOutcome(
+            trade_id=trade.trade_id,
+            opening_plan_id=trade.opening_plan_id,
+            market=trade.market.canonical,
+            direction=trade.direction.value,
+            source="expired",
+            delayed_filled_quantity=Decimal("0"),
+            delayed_average_fill_price=None,
+            delayed_fee=Decimal("0"),
+            observation_lag_ms=None,
+            signed_price_improvement_bps=None,
+            gross_r_improvement=None,
+            attempt_reason="NO_FRESH_BOOK_WITHIN_WINDOW",
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (outcome,),
+            paths,
+            books,
+            EMPTY_FUNDING_LOADER,
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    assert result["source_counts"] == {"expired": 1}
+    assert result["unresolved_outcomes"] == 1
+    assert result["unresolved_source_counts"] == {
+        "expired": 1,
+    }
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["integrity_clean"] is False
