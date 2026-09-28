@@ -2759,6 +2759,10 @@ def _delayed_entry_portfolio_capacity_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     plan_loader: Callable[[str], PaperOrderPlan | None],
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
     native_perp_min_notional: Decimal,
@@ -2778,6 +2782,7 @@ def _delayed_entry_portfolio_capacity_payload(
             trade_path_store,
             plan_loader,
             opening_fill_liquidity_store.load,
+            funding_loader,
             limits=limits,
             paper_max_gross_leverage=paper_max_gross_leverage,
             native_perp_min_notional=native_perp_min_notional,
@@ -3453,6 +3458,12 @@ def _live_status_payload(
             trade_path_store,
             opening_fill_liquidity_store,
             execution.store.load_plan,
+            lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
             risk_limits,
             paper_max_gross_leverage,
             native_perp_min_notional,
