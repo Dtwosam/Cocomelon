@@ -5996,6 +5996,36 @@ def _delayed_entry_stop_l2_lines(
                 f"{raw.get('pre_capture_legacy_outcomes', 0)}`"
             ),
             (
+                "- shadow outcomes / candidate no-fill / unresolved: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('candidate_no_fill_trades', 0)} / "
+                f"{raw.get('unresolved_outcomes', 0)}`"
+            ),
+            (
+                "- delayed outcome sources: "
+                f"`{_reason_summary(raw.get('source_counts'))}`"
+            ),
+            (
+                "- unresolved delayed sources: "
+                f"`{_reason_summary(raw.get('unresolved_source_counts'))}`"
+            ),
+            (
+                "- integrity blockers journal / path / incomplete-gap / funding / "
+                "lineage / timing / stop-book: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_exact_paths', 0)} / "
+                f"{raw.get('incomplete_or_gapped_paths', 0)} / "
+                f"{raw.get('missing_funding_events', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)} / "
+                f"{raw.get('invalid_candidate_timing', 0)} / "
+                f"{raw.get('stop_book_capture_errors', 0)}`"
+            ),
+            (
+                "- capture error / prospective protocol present: "
+                f"`{raw.get('capture_error')} / "
+                f"{str(bool(readiness.get('prospective_protocol_present'))).lower()}`"
+            ),
+            (
                 "- evaluated / mark crossings / captured stop plans: "
                 f"`{overall.get('evaluated_filled_candidates', 0)} / "
                 f"{overall.get('mark_stop_crossings', 0)} / "
