@@ -13,7 +13,7 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 
 ZERO: Final = Decimal("0")
 BPS: Final = Decimal("10000")
-ENTRY_MID_MARKOUT_STATE_SCHEMA_VERSION: Final = 1
+ENTRY_MID_MARKOUT_STATE_SCHEMA_VERSION: Final = 2
 ENTRY_MID_MARKOUT_HORIZONS_MS: Final = (
     60_000,
     300_000,
