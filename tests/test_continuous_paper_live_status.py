@@ -2643,6 +2643,53 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_stop_survivability": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "delayed_entry_original_stop_survivability_only"
+            ),
+            "delay_ms": 60000,
+            "mark_ordering_assumption": (
+                "only_marks_strictly_after_delayed_open_are_causal"
+            ),
+            "stop_price_source": (
+                "immutable_closed_trade_initial_stop"
+            ),
+            "stop_fill_price_modeled": False,
+            "full_exit_policy_modeled": False,
+            "replacement_trades_modeled": False,
+            "closed_shadow_outcomes": 12,
+            "evaluated_filled_candidates": 8,
+            "candidate_no_fill_trades": 1,
+            "unresolved_outcomes": 2,
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 1,
+            "incomplete_or_gapped_paths": 0,
+            "lineage_mismatches": 0,
+            "invalid_candidate_timing": 0,
+            "overall": {
+                "filled_candidates": 8,
+                "definite_original_stop_crossings": 3,
+                "survived_observed_path_to_actual_close": 5,
+                "crossing_fraction": "0.375",
+                "mean_time_to_stop_ms": 42000,
+                "median_time_to_stop_ms": 38000,
+                "min_time_to_stop_ms": 12000,
+            },
+            "by_side": {},
+            "by_source": {},
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_filled_candidates": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_filled_candidates": 12,
+            },
+            "error": None,
+        },
         "delayed_entry_portfolio_capacity": {
             "enabled": True,
             "research_only": True,
@@ -3657,6 +3704,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`18 / 11 / 0`" in output
     assert "Observed-mark contribution equity only" in output
     assert "funding is applied at exact recorded hourly boundaries" in output
+    assert "### 60s delayed-entry original-stop survivability" in output
+    assert "delayed_entry_original_stop_survivability_only" in output
+    assert "closed / evaluated fills / no-fills" in output
+    assert "`12 / 8 / 1`" in output
+    assert "definite original-stop crossings / observed survivors" in output
+    assert "`3 / 5`" in output
+    assert "crossing fraction / mean / median / fastest time-to-stop" in output
+    assert "`0.375 / 42000 / 38000 / 12000`" in output
+    assert "unresolved / missing journal / path / gapped / lineage / timing" in output
+    assert "`2 / 0 / 1 / 0 / 0 / 0`" in output
+    assert "same-millisecond marks are excluded" in output
+    assert "stop fill price and the full exit policy are not modeled" in output
     assert "### 60s delayed-entry portfolio capacity overlay" in output
     assert "fixed_observed_schedule_portfolio_capacity_overlay" in output
     assert (
