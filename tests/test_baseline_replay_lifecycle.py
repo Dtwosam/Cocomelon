@@ -440,6 +440,7 @@ def test_closed_lifecycle_sink_receives_full_mark_path(
     captured: list[
         tuple[
             TradeJournalEntry,
+            Decimal,
             tuple[ReplayRecord, ...],
             tuple[tuple[int, int | None], ...],
         ]
@@ -482,8 +483,9 @@ def test_closed_lifecycle_sink_receives_full_mark_path(
     )
 
     assert len(captured) == 1
-    trade, marks, gaps = captured[0]
+    trade, venue_max_leverage, marks, gaps = captured[0]
     assert trade.market == MARKET
+    assert venue_max_leverage == Decimal("20")
     assert tuple(record.market for record in marks) == (
         MARKET.canonical,
         MARKET.canonical,
