@@ -373,6 +373,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             max_open_risk=Decimal("1"),
             correlation_bucket_risk_limit=Decimal("1"),
             max_gross_leverage=Decimal("0.05"),
+            max_available_margin_fraction=Decimal("1"),
         )
 
         result = delayed_entry_portfolio_capacity_overlay(
