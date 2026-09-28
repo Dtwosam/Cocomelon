@@ -2675,6 +2675,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "missing_venue_max_leverage": 0,
             "missing_opening_liquidity_evidence": 0,
             "missing_delayed_liquidity_evidence": 0,
+            "missing_delayed_reference_price": 0,
             "missing_exact_paths": 1,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
