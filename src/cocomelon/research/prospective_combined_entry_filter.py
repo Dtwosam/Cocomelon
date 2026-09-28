@@ -9,12 +9,12 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
-from cocomelon.research.prospective_filter_robustness import (
-    prospective_filter_robustness,
-)
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
+)
+from cocomelon.research.prospective_filter_robustness import (
+    prospective_filter_robustness,
 )
 
 COMBINED_FILTER_STATE_SCHEMA_VERSION: Final = 1
