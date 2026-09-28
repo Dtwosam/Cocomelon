@@ -1504,12 +1504,13 @@ def _delayed_entry_portfolio_capacity_lines(
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             (
                 "- frozen limits open-risk / bucket-risk / gross leverage / "
-                "margin fraction / paper leverage: "
+                "margin fraction / paper leverage / liquidation stop multiple: "
                 f"`{limits.get('max_open_risk')} / "
                 f"{limits.get('correlation_bucket_risk_limit')} / "
                 f"{limits.get('max_gross_leverage')} / "
                 f"{limits.get('max_available_margin_fraction')} / "
-                f"{limits.get('paper_max_gross_leverage')}`"
+                f"{limits.get('paper_max_gross_leverage')} / "
+                f"{limits.get('min_liquidation_stop_multiple')}`"
             ),
             (
                 "- closed / candidate fills / no-fills / background: "
@@ -1544,11 +1545,13 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{candidate.get('background_opening_violations', 0)}`"
             ),
             (
-                "- candidate violations aggregate / bucket / leverage / margin: "
+                "- candidate violations aggregate / bucket / leverage / margin / "
+                "liquidation: "
                 f"`{candidate.get('aggregate_risk_violations', 0)} / "
                 f"{candidate.get('correlation_bucket_risk_violations', 0)} / "
                 f"{candidate.get('gross_leverage_violations', 0)} / "
-                f"{candidate.get('margin_capacity_violations', 0)}`"
+                f"{candidate.get('margin_capacity_violations', 0)} / "
+                f"{candidate.get('liquidation_buffer_violations', 0)}`"
             ),
             (
                 "- candidate max utilization aggregate / bucket / leverage / margin: "
@@ -1563,6 +1566,11 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{candidate.get('min_correlation_bucket_risk_headroom', '0')} / "
                 f"{candidate.get('min_gross_notional_headroom', '0')} / "
                 f"{candidate.get('min_margin_notional_headroom', '0')}`"
+            ),
+            (
+                "- candidate liquidation min multiple / headroom: "
+                f"`{candidate.get('min_liquidation_stop_multiple', '0')} / "
+                f"{candidate.get('min_liquidation_stop_headroom', '0')}`"
             ),
             (
                 "- causal admissions modeled / replacement trades modeled: "
@@ -1591,11 +1599,12 @@ def _delayed_entry_portfolio_capacity_lines(
             ),
             (
                 "- candidate admission rejection causes aggregate / bucket / "
-                "leverage / margin / non-positive-equity: "
+                "leverage / margin / liquidation / non-positive-equity: "
                 f"`{candidate_admission.get('aggregate_risk_rejections', 0)} / "
                 f"{candidate_admission.get('correlation_bucket_risk_rejections', 0)} / "
                 f"{candidate_admission.get('gross_leverage_rejections', 0)} / "
                 f"{candidate_admission.get('margin_capacity_rejections', 0)} / "
+                f"{candidate_admission.get('liquidation_buffer_rejections', 0)} / "
                 f"{candidate_admission.get('non_positive_equity_rejections', 0)}`"
             ),
             (
@@ -1604,6 +1613,10 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{admitted_bucket_utilization} / "
                 f"{candidate_admission.get('max_admitted_gross_leverage', '0')} / "
                 f"{candidate_admission.get('max_admitted_margin_capacity_utilization', '0')}`"
+            ),
+            (
+                "- admitted candidate minimum liquidation stop multiple: "
+                f"`{candidate_admission.get('min_admitted_liquidation_stop_multiple', '0')}`"
             ),
             (
                 "- fixed / admitted candidate realized contribution / admission Δ: "
@@ -1633,10 +1646,10 @@ def _delayed_entry_portfolio_capacity_lines(
                 "_The fixed overlay still reports every opening opportunity. "
                 "The causal admission shadow separately skips any opening that "
                 "would breach aggregate risk, the shared bucket, venue-aware gross "
-                "leverage, or available-margin capacity, then evaluates later "
-                "openings against the surviving portfolio. It does not invent "
-                "replacement trades, changed exits, visible-liquidity capacity, "
-                "or liquidation-buffer rules._"
+                "leverage, available-margin capacity, or the paper liquidation "
+                "buffer, then evaluates later openings against the surviving "
+                "portfolio. It does not invent replacement trades, changed exits, "
+                "or visible-liquidity capacity._"
             ),
         ]
     )
