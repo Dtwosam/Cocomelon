@@ -4707,6 +4707,8 @@ async def run_continuous_paper_session(
                     trade_path_store,
                     opening_rank_store,
                     opening_fill_liquidity_store,
+                    original_stop_book_store,
+                    original_stop_book_capture,
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
