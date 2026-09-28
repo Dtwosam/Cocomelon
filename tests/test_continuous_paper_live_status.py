@@ -3028,13 +3028,17 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "research_only": True,
             "execution_authority": False,
             "promotion_authority": False,
-            "definition": "delayed_average_fill_risk_vs_actual_position_risk",
+            "definition": (
+                "delayed_reference_and_average_fill_risk_vs_actual_position_risk"
+            ),
             "evaluated_filled_attempts": 10,
+            "reference_evaluated_attempts": 11,
             "no_fill_outcomes": 1,
             "missing_journal_trades": 0,
             "missing_opening_plans": 0,
             "lineage_mismatches": 0,
             "missing_delayed_fill_price": 0,
+            "missing_delayed_reference_price": 0,
             "overall": {
                 "attempts": 10,
                 "mean_fill_fraction": "0.85",
@@ -3054,6 +3058,22 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "mean_unit_risk_change_fraction": "0.18",
                 "risk_clipped": 2,
                 "full_size_risk_above_ceiling": 2,
+            },
+            "reference_overall": {
+                "attempts": 11,
+                "mean_reference_full_size_risk_ratio": "0.90",
+                "mean_reference_risk_capacity_fraction": "0.98",
+                "mean_reference_unit_risk_change_fraction": "-0.08",
+                "pre_ioc_resize_required": 1,
+                "risk_clipped": 2,
+            },
+            "reference_risk_clipped": {
+                "attempts": 2,
+                "mean_reference_full_size_risk_ratio": "1.05",
+                "mean_reference_risk_capacity_fraction": "0.95",
+                "mean_reference_unit_risk_change_fraction": "0.05",
+                "pre_ioc_resize_required": 1,
+                "risk_clipped": 2,
             },
             "by_side": {
                 "long": {
@@ -3705,9 +3725,22 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "-3.2 | -1 | -0.1 |" in output
     )
     assert "### 60s delayed-entry risk geometry" in output
-    assert "delayed_average_fill_risk_vs_actual_position_risk" in output
-    assert "filled attempts / no-fill outcomes" in output
-    assert "`10 / 1`" in output
+    assert (
+        "delayed_reference_and_average_fill_risk_vs_actual_position_risk"
+        in output
+    )
+    assert "fill-evaluable / reference-evaluable / no-fill outcomes" in output
+    assert "`10 / 11 / 1`" in output
+    assert "missing journal / opening plan / lineage / fill price / reference" in output
+    assert "`0 / 0 / 0 / 0 / 0`" in output
+    assert "pre-IOC reference resize-required / IOC risk-clipped" in output
+    assert "`1 / 2`" in output
+    assert "reference full-size risk / ceiling overall / IOC-risk-clipped" in output
+    assert "`0.90 / 1.05`" in output
+    assert "reference risk-capacity fraction overall / IOC-risk-clipped" in output
+    assert "`0.98 / 0.95`" in output
+    assert "reference unit-risk change overall / IOC-risk-clipped" in output
+    assert "`-0.08 / 0.05`" in output
     assert "evidence gate (filled / risk-clipped)" in output
     assert "`20 / 5`" in output
     assert "still needed filled / risk-clipped" in output
@@ -3720,7 +3753,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| Cause: risk_ceiling_clip | 2 | 0.70 | 0.99 | 1.18 | "
         "0.85 | 0.18 | 2 | 2 |" in output
     )
-    assert "Full-size risk / ceiling above 1" in output
+    assert "pre-IOC sizing pressure" in output
+    assert "an IOC can still risk-clip" in output
     assert (
         "| 120s delayed entry | collecting | "
         "closed=10, full=6, better=4, worse=2 | "
