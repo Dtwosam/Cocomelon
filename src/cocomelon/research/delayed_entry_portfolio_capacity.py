@@ -590,7 +590,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "candidate_filled_positions": 0,
             "background_positions": 0,
             "unresolved_outcomes": len(outcomes),
-            "missing_journal_trades": 0,
+            "missing_journal_trades": len(outcomes),
             "missing_opening_plans": 0,
             "missing_exact_paths": 0,
             "incomplete_exact_paths": 0,
@@ -655,6 +655,7 @@ def delayed_entry_portfolio_capacity_overlay(
     exact_marks: dict[str, tuple[tuple[int, Decimal], ...]] = {}
     missing_paths = 0
     incomplete_paths = 0
+    lineage_mismatches = 0
     for trade in relevant_trades:
         raw = path_by_id.get(trade.trade_id)
         if raw is None:
@@ -666,7 +667,7 @@ def delayed_entry_portfolio_capacity_overlay(
         try:
             exact_marks[trade.trade_id] = _marks(trade, raw)
         except DelayedEntryCapacityOverlayError:
-            incomplete_paths += 1
+            lineage_mismatches += 1
 
     actual_positions: list[_Position] = []
     for trade in relevant_trades:
@@ -679,7 +680,6 @@ def delayed_entry_portfolio_capacity_overlay(
     background_positions = 0
     missing_journal = 0
     missing_plan = 0
-    lineage_mismatches = 0
     unresolved_outcomes = 0
     candidate_filled = 0
     candidate_no_fill = 0
@@ -831,6 +831,9 @@ def delayed_entry_portfolio_capacity_overlay(
         "changed_admissions_modeled": False,
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
+        "available_margin_capacity_modeled": False,
+        "visible_liquidity_capacity_modeled": False,
+        "liquidation_buffer_modeled": False,
         "closed_shadow_outcomes": len(outcomes),
         "candidate_filled_positions": candidate_filled,
         "candidate_no_fill_trades": candidate_no_fill,
