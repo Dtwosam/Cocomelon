@@ -14,6 +14,10 @@ from cocomelon.research.prospective_allowed_residual import (
     AllowedResidualItem,
     prospective_allowed_residual_attribution,
 )
+from cocomelon.research.prospective_filter_fixed_schedule import (
+    ProspectiveFilterPortfolioItem,
+    prospective_filter_fixed_schedule_portfolio,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -199,6 +203,19 @@ def prospective_top10_rank_filter_summary(
             for trade, evidence in allowed
         )
     )
+    fixed_schedule_portfolio = (
+        prospective_filter_fixed_schedule_portfolio(
+            tuple(
+                ProspectiveFilterPortfolioItem(
+                    trade,
+                    admitted=(
+                        evidence.ordinal <= TOP10_MAX_ORDINAL
+                    ),
+                )
+                for trade, evidence in attributed
+            )
+        )
+    )
     actual_net_r = tuple(
         trade.net_r for trade, _ in attributed
     )
@@ -264,6 +281,7 @@ def prospective_top10_rank_filter_summary(
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
         "allowed_residual": allowed_residual,
+        "fixed_schedule_portfolio": fixed_schedule_portfolio,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl
