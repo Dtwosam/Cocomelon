@@ -148,7 +148,9 @@ class ContinuousPaperTradePath:
     marks: tuple[ContinuousPaperTradePathMark, ...]
     known_gap_intervals: tuple[tuple[int, int | None], ...]
     venue_max_leverage: Decimal | None = None
-    schema_version: int = CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+    schema_version: int = (
+        LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+    )
 
     def __post_init__(self) -> None:
         for field in ("trade_id", "market", "direction"):
