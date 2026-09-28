@@ -796,6 +796,15 @@ def delayed_entry_portfolio_capacity_overlay(
                 "fixed_observed_schedule_portfolio_capacity_overlay"
             ),
             "delay_ms": delay_ms,
+            "changed_admissions_modeled": True,
+            "admission_policy": (
+                "reject_opening_when_configured_capacity_ceiling_breached"
+            ),
+            "replacement_trades_modeled": False,
+            "intratrade_funding_timing_modeled": False,
+            "available_margin_capacity_modeled": False,
+            "visible_liquidity_capacity_modeled": False,
+            "liquidation_buffer_modeled": False,
             "closed_shadow_outcomes": len(outcomes),
             "candidate_filled_positions": 0,
             "background_positions": 0,
