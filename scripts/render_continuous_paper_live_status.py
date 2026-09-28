@@ -219,11 +219,6 @@ def _profit_lock_lines(raw: object) -> list[str]:
     readiness = raw.get("readiness", {})
     if not isinstance(readiness, dict):
         readiness = {}
-    admitted_bucket_utilization = candidate_admission.get(
-        "max_admitted_correlation_bucket_risk_utilization",
-        "0",
-    )
-
     lines.extend(
         [
             (
@@ -1221,6 +1216,10 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
         candidate = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    admitted_bucket_utilization = candidate_admission.get(
+        "max_admitted_correlation_bucket_risk_utilization",
+        "0",
+    )
 
     lines.extend(
         [
