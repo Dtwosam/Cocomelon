@@ -2273,3 +2273,15 @@ This fixes a live research-only failure where every per-trade decomposition reco
 The change affects research aggregation only. Per-trade economics, fills, fees, funding, risk, paper execution, and all promotion gates are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Delayed-stop causal path-gap window — 2026-09-28
+
+The delayed-entry original-stop survivability, same-exit stop-validity, stop-exit proxy, and exact stop-L2 replay now judge mark-path gaps only over the interval in which the delayed candidate position actually exists: strictly after the delayed open through the actual close.
+
+Continuous paper trade paths carry the session's durable gap history, including gaps that can occur before a trade opens, before the +60s delayed candidate exists, or after that trade closes. The previous stop studies rejected any path with a non-empty gap list, so an old websocket gap could make later delayed-stop evidence look incomplete indefinitely.
+
+The revised contract remains fail-closed for every gap that overlaps the candidate position interval and also requires at least one observed mark strictly after the delayed open. Non-causal historical gaps are ignored. No stop price, stop execution, delayed-entry fill, funding, risk, or paper-trading behavior changes.
+
+**LIVE TRADING: DISABLED.**
