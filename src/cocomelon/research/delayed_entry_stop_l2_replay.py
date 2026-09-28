@@ -108,6 +108,7 @@ class DelayedEntryStopL2Outcome:
     stop_requested_quantity: Decimal | None = None
     stop_filled_quantity: Decimal | None = None
     stop_unfilled_quantity: Decimal | None = None
+    stop_position_remainder_quantity: Decimal | None = None
     stop_average_fill_price: Decimal | None = None
     stop_exit_fee: Decimal | None = None
     funding_through_execution: Decimal | None = None
@@ -208,6 +209,10 @@ class DelayedEntryStopL2Outcome:
                 self.stop_unfilled_quantity,
                 "stop_unfilled_quantity",
             ),
+            (
+                self.stop_position_remainder_quantity,
+                "stop_position_remainder_quantity",
+            ),
             (self.stop_exit_fee, "stop_exit_fee"),
             (
                 self.funding_through_execution,
@@ -224,21 +229,37 @@ class DelayedEntryStopL2Outcome:
         requested = self.stop_requested_quantity
         filled = self.stop_filled_quantity
         unfilled = self.stop_unfilled_quantity
+        position_remainder = (
+            self.stop_position_remainder_quantity
+        )
         if (
             not isinstance(requested, Decimal)
             or not isinstance(filled, Decimal)
             or not isinstance(unfilled, Decimal)
+            or not isinstance(position_remainder, Decimal)
         ):
             raise ValueError(
                 "stop quantities must be decimal values"
             )
-        if requested <= ZERO or filled < ZERO or unfilled < ZERO:
+        if (
+            requested <= ZERO
+            or filled < ZERO
+            or unfilled < ZERO
+            or position_remainder < ZERO
+        ):
             raise ValueError(
                 "stop quantities are outside valid bounds"
             )
         if filled + unfilled != requested:
             raise ValueError(
-                "stop fill and remainder must reconcile"
+                "stop fill and IOC remainder must reconcile"
+            )
+        if (
+            filled + position_remainder
+            != self.delayed_filled_quantity
+        ):
+            raise ValueError(
+                "stop fill and position remainder must reconcile"
             )
         if filled > ZERO:
             if (
@@ -583,7 +604,10 @@ def evaluate_delayed_entry_stop_l2_outcome(
                     else None
                 ),
             )
-        if capture_error is not None:
+        if (
+            capture_error is not None
+            or stop_book_store.capture_started_at_ms is None
+        ):
             corrected = _same_exit_outcome(
                 trade,
                 outcome,
@@ -721,15 +745,30 @@ def evaluate_delayed_entry_stop_l2_outcome(
         attempt_timestamp_ms=execution_ms,
     )
     attempt = simulation.attempt
-    status = {
-        ExecutionResult.FULL: "full_stop_exit",
-        ExecutionResult.PARTIAL: "partial_stop_exit",
-        ExecutionResult.NO_FILL: "no_fill_stop_exit",
-        ExecutionResult.REJECTED: "execution_rejected",
-    }[attempt.result]
+    position_remainder = (
+        weighted.delayed_filled_quantity
+        - attempt.filled_quantity
+    )
+    if position_remainder < ZERO:
+        raise DelayedEntryStopL2ReplayError(
+            "stop fill exceeds delayed candidate position"
+        )
+    if (
+        attempt.result is ExecutionResult.FULL
+        and position_remainder == ZERO
+    ):
+        status = "full_stop_exit"
+    elif attempt.result is ExecutionResult.FULL:
+        status = "full_ioc_position_remainder"
+    elif attempt.result is ExecutionResult.PARTIAL:
+        status = "partial_stop_exit"
+    elif attempt.result is ExecutionResult.NO_FILL:
+        status = "no_fill_stop_exit"
+    else:
+        status = "execution_rejected"
 
     exact_net: Decimal | None = None
-    if attempt.result is ExecutionResult.FULL:
+    if status == "full_stop_exit":
         exit_price = attempt.average_fill_price
         if exit_price is None:
             raise DelayedEntryStopL2ReplayError(
@@ -779,6 +818,9 @@ def evaluate_delayed_entry_stop_l2_outcome(
         stop_unfilled_quantity=(
             attempt.unfilled_quantity
         ),
+        stop_position_remainder_quantity=(
+            position_remainder
+        ),
         stop_average_fill_price=(
             attempt.average_fill_price
         ),
@@ -812,6 +854,11 @@ def _summary(
         item
         for item in values
         if item.status == "partial_stop_exit"
+    )
+    quantized_remainder = tuple(
+        item
+        for item in values
+        if item.status == "full_ioc_position_remainder"
     )
     no_fill = tuple(
         item
@@ -871,6 +918,7 @@ def _summary(
     )
     unresolved = (
         len(partial)
+        + len(quantized_remainder)
         + len(no_fill)
         + len(rejected)
         + len(pending)
@@ -891,6 +939,9 @@ def _summary(
         ),
         "full_stop_exits": len(full),
         "partial_stop_exits": len(partial),
+        "full_ioc_position_remainders": (
+            len(quantized_remainder)
+        ),
         "no_fill_stop_exits": len(no_fill),
         "planning_or_execution_rejections": len(rejected),
         "pending_stop_evidence": len(pending),
@@ -1060,6 +1111,7 @@ def delayed_entry_stop_l2_replay(
         for item in items
         if item.status in {
             "partial_stop_exit",
+            "full_ioc_position_remainder",
             "no_fill_stop_exit",
             "planning_rejected",
             "execution_rejected",
