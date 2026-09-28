@@ -1203,6 +1203,87 @@ def _delayed_entry_fill_weighted_lines(
     return lines
 
 
+def _delayed_entry_fill_weighted_funding_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry funding-corrected fill weighting",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No funding-corrected fill-weighted telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- closed / evaluated attempts: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- legacy scaled / exact post-delay funding / correction: "
+                f"`{overall.get('legacy_scaled_funding_pnl', '0')} / "
+                f"{overall.get('exact_post_delay_funding_pnl', '0')} / "
+                f"{overall.get('funding_timing_delta_pnl', '0')}`"
+            ),
+            (
+                "- legacy / funding-corrected candidate PnL / correction: "
+                f"`{overall.get('legacy_fill_weighted_candidate_net_pnl', '0')} / "
+                f"{overall.get('funding_corrected_candidate_net_pnl', '0')} / "
+                f"{overall.get('corrected_delta_vs_legacy_pnl', '0')}`"
+            ),
+            (
+                "- corrected candidate delta vs actual: "
+                f"`{overall.get('corrected_delta_vs_actual_pnl', '0')}`"
+            ),
+            (
+                "- missing journal / funding / lineage: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_funding_events', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- evidence gate closed / evaluated: "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_delayed_attempts', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Same actual exit is still assumed. This overlay changes only "
+                "funding: filled candidates pay verified recorded boundaries "
+                "strictly after their delayed open; genuine no-fills pay zero._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_fixed_schedule_portfolio_lines(
     raw: object,
 ) -> list[str]:
@@ -5577,6 +5658,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_fill_weighted_lines(
             payload.get("delayed_entry_fill_weighted")
+        )
+    )
+    lines.extend(
+        _delayed_entry_fill_weighted_funding_lines(
+            payload.get("delayed_entry_fill_weighted_funding")
         )
     )
     lines.extend(
