@@ -117,6 +117,9 @@ from cocomelon.research.delayed_entry_fill_capacity import (
 from cocomelon.research.delayed_entry_fill_weighted import (
     delayed_entry_fill_weighted_contribution,
 )
+from cocomelon.research.delayed_entry_fill_weighted_funding import (
+    delayed_entry_funding_corrected_fill_weighted,
+)
 from cocomelon.research.delayed_entry_fixed_schedule_portfolio import (
     delayed_entry_fixed_schedule_portfolio,
 )
@@ -2685,6 +2688,42 @@ def _delayed_entry_fill_weighted_payload(
     return payload
 
 
+def _delayed_entry_fill_weighted_funding_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_funding_corrected_fill_weighted(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            funding_loader,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_fixed_schedule_portfolio_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3467,6 +3506,18 @@ def _live_status_payload(
             delayed_entry_execution_shadow,
         )
     )
+    delayed_entry_fill_weighted_funding = (
+        _delayed_entry_fill_weighted_funding_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
+        )
+    )
     delayed_entry_fixed_schedule_portfolio_payload = (
         _delayed_entry_fixed_schedule_portfolio_payload(
             pump.journal,
@@ -3702,6 +3753,9 @@ def _live_status_payload(
         "delayed_entry_same_exit": delayed_entry_same_exit,
         "delayed_entry_fill_capacity": delayed_entry_fill_capacity,
         "delayed_entry_fill_weighted": delayed_entry_fill_weighted,
+        "delayed_entry_fill_weighted_funding": (
+            delayed_entry_fill_weighted_funding
+        ),
         "delayed_entry_fixed_schedule_portfolio": (
             delayed_entry_fixed_schedule_portfolio_payload
         ),
