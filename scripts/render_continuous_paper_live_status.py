@@ -5187,11 +5187,14 @@ def _research_readiness_board_lines(
             ),
             (
                 f"viol={delayed_capacity_candidate.get('capacity_violations', 0)}, "
+                f"marginrej="
+                f"{delayed_capacity_candidate_admission.get('margin_capacity_rejections', 0)}, "
                 f"actualrej="
                 f"{delayed_capacity_actual_admission.get('rejected_openings', 0)}, "
                 f"unresolved={delayed_capacity.get('unresolved_outcomes', 0)}, "
                 f"missing={delayed_capacity.get('missing_journal_trades', 0)}/"
                 f"{delayed_capacity.get('missing_opening_plans', 0)}/"
+                f"{delayed_capacity.get('missing_venue_max_leverage', 0)}/"
                 f"{delayed_capacity.get('missing_exact_paths', 0)}, "
                 f"incomplete={delayed_capacity.get('incomplete_exact_paths', 0)}, "
                 f"mismatch={delayed_capacity.get('lineage_mismatches', 0)}"
