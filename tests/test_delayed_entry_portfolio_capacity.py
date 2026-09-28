@@ -233,6 +233,8 @@ def _outcome(
     price: str = "100",
     reference_price: str | None = None,
     include_reference_price: bool = True,
+    source: str = "full_visible_book_ioc",
+    filled_quantity: str | None = None,
     entry_depth: str | None = "100000",
     exit_depth: str | None = "100000",
 ) -> DelayedEntryOutcome:
@@ -241,8 +243,12 @@ def _outcome(
         opening_plan_id=trade.opening_plan_id,
         market=trade.market.canonical,
         direction=trade.direction.value,
-        source="full_visible_book_ioc",
-        delayed_filled_quantity=trade.filled_quantity,
+        source=source,
+        delayed_filled_quantity=(
+            trade.filled_quantity
+            if filled_quantity is None
+            else Decimal(filled_quantity)
+        ),
         delayed_average_fill_price=Decimal(price),
         delayed_fee=Decimal("0"),
         observation_lag_ms=0,
@@ -316,6 +322,7 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             _liquidity_loader(background, candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -385,6 +392,7 @@ def test_admission_shadow_can_reject_later_background_opening(
             _liquidity_loader(candidate, later_background),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -461,6 +469,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             _liquidity_loader(background, candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -518,6 +527,7 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -575,6 +585,7 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             _liquidity_loader(first, second, third),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -623,6 +634,7 @@ def test_capacity_overlay_detects_available_margin_violation(
             _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -677,6 +689,7 @@ def test_capacity_overlay_detects_liquidation_buffer_violation(
             _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -740,6 +753,7 @@ def test_capacity_overlay_detects_visible_liquidity_violation(
             _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -803,6 +817,7 @@ def test_liquidity_gate_uses_pre_ioc_reference_notional(
             _liquidity_loader(candidate),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -817,6 +832,121 @@ def test_liquidity_gate_uses_pre_ioc_reference_notional(
         str(delayed["max_liquidity_capacity_utilization"])
     ) == Decimal("1")
     assert admission["liquidity_capacity_rejections"] == 0
+    assert admission["rejected_openings"] == 0
+
+
+def test_capacity_overlay_detects_venue_min_notional_violation(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="venue-min-candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+            quantity="0.105",
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "95"),)))
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    price="95",
+                    reference_price="95",
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert actual["capacity_violations"] == 0
+    assert actual["venue_min_notional_violations"] == 0
+    assert delayed["capacity_violations"] == 1
+    assert delayed["venue_min_notional_violations"] == 1
+    assert delayed["aggregate_risk_violations"] == 0
+    assert delayed["correlation_bucket_risk_violations"] == 0
+    assert delayed["gross_leverage_violations"] == 0
+    assert delayed["margin_capacity_violations"] == 0
+    assert delayed["liquidity_capacity_violations"] == 0
+    assert delayed["liquidation_buffer_violations"] == 0
+    assert Decimal(
+        str(delayed["min_venue_notional_headroom"])
+    ) < Decimal("0")
+    assert admission["rejected_openings"] == 1
+    assert admission["venue_min_notional_rejections"] == 1
+    assert result["venue_min_notional_modeled"] is True
+
+
+def test_partial_fill_notional_does_not_trigger_venue_minimum(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="partial-above-minimum",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+            quantity="0.2",
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "100"),)))
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    source="partial_visible_book_ioc",
+                    filled_quantity="0.05",
+                    reference_price="100",
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert delayed["venue_min_notional_violations"] == 0
+    assert delayed["capacity_violations"] == 0
+    assert admission["venue_min_notional_rejections"] == 0
     assert admission["rejected_openings"] == 0
 
 
@@ -847,6 +977,7 @@ def test_missing_delayed_reference_price_blocks_review(
             _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -886,6 +1017,7 @@ def test_missing_delayed_liquidity_blocks_review(
             _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
@@ -937,6 +1069,7 @@ def test_legacy_path_leverage_gap_blocks_margin_review(
             _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
         )
     finally:
         journal.close()
