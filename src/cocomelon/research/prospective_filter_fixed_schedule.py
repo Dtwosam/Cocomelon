@@ -257,5 +257,4 @@ def prospective_filter_fixed_schedule_portfolio(
         "delta_max_planned_risk": str(
             candidate_risk - actual_risk
         ),
-        "changes_readiness_gate": False,
     }
