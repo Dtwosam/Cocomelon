@@ -927,12 +927,16 @@ def delayed_entry_portfolio_capacity_overlay(
             continue
         try:
             _validate_plan(trade, plan)
-            actual = _actual_position(trade, marks, plan)
+            actual_position = _actual_position(
+                trade,
+                marks,
+                plan,
+            )
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
             continue
         plans_by_trade_id[trade.trade_id] = plan
-        actual_positions.append(actual)
+        actual_positions.append(actual_position)
 
     candidate_positions: list[_Position] = []
     background_positions = 0
