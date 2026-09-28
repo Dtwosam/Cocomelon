@@ -3195,6 +3195,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "unresolved=2, missing=0/0, mismatch=0, risk=0 |" in output
     )
     assert (
+        "| 60s delayed MTM portfolio | collecting | "
+        "closed=12, paths=9, overlap=6 | "
+        "unresolved=2, missing=0/1, incomplete=0, mismatch=0 |" in output
+    )
+    assert (
         "| LONG+trend filter | collecting | "
         "closed=12, blocked=5, allowed=7 | misses=0 |" in output
     )
