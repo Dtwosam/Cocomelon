@@ -881,6 +881,7 @@ def test_record_pump_mid_markout_failure_does_not_block_paper() -> None:
 
     sink = _ContinuousEntryMidMarkoutSink(
         FailingShadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _: None,
     )
     pump = _RecordPump(
         Pipeline(),  # type: ignore[arg-type]
