@@ -1544,6 +1544,7 @@ def _delayed_entry_mtm_portfolio_lines(
 def _delayed_entry_stop_survivability_lines(
     raw: object,
     validity_raw: object = None,
+    proxy_raw: object = None,
 ) -> list[str]:
     lines = [
         "",
@@ -1685,6 +1686,56 @@ def _delayed_entry_stop_survivability_lines(
                     (
                         "_Stop-crossed same-exit PnL is flagged as path-invalid, "
                         "not repriced into a synthetic stop-fill result._"
+                    ),
+                ]
+            )
+
+    if isinstance(proxy_raw, dict):
+        proxy_error = proxy_raw.get("error")
+        proxy_overall = proxy_raw.get("overall", {})
+        if proxy_error:
+            lines.append(
+                f"- stop-exit proxy research error: `{proxy_error}`"
+            )
+        elif isinstance(proxy_overall, dict):
+            lines.extend(
+                [
+                    (
+                        "- stop-exit cohort PnL same-exit / stop / mark / IOC-boundary: "
+                        f"`{proxy_overall.get('same_exit_candidate_net_pnl', '0')} / "
+                        f"{proxy_overall.get('stop_price_proxy_cohort_net_pnl', '0')} / "
+                        f"{proxy_overall.get('crossing_mark_proxy_cohort_net_pnl', '0')} / "
+                        f"{proxy_overall.get('ioc_boundary_proxy_cohort_net_pnl', '0')}`"
+                    ),
+                    (
+                        "- stop-exit Δ vs actual same-exit / stop / mark / IOC-boundary: "
+                        f"`{proxy_overall.get('same_exit_delta_vs_actual', '0')} / "
+                        f"{proxy_overall.get('stop_price_proxy_delta_vs_actual', '0')} / "
+                        f"{proxy_overall.get('crossing_mark_proxy_delta_vs_actual', '0')} / "
+                        f"{proxy_overall.get('ioc_boundary_proxy_delta_vs_actual', '0')}`"
+                    ),
+                    (
+                        "- same-exit edge removed by IOC-boundary proxy / positive→nonpositive crossings: "
+                        f"`{proxy_overall.get('same_exit_minus_ioc_boundary_proxy_pnl', '0')} / "
+                        f"{proxy_overall.get('positive_same_exit_crossings_to_nonpositive_boundary', 0)}`"
+                    ),
+                    (
+                        "- stop proxy config taker fee / max slippage bps: "
+                        f"`{proxy_raw.get('taker_fee_rate')} / "
+                        f"{proxy_raw.get('max_ioc_slippage_bps')}`"
+                    ),
+                    (
+                        "- stop proxy missing path / funding / ambiguous funding / lineage: "
+                        f"`{proxy_raw.get('missing_exact_paths', 0)} / "
+                        f"{proxy_raw.get('missing_funding_events', 0)} / "
+                        f"{proxy_raw.get('ambiguous_stop_funding_timing', 0)} / "
+                        f"{proxy_raw.get('lineage_mismatches', 0)}`"
+                    ),
+                    (
+                        "_These are full-exit price proxies only: stop ideal, "
+                        "first crossing mark, and the configured IOC slippage "
+                        "boundary. Exit-side L2 depth and partial stop fills are "
+                        "not reconstructed._"
                     ),
                 ]
             )
@@ -5862,6 +5913,7 @@ def render_live_status(
         _delayed_entry_stop_survivability_lines(
             payload.get("delayed_entry_stop_survivability"),
             payload.get("delayed_entry_same_exit_stop_validity"),
+            payload.get("delayed_entry_stop_exit_proxy"),
         )
     )
     lines.extend(
