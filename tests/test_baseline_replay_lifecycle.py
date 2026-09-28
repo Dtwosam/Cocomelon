@@ -449,11 +449,17 @@ def test_closed_lifecycle_sink_receives_full_mark_path(
         def record(
             self,
             trade: TradeJournalEntry,
+            venue_max_leverage: Decimal,
             mark_observations: tuple[ReplayRecord, ...],
             known_gap_intervals: tuple[tuple[int, int | None], ...],
         ) -> bool:
             captured.append(
-                (trade, tuple(mark_observations), tuple(known_gap_intervals))
+                (
+                    trade,
+                    venue_max_leverage,
+                    tuple(mark_observations),
+                    tuple(known_gap_intervals),
+                )
             )
             return True
 
