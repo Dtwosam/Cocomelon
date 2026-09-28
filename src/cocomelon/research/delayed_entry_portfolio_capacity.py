@@ -478,13 +478,18 @@ def _capacity_timeline(
     aggregate_risk_violations = 0
     bucket_risk_violations = 0
     gross_leverage_violations = 0
+    margin_capacity_violations = 0
+    margin_evaluable_openings = 0
+    margin_lineage_gaps = 0
     non_positive_equity = 0
     max_aggregate_risk_utilization = ZERO
     max_bucket_risk_utilization = ZERO
     max_gross_leverage = ZERO
+    max_margin_capacity_utilization = ZERO
     min_aggregate_risk_headroom: Decimal | None = None
     min_bucket_risk_headroom: Decimal | None = None
     min_gross_notional_headroom: Decimal | None = None
+    min_margin_notional_headroom: Decimal | None = None
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -537,12 +542,36 @@ def _capacity_timeline(
         after_risk = existing_risk + position.planned_risk
         after_notional = existing_notional + new_notional
 
+        margin_bad = False
+        margin_headroom: Decimal | None = None
+        effective_leverage: Decimal | None = None
+        reserved_margin: Decimal | None = None
+        if position.margin_policy_eligible:
+            effective_leverage = _effective_leverage(
+                position,
+                limits,
+            )
+            reserved_margin = _reserved_margin(active, limits)
+            if (
+                effective_leverage is None
+                or reserved_margin is None
+            ):
+                margin_lineage_gaps += 1
+            else:
+                margin_evaluable_openings += 1
+
         if equity <= ZERO:
             non_positive_equity += 1
-            violated = True
             aggregate_bad = True
             bucket_bad = True
             gross_bad = True
+            if (
+                position.margin_policy_eligible
+                and effective_leverage is not None
+                and reserved_margin is not None
+            ):
+                margin_bad = True
+                margin_headroom = -new_notional
             aggregate_headroom = -after_risk
             bucket_headroom = -after_risk
             gross_headroom = -after_notional
@@ -551,14 +580,18 @@ def _capacity_timeline(
             bucket_ceiling = (
                 equity * limits.correlation_bucket_risk_limit
             )
-            gross_ceiling = equity * limits.max_gross_leverage
+            gross_leverage = (
+                limits.max_gross_leverage
+                if effective_leverage is None
+                else effective_leverage
+            )
+            gross_ceiling = equity * gross_leverage
             aggregate_headroom = aggregate_ceiling - after_risk
             bucket_headroom = bucket_ceiling - after_risk
             gross_headroom = gross_ceiling - after_notional
             aggregate_bad = aggregate_headroom < ZERO
             bucket_bad = bucket_headroom < ZERO
             gross_bad = gross_headroom < ZERO
-            violated = aggregate_bad or bucket_bad or gross_bad
             max_aggregate_risk_utilization = max(
                 max_aggregate_risk_utilization,
                 after_risk / aggregate_ceiling,
@@ -571,7 +604,34 @@ def _capacity_timeline(
                 max_gross_leverage,
                 after_notional / equity,
             )
+            if (
+                position.margin_policy_eligible
+                and effective_leverage is not None
+                and reserved_margin is not None
+            ):
+                available_margin = max(
+                    ZERO,
+                    equity - reserved_margin,
+                )
+                margin_capacity = (
+                    available_margin
+                    * limits.max_available_margin_fraction
+                    * effective_leverage
+                )
+                margin_headroom = margin_capacity - new_notional
+                margin_bad = margin_headroom < ZERO
+                if margin_capacity > ZERO:
+                    max_margin_capacity_utilization = max(
+                        max_margin_capacity_utilization,
+                        new_notional / margin_capacity,
+                    )
 
+        violated = (
+            aggregate_bad
+            or bucket_bad
+            or gross_bad
+            or margin_bad
+        )
         min_aggregate_risk_headroom = (
             aggregate_headroom
             if min_aggregate_risk_headroom is None
@@ -596,6 +656,15 @@ def _capacity_timeline(
                 gross_headroom,
             )
         )
+        if margin_headroom is not None:
+            min_margin_notional_headroom = (
+                margin_headroom
+                if min_margin_notional_headroom is None
+                else min(
+                    min_margin_notional_headroom,
+                    margin_headroom,
+                )
+            )
 
         if violated:
             violations += 1
@@ -609,6 +678,8 @@ def _capacity_timeline(
             bucket_risk_violations += 1
         if gross_bad:
             gross_leverage_violations += 1
+        if margin_bad:
+            margin_capacity_violations += 1
 
         realized -= position.entry_fee
         active[event.trade_id] = _Active(
@@ -634,6 +705,11 @@ def _capacity_timeline(
             bucket_risk_violations
         ),
         "gross_leverage_violations": gross_leverage_violations,
+        "available_margin_capacity_violations": (
+            margin_capacity_violations
+        ),
+        "margin_evaluable_openings": margin_evaluable_openings,
+        "margin_lineage_gaps": margin_lineage_gaps,
         "non_positive_equity_events": non_positive_equity,
         "max_aggregate_risk_utilization": str(
             max_aggregate_risk_utilization
@@ -642,6 +718,9 @@ def _capacity_timeline(
             max_bucket_risk_utilization
         ),
         "max_gross_leverage": str(max_gross_leverage),
+        "max_available_margin_capacity_utilization": str(
+            max_margin_capacity_utilization
+        ),
         "min_aggregate_risk_headroom": str(
             ZERO
             if min_aggregate_risk_headroom is None
@@ -656,6 +735,11 @@ def _capacity_timeline(
             ZERO
             if min_gross_notional_headroom is None
             else min_gross_notional_headroom
+        ),
+        "min_available_margin_notional_headroom": str(
+            ZERO
+            if min_margin_notional_headroom is None
+            else min_margin_notional_headroom
         ),
     }
 
@@ -685,11 +769,15 @@ def _admission_timeline(
     aggregate_rejections = 0
     bucket_rejections = 0
     leverage_rejections = 0
+    margin_rejections = 0
+    margin_evaluable_opportunities = 0
+    margin_lineage_gaps = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
     max_admitted_aggregate_utilization = ZERO
     max_admitted_bucket_utilization = ZERO
     max_admitted_gross_leverage = ZERO
+    max_admitted_margin_capacity_utilization = ZERO
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -749,31 +837,75 @@ def _admission_timeline(
             (_gross_notional(item) for item in active.values()),
             ZERO,
         )
+        new_notional = position.entry_price * position.quantity
         after_risk = existing_risk + position.planned_risk
-        after_notional = (
-            existing_notional
-            + position.entry_price * position.quantity
-        )
+        after_notional = existing_notional + new_notional
+
+        margin_bad = False
+        margin_capacity: Decimal | None = None
+        effective_leverage: Decimal | None = None
+        reserved_margin: Decimal | None = None
+        if position.margin_policy_eligible:
+            effective_leverage = _effective_leverage(
+                position,
+                limits,
+            )
+            reserved_margin = _reserved_margin(active, limits)
+            if (
+                effective_leverage is None
+                or reserved_margin is None
+            ):
+                margin_lineage_gaps += 1
+            else:
+                margin_evaluable_opportunities += 1
 
         if equity <= ZERO:
             aggregate_bad = True
             bucket_bad = True
             leverage_bad = True
+            if (
+                position.margin_policy_eligible
+                and effective_leverage is not None
+                and reserved_margin is not None
+            ):
+                margin_bad = True
+                margin_capacity = ZERO
             non_positive_equity_rejections += 1
         else:
             aggregate_ceiling = equity * limits.max_open_risk
             bucket_ceiling = (
                 equity * limits.correlation_bucket_risk_limit
             )
-            gross_ceiling = equity * limits.max_gross_leverage
+            gross_leverage = (
+                limits.max_gross_leverage
+                if effective_leverage is None
+                else effective_leverage
+            )
+            gross_ceiling = equity * gross_leverage
             aggregate_bad = after_risk > aggregate_ceiling
             bucket_bad = after_risk > bucket_ceiling
             leverage_bad = after_notional > gross_ceiling
+            if (
+                position.margin_policy_eligible
+                and effective_leverage is not None
+                and reserved_margin is not None
+            ):
+                available_margin = max(
+                    ZERO,
+                    equity - reserved_margin,
+                )
+                margin_capacity = (
+                    available_margin
+                    * limits.max_available_margin_fraction
+                    * effective_leverage
+                )
+                margin_bad = new_notional > margin_capacity
 
         rejected_now = (
             aggregate_bad
             or bucket_bad
             or leverage_bad
+            or margin_bad
         )
         if rejected_now:
             rejected_openings += 1
@@ -788,6 +920,8 @@ def _admission_timeline(
                 bucket_rejections += 1
             if leverage_bad:
                 leverage_rejections += 1
+            if margin_bad:
+                margin_rejections += 1
             continue
 
         admitted_openings += 1
@@ -812,6 +946,14 @@ def _admission_timeline(
                 max_admitted_gross_leverage,
                 after_notional / equity,
             )
+            if (
+                margin_capacity is not None
+                and margin_capacity > ZERO
+            ):
+                max_admitted_margin_capacity_utilization = max(
+                    max_admitted_margin_capacity_utilization,
+                    new_notional / margin_capacity,
+                )
 
         realized -= position.entry_fee
         active[position.trade_id] = _Active(
@@ -840,6 +982,11 @@ def _admission_timeline(
         "aggregate_risk_rejections": aggregate_rejections,
         "correlation_bucket_risk_rejections": bucket_rejections,
         "gross_leverage_rejections": leverage_rejections,
+        "available_margin_capacity_rejections": margin_rejections,
+        "margin_evaluable_opportunities": (
+            margin_evaluable_opportunities
+        ),
+        "margin_lineage_gaps": margin_lineage_gaps,
         "non_positive_equity_rejections": (
             non_positive_equity_rejections
         ),
@@ -852,6 +999,9 @@ def _admission_timeline(
         ),
         "max_admitted_gross_leverage": str(
             max_admitted_gross_leverage
+        ),
+        "max_admitted_available_margin_capacity_utilization": str(
+            max_admitted_margin_capacity_utilization
         ),
         "final_realized_contribution": str(realized),
     }
