@@ -33,6 +33,7 @@ from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
     OpenLifecycleCheckpoint,
     OpenLifecycleMarkPath,
+    OpeningResearchObserver,
     PositionResearchObserver,
 )
 from cocomelon.evidence.openings import BaselineOpeningTrace
@@ -354,7 +355,7 @@ class _ContinuousOpeningFillLiquiditySink:
 class _CompositeOpeningResearchObserver:
     def __init__(
         self,
-        *observers: object,
+        *observers: OpeningResearchObserver,
     ) -> None:
         self._observers = observers
 
@@ -363,8 +364,7 @@ class _CompositeOpeningResearchObserver:
         trace: BaselineOpeningTrace,
     ) -> None:
         for observer in self._observers:
-            record = getattr(observer, "record_opening_trace")
-            record(trace)
+            observer.record_opening_trace(trace)
 
 
 class _CompositePositionResearchObserver:
