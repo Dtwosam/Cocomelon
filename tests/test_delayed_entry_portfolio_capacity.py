@@ -15,6 +15,7 @@ from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
+    CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
     ContinuousPaperTradePath,
     ContinuousPaperTradePathMark,
     ContinuousPaperTradePathStore,
@@ -145,6 +146,8 @@ def _path(
             for timestamp_ms, mark_px in marks
         ),
         known_gap_intervals=(),
+        venue_max_leverage=Decimal("20"),
+        schema_version=CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
     )
 
 
@@ -236,6 +239,7 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             paths,
             _plan_loader(background, candidate),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -303,6 +307,7 @@ def test_admission_shadow_can_reject_later_background_opening(
             paths,
             _plan_loader(candidate, later_background),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -376,6 +381,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             paths,
             _plan_loader(background, candidate),
             limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -431,6 +437,7 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             paths,
             _plan_loader(candidate),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -486,6 +493,7 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             paths,
             _plan_loader(first, second, third),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -501,3 +509,107 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
     assert result["observed_planned_risk_basis"] == (
         "actual_fill_notional_stop_distance_plus_plan_cost_buffer"
     )
+
+
+
+def test_capacity_overlay_detects_available_margin_violation(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="margin-candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(
+            _path(candidate, ((200_000, "100"),))
+        )
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("0.0085"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate, price="105"),),
+            paths,
+            _plan_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert actual["capacity_violations"] == 0
+    assert actual["margin_capacity_violations"] == 0
+    assert delayed["capacity_violations"] == 1
+    assert delayed["margin_capacity_violations"] == 1
+    assert delayed["gross_leverage_violations"] == 0
+    assert Decimal(
+        str(delayed["min_margin_notional_headroom"])
+    ) < Decimal("0")
+    assert admission["rejected_openings"] == 1
+    assert admission["margin_capacity_rejections"] == 1
+    assert result["available_margin_capacity_modeled"] is True
+
+
+
+def test_legacy_path_leverage_gap_blocks_margin_review(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="legacy-leverage",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        legacy = _path(candidate, ((200_000, "100"),))
+        paths.record(
+            ContinuousPaperTradePath(
+                trade_id=legacy.trade_id,
+                market=legacy.market,
+                direction=legacy.direction,
+                opened_at_ms=legacy.opened_at_ms,
+                closed_at_ms=legacy.closed_at_ms,
+                entry_price=legacy.entry_price,
+                exit_price=legacy.exit_price,
+                initial_stop=legacy.initial_stop,
+                initial_risk_amount=legacy.initial_risk_amount,
+                filled_quantity=legacy.filled_quantity,
+                excursion_complete=legacy.excursion_complete,
+                health_refs=legacy.health_refs,
+                marks=legacy.marks,
+                known_gap_intervals=legacy.known_gap_intervals,
+            )
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate),),
+            paths,
+            _plan_loader(candidate),
+            limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_venue_max_leverage"] == 1
+    assert result["lineage_mismatches"] == 0
+    assert readiness["ready_for_review"] is False
