@@ -507,3 +507,56 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
     assert result["observed_planned_risk_basis"] == (
         "actual_fill_notional_stop_distance_plus_plan_cost_buffer"
     )
+
+
+
+def test_capacity_overlay_detects_available_margin_violation(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="margin-candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(
+            _path(candidate, ((200_000, "100"),))
+        )
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("0.0085"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate, price="105"),),
+            paths,
+            _plan_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert actual["capacity_violations"] == 0
+    assert actual["margin_capacity_violations"] == 0
+    assert delayed["capacity_violations"] == 1
+    assert delayed["margin_capacity_violations"] == 1
+    assert delayed["gross_leverage_violations"] == 0
+    assert Decimal(
+        str(delayed["min_margin_notional_headroom"])
+    ) < Decimal("0")
+    assert admission["rejected_openings"] == 1
+    assert admission["margin_capacity_rejections"] == 1
+    assert result["available_margin_capacity_modeled"] is True
