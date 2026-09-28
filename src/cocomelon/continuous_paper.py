@@ -4279,6 +4279,7 @@ async def run_continuous_paper_session(
                     delay_selector_comparison_restore_error=(
                         delay_selector_comparison_restore_error
                     ),
+                    risk_limits=replay_config.risk_limits,
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
