@@ -173,7 +173,8 @@ def _validate_plan(
         else OrderSide.SELL
     )
     if (
-        plan.reduce_only
+        plan.plan_id != trade.opening_plan_id
+        or plan.reduce_only
         or plan.market != trade.market
         or plan.side is not expected_side
         or plan.stop_price is None
@@ -780,8 +781,19 @@ def delayed_entry_portfolio_capacity_overlay(
         limits=limits,
     )
 
-    actual_violations = int(actual["capacity_violations"])
-    candidate_overlap = int(candidate["overlap_openings"])
+    actual_violations_raw = actual["capacity_violations"]
+    candidate_overlap_raw = candidate["overlap_openings"]
+    if (
+        isinstance(actual_violations_raw, bool)
+        or not isinstance(actual_violations_raw, int)
+        or isinstance(candidate_overlap_raw, bool)
+        or not isinstance(candidate_overlap_raw, int)
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "capacity timeline counters must be integers"
+        )
+    actual_violations = actual_violations_raw
+    candidate_overlap = candidate_overlap_raw
     ready = (
         len(outcomes) >= MIN_CLOSED_SHADOW_OUTCOMES
         and candidate_filled >= MIN_CANDIDATE_FILLED_POSITIONS
