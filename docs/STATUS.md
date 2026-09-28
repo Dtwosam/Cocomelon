@@ -1930,3 +1930,19 @@ The fixed-schedule delayed-entry capacity overlay now reconstructs observed pape
 This fixes research-only false capacity rejections caused by treating partially filled positions as if they consumed their full approved risk envelope. It does not change the paper risk engine, paper positions, sizing, entries, exits, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Trade-path venue-leverage lineage capture — 2026-09-28
+
+Exact venue leverage is now retained with new continuous-paper trade-path evidence so the delayed-entry portfolio research can later reconstruct available-margin capacity without guessing market leverage.
+
+- each opening trace now carries the exact `InstrumentExecutionSpec` used by the risk/execution path;
+- filled openings immediately stage their venue max leverage into the durable open trade-path header;
+- active lifecycle checkpoints also carry venue max leverage, so a worker restart can recover or upgrade an older open-path header before that position closes;
+- the trade-path record schema is versioned to v2 for leverage-aware paths while existing closed v1 records remain valid and readable;
+- legacy open-path headers can be upgraded in place when authoritative position leverage becomes available;
+- leverage drift for the same opening-plan identity is treated as an evidence-lineage conflict instead of silently accepted.
+
+This is an evidence prerequisite, not a trading-rule change. The delayed-entry capacity overlay still reports available-margin capacity as unmodeled until a separate causal replay consumes this new leverage lineage. Entries, sizing, stops, fills, risk limits, and live-order capability are unchanged.
+
+**LIVE TRADING: DISABLED.**
