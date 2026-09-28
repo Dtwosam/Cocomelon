@@ -133,6 +133,54 @@ def _summarize(
     }
 
 
+def _summarize_reference(
+    rows: list[dict[str, object]],
+) -> dict[str, object]:
+    if not rows:
+        return {
+            "attempts": 0,
+            "mean_reference_full_size_risk_ratio": None,
+            "mean_reference_risk_capacity_fraction": None,
+            "mean_reference_unit_risk_change_fraction": None,
+            "pre_ioc_resize_required": 0,
+            "risk_clipped": 0,
+        }
+
+    def mean(field: str) -> str:
+        values: list[Decimal] = []
+        for row in rows:
+            value = row.get(field)
+            if not isinstance(value, Decimal):
+                raise DelayedEntryRiskGeometryError(
+                    f"missing reference risk field: {field}"
+                )
+            values.append(value)
+        return _decimal(
+            sum(values, ZERO) / Decimal(len(values))
+        )
+
+    return {
+        "attempts": len(rows),
+        "mean_reference_full_size_risk_ratio": mean(
+            "reference_full_size_risk_ratio"
+        ),
+        "mean_reference_risk_capacity_fraction": mean(
+            "reference_risk_capacity_fraction"
+        ),
+        "mean_reference_unit_risk_change_fraction": mean(
+            "reference_unit_risk_change_fraction"
+        ),
+        "pre_ioc_resize_required": sum(
+            1
+            for row in rows
+            if row["pre_ioc_resize_required"] is True
+        ),
+        "risk_clipped": sum(
+            1 for row in rows if row["risk_clipped"] is True
+        ),
+    }
+
+
 def _trade_by_id(
     journal: JournalStore,
 ) -> dict[str, TradeJournalEntry]:
@@ -152,10 +200,12 @@ def delayed_entry_risk_geometry_summary(
 ) -> dict[str, object]:
     trades = _trade_by_id(journal)
     rows: list[dict[str, object]] = []
+    reference_rows: list[dict[str, object]] = []
     missing_journal = 0
     missing_plan = 0
     lineage_mismatches = 0
     missing_fill_price = 0
+    missing_reference_price = 0
     no_fill_outcomes = 0
 
     for outcome in outcomes:
@@ -197,6 +247,71 @@ def delayed_entry_risk_geometry_summary(
             lineage_mismatches += 1
             continue
 
+        actual_unit_risk = _risk_per_quantity(
+            plan,
+            trade.entry_price,
+        )
+        delayed_reference_price = outcome.delayed_reference_price
+        if delayed_reference_price is None:
+            missing_reference_price += 1
+        else:
+            reference_unit_risk = _risk_per_quantity(
+                plan,
+                delayed_reference_price,
+            )
+            risk_ceiling = trade.initial_risk_amount
+            reference_full_risk = (
+                reference_unit_risk * trade.filled_quantity
+            )
+            reference_full_size_risk_ratio = (
+                reference_full_risk / risk_ceiling
+            )
+            reference_risk_capacity_fraction = min(
+                ONE,
+                risk_ceiling / reference_full_risk,
+            )
+            reference_unit_risk_change_fraction = (
+                reference_unit_risk / actual_unit_risk - ONE
+            )
+            for value, field in (
+                (
+                    reference_full_size_risk_ratio,
+                    "reference_full_size_risk_ratio",
+                ),
+                (
+                    reference_risk_capacity_fraction,
+                    "reference_risk_capacity_fraction",
+                ),
+                (
+                    reference_unit_risk_change_fraction,
+                    "reference_unit_risk_change_fraction",
+                ),
+            ):
+                if not value.is_finite():
+                    raise DelayedEntryRiskGeometryError(
+                        f"{field} must be finite"
+                    )
+            reference_rows.append(
+                {
+                    "direction": outcome.direction,
+                    "source": outcome.source,
+                    "cause": _cause(outcome),
+                    "risk_clipped": _is_risk_clipped(outcome),
+                    "reference_full_size_risk_ratio": (
+                        reference_full_size_risk_ratio
+                    ),
+                    "reference_risk_capacity_fraction": (
+                        reference_risk_capacity_fraction
+                    ),
+                    "reference_unit_risk_change_fraction": (
+                        reference_unit_risk_change_fraction
+                    ),
+                    "pre_ioc_resize_required": (
+                        reference_full_size_risk_ratio > ONE
+                    ),
+                }
+            )
+
         if outcome.source == "no_fill":
             no_fill_outcomes += 1
             continue
@@ -207,10 +322,6 @@ def delayed_entry_risk_geometry_summary(
             missing_fill_price += 1
             continue
 
-        actual_unit_risk = _risk_per_quantity(
-            plan,
-            trade.entry_price,
-        )
         delayed_unit_risk = _risk_per_quantity(
             plan,
             outcome.delayed_average_fill_price,
@@ -290,6 +401,11 @@ def delayed_entry_risk_geometry_summary(
     risk_clipped_rows = [
         row for row in rows if row["risk_clipped"] is True
     ]
+    reference_risk_clipped_rows = [
+        row
+        for row in reference_rows
+        if row["risk_clipped"] is True
+    ]
     ready = (
         len(rows) >= MIN_EVALUATED_FILLED_ATTEMPTS
         and len(risk_clipped_rows)
@@ -298,6 +414,7 @@ def delayed_entry_risk_geometry_summary(
         and missing_plan == 0
         and lineage_mismatches == 0
         and missing_fill_price == 0
+        and missing_reference_price == 0
     )
 
     causes = {
@@ -308,22 +425,44 @@ def delayed_entry_risk_geometry_summary(
             {str(row["cause"]) for row in rows}
         )
     }
+    reference_causes = {
+        cause: _summarize_reference(
+            [
+                row
+                for row in reference_rows
+                if row["cause"] == cause
+            ]
+        )
+        for cause in sorted(
+            {str(row["cause"]) for row in reference_rows}
+        )
+    }
 
     return {
         "research_only": True,
         "execution_authority": False,
         "promotion_authority": False,
         "definition": (
-            "delayed_average_fill_risk_vs_actual_position_risk"
+            "delayed_reference_and_average_fill_risk_vs_actual_position_risk"
         ),
         "evaluated_filled_attempts": len(rows),
+        "reference_evaluated_attempts": len(reference_rows),
         "no_fill_outcomes": no_fill_outcomes,
         "missing_journal_trades": missing_journal,
         "missing_opening_plans": missing_plan,
         "lineage_mismatches": lineage_mismatches,
         "missing_delayed_fill_price": missing_fill_price,
+        "missing_delayed_reference_price": (
+            missing_reference_price
+        ),
         "overall": _summarize(rows),
         "risk_clipped": _summarize(risk_clipped_rows),
+        "reference_overall": _summarize_reference(
+            reference_rows
+        ),
+        "reference_risk_clipped": _summarize_reference(
+            reference_risk_clipped_rows
+        ),
         "by_side": {
             side: _summarize(
                 [
@@ -335,6 +474,17 @@ def delayed_entry_risk_geometry_summary(
             for side in ("long", "short")
         },
         "by_cause": causes,
+        "reference_by_side": {
+            side: _summarize_reference(
+                [
+                    row
+                    for row in reference_rows
+                    if row["direction"] == side
+                ]
+            )
+            for side in ("long", "short")
+        },
+        "reference_by_cause": reference_causes,
         "readiness": {
             "ready_for_review": ready,
             "min_evaluated_filled_attempts": (
