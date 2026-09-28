@@ -3656,6 +3656,7 @@ def _emit_live_status(
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
     risk_limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3703,6 +3704,7 @@ def _emit_live_status(
             delay_selector_comparison_restore_error
         ),
         risk_limits=risk_limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
