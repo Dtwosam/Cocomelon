@@ -4642,6 +4642,14 @@ def _research_readiness_board_lines(
     delayed_portfolio_actual = delayed_portfolio.get("actual", {})
     if not isinstance(delayed_portfolio_actual, dict):
         delayed_portfolio_actual = {}
+    delayed_mtm_portfolio = mapping("delayed_entry_mtm_portfolio")
+    delayed_mtm_portfolio_gate = readiness(delayed_mtm_portfolio)
+    delayed_mtm_portfolio_ready = bool(
+        delayed_mtm_portfolio_gate.get("ready_for_review")
+    )
+    delayed_mtm_actual = delayed_mtm_portfolio.get("actual", {})
+    if not isinstance(delayed_mtm_actual, dict):
+        delayed_mtm_actual = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -4914,6 +4922,25 @@ def _research_readiness_board_lines(
                 f"{delayed_portfolio.get('missing_opening_plans', 0)}, "
                 f"mismatch={delayed_portfolio.get('lineage_mismatches', 0)}, "
                 f"risk={delayed_portfolio.get('candidate_risk_ceiling_exceeded', 0)}"
+            ),
+        ),
+        (
+            "60s delayed MTM portfolio",
+            status(
+                delayed_mtm_portfolio,
+                ready=delayed_mtm_portfolio_ready,
+            ),
+            (
+                f"closed={delayed_mtm_portfolio.get('closed_shadow_outcomes', 0)}, "
+                f"paths={delayed_mtm_portfolio.get('evaluated_complete_path_trades', 0)}, "
+                f"overlap={delayed_mtm_actual.get('overlap_openings', 0)}"
+            ),
+            (
+                f"unresolved={delayed_mtm_portfolio.get('unresolved_outcomes', 0)}, "
+                f"missing={delayed_mtm_portfolio.get('missing_journal_trades', 0)}/"
+                f"{delayed_mtm_portfolio.get('missing_exact_paths', 0)}, "
+                f"incomplete={delayed_mtm_portfolio.get('incomplete_exact_paths', 0)}, "
+                f"mismatch={delayed_mtm_portfolio.get('lineage_mismatches', 0)}"
             ),
         ),
         (
