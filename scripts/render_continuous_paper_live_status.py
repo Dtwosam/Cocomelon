@@ -1435,6 +1435,130 @@ def _delayed_entry_mtm_portfolio_lines(
     return lines
 
 
+def _delayed_entry_portfolio_capacity_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry portfolio capacity overlay",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry capacity telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    actual = raw.get("actual", {})
+    candidate = raw.get("candidate", {})
+    limits = raw.get("limits", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(actual, dict):
+        actual = {}
+    if not isinstance(candidate, dict):
+        candidate = {}
+    if not isinstance(limits, dict):
+        limits = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- frozen limits open-risk / bucket-risk / gross leverage: "
+                f"`{limits.get('max_open_risk')} / "
+                f"{limits.get('correlation_bucket_risk_limit')} / "
+                f"{limits.get('max_gross_leverage')}`"
+            ),
+            (
+                "- closed / candidate fills / no-fills / background: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('candidate_filled_positions', 0)} / "
+                f"{raw.get('candidate_no_fill_trades', 0)} / "
+                f"{raw.get('background_positions', 0)}`"
+            ),
+            (
+                "- unresolved / missing journal-plan-path / incomplete / lineage: "
+                f"`{raw.get('unresolved_outcomes', 0)} / "
+                f"{raw.get('missing_journal_trades', 0)}-"
+                f"{raw.get('missing_opening_plans', 0)}-"
+                f"{raw.get('missing_exact_paths', 0)} / "
+                f"{raw.get('incomplete_exact_paths', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- actual opening checks / capacity violations: "
+                f"`{actual.get('opening_checks', 0)} / "
+                f"{actual.get('capacity_violations', 0)}`"
+            ),
+            (
+                "- candidate opening checks / capacity violations: "
+                f"`{candidate.get('opening_checks', 0)} / "
+                f"{candidate.get('capacity_violations', 0)}`"
+            ),
+            (
+                "- candidate violations delayed / background: "
+                f"`{candidate.get('delayed_opening_violations', 0)} / "
+                f"{candidate.get('background_opening_violations', 0)}`"
+            ),
+            (
+                "- candidate violations aggregate / bucket / leverage: "
+                f"`{candidate.get('aggregate_risk_violations', 0)} / "
+                f"{candidate.get('correlation_bucket_risk_violations', 0)} / "
+                f"{candidate.get('gross_leverage_violations', 0)}`"
+            ),
+            (
+                "- candidate max utilization aggregate / bucket / leverage: "
+                f"`{candidate.get('max_aggregate_risk_utilization', '0')} / "
+                f"{candidate.get('max_correlation_bucket_risk_utilization', '0')} / "
+                f"{candidate.get('max_gross_leverage', '0')}`"
+            ),
+            (
+                "- candidate min headroom aggregate / bucket / gross notional: "
+                f"`{candidate.get('min_aggregate_risk_headroom', '0')} / "
+                f"{candidate.get('min_correlation_bucket_risk_headroom', '0')} / "
+                f"{candidate.get('min_gross_notional_headroom', '0')}`"
+            ),
+            (
+                "- evidence gate closed / candidate fills / candidate overlap: "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_candidate_filled_positions', 0)} / "
+                f"{readiness.get('min_candidate_overlap_openings', 0)}`"
+            ),
+            (
+                "- still needed C/F/O: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_candidate_filled_positions', 0)} / "
+                f"{readiness.get('missing_candidate_overlap_openings', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Diagnostic overlay only. It checks the observed alternate "
+                "schedule against aggregate, shared-bucket, and gross-leverage "
+                "ceilings; violations are not silently resized. Background "
+                "openings stay on their observed schedule, so this is not a "
+                "full alternate admission replay._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_contribution_decomposition_lines(
     raw: object,
 ) -> list[str]:
@@ -4650,6 +4774,14 @@ def _research_readiness_board_lines(
     delayed_mtm_actual = delayed_mtm_portfolio.get("actual", {})
     if not isinstance(delayed_mtm_actual, dict):
         delayed_mtm_actual = {}
+    delayed_capacity = mapping("delayed_entry_portfolio_capacity")
+    delayed_capacity_gate = readiness(delayed_capacity)
+    delayed_capacity_ready = bool(
+        delayed_capacity_gate.get("ready_for_review")
+    )
+    delayed_capacity_candidate = delayed_capacity.get("candidate", {})
+    if not isinstance(delayed_capacity_candidate, dict):
+        delayed_capacity_candidate = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -4941,6 +5073,27 @@ def _research_readiness_board_lines(
                 f"{delayed_mtm_portfolio.get('missing_exact_paths', 0)}, "
                 f"incomplete={delayed_mtm_portfolio.get('incomplete_exact_paths', 0)}, "
                 f"mismatch={delayed_mtm_portfolio.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "60s delayed capacity overlay",
+            status(
+                delayed_capacity,
+                ready=delayed_capacity_ready,
+            ),
+            (
+                f"closed={delayed_capacity.get('closed_shadow_outcomes', 0)}, "
+                f"fills={delayed_capacity.get('candidate_filled_positions', 0)}, "
+                f"overlap={delayed_capacity_candidate.get('overlap_openings', 0)}"
+            ),
+            (
+                f"viol={delayed_capacity_candidate.get('capacity_violations', 0)}, "
+                f"unresolved={delayed_capacity.get('unresolved_outcomes', 0)}, "
+                f"missing={delayed_capacity.get('missing_journal_trades', 0)}/"
+                f"{delayed_capacity.get('missing_opening_plans', 0)}/"
+                f"{delayed_capacity.get('missing_exact_paths', 0)}, "
+                f"incomplete={delayed_capacity.get('incomplete_exact_paths', 0)}, "
+                f"mismatch={delayed_capacity.get('lineage_mismatches', 0)}"
             ),
         ),
         (
@@ -5278,6 +5431,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_mtm_portfolio_lines(
             payload.get("delayed_entry_mtm_portfolio")
+        )
+    )
+    lines.extend(
+        _delayed_entry_portfolio_capacity_lines(
+            payload.get("delayed_entry_portfolio_capacity")
         )
     )
     lines.extend(
