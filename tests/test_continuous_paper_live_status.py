@@ -3159,6 +3159,59 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_contribution_decomposition_funding": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "funding_corrected_fill_weighted_same_exit_delta_decomposition"
+            ),
+            "identity": (
+                "price_effect + entry_fee_effect + exposure_effect + "
+                "funding_timing_effect = corrected_total_delta"
+            ),
+            "legacy_identity": (
+                "price_effect + entry_fee_effect + exposure_effect = "
+                "legacy_total_delta"
+            ),
+            "closed_shadow_outcomes": 12,
+            "evaluated_delayed_attempts": 10,
+            "missing_journal_trades": 0,
+            "missing_funding_events": 0,
+            "lineage_mismatches": 0,
+            "overall": {
+                "trades": 10,
+                "mean_fill_fraction": "0.85",
+                "price_effect_pnl": "14",
+                "entry_fee_effect_pnl": "1.2",
+                "exposure_effect_pnl": "0.8",
+                "funding_timing_effect_pnl": "1",
+                "legacy_total_delta_pnl": "16",
+                "corrected_total_delta_pnl": "17",
+                "actual_net_pnl": "-12",
+                "corrected_candidate_net_pnl": "5",
+                "mean_price_effect_r": "0.20",
+                "mean_entry_fee_effect_r": "0.02",
+                "mean_exposure_effect_r": "0.03",
+                "mean_funding_timing_effect_r": "0.01",
+                "mean_corrected_total_delta_r": "0.26",
+                "funding_correction_positive": 2,
+                "funding_correction_negative": 0,
+                "funding_correction_zero": 8,
+            },
+            "by_side": {},
+            "by_source": {},
+            "by_capacity_cause": {},
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_delayed_attempts": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_delayed_attempts": 10,
+            },
+            "error": None,
+        },
         "delayed_entry_risk_geometry": {
             "enabled": True,
             "research_only": True,
@@ -3872,6 +3925,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "| Cause: risk_ceiling_clip | 1 | 0.5 | 2 | 0.2 | "
         "-3.2 | -1 | -0.1 |" in output
     )
+    assert "funding timing / corrected total Δ PnL" in output
+    assert "`1 / 17`" in output
+    assert "legacy / corrected total Δ PnL" in output
+    assert "`16 / 17`" in output
+    assert "funding-aware missing journal / funding / lineage" in output
+    assert "`0 / 0 / 0`" in output
+    assert "Funding timing is the explicit fourth effect" in output
     assert "### 60s delayed-entry risk geometry" in output
     assert "delayed_average_fill_risk_vs_actual_position_risk" in output
     assert "filled attempts / no-fill outcomes" in output
