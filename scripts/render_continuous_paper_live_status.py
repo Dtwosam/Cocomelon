@@ -1460,6 +1460,93 @@ def _delayed_entry_mtm_portfolio_lines(
     return lines
 
 
+def _delayed_entry_stop_survivability_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry original-stop survivability",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry stop-survivability telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    overall = raw.get("overall", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- closed / evaluated fills / no-fills: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_filled_candidates', 0)} / "
+                f"{raw.get('candidate_no_fill_trades', 0)}`"
+            ),
+            (
+                "- definite original-stop crossings / observed survivors: "
+                f"`{overall.get('definite_original_stop_crossings', 0)} / "
+                f"{overall.get('survived_observed_path_to_actual_close', 0)}`"
+            ),
+            (
+                "- crossing fraction / mean / median / fastest time-to-stop: "
+                f"`{overall.get('crossing_fraction')} / "
+                f"{overall.get('mean_time_to_stop_ms')} / "
+                f"{overall.get('median_time_to_stop_ms')} / "
+                f"{overall.get('min_time_to_stop_ms')}`"
+            ),
+            (
+                "- unresolved / missing journal / path / gapped / lineage / timing: "
+                f"`{raw.get('unresolved_outcomes', 0)} / "
+                f"{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_exact_paths', 0)} / "
+                f"{raw.get('incomplete_or_gapped_paths', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)} / "
+                f"{raw.get('invalid_candidate_timing', 0)}`"
+            ),
+            (
+                "- evidence gate closed / evaluated: "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_filled_candidates', 0)}`"
+            ),
+            (
+                "- still needed C/E: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_evaluated_filled_candidates', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_A crossing means a complete gap-free observed mark path "
+                "definitely touched the immutable original stop after the "
+                "delayed fill existed. Same-millisecond marks are excluded; "
+                "stop fill price and the full exit policy are not modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_portfolio_capacity_lines(
     raw: object,
 ) -> list[str]:
@@ -5587,6 +5674,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_mtm_portfolio_lines(
             payload.get("delayed_entry_mtm_portfolio")
+        )
+    )
+    lines.extend(
+        _delayed_entry_stop_survivability_lines(
+            payload.get("delayed_entry_stop_survivability")
         )
     )
     lines.extend(
