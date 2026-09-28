@@ -4778,7 +4778,10 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     assert "`expired=2, full_visible_book_ioc=8`" in output
     assert "post-capture non-evaluable entries / sources" in output
     assert "`2 / expired=2`" in output
-    assert "upstream integrity misses journal / path / gaps / funding / lineage / timing / stop-book" in output
+    assert (
+        "upstream integrity misses journal / path / gaps / funding / "
+        "lineage / timing / stop-book" in output
+    )
     assert "`0 / 0 / 0 / 0 / 0 / 0 / 0`" in output
     assert "evaluated / mark crossings / captured stop plans" in output
     assert "`8 / 4 / 3`" in output
