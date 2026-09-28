@@ -170,6 +170,19 @@ def test_capture_persists_first_book_after_original_stop_crossing(
     assert evidence.crossing.crossing_mark_price == Decimal("94.95")
     assert evidence.book_event_key == "book:1210"
     assert evidence.reference_price == Decimal("95")
+    assert evidence.book_source == "hyperliquid-mainnet-ws"
+    assert evidence.book_schema_version == 1
+    assert evidence.instrument_sz_decimals == 2
+    assert evidence.instrument_venue_max_leverage == Decimal("20")
+    assert (
+        evidence.instrument_minimum_order_notional
+        == Decimal("10")
+    )
+    assert evidence.instrument_metadata_received_at_ms == 800
+    assert (
+        evidence.instrument_metadata_source
+        == "hyperliquid-mainnet-meta"
+    )
     assert tuple(level.price for level in evidence.bids) == (
         Decimal("94.9"),
         Decimal("94.8"),
@@ -177,6 +190,9 @@ def test_capture_persists_first_book_after_original_stop_crossing(
     rebuilt = evidence.book_event()
     assert rebuilt.kind is StreamKind.L2_BOOK
     assert rebuilt.payload["bids"][0]["px"] == Decimal("94.9")
+    spec = evidence.instrument_spec()
+    assert spec.size_quantum == Decimal("0.01")
+    assert spec.metadata_received_at_ms == 800
 
 
 def test_short_crossing_captures_ask_side_book(
