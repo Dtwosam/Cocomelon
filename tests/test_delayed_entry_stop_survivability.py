@@ -302,3 +302,78 @@ def test_stop_survivability_gapped_path_blocks_review(
     assert result["incomplete_or_gapped_paths"] == 1
     assert result["evaluated_filled_candidates"] == 0
     assert readiness["ready_for_review"] is False
+
+
+
+def test_stop_survivability_ignores_gaps_before_delayed_open(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    try:
+        trade = _trade(
+            suffix="pre-delay-gap",
+            direction=Direction.LONG,
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                (
+                    (170_000, "95"),
+                    (300_000, "100"),
+                ),
+                complete=False,
+                gaps=(
+                    (10_000, 50_000),
+                    (120_000, 160_000),
+                    (500_000, 600_000),
+                ),
+            )
+        )
+        result = delayed_entry_stop_survivability(
+            journal,
+            (_outcome(trade),),
+            paths,
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert result["incomplete_or_gapped_paths"] == 0
+    assert result["evaluated_filled_candidates"] == 1
+    assert overall["survived_observed_path_to_actual_close"] == 1
+
+
+def test_stop_survivability_requires_causal_mark_after_delayed_open(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    try:
+        trade = _trade(
+            suffix="no-causal-mark",
+            direction=Direction.LONG,
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                (
+                    (120_000, "95"),
+                    (150_000, "100"),
+                ),
+            )
+        )
+        result = delayed_entry_stop_survivability(
+            journal,
+            (_outcome(trade),),
+            paths,
+        )
+    finally:
+        journal.close()
+
+    assert result["incomplete_or_gapped_paths"] == 1
+    assert result["evaluated_filled_candidates"] == 0
+    assert result["lineage_mismatches"] == 0
