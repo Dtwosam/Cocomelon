@@ -97,6 +97,7 @@ def _mark(
 def test_trade_path_preserves_ordered_mark_sequence() -> None:
     path = continuous_paper_trade_path(
         _trade(),
+        Decimal("20"),
         (
             _mark(1_500, "103", "mark-2"),
             _mark(1_200, "101", "mark-1"),
@@ -105,6 +106,7 @@ def test_trade_path_preserves_ordered_mark_sequence() -> None:
     )
 
     assert path.trade_id == _trade().trade_id
+    assert path.venue_max_leverage == Decimal("20")
     assert tuple(mark.event_key for mark in path.marks) == (
         "mark-1",
         "mark-2",
@@ -124,6 +126,7 @@ def test_trade_path_store_is_idempotent_and_conflict_detecting(
     store = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
     path = continuous_paper_trade_path(
         _trade(),
+        Decimal("20"),
         (_mark(1_200, "101", "mark-1"),),
         (),
     )
@@ -159,6 +162,7 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
         opening_plan_id="plan-open",
         market=MARKET,
         opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
         mark_observations=(
             _record(1_200, "101", "mark-1"),
             _record(1_500, "103", "mark-2"),
@@ -171,6 +175,7 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
         opening_plan_id="plan-open",
         market=MARKET,
         opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
         mark_observations=(
             _record(1_500, "103", "mark-2"),
             _record(1_800, "102.5", "mark-3"),
@@ -179,6 +184,7 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
 
     assert restored.finalize_trade(
         _trade(),
+        Decimal("20"),
         (_record(1_900, "102", "mark-4"),),
         (),
     ) is True
@@ -186,6 +192,8 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
     assert restored.open_path_count == 0
     assert restored.record_count == 1
     payload = restored.iter_payloads()[0]
+    assert payload["venue_max_leverage"] == "20"
+    assert payload["schema_version"] == 2
     marks = payload["marks"]
     assert isinstance(marks, list)
     assert [mark["event_key"] for mark in marks] == [
@@ -204,6 +212,7 @@ def test_open_path_checkpoint_rejects_identity_drift(
         opening_plan_id="plan-open",
         market=MARKET,
         opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
         mark_observations=(_record(1_200, "101", "mark-1"),),
     )
 
@@ -223,6 +232,7 @@ def test_trade_path_rejects_mark_outside_lifecycle() -> None:
     with pytest.raises(ValueError, match="outside lifecycle"):
         continuous_paper_trade_path(
             _trade(),
+            Decimal("20"),
             (_mark(2_001, "101", "mark-late"),),
             (),
         )
