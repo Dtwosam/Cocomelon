@@ -31,6 +31,7 @@ MIN_CLOSED_SHADOW_OUTCOMES: Final = 30
 MIN_CANDIDATE_FILLED_POSITIONS: Final = 20
 MIN_CANDIDATE_OVERLAP_OPENINGS: Final = 5
 MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS: Final = 20
+MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS: Final = 5
 DELAYED_ENTRY_MARGIN_CAPACITY_STATE_SCHEMA_VERSION: Final = 1
 DELAYED_ENTRY_MARGIN_CAPACITY_CANDIDATE_ID: Final = (
     "delayed-entry-60s-venue-margin-capacity-v1"
@@ -771,6 +772,8 @@ def _admission_timeline(
     leverage_rejections = 0
     margin_rejections = 0
     margin_evaluable_opportunities = 0
+    margin_evaluable_delayed_opportunities = 0
+    margin_evaluable_delayed_overlaps = 0
     margin_lineage_gaps = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
@@ -858,6 +861,10 @@ def _admission_timeline(
                 margin_lineage_gaps += 1
             else:
                 margin_evaluable_opportunities += 1
+                if position.opening_kind == "delayed_candidate":
+                    margin_evaluable_delayed_opportunities += 1
+                    if active:
+                        margin_evaluable_delayed_overlaps += 1
 
         if equity <= ZERO:
             aggregate_bad = True
@@ -985,6 +992,12 @@ def _admission_timeline(
         "available_margin_capacity_rejections": margin_rejections,
         "margin_evaluable_opportunities": (
             margin_evaluable_opportunities
+        ),
+        "margin_evaluable_delayed_opportunities": (
+            margin_evaluable_delayed_opportunities
+        ),
+        "margin_evaluable_delayed_overlaps": (
+            margin_evaluable_delayed_overlaps
         ),
         "margin_lineage_gaps": margin_lineage_gaps,
         "non_positive_equity_rejections": (
