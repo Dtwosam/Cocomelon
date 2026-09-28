@@ -7,8 +7,8 @@ from typing import Final
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.journal.store import JournalStore
 from cocomelon.execution.funding import funding_cash_delta
+from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
 )
