@@ -615,6 +615,7 @@ def _delayed_entry_pair_lines(raw: object) -> list[str]:
 
     lines.extend(
         [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             (
                 "- prospective start / delays: "
                 f"`{raw.get('started_at_ms')}` / "
@@ -761,6 +762,7 @@ def _delayed_entry_pair_fill_weighted_lines(
 
     lines.extend(
         [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             (
                 "- prospective start / delays: "
                 f"`{raw.get('started_at_ms')}` / "
