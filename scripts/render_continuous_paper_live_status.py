@@ -4835,6 +4835,18 @@ def _research_readiness_board_lines(
     delayed_capacity_candidate = delayed_capacity.get("candidate", {})
     if not isinstance(delayed_capacity_candidate, dict):
         delayed_capacity_candidate = {}
+    delayed_capacity_actual_admission = delayed_capacity.get(
+        "actual_admission",
+        {},
+    )
+    delayed_capacity_candidate_admission = delayed_capacity.get(
+        "candidate_admission",
+        {},
+    )
+    if not isinstance(delayed_capacity_actual_admission, dict):
+        delayed_capacity_actual_admission = {}
+    if not isinstance(delayed_capacity_candidate_admission, dict):
+        delayed_capacity_candidate_admission = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -5137,10 +5149,15 @@ def _research_readiness_board_lines(
             (
                 f"closed={delayed_capacity.get('closed_shadow_outcomes', 0)}, "
                 f"fills={delayed_capacity.get('candidate_filled_positions', 0)}, "
-                f"overlap={delayed_capacity_candidate.get('overlap_openings', 0)}"
+                f"overlap={delayed_capacity_candidate.get('overlap_openings', 0)}, "
+                f"admit/reject="
+                f"{delayed_capacity_candidate_admission.get('admitted_openings', 0)}/"
+                f"{delayed_capacity_candidate_admission.get('rejected_openings', 0)}"
             ),
             (
                 f"viol={delayed_capacity_candidate.get('capacity_violations', 0)}, "
+                f"actualrej="
+                f"{delayed_capacity_actual_admission.get('rejected_openings', 0)}, "
                 f"unresolved={delayed_capacity.get('unresolved_outcomes', 0)}, "
                 f"missing={delayed_capacity.get('missing_journal_trades', 0)}/"
                 f"{delayed_capacity.get('missing_opening_plans', 0)}/"
