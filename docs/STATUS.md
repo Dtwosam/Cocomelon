@@ -1875,3 +1875,23 @@ The existing 60-second delayed-entry fixed-schedule portfolio study now has a st
 This closes the unrealized-equity blind spot in the fixed-schedule delayed-entry portfolio study, but it still does not replay strategy decisions under altered capacity, invent replacement trades, or change exit timing. Intratrade funding timing is also not reconstructed; observed total funding settles at the actual close.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed-schedule delayed-entry portfolio capacity overlay — 2026-09-28
+
+The 60-second delayed-entry research now checks the alternate fixed schedule against the same aggregate risk policy boundaries used by the paper trader.
+
+- delayed candidate positions use their observed delayed fill price/quantity and immutable original stop/cost geometry to reconstruct planned risk;
+- non-cohort trades that overlap the delayed cohort stay on their observed schedule as background positions;
+- exact trade paths mark open positions to observed contribution equity at every candidate opening;
+- every opening is checked against max aggregate open risk, the shared runtime correlation-bucket risk ceiling, and max gross leverage using candidate equity at that moment;
+- both delayed candidate openings and unchanged background openings are checked, because a delayed position can change whether a later observed opening still fits;
+- actual-schedule capacity violations are treated as reconstruction/integrity failures; candidate-schedule violations are the research result and are surfaced rather than silently resized;
+- no-fill delayed outcomes create no candidate exposure;
+- missing plans/paths, incomplete paths, unresolved delayed outcomes, and lineage mismatches remain explicit.
+
+Review readiness requires 30 closed delayed-shadow outcomes, 20 filled delayed candidate positions, at least 5 candidate overlap openings, zero unresolved/missing/incomplete/lineage gaps, and zero capacity violations in the reconstructed actual baseline.
+
+This remains a diagnostic overlay, not a full alternate portfolio replay. It does not resize violating candidate orders, replay later strategy/risk decisions, invent replacement trades, or model changed exits.
+
+**LIVE TRADING: DISABLED.**
