@@ -1982,3 +1982,21 @@ The delayed-entry portfolio capacity study now replays the same paper liquidatio
 This is research/shadow accounting only. It does not change the real paper risk engine, strategy thresholds, sizing, stops, fills, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry visible-liquidity replay — 2026-09-28
+
+The delayed-entry portfolio capacity study now carries exact 25bps depth evidence into the same visible-liquidity cap used by the independent paper risk engine.
+
+- the delayed-entry execution shadow state is versioned from v2 to v3 and records the exact delayed execution reference price plus entry-side and exit-side 25bps notional from the delayed L2 book using the existing microstructure feature calculator;
+- v2 durable shadow state remains restorable, but legacy delayed outcomes keep depth as unknown rather than receiving fabricated values;
+- observed paper openings use their existing authenticated opening-fill-liquidity evidence and must match plan, strategy, feature, market, direction, and opening timestamp lineage;
+- both observed and delayed openings compute capacity as `min(entry_side_depth_25bps, exit_side_depth_25bps) * max_visible_depth_fraction`, and compare that capacity to the pre-IOC planned notional at the opening reference price rather than the eventual fill notional;
+- the fixed overlay reports visible-liquidity violations, utilization, and notional headroom;
+- the causal admission shadow rejects a hypothetical opening when its filled notional exceeds the same visible-depth capacity and then evaluates later openings against the surviving portfolio;
+- missing original-opening or delayed depth evidence is an explicit readiness gap; it never falls back to IOC fill size or a synthetic depth assumption;
+- venue-minimum-notional replay remains outside this overlay and is the next market-cap contract to reconcile explicitly.
+
+This remains research-only accounting. It does not alter paper entry selection, risk approval, sizing, fills, stops, execution cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**

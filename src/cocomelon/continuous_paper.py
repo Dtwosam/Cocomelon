@@ -2751,6 +2751,7 @@ def _delayed_entry_portfolio_capacity_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     trade_path_store: ContinuousPaperTradePathStore,
+    opening_fill_liquidity_store: OpeningFillLiquidityStore,
     plan_loader: Callable[[str], PaperOrderPlan | None],
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
@@ -2769,6 +2770,7 @@ def _delayed_entry_portfolio_capacity_payload(
             delayed_shadow.shadow.outcomes,
             trade_path_store,
             plan_loader,
+            opening_fill_liquidity_store.load,
             limits=limits,
             paper_max_gross_leverage=paper_max_gross_leverage,
         )
@@ -3434,6 +3436,7 @@ def _live_status_payload(
             pump.journal,
             delayed_entry_execution_shadow,
             trade_path_store,
+            opening_fill_liquidity_store,
             execution.store.load_plan,
             risk_limits,
             paper_max_gross_leverage,

@@ -23,6 +23,9 @@ from cocomelon.research.delayed_entry_fill_weighted import (
     DelayedEntryFillWeightedError,
     evaluate_delayed_entry_fill_weighted_outcome,
 )
+from cocomelon.research.opening_fill_liquidity import (
+    OpeningFillLiquidityEvidence,
+)
 
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
@@ -47,6 +50,9 @@ class _Position:
     planned_risk: Decimal
     stop_price: Decimal
     venue_max_leverage: Decimal
+    opening_reference_notional: Decimal
+    entry_side_depth_25bps: Decimal
+    exit_side_depth_25bps: Decimal
     entry_fee: Decimal
     close_realized_increment: Decimal
     marks: tuple[tuple[int, Decimal], ...]
@@ -80,6 +86,21 @@ class _Position:
             raise ValueError(
                 "venue_max_leverage must be positive and finite"
             )
+        if (
+            not self.opening_reference_notional.is_finite()
+            or self.opening_reference_notional <= ZERO
+        ):
+            raise ValueError(
+                "opening_reference_notional must be positive and finite"
+            )
+        for depth, field in (
+            (self.entry_side_depth_25bps, "entry_side_depth_25bps"),
+            (self.exit_side_depth_25bps, "exit_side_depth_25bps"),
+        ):
+            if not depth.is_finite() or depth < ZERO:
+                raise ValueError(
+                    f"{field} must be non-negative and finite"
+                )
         if not self.entry_fee.is_finite() or self.entry_fee < ZERO:
             raise ValueError("entry_fee must be non-negative")
         if not self.close_realized_increment.is_finite():
@@ -409,6 +430,19 @@ def _path_venue_max_leverage(
     return resolved
 
 
+def _liquidity_capacity(
+    position: _Position,
+    limits: RiskLimits,
+) -> Decimal:
+    return (
+        min(
+            position.entry_side_depth_25bps,
+            position.exit_side_depth_25bps,
+        )
+        * limits.max_visible_depth_fraction
+    )
+
+
 def _capacity_timeline(
     positions: tuple[_Position, ...],
     *,
@@ -439,16 +473,19 @@ def _capacity_timeline(
     bucket_risk_violations = 0
     gross_leverage_violations = 0
     margin_capacity_violations = 0
+    liquidity_capacity_violations = 0
     liquidation_buffer_violations = 0
     non_positive_equity = 0
     max_aggregate_risk_utilization = ZERO
     max_bucket_risk_utilization = ZERO
     max_gross_leverage = ZERO
     max_margin_capacity_utilization = ZERO
+    max_liquidity_capacity_utilization = ZERO
     min_aggregate_risk_headroom: Decimal | None = None
     min_bucket_risk_headroom: Decimal | None = None
     min_gross_notional_headroom: Decimal | None = None
     min_margin_notional_headroom: Decimal | None = None
+    min_liquidity_notional_headroom: Decimal | None = None
     min_liquidation_stop_multiple: Decimal | None = None
     min_liquidation_stop_headroom: Decimal | None = None
 
@@ -510,6 +547,28 @@ def _capacity_timeline(
             active,
             paper_max_gross_leverage=paper_max_gross_leverage,
         )
+        liquidity_capacity = _liquidity_capacity(
+            position,
+            limits,
+        )
+        liquidity_notional = position.opening_reference_notional
+        liquidity_headroom = (
+            liquidity_capacity - liquidity_notional
+        )
+        liquidity_bad = liquidity_headroom < ZERO
+        min_liquidity_notional_headroom = (
+            liquidity_headroom
+            if min_liquidity_notional_headroom is None
+            else min(
+                min_liquidity_notional_headroom,
+                liquidity_headroom,
+            )
+        )
+        if liquidity_capacity > ZERO:
+            max_liquidity_capacity_utilization = max(
+                max_liquidity_capacity_utilization,
+                liquidity_notional / liquidity_capacity,
+            )
         (
             liquidation_multiple,
             liquidation_ok,
@@ -579,6 +638,7 @@ def _capacity_timeline(
                 or bucket_bad
                 or gross_bad
                 or margin_bad
+                or liquidity_bad
                 or liquidation_bad
             )
             max_aggregate_risk_utilization = max(
@@ -646,6 +706,8 @@ def _capacity_timeline(
             gross_leverage_violations += 1
         if margin_bad:
             margin_capacity_violations += 1
+        if liquidity_bad:
+            liquidity_capacity_violations += 1
         if liquidation_bad:
             liquidation_buffer_violations += 1
 
@@ -674,6 +736,9 @@ def _capacity_timeline(
         ),
         "gross_leverage_violations": gross_leverage_violations,
         "margin_capacity_violations": margin_capacity_violations,
+        "liquidity_capacity_violations": (
+            liquidity_capacity_violations
+        ),
         "liquidation_buffer_violations": (
             liquidation_buffer_violations
         ),
@@ -687,6 +752,9 @@ def _capacity_timeline(
         "max_gross_leverage": str(max_gross_leverage),
         "max_margin_capacity_utilization": str(
             max_margin_capacity_utilization
+        ),
+        "max_liquidity_capacity_utilization": str(
+            max_liquidity_capacity_utilization
         ),
         "min_aggregate_risk_headroom": str(
             ZERO
@@ -707,6 +775,11 @@ def _capacity_timeline(
             ZERO
             if min_margin_notional_headroom is None
             else min_margin_notional_headroom
+        ),
+        "min_liquidity_notional_headroom": str(
+            ZERO
+            if min_liquidity_notional_headroom is None
+            else min_liquidity_notional_headroom
         ),
         "min_liquidation_stop_multiple": str(
             ZERO
@@ -755,6 +828,7 @@ def _admission_timeline(
     bucket_rejections = 0
     leverage_rejections = 0
     margin_rejections = 0
+    liquidity_rejections = 0
     liquidation_rejections = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
@@ -762,6 +836,7 @@ def _admission_timeline(
     max_admitted_bucket_utilization = ZERO
     max_admitted_gross_leverage = ZERO
     max_admitted_margin_utilization = ZERO
+    max_admitted_liquidity_utilization = ZERO
     min_admitted_liquidation_multiple: Decimal | None = None
 
     for event in _position_events(positions):
@@ -833,6 +908,12 @@ def _admission_timeline(
             active,
             paper_max_gross_leverage=paper_max_gross_leverage,
         )
+        liquidity_capacity = _liquidity_capacity(
+            position,
+            limits,
+        )
+        liquidity_notional = position.opening_reference_notional
+        liquidity_bad = liquidity_notional > liquidity_capacity
         (
             liquidation_multiple,
             liquidation_ok,
@@ -875,6 +956,7 @@ def _admission_timeline(
             or bucket_bad
             or leverage_bad
             or margin_bad
+            or liquidity_bad
             or liquidation_bad
         )
         if rejected_now:
@@ -892,6 +974,8 @@ def _admission_timeline(
                 leverage_rejections += 1
             if margin_bad:
                 margin_rejections += 1
+            if liquidity_bad:
+                liquidity_rejections += 1
             if liquidation_bad:
                 liquidation_rejections += 1
             continue
@@ -922,6 +1006,11 @@ def _admission_timeline(
                 max_admitted_margin_utilization = max(
                     max_admitted_margin_utilization,
                     new_notional / margin_capacity,
+                )
+            if liquidity_capacity > ZERO:
+                max_admitted_liquidity_utilization = max(
+                    max_admitted_liquidity_utilization,
+                    liquidity_notional / liquidity_capacity,
                 )
             min_admitted_liquidation_multiple = (
                 liquidation_multiple
@@ -960,6 +1049,7 @@ def _admission_timeline(
         "correlation_bucket_risk_rejections": bucket_rejections,
         "gross_leverage_rejections": leverage_rejections,
         "margin_capacity_rejections": margin_rejections,
+        "liquidity_capacity_rejections": liquidity_rejections,
         "liquidation_buffer_rejections": liquidation_rejections,
         "non_positive_equity_rejections": (
             non_positive_equity_rejections
@@ -976,6 +1066,9 @@ def _admission_timeline(
         ),
         "max_admitted_margin_capacity_utilization": str(
             max_admitted_margin_utilization
+        ),
+        "max_admitted_liquidity_capacity_utilization": str(
+            max_admitted_liquidity_utilization
         ),
         "min_admitted_liquidation_stop_multiple": str(
             ZERO
@@ -999,13 +1092,32 @@ def _fixed_realized_contribution(
     )
 
 
+def _validate_opening_liquidity(
+    trade: TradeJournalEntry,
+    evidence: OpeningFillLiquidityEvidence,
+) -> None:
+    if (
+        evidence.opening_plan_id != trade.opening_plan_id
+        or evidence.strategy_decision_id != trade.strategy_decision_id
+        or evidence.feature_snapshot_id != trade.feature_snapshot_id
+        or evidence.market != trade.market.canonical
+        or evidence.direction != trade.direction.value
+        or evidence.opened_at_ms != trade.opened_at_ms
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "opening liquidity lineage is invalid"
+        )
+
+
 def _actual_position(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, Decimal], ...],
     plan: PaperOrderPlan,
     venue_max_leverage: Decimal,
+    liquidity: OpeningFillLiquidityEvidence,
 ) -> _Position:
     _validate_plan(trade, plan)
+    _validate_opening_liquidity(trade, liquidity)
     stop_price = plan.stop_price
     if stop_price is None:
         raise DelayedEntryCapacityOverlayError(
@@ -1033,6 +1145,16 @@ def _actual_position(
         planned_risk=planned_risk,
         stop_price=stop_price,
         venue_max_leverage=venue_max_leverage,
+        opening_reference_notional=(
+            plan.requested_quantity
+            * plan.execution_reference_price
+        ),
+        entry_side_depth_25bps=(
+            liquidity.entry_side_depth_25bps
+        ),
+        exit_side_depth_25bps=(
+            liquidity.exit_side_depth_25bps
+        ),
         entry_fee=trade.entry_fees,
         close_realized_increment=(
             trade.net_pnl + trade.entry_fees
@@ -1047,6 +1169,10 @@ def delayed_entry_portfolio_capacity_overlay(
     outcomes: tuple[DelayedEntryOutcome, ...],
     path_store: ContinuousPaperTradePathStore,
     plan_loader: Callable[[str], PaperOrderPlan | None],
+    liquidity_loader: Callable[
+        [str],
+        OpeningFillLiquidityEvidence | None,
+    ],
     *,
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
@@ -1098,7 +1224,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
             "available_margin_capacity_modeled": True,
-            "visible_liquidity_capacity_modeled": False,
+            "visible_liquidity_capacity_modeled": True,
             "liquidation_buffer_modeled": True,
             "closed_shadow_outcomes": len(outcomes),
             "candidate_filled_positions": 0,
@@ -1107,6 +1233,9 @@ def delayed_entry_portfolio_capacity_overlay(
             "missing_journal_trades": len(outcomes),
             "missing_opening_plans": 0,
             "missing_venue_max_leverage": 0,
+            "missing_opening_liquidity_evidence": 0,
+            "missing_delayed_liquidity_evidence": 0,
+            "missing_delayed_reference_price": 0,
             "missing_exact_paths": 0,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
@@ -1212,6 +1341,11 @@ def delayed_entry_portfolio_capacity_overlay(
         ] = venue_max_leverage
 
     missing_plan = 0
+    missing_opening_liquidity = 0
+    opening_liquidity_by_trade_id: dict[
+        str,
+        OpeningFillLiquidityEvidence,
+    ] = {}
     plans_by_trade_id: dict[str, PaperOrderPlan] = {}
     actual_positions: list[_Position] = []
     for trade in relevant_trades:
@@ -1225,18 +1359,27 @@ def delayed_entry_portfolio_capacity_overlay(
         if plan is None:
             missing_plan += 1
             continue
+        liquidity = liquidity_loader(trade.opening_plan_id)
+        if liquidity is None:
+            missing_opening_liquidity += 1
+            continue
         try:
             _validate_plan(trade, plan)
+            _validate_opening_liquidity(trade, liquidity)
             actual_position = _actual_position(
                 trade,
                 marks,
                 plan,
                 venue_max_leverage,
+                liquidity,
             )
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
             continue
         plans_by_trade_id[trade.trade_id] = plan
+        opening_liquidity_by_trade_id[
+            trade.trade_id
+        ] = liquidity
         actual_positions.append(actual_position)
 
     candidate_positions: list[_Position] = []
@@ -1245,6 +1388,8 @@ def delayed_entry_portfolio_capacity_overlay(
     unresolved_outcomes = 0
     candidate_filled = 0
     candidate_no_fill = 0
+    missing_delayed_liquidity = 0
+    missing_delayed_reference_price = 0
 
     outcome_by_id = {
         outcome.trade_id: outcome for outcome in outcomes
@@ -1257,7 +1402,10 @@ def delayed_entry_portfolio_capacity_overlay(
         if marks is None or venue_max_leverage is None:
             continue
         plan = plans_by_trade_id.get(trade.trade_id)
-        if plan is None:
+        liquidity = opening_liquidity_by_trade_id.get(
+            trade.trade_id
+        )
+        if plan is None or liquidity is None:
             continue
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
@@ -1267,6 +1415,7 @@ def delayed_entry_portfolio_capacity_overlay(
                     marks,
                     plan,
                     venue_max_leverage,
+                    liquidity,
                 )
             )
             background_positions += 1
@@ -1310,6 +1459,22 @@ def delayed_entry_portfolio_capacity_overlay(
         if stop_price is None:
             lineage_mismatches += 1
             continue
+        delayed_reference_price = outcome.delayed_reference_price
+        if delayed_reference_price is None:
+            missing_delayed_reference_price += 1
+            continue
+        delayed_entry_depth = (
+            outcome.delayed_entry_side_depth_25bps
+        )
+        delayed_exit_depth = (
+            outcome.delayed_exit_side_depth_25bps
+        )
+        if (
+            delayed_entry_depth is None
+            or delayed_exit_depth is None
+        ):
+            missing_delayed_liquidity += 1
+            continue
         planned_risk = (
             _risk_per_quantity(plan, delayed_price)
             * weighted.delayed_filled_quantity
@@ -1326,6 +1491,12 @@ def delayed_entry_portfolio_capacity_overlay(
                 planned_risk=planned_risk,
                 stop_price=stop_price,
                 venue_max_leverage=venue_max_leverage,
+                opening_reference_notional=(
+                    trade.filled_quantity
+                    * delayed_reference_price
+                ),
+                entry_side_depth_25bps=delayed_entry_depth,
+                exit_side_depth_25bps=delayed_exit_depth,
                 entry_fee=weighted.delayed_entry_fee,
                 close_realized_increment=(
                     weighted.candidate_net_pnl_estimate
@@ -1408,6 +1579,9 @@ def delayed_entry_portfolio_capacity_overlay(
         and missing_journal == 0
         and missing_plan == 0
         and missing_venue_max_leverage == 0
+        and missing_opening_liquidity == 0
+        and missing_delayed_liquidity == 0
+        and missing_delayed_reference_price == 0
         and missing_paths == 0
         and incomplete_paths == 0
         and lineage_mismatches == 0
@@ -1447,6 +1621,9 @@ def delayed_entry_portfolio_capacity_overlay(
             "min_liquidation_stop_multiple": str(
                 limits.min_liquidation_stop_multiple
             ),
+            "max_visible_depth_fraction": str(
+                limits.max_visible_depth_fraction
+            ),
         },
         "changed_admissions_modeled": True,
         "admission_policy": (
@@ -1455,7 +1632,7 @@ def delayed_entry_portfolio_capacity_overlay(
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
         "available_margin_capacity_modeled": True,
-        "visible_liquidity_capacity_modeled": False,
+        "visible_liquidity_capacity_modeled": True,
         "liquidation_buffer_modeled": True,
         "closed_shadow_outcomes": len(outcomes),
         "candidate_filled_positions": candidate_filled,
@@ -1466,6 +1643,15 @@ def delayed_entry_portfolio_capacity_overlay(
         "missing_opening_plans": missing_plan,
         "missing_venue_max_leverage": (
             missing_venue_max_leverage
+        ),
+        "missing_opening_liquidity_evidence": (
+            missing_opening_liquidity
+        ),
+        "missing_delayed_liquidity_evidence": (
+            missing_delayed_liquidity
+        ),
+        "missing_delayed_reference_price": (
+            missing_delayed_reference_price
         ),
         "missing_exact_paths": missing_paths,
         "incomplete_exact_paths": incomplete_paths,
