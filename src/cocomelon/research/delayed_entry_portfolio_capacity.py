@@ -44,6 +44,7 @@ class _Position:
     entry_price: Decimal
     quantity: Decimal
     planned_risk: Decimal
+    venue_max_leverage: Decimal
     entry_fee: Decimal
     close_realized_increment: Decimal
     marks: tuple[tuple[int, Decimal], ...]
@@ -69,6 +70,13 @@ class _Position:
         ):
             if not metric.is_finite() or metric <= ZERO:
                 raise ValueError(f"{field} must be positive and finite")
+        if (
+            not self.venue_max_leverage.is_finite()
+            or self.venue_max_leverage <= ZERO
+        ):
+            raise ValueError(
+                "venue_max_leverage must be positive and finite"
+            )
         if not self.entry_fee.is_finite() or self.entry_fee < ZERO:
             raise ValueError("entry_fee must be non-negative")
         if not self.close_realized_increment.is_finite():
@@ -320,15 +328,66 @@ def _gross_notional(active: _Active) -> Decimal:
     return active.latest_mark * active.position.quantity
 
 
+def _effective_leverage(
+    position: _Position,
+    *,
+    paper_max_gross_leverage: Decimal,
+) -> Decimal:
+    return min(
+        paper_max_gross_leverage,
+        position.venue_max_leverage,
+    )
+
+
+def _reserved_margin(
+    active: Mapping[str, _Active],
+    *,
+    paper_max_gross_leverage: Decimal,
+) -> Decimal:
+    return sum(
+        (
+            _gross_notional(item)
+            / _effective_leverage(
+                item.position,
+                paper_max_gross_leverage=paper_max_gross_leverage,
+            )
+            for item in active.values()
+        ),
+        ZERO,
+    )
+
+
+def _path_venue_max_leverage(
+    raw: Mapping[str, object],
+) -> Decimal | None:
+    value = raw.get("venue_max_leverage")
+    if value is None:
+        return None
+    resolved = _decimal(value, "venue_max_leverage")
+    if resolved <= ZERO:
+        raise DelayedEntryCapacityOverlayError(
+            "venue_max_leverage must be positive"
+        )
+    return resolved
+
+
 def _capacity_timeline(
     positions: tuple[_Position, ...],
     *,
     reference_equity: Decimal,
     limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
 ) -> dict[str, object]:
     if not reference_equity.is_finite() or reference_equity <= ZERO:
         raise DelayedEntryCapacityOverlayError(
             "reference equity must be positive"
+        )
+    if (
+        not paper_max_gross_leverage.is_finite()
+        or paper_max_gross_leverage <= ZERO
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "paper max gross leverage must be positive"
         )
 
     active: dict[str, _Active] = {}
@@ -341,13 +400,16 @@ def _capacity_timeline(
     aggregate_risk_violations = 0
     bucket_risk_violations = 0
     gross_leverage_violations = 0
+    margin_capacity_violations = 0
     non_positive_equity = 0
     max_aggregate_risk_utilization = ZERO
     max_bucket_risk_utilization = ZERO
     max_gross_leverage = ZERO
+    max_margin_capacity_utilization = ZERO
     min_aggregate_risk_headroom: Decimal | None = None
     min_bucket_risk_headroom: Decimal | None = None
     min_gross_notional_headroom: Decimal | None = None
+    min_margin_notional_headroom: Decimal | None = None
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -399,6 +461,14 @@ def _capacity_timeline(
         new_notional = position.entry_price * position.quantity
         after_risk = existing_risk + position.planned_risk
         after_notional = existing_notional + new_notional
+        effective_leverage = min(
+            limits.max_gross_leverage,
+            position.venue_max_leverage,
+        )
+        reserved_margin = _reserved_margin(
+            active,
+            paper_max_gross_leverage=paper_max_gross_leverage,
+        )
 
         if equity <= ZERO:
             non_positive_equity += 1
@@ -406,22 +476,40 @@ def _capacity_timeline(
             aggregate_bad = True
             bucket_bad = True
             gross_bad = True
+            margin_bad = True
             aggregate_headroom = -after_risk
             bucket_headroom = -after_risk
             gross_headroom = -after_notional
+            margin_headroom = -new_notional
         else:
             aggregate_ceiling = equity * limits.max_open_risk
             bucket_ceiling = (
                 equity * limits.correlation_bucket_risk_limit
             )
-            gross_ceiling = equity * limits.max_gross_leverage
+            gross_ceiling = equity * effective_leverage
+            available_margin = max(
+                ZERO,
+                equity - reserved_margin,
+            )
+            margin_capacity = (
+                available_margin
+                * limits.max_available_margin_fraction
+                * effective_leverage
+            )
             aggregate_headroom = aggregate_ceiling - after_risk
             bucket_headroom = bucket_ceiling - after_risk
             gross_headroom = gross_ceiling - after_notional
+            margin_headroom = margin_capacity - new_notional
             aggregate_bad = aggregate_headroom < ZERO
             bucket_bad = bucket_headroom < ZERO
             gross_bad = gross_headroom < ZERO
-            violated = aggregate_bad or bucket_bad or gross_bad
+            margin_bad = margin_headroom < ZERO
+            violated = (
+                aggregate_bad
+                or bucket_bad
+                or gross_bad
+                or margin_bad
+            )
             max_aggregate_risk_utilization = max(
                 max_aggregate_risk_utilization,
                 after_risk / aggregate_ceiling,
@@ -434,6 +522,11 @@ def _capacity_timeline(
                 max_gross_leverage,
                 after_notional / equity,
             )
+            if margin_capacity > ZERO:
+                max_margin_capacity_utilization = max(
+                    max_margin_capacity_utilization,
+                    new_notional / margin_capacity,
+                )
 
         min_aggregate_risk_headroom = (
             aggregate_headroom
@@ -459,6 +552,14 @@ def _capacity_timeline(
                 gross_headroom,
             )
         )
+        min_margin_notional_headroom = (
+            margin_headroom
+            if min_margin_notional_headroom is None
+            else min(
+                min_margin_notional_headroom,
+                margin_headroom,
+            )
+        )
 
         if violated:
             violations += 1
@@ -472,6 +573,8 @@ def _capacity_timeline(
             bucket_risk_violations += 1
         if gross_bad:
             gross_leverage_violations += 1
+        if margin_bad:
+            margin_capacity_violations += 1
 
         realized -= position.entry_fee
         active[event.trade_id] = _Active(
@@ -497,6 +600,7 @@ def _capacity_timeline(
             bucket_risk_violations
         ),
         "gross_leverage_violations": gross_leverage_violations,
+        "margin_capacity_violations": margin_capacity_violations,
         "non_positive_equity_events": non_positive_equity,
         "max_aggregate_risk_utilization": str(
             max_aggregate_risk_utilization
@@ -505,6 +609,9 @@ def _capacity_timeline(
             max_bucket_risk_utilization
         ),
         "max_gross_leverage": str(max_gross_leverage),
+        "max_margin_capacity_utilization": str(
+            max_margin_capacity_utilization
+        ),
         "min_aggregate_risk_headroom": str(
             ZERO
             if min_aggregate_risk_headroom is None
@@ -519,6 +626,11 @@ def _capacity_timeline(
             ZERO
             if min_gross_notional_headroom is None
             else min_gross_notional_headroom
+        ),
+        "min_margin_notional_headroom": str(
+            ZERO
+            if min_margin_notional_headroom is None
+            else min_margin_notional_headroom
         ),
     }
 
