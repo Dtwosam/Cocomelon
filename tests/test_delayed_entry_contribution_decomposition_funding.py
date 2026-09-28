@@ -13,6 +13,8 @@ from cocomelon.execution.funding import (
 )
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.delayed_entry_contribution_decomposition_funding import (
+    DelayedEntryFundingDecompositionOutcome,
+    _summary as _funding_decomposition_summary,
     delayed_entry_funding_decomposition,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
@@ -310,3 +312,65 @@ def test_funding_decomposition_partial_fill_reconciles_boundary_scaling(
     assert Decimal(
         str(overall["corrected_total_delta_pnl"])
     ) == Decimal("0.5")
+
+
+
+def test_funding_summary_uses_exact_decimal_aggregation() -> None:
+    rows = (
+        (
+            "-61.79181701745288526954939713",
+            "53.26287865350763390079987960",
+            "-31.88051929811547879706297324",
+            "-40.40945766206073016581249077",
+        ),
+        (
+            "97.15395567483577824256450709",
+            "-66.80773600876273495781810057",
+            "-92.78781362254566657740525614",
+            "-62.44159395647262329265884962",
+        ),
+        (
+            "-97.02566287103053593733501422",
+            "79.41184222519113199729057211",
+            "35.00649151432642571997655906",
+            "17.39267086848702177993211695",
+        ),
+    )
+    items = tuple(
+        DelayedEntryFundingDecompositionOutcome(
+            trade_id=f"trade-{index}",
+            opening_plan_id=f"plan-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            capacity_cause="full_requested_fill",
+            fill_fraction=Decimal("1"),
+            actual_net_pnl=Decimal("0"),
+            legacy_candidate_net_pnl=Decimal(total),
+            corrected_candidate_net_pnl=Decimal(total),
+            price_effect_pnl=Decimal(price),
+            entry_fee_effect_pnl=Decimal(fee),
+            exposure_effect_pnl=Decimal(exposure),
+            funding_timing_effect_pnl=Decimal("0"),
+            legacy_total_delta_pnl=Decimal(total),
+            corrected_total_delta_pnl=Decimal(total),
+            price_effect_r=Decimal("0"),
+            entry_fee_effect_r=Decimal("0"),
+            exposure_effect_r=Decimal("0"),
+            funding_timing_effect_r=Decimal("0"),
+            corrected_total_delta_r=Decimal("0"),
+        )
+        for index, (price, fee, exposure, total) in enumerate(rows)
+    )
+
+    summary = _funding_decomposition_summary(items)
+
+    assert summary["legacy_total_delta_pnl"] == (
+        "-85.45838075004633167853922344"
+    )
+    assert summary["corrected_total_delta_pnl"] == (
+        "-85.45838075004633167853922344"
+    )
+    assert summary["corrected_candidate_net_pnl"] == (
+        "-85.45838075004633167853922344"
+    )
