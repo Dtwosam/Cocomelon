@@ -182,6 +182,10 @@ from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
     opening_fill_liquidity_attribution,
 )
+from cocomelon.research.original_stop_book_evidence import (
+    OriginalStopBookCapture,
+    OriginalStopBookEvidenceStore,
+)
 from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE as EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE,
@@ -4184,6 +4188,13 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store
         )
     )
+    original_stop_book_store = OriginalStopBookEvidenceStore(
+        root / "original-stop-books"
+    )
+    original_stop_book_capture = OriginalStopBookCapture(
+        original_stop_book_store,
+        opening_plan_loader=execution.store.load_plan,
+    )
     rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
@@ -4349,6 +4360,7 @@ async def run_continuous_paper_session(
                     profit_lock_execution_shadow,
                     delayed_entry_execution_shadow,
                     delayed_entry_120s_execution_shadow,
+                    original_stop_book_capture,
                 )
             ),
         )
