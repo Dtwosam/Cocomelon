@@ -317,9 +317,15 @@ def test_admission_shadow_can_reject_later_background_opening(
         "correlation_bucket_risk_rejections"
     ] == 1
     assert candidate_admission["max_concurrent_positions"] == 1
-    assert result["fixed_candidate_final_realized_contribution"] == "-12.5"
-    assert result["admitted_candidate_final_realized_contribution"] == "-2.5"
-    assert result["admission_delta_vs_fixed_schedule"] == "10"
+    assert Decimal(
+        str(result["fixed_candidate_final_realized_contribution"])
+    ) == Decimal("-12.5")
+    assert Decimal(
+        str(result["admitted_candidate_final_realized_contribution"])
+    ) == Decimal("-2.5")
+    assert Decimal(
+        str(result["admission_delta_vs_fixed_schedule"])
+    ) == Decimal("10")
 
 
 def test_capacity_overlay_detects_candidate_gross_leverage_violation(
