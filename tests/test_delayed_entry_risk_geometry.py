@@ -112,6 +112,8 @@ def _outcome(
     source: str,
     quantity: str,
     price: str | None,
+    reference_price: str | None = None,
+    include_reference_price: bool = True,
     reason: str | None = None,
 ) -> DelayedEntryOutcome:
     return DelayedEntryOutcome(
@@ -130,6 +132,19 @@ def _outcome(
         gross_r_improvement=None,
         attempt_reason=reason,
         capacity_cause=None,
+        delayed_reference_price=(
+            None
+            if not include_reference_price
+            else Decimal(
+                price
+                if reference_price is None and price is not None
+                else (
+                    reference_price
+                    if reference_price is not None
+                    else "100"
+                )
+            )
+        ),
     )
 
 
@@ -186,6 +201,10 @@ def test_risk_geometry_separates_full_and_risk_clipped_attempts(
     assert overall["attempts"] == 2
     assert overall["risk_clipped"] == 1
     assert overall["full_size_risk_above_ceiling"] == 1
+    assert result["reference_evaluated_attempts"] == 2
+    reference_overall = result["reference_overall"]
+    assert isinstance(reference_overall, dict)
+    assert reference_overall["pre_ioc_resize_required"] == 1
 
     causes = result["by_cause"]
     assert isinstance(causes, dict)
@@ -198,6 +217,13 @@ def test_risk_geometry_separates_full_and_risk_clipped_attempts(
     assert Decimal(
         str(risk_clip["mean_risk_capacity_fraction"])
     ) < Decimal("1")
+    reference_causes = result["reference_by_cause"]
+    assert isinstance(reference_causes, dict)
+    reference_clip = reference_causes["risk_ceiling_clip"]
+    assert reference_clip["pre_ioc_resize_required"] == 1
+    assert Decimal(
+        str(reference_clip["mean_reference_full_size_risk_ratio"])
+    ) > Decimal("1")
 
     full_fill = causes["full_fill"]
     assert Decimal(
@@ -206,6 +232,53 @@ def test_risk_geometry_separates_full_and_risk_clipped_attempts(
     assert Decimal(
         str(full_fill["mean_unit_risk_change_fraction"])
     ) < Decimal("0")
+
+
+def test_fill_path_can_clip_when_reference_size_fit(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        trade = _trade(
+            suffix="fill-path-clip",
+            direction=Direction.LONG,
+            initial_risk="20.2",
+        )
+        journal.record_trade(trade)
+        plan = _plan(trade)
+
+        result = delayed_entry_risk_geometry_summary(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="partial_visible_book_ioc",
+                    quantity="1.5",
+                    price="101",
+                    reference_price="99",
+                    reason=(
+                        "IOC_REMAINDER_CANCELLED,"
+                        "RISK_CEILING_REACHED"
+                    ),
+                ),
+            ),
+            lambda _plan_id: plan,
+        )
+    finally:
+        journal.close()
+
+    fill = result["risk_clipped"]
+    reference = result["reference_risk_clipped"]
+    assert isinstance(fill, dict)
+    assert isinstance(reference, dict)
+    assert Decimal(
+        str(fill["mean_full_size_risk_ratio"])
+    ) > Decimal("1")
+    assert reference["pre_ioc_resize_required"] == 0
+    assert Decimal(
+        str(reference["mean_reference_full_size_risk_ratio"])
+    ) < Decimal("1")
+    assert reference["risk_clipped"] == 1
 
 
 def test_short_better_entry_reduces_per_unit_risk(
@@ -246,6 +319,42 @@ def test_short_better_entry_reduces_per_unit_risk(
     assert Decimal(
         str(short["mean_full_size_risk_ratio"])
     ) < Decimal("1")
+
+
+def test_missing_delayed_reference_price_blocks_review(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    try:
+        trade = _trade(
+            suffix="missing-reference",
+            direction=Direction.LONG,
+            initial_risk="20.2",
+        )
+        journal.record_trade(trade)
+        plan = _plan(trade)
+        result = delayed_entry_risk_geometry_summary(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="full_visible_book_ioc",
+                    quantity="2",
+                    price="99",
+                    include_reference_price=False,
+                ),
+            ),
+            lambda _plan_id: plan,
+        )
+    finally:
+        journal.close()
+
+    assert result["evaluated_filled_attempts"] == 1
+    assert result["reference_evaluated_attempts"] == 0
+    assert result["missing_delayed_reference_price"] == 1
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["ready_for_review"] is False
 
 
 def test_missing_plan_is_reported_not_guessed(

@@ -2150,3 +2150,20 @@ These are price-and-cost proxies, not executable stop simulations. Exit-side L2 
 This is research-only evidence. It changes no live paper stops, exits, sizing, risk limits, cadence, or order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Delayed-entry reference-vs-fill risk geometry — 2026-09-28
+
+The 60-second delayed-entry risk diagnostic now separates risk that already exists at the exact delayed execution reference price from risk introduced later by the visible-book IOC fill path.
+
+- every evaluable delayed attempt, including a genuine no-fill, measures the immutable full-size risk geometry at the delayed execution reference price;
+- filled attempts keep the existing average-fill risk utilization and capacity metrics;
+- telemetry now distinguishes pre-IOC resize pressure from fill-path risk clipping;
+- a trade can therefore show that the delayed reference still fit the original risk ceiling while adverse execution pushed the requested full size beyond that ceiling;
+- missing delayed reference-price lineage is explicit and blocks review readiness rather than being reconstructed from the eventual fill;
+- side and capacity-cause partitions are preserved for both reference-price and average-fill views.
+
+This is research-only attribution. It does not resize orders, change stops, loosen risk ceilings, alter paper execution, or enable live orders.
+
+**LIVE TRADING: DISABLED.**
