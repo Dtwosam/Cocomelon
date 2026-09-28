@@ -12,7 +12,8 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 
-CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION = 1
+LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION = 1
+CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION = 2
 
 
 class ContinuousPaperTradePathError(RuntimeError):
@@ -146,6 +147,7 @@ class ContinuousPaperTradePath:
     health_refs: tuple[str, ...]
     marks: tuple[ContinuousPaperTradePathMark, ...]
     known_gap_intervals: tuple[tuple[int, int | None], ...]
+    venue_max_leverage: Decimal | None = None
     schema_version: int = CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
@@ -171,8 +173,27 @@ class ContinuousPaperTradePath:
             raise ValueError(
                 "initial_risk_amount must be non-negative and finite"
             )
-        if self.schema_version != CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION:
+        if self.schema_version not in {
+            LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+            CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+        }:
             raise ValueError("unsupported continuous paper trade path schema")
+        if (
+            self.schema_version
+            == LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+        ):
+            if self.venue_max_leverage is not None:
+                raise ValueError(
+                    "legacy trade paths must not carry venue_max_leverage"
+                )
+        elif (
+            self.venue_max_leverage is None
+            or not self.venue_max_leverage.is_finite()
+            or self.venue_max_leverage <= 0
+        ):
+            raise ValueError(
+                "venue_max_leverage must be positive for current trade paths"
+            )
         if tuple(sorted(set(self.health_refs))) != self.health_refs:
             raise ValueError("health_refs must be sorted and unique")
         previous_key: tuple[int, int, str] | None = None
@@ -201,7 +222,7 @@ class ContinuousPaperTradePath:
         return self.excursion_complete and bool(self.marks)
 
     def identity_payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "trade_id": self.trade_id,
             "market": self.market,
             "direction": self.direction,
@@ -222,6 +243,14 @@ class ContinuousPaperTradePath:
             ],
             "schema_version": self.schema_version,
         }
+        if (
+            self.schema_version
+            == CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+        ):
+            payload["venue_max_leverage"] = str(
+                self.venue_max_leverage
+            )
+        return payload
 
     @property
     def path_id(self) -> str:
@@ -292,6 +321,8 @@ def continuous_paper_trade_path(
     trade: TradeJournalEntry,
     marks: Sequence[ContinuousPaperTradePathMark],
     known_gap_intervals: Sequence[tuple[int, int | None]],
+    *,
+    venue_max_leverage: Decimal | None = None,
 ) -> ContinuousPaperTradePath:
     ordered_marks = _merge_marks(marks)
     mfe_complete = trade.mfe is not None and trade.mfe.complete
@@ -311,6 +342,12 @@ def continuous_paper_trade_path(
         health_refs=tuple(sorted(set(trade.health_refs))),
         marks=ordered_marks,
         known_gap_intervals=tuple(known_gap_intervals),
+        venue_max_leverage=venue_max_leverage,
+        schema_version=(
+            LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+            if venue_max_leverage is None
+            else CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+        ),
     )
 
 
@@ -340,14 +377,29 @@ class ContinuousPaperTradePathStore:
         opening_plan_id: str,
         market: str,
         opened_at_ms: int,
+        venue_max_leverage: Decimal | None,
     ) -> dict[str, object]:
-        return {
+        header: dict[str, object] = {
             "kind": "header",
-            "schema_version": CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+            "schema_version": (
+                LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+                if venue_max_leverage is None
+                else CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+            ),
             "opening_plan_id": opening_plan_id,
             "market": market,
             "opened_at_ms": opened_at_ms,
         }
+        if venue_max_leverage is not None:
+            if (
+                not venue_max_leverage.is_finite()
+                or venue_max_leverage <= 0
+            ):
+                raise ValueError(
+                    "venue_max_leverage must be positive and finite"
+                )
+            header["venue_max_leverage"] = str(venue_max_leverage)
+        return header
 
     @staticmethod
     def _open_mark_payload(
@@ -393,23 +445,38 @@ class ContinuousPaperTradePathStore:
             parsed.append(raw)
 
         header = parsed[0]
+        schema_version = header.get("schema_version")
+        expected_keys = {
+            "kind",
+            "schema_version",
+            "opening_plan_id",
+            "market",
+            "opened_at_ms",
+        }
+        if schema_version == CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION:
+            expected_keys.add("venue_max_leverage")
         if (
-            set(header)
-            != {
-                "kind",
-                "schema_version",
-                "opening_plan_id",
-                "market",
-                "opened_at_ms",
-            }
+            set(header) != expected_keys
             or header.get("kind") != "header"
-            or header.get("schema_version")
-            != CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+            or schema_version
+            not in {
+                LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+                CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+            }
             or header.get("opening_plan_id") != opening_plan_id
         ):
             raise ContinuousPaperTradePathError(
                 "CONTINUOUS_PAPER_TRADE_PATH_OPEN_HEADER_INVALID"
             )
+        if schema_version == CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION:
+            leverage = _decimal(
+                header.get("venue_max_leverage"),
+                "venue_max_leverage",
+            )
+            if leverage <= 0:
+                raise ContinuousPaperTradePathError(
+                    "venue_max_leverage must be positive"
+                )
         marks: list[ContinuousPaperTradePathMark] = []
         for raw in parsed[1:]:
             if raw.get("kind") != "mark":
@@ -428,6 +495,7 @@ class ContinuousPaperTradePathStore:
         market: MarketId,
         opened_at_ms: int,
         mark_observations: Sequence[ReplayRecord],
+        venue_max_leverage: Decimal | None = None,
     ) -> int:
         _require_nonempty(opening_plan_id, "opening_plan_id")
         if opened_at_ms < 0:
@@ -438,11 +506,59 @@ class ContinuousPaperTradePathStore:
             opening_plan_id=opening_plan_id,
             market=market.canonical,
             opened_at_ms=opened_at_ms,
+            venue_max_leverage=venue_max_leverage,
         )
-        if header is not None and header != expected_header:
-            raise ContinuousPaperTradePathError(
-                "CONTINUOUS_PAPER_TRADE_PATH_OPEN_IDENTITY_MISMATCH"
-            )
+        if header is not None:
+            if (
+                header.get("market") != market.canonical
+                or header.get("opened_at_ms") != opened_at_ms
+            ):
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_IDENTITY_MISMATCH"
+                )
+            if (
+                venue_max_leverage is not None
+                and header.get("schema_version")
+                == CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+                and _decimal(
+                    header.get("venue_max_leverage"),
+                    "venue_max_leverage",
+                )
+                != venue_max_leverage
+            ):
+                raise ContinuousPaperTradePathError(
+                    "CONTINUOUS_PAPER_TRADE_PATH_OPEN_IDENTITY_MISMATCH"
+                )
+            if (
+                venue_max_leverage is not None
+                and header.get("schema_version")
+                == LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+            ):
+                temporary = path.with_name(f".{path.name}.upgrade.tmp")
+                try:
+                    with temporary.open("xb") as handle:
+                        handle.write(
+                            (
+                                _canonical_json(expected_header)
+                                + "\n"
+                            ).encode("utf-8")
+                        )
+                        for mark in existing_marks:
+                            handle.write(
+                                (
+                                    _canonical_json(
+                                        self._open_mark_payload(mark)
+                                    )
+                                    + "\n"
+                                ).encode("utf-8")
+                            )
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(temporary, path)
+                finally:
+                    if temporary.exists():
+                        temporary.unlink()
+                header = expected_header
 
         current_marks = _merge_marks(
             tuple(existing_marks)
@@ -546,10 +662,21 @@ class ContinuousPaperTradePathStore:
             )
             for record in mark_observations
         )
+        venue_max_leverage = None
+        if (
+            header is not None
+            and header.get("schema_version")
+            == CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION
+        ):
+            venue_max_leverage = _decimal(
+                header.get("venue_max_leverage"),
+                "venue_max_leverage",
+            )
         trade_path = continuous_paper_trade_path(
             trade,
             tuple(staged_marks) + current_marks,
             known_gap_intervals,
+            venue_max_leverage=venue_max_leverage,
         )
         created = self.record(trade_path)
         open_path = self._open_path(trade.opening_plan_id)
