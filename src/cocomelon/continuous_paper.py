@@ -274,6 +274,29 @@ class _ContinuousTradePathSink:
         if self.error is None:
             self.error = f"{type(exc).__name__}: {exc}"
 
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        plan = trace.submission.plan
+        simulation = trace.submission.simulation
+        if plan is None or simulation is None or not simulation.fills:
+            return
+        try:
+            self._store.checkpoint_open_path(
+                opening_plan_id=plan.plan_id,
+                market=plan.market,
+                opened_at_ms=max(
+                    fill.timestamp_ms for fill in simulation.fills
+                ),
+                mark_observations=(),
+                venue_max_leverage=(
+                    trace.instrument.venue_max_leverage
+                ),
+            )
+        except Exception as exc:
+            self._capture_error(exc)
+
     def checkpoint(
         self,
         open_paths: Sequence[OpenLifecycleMarkPath],
@@ -285,6 +308,7 @@ class _ContinuousTradePathSink:
                     market=path.market,
                     opened_at_ms=path.opened_at_ms,
                     mark_observations=path.mark_observations,
+                    venue_max_leverage=path.venue_max_leverage,
                 )
             except Exception as exc:
                 self._capture_error(exc)
@@ -325,6 +349,22 @@ class _ContinuousOpeningFillLiquiditySink:
         except Exception as exc:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
+
+
+class _CompositeOpeningResearchObserver:
+    def __init__(
+        self,
+        *observers: object,
+    ) -> None:
+        self._observers = observers
+
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        for observer in self._observers:
+            record = getattr(observer, "record_opening_trace")
+            record(trace)
 
 
 class _CompositePositionResearchObserver:
@@ -3973,7 +4013,10 @@ async def run_continuous_paper_session(
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
             opening_research_observer=(
-                opening_fill_liquidity_sink
+                _CompositeOpeningResearchObserver(
+                    opening_fill_liquidity_sink,
+                    trade_path_sink,
+                )
             ),
             position_research_observer=(
                 _CompositePositionResearchObserver(
