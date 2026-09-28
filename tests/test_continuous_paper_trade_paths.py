@@ -200,8 +200,6 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
     ]
 
 
-
-
 def test_open_path_checkpoint_upgrades_legacy_header_with_leverage(
     tmp_path: Path,
 ) -> None:
