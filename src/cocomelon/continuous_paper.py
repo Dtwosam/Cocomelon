@@ -284,6 +284,7 @@ class _ContinuousTradePathSink:
                     opening_plan_id=path.opening_plan_id,
                     market=path.market,
                     opened_at_ms=path.opened_at_ms,
+                    venue_max_leverage=path.venue_max_leverage,
                     mark_observations=path.mark_observations,
                 )
             except Exception as exc:
@@ -292,12 +293,14 @@ class _ContinuousTradePathSink:
     def record(
         self,
         trade: TradeJournalEntry,
+        venue_max_leverage: Decimal,
         mark_observations: Sequence[ReplayRecord],
         known_gap_intervals: Sequence[tuple[int, int | None]],
     ) -> bool:
         try:
             return self._store.finalize_trade(
                 trade,
+                venue_max_leverage,
                 mark_observations,
                 known_gap_intervals,
             )
