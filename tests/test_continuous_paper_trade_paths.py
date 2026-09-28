@@ -237,3 +237,28 @@ def test_trade_path_rejects_mark_outside_lifecycle() -> None:
             (_mark(2_001, "101", "mark-late"),),
             (),
         )
+
+
+
+def test_legacy_trade_path_remains_readable_without_venue_leverage(
+    tmp_path: Path,
+) -> None:
+    current = continuous_paper_trade_path(
+        _trade(),
+        Decimal("20"),
+        (_mark(1_200, "101", "mark-1"),),
+        (),
+    )
+    legacy = replace(
+        current,
+        venue_max_leverage=None,
+        schema_version=1,
+    )
+    store = ContinuousPaperTradePathStore(
+        tmp_path / "legacy-trade-paths"
+    )
+
+    assert store.record(legacy) is True
+    payload = store.iter_payloads()[0]
+    assert payload["schema_version"] == 1
+    assert "venue_max_leverage" not in payload
