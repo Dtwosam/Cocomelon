@@ -2090,3 +2090,20 @@ The corrected overlay still assumes the actual recorded exit price and scales th
 This is research-only accounting. It does not change strategy, risk, sizing, paper execution, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry contribution funding decomposition — 2026-09-28
+
+The 60-second delayed-entry contribution decomposition now has a funding-aware companion that makes funding timing an explicit fourth accounting effect.
+
+- the legacy three-effect identity remains unchanged for comparability: price effect + entry-fee effect + exposure effect = legacy total delta;
+- the corrected identity is: price effect + entry-fee effect + exposure effect + funding timing effect = corrected total delta;
+- funding timing effect is exactly the difference between the legacy whole-trade scaled funding assumption and exact verified funding boundaries strictly after the delayed fill exists;
+- the corrected decomposition reuses the same immutable funding accrual lineage and quantity-scaling logic as the funding-corrected fill-weighted overlay;
+- genuine no-fill outcomes keep a zero funding-timing effect because no delayed position exists;
+- missing or inconsistent funding lineage blocks corrected review readiness rather than being folded into exposure or silently estimated;
+- live telemetry shows legacy versus corrected total delta and the explicit funding timing bridge without replacing the existing legacy decomposition table.
+
+This remains a same-recorded-exit contribution study. It does not simulate stop fills, changed exits, replacement trades, or strategy changes.
+
+**LIVE TRADING: DISABLED.**
