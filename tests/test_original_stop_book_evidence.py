@@ -253,6 +253,151 @@ def test_capture_uses_plan_book_then_first_latency_eligible_book(
     assert execution_spec.metadata_received_at_ms == 800
 
 
+def test_transient_crossing_recovers_before_book_and_does_not_plan(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    capture = _capture(root, plan)
+
+    capture.observe_mark(
+        (position,),
+        _mark("94.9", 1_200),
+        now_ms=1_200,
+    )
+    assert capture.store.pending_count == 1
+
+    capture.observe_mark(
+        (position,),
+        _mark("95.2", 1_300),
+        now_ms=1_300,
+    )
+    assert capture.store.pending_count == 0
+
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_500),
+        reference_price=Decimal("95.1"),
+        now_ms=1_500,
+    )
+    assert capture.error is None
+    assert capture.store.record_count == 0
+
+
+def test_latest_crossing_before_plan_sets_action_timestamp(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    capture = _capture(root, plan)
+
+    capture.observe_mark(
+        (position,),
+        _mark("94.95", 1_200),
+        now_ms=1_200,
+    )
+    capture.observe_mark(
+        (position,),
+        _mark("94.8", 1_300),
+        now_ms=1_300,
+    )
+    pending = capture.store.pending_for(plan.plan_id)
+    assert pending is not None
+    assert (
+        pending.crossing.crossing_mark_event_key
+        == "mark:1300"
+    )
+
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_310),
+        reference_price=Decimal("94.9"),
+        now_ms=1_310,
+    )
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_560),
+        reference_price=Decimal("94.85"),
+        now_ms=1_560,
+    )
+
+    evidence = capture.store.evidence_for(plan.plan_id)
+    assert evidence is not None
+    assert (
+        evidence.crossing.crossing_mark_received_ms
+        == 1_300
+    )
+    assert (
+        evidence.pending.plan_book_event_key
+        == "book:1310"
+    )
+    assert (
+        evidence.execution_book_event_key
+        == "book:1560"
+    )
+
+
+def test_staged_stop_plan_survives_mark_recovery(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    capture = _capture(root, plan)
+
+    capture.observe_mark(
+        (position,),
+        _mark("94.9", 1_200),
+        now_ms=1_200,
+    )
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_210),
+        reference_price=Decimal("95"),
+        now_ms=1_210,
+    )
+    pending = capture.store.pending_for(plan.plan_id)
+    assert pending is not None
+    assert pending.plan_staged is True
+
+    capture.observe_mark(
+        (position,),
+        _mark("95.4", 1_300),
+        now_ms=1_300,
+    )
+    pending = capture.store.pending_for(plan.plan_id)
+    assert pending is not None
+    assert pending.plan_staged is True
+    assert (
+        pending.crossing.crossing_mark_event_key
+        == "mark:1200"
+    )
+
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_460),
+        reference_price=Decimal("95.2"),
+        now_ms=1_460,
+    )
+    evidence = capture.store.evidence_for(plan.plan_id)
+    assert evidence is not None
+    assert (
+        evidence.pending.plan_book_event_key
+        == "book:1210"
+    )
+    assert (
+        evidence.crossing.crossing_mark_event_key
+        == "mark:1200"
+    )
+
+
 def test_same_book_can_create_and_execute_plan_after_latency(
     tmp_path: Path,
 ) -> None:
