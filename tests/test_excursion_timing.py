@@ -179,6 +179,7 @@ def _path(
         initial_stop=trade.initial_stop,
         initial_risk_amount=trade.initial_risk_amount,
         filled_quantity=trade.filled_quantity,
+        venue_max_leverage=Decimal("20"),
         excursion_complete=True,
         health_refs=trade.health_refs,
         marks=tuple(
