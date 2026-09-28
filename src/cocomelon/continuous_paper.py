@@ -3732,6 +3732,7 @@ def _emit_live_status(
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
+    delayed_entry_margin_capacity_state: DelayedEntryMarginCapacityState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
@@ -3742,6 +3743,7 @@ def _emit_live_status(
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
+    delayed_entry_margin_capacity_restore_error: str | None,
     risk_limits: RiskLimits,
     checkpoint_seconds: int,
     timestamp_ms: int,
@@ -3766,6 +3768,7 @@ def _emit_live_status(
         adaptive_delay_selector_state,
         fill_aware_delay_selector_state,
         delay_selector_comparison_state,
+        delayed_entry_margin_capacity_state,
         trade_path_capture_error=trade_path_capture_error,
         opening_rank_capture_error=opening_rank_capture_error,
         opening_fill_liquidity_capture_error=(
@@ -3788,6 +3791,9 @@ def _emit_live_status(
         ),
         delay_selector_comparison_restore_error=(
             delay_selector_comparison_restore_error
+        ),
+        delayed_entry_margin_capacity_restore_error=(
+            delayed_entry_margin_capacity_restore_error
         ),
         risk_limits=risk_limits,
         checkpoint_seconds=checkpoint_seconds,
