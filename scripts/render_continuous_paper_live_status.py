@@ -1715,9 +1715,13 @@ def _delayed_entry_stop_survivability_lines(
                         f"{proxy_overall.get('ioc_boundary_proxy_delta_vs_actual', '0')}`"
                     ),
                     (
-                        "- same-exit edge removed by IOC-boundary proxy / positive→nonpositive crossings: "
+                        "- same-exit edge removed by IOC-boundary proxy / "
+                        "positive→nonpositive crossings: "
                         f"`{proxy_overall.get('same_exit_minus_ioc_boundary_proxy_pnl', '0')} / "
-                        f"{proxy_overall.get('positive_same_exit_crossings_to_nonpositive_boundary', 0)}`"
+                        f"{proxy_overall.get(
+                            'positive_same_exit_crossings_to_nonpositive_boundary',
+                            0,
+                        )}`"
                     ),
                     (
                         "- stop proxy config taker fee / max slippage bps: "
