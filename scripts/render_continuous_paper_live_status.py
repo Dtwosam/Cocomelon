@@ -2977,6 +2977,12 @@ def _prospective_filter_robustness_lines(
         return [
             "- robustness: `not available`",
         ]
+
+    def optional_bool(value: object) -> str:
+        if value is None:
+            return "n/a"
+        return str(bool(value)).lower()
+
     temporal = raw.get("temporal", {})
     if not isinstance(temporal, dict):
         temporal = {}
@@ -2990,8 +2996,7 @@ def _prospective_filter_robustness_lines(
         (
             "- leave-one-trade min delta / positive after any one removed: "
             f"`{raw.get('leave_one_trade_out_min_delta')} / "
-            f"{str(bool(raw.get('positive_after_any_single_trade_removed'))).lower() "
-            "if raw.get('positive_after_any_single_trade_removed') is not None else 'n/a'}`"
+            f"{optional_bool(raw.get('positive_after_any_single_trade_removed'))}`"
         ),
         (
             "- largest market / contribution / share: "
@@ -3002,8 +3007,7 @@ def _prospective_filter_robustness_lines(
         (
             "- leave-one-market min delta / positive after any one removed: "
             f"`{raw.get('leave_one_market_out_min_delta')} / "
-            f"{str(bool(raw.get('positive_after_any_single_market_removed'))).lower() "
-            "if raw.get('positive_after_any_single_market_removed') is not None else 'n/a'}`"
+            f"{optional_bool(raw.get('positive_after_any_single_market_removed'))}`"
         ),
         (
             "- chronological full blocks / positive / all positive: "
