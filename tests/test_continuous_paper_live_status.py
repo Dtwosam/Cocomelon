@@ -4036,3 +4036,58 @@ def test_renderer_main_accepts_heartbeat_from_stdin() -> None:
     )
 
     assert "Continuous paper runtime live status" in completed.stdout
+
+
+def test_renderer_omits_full_heartbeat_and_bounds_oversized_issue_body() -> None:
+    payload = {
+        "kind": "continuous-paper-heartbeat",
+        "timestamp_ms": 1,
+        "paper_only": True,
+        "live_orders": False,
+        "selected_market_count": 0,
+        "selected_markets": [],
+        "processed_records": 0,
+        "journal_observations": 0,
+        "closed_trades": 0,
+        "session_closed_trades": 0,
+        "positions": [],
+        "open_position_count": 0,
+        "starting_cash": "10000",
+        "cash": "10000",
+        "equity": "10000",
+        "total_account_pnl": "0",
+        "total_return_fraction": "0",
+        "realized_gross_pnl": "0",
+        "unrealized_pnl": "0",
+        "cumulative_fees": "0",
+        "cumulative_funding": "0",
+        "available_margin": "10000",
+        "gross_open_notional": "0",
+        "open_planned_risk": "0",
+        "open_planned_risk_fraction_of_equity": "0",
+        "open_stop_trigger_gross_pnl": "0",
+        "open_stop_trigger_gross_r": None,
+        "open_positions_with_profit_protected_stop": 0,
+        "execution_healthy": True,
+        "execution_reason_codes": [],
+        "session_decision_epochs": 0,
+        "session_decisions": {},
+        "session_decision_reason_counts": {},
+        "session_risk": {},
+        "session_opening_execution_attempts": 0,
+        "session_opening_fills": 0,
+        "last_observation": {"blob": "x" * 300_000},
+    }
+    completed = subprocess.run(
+        [sys.executable, SCRIPT],
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        check=True,
+        env={key: value for key, value in os.environ.items() if key != "HEARTBEAT_JSON"},
+    )
+
+    assert len(completed.stdout) <= 240_000
+    assert "Full heartbeat JSON" not in completed.stdout
+    assert "body was compacted" in completed.stdout
+    assert "audit authority" in completed.stdout
