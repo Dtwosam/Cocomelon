@@ -35,6 +35,7 @@ from cocomelon.continuous_paper import (
     _delayed_entry_same_exit_payload,
     _delayed_entry_same_exit_stop_validity_payload,
     _delayed_entry_stop_exit_proxy_payload,
+    _delayed_entry_stop_l2_replay_payload,
     _delayed_entry_stop_survivability_payload,
     _drawdown_payload,
     _entry_decision_age_payload,
@@ -221,6 +222,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "delayed_entry_same_exit_stop_validity(" in source
     assert '"delayed_entry_stop_exit_proxy": (' in source
     assert "delayed_entry_stop_exit_proxy_range(" in source
+    assert '"delayed_entry_stop_l2_replay": (' in source
+    assert "delayed_entry_stop_l2_replay(" in source
+    assert "capture_error=original_stop_book_capture.error" in source
     assert "paper_execution_config=replay_config.execution" in source
     assert '"delayed_entry_portfolio_capacity": (' in source
     assert "delayed_entry_portfolio_capacity_overlay(" in source
@@ -1982,3 +1986,35 @@ def test_runtime_persists_opening_runtime_lineage() -> None:
     assert "opening_lifecycle_sink=" in source
     assert '"opening_lineage_count": self.opening_lineage_count' in source
     assert '"opening_lineage_state_digest": self.opening_lineage_state_digest' in source
+
+
+
+def test_delayed_entry_stop_l2_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("stop l2 boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.delayed_entry_stop_l2_replay",
+        fail,
+    )
+    payload = _delayed_entry_stop_l2_replay_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(
+            shadow=SimpleNamespace(outcomes=()),
+            error=None,
+        ),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        lambda _market, _start_ms: (),
+        PaperExecutionConfig(),
+        capture_error="capture degraded",
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["capture_error"] == "capture degraded"
+    assert payload["error"] == "RuntimeError: stop l2 boom"
