@@ -232,6 +232,7 @@ def _outcome(
     *,
     price: str = "100",
     reference_price: str | None = None,
+    include_reference_price: bool = True,
     entry_depth: str | None = "100000",
     exit_depth: str | None = "100000",
 ) -> DelayedEntryOutcome:
@@ -249,8 +250,14 @@ def _outcome(
         gross_r_improvement=None,
         attempt_reason=None,
         capacity_cause=None,
-        delayed_reference_price=Decimal(
-            price if reference_price is None else reference_price
+        delayed_reference_price=(
+            None
+            if not include_reference_price
+            else Decimal(
+                price
+                if reference_price is None
+                else reference_price
+            )
         ),
         delayed_entry_side_depth_25bps=(
             None if entry_depth is None else Decimal(entry_depth)
@@ -758,6 +765,97 @@ def test_capacity_overlay_detects_visible_liquidity_violation(
     assert admission["rejected_openings"] == 1
     assert admission["liquidity_capacity_rejections"] == 1
     assert result["visible_liquidity_capacity_modeled"] is True
+
+
+def test_liquidity_gate_uses_pre_ioc_reference_notional(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="pre-ioc-liquidity",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "100"),)))
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    price="105",
+                    reference_price="100",
+                    entry_depth="2500",
+                    exit_depth="2500",
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert delayed["liquidity_capacity_violations"] == 0
+    assert delayed["capacity_violations"] == 0
+    assert Decimal(
+        str(delayed["max_liquidity_capacity_utilization"])
+    ) == Decimal("1")
+    assert admission["liquidity_capacity_rejections"] == 0
+    assert admission["rejected_openings"] == 0
+
+
+def test_missing_delayed_reference_price_blocks_review(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="missing-delayed-reference",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "100"),)))
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    include_reference_price=False,
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_delayed_reference_price"] == 1
+    assert result["candidate_filled_positions"] == 0
+    assert readiness["ready_for_review"] is False
 
 
 def test_missing_delayed_liquidity_blocks_review(
