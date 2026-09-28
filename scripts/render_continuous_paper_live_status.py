@@ -5715,6 +5715,114 @@ def _research_readiness_board_lines(
     return lines
 
 
+def _delayed_entry_stop_l2_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry exact stop L2 replay",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No exact delayed stop-L2 telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        capture_error = raw.get("capture_error")
+        if capture_error:
+            lines.append(
+                f"- stop-book capture error: `{capture_error}`"
+            )
+        return lines
+
+    overall = raw.get("overall", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(overall, dict):
+        overall = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            (
+                "- capture start / legacy excluded: "
+                f"`{raw.get('capture_started_at_ms')} / "
+                f"{raw.get('pre_capture_legacy_outcomes', 0)}`"
+            ),
+            (
+                "- evaluated / mark crossings / captured stop plans: "
+                f"`{overall.get('evaluated_filled_candidates', 0)} / "
+                f"{overall.get('mark_stop_crossings', 0)} / "
+                f"{overall.get('captured_stop_plans', 0)}`"
+            ),
+            (
+                "- full / partial / no-fill / quantized remainder exits: "
+                f"`{overall.get('full_stop_exits', 0)} / "
+                f"{overall.get('partial_stop_exits', 0)} / "
+                f"{overall.get('no_fill_stop_exits', 0)} / "
+                f"{overall.get('full_ioc_position_remainders', 0)}`"
+            ),
+            (
+                "- rejections / pending / capture-unreliable: "
+                f"`{overall.get('planning_or_execution_rejections', 0)} / "
+                f"{overall.get('pending_stop_evidence', 0)} / "
+                f"{overall.get('stop_capture_unreliable', 0)}`"
+            ),
+            (
+                "- resolved / unresolved stop actions: "
+                f"`{overall.get('resolved_candidates', 0)} / "
+                f"{overall.get('unresolved_stop_actions', 0)}`"
+            ),
+            (
+                "- resolved actual / candidate / delta PnL: "
+                f"`{overall.get('resolved_actual_net_pnl', '0')} / "
+                f"{overall.get('resolved_candidate_net_pnl', '0')} / "
+                f"{overall.get('resolved_delta_vs_actual', '0')}`"
+            ),
+            (
+                "- full-stop same-exit / exact PnL / removed edge: "
+                f"`{overall.get('same_exit_pnl_on_full_stop_exits', '0')} / "
+                f"{overall.get('exact_pnl_on_full_stop_exits', '0')} / "
+                f"{overall.get('same_exit_minus_exact_on_full_stop_exits', '0')}`"
+            ),
+            (
+                "- transient crossings kept same-exit / late funding excluded: "
+                f"`{overall.get('transient_mark_crossings_without_stop_plan', 0)} / "
+                f"{overall.get('late_funding_boundaries_excluded', 0)}`"
+            ),
+            (
+                "- integrity clean / complete cohort / ready for descriptive review: "
+                f"`{str(bool(readiness.get('integrity_clean'))).lower()} / "
+                f"{str(bool(readiness.get('complete_counterfactual_cohort'))).lower()} / "
+                f"{str(bool(readiness.get('ready_for_descriptive_review'))).lower()}`"
+            ),
+            (
+                "- full-stop evidence gate / still needed: "
+                f"`{readiness.get('min_full_stop_exits', 0)} / "
+                f"{readiness.get('missing_full_stop_exits', 0)}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Exact first-IOC stop economics use captured visible L2. "
+                "Partial/no-fill/rejected exits and quantized position "
+                "remainders stay unresolved; no synthetic remainder exit "
+                "is invented._"
+            ),
+        ]
+    )
+    return lines
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -5918,6 +6026,11 @@ def render_live_status(
             payload.get("delayed_entry_stop_survivability"),
             payload.get("delayed_entry_same_exit_stop_validity"),
             payload.get("delayed_entry_stop_exit_proxy"),
+        )
+    )
+    lines.extend(
+        _delayed_entry_stop_l2_lines(
+            payload.get("delayed_entry_stop_l2_replay")
         )
     )
     lines.extend(
