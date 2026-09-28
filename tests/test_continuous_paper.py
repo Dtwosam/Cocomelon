@@ -1555,6 +1555,16 @@ def test_trade_path_sink_stages_opening_venue_leverage() -> None:
                         SimpleNamespace(timestamp_ms=103),
                     )
                 ),
+                account=SimpleNamespace(
+                    positions=(
+                        SimpleNamespace(
+                            opening_plan_id="plan-1",
+                            market=MarketId("", "BTC"),
+                            opened_at_ms=105,
+                            venue_max_leverage=Decimal("20"),
+                        ),
+                    )
+                ),
             ),
             instrument=SimpleNamespace(
                 venue_max_leverage=Decimal("20")
@@ -1566,7 +1576,7 @@ def test_trade_path_sink_stages_opening_venue_leverage() -> None:
         {
             "opening_plan_id": "plan-1",
             "market": MarketId("", "BTC"),
-            "opened_at_ms": 103,
+            "opened_at_ms": 105,
             "mark_observations": (),
             "venue_max_leverage": Decimal("20"),
         }
