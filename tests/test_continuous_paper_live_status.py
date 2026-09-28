@@ -2928,6 +2928,71 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_fill_weighted_funding": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "funding_corrected_fill_weighted_same_exit_"
+                "trade_contribution_only"
+            ),
+            "delay_ms": 60000,
+            "exit_assumption": (
+                "actual_exit_price_with_exit_fee_scaled_by_fill_fraction"
+            ),
+            "legacy_funding_assumption": (
+                "actual_trade_funding_scaled_by_fill_fraction"
+            ),
+            "corrected_funding_assumption": (
+                "recorded_funding_boundaries_strictly_after_delayed_open_"
+                "with_recorded_boundary_quantity_scaled_by_fill_fraction"
+            ),
+            "unfilled_assumption": (
+                "unfilled_quantity_contributes_zero_and_pays_no_funding"
+            ),
+            "closed_shadow_outcomes": 12,
+            "evaluated_delayed_attempts": 10,
+            "missing_journal_trades": 0,
+            "missing_funding_events": 0,
+            "lineage_mismatches": 0,
+            "source_counts": {
+                "full_visible_book_ioc": 8,
+                "partial_visible_book_ioc": 1,
+                "no_fill": 1,
+                "censored_before_delay": 0,
+                "missing_delayed_book": 0,
+                "rejected": 1,
+                "expired": 1,
+            },
+            "overall": {
+                "trades": 10,
+                "actual_net_pnl": "-12",
+                "legacy_fill_weighted_candidate_net_pnl": "4",
+                "funding_corrected_candidate_net_pnl": "5",
+                "legacy_scaled_funding_pnl": "-3",
+                "exact_post_delay_funding_pnl": "-2",
+                "funding_timing_delta_pnl": "1",
+                "corrected_delta_vs_actual_pnl": "17",
+                "corrected_delta_vs_legacy_pnl": "1",
+                "corrected_better_than_actual": 6,
+                "corrected_worse_than_actual": 4,
+                "corrected_equal_to_actual": 0,
+                "mean_fill_fraction": "0.85",
+                "corrected_mean_r_contribution": "0.06",
+                "corrected_mean_delta_r_contribution": "0.26",
+            },
+            "by_side": {},
+            "by_source": {},
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_delayed_attempts": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_delayed_attempts": 10,
+            },
+            "error": None,
+        },
         "delayed_entry_contribution_decomposition": {
             "enabled": True,
             "research_only": True,
@@ -3615,6 +3680,18 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`18 / 10`" in output
     assert "| Partial fill | 1 | 0.5 | 2 | 1 | -1 | -0.1 |" in output
     assert "| No fill | 1 | 0 | -4 | 0 | 4 | 0.4 |" in output
+    assert "### 60s delayed-entry funding-corrected fill weighting" in output
+    assert "funding_corrected_fill_weighted_same_exit_trade_contribution_only" in output
+    assert "legacy scaled / exact post-delay funding / correction" in output
+    assert "`-3 / -2 / 1`" in output
+    assert "legacy / funding-corrected candidate PnL / correction" in output
+    assert "`4 / 5 / 1`" in output
+    assert "corrected candidate delta vs actual" in output
+    assert "`17`" in output
+    assert "missing journal / funding / lineage" in output
+    assert "`0 / 0 / 0`" in output
+    assert "filled candidates pay verified recorded boundaries" in output
+    assert "genuine no-fills pay zero" in output
     assert "### 60s delayed-entry fixed-schedule portfolio shadow" in output
     assert "fixed_observed_schedule_portfolio_contribution_only" in output
     assert "actual / candidate realized contribution / delta" in output
