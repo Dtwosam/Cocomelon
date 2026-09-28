@@ -6,12 +6,12 @@ from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.journal.store import JournalStore
-from cocomelon.research.prospective_filter_robustness import (
-    prospective_filter_robustness,
-)
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
+)
+from cocomelon.research.prospective_filter_robustness import (
+    prospective_filter_robustness,
 )
 
 TOP10_RANK_FILTER_STATE_SCHEMA_VERSION: Final = 1
