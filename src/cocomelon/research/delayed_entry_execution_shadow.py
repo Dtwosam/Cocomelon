@@ -308,9 +308,10 @@ class DelayedEntryOutcome:
             raise ValueError(
                 "delayed-entry depth evidence must be complete or absent"
             )
-        for value in depth_values:
-            if value is not None and (
-                not value.is_finite() or value < ZERO
+        for depth_value in depth_values:
+            if depth_value is not None and (
+                not depth_value.is_finite()
+                or depth_value < ZERO
             ):
                 raise ValueError(
                     "delayed-entry depth evidence must be non-negative"
