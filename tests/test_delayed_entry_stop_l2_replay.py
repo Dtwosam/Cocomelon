@@ -313,14 +313,16 @@ def test_exact_l2_replay_uses_full_visible_stop_fill(
     assert isinstance(overall, dict)
     assert overall["full_stop_exits"] == 1
     assert overall["unresolved_stop_crossings"] == 0
-    assert (
-        overall["exact_pnl_on_full_stop_exits"]
-        == "-11.04005"
-    )
-    assert (
-        overall["same_exit_minus_exact_on_full_stop_exits"]
-        == "21.04005"
-    )
+    assert Decimal(
+        str(overall["exact_pnl_on_full_stop_exits"])
+    ) == Decimal("-11.04005")
+    assert Decimal(
+        str(
+            overall[
+                "same_exit_minus_exact_on_full_stop_exits"
+            ]
+        )
+    ) == Decimal("21.04005")
 
 
 def test_partial_stop_ioc_does_not_invent_remainder_exit(
