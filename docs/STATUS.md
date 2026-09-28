@@ -2071,3 +2071,22 @@ The 60-second delayed-entry research now measures whether a filled delayed candi
 This is a research-only survivability diagnostic. It does not change paper stops, exits, risk limits, sizing, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry fill-weighted funding correction — 2026-09-28
+
+The 60-second delayed-entry fill-weighted contribution study now has a separate funding-corrected overlay.
+
+- the existing legacy fill-weighted metric remains unchanged for historical comparability;
+- filled delayed candidates resolve exact recorded funding accrual lineage from the execution store;
+- candidate funding includes only verified funding boundaries strictly after the delayed fill causally exists;
+- each recorded boundary quantity is scaled by the delayed fill fraction, preserving observed later position reductions instead of assuming the opening quantity survives unchanged;
+- genuine no-fill outcomes contribute zero and require no funding lineage because no hypothetical position exists;
+- missing funding accruals or inconsistent funding lineage block corrected review readiness rather than falling back to whole-trade funding;
+- telemetry shows legacy scaled funding, exact post-delay funding, the funding-only PnL correction, and corrected candidate contribution beside the legacy estimate.
+
+The corrected overlay still assumes the actual recorded exit price and scales the actual exit fee by delayed fill fraction. It does not model changed exits, replacement trades, or stop fills.
+
+This is research-only accounting. It does not change strategy, risk, sizing, paper execution, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
