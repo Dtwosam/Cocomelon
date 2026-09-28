@@ -10,6 +10,7 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.strategy import Direction
 from cocomelon.evidence.openings import paper_liquidation_surrogate
+from cocomelon.execution.funding import FundingAccrual
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -22,6 +23,13 @@ from cocomelon.research.delayed_entry_fill_weighted import (
     EVALUABLE_SOURCES,
     DelayedEntryFillWeightedError,
     evaluate_delayed_entry_fill_weighted_outcome,
+)
+from cocomelon.research.delayed_entry_funding import (
+    DelayedEntryFundingError,
+    DelayedEntryFundingMissingError,
+    FundingLoader,
+    scaled_funding_events,
+    trade_funding_accruals,
 )
 from cocomelon.research.opening_fill_liquidity import (
     OpeningFillLiquidityEvidence,
@@ -55,6 +63,7 @@ class _Position:
     exit_side_depth_25bps: Decimal
     entry_fee: Decimal
     close_realized_increment: Decimal
+    funding_events: tuple[tuple[int, Decimal], ...]
     marks: tuple[tuple[int, Decimal], ...]
     opening_kind: str
 
@@ -105,6 +114,17 @@ class _Position:
             raise ValueError("entry_fee must be non-negative")
         if not self.close_realized_increment.is_finite():
             raise ValueError("close increment must be finite")
+        previous_funding = self.open_ms
+        for boundary_ms, cash_delta in self.funding_events:
+            if not self.open_ms < boundary_ms <= self.close_ms:
+                raise ValueError(
+                    "funding event is outside position lifetime"
+                )
+            if boundary_ms < previous_funding:
+                raise ValueError("funding events must be ordered")
+            if not cash_delta.is_finite():
+                raise ValueError("funding cash delta must be finite")
+            previous_funding = boundary_ms
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,11 +135,12 @@ class _Event:
     trade_id: str
     position: _Position | None = None
     mark_px: Decimal | None = None
+    cash_delta: Decimal | None = None
 
     def __post_init__(self) -> None:
         if self.timestamp_ms < 0:
             raise ValueError("event timestamp must be non-negative")
-        if self.kind not in {"close", "mark", "open"}:
+        if self.kind not in {"funding", "close", "mark", "open"}:
             raise ValueError("unsupported event kind")
         if not self.trade_id.strip():
             raise ValueError("event trade_id must not be empty")
@@ -127,6 +148,8 @@ class _Event:
             raise ValueError("open event requires a position")
         if self.kind == "mark" and self.mark_px is None:
             raise ValueError("mark event requires mark_px")
+        if self.kind == "funding" and self.cash_delta is None:
+            raise ValueError("funding event requires cash_delta")
 
 
 @dataclass(slots=True)
@@ -306,6 +329,16 @@ def _position_events(
                 position=position,
             )
         )
+        for boundary_ms, cash_delta in position.funding_events:
+            events.append(
+                _Event(
+                    timestamp_ms=boundary_ms,
+                    order=-1,
+                    kind="funding",
+                    trade_id=position.trade_id,
+                    cash_delta=cash_delta,
+                )
+            )
         for timestamp_ms, mark_px in position.marks:
             if timestamp_ms < position.open_ms:
                 continue
@@ -472,6 +505,8 @@ def _capacity_timeline(
 
     active: dict[str, _Active] = {}
     realized = ZERO
+    funding_events = 0
+    funding_cash_pnl = ZERO
     opening_checks = 0
     overlap_openings = 0
     violations = 0
@@ -500,6 +535,22 @@ def _capacity_timeline(
     min_liquidation_stop_headroom: Decimal | None = None
 
     for event in _position_events(positions):
+        if event.kind == "funding":
+            item = active.get(event.trade_id)
+            if item is None:
+                raise DelayedEntryCapacityOverlayError(
+                    "funding event has no active position"
+                )
+            cash_delta = event.cash_delta
+            if cash_delta is None:
+                raise DelayedEntryCapacityOverlayError(
+                    "funding event is missing cash delta"
+                )
+            realized += cash_delta
+            funding_events += 1
+            funding_cash_pnl += cash_delta
+            continue
+
         if event.kind == "close":
             item = active.pop(event.trade_id, None)
             if item is None:
@@ -750,6 +801,8 @@ def _capacity_timeline(
 
     return {
         "opening_checks": opening_checks,
+        "funding_events": funding_events,
+        "funding_cash_pnl": str(funding_cash_pnl),
         "overlap_openings": overlap_openings,
         "capacity_violations": violations,
         "delayed_opening_violations": delayed_opening_violations,
@@ -858,6 +911,9 @@ def _admission_timeline(
     active: dict[str, _Active] = {}
     rejected: set[str] = set()
     realized = ZERO
+    funding_events = 0
+    funding_cash_pnl = ZERO
+    skipped_rejected_funding_events = 0
     opening_opportunities = 0
     overlap_opportunities = 0
     admitted_openings = 0
@@ -883,6 +939,25 @@ def _admission_timeline(
     min_admitted_liquidation_multiple: Decimal | None = None
 
     for event in _position_events(positions):
+        if event.kind == "funding":
+            item = active.get(event.trade_id)
+            if item is not None:
+                cash_delta = event.cash_delta
+                if cash_delta is None:
+                    raise DelayedEntryCapacityOverlayError(
+                        "admission funding event is missing cash delta"
+                    )
+                realized += cash_delta
+                funding_events += 1
+                funding_cash_pnl += cash_delta
+                continue
+            if event.trade_id in rejected:
+                skipped_rejected_funding_events += 1
+                continue
+            raise DelayedEntryCapacityOverlayError(
+                "admission funding has no tracked position"
+            )
+
         if event.kind == "close":
             item = active.pop(event.trade_id, None)
             if item is not None:
@@ -1088,6 +1163,11 @@ def _admission_timeline(
 
     return {
         "opening_opportunities": opening_opportunities,
+        "funding_events": funding_events,
+        "funding_cash_pnl": str(funding_cash_pnl),
+        "skipped_rejected_funding_events": (
+            skipped_rejected_funding_events
+        ),
         "overlap_opening_opportunities": overlap_opportunities,
         "admitted_openings": admitted_openings,
         "rejected_openings": rejected_openings,
@@ -1139,6 +1219,14 @@ def _fixed_realized_contribution(
         (
             position.close_realized_increment
             - position.entry_fee
+            + sum(
+                (
+                    cash_delta
+                    for _boundary_ms, cash_delta
+                    in position.funding_events
+                ),
+                ZERO,
+            )
             for position in positions
         ),
         ZERO,
@@ -1168,6 +1256,7 @@ def _actual_position(
     plan: PaperOrderPlan,
     venue_max_leverage: Decimal,
     liquidity: OpeningFillLiquidityEvidence,
+    funding: tuple[FundingAccrual, ...],
 ) -> _Position:
     _validate_plan(trade, plan)
     _validate_opening_liquidity(trade, liquidity)
@@ -1210,7 +1299,16 @@ def _actual_position(
         ),
         entry_fee=trade.entry_fees,
         close_realized_increment=(
-            trade.net_pnl + trade.entry_fees
+            trade.net_pnl
+            + trade.entry_fees
+            - trade.funding_cash_pnl
+        ),
+        funding_events=tuple(
+            (
+                accrual.boundary_ms,
+                accrual.cash_delta,
+            )
+            for accrual in funding
         ),
         marks=marks,
         opening_kind="observed",
@@ -1226,6 +1324,7 @@ def delayed_entry_portfolio_capacity_overlay(
         [str],
         OpeningFillLiquidityEvidence | None,
     ],
+    funding_loader: FundingLoader,
     *,
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
@@ -1283,7 +1382,11 @@ def delayed_entry_portfolio_capacity_overlay(
                 "reject_opening_when_configured_risk_or_capacity_gate_breached"
             ),
             "replacement_trades_modeled": False,
-            "intratrade_funding_timing_modeled": False,
+            "intratrade_funding_timing_modeled": True,
+            "funding_model": (
+                "exact_recorded_boundary_oracle_and_rate_with_"
+                "candidate_quantity_scaled_by_delayed_fill_fraction"
+            ),
             "available_margin_capacity_modeled": True,
             "visible_liquidity_capacity_modeled": True,
             "venue_min_notional_modeled": True,
@@ -1298,6 +1401,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "missing_opening_liquidity_evidence": 0,
             "missing_delayed_liquidity_evidence": 0,
             "missing_delayed_reference_price": 0,
+            "missing_funding_events": 0,
             "missing_exact_paths": 0,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
@@ -1413,6 +1517,11 @@ def delayed_entry_portfolio_capacity_overlay(
         OpeningFillLiquidityEvidence,
     ] = {}
     plans_by_trade_id: dict[str, PaperOrderPlan] = {}
+    funding_by_trade_id: dict[
+        str,
+        tuple[FundingAccrual, ...],
+    ] = {}
+    missing_funding_events = 0
     actual_positions: list[_Position] = []
     for trade in relevant_trades:
         marks = exact_marks.get(trade.trade_id)
@@ -1432,20 +1541,32 @@ def delayed_entry_portfolio_capacity_overlay(
         try:
             _validate_plan(trade, plan)
             _validate_opening_liquidity(trade, liquidity)
+            funding = trade_funding_accruals(
+                trade,
+                funding_loader,
+            )
             actual_position = _actual_position(
                 trade,
                 marks,
                 plan,
                 venue_max_leverage,
                 liquidity,
+                funding,
             )
-        except DelayedEntryCapacityOverlayError:
+        except DelayedEntryFundingMissingError:
+            missing_funding_events += 1
+            continue
+        except (
+            DelayedEntryCapacityOverlayError,
+            DelayedEntryFundingError,
+        ):
             lineage_mismatches += 1
             continue
         plans_by_trade_id[trade.trade_id] = plan
         opening_liquidity_by_trade_id[
             trade.trade_id
         ] = liquidity
+        funding_by_trade_id[trade.trade_id] = funding
         actual_positions.append(actual_position)
 
     candidate_positions: list[_Position] = []
@@ -1471,7 +1592,8 @@ def delayed_entry_portfolio_capacity_overlay(
         liquidity = opening_liquidity_by_trade_id.get(
             trade.trade_id
         )
-        if plan is None or liquidity is None:
+        funding = funding_by_trade_id.get(trade.trade_id)
+        if plan is None or liquidity is None or funding is None:
             continue
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
@@ -1482,6 +1604,7 @@ def delayed_entry_portfolio_capacity_overlay(
                     plan,
                     venue_max_leverage,
                     liquidity,
+                    funding,
                 )
             )
             background_positions += 1
@@ -1545,6 +1668,11 @@ def delayed_entry_portfolio_capacity_overlay(
             _risk_per_quantity(plan, delayed_price)
             * weighted.delayed_filled_quantity
         )
+        candidate_funding_events = scaled_funding_events(
+            funding,
+            fill_fraction=weighted.fill_fraction,
+            open_ms=open_ms,
+        )
         candidate_positions.append(
             _Position(
                 trade_id=trade.trade_id,
@@ -1567,7 +1695,9 @@ def delayed_entry_portfolio_capacity_overlay(
                 close_realized_increment=(
                     weighted.candidate_net_pnl_estimate
                     + weighted.delayed_entry_fee
+                    - weighted.scaled_funding_pnl
                 ),
+                funding_events=candidate_funding_events,
                 marks=marks,
                 opening_kind="delayed_candidate",
             )
@@ -1652,6 +1782,7 @@ def delayed_entry_portfolio_capacity_overlay(
         and missing_opening_liquidity == 0
         and missing_delayed_liquidity == 0
         and missing_delayed_reference_price == 0
+        and missing_funding_events == 0
         and missing_paths == 0
         and incomplete_paths == 0
         and lineage_mismatches == 0
@@ -1703,7 +1834,11 @@ def delayed_entry_portfolio_capacity_overlay(
             "reject_opening_when_configured_risk_or_capacity_gate_breached"
         ),
         "replacement_trades_modeled": False,
-        "intratrade_funding_timing_modeled": False,
+        "intratrade_funding_timing_modeled": True,
+        "funding_model": (
+            "exact_recorded_boundary_oracle_and_rate_with_"
+            "candidate_quantity_scaled_by_delayed_fill_fraction"
+        ),
         "available_margin_capacity_modeled": True,
         "visible_liquidity_capacity_modeled": True,
         "venue_min_notional_modeled": True,
@@ -1727,6 +1862,7 @@ def delayed_entry_portfolio_capacity_overlay(
         "missing_delayed_reference_price": (
             missing_delayed_reference_price
         ),
+        "missing_funding_events": missing_funding_events,
         "missing_exact_paths": missing_paths,
         "incomplete_exact_paths": incomplete_paths,
         "lineage_mismatches": lineage_mismatches,
