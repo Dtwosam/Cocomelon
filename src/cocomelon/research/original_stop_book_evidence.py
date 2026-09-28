@@ -441,6 +441,20 @@ class OriginalStopBookEvidence:
             )
         return evidence
 
+    def instrument_spec(self) -> InstrumentExecutionSpec:
+        return InstrumentExecutionSpec(
+            market=_market_from_canonical(self.crossing.market),
+            sz_decimals=self.instrument_sz_decimals,
+            venue_max_leverage=self.instrument_venue_max_leverage,
+            minimum_order_notional=(
+                self.instrument_minimum_order_notional
+            ),
+            metadata_received_at_ms=(
+                self.instrument_metadata_received_at_ms
+            ),
+            metadata_source=self.instrument_metadata_source,
+        )
+
     def book_event(self) -> StreamEvent:
         return StreamEvent(
             kind=StreamKind.L2_BOOK,
