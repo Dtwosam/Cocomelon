@@ -1964,3 +1964,21 @@ The fixed-schedule delayed-entry portfolio capacity study now consumes the exact
 This is research/shadow accounting only. It does not change strategy thresholds, risk limits, paper sizing, actual entries/exits, execution cadence, position management, or any live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry liquidation-buffer replay — 2026-09-28
+
+The delayed-entry portfolio capacity study now replays the same paper liquidation-distance gate used by the independent risk engine.
+
+- each observed and delayed candidate opening uses its exact persisted stop, entry price, venue max leverage, and the frozen paper max leverage;
+- the paper liquidation surrogate is recomputed at that opening price with `min(paper_max_gross_leverage, venue_max_leverage)`;
+- LONG and SHORT stop geometry follows the existing risk-engine contract, including the requirement that the surrogate liquidation level remain beyond the stop;
+- the reconstructed liquidation-distance / stop-distance multiple must meet `min_liquidation_stop_multiple`;
+- the fixed overlay reports liquidation-buffer violations and minimum multiple/headroom;
+- the causal admission shadow rejects a hypothetical opening that fails the same gate and evaluates later openings against the surviving portfolio;
+- the observed paper baseline must reconstruct with zero such violations/rejections before review readiness can pass;
+- visible-liquidity capacity remains the remaining explicitly unmodeled market-cap gate.
+
+This is research/shadow accounting only. It does not change the real paper risk engine, strategy thresholds, sizing, stops, fills, execution cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
