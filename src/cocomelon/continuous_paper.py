@@ -3279,6 +3279,7 @@ def _live_status_payload(
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
+    delayed_entry_margin_capacity_state: DelayedEntryMarginCapacityState,
     *,
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
@@ -3289,6 +3290,7 @@ def _live_status_payload(
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
+    delayed_entry_margin_capacity_restore_error: str | None,
     risk_limits: RiskLimits,
     checkpoint_seconds: int,
     timestamp_ms: int,
@@ -3467,6 +3469,10 @@ def _live_status_payload(
             trade_path_store,
             execution.store.load_plan,
             risk_limits,
+            delayed_entry_margin_capacity_state,
+            restore_error=(
+                delayed_entry_margin_capacity_restore_error
+            ),
         )
     )
     delayed_entry_contribution_decomposition = (
