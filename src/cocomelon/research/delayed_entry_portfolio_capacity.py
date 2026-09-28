@@ -640,10 +640,18 @@ def _admission_timeline(
     *,
     reference_equity: Decimal,
     limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
 ) -> dict[str, object]:
     if not reference_equity.is_finite() or reference_equity <= ZERO:
         raise DelayedEntryCapacityOverlayError(
             "reference equity must be positive"
+        )
+    if (
+        not paper_max_gross_leverage.is_finite()
+        or paper_max_gross_leverage <= ZERO
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "paper max gross leverage must be positive"
         )
 
     active: dict[str, _Active] = {}
@@ -660,11 +668,13 @@ def _admission_timeline(
     aggregate_rejections = 0
     bucket_rejections = 0
     leverage_rejections = 0
+    margin_rejections = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
     max_admitted_aggregate_utilization = ZERO
     max_admitted_bucket_utilization = ZERO
     max_admitted_gross_leverage = ZERO
+    max_admitted_margin_utilization = ZERO
 
     for event in _position_events(positions):
         if event.kind == "close":
@@ -724,31 +734,50 @@ def _admission_timeline(
             (_gross_notional(item) for item in active.values()),
             ZERO,
         )
+        new_notional = position.entry_price * position.quantity
         after_risk = existing_risk + position.planned_risk
-        after_notional = (
-            existing_notional
-            + position.entry_price * position.quantity
+        after_notional = existing_notional + new_notional
+        effective_leverage = min(
+            limits.max_gross_leverage,
+            position.venue_max_leverage,
+        )
+        reserved_margin = _reserved_margin(
+            active,
+            paper_max_gross_leverage=paper_max_gross_leverage,
         )
 
         if equity <= ZERO:
             aggregate_bad = True
             bucket_bad = True
             leverage_bad = True
+            margin_bad = True
+            margin_capacity = ZERO
             non_positive_equity_rejections += 1
         else:
             aggregate_ceiling = equity * limits.max_open_risk
             bucket_ceiling = (
                 equity * limits.correlation_bucket_risk_limit
             )
-            gross_ceiling = equity * limits.max_gross_leverage
+            gross_ceiling = equity * effective_leverage
+            available_margin = max(
+                ZERO,
+                equity - reserved_margin,
+            )
+            margin_capacity = (
+                available_margin
+                * limits.max_available_margin_fraction
+                * effective_leverage
+            )
             aggregate_bad = after_risk > aggregate_ceiling
             bucket_bad = after_risk > bucket_ceiling
             leverage_bad = after_notional > gross_ceiling
+            margin_bad = new_notional > margin_capacity
 
         rejected_now = (
             aggregate_bad
             or bucket_bad
             or leverage_bad
+            or margin_bad
         )
         if rejected_now:
             rejected_openings += 1
@@ -763,6 +792,8 @@ def _admission_timeline(
                 bucket_rejections += 1
             if leverage_bad:
                 leverage_rejections += 1
+            if margin_bad:
+                margin_rejections += 1
             continue
 
         admitted_openings += 1
@@ -787,6 +818,11 @@ def _admission_timeline(
                 max_admitted_gross_leverage,
                 after_notional / equity,
             )
+            if margin_capacity > ZERO:
+                max_admitted_margin_utilization = max(
+                    max_admitted_margin_utilization,
+                    new_notional / margin_capacity,
+                )
 
         realized -= position.entry_fee
         active[position.trade_id] = _Active(
@@ -815,6 +851,7 @@ def _admission_timeline(
         "aggregate_risk_rejections": aggregate_rejections,
         "correlation_bucket_risk_rejections": bucket_rejections,
         "gross_leverage_rejections": leverage_rejections,
+        "margin_capacity_rejections": margin_rejections,
         "non_positive_equity_rejections": (
             non_positive_equity_rejections
         ),
@@ -827,6 +864,9 @@ def _admission_timeline(
         ),
         "max_admitted_gross_leverage": str(
             max_admitted_gross_leverage
+        ),
+        "max_admitted_margin_capacity_utilization": str(
+            max_admitted_margin_utilization
         ),
         "final_realized_contribution": str(realized),
     }
