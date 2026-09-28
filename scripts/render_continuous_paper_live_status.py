@@ -1865,6 +1865,7 @@ def _delayed_entry_portfolio_capacity_lines(
 
 def _delayed_entry_contribution_decomposition_lines(
     raw: object,
+    funding_raw: object = None,
 ) -> list[str]:
     lines = [
         "",
@@ -1998,11 +1999,43 @@ def _delayed_entry_contribution_decomposition_lines(
                 "_Accounting decomposition of the existing fill-weighted "
                 "same-exit estimate. Price and entry-fee effects apply only "
                 "to filled quantity; exposure effect measures the observed "
-                "trade contribution removed by unfilled quantity. The three "
-                "effects reconcile exactly to total delayed-entry Δ PnL._"
+                "trade contribution removed by unfilled quantity._"
             ),
         ]
     )
+
+    if isinstance(funding_raw, dict):
+        funding_error = funding_raw.get("error")
+        funding_overall = funding_raw.get("overall", {})
+        if funding_error:
+            lines.append(
+                f"- funding decomposition research error: `{funding_error}`"
+            )
+        elif isinstance(funding_overall, dict):
+            lines.extend(
+                [
+                    (
+                        "- funding timing / corrected total Δ PnL: "
+                        f"`{funding_overall.get('funding_timing_effect_pnl', '0')} / "
+                        f"{funding_overall.get('corrected_total_delta_pnl', '0')}`"
+                    ),
+                    (
+                        "- legacy / corrected total Δ PnL: "
+                        f"`{funding_overall.get('legacy_total_delta_pnl', '0')} / "
+                        f"{funding_overall.get('corrected_total_delta_pnl', '0')}`"
+                    ),
+                    (
+                        "- funding-aware missing journal / funding / lineage: "
+                        f"`{funding_raw.get('missing_journal_trades', 0)} / "
+                        f"{funding_raw.get('missing_funding_events', 0)} / "
+                        f"{funding_raw.get('lineage_mismatches', 0)}`"
+                    ),
+                    (
+                        "_Funding timing is the explicit fourth effect; the four "
+                        "effects reconcile exactly to corrected delayed-entry Δ PnL._"
+                    ),
+                ]
+            )
     return lines
 
 
@@ -5774,7 +5807,10 @@ def render_live_status(
     )
     lines.extend(
         _delayed_entry_contribution_decomposition_lines(
-            payload.get("delayed_entry_contribution_decomposition")
+            payload.get("delayed_entry_contribution_decomposition"),
+            payload.get(
+                "delayed_entry_contribution_decomposition_funding"
+            ),
         )
     )
     lines.extend(
