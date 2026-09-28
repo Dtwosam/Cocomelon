@@ -1046,10 +1046,18 @@ def delayed_entry_stop_l2_replay(
     lineage_mismatches = 0
     invalid_candidate_timing = 0
     stop_book_capture_errors = 0
+    source_counts: dict[str, int] = {}
+    unresolved_source_counts: dict[str, int] = {}
 
     for outcome in outcomes:
+        source_counts[outcome.source] = (
+            source_counts.get(outcome.source, 0) + 1
+        )
         if outcome.source not in EVALUABLE_SOURCES:
             unresolved_outcomes += 1
+            unresolved_source_counts[outcome.source] = (
+                unresolved_source_counts.get(outcome.source, 0) + 1
+            )
             continue
         trade = trades.get(outcome.trade_id)
         if trade is None:
@@ -1186,7 +1194,11 @@ def delayed_entry_stop_l2_replay(
             pre_capture_legacy_outcomes
         ),
         "candidate_no_fill_trades": candidate_no_fill,
+        "source_counts": dict(sorted(source_counts.items())),
         "unresolved_outcomes": unresolved_outcomes,
+        "unresolved_source_counts": dict(
+            sorted(unresolved_source_counts.items())
+        ),
         "missing_journal_trades": missing_journal,
         "missing_exact_paths": missing_paths,
         "incomplete_or_gapped_paths": (
