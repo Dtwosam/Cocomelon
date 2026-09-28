@@ -2276,6 +2276,18 @@ The change affects research aggregation only. Per-trade economics, fills, fees, 
 
 
 
+### Fixed-schedule portfolio timelines for prospective entry filters — 2026-09-28
+
+The three prospective entry-filter studies now publish a fixed observed-schedule portfolio timeline beside their trade-contribution and residual-loss diagnostics.
+
+For each attributed closed trade, the candidate timeline removes trades rejected by the frozen filter while reusing the actual filled size, opening time, close time, and realized economics for trades that remain admitted. The dashboard reports actual vs candidate realized contribution, maximum realized drawdown, concurrent positions and overlap openings, maximum gross notional, maximum planned risk, and the blocked cohort's actual PnL.
+
+This is deliberately narrower than a causal portfolio backtest. It does not invent replacement opportunities, resize later trades from changed equity, change exit timing, or reconstruct unrealized-equity paths. It is descriptive only and does not change any prospective readiness gate.
+
+**LIVE TRADING: DISABLED.**
+
+
+
 ### Delayed-stop causal path-gap window — 2026-09-28
 
 The delayed-entry original-stop survivability, same-exit stop-validity, stop-exit proxy, and exact stop-L2 replay now judge mark-path gaps only over the interval in which the delayed candidate position actually exists: strictly after the delayed open through the actual close.
