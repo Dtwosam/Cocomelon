@@ -1522,7 +1522,7 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{raw.get('background_positions', 0)}`"
             ),
             (
-                "- unresolved / missing journal-plan-leverage-openliq-delayliq-path / "
+                "- unresolved / missing journal-plan-leverage-openliq-delayliq-delayref-path / "
                 "incomplete / lineage: "
                 f"`{raw.get('unresolved_outcomes', 0)} / "
                 f"{raw.get('missing_journal_trades', 0)}-"
@@ -1530,6 +1530,7 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{raw.get('missing_venue_max_leverage', 0)}-"
                 f"{raw.get('missing_opening_liquidity_evidence', 0)}-"
                 f"{raw.get('missing_delayed_liquidity_evidence', 0)}-"
+                f"{raw.get('missing_delayed_reference_price', 0)}-"
                 f"{raw.get('missing_exact_paths', 0)} / "
                 f"{raw.get('incomplete_exact_paths', 0)} / "
                 f"{raw.get('lineage_mismatches', 0)}`"
