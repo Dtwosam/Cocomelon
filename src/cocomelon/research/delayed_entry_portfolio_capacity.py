@@ -50,6 +50,7 @@ class _Position:
     planned_risk: Decimal
     stop_price: Decimal
     venue_max_leverage: Decimal
+    opening_reference_notional: Decimal
     entry_side_depth_25bps: Decimal
     exit_side_depth_25bps: Decimal
     entry_fee: Decimal
@@ -84,6 +85,13 @@ class _Position:
         ):
             raise ValueError(
                 "venue_max_leverage must be positive and finite"
+            )
+        if (
+            not self.opening_reference_notional.is_finite()
+            or self.opening_reference_notional <= ZERO
+        ):
+            raise ValueError(
+                "opening_reference_notional must be positive and finite"
             )
         for depth, field in (
             (self.entry_side_depth_25bps, "entry_side_depth_25bps"),
@@ -543,7 +551,10 @@ def _capacity_timeline(
             position,
             limits,
         )
-        liquidity_headroom = liquidity_capacity - new_notional
+        liquidity_notional = position.opening_reference_notional
+        liquidity_headroom = (
+            liquidity_capacity - liquidity_notional
+        )
         liquidity_bad = liquidity_headroom < ZERO
         min_liquidity_notional_headroom = (
             liquidity_headroom
@@ -556,7 +567,7 @@ def _capacity_timeline(
         if liquidity_capacity > ZERO:
             max_liquidity_capacity_utilization = max(
                 max_liquidity_capacity_utilization,
-                new_notional / liquidity_capacity,
+                liquidity_notional / liquidity_capacity,
             )
         (
             liquidation_multiple,
@@ -901,10 +912,8 @@ def _admission_timeline(
             position,
             limits,
         )
-        liquidity_bad = (
-            position.entry_price * position.quantity
-            > liquidity_capacity
-        )
+        liquidity_notional = position.opening_reference_notional
+        liquidity_bad = liquidity_notional > liquidity_capacity
         (
             liquidation_multiple,
             liquidation_ok,
@@ -1001,7 +1010,7 @@ def _admission_timeline(
             if liquidity_capacity > ZERO:
                 max_admitted_liquidity_utilization = max(
                     max_admitted_liquidity_utilization,
-                    new_notional / liquidity_capacity,
+                    liquidity_notional / liquidity_capacity,
                 )
             min_admitted_liquidation_multiple = (
                 liquidation_multiple
@@ -1136,6 +1145,10 @@ def _actual_position(
         planned_risk=planned_risk,
         stop_price=stop_price,
         venue_max_leverage=venue_max_leverage,
+        opening_reference_notional=(
+            plan.requested_quantity
+            * plan.execution_reference_price
+        ),
         entry_side_depth_25bps=(
             liquidity.entry_side_depth_25bps
         ),
@@ -1222,6 +1235,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "missing_venue_max_leverage": 0,
             "missing_opening_liquidity_evidence": 0,
             "missing_delayed_liquidity_evidence": 0,
+            "missing_delayed_reference_price": 0,
             "missing_exact_paths": 0,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
@@ -1375,6 +1389,7 @@ def delayed_entry_portfolio_capacity_overlay(
     candidate_filled = 0
     candidate_no_fill = 0
     missing_delayed_liquidity = 0
+    missing_delayed_reference_price = 0
 
     outcome_by_id = {
         outcome.trade_id: outcome for outcome in outcomes
@@ -1444,6 +1459,10 @@ def delayed_entry_portfolio_capacity_overlay(
         if stop_price is None:
             lineage_mismatches += 1
             continue
+        delayed_reference_price = outcome.delayed_reference_price
+        if delayed_reference_price is None:
+            missing_delayed_reference_price += 1
+            continue
         delayed_entry_depth = (
             outcome.delayed_entry_side_depth_25bps
         )
@@ -1472,6 +1491,10 @@ def delayed_entry_portfolio_capacity_overlay(
                 planned_risk=planned_risk,
                 stop_price=stop_price,
                 venue_max_leverage=venue_max_leverage,
+                opening_reference_notional=(
+                    trade.filled_quantity
+                    * delayed_reference_price
+                ),
                 entry_side_depth_25bps=delayed_entry_depth,
                 exit_side_depth_25bps=delayed_exit_depth,
                 entry_fee=weighted.delayed_entry_fee,
@@ -1558,6 +1581,7 @@ def delayed_entry_portfolio_capacity_overlay(
         and missing_venue_max_leverage == 0
         and missing_opening_liquidity == 0
         and missing_delayed_liquidity == 0
+        and missing_delayed_reference_price == 0
         and missing_paths == 0
         and incomplete_paths == 0
         and lineage_mismatches == 0
@@ -1625,6 +1649,9 @@ def delayed_entry_portfolio_capacity_overlay(
         ),
         "missing_delayed_liquidity_evidence": (
             missing_delayed_liquidity
+        ),
+        "missing_delayed_reference_price": (
+            missing_delayed_reference_price
         ),
         "missing_exact_paths": missing_paths,
         "incomplete_exact_paths": incomplete_paths,
