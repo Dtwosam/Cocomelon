@@ -18,13 +18,15 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.execution.ioc import simulate_ioc
+from cocomelon.features.microstructure import calculate_microstructure_features
 
 ZERO: Final = Decimal("0")
 ONE: Final = Decimal("1")
 BPS: Final = Decimal("10000")
 DELAY_MS: Final = 60_000
 MAX_DELAY_OBSERVATION_LAG_MS: Final = 60_000
-STATE_SCHEMA_VERSION: Final = 2
+STATE_SCHEMA_VERSION: Final = 3
+LEGACY_STATE_SCHEMA_VERSION: Final = 2
 MIN_CLOSED_ELIGIBLE_TRADES: Final = 30
 MIN_FULL_DELAYED_FILLS: Final = 20
 
@@ -209,6 +211,8 @@ class _OpenState:
     delayed_average_fill_price: Decimal | None = None
     delayed_fee: Decimal = ZERO
     observation_lag_ms: int | None = None
+    delayed_entry_side_depth_25bps: Decimal | None = None
+    delayed_exit_side_depth_25bps: Decimal | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +230,8 @@ class DelayedEntryOutcome:
     gross_r_improvement: Decimal | None
     attempt_reason: str | None = None
     capacity_cause: str | None = None
+    delayed_entry_side_depth_25bps: Decimal | None = None
+    delayed_exit_side_depth_25bps: Decimal | None = None
 
     def __post_init__(self) -> None:
         for value in (
@@ -292,6 +298,23 @@ class DelayedEntryOutcome:
             raise ValueError(
                 "delayed-entry capacity_cause must be null or non-empty"
             )
+        depth_values = (
+            self.delayed_entry_side_depth_25bps,
+            self.delayed_exit_side_depth_25bps,
+        )
+        if any(value is None for value in depth_values) and not all(
+            value is None for value in depth_values
+        ):
+            raise ValueError(
+                "delayed-entry depth evidence must be complete or absent"
+            )
+        for value in depth_values:
+            if value is not None and (
+                not value.is_finite() or value < ZERO
+            ):
+                raise ValueError(
+                    "delayed-entry depth evidence must be non-negative"
+                )
 
     def payload(self) -> dict[str, object]:
         return {
@@ -322,6 +345,16 @@ class DelayedEntryOutcome:
             ),
             "attempt_reason": self.attempt_reason,
             "capacity_cause": self.capacity_cause,
+            "delayed_entry_side_depth_25bps": (
+                None
+                if self.delayed_entry_side_depth_25bps is None
+                else str(self.delayed_entry_side_depth_25bps)
+            ),
+            "delayed_exit_side_depth_25bps": (
+                None
+                if self.delayed_exit_side_depth_25bps is None
+                else str(self.delayed_exit_side_depth_25bps)
+            ),
         }
 
     @classmethod
@@ -384,6 +417,14 @@ class DelayedEntryOutcome:
                     raw.get("capacity_cause"),
                     "capacity_cause",
                 )
+            ),
+            delayed_entry_side_depth_25bps=_optional_decimal(
+                raw.get("delayed_entry_side_depth_25bps"),
+                "delayed_entry_side_depth_25bps",
+            ),
+            delayed_exit_side_depth_25bps=_optional_decimal(
+                raw.get("delayed_exit_side_depth_25bps"),
+                "delayed_exit_side_depth_25bps",
             ),
         )
 
@@ -599,6 +640,24 @@ class DelayedEntryExecutionShadow:
             instrument,
             reference_price,
         )
+        micro = calculate_microstructure_features(
+            book,
+            as_of_ms=now_ms,
+        )
+        if plan.side is OrderSide.BUY:
+            state.delayed_entry_side_depth_25bps = (
+                micro.ask_depth_25bps
+            )
+            state.delayed_exit_side_depth_25bps = (
+                micro.bid_depth_25bps
+            )
+        else:
+            state.delayed_entry_side_depth_25bps = (
+                micro.bid_depth_25bps
+            )
+            state.delayed_exit_side_depth_25bps = (
+                micro.ask_depth_25bps
+            )
         simulation = simulate_ioc(
             plan,
             book,
@@ -735,6 +794,12 @@ class DelayedEntryExecutionShadow:
                 gross_r_improvement=improvement_r,
                 attempt_reason=state.attempt_reason,
                 capacity_cause=state.attempt_capacity_cause,
+                delayed_entry_side_depth_25bps=(
+                    state.delayed_entry_side_depth_25bps
+                ),
+                delayed_exit_side_depth_25bps=(
+                    state.delayed_exit_side_depth_25bps
+                ),
             )
         )
 
@@ -784,6 +849,22 @@ class DelayedEntryExecutionShadow:
                     "fill_fraction": str(fill_fraction),
                     "observation_lag_ms": (
                         state.observation_lag_ms
+                    ),
+                    "delayed_entry_side_depth_25bps": (
+                        None
+                        if state.delayed_entry_side_depth_25bps
+                        is None
+                        else str(
+                            state.delayed_entry_side_depth_25bps
+                        )
+                    ),
+                    "delayed_exit_side_depth_25bps": (
+                        None
+                        if state.delayed_exit_side_depth_25bps
+                        is None
+                        else str(
+                            state.delayed_exit_side_depth_25bps
+                        )
                     ),
                 }
             )
@@ -931,6 +1012,16 @@ class DelayedEntryExecutionShadow:
             "orphaned_restored_positions": (
                 self._orphaned_restored_positions
             ),
+            "delayed_depth_evidence_outcomes": sum(
+                1
+                for outcome in outcomes
+                if (
+                    outcome.delayed_entry_side_depth_25bps
+                    is not None
+                    and outcome.delayed_exit_side_depth_25bps
+                    is not None
+                )
+            ),
             "readiness": {
                 "ready_for_review": ready,
                 "min_closed_eligible_trades": (
@@ -1011,6 +1102,22 @@ class DelayedEntryExecutionShadow:
                     "observation_lag_ms": (
                         state.observation_lag_ms
                     ),
+                    "delayed_entry_side_depth_25bps": (
+                        None
+                        if state.delayed_entry_side_depth_25bps
+                        is None
+                        else str(
+                            state.delayed_entry_side_depth_25bps
+                        )
+                    ),
+                    "delayed_exit_side_depth_25bps": (
+                        None
+                        if state.delayed_exit_side_depth_25bps
+                        is None
+                        else str(
+                            state.delayed_exit_side_depth_25bps
+                        )
+                    ),
                 }
                 for state in sorted(
                     self._open.values(),
@@ -1043,7 +1150,11 @@ class DelayedEntryExecutionShadow:
             raise DelayedEntryShadowError(
                 "delayed-entry state must be an object"
             )
-        if raw.get("schema_version") != STATE_SCHEMA_VERSION:
+        schema_version = raw.get("schema_version")
+        if schema_version not in {
+            LEGACY_STATE_SCHEMA_VERSION,
+            STATE_SCHEMA_VERSION,
+        }:
             raise DelayedEntryShadowError(
                 "unsupported delayed-entry state schema"
             )
@@ -1175,6 +1286,14 @@ class DelayedEntryExecutionShadow:
                 observation_lag_ms=_optional_integer(
                     item.get("observation_lag_ms"),
                     "observation_lag_ms",
+                ),
+                delayed_entry_side_depth_25bps=_optional_decimal(
+                    item.get("delayed_entry_side_depth_25bps"),
+                    "delayed_entry_side_depth_25bps",
+                ),
+                delayed_exit_side_depth_25bps=_optional_decimal(
+                    item.get("delayed_exit_side_depth_25bps"),
+                    "delayed_exit_side_depth_25bps",
                 ),
             )
             if (
