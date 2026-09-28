@@ -2261,3 +2261,22 @@ The exact delayed-entry stop-L2 replay now defines its integrity cohort at the c
 This changes research cohort accounting only. It does not make rejected or expired entries profitable, does not synthesize a position, does not change delayed-entry readiness elsewhere, and has no execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Entry-filter fixed-schedule portfolio timelines — 2026-09-28
+
+The prospective LONG+trend, top-10 rank, and fresh combined entry filters now report a fixed observed-schedule portfolio timeline alongside their trade-contribution, robustness, and allowed-residual diagnostics.
+
+For each attributed cohort the candidate removes blocked trades while reusing the actual admitted trades' observed size, opening timestamp, closing timestamp, planned risk, and realized net PnL. The timeline compares actual versus candidate:
+
+- final realized contribution;
+- maximum realized drawdown;
+- maximum concurrent positions and overlap openings;
+- maximum gross open notional;
+- maximum planned risk;
+- position, notional, and risk exposure-hours.
+
+This is a stronger portfolio-shaped diagnostic than independent trade contribution, but it is deliberately bounded. It does not invent replacement trades, resize later positions from changed equity, change exit timing, or model unrealized equity. It does not alter any frozen filter rule or readiness gate.
+
+**LIVE TRADING: DISABLED.**
