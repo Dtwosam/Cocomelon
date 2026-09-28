@@ -541,6 +541,55 @@ def test_delayed_entry_v2_state_migrates_without_inventing_depth() -> None:
     assert restored.state_payload()["schema_version"] == 3
 
 
+def test_delayed_entry_v2_open_state_collects_v3_book_lineage() -> None:
+    position = _position()
+    shadow = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=500,
+    )
+    shadow.observe_mark(
+        (position,),
+        _mark(1_100),
+        now_ms=1_100,
+    )
+
+    payload = shadow.state_payload()
+    payload["schema_version"] = 2
+    open_rows = payload["open"]
+    assert isinstance(open_rows, list)
+    assert len(open_rows) == 1
+    raw = open_rows[0]
+    assert isinstance(raw, dict)
+    raw.pop("delayed_reference_price")
+    raw.pop("delayed_entry_side_depth_25bps")
+    raw.pop("delayed_exit_side_depth_25bps")
+
+    restored = DelayedEntryExecutionShadow(
+        _config(),
+        started_at_ms=999_999,
+    )
+    restored.restore_state(payload)
+    attempt_ms = position.opened_at_ms + DELAY_MS + 300
+    restored.observe_book(
+        (position,),
+        _instrument(),
+        _book(
+            attempt_ms,
+            bid="98.9",
+            ask="99.1",
+        ),
+        reference_price=Decimal("99"),
+        now_ms=attempt_ms,
+    )
+    restored.record_closed_trade(_trade(position))
+
+    outcome = restored.outcomes[0]
+    assert outcome.delayed_reference_price == Decimal("99")
+    assert outcome.delayed_entry_side_depth_25bps == Decimal("991.0")
+    assert outcome.delayed_exit_side_depth_25bps == Decimal("989.0")
+    assert restored.state_payload()["schema_version"] == 3
+
+
 def test_delayed_entry_state_survives_restart_before_target() -> None:
     position = _position()
     shadow = DelayedEntryExecutionShadow(
