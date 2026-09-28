@@ -2017,3 +2017,17 @@ The delayed-entry portfolio capacity study now replays the paper planner's nativ
 This is research-only accounting. It does not change paper strategy selection, risk limits, order sizing, fills, stops, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry reference-price risk geometry — 2026-09-28
+
+The 60-second delayed-entry risk-geometry study now separates pre-IOC planning risk from risk observed along the simulated fill path.
+
+- pre-IOC metrics use the exact v3 delayed execution reference price, the immutable opening stop, original cost buffer, original filled position quantity, and original paper trade risk ceiling;
+- the study reports reference full-size risk / ceiling, reference risk-capacity fraction, reference unit-risk change, and how many attempts would require a size reduction before IOC if only the original per-trade risk ceiling were binding;
+- the existing fill-path metrics remain based on delayed average fill and simulated filled quantity, so they continue to describe actual IOC risk utilization and `RISK_CEILING_REACHED` behavior;
+- the two are intentionally not treated as equivalent: a reference-sized order can fit the risk budget and still risk-clip when the visible fills are worse than the reference price;
+- legacy delayed outcomes without reference-price lineage are reported as missing evidence and block review readiness instead of falling back to average fill;
+- this is a diagnostic only. It does not synthesize a resized order or claim the full causal portfolio outcome of resizing.
+
+**LIVE TRADING: DISABLED.**
