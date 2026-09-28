@@ -148,6 +148,9 @@ from cocomelon.research.delayed_entry_same_exit import (
 from cocomelon.research.delayed_entry_same_exit_stop_validity import (
     delayed_entry_same_exit_stop_validity,
 )
+from cocomelon.research.delayed_entry_stop_exit_proxy import (
+    delayed_entry_stop_exit_proxy_range,
+)
 from cocomelon.research.delayed_entry_stop_survivability import (
     delayed_entry_stop_survivability,
 )
@@ -2875,6 +2878,46 @@ def _delayed_entry_same_exit_stop_validity_payload(
     return payload
 
 
+def _delayed_entry_stop_exit_proxy_payload(
+    journal: JournalStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    trade_path_store: ContinuousPaperTradePathStore,
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
+    execution_config: PaperExecutionConfig,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = delayed_entry_stop_exit_proxy_range(
+            journal,
+            delayed_shadow.shadow.outcomes,
+            trade_path_store,
+            funding_loader,
+            execution_config,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _delayed_entry_stop_survivability_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
@@ -3430,6 +3473,7 @@ def _live_status_payload(
     risk_limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
     native_perp_min_notional: Decimal,
+    paper_execution_config: PaperExecutionConfig,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -3636,6 +3680,20 @@ def _live_status_payload(
                     start_ms=start_ms,
                 )
             ),
+        )
+    )
+    delayed_entry_stop_exit_proxy_payload = (
+        _delayed_entry_stop_exit_proxy_payload(
+            pump.journal,
+            delayed_entry_execution_shadow,
+            trade_path_store,
+            lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
+            paper_execution_config,
         )
     )
     delayed_entry_portfolio_capacity = (
@@ -3873,6 +3931,9 @@ def _live_status_payload(
         "delayed_entry_same_exit_stop_validity": (
             delayed_entry_same_exit_stop_validity_payload
         ),
+        "delayed_entry_stop_exit_proxy": (
+            delayed_entry_stop_exit_proxy_payload
+        ),
         "delayed_entry_portfolio_capacity": (
             delayed_entry_portfolio_capacity
         ),
@@ -3950,6 +4011,7 @@ def _emit_live_status(
     risk_limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
     native_perp_min_notional: Decimal,
+    paper_execution_config: PaperExecutionConfig,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3999,6 +4061,7 @@ def _emit_live_status(
         risk_limits=risk_limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
         native_perp_min_notional=native_perp_min_notional,
+        paper_execution_config=paper_execution_config,
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
@@ -4473,6 +4536,7 @@ async def run_continuous_paper_session(
             native_perp_min_notional=(
                 replay_config.execution.native_perp_min_notional
             ),
+            paper_execution_config=replay_config.execution,
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
@@ -4657,6 +4721,7 @@ async def run_continuous_paper_session(
                     native_perp_min_notional=(
                         replay_config.execution.native_perp_min_notional
                     ),
+                    paper_execution_config=replay_config.execution,
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
