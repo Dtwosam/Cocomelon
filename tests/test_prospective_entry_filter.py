@@ -184,6 +184,21 @@ def test_filter_blocks_only_prospective_long_trend_contribution(
     assert robustness["total_delta_trade_contribution_pnl"] == "8"
     assert robustness["largest_abs_trade_contribution"] == "8"
     assert robustness["changes_readiness_gate"] is False
+    residual = result["allowed_residual"]
+    assert isinstance(residual, dict)
+    residual_overall = residual["overall"]
+    assert isinstance(residual_overall, dict)
+    assert residual_overall["trades"] == 2
+    assert residual_overall["net_pnl"] == "10"
+    by_side = residual["by_side"]
+    assert isinstance(by_side, dict)
+    assert by_side["long"]["net_pnl"] == "4"
+    assert by_side["short"]["net_pnl"] == "6"
+    by_strategy = residual["by_lead_strategy"]
+    assert isinstance(by_strategy, dict)
+    assert by_strategy["breakout"]["net_pnl"] == "4"
+    assert by_strategy["trend"]["net_pnl"] == "6"
+    assert residual["changes_readiness_gate"] is False
     assert result["portfolio_counterfactual"] is False
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
