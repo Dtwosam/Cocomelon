@@ -8,6 +8,7 @@ import sys
 from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _prospective_combined_entry_filter_lines,
+    _prospective_filter_robustness_lines,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
@@ -4840,3 +4841,37 @@ def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
     assert "`-16 / 5 / 21`" in output
     assert "LONG+trend & rank >10" in output
     assert "earlier standalone LONG+trend and top-10 studies" in output
+
+
+
+def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
+    lines = _prospective_filter_robustness_lines(
+        {
+            "total_delta_trade_contribution_pnl": "41",
+            "largest_abs_trade_contribution": "23",
+            "largest_abs_trade_share": "0.56",
+            "leave_one_trade_out_min_delta": "18",
+            "positive_after_any_single_trade_removed": True,
+            "largest_abs_market": "ALGO",
+            "largest_abs_market_contribution": "23",
+            "largest_abs_market_share": "0.56",
+            "leave_one_market_out_min_delta": "18",
+            "positive_after_any_single_market_removed": True,
+            "temporal": {
+                "full_blocks": 4,
+                "positive_full_blocks": 3,
+                "all_full_blocks_positive": False,
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "robustness delta / largest trade contribution / share" in output
+    assert "`41 / 23 / 0.56`" in output
+    assert "leave-one-trade min delta" in output
+    assert "`18 / true`" in output
+    assert "largest market / contribution / share" in output
+    assert "`ALGO / 23 / 0.56`" in output
+    assert "chronological full blocks / positive / all positive" in output
+    assert "`4 / 3 / false`" in output
+    assert "does not change the frozen prospective readiness gate" in output
