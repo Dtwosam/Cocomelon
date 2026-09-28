@@ -179,6 +179,11 @@ def test_filter_blocks_only_prospective_long_trend_contribution(
     assert result["actual_net_pnl"] == "2"
     assert result["candidate_trade_contribution_pnl"] == "10"
     assert result["delta_trade_contribution_pnl"] == "8"
+    robustness = result["robustness"]
+    assert isinstance(robustness, dict)
+    assert robustness["total_delta_trade_contribution_pnl"] == "8"
+    assert robustness["largest_abs_trade_contribution"] == "8"
+    assert robustness["changes_readiness_gate"] is False
     assert result["portfolio_counterfactual"] is False
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
