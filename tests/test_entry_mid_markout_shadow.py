@@ -3,6 +3,8 @@ from __future__ import annotations
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.features import TrendRegime, VolatilityRegime
 from cocomelon.domain.journal import TradeJournalEntry
@@ -14,6 +16,7 @@ from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.research.entry_mid_markout_shadow import (
     ENTRY_MID_MARKOUT_MAX_LAG_MS,
     EntryMidMarkoutShadow,
+    EntryMidMarkoutShadowError,
 )
 
 MARKET = MarketId("", "SOL")
@@ -348,6 +351,19 @@ def test_allmids_shadow_state_round_trip_preserves_open_observation(
     assert payload["started_at_ms"] == 1_000_000
     assert payload["by_horizon_ms"]["60000"]["fresh"] == 1
     assert payload["by_horizon_ms"]["300000"]["fresh"] == 1
+
+
+def test_allmids_shadow_rejects_pre_lineage_fix_state_schema() -> None:
+    shadow = EntryMidMarkoutShadow(started_at_ms=1_000_000)
+    payload = shadow.state_payload()
+    payload["schema_version"] = 1
+
+    restored = EntryMidMarkoutShadow(started_at_ms=2_000_000)
+    with pytest.raises(
+        EntryMidMarkoutShadowError,
+        match="unsupported mid-markout state schema",
+    ):
+        restored.restore_state(payload)
 
 
 def test_allmids_shadow_contains_closed_trade_lineage_mismatch(

@@ -719,14 +719,70 @@ class _ContinuousEntryMidMarkoutSink:
     def __init__(
         self,
         shadow: EntryMidMarkoutShadow,
+        *,
+        opening_plan_loader: Callable[
+            [str],
+            PaperOrderPlan | None,
+        ],
     ) -> None:
         self.shadow: EntryMidMarkoutShadow | None = shadow
+        self._opening_plan_loader = opening_plan_loader
         self.error: str | None = None
 
     def _disable(self, exc: Exception) -> None:
         if self.error is None:
             self.error = f"{type(exc).__name__}: {exc}"
         self.shadow = None
+
+    def _position_with_opening_lineage(
+        self,
+        position: PaperPosition,
+    ) -> PaperPosition:
+        plan = self._opening_plan_loader(
+            position.opening_plan_id
+        )
+        if plan is None:
+            raise RuntimeError(
+                "allMids markout opening plan is missing"
+            )
+        if plan.reduce_only:
+            raise RuntimeError(
+                "allMids markout opening plan is reduce-only"
+            )
+        if plan.market != position.market:
+            raise RuntimeError(
+                "allMids markout opening plan market mismatch"
+            )
+        if plan.approved_risk_amount_ceiling is None:
+            raise RuntimeError(
+                "allMids markout opening plan risk ceiling is missing"
+            )
+        return replace(
+            position,
+            planned_risk=plan.approved_risk_amount_ceiling,
+        )
+
+    def _positions_with_opening_lineage(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> tuple[PaperPosition, ...]:
+        return tuple(
+            self._position_with_opening_lineage(position)
+            for position in positions
+        )
+
+    def reconcile_open_positions(
+        self,
+        positions: Sequence[PaperPosition],
+    ) -> None:
+        if self.shadow is None:
+            return
+        try:
+            self.shadow.reconcile_open_positions(
+                self._positions_with_opening_lineage(positions)
+            )
+        except Exception as exc:
+            self._disable(exc)
 
     def observe(
         self,
@@ -740,7 +796,7 @@ class _ContinuousEntryMidMarkoutSink:
         try:
             self.shadow.observe(
                 record,
-                positions,
+                self._positions_with_opening_lineage(positions),
                 now_ms=now_ms,
             )
         except Exception as exc:
@@ -834,6 +890,9 @@ class _ContinuousEntryMidMarkoutSink:
             return disabled_payload()
 
         payload["enabled"] = True
+        payload["opening_lineage_source"] = (
+            "persisted_opening_plan_risk_ceiling"
+        )
         payload["error"] = self.error
         return payload
 
@@ -3799,7 +3858,8 @@ async def run_continuous_paper_session(
         _restore_entry_mid_markout_shadow(
             root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
             started_at_ms=started_at_ms,
-        )
+        ),
+        opening_plan_loader=execution.store.load_plan,
     )
     drawdown_tracker = _restore_drawdown_tracker(
         root / DRAWDOWN_STATE_FILENAME,
@@ -3814,10 +3874,9 @@ async def run_continuous_paper_session(
     delayed_entry_120s_execution_shadow.reconcile_open_positions(
         execution.account.positions
     )
-    if entry_mid_markout_shadow.shadow is not None:
-        entry_mid_markout_shadow.shadow.reconcile_open_positions(
-            execution.account.positions
-        )
+    entry_mid_markout_shadow.reconcile_open_positions(
+        execution.account.positions
+    )
     (
         prospective_entry_filter_state,
         prospective_entry_filter_restore_error,
