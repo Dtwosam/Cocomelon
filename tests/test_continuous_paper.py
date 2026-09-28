@@ -28,6 +28,7 @@ from cocomelon.continuous_paper import (
     _delayed_entry_fixed_schedule_portfolio_payload,
     _delayed_entry_mtm_portfolio_payload,
     _delayed_entry_pair_fill_weighted_payload,
+    _delayed_entry_portfolio_capacity_payload,
     _delayed_entry_risk_geometry_payload,
     _delayed_entry_same_exit_payload,
     _drawdown_payload,
@@ -196,6 +197,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "delayed_entry_fixed_schedule_portfolio(" in source
     assert '"delayed_entry_mtm_portfolio": (' in source
     assert "delayed_entry_mtm_portfolio(" in source
+    assert '"delayed_entry_portfolio_capacity": (' in source
+    assert "delayed_entry_portfolio_capacity_overlay(" in source
     assert (
         '"delayed_entry_contribution_decomposition": (' in source
     )
@@ -995,6 +998,34 @@ def test_delayed_entry_mtm_portfolio_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: mtm portfolio boom"
+
+
+def test_delayed_entry_portfolio_capacity_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("capacity overlay boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.delayed_entry_portfolio_capacity_overlay",
+        fail,
+    )
+    payload = _delayed_entry_portfolio_capacity_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(
+            shadow=SimpleNamespace(outcomes=()),
+            error=None,
+        ),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        lambda _plan_id: None,
+        BaselineReplayConfig().risk_limits,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: capacity overlay boom"
 
 
 def test_delayed_entry_fill_weighted_telemetry_fails_open(
