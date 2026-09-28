@@ -4420,6 +4420,9 @@ async def run_continuous_paper_session(
                     paper_max_gross_leverage=(
                         replay_config.execution.paper_max_gross_leverage
                     ),
+                    native_perp_min_notional=(
+                        replay_config.execution.native_perp_min_notional
+                    ),
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
