@@ -46,6 +46,7 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.execution.accounting import PaperPosition
+from cocomelon.execution.funding import FundingAccrual
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
 from cocomelon.hyperliquid.normalize import (
@@ -2718,6 +2719,10 @@ def _delayed_entry_mtm_portfolio_payload(
     journal: JournalStore,
     delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
     trade_path_store: ContinuousPaperTradePathStore,
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
 ) -> dict[str, object]:
     if delayed_shadow.shadow is None:
         return {
@@ -2732,6 +2737,7 @@ def _delayed_entry_mtm_portfolio_payload(
             journal,
             delayed_shadow.shadow.outcomes,
             trade_path_store,
+            funding_loader,
         )
     except Exception as exc:
         return {
@@ -3432,6 +3438,12 @@ def _live_status_payload(
             pump.journal,
             delayed_entry_execution_shadow,
             trade_path_store,
+            lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
         )
     )
     delayed_entry_portfolio_capacity = (

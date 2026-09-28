@@ -2588,8 +2588,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "latest_observed_exact_path_mark_carried_forward"
             ),
             "entry_fee_timing_modeled": True,
-            "exit_fee_and_funding_settled_at_actual_close": True,
-            "intratrade_funding_timing_modeled": False,
+            "exit_fee_settled_at_actual_close": True,
+            "intratrade_funding_timing_modeled": True,
+            "funding_model": (
+                "exact_recorded_boundary_oracle_and_rate_with_"
+                "candidate_quantity_scaled_by_delayed_fill_fraction"
+            ),
             "replacement_trades_modeled": False,
             "changed_exit_timing_modeled": False,
             "closed_shadow_outcomes": 12,
@@ -2600,6 +2604,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "missing_journal_trades": 0,
             "missing_exact_paths": 1,
             "incomplete_exact_paths": 0,
+            "missing_funding_events": 0,
             "lineage_mismatches": 0,
             "actual": {
                 "final_realized_contribution": "-11",
@@ -2610,6 +2615,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "overlap_openings": 6,
                 "observation_events": 48,
                 "max_mark_carry_age_ms": 45000,
+                "funding_events": 3,
+                "funding_cash_pnl": "-2",
             },
             "candidate": {
                 "final_realized_contribution": "3",
@@ -2620,6 +2627,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "overlap_openings": 4,
                 "observation_events": 40,
                 "max_mark_carry_age_ms": 38000,
+                "funding_events": 2,
+                "funding_cash_pnl": "-1",
             },
             "delta_final_realized_contribution": "14",
             "delta_max_observed_equity_drawdown": "-11",
@@ -3617,10 +3626,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`12 / 9 / 2`" in output
     assert "candidate filled / no-fill positions" in output
     assert "`8 / 1`" in output
+    assert "missing journal / exact path / incomplete / funding / lineage" in output
+    assert "`0 / 1 / 0 / 0 / 0`" in output
     assert "actual / candidate observed equity drawdown / delta" in output
     assert "`21` / `10` / `-11`" in output
     assert "actual / candidate min observed equity contribution" in output
     assert "`-17 / -7`" in output
+    assert "actual / candidate funding events / cash" in output
+    assert "`3 / 2 / -2 / -1`" in output
     assert "actual / candidate max carried-mark age" in output
     assert "`45000ms / 38000ms`" in output
     assert "evidence gate closed / complete-path / overlap" in output
@@ -3628,6 +3641,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "still needed C/P/O" in output
     assert "`18 / 11 / 0`" in output
     assert "Observed-mark contribution equity only" in output
+    assert "funding is applied at exact recorded hourly boundaries" in output
     assert "### 60s delayed-entry portfolio capacity overlay" in output
     assert "fixed_observed_schedule_portfolio_capacity_overlay" in output
     assert (

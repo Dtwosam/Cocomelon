@@ -7,6 +7,10 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    funding_cash_delta,
+)
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePath,
@@ -29,9 +33,14 @@ def _trade(
     direction: Direction,
     opened_at_ms: int,
     closed_at_ms: int,
+    funding: tuple[FundingAccrual, ...] = (),
 ) -> TradeJournalEntry:
     entry = Decimal("100")
     quantity = Decimal("1")
+    funding_pnl = sum(
+        (item.cash_delta for item in funding),
+        Decimal("0"),
+    )
     return TradeJournalEntry(
         market=MARKET,
         direction=direction,
@@ -46,7 +55,9 @@ def _trade(
         exit_attempt_ids=(f"exit-attempt-{suffix}",),
         fill_ids=(f"fill-open-{suffix}", f"fill-exit-{suffix}"),
         position_action_ids=(f"action-{suffix}",),
-        funding_event_ids=(),
+        funding_event_ids=tuple(
+            item.accrual_id for item in funding
+        ),
         initial_stop=(
             Decimal("90")
             if direction is Direction.LONG
@@ -59,8 +70,8 @@ def _trade(
         gross_realized_pnl=Decimal("0"),
         entry_fees=Decimal("0"),
         exit_fees=Decimal("0"),
-        funding_cash_pnl=Decimal("0"),
-        net_pnl=Decimal("0"),
+        funding_cash_pnl=funding_pnl,
+        net_pnl=funding_pnl,
         entry_slippage_amount=Decimal("0"),
         exit_slippage_amount=Decimal("0"),
         entry_slippage_fraction=Decimal("0"),
@@ -68,14 +79,64 @@ def _trade(
         holding_duration_ms=closed_at_ms - opened_at_ms,
         mfe=None,
         mae=None,
-        net_r=Decimal("0"),
+        net_r=funding_pnl / Decimal("10"),
         equity_before=Decimal("10000"),
-        equity_after=Decimal("10000"),
+        equity_after=Decimal("10000") + funding_pnl,
         exit_reason="fixture",
         health_refs=("paper-state-healthy",),
         evidence_class=EvidenceClass.MICROSTRUCTURE,
         replay_run_id="continuous-paper-mainnet-v1",
     )
+
+
+def _funding(
+    *,
+    boundary_ms: int,
+    rate: str,
+    direction: Direction = Direction.LONG,
+    quantity: str = "1",
+) -> FundingAccrual:
+    absolute_quantity = Decimal(quantity)
+    signed_quantity = (
+        absolute_quantity
+        if direction is Direction.LONG
+        else -absolute_quantity
+    )
+    oracle_price = Decimal("100")
+    funding_rate = Decimal(rate)
+    return FundingAccrual(
+        market=MARKET,
+        boundary_ms=boundary_ms,
+        position_id=f"position-{boundary_ms}",
+        signed_quantity=signed_quantity,
+        oracle_price=oracle_price,
+        funding_rate=funding_rate,
+        cash_delta=funding_cash_delta(
+            signed_quantity,
+            oracle_price,
+            funding_rate,
+        ),
+        oracle_event_key=f"oracle-{boundary_ms}",
+        funding_source="fixture",
+        funding_received_at_ms=boundary_ms + 100,
+    )
+
+
+def _funding_loader(
+    *accruals: FundingAccrual,
+):
+    def load(
+        market: MarketId,
+        start_ms: int,
+    ) -> tuple[FundingAccrual, ...]:
+        return tuple(
+            item
+            for item in accruals
+            if item.market == market
+            and item.boundary_ms >= start_ms
+        )
+
+    return load
 
 
 def _path(
@@ -192,6 +253,7 @@ def test_mtm_portfolio_exposes_intratrade_drawdown_difference(
                 ),
             ),
             paths,
+            _funding_loader(),
         )
     finally:
         journal.close()
@@ -253,6 +315,7 @@ def test_mtm_portfolio_ignores_marks_before_delayed_open(
                 ),
             ),
             paths,
+            _funding_loader(),
         )
     finally:
         journal.close()
@@ -297,6 +360,7 @@ def test_mtm_portfolio_no_fill_has_no_candidate_exposure(
                 ),
             ),
             paths,
+            _funding_loader(),
         )
     finally:
         journal.close()
@@ -343,6 +407,7 @@ def test_mtm_portfolio_incomplete_path_blocks_review(
                 ),
             ),
             paths,
+            _funding_loader(),
         )
     finally:
         journal.close()
@@ -352,3 +417,165 @@ def test_mtm_portfolio_incomplete_path_blocks_review(
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
     assert readiness["ready_for_review"] is False
+
+
+
+def test_mtm_portfolio_replays_funding_at_crossed_boundaries(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    first = _funding(boundary_ms=3_600_000, rate="0.01")
+    second = _funding(boundary_ms=7_200_000, rate="0.02")
+    try:
+        trade = _trade(
+            suffix="funding-timing",
+            direction=Direction.LONG,
+            opened_at_ms=3_550_000,
+            closed_at_ms=7_300_000,
+            funding=(first, second),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                (
+                    (4_000_000, "100"),
+                    (7_250_000, "100"),
+                ),
+            )
+        )
+
+        result = delayed_entry_mtm_portfolio(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="full_visible_book_ioc",
+                    quantity="1",
+                    price="100",
+                ),
+            ),
+            paths,
+            _funding_loader(first, second),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    candidate = result["candidate"]
+    assert isinstance(actual, dict)
+    assert isinstance(candidate, dict)
+    assert result["intratrade_funding_timing_modeled"] is True
+    assert actual["funding_events"] == 2
+    assert candidate["funding_events"] == 1
+    assert Decimal(str(actual["funding_cash_pnl"])) == Decimal("-3")
+    assert Decimal(str(candidate["funding_cash_pnl"])) == Decimal("-2")
+    assert Decimal(
+        str(actual["final_realized_contribution"])
+    ) == Decimal("-3")
+    assert Decimal(
+        str(candidate["final_realized_contribution"])
+    ) == Decimal("-2")
+    assert Decimal(
+        str(result["delta_final_realized_contribution"])
+    ) == Decimal("1")
+
+
+def test_mtm_portfolio_missing_funding_event_blocks_review(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    funding = _funding(boundary_ms=3_600_000, rate="0.01")
+    try:
+        trade = _trade(
+            suffix="missing-funding",
+            direction=Direction.LONG,
+            opened_at_ms=3_500_000,
+            closed_at_ms=4_000_000,
+            funding=(funding,),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((3_800_000, "100"),),
+            )
+        )
+
+        result = delayed_entry_mtm_portfolio(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="full_visible_book_ioc",
+                    quantity="1",
+                    price="100",
+                ),
+            ),
+            paths,
+            _funding_loader(),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_funding_events"] == 1
+    assert result["evaluated_complete_path_trades"] == 0
+    assert readiness["ready_for_review"] is False
+
+
+
+def test_mtm_candidate_funding_scales_recorded_boundary_quantity(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    funding = _funding(
+        boundary_ms=3_600_000,
+        rate="0.01",
+        quantity="0.5",
+    )
+    try:
+        trade = _trade(
+            suffix="reduced-funding",
+            direction=Direction.LONG,
+            opened_at_ms=3_500_000,
+            closed_at_ms=4_000_000,
+            funding=(funding,),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((3_800_000, "100"),),
+            )
+        )
+
+        result = delayed_entry_mtm_portfolio(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="partial_visible_book_ioc",
+                    quantity="0.5",
+                    price="100",
+                ),
+            ),
+            paths,
+            _funding_loader(funding),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    candidate = result["candidate"]
+    assert isinstance(actual, dict)
+    assert isinstance(candidate, dict)
+    assert Decimal(str(actual["funding_cash_pnl"])) == Decimal("-0.5")
+    assert Decimal(str(candidate["funding_cash_pnl"])) == Decimal("-0.25")
+    assert Decimal(
+        str(candidate["final_realized_contribution"])
+    ) == Decimal("-0.25")

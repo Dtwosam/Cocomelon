@@ -2017,3 +2017,21 @@ The delayed-entry portfolio capacity study now replays the paper planner's nativ
 This is research-only accounting. It does not change paper strategy selection, risk limits, order sizing, fills, stops, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry MTM funding-timing replay — 2026-09-28
+
+The 60-second delayed-entry mark-to-market portfolio shadow now applies funding at the exact recorded funding boundaries instead of settling a proportional funding estimate at the actual close.
+
+- each journal trade's `funding_event_ids` must resolve to immutable paper execution funding accruals for the same market and lifecycle;
+- stored funding cash deltas are revalidated from signed quantity, recorded oracle price, and recorded funding rate before use;
+- actual portfolio equity receives each verified accrual at its recorded hourly boundary;
+- a delayed candidate receives only boundaries strictly after its delayed open and through the unchanged actual close;
+- candidate funding quantity is the recorded boundary quantity scaled by the delayed IOC fill fraction, preserving proportional actual reduction state without inventing a new reduction path;
+- funding that occurred before the delayed candidate existed is no longer smeared into its close PnL;
+- missing funding accrual lineage is an explicit readiness gap; inconsistent accrual economics remain a lineage mismatch;
+- entry fees remain timed at open and exit fees remain settled at the unchanged actual close; replacement trades and changed exit timing are still not modeled.
+
+This is research-only accounting. It does not alter paper funding reconciliation, strategy selection, fills, sizing, exits, execution cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**

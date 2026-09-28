@@ -1381,10 +1381,11 @@ def _delayed_entry_mtm_portfolio_lines(
                 f"{raw.get('unresolved_outcomes', 0)}`"
             ),
             (
-                "- missing journal / exact path / incomplete / lineage: "
+                "- missing journal / exact path / incomplete / funding / lineage: "
                 f"`{raw.get('missing_journal_trades', 0)} / "
                 f"{raw.get('missing_exact_paths', 0)} / "
                 f"{raw.get('incomplete_exact_paths', 0)} / "
+                f"{raw.get('missing_funding_events', 0)} / "
                 f"{raw.get('lineage_mismatches', 0)}`"
             ),
             (
@@ -1408,6 +1409,13 @@ def _delayed_entry_mtm_portfolio_lines(
                 "- actual / candidate min observed equity contribution: "
                 f"`{actual.get('min_observed_equity_contribution', '0')} / "
                 f"{candidate.get('min_observed_equity_contribution', '0')}`"
+            ),
+            (
+                "- actual / candidate funding events / cash: "
+                f"`{actual.get('funding_events', 0)} / "
+                f"{candidate.get('funding_events', 0)} / "
+                f"{actual.get('funding_cash_pnl', '0')} / "
+                f"{candidate.get('funding_cash_pnl', '0')}`"
             ),
             (
                 "- actual / candidate max concurrent positions: "
@@ -1443,10 +1451,9 @@ def _delayed_entry_mtm_portfolio_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Observed-mark contribution equity only. Entry fees are timed "
-                "at open and exit fees/funding settle at the actual close; "
-                "intratrade funding timing, replacement trades, and changed "
-                "exit timing are not modeled._"
+                "_Observed-mark contribution equity only; funding is applied "
+                "at exact recorded hourly boundaries. No replacement trades or "
+                "changed exits are modeled._"
             ),
         ]
     )

@@ -1061,6 +1061,7 @@ def test_delayed_entry_mtm_portfolio_fails_open(
             error=None,
         ),  # type: ignore[arg-type]
         SimpleNamespace(),  # type: ignore[arg-type]
+        lambda _market, _start_ms: (),
     )
 
     assert payload["enabled"] is False
