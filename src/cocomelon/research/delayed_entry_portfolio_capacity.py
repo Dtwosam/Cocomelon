@@ -1134,13 +1134,19 @@ def delayed_entry_portfolio_capacity_overlay(
                 "fixed_observed_schedule_portfolio_capacity_overlay"
             ),
             "delay_ms": delay_ms,
+            "margin_evidence_start_ms": margin_evidence_start_ms,
             "changed_admissions_modeled": True,
             "admission_policy": (
                 "reject_opening_when_configured_capacity_ceiling_breached"
             ),
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
-            "available_margin_capacity_modeled": False,
+            "available_margin_capacity_modeled": (
+                margin_evidence_start_ms is not None
+            ),
+            "venue_adjusted_gross_capacity_modeled": (
+                margin_evidence_start_ms is not None
+            ),
             "visible_liquidity_capacity_modeled": False,
             "liquidation_buffer_modeled": False,
             "closed_shadow_outcomes": len(outcomes),
@@ -1186,6 +1192,23 @@ def delayed_entry_portfolio_capacity_overlay(
                 "min_candidate_overlap_openings": (
                     MIN_CANDIDATE_OVERLAP_OPENINGS
                 ),
+                "min_margin_evaluable_candidate_openings": (
+                    MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS
+                ),
+                "min_margin_evaluable_candidate_overlaps": (
+                    MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS
+                ),
+                "missing_margin_evaluable_candidate_openings": (
+                    0
+                    if margin_evidence_start_ms is None
+                    else MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS
+                ),
+                "missing_margin_evaluable_candidate_overlaps": (
+                    0
+                    if margin_evidence_start_ms is None
+                    else MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS
+                ),
+                "margin_lineage_complete": True,
                 "missing_closed_shadow_outcomes": max(
                     0,
                     MIN_CLOSED_SHADOW_OUTCOMES - len(outcomes),
@@ -1486,6 +1509,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "fixed_observed_schedule_portfolio_capacity_overlay"
         ),
         "delay_ms": delay_ms,
+        "margin_evidence_start_ms": margin_evidence_start_ms,
         "reference_equity": str(reference_equity),
         "correlation_bucket_assumption": (
             "single_runtime_configured_bucket"
@@ -1501,6 +1525,9 @@ def delayed_entry_portfolio_capacity_overlay(
             "max_gross_leverage": str(
                 limits.max_gross_leverage
             ),
+            "max_available_margin_fraction": str(
+                limits.max_available_margin_fraction
+            ),
         },
         "changed_admissions_modeled": True,
         "admission_policy": (
@@ -1508,7 +1535,9 @@ def delayed_entry_portfolio_capacity_overlay(
         ),
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
-        "available_margin_capacity_modeled": False,
+        "available_margin_capacity_modeled": margin_enabled,
+        "venue_adjusted_gross_capacity_modeled": margin_enabled,
+        "margin_lineage_complete": margin_lineage_complete,
         "visible_liquidity_capacity_modeled": False,
         "liquidation_buffer_modeled": False,
         "closed_shadow_outcomes": len(outcomes),
@@ -1545,6 +1574,27 @@ def delayed_entry_portfolio_capacity_overlay(
             "min_candidate_overlap_openings": (
                 MIN_CANDIDATE_OVERLAP_OPENINGS
             ),
+            "min_margin_evaluable_candidate_openings": (
+                MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS
+            ),
+            "min_margin_evaluable_candidate_overlaps": (
+                MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS
+            ),
+            "missing_margin_evaluable_candidate_openings": max(
+                0,
+                MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS
+                - margin_evaluable_candidates,
+            )
+            if margin_enabled
+            else 0,
+            "missing_margin_evaluable_candidate_overlaps": max(
+                0,
+                MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS
+                - margin_evaluable_overlaps,
+            )
+            if margin_enabled
+            else 0,
+            "margin_lineage_complete": margin_lineage_complete,
             "missing_closed_shadow_outcomes": max(
                 0,
                 MIN_CLOSED_SHADOW_OUTCOMES - len(outcomes),
