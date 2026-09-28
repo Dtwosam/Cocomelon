@@ -224,6 +224,7 @@ def test_open_path_checkpoint_rejects_identity_drift(
             opening_plan_id="plan-open",
             market=MARKET,
             opened_at_ms=999,
+            venue_max_leverage=Decimal("20"),
             mark_observations=(),
         )
 
