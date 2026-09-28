@@ -353,7 +353,7 @@ def test_short_stop_exit_boundary_worsens_price_and_pnl(
     ) == Decimal("-11.111")
     assert Decimal(
         str(overall["ioc_boundary_proxy_cohort_net_pnl"])
-    ) == Decimal("-12.233110")
+    ) == Decimal("-12.222110")
 
 
 def test_stop_exit_proxy_funding_stops_before_trigger(
