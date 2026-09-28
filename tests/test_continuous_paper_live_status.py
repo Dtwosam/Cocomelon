@@ -2652,7 +2652,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "correlation_bucket_risk_limit": "0.005",
                 "max_gross_leverage": "3",
             },
-            "changed_admissions_modeled": False,
+            "changed_admissions_modeled": True,
+            "admission_policy": (
+                "reject_opening_when_configured_capacity_ceiling_breached"
+            ),
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
             "closed_shadow_outcomes": 12,
@@ -2699,6 +2702,47 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "min_correlation_bucket_risk_headroom": "-1",
                 "min_gross_notional_headroom": "28500",
             },
+            "actual_admission": {
+                "opening_opportunities": 10,
+                "overlap_opening_opportunities": 6,
+                "admitted_openings": 10,
+                "rejected_openings": 0,
+                "delayed_candidate_admitted": 0,
+                "delayed_candidate_rejected": 0,
+                "observed_schedule_admitted": 10,
+                "observed_schedule_rejected": 0,
+                "aggregate_risk_rejections": 0,
+                "correlation_bucket_risk_rejections": 0,
+                "gross_leverage_rejections": 0,
+                "non_positive_equity_rejections": 0,
+                "max_concurrent_positions": 4,
+                "max_admitted_aggregate_risk_utilization": "0.66",
+                "max_admitted_correlation_bucket_risk_utilization": "0.99",
+                "max_admitted_gross_leverage": "0.18",
+                "final_realized_contribution": "-11",
+            },
+            "candidate_admission": {
+                "opening_opportunities": 10,
+                "overlap_opening_opportunities": 4,
+                "admitted_openings": 8,
+                "rejected_openings": 2,
+                "delayed_candidate_admitted": 7,
+                "delayed_candidate_rejected": 1,
+                "observed_schedule_admitted": 1,
+                "observed_schedule_rejected": 1,
+                "aggregate_risk_rejections": 0,
+                "correlation_bucket_risk_rejections": 2,
+                "gross_leverage_rejections": 0,
+                "non_positive_equity_rejections": 0,
+                "max_concurrent_positions": 3,
+                "max_admitted_aggregate_risk_utilization": "0.64",
+                "max_admitted_correlation_bucket_risk_utilization": "0.96",
+                "max_admitted_gross_leverage": "0.15",
+                "final_realized_contribution": "5",
+            },
+            "fixed_candidate_final_realized_contribution": "3",
+            "admitted_candidate_final_realized_contribution": "5",
+            "admission_delta_vs_fixed_schedule": "2",
             "readiness": {
                 "ready_for_review": False,
                 "min_closed_shadow_outcomes": 30,
@@ -3277,8 +3321,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     )
     assert (
         "| 60s delayed capacity overlay | collecting | "
-        "closed=12, fills=8, overlap=4 | "
-        "viol=2, unresolved=2, missing=0/0/1, incomplete=0, mismatch=0 |"
+        "closed=12, fills=8, overlap=4, admit/reject=8/2 | "
+        "viol=2, actualrej=0, unresolved=2, missing=0/0/1, "
+        "incomplete=0, mismatch=0 |"
         in output
     )
     assert (
@@ -3548,11 +3593,28 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`0.68 / 1.02 / 0.16`" in output
     assert "candidate min headroom aggregate / bucket / gross notional" in output
     assert "`20 / -1 / 28500`" in output
+    assert "causal admissions modeled / replacement trades modeled" in output
+    assert "`true / false`" in output
+    assert "actual admission admitted / rejected" in output
+    assert "`10 / 0`" in output
+    assert "candidate admission admitted / rejected" in output
+    assert "`8 / 2`" in output
+    assert "candidate delayed admitted / rejected" in output
+    assert "`7 / 1`" in output
+    assert "candidate observed-schedule admitted / rejected" in output
+    assert "`1 / 1`" in output
+    assert "candidate admission rejection causes aggregate / bucket / leverage" in output
+    assert "`0 / 2 / 0 / 0`" in output
+    assert "candidate admitted max utilization aggregate / bucket / leverage" in output
+    assert "`0.64 / 0.96 / 0.15`" in output
+    assert "fixed / admitted candidate realized contribution / admission Δ" in output
+    assert "`3 / 5 / 2`" in output
     assert "evidence gate closed / candidate fills / candidate overlap" in output
     assert "`30 / 20 / 5`" in output
     assert "still needed C/F/O" in output
     assert "`18 / 12 / 1`" in output
-    assert "Diagnostic overlay only" in output
+    assert "The fixed overlay still reports every opening opportunity" in output
+    assert "causal admission shadow separately skips any opening" in output
     assert "### 60s delayed-entry contribution decomposition" in output
     assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
     assert "price / entry-fee / exposure / total Δ PnL" in output

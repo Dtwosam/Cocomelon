@@ -523,6 +523,216 @@ def _capacity_timeline(
     }
 
 
+def _admission_timeline(
+    positions: tuple[_Position, ...],
+    *,
+    reference_equity: Decimal,
+    limits: RiskLimits,
+) -> dict[str, object]:
+    if not reference_equity.is_finite() or reference_equity <= ZERO:
+        raise DelayedEntryCapacityOverlayError(
+            "reference equity must be positive"
+        )
+
+    active: dict[str, _Active] = {}
+    rejected: set[str] = set()
+    realized = ZERO
+    opening_opportunities = 0
+    overlap_opportunities = 0
+    admitted_openings = 0
+    rejected_openings = 0
+    delayed_admitted = 0
+    delayed_rejected = 0
+    observed_admitted = 0
+    observed_rejected = 0
+    aggregate_rejections = 0
+    bucket_rejections = 0
+    leverage_rejections = 0
+    non_positive_equity_rejections = 0
+    max_concurrent_positions = 0
+    max_admitted_aggregate_utilization = ZERO
+    max_admitted_bucket_utilization = ZERO
+    max_admitted_gross_leverage = ZERO
+
+    for event in _position_events(positions):
+        if event.kind == "close":
+            item = active.pop(event.trade_id, None)
+            if item is not None:
+                realized += item.position.close_realized_increment
+                continue
+            if event.trade_id in rejected:
+                rejected.remove(event.trade_id)
+                continue
+            raise DelayedEntryCapacityOverlayError(
+                "admission close has no tracked position"
+            )
+
+        if event.kind == "mark":
+            item = active.get(event.trade_id)
+            if item is None:
+                continue
+            mark_px = event.mark_px
+            if mark_px is None:
+                raise DelayedEntryCapacityOverlayError(
+                    "admission mark is missing price"
+                )
+            item.latest_mark = mark_px
+            continue
+
+        position = event.position
+        if position is None:
+            raise DelayedEntryCapacityOverlayError(
+                "admission open is missing position"
+            )
+        if (
+            position.trade_id in active
+            or position.trade_id in rejected
+        ):
+            raise DelayedEntryCapacityOverlayError(
+                "admission position opened twice"
+            )
+
+        opening_opportunities += 1
+        if active:
+            overlap_opportunities += 1
+
+        unrealized = sum(
+            (_unrealized(item) for item in active.values()),
+            ZERO,
+        )
+        equity = reference_equity + realized + unrealized
+        existing_risk = sum(
+            (
+                item.position.planned_risk
+                for item in active.values()
+            ),
+            ZERO,
+        )
+        existing_notional = sum(
+            (_gross_notional(item) for item in active.values()),
+            ZERO,
+        )
+        after_risk = existing_risk + position.planned_risk
+        after_notional = (
+            existing_notional
+            + position.entry_price * position.quantity
+        )
+
+        if equity <= ZERO:
+            aggregate_bad = True
+            bucket_bad = True
+            leverage_bad = True
+            non_positive_equity_rejections += 1
+        else:
+            aggregate_ceiling = equity * limits.max_open_risk
+            bucket_ceiling = (
+                equity * limits.correlation_bucket_risk_limit
+            )
+            gross_ceiling = equity * limits.max_gross_leverage
+            aggregate_bad = after_risk > aggregate_ceiling
+            bucket_bad = after_risk > bucket_ceiling
+            leverage_bad = after_notional > gross_ceiling
+
+        rejected_now = (
+            aggregate_bad
+            or bucket_bad
+            or leverage_bad
+        )
+        if rejected_now:
+            rejected_openings += 1
+            rejected.add(position.trade_id)
+            if position.opening_kind == "delayed_candidate":
+                delayed_rejected += 1
+            else:
+                observed_rejected += 1
+            if aggregate_bad:
+                aggregate_rejections += 1
+            if bucket_bad:
+                bucket_rejections += 1
+            if leverage_bad:
+                leverage_rejections += 1
+            continue
+
+        admitted_openings += 1
+        if position.opening_kind == "delayed_candidate":
+            delayed_admitted += 1
+        else:
+            observed_admitted += 1
+        if equity > ZERO:
+            max_admitted_aggregate_utilization = max(
+                max_admitted_aggregate_utilization,
+                after_risk / (equity * limits.max_open_risk),
+            )
+            max_admitted_bucket_utilization = max(
+                max_admitted_bucket_utilization,
+                after_risk
+                / (
+                    equity
+                    * limits.correlation_bucket_risk_limit
+                ),
+            )
+            max_admitted_gross_leverage = max(
+                max_admitted_gross_leverage,
+                after_notional / equity,
+            )
+
+        realized -= position.entry_fee
+        active[position.trade_id] = _Active(
+            position=position,
+            latest_mark=position.entry_price,
+        )
+        max_concurrent_positions = max(
+            max_concurrent_positions,
+            len(active),
+        )
+
+    if active or rejected:
+        raise DelayedEntryCapacityOverlayError(
+            "admission timeline did not finish flat"
+        )
+
+    return {
+        "opening_opportunities": opening_opportunities,
+        "overlap_opening_opportunities": overlap_opportunities,
+        "admitted_openings": admitted_openings,
+        "rejected_openings": rejected_openings,
+        "delayed_candidate_admitted": delayed_admitted,
+        "delayed_candidate_rejected": delayed_rejected,
+        "observed_schedule_admitted": observed_admitted,
+        "observed_schedule_rejected": observed_rejected,
+        "aggregate_risk_rejections": aggregate_rejections,
+        "correlation_bucket_risk_rejections": bucket_rejections,
+        "gross_leverage_rejections": leverage_rejections,
+        "non_positive_equity_rejections": (
+            non_positive_equity_rejections
+        ),
+        "max_concurrent_positions": max_concurrent_positions,
+        "max_admitted_aggregate_risk_utilization": str(
+            max_admitted_aggregate_utilization
+        ),
+        "max_admitted_correlation_bucket_risk_utilization": str(
+            max_admitted_bucket_utilization
+        ),
+        "max_admitted_gross_leverage": str(
+            max_admitted_gross_leverage
+        ),
+        "final_realized_contribution": str(realized),
+    }
+
+
+def _fixed_realized_contribution(
+    positions: tuple[_Position, ...],
+) -> Decimal:
+    return sum(
+        (
+            position.close_realized_increment
+            - position.entry_fee
+            for position in positions
+        ),
+        ZERO,
+    )
+
+
 def _actual_position(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, Decimal], ...],
@@ -586,6 +796,15 @@ def delayed_entry_portfolio_capacity_overlay(
                 "fixed_observed_schedule_portfolio_capacity_overlay"
             ),
             "delay_ms": delay_ms,
+            "changed_admissions_modeled": True,
+            "admission_policy": (
+                "reject_opening_when_configured_capacity_ceiling_breached"
+            ),
+            "replacement_trades_modeled": False,
+            "intratrade_funding_timing_modeled": False,
+            "available_margin_capacity_modeled": False,
+            "visible_liquidity_capacity_modeled": False,
+            "liquidation_buffer_modeled": False,
             "closed_shadow_outcomes": len(outcomes),
             "candidate_filled_positions": 0,
             "background_positions": 0,
@@ -605,6 +824,19 @@ def delayed_entry_portfolio_capacity_overlay(
                 reference_equity=Decimal("1"),
                 limits=limits,
             ),
+            "actual_admission": _admission_timeline(
+                (),
+                reference_equity=Decimal("1"),
+                limits=limits,
+            ),
+            "candidate_admission": _admission_timeline(
+                (),
+                reference_equity=Decimal("1"),
+                limits=limits,
+            ),
+            "fixed_candidate_final_realized_contribution": "0",
+            "admitted_candidate_final_realized_contribution": "0",
+            "admission_delta_vs_fixed_schedule": "0",
             "readiness": {
                 "ready_for_review": False,
                 "min_closed_shadow_outcomes": (
@@ -775,10 +1007,28 @@ def delayed_entry_portfolio_capacity_overlay(
         reference_equity=reference_equity,
         limits=limits,
     )
+    candidate_tuple = tuple(candidate_positions)
+    actual_tuple = tuple(actual_positions)
     candidate = _capacity_timeline(
-        tuple(candidate_positions),
+        candidate_tuple,
         reference_equity=reference_equity,
         limits=limits,
+    )
+    actual_admission = _admission_timeline(
+        actual_tuple,
+        reference_equity=reference_equity,
+        limits=limits,
+    )
+    candidate_admission = _admission_timeline(
+        candidate_tuple,
+        reference_equity=reference_equity,
+        limits=limits,
+    )
+    fixed_candidate_final = _fixed_realized_contribution(
+        candidate_tuple
+    )
+    admitted_candidate_final = Decimal(
+        str(candidate_admission["final_realized_contribution"])
     )
 
     actual_violations_raw = actual["capacity_violations"]
@@ -794,6 +1044,19 @@ def delayed_entry_portfolio_capacity_overlay(
         )
     actual_violations = actual_violations_raw
     candidate_overlap = candidate_overlap_raw
+    actual_admission_rejections_raw = actual_admission[
+        "rejected_openings"
+    ]
+    if (
+        isinstance(actual_admission_rejections_raw, bool)
+        or not isinstance(actual_admission_rejections_raw, int)
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "actual admission rejection count must be integer"
+        )
+    actual_admission_rejections = (
+        actual_admission_rejections_raw
+    )
     ready = (
         len(outcomes) >= MIN_CLOSED_SHADOW_OUTCOMES
         and candidate_filled >= MIN_CANDIDATE_FILLED_POSITIONS
@@ -805,6 +1068,7 @@ def delayed_entry_portfolio_capacity_overlay(
         and incomplete_paths == 0
         and lineage_mismatches == 0
         and actual_violations == 0
+        and actual_admission_rejections == 0
     )
 
     return {
@@ -828,7 +1092,10 @@ def delayed_entry_portfolio_capacity_overlay(
                 limits.max_gross_leverage
             ),
         },
-        "changed_admissions_modeled": False,
+        "changed_admissions_modeled": True,
+        "admission_policy": (
+            "reject_opening_when_configured_capacity_ceiling_breached"
+        ),
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
         "available_margin_capacity_modeled": False,
@@ -846,6 +1113,17 @@ def delayed_entry_portfolio_capacity_overlay(
         "lineage_mismatches": lineage_mismatches,
         "actual": actual,
         "candidate": candidate,
+        "actual_admission": actual_admission,
+        "candidate_admission": candidate_admission,
+        "fixed_candidate_final_realized_contribution": str(
+            fixed_candidate_final
+        ),
+        "admitted_candidate_final_realized_contribution": str(
+            admitted_candidate_final
+        ),
+        "admission_delta_vs_fixed_schedule": str(
+            admitted_candidate_final - fixed_candidate_final
+        ),
         "readiness": {
             "ready_for_review": ready,
             "min_closed_shadow_outcomes": (

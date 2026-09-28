@@ -66,8 +66,10 @@ def _trade(
     opened_at_ms: int,
     closed_at_ms: int,
     quantity: str = "2.5",
+    pnl: str = "0",
 ) -> TradeJournalEntry:
     qty = Decimal(quantity)
+    net_pnl = Decimal(pnl)
     opening_plan = _plan_for(
         suffix=suffix,
         market=market,
@@ -92,13 +94,13 @@ def _trade(
         initial_stop=Decimal("90"),
         initial_risk_amount=Decimal("25"),
         entry_price=Decimal("100"),
-        exit_price=Decimal("100"),
+        exit_price=Decimal("100") + net_pnl / qty,
         filled_quantity=qty,
-        gross_realized_pnl=Decimal("0"),
+        gross_realized_pnl=net_pnl,
         entry_fees=Decimal("0"),
         exit_fees=Decimal("0"),
         funding_cash_pnl=Decimal("0"),
-        net_pnl=Decimal("0"),
+        net_pnl=net_pnl,
         entry_slippage_amount=Decimal("0"),
         exit_slippage_amount=Decimal("0"),
         entry_slippage_fraction=Decimal("0"),
@@ -106,9 +108,9 @@ def _trade(
         holding_duration_ms=closed_at_ms - opened_at_ms,
         mfe=None,
         mae=None,
-        net_r=Decimal("0"),
+        net_r=net_pnl / Decimal("25"),
         equity_before=Decimal("10000"),
-        equity_after=Decimal("10000"),
+        equity_after=Decimal("10000") + net_pnl,
         exit_reason="fixture",
         health_refs=("paper-state-healthy",),
         evidence_class=EvidenceClass.MICROSTRUCTURE,
@@ -246,6 +248,84 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
     assert Decimal(
         str(delayed["min_correlation_bucket_risk_headroom"])
     ) < Decimal("0")
+    actual_admission = result["actual_admission"]
+    candidate_admission = result["candidate_admission"]
+    assert isinstance(actual_admission, dict)
+    assert isinstance(candidate_admission, dict)
+    assert actual_admission["rejected_openings"] == 0
+    assert candidate_admission["rejected_openings"] == 1
+    assert candidate_admission["delayed_candidate_rejected"] == 1
+    assert candidate_admission["observed_schedule_admitted"] == 1
+    assert result["changed_admissions_modeled"] is True
+
+
+def test_admission_shadow_can_reject_later_background_opening(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        later_background = _trade(
+            suffix="later-background",
+            market=BACKGROUND,
+            opened_at_ms=170_000,
+            closed_at_ms=300_000,
+            pnl="-10",
+        )
+        journal.record_trade(candidate)
+        journal.record_trade(later_background)
+        paths.record(
+            _path(
+                candidate,
+                ((200_000, "100"),),
+            )
+        )
+        paths.record(
+            _path(
+                later_background,
+                ((220_000, "100"),),
+            )
+        )
+        plan = _plan(candidate)
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate, price="101"),),
+            paths,
+            lambda plan_id: (
+                plan if plan_id == candidate.opening_plan_id else None
+            ),
+            limits=RiskLimits(),
+        )
+    finally:
+        journal.close()
+
+    actual_admission = result["actual_admission"]
+    candidate_admission = result["candidate_admission"]
+    assert isinstance(actual_admission, dict)
+    assert isinstance(candidate_admission, dict)
+    assert actual_admission["rejected_openings"] == 0
+    assert candidate_admission["delayed_candidate_admitted"] == 1
+    assert candidate_admission["observed_schedule_rejected"] == 1
+    assert candidate_admission["rejected_openings"] == 1
+    assert candidate_admission[
+        "correlation_bucket_risk_rejections"
+    ] == 1
+    assert candidate_admission["max_concurrent_positions"] == 1
+    assert Decimal(
+        str(result["fixed_candidate_final_realized_contribution"])
+    ) == Decimal("-12.5")
+    assert Decimal(
+        str(result["admitted_candidate_final_realized_contribution"])
+    ) == Decimal("-2.5")
+    assert Decimal(
+        str(result["admission_delta_vs_fixed_schedule"])
+    ) == Decimal("10")
 
 
 def test_capacity_overlay_detects_candidate_gross_leverage_violation(

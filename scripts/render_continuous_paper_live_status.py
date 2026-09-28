@@ -1235,7 +1235,6 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
         candidate = {}
     if not isinstance(readiness, dict):
         readiness = {}
-
     lines.extend(
         [
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
@@ -1479,16 +1478,26 @@ def _delayed_entry_portfolio_capacity_lines(
 
     actual = raw.get("actual", {})
     candidate = raw.get("candidate", {})
+    actual_admission = raw.get("actual_admission", {})
+    candidate_admission = raw.get("candidate_admission", {})
     limits = raw.get("limits", {})
     readiness = raw.get("readiness", {})
     if not isinstance(actual, dict):
         actual = {}
     if not isinstance(candidate, dict):
         candidate = {}
+    if not isinstance(actual_admission, dict):
+        actual_admission = {}
+    if not isinstance(candidate_admission, dict):
+        candidate_admission = {}
     if not isinstance(limits, dict):
         limits = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    admitted_bucket_utilization = candidate_admission.get(
+        "max_admitted_correlation_bucket_risk_utilization",
+        "0",
+    )
 
     lines.extend(
         [
@@ -1549,6 +1558,51 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{candidate.get('min_gross_notional_headroom', '0')}`"
             ),
             (
+                "- causal admissions modeled / replacement trades modeled: "
+                f"`{str(bool(raw.get('changed_admissions_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_trades_modeled'))).lower()}`"
+            ),
+            (
+                "- actual admission admitted / rejected: "
+                f"`{actual_admission.get('admitted_openings', 0)} / "
+                f"{actual_admission.get('rejected_openings', 0)}`"
+            ),
+            (
+                "- candidate admission admitted / rejected: "
+                f"`{candidate_admission.get('admitted_openings', 0)} / "
+                f"{candidate_admission.get('rejected_openings', 0)}`"
+            ),
+            (
+                "- candidate delayed admitted / rejected: "
+                f"`{candidate_admission.get('delayed_candidate_admitted', 0)} / "
+                f"{candidate_admission.get('delayed_candidate_rejected', 0)}`"
+            ),
+            (
+                "- candidate observed-schedule admitted / rejected: "
+                f"`{candidate_admission.get('observed_schedule_admitted', 0)} / "
+                f"{candidate_admission.get('observed_schedule_rejected', 0)}`"
+            ),
+            (
+                "- candidate admission rejection causes aggregate / bucket / "
+                "leverage / non-positive-equity: "
+                f"`{candidate_admission.get('aggregate_risk_rejections', 0)} / "
+                f"{candidate_admission.get('correlation_bucket_risk_rejections', 0)} / "
+                f"{candidate_admission.get('gross_leverage_rejections', 0)} / "
+                f"{candidate_admission.get('non_positive_equity_rejections', 0)}`"
+            ),
+            (
+                "- candidate admitted max utilization aggregate / bucket / leverage: "
+                f"`{candidate_admission.get('max_admitted_aggregate_risk_utilization', '0')} / "
+                f"{admitted_bucket_utilization} / "
+                f"{candidate_admission.get('max_admitted_gross_leverage', '0')}`"
+            ),
+            (
+                "- fixed / admitted candidate realized contribution / admission Δ: "
+                f"`{raw.get('fixed_candidate_final_realized_contribution', '0')} / "
+                f"{raw.get('admitted_candidate_final_realized_contribution', '0')} / "
+                f"{raw.get('admission_delta_vs_fixed_schedule', '0')}`"
+            ),
+            (
                 "- evidence gate closed / candidate fills / candidate overlap: "
                 f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
                 f"{readiness.get('min_candidate_filled_positions', 0)} / "
@@ -1567,12 +1621,13 @@ def _delayed_entry_portfolio_capacity_lines(
             "- promotion authority: `false`",
             "",
             (
-                "_Diagnostic overlay only. It checks aggregate, "
-                "shared-bucket, and gross-leverage ceilings; violations are "
-                "not silently resized. Available-margin, visible-liquidity, "
-                "and liquidation-buffer caps are not replayed. Background "
-                "openings stay observed, so this is not a full alternate "
-                "admission replay._"
+                "_The fixed overlay still reports every opening opportunity. "
+                "The causal admission shadow separately skips any opening that "
+                "would breach aggregate risk, the shared bucket, or gross "
+                "leverage, then evaluates later openings against the surviving "
+                "portfolio. It does not invent replacement trades, changed exits, "
+                "available-margin capacity, visible-liquidity capacity, or "
+                "liquidation-buffer rules._"
             ),
         ]
     )
@@ -4802,6 +4857,18 @@ def _research_readiness_board_lines(
     delayed_capacity_candidate = delayed_capacity.get("candidate", {})
     if not isinstance(delayed_capacity_candidate, dict):
         delayed_capacity_candidate = {}
+    delayed_capacity_actual_admission = delayed_capacity.get(
+        "actual_admission",
+        {},
+    )
+    delayed_capacity_candidate_admission = delayed_capacity.get(
+        "candidate_admission",
+        {},
+    )
+    if not isinstance(delayed_capacity_actual_admission, dict):
+        delayed_capacity_actual_admission = {}
+    if not isinstance(delayed_capacity_candidate_admission, dict):
+        delayed_capacity_candidate_admission = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -5104,10 +5171,15 @@ def _research_readiness_board_lines(
             (
                 f"closed={delayed_capacity.get('closed_shadow_outcomes', 0)}, "
                 f"fills={delayed_capacity.get('candidate_filled_positions', 0)}, "
-                f"overlap={delayed_capacity_candidate.get('overlap_openings', 0)}"
+                f"overlap={delayed_capacity_candidate.get('overlap_openings', 0)}, "
+                f"admit/reject="
+                f"{delayed_capacity_candidate_admission.get('admitted_openings', 0)}/"
+                f"{delayed_capacity_candidate_admission.get('rejected_openings', 0)}"
             ),
             (
                 f"viol={delayed_capacity_candidate.get('capacity_violations', 0)}, "
+                f"actualrej="
+                f"{delayed_capacity_actual_admission.get('rejected_openings', 0)}, "
                 f"unresolved={delayed_capacity.get('unresolved_outcomes', 0)}, "
                 f"missing={delayed_capacity.get('missing_journal_trades', 0)}/"
                 f"{delayed_capacity.get('missing_opening_plans', 0)}/"
