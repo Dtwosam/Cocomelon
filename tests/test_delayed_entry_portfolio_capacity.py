@@ -158,6 +158,16 @@ def _plan(trade: TradeJournalEntry) -> PaperOrderPlan:
     )
 
 
+def _plan_loader(
+    *trades: TradeJournalEntry,
+):
+    plans = {
+        plan.plan_id: plan
+        for plan in (_plan(trade) for trade in trades)
+    }
+    return plans.get
+
+
 def _outcome(
     trade: TradeJournalEntry,
     *,
@@ -220,15 +230,11 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
                 ((200_000, "100"),),
             )
         )
-        plan = _plan(candidate)
-
         result = delayed_entry_portfolio_capacity_overlay(
             journal,
             (_outcome(candidate),),
             paths,
-            lambda plan_id: (
-                plan if plan_id == candidate.opening_plan_id else None
-            ),
+            _plan_loader(background, candidate),
             limits=RiskLimits(),
         )
     finally:
@@ -291,15 +297,11 @@ def test_admission_shadow_can_reject_later_background_opening(
                 ((220_000, "100"),),
             )
         )
-        plan = _plan(candidate)
-
         result = delayed_entry_portfolio_capacity_overlay(
             journal,
             (_outcome(candidate, price="101"),),
             paths,
-            lambda plan_id: (
-                plan if plan_id == candidate.opening_plan_id else None
-            ),
+            _plan_loader(candidate, later_background),
             limits=RiskLimits(),
         )
     finally:
@@ -362,7 +364,6 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
                 ((200_000, "105"),),
             )
         )
-        plan = _plan(candidate)
         limits = RiskLimits(
             max_open_risk=Decimal("1"),
             correlation_bucket_risk_limit=Decimal("1"),
@@ -373,9 +374,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             journal,
             (_outcome(candidate, price="105"),),
             paths,
-            lambda plan_id: (
-                plan if plan_id == plan.plan_id else None
-            ),
+            _plan_loader(background, candidate),
             limits=limits,
         )
     finally:
@@ -410,7 +409,6 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
         paths.record(
             _path(candidate, ((200_000, "100"),))
         )
-        plan = _plan(candidate)
         no_fill = DelayedEntryOutcome(
             trade_id=candidate.trade_id,
             opening_plan_id=candidate.opening_plan_id,
@@ -431,9 +429,7 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             journal,
             (no_fill,),
             paths,
-            lambda plan_id: (
-                plan if plan_id == plan.plan_id else None
-            ),
+            _plan_loader(candidate),
             limits=RiskLimits(),
         )
     finally:
@@ -447,3 +443,61 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
     assert readiness["ready_for_review"] is False
+
+
+def test_actual_admission_uses_filled_risk_not_approved_ceiling(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        first = _trade(
+            suffix="partial-one",
+            market=MarketId("", "ONE"),
+            opened_at_ms=100_000,
+            closed_at_ms=400_000,
+            quantity="1",
+        )
+        second = _trade(
+            suffix="partial-two",
+            market=MarketId("", "TWO"),
+            opened_at_ms=110_000,
+            closed_at_ms=400_000,
+            quantity="1",
+        )
+        third = _trade(
+            suffix="partial-three",
+            market=MarketId("", "THREE"),
+            opened_at_ms=120_000,
+            closed_at_ms=400_000,
+            quantity="1",
+        )
+        for trade in (first, second, third):
+            journal.record_trade(trade)
+            paths.record(
+                _path(
+                    trade,
+                    ((200_000, "100"),),
+                )
+            )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(first),),
+            paths,
+            _plan_loader(first, second, third),
+            limits=RiskLimits(),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    actual_admission = result["actual_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(actual_admission, dict)
+    assert actual["opening_checks"] == 3
+    assert actual["capacity_violations"] == 0
+    assert actual_admission["admitted_openings"] == 3
+    assert actual_admission["rejected_openings"] == 0
+    assert result["observed_planned_risk_basis"] == (
+        "actual_fill_notional_stop_distance_plus_plan_cost_buffer"
+    )
