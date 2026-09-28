@@ -1530,6 +1530,50 @@ def test_position_protection_metrics_keep_unprotected_stop_negative() -> None:
     assert metrics["stop_protects_profit"] is False
 
 
+def test_trade_path_sink_stages_opening_venue_leverage() -> None:
+    calls: list[dict[str, object]] = []
+
+    class Store:
+        def checkpoint_open_path(self, **kwargs: object) -> int:
+            calls.append(kwargs)
+            return 0
+
+        def finalize_trade(self, *_args: object) -> bool:
+            return True
+
+    sink = _ContinuousTradePathSink(Store())  # type: ignore[arg-type]
+    sink.record_opening_trace(
+        SimpleNamespace(
+            submission=SimpleNamespace(
+                plan=SimpleNamespace(
+                    plan_id="plan-1",
+                    market=MarketId("", "BTC"),
+                ),
+                simulation=SimpleNamespace(
+                    fills=(
+                        SimpleNamespace(timestamp_ms=101),
+                        SimpleNamespace(timestamp_ms=103),
+                    )
+                ),
+            ),
+            instrument=SimpleNamespace(
+                venue_max_leverage=Decimal("20")
+            ),
+        )
+    )
+
+    assert calls == [
+        {
+            "opening_plan_id": "plan-1",
+            "market": MarketId("", "BTC"),
+            "opened_at_ms": 103,
+            "mark_observations": (),
+            "venue_max_leverage": Decimal("20"),
+        }
+    ]
+    assert sink.error is None
+
+
 def test_trade_path_capture_failure_is_fail_open() -> None:
     class Store:
         def finalize_trade(self, *_args: object) -> bool:
