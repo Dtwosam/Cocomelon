@@ -2000,3 +2000,20 @@ The delayed-entry portfolio capacity study now carries exact 25bps depth evidenc
 This remains research-only accounting. It does not alter paper entry selection, risk approval, sizing, fills, stops, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry venue minimum-notional replay — 2026-09-28
+
+The delayed-entry portfolio capacity study now replays the paper planner's native-perp minimum-notional gate on the same pre-IOC opening notional already carried for visible-liquidity checks.
+
+- the current mainnet paper instrument minimum is the frozen `native_perp_min_notional`, so the shadow receives that exact execution-config value instead of hard-coding a separate threshold;
+- observed openings use `plan.requested_quantity * plan.execution_reference_price`;
+- delayed candidates use the original filled position quantity times the exact delayed execution reference price captured by the v3 delayed-entry shadow;
+- the venue minimum is checked on that pre-IOC planned notional, not on eventual fill notional, so a valid order that partially fills below the minimum is not falsely rejected;
+- the fixed overlay reports minimum-notional violations and minimum notional headroom;
+- the causal admission shadow rejects a hypothetical fixed-size opening below the venue minimum and then evaluates later openings against the surviving portfolio;
+- this remains a reject-only shadow: it does not invent counterfactual resizing, replacement trades, altered fills, or changed exits. Risk-ceiling clipping observed by the delayed IOC shadow remains separately measurable rather than being converted into synthetic resized fills here.
+
+This is research-only accounting. It does not change paper strategy selection, risk limits, order sizing, fills, stops, execution cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**

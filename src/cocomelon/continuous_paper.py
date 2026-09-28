@@ -2755,6 +2755,7 @@ def _delayed_entry_portfolio_capacity_payload(
     plan_loader: Callable[[str], PaperOrderPlan | None],
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
 ) -> dict[str, object]:
     if delayed_shadow.shadow is None:
         return {
@@ -2773,6 +2774,7 @@ def _delayed_entry_portfolio_capacity_payload(
             opening_fill_liquidity_store.load,
             limits=limits,
             paper_max_gross_leverage=paper_max_gross_leverage,
+            native_perp_min_notional=native_perp_min_notional,
         )
     except Exception as exc:
         return {
@@ -3261,6 +3263,7 @@ def _live_status_payload(
     delay_selector_comparison_restore_error: str | None,
     risk_limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -3440,6 +3443,7 @@ def _live_status_payload(
             execution.store.load_plan,
             risk_limits,
             paper_max_gross_leverage,
+            native_perp_min_notional,
         )
     )
     delayed_entry_contribution_decomposition = (
@@ -3711,6 +3715,7 @@ def _emit_live_status(
     delay_selector_comparison_restore_error: str | None,
     risk_limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
     checkpoint_seconds: int,
     timestamp_ms: int,
 ) -> None:
@@ -3759,6 +3764,7 @@ def _emit_live_status(
         ),
         risk_limits=risk_limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
+        native_perp_min_notional=native_perp_min_notional,
         checkpoint_seconds=checkpoint_seconds,
         timestamp_ms=timestamp_ms,
     )
@@ -4230,6 +4236,9 @@ async def run_continuous_paper_session(
             paper_max_gross_leverage=(
                 replay_config.execution.paper_max_gross_leverage
             ),
+            native_perp_min_notional=(
+                replay_config.execution.native_perp_min_notional
+            ),
             checkpoint_seconds=config.checkpoint_seconds,
             timestamp_ms=utc_now_ms(),
         )
@@ -4410,6 +4419,9 @@ async def run_continuous_paper_session(
                     risk_limits=replay_config.risk_limits,
                     paper_max_gross_leverage=(
                         replay_config.execution.paper_max_gross_leverage
+                    ),
+                    native_perp_min_notional=(
+                        replay_config.execution.native_perp_min_notional
                     ),
                     checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,

@@ -449,6 +449,7 @@ def _capacity_timeline(
     reference_equity: Decimal,
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
 ) -> dict[str, object]:
     if not reference_equity.is_finite() or reference_equity <= ZERO:
         raise DelayedEntryCapacityOverlayError(
@@ -460,6 +461,13 @@ def _capacity_timeline(
     ):
         raise DelayedEntryCapacityOverlayError(
             "paper max gross leverage must be positive"
+        )
+    if (
+        not native_perp_min_notional.is_finite()
+        or native_perp_min_notional <= ZERO
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "native perp min notional must be positive"
         )
 
     active: dict[str, _Active] = {}
@@ -474,6 +482,7 @@ def _capacity_timeline(
     gross_leverage_violations = 0
     margin_capacity_violations = 0
     liquidity_capacity_violations = 0
+    venue_min_notional_violations = 0
     liquidation_buffer_violations = 0
     non_positive_equity = 0
     max_aggregate_risk_utilization = ZERO
@@ -486,6 +495,7 @@ def _capacity_timeline(
     min_gross_notional_headroom: Decimal | None = None
     min_margin_notional_headroom: Decimal | None = None
     min_liquidity_notional_headroom: Decimal | None = None
+    min_venue_notional_headroom: Decimal | None = None
     min_liquidation_stop_multiple: Decimal | None = None
     min_liquidation_stop_headroom: Decimal | None = None
 
@@ -556,6 +566,19 @@ def _capacity_timeline(
             liquidity_capacity - liquidity_notional
         )
         liquidity_bad = liquidity_headroom < ZERO
+        venue_notional_headroom = (
+            position.opening_reference_notional
+            - native_perp_min_notional
+        )
+        venue_min_bad = venue_notional_headroom < ZERO
+        min_venue_notional_headroom = (
+            venue_notional_headroom
+            if min_venue_notional_headroom is None
+            else min(
+                min_venue_notional_headroom,
+                venue_notional_headroom,
+            )
+        )
         min_liquidity_notional_headroom = (
             liquidity_headroom
             if min_liquidity_notional_headroom is None
@@ -639,6 +662,7 @@ def _capacity_timeline(
                 or gross_bad
                 or margin_bad
                 or liquidity_bad
+                or venue_min_bad
                 or liquidation_bad
             )
             max_aggregate_risk_utilization = max(
@@ -708,6 +732,8 @@ def _capacity_timeline(
             margin_capacity_violations += 1
         if liquidity_bad:
             liquidity_capacity_violations += 1
+        if venue_min_bad:
+            venue_min_notional_violations += 1
         if liquidation_bad:
             liquidation_buffer_violations += 1
 
@@ -738,6 +764,9 @@ def _capacity_timeline(
         "margin_capacity_violations": margin_capacity_violations,
         "liquidity_capacity_violations": (
             liquidity_capacity_violations
+        ),
+        "venue_min_notional_violations": (
+            venue_min_notional_violations
         ),
         "liquidation_buffer_violations": (
             liquidation_buffer_violations
@@ -781,6 +810,11 @@ def _capacity_timeline(
             if min_liquidity_notional_headroom is None
             else min_liquidity_notional_headroom
         ),
+        "min_venue_notional_headroom": str(
+            ZERO
+            if min_venue_notional_headroom is None
+            else min_venue_notional_headroom
+        ),
         "min_liquidation_stop_multiple": str(
             ZERO
             if min_liquidation_stop_multiple is None
@@ -800,6 +834,7 @@ def _admission_timeline(
     reference_equity: Decimal,
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
 ) -> dict[str, object]:
     if not reference_equity.is_finite() or reference_equity <= ZERO:
         raise DelayedEntryCapacityOverlayError(
@@ -811,6 +846,13 @@ def _admission_timeline(
     ):
         raise DelayedEntryCapacityOverlayError(
             "paper max gross leverage must be positive"
+        )
+    if (
+        not native_perp_min_notional.is_finite()
+        or native_perp_min_notional <= ZERO
+    ):
+        raise DelayedEntryCapacityOverlayError(
+            "native perp min notional must be positive"
         )
 
     active: dict[str, _Active] = {}
@@ -829,6 +871,7 @@ def _admission_timeline(
     leverage_rejections = 0
     margin_rejections = 0
     liquidity_rejections = 0
+    venue_min_notional_rejections = 0
     liquidation_rejections = 0
     non_positive_equity_rejections = 0
     max_concurrent_positions = 0
@@ -914,6 +957,10 @@ def _admission_timeline(
         )
         liquidity_notional = position.opening_reference_notional
         liquidity_bad = liquidity_notional > liquidity_capacity
+        venue_min_bad = (
+            position.opening_reference_notional
+            < native_perp_min_notional
+        )
         (
             liquidation_multiple,
             liquidation_ok,
@@ -957,6 +1004,7 @@ def _admission_timeline(
             or leverage_bad
             or margin_bad
             or liquidity_bad
+            or venue_min_bad
             or liquidation_bad
         )
         if rejected_now:
@@ -976,6 +1024,8 @@ def _admission_timeline(
                 margin_rejections += 1
             if liquidity_bad:
                 liquidity_rejections += 1
+            if venue_min_bad:
+                venue_min_notional_rejections += 1
             if liquidation_bad:
                 liquidation_rejections += 1
             continue
@@ -1050,6 +1100,9 @@ def _admission_timeline(
         "gross_leverage_rejections": leverage_rejections,
         "margin_capacity_rejections": margin_rejections,
         "liquidity_capacity_rejections": liquidity_rejections,
+        "venue_min_notional_rejections": (
+            venue_min_notional_rejections
+        ),
         "liquidation_buffer_rejections": liquidation_rejections,
         "non_positive_equity_rejections": (
             non_positive_equity_rejections
@@ -1176,6 +1229,7 @@ def delayed_entry_portfolio_capacity_overlay(
     *,
     limits: RiskLimits,
     paper_max_gross_leverage: Decimal,
+    native_perp_min_notional: Decimal,
     delay_ms: int = DELAY_MS,
 ) -> dict[str, object]:
     if delay_ms <= 0:
@@ -1186,6 +1240,13 @@ def delayed_entry_portfolio_capacity_overlay(
     ):
         raise ValueError(
             "paper_max_gross_leverage must be positive and finite"
+        )
+    if (
+        not native_perp_min_notional.is_finite()
+        or native_perp_min_notional <= ZERO
+    ):
+        raise ValueError(
+            "native_perp_min_notional must be positive and finite"
         )
 
     trades = tuple(journal.iter_trades())
@@ -1225,6 +1286,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "intratrade_funding_timing_modeled": False,
             "available_margin_capacity_modeled": True,
             "visible_liquidity_capacity_modeled": True,
+            "venue_min_notional_modeled": True,
             "liquidation_buffer_modeled": True,
             "closed_shadow_outcomes": len(outcomes),
             "candidate_filled_positions": 0,
@@ -1244,24 +1306,28 @@ def delayed_entry_portfolio_capacity_overlay(
                 reference_equity=Decimal("1"),
                 limits=limits,
                 paper_max_gross_leverage=paper_max_gross_leverage,
+                native_perp_min_notional=native_perp_min_notional,
             ),
             "candidate": _capacity_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
                 paper_max_gross_leverage=paper_max_gross_leverage,
+                native_perp_min_notional=native_perp_min_notional,
             ),
             "actual_admission": _admission_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
                 paper_max_gross_leverage=paper_max_gross_leverage,
+                native_perp_min_notional=native_perp_min_notional,
             ),
             "candidate_admission": _admission_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
                 paper_max_gross_leverage=paper_max_gross_leverage,
+                native_perp_min_notional=native_perp_min_notional,
             ),
             "fixed_candidate_final_realized_contribution": "0",
             "admitted_candidate_final_realized_contribution": "0",
@@ -1517,6 +1583,7 @@ def delayed_entry_portfolio_capacity_overlay(
         reference_equity=reference_equity,
         limits=limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
+        native_perp_min_notional=native_perp_min_notional,
     )
     candidate_tuple = tuple(candidate_positions)
     actual_tuple = tuple(actual_positions)
@@ -1525,18 +1592,21 @@ def delayed_entry_portfolio_capacity_overlay(
         reference_equity=reference_equity,
         limits=limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
+        native_perp_min_notional=native_perp_min_notional,
     )
     actual_admission = _admission_timeline(
         actual_tuple,
         reference_equity=reference_equity,
         limits=limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
+        native_perp_min_notional=native_perp_min_notional,
     )
     candidate_admission = _admission_timeline(
         candidate_tuple,
         reference_equity=reference_equity,
         limits=limits,
         paper_max_gross_leverage=paper_max_gross_leverage,
+        native_perp_min_notional=native_perp_min_notional,
     )
     fixed_candidate_final = _fixed_realized_contribution(
         candidate_tuple
@@ -1624,6 +1694,9 @@ def delayed_entry_portfolio_capacity_overlay(
             "max_visible_depth_fraction": str(
                 limits.max_visible_depth_fraction
             ),
+            "native_perp_min_notional": str(
+                native_perp_min_notional
+            ),
         },
         "changed_admissions_modeled": True,
         "admission_policy": (
@@ -1633,6 +1706,7 @@ def delayed_entry_portfolio_capacity_overlay(
         "intratrade_funding_timing_modeled": False,
         "available_margin_capacity_modeled": True,
         "visible_liquidity_capacity_modeled": True,
+        "venue_min_notional_modeled": True,
         "liquidation_buffer_modeled": True,
         "closed_shadow_outcomes": len(outcomes),
         "candidate_filled_positions": candidate_filled,
