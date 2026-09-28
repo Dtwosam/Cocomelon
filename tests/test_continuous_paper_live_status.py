@@ -7,6 +7,7 @@ import sys
 
 from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
+    _prospective_combined_entry_filter_lines,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
@@ -2322,6 +2323,82 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "requires_zero_stale_rank_evidence": True,
             },
         },
+        "prospective_combined_entry_filter": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "started_at_ms": 1_699_999_800_000,
+            "state_restore_error": None,
+            "error": None,
+            "rule": {
+                "max_admitted_ordinal": 10,
+                "max_rank_age_ms": 300000,
+                "reject_direction": "long",
+                "reject_lead_strategy": "trend",
+                "combination": "all_conditions_must_pass",
+            },
+            "claim_scope": "prospective_closed_trade_contribution_only",
+            "portfolio_counterfactual": False,
+            "prospective_closed_trades": 8,
+            "attributed_trades": 8,
+            "decision_attribution_misses": 0,
+            "missing_rank_evidence": 0,
+            "stale_rank_evidence": 0,
+            "allowed_trades": 4,
+            "blocked_trades": 4,
+            "allowed_wins": 3,
+            "allowed_losses": 1,
+            "blocked_wins": 0,
+            "blocked_losses": 4,
+            "allowed_net_pnl": "12",
+            "blocked_net_pnl": "-20",
+            "actual_net_pnl": "-8",
+            "candidate_trade_contribution_pnl": "12",
+            "delta_trade_contribution_pnl": "20",
+            "actual_mean_net_r": "-0.10",
+            "allowed_mean_net_r": "0.30",
+            "blocked_mean_net_r": "-0.50",
+            "allowed_mean_ordinal": "5",
+            "blocked_mean_ordinal": "14",
+            "by_block_reason": {
+                "long_trend": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-5",
+                    "mean_net_r": "-0.5",
+                    "mean_ordinal": "5",
+                },
+                "rank_above_10": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "net_pnl": "-9",
+                    "mean_net_r": "-0.45",
+                    "mean_ordinal": "15",
+                },
+                "long_trend_and_rank_above_10": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.6",
+                    "mean_ordinal": "16",
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "integrity_clean": True,
+                "min_prospective_closed_trades": 30,
+                "min_blocked_trades": 10,
+                "min_allowed_trades": 10,
+                "missing_prospective_closed_trades": 22,
+                "missing_blocked_trades": 6,
+                "missing_allowed_trades": 6,
+            },
+        },
         "excursion_timing": {
             "enabled": True,
             "research_only": True,
@@ -3701,6 +3778,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         in output
     )
     assert (
+        "| top-10 + no LONG-trend | collecting | "
+        "closed=8, blocked=4, allowed=4 | fact=0, rank=0, stale=0 |"
+        in output
+    )
+    assert (
         "| exact-path entry markout | collecting | "
         "1m/5m/15m=3/2/1 | decision_miss=0, rank_miss=0 |"
         in output
@@ -3723,7 +3805,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / " in output
+    assert "review-ready studies: `0 / 23`" in output
     assert "| 60s price confirmation | collecting | eval=10, confirmed=6, skipped=4 |" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
@@ -4165,6 +4247,12 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "still needed E/C/S" in output
     assert "`20 / 4 / 6`" in output
     assert "### Prospective top-10 scanner-rank filter" in output
+    assert "### Prospective top-10 + no LONG-trend entry filter" in output
+    assert "actual / candidate / delta trade contribution" in output
+    assert "`-8 / 12 / 20`" in output
+    assert "| LONG+trend | 1 | 0 | 1 | -5 | -0.5 | 5 |" in output
+    assert "| rank >10 | 2 | 0 | 2 | -9 | -0.45 | 15 |" in output
+    assert "Fresh prospective intersection only" in output
     assert "prospective-admit-top10-rank-v1" in output
     assert "admit scanner rank `1-10`" in output
     assert "maximum accepted rank age" in output
@@ -4679,3 +4767,76 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     assert "full-stop same-exit / exact PnL / removed edge" in output
     assert "`7 / -3 / 10`" in output
     assert "no synthetic remainder exit is invented" in output
+
+
+
+def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
+    lines = _prospective_combined_entry_filter_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "started_at_ms": 123,
+            "rule": {
+                "max_admitted_ordinal": 10,
+                "max_rank_age_ms": 300000,
+            },
+            "prospective_closed_trades": 4,
+            "attributed_trades": 4,
+            "allowed_trades": 1,
+            "blocked_trades": 3,
+            "allowed_wins": 1,
+            "allowed_losses": 0,
+            "blocked_wins": 0,
+            "blocked_losses": 3,
+            "allowed_net_pnl": "5",
+            "blocked_net_pnl": "-21",
+            "actual_net_pnl": "-16",
+            "candidate_trade_contribution_pnl": "5",
+            "delta_trade_contribution_pnl": "21",
+            "decision_attribution_misses": 0,
+            "missing_rank_evidence": 0,
+            "stale_rank_evidence": 0,
+            "by_block_reason": {
+                "long_trend": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-8",
+                    "mean_net_r": "-0.8",
+                    "mean_ordinal": "5",
+                },
+                "rank_above_10": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.6",
+                    "mean_ordinal": "15",
+                },
+                "long_trend_and_rank_above_10": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-7",
+                    "mean_net_r": "-0.7",
+                    "mean_ordinal": "16",
+                },
+            },
+            "readiness": {
+                "integrity_clean": True,
+                "ready_for_review": False,
+                "min_prospective_closed_trades": 30,
+                "min_blocked_trades": 10,
+                "min_allowed_trades": 10,
+                "missing_prospective_closed_trades": 26,
+                "missing_blocked_trades": 7,
+                "missing_allowed_trades": 9,
+            },
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+    assert "top-10 + no LONG-trend" in output
+    assert "`-16 / 5 / 21`" in output
+    assert "LONG+trend & rank >10" in output
+    assert "earlier standalone LONG+trend and top-10 studies" in output
