@@ -26,6 +26,9 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 from cocomelon.research.delayed_entry_portfolio_capacity import (
     delayed_entry_portfolio_capacity_overlay,
 )
+from cocomelon.research.opening_fill_liquidity import (
+    OpeningFillLiquidityEvidence,
+)
 
 MARKET = MarketId("", "SOL")
 BACKGROUND = MarketId("", "BTC")
@@ -171,10 +174,65 @@ def _plan_loader(
     return plans.get
 
 
+def _liquidity(
+    trade: TradeJournalEntry,
+    *,
+    entry_depth: str = "100000",
+    exit_depth: str = "100000",
+) -> OpeningFillLiquidityEvidence:
+    entry = Decimal(entry_depth)
+    exit_ = Decimal(exit_depth)
+    return OpeningFillLiquidityEvidence(
+        opening_plan_id=trade.opening_plan_id,
+        strategy_decision_id=trade.strategy_decision_id,
+        feature_snapshot_id=trade.feature_snapshot_id,
+        market=trade.market.canonical,
+        direction=trade.direction.value,
+        opened_at_ms=trade.opened_at_ms,
+        attempt_timestamp_ms=trade.opened_at_ms,
+        book_event_key=f"book-{trade.trade_id}",
+        book_exchange_ms=trade.opened_at_ms - 1,
+        book_received_ms=trade.opened_at_ms - 1,
+        book_exchange_age_ms=1,
+        book_receive_age_ms=1,
+        spread_bps=Decimal("1"),
+        bid_depth_25bps=exit_,
+        ask_depth_25bps=entry,
+        book_imbalance=Decimal("0"),
+        mid_px=trade.entry_price,
+        entry_side_depth_25bps=entry,
+        exit_side_depth_25bps=exit_,
+        requested_quantity=trade.filled_quantity,
+        filled_quantity=trade.filled_quantity,
+        gross_fill_notional=(
+            trade.entry_price * trade.filled_quantity
+        ),
+        average_fill_price=trade.entry_price,
+        fill_slippage_bps=Decimal("0"),
+        entry_depth_usage_fraction=(
+            trade.entry_price * trade.filled_quantity / entry
+        ),
+        decision_spread_bps=Decimal("1"),
+        decision_book_age_ms=1,
+    )
+
+
+def _liquidity_loader(
+    *trades: TradeJournalEntry,
+):
+    evidence = {
+        item.opening_plan_id: item
+        for item in (_liquidity(trade) for trade in trades)
+    }
+    return evidence.get
+
+
 def _outcome(
     trade: TradeJournalEntry,
     *,
     price: str = "100",
+    entry_depth: str | None = "100000",
+    exit_depth: str | None = "100000",
 ) -> DelayedEntryOutcome:
     return DelayedEntryOutcome(
         trade_id=trade.trade_id,
@@ -190,6 +248,12 @@ def _outcome(
         gross_r_improvement=None,
         attempt_reason=None,
         capacity_cause=None,
+        delayed_entry_side_depth_25bps=(
+            None if entry_depth is None else Decimal(entry_depth)
+        ),
+        delayed_exit_side_depth_25bps=(
+            None if exit_depth is None else Decimal(exit_depth)
+        ),
     )
 
 
@@ -238,6 +302,8 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             (_outcome(candidate),),
             paths,
             _plan_loader(background, candidate),
+            _liquidity_loader(background, candidate),
+            _liquidity_loader(background, candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -306,6 +372,7 @@ def test_admission_shadow_can_reject_later_background_opening(
             (_outcome(candidate, price="101"),),
             paths,
             _plan_loader(candidate, later_background),
+            _liquidity_loader(candidate, later_background),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -437,6 +504,10 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             (no_fill,),
             paths,
             _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            _liquidity_loader(candidate),
+            _liquidity_loader(candidate),
+            _liquidity_loader(candidate),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -493,6 +564,7 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             (_outcome(first),),
             paths,
             _plan_loader(first, second, third),
+            _liquidity_loader(first, second, third),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
         )
@@ -622,6 +694,106 @@ def test_capacity_overlay_detects_liquidation_buffer_violation(
     assert admission["rejected_openings"] == 1
     assert admission["liquidation_buffer_rejections"] == 1
     assert result["liquidation_buffer_modeled"] is True
+
+
+def test_capacity_overlay_detects_visible_liquidity_violation(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="liquidity-candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "100"),)))
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    entry_depth="1000",
+                    exit_depth="1000",
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert actual["capacity_violations"] == 0
+    assert actual["liquidity_capacity_violations"] == 0
+    assert delayed["capacity_violations"] == 1
+    assert delayed["liquidity_capacity_violations"] == 1
+    assert delayed["aggregate_risk_violations"] == 0
+    assert delayed["correlation_bucket_risk_violations"] == 0
+    assert delayed["gross_leverage_violations"] == 0
+    assert delayed["margin_capacity_violations"] == 0
+    assert delayed["liquidation_buffer_violations"] == 0
+    assert Decimal(
+        str(delayed["min_liquidity_notional_headroom"])
+    ) < Decimal("0")
+    assert admission["rejected_openings"] == 1
+    assert admission["liquidity_capacity_rejections"] == 1
+    assert result["visible_liquidity_capacity_modeled"] is True
+
+
+def test_missing_delayed_liquidity_blocks_review(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="missing-delayed-liquidity",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(_path(candidate, ((200_000, "100"),)))
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (
+                _outcome(
+                    candidate,
+                    entry_depth=None,
+                    exit_depth=None,
+                ),
+            ),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_delayed_liquidity_evidence"] == 1
+    assert result["candidate_filled_positions"] == 0
+    assert readiness["ready_for_review"] is False
 
 
 def test_legacy_path_leverage_gap_blocks_margin_review(
