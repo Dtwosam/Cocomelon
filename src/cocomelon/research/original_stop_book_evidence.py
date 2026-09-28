@@ -12,9 +12,11 @@ from typing import Final
 
 from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
+    PaperExecutionConfig,
     PaperOrderPlan,
 )
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 
@@ -58,6 +60,13 @@ def _decimal(value: object, field: str) -> Decimal:
 
 def _receive_ms(event: StreamEvent) -> int:
     return int(event.receive_time.timestamp() * 1000)
+
+
+def _market_from_canonical(value: str) -> MarketId:
+    if ":" in value:
+        dex = value.split(":", 1)[0]
+        return MarketId.from_wire_name(dex, value)
+    return MarketId.from_wire_name("", value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,78 +265,345 @@ class OriginalStopCrossing:
 
 
 @dataclass(frozen=True, slots=True)
-class OriginalStopBookEvidence:
+class PendingOriginalStopExecution:
     crossing: OriginalStopCrossing
-    book_event_key: str
-    book_received_ms: int
-    book_exchange_ms: int | None
-    book_source: str
-    book_schema_version: int
-    reference_price: Decimal
-    instrument_sz_decimals: int
-    instrument_venue_max_leverage: Decimal
-    instrument_minimum_order_notional: Decimal
-    instrument_metadata_received_at_ms: int
-    instrument_metadata_source: str
+    plan_book_event_key: str | None = None
+    plan_book_received_ms: int | None = None
+    plan_book_exchange_ms: int | None = None
+    plan_book_source: str | None = None
+    plan_book_schema_version: int | None = None
+    reference_price: Decimal | None = None
+    instrument_sz_decimals: int | None = None
+    instrument_venue_max_leverage: Decimal | None = None
+    instrument_minimum_order_notional: Decimal | None = None
+    instrument_metadata_received_at_ms: int | None = None
+    instrument_metadata_source: str | None = None
+    schema_version: int = SCHEMA_VERSION
+
+    @property
+    def plan_staged(self) -> bool:
+        return self.plan_book_event_key is not None
+
+    def __post_init__(self) -> None:
+        plan_values = (
+            self.plan_book_event_key,
+            self.plan_book_received_ms,
+            self.plan_book_source,
+            self.plan_book_schema_version,
+            self.reference_price,
+            self.instrument_sz_decimals,
+            self.instrument_venue_max_leverage,
+            self.instrument_minimum_order_notional,
+            self.instrument_metadata_received_at_ms,
+            self.instrument_metadata_source,
+        )
+        present = tuple(value is not None for value in plan_values)
+        if any(present) and not all(present):
+            raise ValueError(
+                "pending stop execution plan context must be complete"
+            )
+        if self.plan_book_exchange_ms is not None and not all(present):
+            raise ValueError(
+                "pending stop exchange timestamp requires plan context"
+            )
+        if all(present):
+            if not isinstance(self.plan_book_event_key, str):
+                raise ValueError("plan book event key must be a string")
+            if not self.plan_book_event_key.strip():
+                raise ValueError("plan book event key must not be empty")
+            if not isinstance(self.plan_book_received_ms, int):
+                raise ValueError("plan book receive time must be an integer")
+            if (
+                self.plan_book_received_ms
+                < self.crossing.crossing_mark_received_ms
+            ):
+                raise ValueError(
+                    "plan book must not precede stop crossing"
+                )
+            if (
+                self.plan_book_exchange_ms is not None
+                and self.plan_book_exchange_ms < 0
+            ):
+                raise ValueError(
+                    "plan book exchange time must be non-negative"
+                )
+            if (
+                not isinstance(self.plan_book_source, str)
+                or not self.plan_book_source.strip()
+            ):
+                raise ValueError("plan book source must not be empty")
+            if (
+                not isinstance(self.plan_book_schema_version, int)
+                or self.plan_book_schema_version <= 0
+            ):
+                raise ValueError(
+                    "plan book schema version must be positive"
+                )
+            if (
+                not isinstance(self.reference_price, Decimal)
+                or not self.reference_price.is_finite()
+                or self.reference_price <= ZERO
+            ):
+                raise ValueError(
+                    "reference price must be positive and finite"
+                )
+            if (
+                not isinstance(self.instrument_sz_decimals, int)
+                or self.instrument_sz_decimals < 0
+            ):
+                raise ValueError(
+                    "instrument sz decimals must be non-negative"
+                )
+            for value, field in (
+                (
+                    self.instrument_venue_max_leverage,
+                    "instrument_venue_max_leverage",
+                ),
+                (
+                    self.instrument_minimum_order_notional,
+                    "instrument_minimum_order_notional",
+                ),
+            ):
+                if (
+                    not isinstance(value, Decimal)
+                    or not value.is_finite()
+                    or value <= ZERO
+                ):
+                    raise ValueError(
+                        f"{field} must be positive and finite"
+                    )
+            if (
+                not isinstance(
+                    self.instrument_metadata_received_at_ms,
+                    int,
+                )
+                or self.instrument_metadata_received_at_ms < 0
+            ):
+                raise ValueError(
+                    "instrument metadata timestamp must be non-negative"
+                )
+            if (
+                not isinstance(self.instrument_metadata_source, str)
+                or not self.instrument_metadata_source.strip()
+            ):
+                raise ValueError(
+                    "instrument metadata source must not be empty"
+                )
+        if self.schema_version != SCHEMA_VERSION:
+            raise ValueError("unsupported pending stop schema")
+
+    def with_plan(
+        self,
+        book: StreamEvent,
+        *,
+        reference_price: Decimal,
+        instrument: InstrumentExecutionSpec,
+    ) -> PendingOriginalStopExecution:
+        if self.plan_staged:
+            return self
+        if book.market.canonical != self.crossing.market:
+            raise OriginalStopBookEvidenceError(
+                "stop plan book market mismatch"
+            )
+        if instrument.market != book.market:
+            raise OriginalStopBookEvidenceError(
+                "stop plan instrument market mismatch"
+            )
+        return PendingOriginalStopExecution(
+            crossing=self.crossing,
+            plan_book_event_key=book.event_key,
+            plan_book_received_ms=_receive_ms(book),
+            plan_book_exchange_ms=book.exchange_time_ms,
+            plan_book_source=book.source,
+            plan_book_schema_version=book.schema_version,
+            reference_price=reference_price,
+            instrument_sz_decimals=instrument.sz_decimals,
+            instrument_venue_max_leverage=(
+                instrument.venue_max_leverage
+            ),
+            instrument_minimum_order_notional=(
+                instrument.minimum_order_notional
+            ),
+            instrument_metadata_received_at_ms=(
+                instrument.metadata_received_at_ms
+            ),
+            instrument_metadata_source=instrument.metadata_source,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "crossing": self.crossing.to_dict(),
+            "plan_book_event_key": self.plan_book_event_key,
+            "plan_book_received_ms": self.plan_book_received_ms,
+            "plan_book_exchange_ms": self.plan_book_exchange_ms,
+            "plan_book_source": self.plan_book_source,
+            "plan_book_schema_version": self.plan_book_schema_version,
+            "reference_price": (
+                None
+                if self.reference_price is None
+                else str(self.reference_price)
+            ),
+            "instrument_sz_decimals": self.instrument_sz_decimals,
+            "instrument_venue_max_leverage": (
+                None
+                if self.instrument_venue_max_leverage is None
+                else str(self.instrument_venue_max_leverage)
+            ),
+            "instrument_minimum_order_notional": (
+                None
+                if self.instrument_minimum_order_notional is None
+                else str(self.instrument_minimum_order_notional)
+            ),
+            "instrument_metadata_received_at_ms": (
+                self.instrument_metadata_received_at_ms
+            ),
+            "instrument_metadata_source": (
+                self.instrument_metadata_source
+            ),
+            "schema_version": self.schema_version,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        raw: object,
+    ) -> PendingOriginalStopExecution:
+        if not isinstance(raw, dict):
+            raise OriginalStopBookEvidenceError(
+                "pending stop execution must be an object"
+            )
+        expected = {
+            "crossing",
+            "plan_book_event_key",
+            "plan_book_received_ms",
+            "plan_book_exchange_ms",
+            "plan_book_source",
+            "plan_book_schema_version",
+            "reference_price",
+            "instrument_sz_decimals",
+            "instrument_venue_max_leverage",
+            "instrument_minimum_order_notional",
+            "instrument_metadata_received_at_ms",
+            "instrument_metadata_source",
+            "schema_version",
+        }
+        if set(raw) != expected:
+            raise OriginalStopBookEvidenceError(
+                "pending stop execution fields are invalid"
+            )
+
+        def opt_int(value: object) -> int | None:
+            return None if value is None else int(value)
+
+        def opt_str(value: object) -> str | None:
+            return None if value is None else str(value)
+
+        def opt_decimal(
+            value: object,
+            field: str,
+        ) -> Decimal | None:
+            return None if value is None else _decimal(value, field)
+
+        return cls(
+            crossing=OriginalStopCrossing.from_dict(raw["crossing"]),
+            plan_book_event_key=opt_str(raw["plan_book_event_key"]),
+            plan_book_received_ms=opt_int(raw["plan_book_received_ms"]),
+            plan_book_exchange_ms=opt_int(raw["plan_book_exchange_ms"]),
+            plan_book_source=opt_str(raw["plan_book_source"]),
+            plan_book_schema_version=opt_int(
+                raw["plan_book_schema_version"]
+            ),
+            reference_price=opt_decimal(
+                raw["reference_price"],
+                "reference_price",
+            ),
+            instrument_sz_decimals=opt_int(
+                raw["instrument_sz_decimals"]
+            ),
+            instrument_venue_max_leverage=opt_decimal(
+                raw["instrument_venue_max_leverage"],
+                "instrument_venue_max_leverage",
+            ),
+            instrument_minimum_order_notional=opt_decimal(
+                raw["instrument_minimum_order_notional"],
+                "instrument_minimum_order_notional",
+            ),
+            instrument_metadata_received_at_ms=opt_int(
+                raw["instrument_metadata_received_at_ms"]
+            ),
+            instrument_metadata_source=opt_str(
+                raw["instrument_metadata_source"]
+            ),
+            schema_version=int(raw["schema_version"]),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OriginalStopBookEvidence:
+    pending: PendingOriginalStopExecution
+    execution_book_event_key: str
+    execution_book_received_ms: int
+    execution_book_exchange_ms: int | None
+    execution_book_source: str
+    execution_book_schema_version: int
     bids: tuple[StopBookLevel, ...]
     asks: tuple[StopBookLevel, ...]
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if not self.book_event_key.strip():
-            raise ValueError("book_event_key must not be empty")
-        if not self.book_source.strip():
-            raise ValueError("book_source must not be empty")
-        if not self.instrument_metadata_source.strip():
+        if not self.pending.plan_staged:
             raise ValueError(
-                "instrument_metadata_source must not be empty"
+                "stop-book evidence requires staged plan context"
             )
-        if self.book_schema_version <= 0:
-            raise ValueError("book_schema_version must be positive")
-        if self.instrument_sz_decimals < 0:
+        if not self.execution_book_event_key.strip():
             raise ValueError(
-                "instrument_sz_decimals must be non-negative"
+                "execution_book_event_key must not be empty"
             )
-        if self.instrument_metadata_received_at_ms < 0:
+        if not self.execution_book_source.strip():
             raise ValueError(
-                "instrument metadata timestamp must be non-negative"
+                "execution_book_source must not be empty"
             )
-        for value, field in (
-            (
-                self.instrument_venue_max_leverage,
-                "instrument_venue_max_leverage",
-            ),
-            (
-                self.instrument_minimum_order_notional,
-                "instrument_minimum_order_notional",
-            ),
-        ):
-            if not value.is_finite() or value <= ZERO:
-                raise ValueError(f"{field} must be positive and finite")
-        if self.book_received_ms < self.crossing.crossing_mark_received_ms:
+        if self.execution_book_schema_version <= 0:
             raise ValueError(
-                "stop execution book must not precede crossing mark"
+                "execution_book_schema_version must be positive"
             )
         if (
-            self.book_exchange_ms is not None
-            and self.book_exchange_ms < 0
-        ):
-            raise ValueError("book_exchange_ms must be non-negative")
-        if (
-            not self.reference_price.is_finite()
-            or self.reference_price <= ZERO
+            self.execution_book_received_ms
+            < self.pending.crossing.crossing_mark_received_ms
         ):
             raise ValueError(
-                "reference_price must be positive and finite"
+                "execution book must not precede stop crossing"
+            )
+        if (
+            self.execution_book_exchange_ms is not None
+            and self.execution_book_exchange_ms < 0
+        ):
+            raise ValueError(
+                "execution book exchange time must be non-negative"
             )
         if not self.bids or not self.asks:
-            raise ValueError("stop execution book must have both sides")
+            raise ValueError(
+                "stop execution book must have both sides"
+            )
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError("unsupported stop-book evidence schema")
 
     @property
     def opening_plan_id(self) -> str:
-        return self.crossing.opening_plan_id
+        return self.pending.crossing.opening_plan_id
+
+    @property
+    def crossing(self) -> OriginalStopCrossing:
+        return self.pending.crossing
+
+    @property
+    def reference_price(self) -> Decimal:
+        value = self.pending.reference_price
+        if value is None:
+            raise OriginalStopBookEvidenceError(
+                "stop evidence lost reference price"
+            )
+        return value
 
     @property
     def evidence_id(self) -> str:
@@ -335,25 +611,19 @@ class OriginalStopBookEvidence:
 
     def identity_payload(self) -> dict[str, object]:
         return {
-            "crossing": self.crossing.to_dict(),
-            "book_event_key": self.book_event_key,
-            "book_received_ms": self.book_received_ms,
-            "book_exchange_ms": self.book_exchange_ms,
-            "book_source": self.book_source,
-            "book_schema_version": self.book_schema_version,
-            "reference_price": str(self.reference_price),
-            "instrument_sz_decimals": self.instrument_sz_decimals,
-            "instrument_venue_max_leverage": str(
-                self.instrument_venue_max_leverage
+            "pending": self.pending.to_dict(),
+            "execution_book_event_key": (
+                self.execution_book_event_key
             ),
-            "instrument_minimum_order_notional": str(
-                self.instrument_minimum_order_notional
+            "execution_book_received_ms": (
+                self.execution_book_received_ms
             ),
-            "instrument_metadata_received_at_ms": (
-                self.instrument_metadata_received_at_ms
+            "execution_book_exchange_ms": (
+                self.execution_book_exchange_ms
             ),
-            "instrument_metadata_source": (
-                self.instrument_metadata_source
+            "execution_book_source": self.execution_book_source,
+            "execution_book_schema_version": (
+                self.execution_book_schema_version
             ),
             "bids": [level.to_dict() for level in self.bids],
             "asks": [level.to_dict() for level in self.asks],
@@ -367,24 +637,21 @@ class OriginalStopBookEvidence:
         }
 
     @classmethod
-    def from_dict(cls, raw: object) -> OriginalStopBookEvidence:
+    def from_dict(
+        cls,
+        raw: object,
+    ) -> OriginalStopBookEvidence:
         if not isinstance(raw, dict):
             raise OriginalStopBookEvidenceError(
                 "stop-book evidence must be an object"
             )
         expected = {
-            "crossing",
-            "book_event_key",
-            "book_received_ms",
-            "book_exchange_ms",
-            "book_source",
-            "book_schema_version",
-            "reference_price",
-            "instrument_sz_decimals",
-            "instrument_venue_max_leverage",
-            "instrument_minimum_order_notional",
-            "instrument_metadata_received_at_ms",
-            "instrument_metadata_source",
+            "pending",
+            "execution_book_event_key",
+            "execution_book_received_ms",
+            "execution_book_exchange_ms",
+            "execution_book_source",
+            "execution_book_schema_version",
             "bids",
             "asks",
             "schema_version",
@@ -400,39 +667,34 @@ class OriginalStopBookEvidence:
             raise OriginalStopBookEvidenceError(
                 "stop-book evidence sides must be lists"
             )
-        exchange_ms = raw["book_exchange_ms"]
+        exchange_ms = raw["execution_book_exchange_ms"]
         evidence = cls(
-            crossing=OriginalStopCrossing.from_dict(raw["crossing"]),
-            book_event_key=str(raw["book_event_key"]),
-            book_received_ms=int(raw["book_received_ms"]),
-            book_exchange_ms=(
+            pending=PendingOriginalStopExecution.from_dict(
+                raw["pending"]
+            ),
+            execution_book_event_key=str(
+                raw["execution_book_event_key"]
+            ),
+            execution_book_received_ms=int(
+                raw["execution_book_received_ms"]
+            ),
+            execution_book_exchange_ms=(
                 None if exchange_ms is None else int(exchange_ms)
             ),
-            book_source=str(raw["book_source"]),
-            book_schema_version=int(raw["book_schema_version"]),
-            reference_price=_decimal(
-                raw["reference_price"],
-                "reference_price",
+            execution_book_source=str(
+                raw["execution_book_source"]
             ),
-            instrument_sz_decimals=int(
-                raw["instrument_sz_decimals"]
+            execution_book_schema_version=int(
+                raw["execution_book_schema_version"]
             ),
-            instrument_venue_max_leverage=_decimal(
-                raw["instrument_venue_max_leverage"],
-                "instrument_venue_max_leverage",
+            bids=tuple(
+                StopBookLevel.from_dict(item)
+                for item in bids
             ),
-            instrument_minimum_order_notional=_decimal(
-                raw["instrument_minimum_order_notional"],
-                "instrument_minimum_order_notional",
+            asks=tuple(
+                StopBookLevel.from_dict(item)
+                for item in asks
             ),
-            instrument_metadata_received_at_ms=int(
-                raw["instrument_metadata_received_at_ms"]
-            ),
-            instrument_metadata_source=str(
-                raw["instrument_metadata_source"]
-            ),
-            bids=tuple(StopBookLevel.from_dict(item) for item in bids),
-            asks=tuple(StopBookLevel.from_dict(item) for item in asks),
             schema_version=int(raw["schema_version"]),
         )
         if raw["evidence_id"] != evidence.evidence_id:
@@ -442,31 +704,48 @@ class OriginalStopBookEvidence:
         return evidence
 
     def instrument_spec(self) -> InstrumentExecutionSpec:
+        pending = self.pending
+        if (
+            pending.instrument_sz_decimals is None
+            or pending.instrument_venue_max_leverage is None
+            or pending.instrument_minimum_order_notional is None
+            or pending.instrument_metadata_received_at_ms is None
+            or pending.instrument_metadata_source is None
+        ):
+            raise OriginalStopBookEvidenceError(
+                "stop evidence lost instrument context"
+            )
         return InstrumentExecutionSpec(
-            market=_market_from_canonical(self.crossing.market),
-            sz_decimals=self.instrument_sz_decimals,
-            venue_max_leverage=self.instrument_venue_max_leverage,
+            market=_market_from_canonical(
+                pending.crossing.market
+            ),
+            sz_decimals=pending.instrument_sz_decimals,
+            venue_max_leverage=(
+                pending.instrument_venue_max_leverage
+            ),
             minimum_order_notional=(
-                self.instrument_minimum_order_notional
+                pending.instrument_minimum_order_notional
             ),
             metadata_received_at_ms=(
-                self.instrument_metadata_received_at_ms
+                pending.instrument_metadata_received_at_ms
             ),
-            metadata_source=self.instrument_metadata_source,
+            metadata_source=pending.instrument_metadata_source,
         )
 
     def book_event(self) -> StreamEvent:
         return StreamEvent(
             kind=StreamKind.L2_BOOK,
-            market=_market_from_canonical(self.crossing.market),
-            exchange_time_ms=self.book_exchange_ms,
+            market=_market_from_canonical(
+                self.pending.crossing.market
+            ),
+            exchange_time_ms=self.execution_book_exchange_ms,
             receive_time=datetime.fromtimestamp(
-                self.book_received_ms / 1000,
+                self.execution_book_received_ms / 1000,
                 tz=UTC,
             ),
-            schema_version=self.book_schema_version,
-            source=self.book_source,
-            event_key=self.book_event_key,
+            schema_version=self.execution_book_schema_version,
+            source=self.execution_book_source,
+            event_key=self.execution_book_event_key,
             payload={
                 "bids": tuple(
                     {
@@ -488,15 +767,6 @@ class OriginalStopBookEvidence:
         )
 
 
-def _market_from_canonical(value: str):
-    from cocomelon.domain.market import MarketId
-
-    if ":" in value:
-        dex = value.split(":", 1)[0]
-        return MarketId.from_wire_name(dex, value)
-    return MarketId.from_wire_name("", value)
-
-
 class OriginalStopBookEvidenceStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -508,7 +778,9 @@ class OriginalStopBookEvidenceStore:
     @staticmethod
     def _name(opening_plan_id: str) -> str:
         if not opening_plan_id.strip():
-            raise ValueError("opening_plan_id must not be empty")
+            raise ValueError(
+                "opening_plan_id must not be empty"
+            )
         return hashlib.sha256(
             opening_plan_id.encode("utf-8")
         ).hexdigest() + ".json"
@@ -548,75 +820,97 @@ class OriginalStopBookEvidenceStore:
         path = self._record_path(opening_plan_id)
         if not path.exists():
             return None
-        return OriginalStopBookEvidence.from_dict(self._read(path))
+        return OriginalStopBookEvidence.from_dict(
+            self._read(path)
+        )
 
     def pending_for(
         self,
         opening_plan_id: str,
-    ) -> OriginalStopCrossing | None:
+    ) -> PendingOriginalStopExecution | None:
         path = self._pending_path(opening_plan_id)
         if not path.exists():
             return None
-        return OriginalStopCrossing.from_dict(self._read(path))
+        return PendingOriginalStopExecution.from_dict(
+            self._read(path)
+        )
 
     def stage(self, crossing: OriginalStopCrossing) -> bool:
         if self.evidence_for(crossing.opening_plan_id) is not None:
             return False
         path = self._pending_path(crossing.opening_plan_id)
         existing = self.pending_for(crossing.opening_plan_id)
+        candidate = PendingOriginalStopExecution(
+            crossing=crossing
+        )
         if existing is not None:
-            if existing != crossing:
+            if existing != candidate:
                 raise OriginalStopBookEvidenceError(
                     "conflicting original-stop crossing evidence"
                 )
             return False
-        self._write(path, crossing.to_dict())
+        self._write(path, candidate.to_dict())
         return True
 
-    def capture_book(
+    def stage_plan(
         self,
-        crossing: OriginalStopCrossing,
+        pending: PendingOriginalStopExecution,
         book: StreamEvent,
         *,
         reference_price: Decimal,
         instrument: InstrumentExecutionSpec,
+    ) -> PendingOriginalStopExecution:
+        staged = pending.with_plan(
+            book,
+            reference_price=reference_price,
+            instrument=instrument,
+        )
+        path = self._pending_path(
+            pending.crossing.opening_plan_id
+        )
+        existing = self.pending_for(
+            pending.crossing.opening_plan_id
+        )
+        if existing is None or existing != pending:
+            raise OriginalStopBookEvidenceError(
+                "pending stop execution changed before plan staging"
+            )
+        self._write(path, staged.to_dict())
+        return staged
+
+    def capture_execution_book(
+        self,
+        pending: PendingOriginalStopExecution,
+        book: StreamEvent,
     ) -> bool:
+        if not pending.plan_staged:
+            raise OriginalStopBookEvidenceError(
+                "stop execution plan context is missing"
+            )
         if book.kind is not StreamKind.L2_BOOK:
             raise OriginalStopBookEvidenceError(
                 "stop execution evidence requires L2 book"
             )
-        if book.market.canonical != crossing.market:
+        if book.market.canonical != pending.crossing.market:
             raise OriginalStopBookEvidenceError(
                 "stop execution book market mismatch"
             )
-        if instrument.market != book.market:
-            raise OriginalStopBookEvidenceError(
-                "stop execution instrument market mismatch"
-            )
         evidence = OriginalStopBookEvidence(
-            crossing=crossing,
-            book_event_key=book.event_key,
-            book_received_ms=_receive_ms(book),
-            book_exchange_ms=book.exchange_time_ms,
-            book_source=book.source,
-            book_schema_version=book.schema_version,
-            reference_price=reference_price,
-            instrument_sz_decimals=instrument.sz_decimals,
-            instrument_venue_max_leverage=(
-                instrument.venue_max_leverage
-            ),
-            instrument_minimum_order_notional=(
-                instrument.minimum_order_notional
-            ),
-            instrument_metadata_received_at_ms=(
-                instrument.metadata_received_at_ms
-            ),
-            instrument_metadata_source=instrument.metadata_source,
+            pending=pending,
+            execution_book_event_key=book.event_key,
+            execution_book_received_ms=_receive_ms(book),
+            execution_book_exchange_ms=book.exchange_time_ms,
+            execution_book_source=book.source,
+            execution_book_schema_version=book.schema_version,
             bids=_levels(book.payload.get("bids")),
             asks=_levels(book.payload.get("asks")),
         )
-        path = self._record_path(crossing.opening_plan_id)
-        existing = self.evidence_for(crossing.opening_plan_id)
+        path = self._record_path(
+            pending.crossing.opening_plan_id
+        )
+        existing = self.evidence_for(
+            pending.crossing.opening_plan_id
+        )
         if existing is not None:
             if existing != evidence:
                 raise OriginalStopBookEvidenceError(
@@ -624,18 +918,24 @@ class OriginalStopBookEvidenceStore:
                 )
             return False
         self._write(path, evidence.to_dict())
-        pending = self._pending_path(crossing.opening_plan_id)
-        if pending.exists():
-            pending.unlink()
+        pending_path = self._pending_path(
+            pending.crossing.opening_plan_id
+        )
+        if pending_path.exists():
+            pending_path.unlink()
         return True
 
     @property
     def record_count(self) -> int:
-        return sum(1 for _ in self.records_root.glob("*.json"))
+        return sum(
+            1 for _ in self.records_root.glob("*.json")
+        )
 
     @property
     def pending_count(self) -> int:
-        return sum(1 for _ in self.pending_root.glob("*.json"))
+        return sum(
+            1 for _ in self.pending_root.glob("*.json")
+        )
 
     @property
     def state_digest(self) -> str:
@@ -643,15 +943,21 @@ class OriginalStopBookEvidenceStore:
             OriginalStopBookEvidence.from_dict(
                 self._read(path)
             ).to_dict()
-            for path in sorted(self.records_root.glob("*.json"))
+            for path in sorted(
+                self.records_root.glob("*.json")
+            )
         ]
         pending = [
-            OriginalStopCrossing.from_dict(
+            PendingOriginalStopExecution.from_dict(
                 self._read(path)
             ).to_dict()
-            for path in sorted(self.pending_root.glob("*.json"))
+            for path in sorted(
+                self.pending_root.glob("*.json")
+            )
         ]
-        return _digest({"records": rows, "pending": pending})
+        return _digest(
+            {"records": rows, "pending": pending}
+        )
 
 
 class OriginalStopBookCapture:
@@ -663,9 +969,11 @@ class OriginalStopBookCapture:
             [str],
             PaperOrderPlan | None,
         ],
+        config: PaperExecutionConfig,
     ) -> None:
         self.store = store
         self._opening_plan_loader = opening_plan_loader
+        self._config = config
         self.error: str | None = None
 
     def _fail(self, exc: Exception) -> None:
@@ -676,7 +984,9 @@ class OriginalStopBookCapture:
         self,
         position: PaperPosition,
     ) -> PaperOrderPlan:
-        plan = self._opening_plan_loader(position.opening_plan_id)
+        plan = self._opening_plan_loader(
+            position.opening_plan_id
+        )
         if plan is None:
             raise OriginalStopBookEvidenceError(
                 "original-stop opening plan is missing"
@@ -715,9 +1025,19 @@ class OriginalStopBookCapture:
                     "duplicate positions for original-stop capture"
                 )
             position = matching[0]
-            if self.store.evidence_for(position.opening_plan_id) is not None:
+            if (
+                self.store.evidence_for(
+                    position.opening_plan_id
+                )
+                is not None
+            ):
                 return
-            if self.store.pending_for(position.opening_plan_id) is not None:
+            if (
+                self.store.pending_for(
+                    position.opening_plan_id
+                )
+                is not None
+            ):
                 return
             plan = self._plan_for(position)
             raw_mark = mark_event.payload.get("mark_px")
@@ -744,12 +1064,16 @@ class OriginalStopBookCapture:
                 )
             self.store.stage(
                 OriginalStopCrossing(
-                    opening_plan_id=position.opening_plan_id,
+                    opening_plan_id=(
+                        position.opening_plan_id
+                    ),
                     market=position.market.canonical,
                     direction=position.side.value,
                     opened_at_ms=position.opened_at_ms,
                     original_stop=stop,
-                    crossing_mark_event_key=mark_event.event_key,
+                    crossing_mark_event_key=(
+                        mark_event.event_key
+                    ),
                     crossing_mark_price=raw_mark,
                     crossing_mark_received_ms=received_ms,
                     crossing_mark_exchange_ms=(
@@ -784,20 +1108,32 @@ class OriginalStopBookCapture:
                     "duplicate positions for original-stop book capture"
                 )
             position = matching[0]
-            crossing = self.store.pending_for(
+            pending = self.store.pending_for(
                 position.opening_plan_id
             )
-            if crossing is None:
+            if pending is None:
                 return
-            if now_ms < _receive_ms(book):
+            book_received_ms = _receive_ms(book)
+            if now_ms < book_received_ms:
                 raise OriginalStopBookEvidenceError(
                     "original-stop capture consumed future book"
                 )
-            self.store.capture_book(
-                crossing,
+            if not pending.plan_staged:
+                pending = self.store.stage_plan(
+                    pending,
+                    book,
+                    reference_price=reference_price,
+                    instrument=instrument,
+                )
+            earliest_execution_ms = (
+                pending.crossing.crossing_mark_received_ms
+                + self._config.latency_ms
+            )
+            if book_received_ms < earliest_execution_ms:
+                return
+            self.store.capture_execution_book(
+                pending,
                 book,
-                reference_price=reference_price,
-                instrument=instrument,
             )
         except Exception as exc:
             self._fail(exc)
