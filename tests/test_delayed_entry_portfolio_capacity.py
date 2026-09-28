@@ -231,6 +231,7 @@ def _outcome(
     trade: TradeJournalEntry,
     *,
     price: str = "100",
+    reference_price: str | None = None,
     entry_depth: str | None = "100000",
     exit_depth: str | None = "100000",
 ) -> DelayedEntryOutcome:
@@ -248,6 +249,9 @@ def _outcome(
         gross_r_improvement=None,
         attempt_reason=None,
         capacity_cause=None,
+        delayed_reference_price=Decimal(
+            price if reference_price is None else reference_price
+        ),
         delayed_entry_side_depth_25bps=(
             None if entry_depth is None else Decimal(entry_depth)
         ),
