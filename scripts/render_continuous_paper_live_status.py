@@ -1635,20 +1635,42 @@ def _delayed_entry_stop_survivability_lines(
                 f"- same-exit stop-validity research error: `{validity_error}`"
             )
         elif isinstance(validity_overall, dict):
+            candidate_all = validity_overall.get(
+                "same_exit_candidate_net_pnl",
+                "0",
+            )
+            candidate_crossed = validity_overall.get(
+                "same_exit_candidate_pnl_on_definite_stop_crossings",
+                "0",
+            )
+            candidate_survived = validity_overall.get(
+                "same_exit_candidate_pnl_on_observed_survivors",
+                "0",
+            )
+            delta_all = validity_overall.get(
+                "same_exit_delta_vs_actual",
+                "0",
+            )
+            delta_crossed = validity_overall.get(
+                "same_exit_delta_on_definite_stop_crossings",
+                "0",
+            )
+            delta_survived = validity_overall.get(
+                "same_exit_delta_on_observed_survivors",
+                "0",
+            )
             lines.extend(
                 [
                     (
                         "- corrected same-exit candidate PnL all / stop-crossed / "
                         "survived: "
-                        f"`{validity_overall.get('same_exit_candidate_net_pnl', '0')} / "
-                        f"{validity_overall.get('same_exit_candidate_pnl_on_definite_stop_crossings', '0')} / "
-                        f"{validity_overall.get('same_exit_candidate_pnl_on_observed_survivors', '0')}`"
+                        f"`{candidate_all} / {candidate_crossed} / "
+                        f"{candidate_survived}`"
                     ),
                     (
                         "- same-exit Δ vs actual all / stop-crossed / survived: "
-                        f"`{validity_overall.get('same_exit_delta_vs_actual', '0')} / "
-                        f"{validity_overall.get('same_exit_delta_on_definite_stop_crossings', '0')} / "
-                        f"{validity_overall.get('same_exit_delta_on_observed_survivors', '0')}`"
+                        f"`{delta_all} / {delta_crossed} / "
+                        f"{delta_survived}`"
                     ),
                     (
                         "- absolute candidate PnL on definite stop crossings: "
