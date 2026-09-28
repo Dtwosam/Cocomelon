@@ -2126,3 +2126,27 @@ A stop-crossed candidate's recorded-close PnL is flagged as path-invalid evidenc
 This remains research-only and changes no stops, exits, sizing, risk, cadence, paper execution, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry stop-exit proxy range — 2026-09-28
+
+The 60-second delayed-entry stop analysis now estimates how definite original-stop crossings change candidate economics without pretending the missing exit-side L2 book is known.
+
+For every filled delayed candidate with a complete, gap-free exact mark path:
+
+- the existing funding-corrected same-recorded-exit contribution remains the comparison baseline;
+- candidates that never cross the immutable original stop keep that same-exit contribution in every proxy cohort;
+- definite stop-crossed candidates are repriced under three full-quantity exit proxies:
+  - idealized exit at the immutable original stop;
+  - exit at the first observed stop-crossing mark;
+  - exit at the first crossing mark pushed to the configured paper IOC slippage boundary;
+- each proxy charges the running paper configuration's taker-fee rate;
+- funding is settled only for verified boundaries strictly after the delayed open and strictly before the stop trigger;
+- if a funding boundary occurs at the exact stop-trigger millisecond, that trade is excluded as timing-ambiguous rather than assigned an arbitrary event order;
+- telemetry reports whole-cohort PnL and delta versus actual under all three proxies, how much same-exit edge disappears at the IOC boundary proxy, and how many positive same-exit stop-crossed candidates become nonpositive.
+
+These are price-and-cost proxies, not executable stop simulations. Exit-side L2 depth is not reconstructed, so partial stop fills, no-fill remainder behavior, and the exact average stop fill price are still unmodeled.
+
+This is research-only evidence. It changes no live paper stops, exits, sizing, risk limits, cadence, or order authority.
+
+**LIVE TRADING: DISABLED.**

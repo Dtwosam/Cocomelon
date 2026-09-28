@@ -34,6 +34,7 @@ from cocomelon.continuous_paper import (
     _delayed_entry_risk_geometry_payload,
     _delayed_entry_same_exit_payload,
     _delayed_entry_same_exit_stop_validity_payload,
+    _delayed_entry_stop_exit_proxy_payload,
     _delayed_entry_stop_survivability_payload,
     _drawdown_payload,
     _entry_decision_age_payload,
@@ -211,6 +212,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"delayed_entry_same_exit_stop_validity": (' in source
     )
     assert "delayed_entry_same_exit_stop_validity(" in source
+    assert '"delayed_entry_stop_exit_proxy": (' in source
+    assert "delayed_entry_stop_exit_proxy_range(" in source
+    assert "paper_execution_config=replay_config.execution" in source
     assert '"delayed_entry_portfolio_capacity": (' in source
     assert "delayed_entry_portfolio_capacity_overlay(" in source
     assert (
@@ -1168,6 +1172,35 @@ def test_delayed_entry_same_exit_stop_validity_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: stop validity boom"
+
+
+def test_delayed_entry_stop_exit_proxy_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("stop exit proxy boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "delayed_entry_stop_exit_proxy_range",
+        fail,
+    )
+    payload = _delayed_entry_stop_exit_proxy_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(
+            shadow=SimpleNamespace(outcomes=()),
+            error=None,
+        ),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        lambda _market, _start_ms: (),
+        PaperExecutionConfig(),
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: stop exit proxy boom"
 
 
 def test_delayed_entry_portfolio_capacity_fails_open(
