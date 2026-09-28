@@ -1091,6 +1091,7 @@ def test_delayed_entry_portfolio_capacity_fails_open(
         lambda _plan_id: None,
         BaselineReplayConfig().risk_limits,
         BaselineReplayConfig().execution.paper_max_gross_leverage,
+        BaselineReplayConfig().execution.native_perp_min_notional,
     )
 
     assert payload["enabled"] is False
