@@ -1530,8 +1530,8 @@ def _delayed_entry_portfolio_capacity_lines(
                 f"{raw.get('background_positions', 0)}`"
             ),
             (
-                "- unresolved / missing journal-plan-leverage-openliq-delayliq-delayref-funding-path / "
-                "incomplete / lineage: "
+                "- unresolved / missing journal-plan-leverage-openliq-"
+                "delayliq-delayref-funding-path / incomplete / lineage: "
                 f"`{raw.get('unresolved_outcomes', 0)} / "
                 f"{raw.get('missing_journal_trades', 0)}-"
                 f"{raw.get('missing_opening_plans', 0)}-"
