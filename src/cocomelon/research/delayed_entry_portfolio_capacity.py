@@ -11,6 +11,8 @@ from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
+    CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
+    LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
     ContinuousPaperTradePathStore,
 )
 from cocomelon.research.delayed_entry_execution_shadow import (
@@ -28,10 +30,84 @@ ONE: Final = Decimal("1")
 MIN_CLOSED_SHADOW_OUTCOMES: Final = 30
 MIN_CANDIDATE_FILLED_POSITIONS: Final = 20
 MIN_CANDIDATE_OVERLAP_OPENINGS: Final = 5
+MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS: Final = 20
+DELAYED_ENTRY_MARGIN_CAPACITY_STATE_SCHEMA_VERSION: Final = 1
+DELAYED_ENTRY_MARGIN_CAPACITY_CANDIDATE_ID: Final = (
+    "delayed-entry-60s-venue-margin-capacity-v1"
+)
 
 
 class DelayedEntryCapacityOverlayError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class DelayedEntryMarginCapacityState:
+    started_at_ms: int
+    schema_version: int = DELAYED_ENTRY_MARGIN_CAPACITY_STATE_SCHEMA_VERSION
+    candidate_id: str = DELAYED_ENTRY_MARGIN_CAPACITY_CANDIDATE_ID
+
+    def __post_init__(self) -> None:
+        if self.started_at_ms < 0:
+            raise ValueError("started_at_ms must be non-negative")
+        if (
+            self.schema_version
+            != DELAYED_ENTRY_MARGIN_CAPACITY_STATE_SCHEMA_VERSION
+        ):
+            raise ValueError(
+                "unsupported delayed-entry margin-capacity state schema"
+            )
+        if self.candidate_id != DELAYED_ENTRY_MARGIN_CAPACITY_CANDIDATE_ID:
+            raise ValueError(
+                "unsupported delayed-entry margin-capacity candidate"
+            )
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "schema_version": self.schema_version,
+            "candidate_id": self.candidate_id,
+            "started_at_ms": self.started_at_ms,
+            "rule": (
+                "from_start_apply_venue_adjusted_gross_and_available_"
+                "margin_caps_without_retroactive_admission_changes"
+            ),
+        }
+
+    @classmethod
+    def from_payload(
+        cls,
+        raw: object,
+    ) -> DelayedEntryMarginCapacityState:
+        if not isinstance(raw, dict):
+            raise DelayedEntryCapacityOverlayError(
+                "margin-capacity state must be an object"
+            )
+        schema_version = raw.get("schema_version")
+        candidate_id = raw.get("candidate_id")
+        started_at_ms = raw.get("started_at_ms")
+        expected_rule = (
+            "from_start_apply_venue_adjusted_gross_and_available_"
+            "margin_caps_without_retroactive_admission_changes"
+        )
+        if (
+            isinstance(schema_version, bool)
+            or not isinstance(schema_version, int)
+            or not isinstance(candidate_id, str)
+            or isinstance(started_at_ms, bool)
+            or not isinstance(started_at_ms, int)
+            or raw.get("rule") != expected_rule
+        ):
+            raise DelayedEntryCapacityOverlayError(
+                "margin-capacity state is invalid"
+            )
+        try:
+            return cls(
+                started_at_ms=started_at_ms,
+                schema_version=schema_version,
+                candidate_id=candidate_id,
+            )
+        except ValueError as exc:
+            raise DelayedEntryCapacityOverlayError(str(exc)) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +124,8 @@ class _Position:
     close_realized_increment: Decimal
     marks: tuple[tuple[int, Decimal], ...]
     opening_kind: str
+    venue_max_leverage: Decimal | None
+    margin_policy_eligible: bool
 
     def __post_init__(self) -> None:
         for identity in (
@@ -73,6 +151,16 @@ class _Position:
             raise ValueError("entry_fee must be non-negative")
         if not self.close_realized_increment.is_finite():
             raise ValueError("close increment must be finite")
+        if (
+            self.venue_max_leverage is not None
+            and (
+                not self.venue_max_leverage.is_finite()
+                or self.venue_max_leverage <= ZERO
+            )
+        ):
+            raise ValueError(
+                "venue_max_leverage must be positive when present"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +346,55 @@ def _marks(
         previous = timestamp_ms
         output.append((timestamp_ms, mark_px))
     return tuple(output)
+
+
+def _path_venue_max_leverage(
+    raw: Mapping[str, object],
+) -> Decimal | None:
+    schema_version = _integer(
+        raw.get("schema_version"),
+        "schema_version",
+    )
+    if schema_version == LEGACY_CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION:
+        return None
+    if schema_version != CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION:
+        raise DelayedEntryCapacityOverlayError(
+            "unsupported trade path schema for margin capacity"
+        )
+    leverage = _decimal(
+        raw.get("venue_max_leverage"),
+        "venue_max_leverage",
+    )
+    if leverage <= ZERO:
+        raise DelayedEntryCapacityOverlayError(
+            "venue_max_leverage must be positive"
+        )
+    return leverage
+
+
+def _effective_leverage(
+    position: _Position,
+    limits: RiskLimits,
+) -> Decimal | None:
+    if position.venue_max_leverage is None:
+        return None
+    return min(
+        limits.max_gross_leverage,
+        position.venue_max_leverage,
+    )
+
+
+def _reserved_margin(
+    active: Mapping[str, _Active],
+    limits: RiskLimits,
+) -> Decimal | None:
+    total = ZERO
+    for item in active.values():
+        leverage = _effective_leverage(item.position, limits)
+        if leverage is None:
+            return None
+        total += _gross_notional(item) / leverage
+    return total
 
 
 def _position_events(
@@ -737,6 +874,9 @@ def _actual_position(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, Decimal], ...],
     plan: PaperOrderPlan,
+    *,
+    venue_max_leverage: Decimal | None,
+    margin_policy_eligible: bool,
 ) -> _Position:
     _validate_plan(trade, plan)
     planned_risk = (
@@ -765,6 +905,8 @@ def _actual_position(
         ),
         marks=marks,
         opening_kind="observed",
+        venue_max_leverage=venue_max_leverage,
+        margin_policy_eligible=margin_policy_eligible,
     )
 
 
@@ -776,9 +918,17 @@ def delayed_entry_portfolio_capacity_overlay(
     *,
     limits: RiskLimits,
     delay_ms: int = DELAY_MS,
+    margin_evidence_start_ms: int | None = None,
 ) -> dict[str, object]:
     if delay_ms <= 0:
         raise ValueError("delay_ms must be positive")
+    if (
+        margin_evidence_start_ms is not None
+        and margin_evidence_start_ms < 0
+    ):
+        raise ValueError(
+            "margin_evidence_start_ms must be non-negative"
+        )
 
     trades = tuple(journal.iter_trades())
     trades_by_id = {trade.trade_id: trade for trade in trades}
