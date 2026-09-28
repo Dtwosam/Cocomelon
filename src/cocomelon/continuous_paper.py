@@ -4013,6 +4013,13 @@ async def run_continuous_paper_session(
         root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
         started_at_ms=started_at_ms,
     )
+    (
+        delayed_entry_margin_capacity_state,
+        delayed_entry_margin_capacity_restore_error,
+    ) = _restore_delayed_entry_margin_capacity(
+        root / DELAYED_ENTRY_MARGIN_CAPACITY_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
 
     try:
         if not execution.health.healthy_for_new_exposure:
@@ -4199,6 +4206,10 @@ async def run_continuous_paper_session(
                 root / DELAY_SELECTOR_COMPARISON_STATE_FILENAME,
                 delay_selector_comparison_state.payload(),
             )
+            _write_json_atomic(
+                root / DELAYED_ENTRY_MARGIN_CAPACITY_STATE_FILENAME,
+                delayed_entry_margin_capacity_state.payload(),
+            )
             if entry_mid_markout_shadow.shadow is not None:
                 _write_json_atomic(
                     root / ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME,
@@ -4230,6 +4241,7 @@ async def run_continuous_paper_session(
             adaptive_delay_selector_state,
             fill_aware_delay_selector_state,
             delay_selector_comparison_state,
+            delayed_entry_margin_capacity_state,
             trade_path_capture_error=trade_path_sink.error,
             opening_rank_capture_error=(
                 None
@@ -4256,6 +4268,9 @@ async def run_continuous_paper_session(
             ),
             delay_selector_comparison_restore_error=(
                 delay_selector_comparison_restore_error
+            ),
+            delayed_entry_margin_capacity_restore_error=(
+                delayed_entry_margin_capacity_restore_error
             ),
             risk_limits=replay_config.risk_limits,
             checkpoint_seconds=config.checkpoint_seconds,
