@@ -190,7 +190,18 @@ class DelayedEntryStopL2Outcome:
                 "only full stop exit may claim total stop PnL"
             )
         if self.execution_result is None:
+            if self.late_funding_boundaries_excluded is not None:
+                raise ValueError(
+                    "unexecuted stop must not report funding exclusions"
+                )
             return
+        if (
+            self.late_funding_boundaries_excluded is None
+            or self.late_funding_boundaries_excluded < 0
+        ):
+            raise ValueError(
+                "executed stop requires funding exclusion count"
+            )
         for optional_metric, field in (
             (
                 self.stop_requested_quantity,
