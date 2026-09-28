@@ -13,6 +13,10 @@ from cocomelon.research.prospective_allowed_residual import (
     AllowedResidualItem,
     prospective_allowed_residual_attribution,
 )
+from cocomelon.research.prospective_filter_fixed_schedule import (
+    ProspectiveFilterPortfolioItem,
+    prospective_filter_fixed_schedule_portfolio,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -197,6 +201,17 @@ def prospective_entry_filter_summary(
             for trade in allowed
         )
     )
+    fixed_schedule_portfolio = (
+        prospective_filter_fixed_schedule_portfolio(
+            tuple(
+                ProspectiveFilterPortfolioItem(
+                    trade,
+                    admitted=not rejected,
+                )
+                for trade, rejected in attributed
+            )
+        )
+    )
     actual_net_r = sum(
         (trade.net_r for trade, _ in attributed),
         ZERO,
@@ -263,6 +278,7 @@ def prospective_entry_filter_summary(
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
         "allowed_residual": allowed_residual,
+        "fixed_schedule_portfolio": fixed_schedule_portfolio,
         "allowed_net_pnl": str(allowed_net_pnl),
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
