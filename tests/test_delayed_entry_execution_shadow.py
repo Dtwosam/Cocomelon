@@ -264,9 +264,6 @@ def test_delayed_long_full_fill_reports_better_price() -> None:
     assert Decimal(
         str(summary["mean_signed_price_improvement_bps"])
     ) == Decimal("90.000")
-    outcome = shadow.outcomes[0]
-    assert outcome.delayed_entry_side_depth_25bps == Decimal("1009.0")
-    assert outcome.delayed_exit_side_depth_25bps == Decimal("1011.0")
     assert Decimal(
         str(summary["mean_gross_r_improvement"])
     ) == Decimal("0.09")
@@ -307,6 +304,9 @@ def test_delayed_short_full_fill_is_direction_symmetric() -> None:
     assert Decimal(
         str(summary["mean_signed_price_improvement_bps"])
     ) == Decimal("90.000")
+    outcome = shadow.outcomes[0]
+    assert outcome.delayed_entry_side_depth_25bps == Decimal("1009.0")
+    assert outcome.delayed_exit_side_depth_25bps == Decimal("1011.0")
 
 
 def test_delayed_entry_partial_fill_is_not_scored_as_full() -> None:
