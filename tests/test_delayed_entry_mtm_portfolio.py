@@ -94,11 +94,13 @@ def _funding(
     boundary_ms: int,
     rate: str,
     direction: Direction = Direction.LONG,
+    quantity: str = "1",
 ) -> FundingAccrual:
+    absolute_quantity = Decimal(quantity)
     signed_quantity = (
-        Decimal("1")
+        absolute_quantity
         if direction is Direction.LONG
-        else Decimal("-1")
+        else -absolute_quantity
     )
     oracle_price = Decimal("100")
     funding_rate = Decimal(rate)
@@ -523,3 +525,57 @@ def test_mtm_portfolio_missing_funding_event_blocks_review(
     assert result["missing_funding_events"] == 1
     assert result["evaluated_complete_path_trades"] == 0
     assert readiness["ready_for_review"] is False
+
+
+
+def test_mtm_candidate_funding_scales_recorded_boundary_quantity(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    funding = _funding(
+        boundary_ms=3_600_000,
+        rate="0.01",
+        quantity="0.5",
+    )
+    try:
+        trade = _trade(
+            suffix="reduced-funding",
+            direction=Direction.LONG,
+            opened_at_ms=3_500_000,
+            closed_at_ms=4_000_000,
+            funding=(funding,),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((3_800_000, "100"),),
+            )
+        )
+
+        result = delayed_entry_mtm_portfolio(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="partial_visible_book_ioc",
+                    quantity="0.5",
+                    price="100",
+                ),
+            ),
+            paths,
+            _funding_loader(funding),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    candidate = result["candidate"]
+    assert isinstance(actual, dict)
+    assert isinstance(candidate, dict)
+    assert Decimal(str(actual["funding_cash_pnl"])) == Decimal("-0.5")
+    assert Decimal(str(candidate["funding_cash_pnl"])) == Decimal("-0.25")
+    assert Decimal(
+        str(candidate["final_realized_contribution"])
+    ) == Decimal("-0.25")
