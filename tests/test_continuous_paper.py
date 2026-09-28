@@ -1540,7 +1540,12 @@ def test_trade_path_capture_failure_is_fail_open() -> None:
 
     sink = _ContinuousTradePathSink(Store())  # type: ignore[arg-type]
 
-    assert sink.record(SimpleNamespace(), (), ()) is False  # type: ignore[arg-type]
+    assert sink.record(
+        SimpleNamespace(),
+        Decimal("20"),
+        (),
+        (),
+    ) is False  # type: ignore[arg-type]
     assert sink.error == "RuntimeError: path boom"
 
     sink.checkpoint(
@@ -1549,6 +1554,7 @@ def test_trade_path_capture_failure_is_fail_open() -> None:
                 opening_plan_id="plan-1",
                 market=MarketId("", "BTC"),
                 opened_at_ms=1,
+                venue_max_leverage=Decimal("20"),
                 mark_observations=(),
             ),
         )
