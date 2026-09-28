@@ -230,8 +230,6 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
                 ((200_000, "100"),),
             )
         )
-        plan = _plan(candidate)
-
         result = delayed_entry_portfolio_capacity_overlay(
             journal,
             (_outcome(candidate),),
@@ -299,8 +297,6 @@ def test_admission_shadow_can_reject_later_background_opening(
                 ((220_000, "100"),),
             )
         )
-        plan = _plan(candidate)
-
         result = delayed_entry_portfolio_capacity_overlay(
             journal,
             (_outcome(candidate, price="101"),),
