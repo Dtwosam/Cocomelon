@@ -13,6 +13,10 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
 from cocomelon.domain.stream import StreamEvent, StreamKind
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    funding_cash_delta,
+)
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePath,
@@ -39,9 +43,15 @@ def _trade(
     suffix: str,
     opened_at_ms: int = 100_000,
     quantity: str = "1",
+    funding: tuple[FundingAccrual, ...] = (),
 ) -> TradeJournalEntry:
     filled_quantity = Decimal(quantity)
     risk_amount = Decimal("10") * filled_quantity
+    funding_pnl = sum(
+        (item.cash_delta for item in funding),
+        Decimal("0"),
+    )
+    net_pnl = risk_amount + funding_pnl
     return TradeJournalEntry(
         market=MARKET,
         direction=Direction.LONG,
@@ -59,7 +69,9 @@ def _trade(
             f"fill-exit-{suffix}",
         ),
         position_action_ids=(f"action-{suffix}",),
-        funding_event_ids=(),
+        funding_event_ids=tuple(
+            item.accrual_id for item in funding
+        ),
         initial_stop=Decimal("90"),
         initial_risk_amount=risk_amount,
         entry_price=Decimal("100"),
@@ -68,8 +80,8 @@ def _trade(
         gross_realized_pnl=risk_amount,
         entry_fees=Decimal("0"),
         exit_fees=Decimal("0"),
-        funding_cash_pnl=Decimal("0"),
-        net_pnl=risk_amount,
+        funding_cash_pnl=funding_pnl,
+        net_pnl=net_pnl,
         entry_slippage_amount=Decimal("0"),
         exit_slippage_amount=Decimal("0"),
         entry_slippage_fraction=Decimal("0"),
@@ -77,9 +89,9 @@ def _trade(
         holding_duration_ms=400_000 - opened_at_ms,
         mfe=None,
         mae=None,
-        net_r=Decimal("1"),
+        net_r=net_pnl / risk_amount,
         equity_before=Decimal("10000"),
-        equity_after=Decimal("10000") + risk_amount,
+        equity_after=Decimal("10000") + net_pnl,
         exit_reason="fixture",
         health_refs=("paper-state-healthy",),
         evidence_class=EvidenceClass.MICROSTRUCTURE,
@@ -251,11 +263,53 @@ def _capture_stop_book(
     return store
 
 
+def _funding(
+    *,
+    boundary_ms: int,
+    received_at_ms: int,
+    rate: str = "0.001",
+) -> FundingAccrual:
+    signed_quantity = Decimal("1")
+    oracle_price = Decimal("100")
+    funding_rate = Decimal(rate)
+    return FundingAccrual(
+        market=MARKET,
+        boundary_ms=boundary_ms,
+        position_id=f"position-{boundary_ms}",
+        signed_quantity=signed_quantity,
+        oracle_price=oracle_price,
+        funding_rate=funding_rate,
+        cash_delta=funding_cash_delta(
+            signed_quantity,
+            oracle_price,
+            funding_rate,
+        ),
+        oracle_event_key=f"oracle-{boundary_ms}",
+        funding_source="fixture",
+        funding_received_at_ms=received_at_ms,
+    )
+
+
 def _funding_loader(
-    _market: MarketId,
-    _start_ms: int,
+    *accruals: FundingAccrual,
 ):
-    return ()
+    def load(
+        market: MarketId,
+        start_ms: int,
+    ) -> tuple[FundingAccrual, ...]:
+        return tuple(
+            item
+            for item in accruals
+            if (
+                item.market == market
+                and item.boundary_ms >= start_ms
+            )
+        )
+
+    return load
+
+
+EMPTY_FUNDING_LOADER = _funding_loader()
 
 
 def _config() -> PaperExecutionConfig:
@@ -292,7 +346,7 @@ def test_exact_l2_replay_uses_manager_triggered_full_stop_fill(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -313,6 +367,98 @@ def test_exact_l2_replay_uses_manager_triggered_full_stop_fill(
             ]
         )
     ) == Decimal("21.04005")
+
+
+def test_funding_available_at_execution_is_included_before_stop(
+    tmp_path: Path,
+) -> None:
+    accrual = _funding(
+        boundary_ms=170_300,
+        received_at_ms=170_300,
+    )
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "paths"
+    )
+    try:
+        trade = _trade(
+            suffix="funding-at-execution",
+            funding=(accrual,),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((170_000, "89"), (300_000, "100")),
+            )
+        )
+        books = _capture_stop_book(
+            tmp_path / "stop-books",
+            trade,
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (_outcome(trade),),
+            paths,
+            books,
+            _funding_loader(accrual),
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert Decimal(
+        str(overall["exact_pnl_on_full_stop_exits"])
+    ) == Decimal("-11.14005")
+    assert overall["late_funding_boundaries_excluded"] == 0
+
+
+def test_funding_received_after_stop_execution_is_excluded(
+    tmp_path: Path,
+) -> None:
+    accrual = _funding(
+        boundary_ms=170_200,
+        received_at_ms=170_400,
+    )
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "paths"
+    )
+    try:
+        trade = _trade(
+            suffix="late-funding",
+            funding=(accrual,),
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((170_000, "89"), (300_000, "100")),
+            )
+        )
+        books = _capture_stop_book(
+            tmp_path / "stop-books",
+            trade,
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (_outcome(trade),),
+            paths,
+            books,
+            _funding_loader(accrual),
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert Decimal(
+        str(overall["exact_pnl_on_full_stop_exits"])
+    ) == Decimal("-11.04005")
+    assert overall["late_funding_boundaries_excluded"] == 1
 
 
 def test_transient_mark_crossing_without_plan_keeps_same_exit(
@@ -341,7 +487,7 @@ def test_transient_mark_crossing_without_plan_keeps_same_exit(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -390,7 +536,7 @@ def test_later_manager_trigger_can_follow_earlier_transient_crossing(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -430,7 +576,7 @@ def test_partial_stop_ioc_does_not_invent_remainder_exit(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -474,7 +620,7 @@ def test_full_ioc_with_quantized_position_remainder_is_unresolved(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -517,7 +663,7 @@ def test_instrument_version_drift_is_execution_rejection(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -560,7 +706,7 @@ def test_pre_capture_trade_is_excluded_not_called_missing(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
@@ -594,7 +740,7 @@ def test_capture_error_makes_missing_stop_plan_unresolved(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
             capture_error="fixture capture failure",
         )
@@ -632,7 +778,7 @@ def test_no_mark_crossing_is_observed_path_survivor(
             (_outcome(trade),),
             paths,
             books,
-            _funding_loader,
+            EMPTY_FUNDING_LOADER,
             _config(),
         )
     finally:
