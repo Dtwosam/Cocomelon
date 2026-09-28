@@ -1268,6 +1268,13 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
                 f"`{raw.get('delta_max_realized_drawdown', '0')}`"
             ),
             (
+                "- actual / candidate funding events / cash: "
+                f"`{actual.get('funding_events', 0)} / "
+                f"{candidate.get('funding_events', 0)} / "
+                f"{actual.get('funding_cash_pnl', '0')} / "
+                f"{candidate.get('funding_cash_pnl', '0')}`"
+            ),
+            (
                 "- actual / candidate max concurrent positions: "
                 f"`{actual.get('max_concurrent_positions', 0)} / "
                 f"{candidate.get('max_concurrent_positions', 0)}`"
@@ -1374,6 +1381,7 @@ def _delayed_entry_mtm_portfolio_lines(
         [
             f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             f"- mark model: `{raw.get('mark_model', 'unknown')}`",
+            f"- funding model: `{raw.get('funding_model', 'unknown')}`",
             (
                 "- closed shadow / complete paths / unresolved: "
                 f"`{raw.get('closed_shadow_outcomes', 0)} / "
@@ -1381,10 +1389,11 @@ def _delayed_entry_mtm_portfolio_lines(
                 f"{raw.get('unresolved_outcomes', 0)}`"
             ),
             (
-                "- missing journal / exact path / incomplete / lineage: "
+                "- missing journal / exact path / incomplete / funding / lineage: "
                 f"`{raw.get('missing_journal_trades', 0)} / "
                 f"{raw.get('missing_exact_paths', 0)} / "
                 f"{raw.get('incomplete_exact_paths', 0)} / "
+                f"{raw.get('missing_funding_events', 0)} / "
                 f"{raw.get('lineage_mismatches', 0)}`"
             ),
             (
@@ -1444,9 +1453,9 @@ def _delayed_entry_mtm_portfolio_lines(
             "",
             (
                 "_Observed-mark contribution equity only. Entry fees are timed "
-                "at open and exit fees/funding settle at the actual close; "
-                "intratrade funding timing, replacement trades, and changed "
-                "exit timing are not modeled._"
+                "at open, funding is applied at exact recorded hourly boundaries, "
+                "and exit fees settle at the actual close. Replacement trades "
+                "and changed exit timing are not modeled._"
             ),
         ]
     )
