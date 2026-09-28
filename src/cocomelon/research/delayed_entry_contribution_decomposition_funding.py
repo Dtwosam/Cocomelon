@@ -30,6 +30,9 @@ from cocomelon.research.delayed_entry_funding import (
     DelayedEntryFundingMissingError,
     FundingLoader,
 )
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
+)
 
 ZERO: Final = Decimal("0")
 
@@ -220,37 +223,29 @@ def _summary(
     items: tuple[DelayedEntryFundingDecompositionOutcome, ...],
 ) -> dict[str, object]:
     count = len(items)
-    price = sum(
-        (item.price_effect_pnl for item in items),
-        ZERO,
+    price = exact_decimal_sum(
+        item.price_effect_pnl for item in items
     )
-    entry_fee = sum(
-        (item.entry_fee_effect_pnl for item in items),
-        ZERO,
+    entry_fee = exact_decimal_sum(
+        item.entry_fee_effect_pnl for item in items
     )
-    exposure = sum(
-        (item.exposure_effect_pnl for item in items),
-        ZERO,
+    exposure = exact_decimal_sum(
+        item.exposure_effect_pnl for item in items
     )
-    funding = sum(
-        (item.funding_timing_effect_pnl for item in items),
-        ZERO,
+    funding = exact_decimal_sum(
+        item.funding_timing_effect_pnl for item in items
     )
-    legacy_delta = sum(
-        (item.legacy_total_delta_pnl for item in items),
-        ZERO,
+    legacy_delta = exact_decimal_sum(
+        item.legacy_total_delta_pnl for item in items
     )
-    corrected_delta = sum(
-        (item.corrected_total_delta_pnl for item in items),
-        ZERO,
+    corrected_delta = exact_decimal_sum(
+        item.corrected_total_delta_pnl for item in items
     )
-    actual = sum(
-        (item.actual_net_pnl for item in items),
-        ZERO,
+    actual = exact_decimal_sum(
+        item.actual_net_pnl for item in items
     )
-    corrected_candidate = sum(
-        (item.corrected_candidate_net_pnl for item in items),
-        ZERO,
+    corrected_candidate = exact_decimal_sum(
+        item.corrected_candidate_net_pnl for item in items
     )
     if (
         price + entry_fee + exposure + funding
