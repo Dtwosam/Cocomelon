@@ -17,6 +17,10 @@ from cocomelon.research.prospective_allowed_residual import (
     AllowedResidualItem,
     prospective_allowed_residual_attribution,
 )
+from cocomelon.research.prospective_filter_fixed_schedule import (
+    ProspectiveFilterPortfolioItem,
+    prospective_filter_fixed_schedule_portfolio,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -276,6 +280,17 @@ def prospective_combined_entry_filter_summary(
             for trade, rank, lead_strategy in allowed
         )
     )
+    fixed_schedule_portfolio = (
+        prospective_filter_fixed_schedule_portfolio(
+            tuple(
+                ProspectiveFilterPortfolioItem(
+                    trade,
+                    admitted=reason is None,
+                )
+                for trade, _rank, _lead_strategy, reason in attributed
+            )
+        )
+    )
 
     reason_names = (
         "long_trend",
@@ -381,6 +396,7 @@ def prospective_combined_entry_filter_summary(
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
         "allowed_residual": allowed_residual,
+        "fixed_schedule_portfolio": fixed_schedule_portfolio,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl
