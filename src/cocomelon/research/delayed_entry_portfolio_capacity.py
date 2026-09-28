@@ -1410,31 +1410,58 @@ def delayed_entry_portfolio_capacity_overlay(
         str(candidate_admission["final_realized_contribution"])
     )
 
-    actual_violations_raw = actual["capacity_violations"]
-    candidate_overlap_raw = candidate["overlap_openings"]
-    if (
-        isinstance(actual_violations_raw, bool)
-        or not isinstance(actual_violations_raw, int)
-        or isinstance(candidate_overlap_raw, bool)
-        or not isinstance(candidate_overlap_raw, int)
-    ):
-        raise DelayedEntryCapacityOverlayError(
-            "capacity timeline counters must be integers"
+    actual_violations = _counter(
+        actual,
+        "capacity_violations",
+    )
+    candidate_overlap = _counter(
+        candidate,
+        "overlap_openings",
+    )
+    actual_admission_rejections = _counter(
+        actual_admission,
+        "rejected_openings",
+    )
+    margin_enabled = margin_evidence_start_ms is not None
+    actual_margin_gaps = _counter(
+        actual,
+        "margin_lineage_gaps",
+    )
+    candidate_margin_gaps = _counter(
+        candidate,
+        "margin_lineage_gaps",
+    )
+    actual_admission_margin_gaps = _counter(
+        actual_admission,
+        "margin_lineage_gaps",
+    )
+    candidate_admission_margin_gaps = _counter(
+        candidate_admission,
+        "margin_lineage_gaps",
+    )
+    margin_evaluable_candidates = _counter(
+        candidate_admission,
+        "margin_evaluable_delayed_opportunities",
+    )
+    margin_evaluable_overlaps = _counter(
+        candidate_admission,
+        "margin_evaluable_delayed_overlaps",
+    )
+    margin_lineage_complete = (
+        actual_margin_gaps == 0
+        and candidate_margin_gaps == 0
+        and actual_admission_margin_gaps == 0
+        and candidate_admission_margin_gaps == 0
+    )
+    margin_evidence_ready = (
+        not margin_enabled
+        or (
+            margin_lineage_complete
+            and margin_evaluable_candidates
+            >= MIN_MARGIN_EVALUABLE_CANDIDATE_OPENINGS
+            and margin_evaluable_overlaps
+            >= MIN_MARGIN_EVALUABLE_CANDIDATE_OVERLAPS
         )
-    actual_violations = actual_violations_raw
-    candidate_overlap = candidate_overlap_raw
-    actual_admission_rejections_raw = actual_admission[
-        "rejected_openings"
-    ]
-    if (
-        isinstance(actual_admission_rejections_raw, bool)
-        or not isinstance(actual_admission_rejections_raw, int)
-    ):
-        raise DelayedEntryCapacityOverlayError(
-            "actual admission rejection count must be integer"
-        )
-    actual_admission_rejections = (
-        actual_admission_rejections_raw
     )
     ready = (
         len(outcomes) >= MIN_CLOSED_SHADOW_OUTCOMES
@@ -1448,6 +1475,7 @@ def delayed_entry_portfolio_capacity_overlay(
         and lineage_mismatches == 0
         and actual_violations == 0
         and actual_admission_rejections == 0
+        and margin_evidence_ready
     )
 
     return {
