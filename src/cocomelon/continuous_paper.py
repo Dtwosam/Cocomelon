@@ -31,9 +31,9 @@ from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
+    OpeningResearchObserver,
     OpenLifecycleCheckpoint,
     OpenLifecycleMarkPath,
-    OpeningResearchObserver,
     PositionResearchObserver,
 )
 from cocomelon.evidence.openings import BaselineOpeningTrace
