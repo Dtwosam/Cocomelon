@@ -67,12 +67,6 @@ class DelayedEntryStopL2ReplayError(RuntimeError):
     pass
 
 
-class DelayedEntryStopL2FundingTimingAmbiguityError(
-    DelayedEntryStopL2ReplayError
-):
-    pass
-
-
 def _decimal(value: object, field: str) -> Decimal:
     try:
         resolved = Decimal(str(value))
@@ -112,6 +106,7 @@ class DelayedEntryStopL2Outcome:
     stop_average_fill_price: Decimal | None = None
     stop_exit_fee: Decimal | None = None
     funding_through_execution: Decimal | None = None
+    late_funding_boundaries_excluded: int | None = None
     exact_full_stop_candidate_net_pnl: Decimal | None = None
 
     def __post_init__(self) -> None:
@@ -342,19 +337,27 @@ def _funding_through_execution(
     *,
     candidate_open_ms: int,
     execution_ms: int,
-) -> Decimal:
+) -> tuple[Decimal, int]:
     accruals = trade_funding_accruals(
         trade,
         funding_loader,
     )
-    if any(
-        accrual.boundary_ms == execution_ms
+    eligible = tuple(
+        accrual
         for accrual in accruals
-    ):
-        raise DelayedEntryStopL2FundingTimingAmbiguityError(
-            "funding boundary coincides with stop execution"
+        if (
+            candidate_open_ms
+            < accrual.boundary_ms
+            <= execution_ms
         )
-    return sum(
+    )
+    available = tuple(
+        accrual
+        for accrual in eligible
+        if accrual.funding_received_at_ms <= execution_ms
+    )
+    late_count = len(eligible) - len(available)
+    funding = sum(
         (
             funding_cash_delta(
                 accrual.signed_quantity
@@ -362,15 +365,11 @@ def _funding_through_execution(
                 accrual.oracle_price,
                 accrual.funding_rate,
             )
-            for accrual in accruals
-            if (
-                candidate_open_ms
-                < accrual.boundary_ms
-                < execution_ms
-            )
+            for accrual in available
         ),
         ZERO,
     )
+    return funding, late_count
 
 
 def _candidate_position(
@@ -730,7 +729,10 @@ def evaluate_delayed_entry_stop_l2_outcome(
         )
 
     execution_ms = evidence.execution_book_received_ms
-    funding = _funding_through_execution(
+    (
+        funding,
+        late_funding_boundaries_excluded,
+    ) = _funding_through_execution(
         trade,
         weighted,
         funding_loader,
@@ -826,6 +828,9 @@ def evaluate_delayed_entry_stop_l2_outcome(
         ),
         stop_exit_fee=attempt.fee,
         funding_through_execution=funding,
+        late_funding_boundaries_excluded=(
+            late_funding_boundaries_excluded
+        ),
         exact_full_stop_candidate_net_pnl=exact_net,
     )
 
@@ -964,6 +969,17 @@ def _summary(
         "same_exit_minus_exact_on_full_stop_exits": str(
             full_same_exit - full_exact
         ),
+        "late_funding_boundaries_excluded": sum(
+            (
+                item.late_funding_boundaries_excluded
+                for item in values
+                if (
+                    item.late_funding_boundaries_excluded
+                    is not None
+                )
+            ),
+            0,
+        ),
         "mean_full_stop_fill_price": (
             None
             if not full
@@ -1016,7 +1032,6 @@ def delayed_entry_stop_l2_replay(
     missing_paths = 0
     incomplete_or_gapped_paths = 0
     missing_funding_events = 0
-    ambiguous_funding_timing = 0
     lineage_mismatches = 0
     invalid_candidate_timing = 0
     stop_book_capture_errors = 0
@@ -1075,9 +1090,6 @@ def delayed_entry_stop_l2_replay(
         except DelayedEntryFundingMissingError:
             missing_funding_events += 1
             continue
-        except DelayedEntryStopL2FundingTimingAmbiguityError:
-            ambiguous_funding_timing += 1
-            continue
         except DelayedEntryStopTimingError:
             invalid_candidate_timing += 1
             continue
@@ -1128,7 +1140,6 @@ def delayed_entry_stop_l2_replay(
         and missing_paths == 0
         and incomplete_or_gapped_paths == 0
         and missing_funding_events == 0
-        and ambiguous_funding_timing == 0
         and lineage_mismatches == 0
         and invalid_candidate_timing == 0
         and stop_book_capture_errors == 0
@@ -1171,9 +1182,6 @@ def delayed_entry_stop_l2_replay(
             incomplete_or_gapped_paths
         ),
         "missing_funding_events": missing_funding_events,
-        "ambiguous_funding_timing": (
-            ambiguous_funding_timing
-        ),
         "lineage_mismatches": lineage_mismatches,
         "invalid_candidate_timing": (
             invalid_candidate_timing
