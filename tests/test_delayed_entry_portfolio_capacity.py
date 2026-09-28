@@ -566,6 +566,64 @@ def test_capacity_overlay_detects_available_margin_violation(
 
 
 
+def test_capacity_overlay_detects_liquidation_buffer_violation(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    try:
+        candidate = _trade(
+            suffix="liquidation-candidate",
+            market=MARKET,
+            opened_at_ms=100_000,
+            closed_at_ms=300_000,
+        )
+        journal.record_trade(candidate)
+        paths.record(
+            _path(candidate, ((200_000, "100"),))
+        )
+        limits = RiskLimits(
+            max_open_risk=Decimal("1"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate, price="120"),),
+            paths,
+            _plan_loader(candidate),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(admission, dict)
+    assert actual["capacity_violations"] == 0
+    assert actual["liquidation_buffer_violations"] == 0
+    assert delayed["capacity_violations"] == 1
+    assert delayed["liquidation_buffer_violations"] == 1
+    assert delayed["aggregate_risk_violations"] == 0
+    assert delayed["correlation_bucket_risk_violations"] == 0
+    assert delayed["gross_leverage_violations"] == 0
+    assert delayed["margin_capacity_violations"] == 0
+    assert Decimal(
+        str(delayed["min_liquidation_stop_multiple"])
+    ) < limits.min_liquidation_stop_multiple
+    assert Decimal(
+        str(delayed["min_liquidation_stop_headroom"])
+    ) < Decimal("0")
+    assert admission["rejected_openings"] == 1
+    assert admission["liquidation_buffer_rejections"] == 1
+    assert result["liquidation_buffer_modeled"] is True
+
+
 def test_legacy_path_leverage_gap_blocks_margin_review(
     tmp_path: Path,
 ) -> None:
