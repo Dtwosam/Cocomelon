@@ -2053,3 +2053,21 @@ The delayed-entry portfolio capacity and causal admission shadows now apply fund
 This remains research-only accounting. It does not alter paper funding reconciliation, strategy selection, risk limits, sizing, fills, exits, cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry funding-corrected fill weighting — 2026-09-28
+
+The 60-second delayed-entry research now publishes a second fill-weighted same-exit contribution view that corrects the legacy proportional funding assumption.
+
+- the legacy fill-weighted study remains unchanged for historical comparability;
+- filled candidates resolve the closed trade's immutable funding-event IDs against persisted paper funding accruals;
+- recorded funding cash is revalidated from signed quantity, oracle price, and funding rate;
+- candidate funding includes only boundaries strictly after the delayed fill exists and through the unchanged actual close;
+- each recorded boundary quantity is scaled by the delayed IOC fill fraction, preserving the observed reduction state without inventing a new reduction path;
+- genuine no-fill candidates pay zero funding and do not require funding-event lineage;
+- missing funding accruals for filled candidates are explicit readiness gaps;
+- the overlay reports the legacy scaled funding, exact post-delay funding, the funding-only PnL correction, and corrected same-exit candidate PnL.
+
+This remains a same-actual-exit contribution study. It does not model changed stops, changed exits, replacement trades, or live execution.
+
+**LIVE TRADING: DISABLED.**
