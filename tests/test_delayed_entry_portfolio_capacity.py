@@ -1150,3 +1150,130 @@ def test_legacy_path_leverage_gap_blocks_margin_review(
     assert result["missing_venue_max_leverage"] == 1
     assert result["lineage_mismatches"] == 0
     assert readiness["ready_for_review"] is False
+
+
+
+def test_funding_timing_changes_later_admission_capacity(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    funding = _funding(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        rate="0.4",
+    )
+    try:
+        candidate = _trade(
+            suffix="funding-candidate",
+            market=MARKET,
+            opened_at_ms=3_550_000,
+            closed_at_ms=4_200_000,
+            funding=(funding,),
+        )
+        second = _trade(
+            suffix="funding-second",
+            market=MarketId("", "TWO"),
+            opened_at_ms=3_650_000,
+            closed_at_ms=4_200_000,
+        )
+        third = _trade(
+            suffix="funding-third",
+            market=MarketId("", "THREE"),
+            opened_at_ms=3_700_000,
+            closed_at_ms=4_200_000,
+        )
+        for trade in (candidate, second, third):
+            journal.record_trade(trade)
+            paths.record(
+                _path(
+                    trade,
+                    ((3_800_000, "100"),),
+                )
+            )
+
+        limits = RiskLimits(
+            max_open_risk=Decimal("0.0075"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate),),
+            paths,
+            _plan_loader(candidate, second, third),
+            _liquidity_loader(candidate, second, third),
+            _funding_loader(funding),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    actual_admission = result["actual_admission"]
+    candidate_admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(actual_admission, dict)
+    assert isinstance(candidate_admission, dict)
+    assert result["intratrade_funding_timing_modeled"] is True
+    assert actual["funding_events"] == 1
+    assert Decimal(str(actual["funding_cash_pnl"])) == Decimal("-100")
+    assert delayed["funding_events"] == 0
+    assert Decimal(str(delayed["funding_cash_pnl"])) == Decimal("0")
+    assert actual_admission["rejected_openings"] == 1
+    assert actual_admission["aggregate_risk_rejections"] == 1
+    assert candidate_admission["rejected_openings"] == 0
+    assert candidate_admission["admitted_openings"] == 3
+    assert Decimal(
+        str(result["admitted_candidate_final_realized_contribution"])
+    ) == Decimal("0")
+
+
+def test_missing_funding_lineage_blocks_capacity_review(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    funding = _funding(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        rate="0.01",
+    )
+    try:
+        candidate = _trade(
+            suffix="missing-funding",
+            market=MARKET,
+            opened_at_ms=3_500_000,
+            closed_at_ms=4_000_000,
+            funding=(funding,),
+        )
+        journal.record_trade(candidate)
+        paths.record(
+            _path(
+                candidate,
+                ((3_800_000, "100"),),
+            )
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate),),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            _funding_loader(),
+            limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_funding_events"] == 1
+    assert result["candidate_filled_positions"] == 0
+    assert readiness["ready_for_review"] is False
