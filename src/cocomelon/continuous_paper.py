@@ -4205,14 +4205,15 @@ async def run_continuous_paper_session(
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books"
     )
-    original_stop_book_capture = OriginalStopBookCapture(
-        original_stop_book_store,
-        opening_plan_loader=execution.store.load_plan,
-    )
     rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
     replay_config = BaselineReplayConfig()
+    original_stop_book_capture = OriginalStopBookCapture(
+        original_stop_book_store,
+        opening_plan_loader=execution.store.load_plan,
+        config=replay_config.execution,
+    )
     profit_lock_execution_shadow = (
         _ContinuousProfitLockExecutionShadowSink(
             _restore_profit_lock_execution_shadow(
