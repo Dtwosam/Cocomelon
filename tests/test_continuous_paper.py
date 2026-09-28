@@ -692,6 +692,7 @@ def test_entry_mid_markout_shadow_sink_fails_open() -> None:
 
     sink = _ContinuousEntryMidMarkoutSink(
         FailingShadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _: None,
     )
     sink.observe(
         ReplayRecord(
@@ -741,6 +742,7 @@ def test_entry_mid_markout_readiness_failure_is_fail_open(
     )
     sink = _ContinuousEntryMidMarkoutSink(
         Shadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda _: None,
     )
 
     payload = sink.summary_payload(
@@ -753,6 +755,73 @@ def test_entry_mid_markout_readiness_failure_is_fail_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: mid readiness boom"
+
+
+def test_entry_mid_markout_sink_uses_opening_risk_ceiling_without_mutating_position() -> None:
+    captured_observe: list[PaperPosition] = []
+    captured_reconcile: list[PaperPosition] = []
+
+    class Shadow:
+        def observe(
+            self,
+            _record: ReplayRecord,
+            positions: tuple[PaperPosition, ...],
+            *,
+            now_ms: int,
+        ) -> None:
+            assert now_ms == 1
+            captured_observe.extend(positions)
+
+        def reconcile_open_positions(
+            self,
+            positions: tuple[PaperPosition, ...],
+        ) -> None:
+            captured_reconcile.extend(positions)
+
+    market = MarketId("", "SOL")
+    position = PaperPosition(
+        market=market,
+        side=PositionSide.LONG,
+        quantity=Decimal("2"),
+        average_entry_price=Decimal("100"),
+        stop_price=Decimal("95"),
+        opening_plan_id="open-plan-1",
+        opened_at_ms=1,
+        updated_at_ms=1,
+        planned_risk=Decimal("7"),
+    )
+    plan = SimpleNamespace(
+        reduce_only=False,
+        market=market,
+        approved_risk_amount_ceiling=Decimal("10"),
+    )
+    sink = _ContinuousEntryMidMarkoutSink(
+        Shadow(),  # type: ignore[arg-type]
+        opening_plan_loader=lambda plan_id: (
+            plan if plan_id == "open-plan-1" else None
+        ),
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.DATA_GAP,
+        available_at_ms=1,
+        source="fixture",
+        schema_version=1,
+        market=None,
+        exchange_time_ms=None,
+        event_key="gap-opening-risk-lineage",
+        payload_json=(
+            '{"started_ms":1,"ended_ms":1,'
+            '"reason":"fixture","stream_id":"x"}'
+        ),
+        event_kind=None,
+    )
+
+    sink.observe(record, (position,), now_ms=1)
+    sink.reconcile_open_positions((position,))
+
+    assert position.planned_risk == Decimal("7")
+    assert captured_observe[0].planned_risk == Decimal("10")
+    assert captured_reconcile[0].planned_risk == Decimal("10")
 
 
 def test_entry_mid_markout_restore_failure_is_fail_open(
