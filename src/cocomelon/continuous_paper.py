@@ -130,6 +130,7 @@ from cocomelon.research.delayed_entry_pair_fill_weighted import (
     delayed_entry_pair_fill_weighted_summary,
 )
 from cocomelon.research.delayed_entry_portfolio_capacity import (
+    DelayedEntryMarginCapacityState,
     delayed_entry_portfolio_capacity_overlay,
 )
 from cocomelon.research.delayed_entry_risk_geometry import (
@@ -226,6 +227,9 @@ FILL_AWARE_DELAY_SELECTOR_STATE_FILENAME = (
 )
 DELAY_SELECTOR_COMPARISON_STATE_FILENAME = (
     "delay-selector-comparison-state.json"
+)
+DELAYED_ENTRY_MARGIN_CAPACITY_STATE_FILENAME = (
+    "delayed-entry-margin-capacity-state.json"
 )
 ENTRY_MID_MARKOUT_SHADOW_STATE_FILENAME = (
     "entry-mid-markout-shadow-state.json"
@@ -1515,6 +1519,30 @@ def _restore_adaptive_delay_selector(
     except Exception as exc:
         return (
             AdaptiveDelaySelectorState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_delayed_entry_margin_capacity(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[DelayedEntryMarginCapacityState, str | None]:
+    if not path.exists():
+        return (
+            DelayedEntryMarginCapacityState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return DelayedEntryMarginCapacityState.from_payload(raw), None
+    except Exception as exc:
+        return (
+            DelayedEntryMarginCapacityState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
