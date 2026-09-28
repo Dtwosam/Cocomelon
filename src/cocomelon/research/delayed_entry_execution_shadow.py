@@ -211,6 +211,7 @@ class _OpenState:
     delayed_average_fill_price: Decimal | None = None
     delayed_fee: Decimal = ZERO
     observation_lag_ms: int | None = None
+    delayed_reference_price: Decimal | None = None
     delayed_entry_side_depth_25bps: Decimal | None = None
     delayed_exit_side_depth_25bps: Decimal | None = None
 
@@ -230,6 +231,7 @@ class DelayedEntryOutcome:
     gross_r_improvement: Decimal | None
     attempt_reason: str | None = None
     capacity_cause: str | None = None
+    delayed_reference_price: Decimal | None = None
     delayed_entry_side_depth_25bps: Decimal | None = None
     delayed_exit_side_depth_25bps: Decimal | None = None
 
@@ -298,6 +300,13 @@ class DelayedEntryOutcome:
             raise ValueError(
                 "delayed-entry capacity_cause must be null or non-empty"
             )
+        if self.delayed_reference_price is not None and (
+            not self.delayed_reference_price.is_finite()
+            or self.delayed_reference_price <= ZERO
+        ):
+            raise ValueError(
+                "delayed_reference_price must be positive"
+            )
         depth_values = (
             self.delayed_entry_side_depth_25bps,
             self.delayed_exit_side_depth_25bps,
@@ -346,6 +355,11 @@ class DelayedEntryOutcome:
             ),
             "attempt_reason": self.attempt_reason,
             "capacity_cause": self.capacity_cause,
+            "delayed_reference_price": (
+                None
+                if self.delayed_reference_price is None
+                else str(self.delayed_reference_price)
+            ),
             "delayed_entry_side_depth_25bps": (
                 None
                 if self.delayed_entry_side_depth_25bps is None
@@ -418,6 +432,10 @@ class DelayedEntryOutcome:
                     raw.get("capacity_cause"),
                     "capacity_cause",
                 )
+            ),
+            delayed_reference_price=_optional_decimal(
+                raw.get("delayed_reference_price"),
+                "delayed_reference_price",
             ),
             delayed_entry_side_depth_25bps=_optional_decimal(
                 raw.get("delayed_entry_side_depth_25bps"),
@@ -641,6 +659,7 @@ class DelayedEntryExecutionShadow:
             instrument,
             reference_price,
         )
+        state.delayed_reference_price = reference_price
         micro = calculate_microstructure_features(
             book,
             as_of_ms=now_ms,
@@ -795,6 +814,9 @@ class DelayedEntryExecutionShadow:
                 gross_r_improvement=improvement_r,
                 attempt_reason=state.attempt_reason,
                 capacity_cause=state.attempt_capacity_cause,
+                delayed_reference_price=(
+                    state.delayed_reference_price
+                ),
                 delayed_entry_side_depth_25bps=(
                     state.delayed_entry_side_depth_25bps
                 ),
@@ -850,6 +872,11 @@ class DelayedEntryExecutionShadow:
                     "fill_fraction": str(fill_fraction),
                     "observation_lag_ms": (
                         state.observation_lag_ms
+                    ),
+                    "delayed_reference_price": (
+                        None
+                        if state.delayed_reference_price is None
+                        else str(state.delayed_reference_price)
                     ),
                     "delayed_entry_side_depth_25bps": (
                         None
@@ -1103,6 +1130,11 @@ class DelayedEntryExecutionShadow:
                     "observation_lag_ms": (
                         state.observation_lag_ms
                     ),
+                    "delayed_reference_price": (
+                        None
+                        if state.delayed_reference_price is None
+                        else str(state.delayed_reference_price)
+                    ),
                     "delayed_entry_side_depth_25bps": (
                         None
                         if state.delayed_entry_side_depth_25bps
@@ -1287,6 +1319,10 @@ class DelayedEntryExecutionShadow:
                 observation_lag_ms=_optional_integer(
                     item.get("observation_lag_ms"),
                     "observation_lag_ms",
+                ),
+                delayed_reference_price=_optional_decimal(
+                    item.get("delayed_reference_price"),
+                    "delayed_reference_price",
                 ),
                 delayed_entry_side_depth_25bps=_optional_decimal(
                     item.get("delayed_entry_side_depth_25bps"),
