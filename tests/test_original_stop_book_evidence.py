@@ -159,6 +159,24 @@ def _capture(
     )
 
 
+def test_capture_protocol_start_is_durable_across_restarts(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    first = OriginalStopBookEvidenceStore(
+        root,
+        started_at_ms=1_000,
+    )
+    assert first.capture_started_at_ms == 1_000
+
+    restored = OriginalStopBookEvidenceStore(
+        root,
+        started_at_ms=2_000,
+    )
+    assert restored.capture_started_at_ms == 1_000
+    assert restored.state_digest == first.state_digest
+
+
 def test_capture_uses_plan_book_then_first_latency_eligible_book(
     tmp_path: Path,
 ) -> None:
