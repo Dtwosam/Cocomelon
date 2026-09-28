@@ -1964,3 +1964,6 @@ The fixed-schedule delayed-entry portfolio capacity study now consumes the exact
 This is research/shadow accounting only. It does not change strategy thresholds, risk limits, paper sizing, actual entries/exits, execution cadence, position management, or any live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+Verification evidence for this slice: PR #575 implementation head `309956b6fcfe6868dfcafc6939798411bdf3de15` passed CI run `36421258278`: compileall, Ruff, strict mypy, full pytest, and the research test job all completed successfully. The final documentation-only closeout commit does not alter runtime behavior.
