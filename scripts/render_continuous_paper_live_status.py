@@ -3022,6 +3022,67 @@ def _prospective_filter_robustness_lines(
     ]
 
 
+def _prospective_allowed_residual_lines(
+    raw: object,
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return ["- allowed-cohort residual: `not available`"]
+
+    overall = raw.get("overall", {})
+    if not isinstance(overall, dict):
+        overall = {}
+
+    def grouped(field: str) -> str:
+        value = raw.get(field, {})
+        if not isinstance(value, dict) or not value:
+            return "none"
+        parts: list[str] = []
+        for label in sorted(value):
+            item = value[label]
+            if not isinstance(item, dict):
+                continue
+            parts.append(
+                f"{label}=n{item.get('trades', 0)}"
+                f"/pnl{item.get('net_pnl', '0')}"
+            )
+        return ", ".join(parts) if parts else "none"
+
+    def worst(field: str) -> str:
+        value = raw.get(field)
+        if not isinstance(value, dict):
+            return "none"
+        return (
+            f"{value.get('label')} / "
+            f"{value.get('net_pnl')} / "
+            f"n{value.get('trades', 0)}"
+        )
+
+    return [
+        (
+            "- allowed residual trades / net / winner PnL / loser PnL: "
+            f"`{overall.get('trades', 0)} / "
+            f"{overall.get('net_pnl', '0')} / "
+            f"{overall.get('winner_pnl', '0')} / "
+            f"{overall.get('loser_pnl', '0')}`"
+        ),
+        f"- residual by side: `{grouped('by_side')}`",
+        (
+            "- residual by lead strategy: "
+            f"`{grouped('by_lead_strategy')}`"
+        ),
+        f"- residual by rank band: `{grouped('by_rank_band')}`",
+        (
+            "- worst side×strategy / worst market: "
+            f"`{worst('worst_side_lead_strategy')} / "
+            f"{worst('worst_market')}`"
+        ),
+        (
+            "_Allowed-cohort residual attribution is descriptive only; "
+            "it does not change the frozen filter or readiness gate._"
+        ),
+    ]
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -3116,6 +3177,11 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_allowed_residual_lines(
+            raw.get("allowed_residual")
         )
     )
     return lines
@@ -3344,6 +3410,11 @@ def _prospective_top10_rank_filter_lines(
             raw.get("robustness")
         )
     )
+    lines.extend(
+        _prospective_allowed_residual_lines(
+            raw.get("allowed_residual")
+        )
+    )
     return lines
 
 
@@ -3493,6 +3564,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_allowed_residual_lines(
+            raw.get("allowed_residual")
         )
     )
     return lines
