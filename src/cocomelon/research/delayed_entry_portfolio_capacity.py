@@ -889,6 +889,7 @@ def _actual_position(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, Decimal], ...],
     plan: PaperOrderPlan,
+    venue_max_leverage: Decimal,
 ) -> _Position:
     _validate_plan(trade, plan)
     planned_risk = (
@@ -911,6 +912,7 @@ def _actual_position(
         entry_price=trade.entry_price,
         quantity=trade.filled_quantity,
         planned_risk=planned_risk,
+        venue_max_leverage=venue_max_leverage,
         entry_fee=trade.entry_fees,
         close_realized_increment=(
             trade.net_pnl + trade.entry_fees
@@ -927,10 +929,18 @@ def delayed_entry_portfolio_capacity_overlay(
     plan_loader: Callable[[str], PaperOrderPlan | None],
     *,
     limits: RiskLimits,
+    paper_max_gross_leverage: Decimal,
     delay_ms: int = DELAY_MS,
 ) -> dict[str, object]:
     if delay_ms <= 0:
         raise ValueError("delay_ms must be positive")
+    if (
+        not paper_max_gross_leverage.is_finite()
+        or paper_max_gross_leverage <= ZERO
+    ):
+        raise ValueError(
+            "paper_max_gross_leverage must be positive and finite"
+        )
 
     trades = tuple(journal.iter_trades())
     trades_by_id = {trade.trade_id: trade for trade in trades}
@@ -967,7 +977,7 @@ def delayed_entry_portfolio_capacity_overlay(
             ),
             "replacement_trades_modeled": False,
             "intratrade_funding_timing_modeled": False,
-            "available_margin_capacity_modeled": False,
+            "available_margin_capacity_modeled": True,
             "visible_liquidity_capacity_modeled": False,
             "liquidation_buffer_modeled": False,
             "closed_shadow_outcomes": len(outcomes),
@@ -976,6 +986,7 @@ def delayed_entry_portfolio_capacity_overlay(
             "unresolved_outcomes": len(outcomes),
             "missing_journal_trades": len(outcomes),
             "missing_opening_plans": 0,
+            "missing_venue_max_leverage": 0,
             "missing_exact_paths": 0,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
@@ -983,21 +994,25 @@ def delayed_entry_portfolio_capacity_overlay(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
+                paper_max_gross_leverage=paper_max_gross_leverage,
             ),
             "candidate": _capacity_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
+                paper_max_gross_leverage=paper_max_gross_leverage,
             ),
             "actual_admission": _admission_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
+                paper_max_gross_leverage=paper_max_gross_leverage,
             ),
             "candidate_admission": _admission_timeline(
                 (),
                 reference_equity=Decimal("1"),
                 limits=limits,
+                paper_max_gross_leverage=paper_max_gross_leverage,
             ),
             "fixed_candidate_final_realized_contribution": "0",
             "admitted_candidate_final_realized_contribution": "0",
@@ -1050,7 +1065,9 @@ def delayed_entry_portfolio_capacity_overlay(
     reference_equity = earliest.equity_before
 
     exact_marks: dict[str, tuple[tuple[int, Decimal], ...]] = {}
+    venue_max_leverage_by_trade_id: dict[str, Decimal] = {}
     missing_paths = 0
+    missing_venue_max_leverage = 0
     incomplete_paths = 0
     lineage_mismatches = 0
     for trade in relevant_trades:
@@ -1063,15 +1080,26 @@ def delayed_entry_portfolio_capacity_overlay(
             continue
         try:
             exact_marks[trade.trade_id] = _marks(trade, raw)
+            venue_max_leverage = _path_venue_max_leverage(raw)
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
+            continue
+        if venue_max_leverage is None:
+            missing_venue_max_leverage += 1
+            continue
+        venue_max_leverage_by_trade_id[
+            trade.trade_id
+        ] = venue_max_leverage
 
     missing_plan = 0
     plans_by_trade_id: dict[str, PaperOrderPlan] = {}
     actual_positions: list[_Position] = []
     for trade in relevant_trades:
         marks = exact_marks.get(trade.trade_id)
-        if marks is None:
+        venue_max_leverage = venue_max_leverage_by_trade_id.get(
+            trade.trade_id
+        )
+        if marks is None or venue_max_leverage is None:
             continue
         plan = plan_loader(trade.opening_plan_id)
         if plan is None:
@@ -1083,6 +1111,7 @@ def delayed_entry_portfolio_capacity_overlay(
                 trade,
                 marks,
                 plan,
+                venue_max_leverage,
             )
         except DelayedEntryCapacityOverlayError:
             lineage_mismatches += 1
@@ -1102,7 +1131,10 @@ def delayed_entry_portfolio_capacity_overlay(
     }
     for trade in relevant_trades:
         marks = exact_marks.get(trade.trade_id)
-        if marks is None:
+        venue_max_leverage = venue_max_leverage_by_trade_id.get(
+            trade.trade_id
+        )
+        if marks is None or venue_max_leverage is None:
             continue
         plan = plans_by_trade_id.get(trade.trade_id)
         if plan is None:
@@ -1110,7 +1142,12 @@ def delayed_entry_portfolio_capacity_overlay(
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
             candidate_positions.append(
-                _actual_position(trade, marks, plan)
+                _actual_position(
+                    trade,
+                    marks,
+                    plan,
+                    venue_max_leverage,
+                )
             )
             background_positions += 1
             continue
@@ -1163,6 +1200,7 @@ def delayed_entry_portfolio_capacity_overlay(
                 entry_price=delayed_price,
                 quantity=weighted.delayed_filled_quantity,
                 planned_risk=planned_risk,
+                venue_max_leverage=venue_max_leverage,
                 entry_fee=weighted.delayed_entry_fee,
                 close_realized_increment=(
                     weighted.candidate_net_pnl_estimate
@@ -1182,6 +1220,7 @@ def delayed_entry_portfolio_capacity_overlay(
         tuple(actual_positions),
         reference_equity=reference_equity,
         limits=limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
     )
     candidate_tuple = tuple(candidate_positions)
     actual_tuple = tuple(actual_positions)
@@ -1189,16 +1228,19 @@ def delayed_entry_portfolio_capacity_overlay(
         candidate_tuple,
         reference_equity=reference_equity,
         limits=limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
     )
     actual_admission = _admission_timeline(
         actual_tuple,
         reference_equity=reference_equity,
         limits=limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
     )
     candidate_admission = _admission_timeline(
         candidate_tuple,
         reference_equity=reference_equity,
         limits=limits,
+        paper_max_gross_leverage=paper_max_gross_leverage,
     )
     fixed_candidate_final = _fixed_realized_contribution(
         candidate_tuple
@@ -1240,6 +1282,7 @@ def delayed_entry_portfolio_capacity_overlay(
         and unresolved_outcomes == 0
         and missing_journal == 0
         and missing_plan == 0
+        and missing_venue_max_leverage == 0
         and missing_paths == 0
         and incomplete_paths == 0
         and lineage_mismatches == 0
@@ -1270,6 +1313,12 @@ def delayed_entry_portfolio_capacity_overlay(
             "max_gross_leverage": str(
                 limits.max_gross_leverage
             ),
+            "max_available_margin_fraction": str(
+                limits.max_available_margin_fraction
+            ),
+            "paper_max_gross_leverage": str(
+                paper_max_gross_leverage
+            ),
         },
         "changed_admissions_modeled": True,
         "admission_policy": (
@@ -1277,7 +1326,7 @@ def delayed_entry_portfolio_capacity_overlay(
         ),
         "replacement_trades_modeled": False,
         "intratrade_funding_timing_modeled": False,
-        "available_margin_capacity_modeled": False,
+        "available_margin_capacity_modeled": True,
         "visible_liquidity_capacity_modeled": False,
         "liquidation_buffer_modeled": False,
         "closed_shadow_outcomes": len(outcomes),
@@ -1287,6 +1336,9 @@ def delayed_entry_portfolio_capacity_overlay(
         "unresolved_outcomes": unresolved_outcomes,
         "missing_journal_trades": missing_journal,
         "missing_opening_plans": missing_plan,
+        "missing_venue_max_leverage": (
+            missing_venue_max_leverage
+        ),
         "missing_exact_paths": missing_paths,
         "incomplete_exact_paths": incomplete_paths,
         "lineage_mismatches": lineage_mismatches,
