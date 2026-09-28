@@ -2671,7 +2671,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "reject_opening_when_configured_risk_or_capacity_gate_breached"
             ),
             "replacement_trades_modeled": False,
-            "intratrade_funding_timing_modeled": False,
+            "intratrade_funding_timing_modeled": True,
+            "funding_model": (
+                "exact_recorded_boundary_oracle_and_rate_with_"
+                "candidate_quantity_scaled_by_delayed_fill_fraction"
+            ),
             "available_margin_capacity_modeled": True,
             "visible_liquidity_capacity_modeled": True,
             "venue_min_notional_modeled": True,
@@ -2687,11 +2691,14 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "missing_opening_liquidity_evidence": 0,
             "missing_delayed_liquidity_evidence": 0,
             "missing_delayed_reference_price": 0,
+            "missing_funding_events": 0,
             "missing_exact_paths": 1,
             "incomplete_exact_paths": 0,
             "lineage_mismatches": 0,
             "actual": {
                 "opening_checks": 10,
+                "funding_events": 3,
+                "funding_cash_pnl": "-2",
                 "overlap_openings": 6,
                 "capacity_violations": 0,
                 "delayed_opening_violations": 0,
@@ -2720,6 +2727,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "candidate": {
                 "opening_checks": 10,
+                "funding_events": 2,
+                "funding_cash_pnl": "-1",
                 "overlap_openings": 4,
                 "capacity_violations": 2,
                 "delayed_opening_violations": 1,
@@ -2748,6 +2757,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "actual_admission": {
                 "opening_opportunities": 10,
+                "funding_events": 3,
+                "funding_cash_pnl": "-2",
+                "skipped_rejected_funding_events": 0,
                 "overlap_opening_opportunities": 6,
                 "admitted_openings": 10,
                 "rejected_openings": 0,
@@ -2774,6 +2786,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "candidate_admission": {
                 "opening_opportunities": 10,
+                "funding_events": 1,
+                "funding_cash_pnl": "-0.5",
+                "skipped_rejected_funding_events": 1,
                 "overlap_opening_opportunities": 4,
                 "admitted_openings": 8,
                 "rejected_openings": 2,
@@ -3694,6 +3709,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`0.64 / 0.96 / 0.15 / 0.75 / 0.80`" in output
     assert "admitted candidate minimum liquidation stop multiple" in output
     assert "`2.2`" in output
+    assert "funding events/cash fixed A/C · admitted A/C" in output
+    assert "`3/2 -2/-1 · 3/1 -2/-0.5`" in output
     assert "fixed / admitted candidate realized contribution / admission Δ" in output
     assert "`3 / 5 / 2`" in output
     assert "evidence gate closed / candidate fills / candidate overlap" in output
@@ -3705,6 +3722,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "visible-liquidity capacity" in output
     assert "paper liquidation buffer" in output
     assert "venue minimum notional" in output
+    assert "Funding is applied at exact recorded boundaries" in output
     assert "does not invent resized or replacement trades" in output
     assert "### 60s delayed-entry contribution decomposition" in output
     assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
