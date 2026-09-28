@@ -9,6 +9,9 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.prospective_filter_robustness import (
+    prospective_filter_robustness,
+)
 
 ENTRY_FILTER_STATE_SCHEMA_VERSION: Final = 1
 ENTRY_FILTER_CANDIDATE_ID: Final = "prospective-reject-long-trend-v1"
@@ -172,6 +175,9 @@ def prospective_entry_filter_summary(
         (trade.net_pnl for trade in blocked),
         ZERO,
     )
+    robustness = prospective_filter_robustness(
+        tuple(attributed)
+    )
     actual_net_r = sum(
         (trade.net_r for trade, _ in attributed),
         ZERO,
@@ -236,6 +242,7 @@ def prospective_entry_filter_summary(
             1 for trade in blocked if trade.net_pnl < ZERO
         ),
         "blocked_net_pnl": str(blocked_net_pnl),
+        "robustness": robustness,
         "allowed_net_pnl": str(allowed_net_pnl),
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
