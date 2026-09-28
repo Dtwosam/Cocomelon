@@ -154,6 +154,16 @@ def test_top10_filter_blocks_only_prospective_rank_above_10(
     assert robustness["total_delta_trade_contribution_pnl"] == "8"
     assert robustness["largest_abs_trade_contribution"] == "8"
     assert robustness["changes_readiness_gate"] is False
+    residual = result["allowed_residual"]
+    assert isinstance(residual, dict)
+    residual_overall = residual["overall"]
+    assert isinstance(residual_overall, dict)
+    assert residual_overall["trades"] == 1
+    assert residual_overall["net_pnl"] == "5"
+    by_rank = residual["by_rank_band"]
+    assert isinstance(by_rank, dict)
+    assert by_rank["1-5"]["net_pnl"] == "5"
+    assert residual["changes_readiness_gate"] is False
     assert result["allowed_mean_net_r"] == "0.5"
     assert result["blocked_mean_net_r"] == "-0.8"
     assert result["allowed_mean_ordinal"] == "5"
