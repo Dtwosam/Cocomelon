@@ -260,6 +260,7 @@ def test_durable_state_wrapper_reads_journal_and_path_store(
                 initial_stop=trade.initial_stop,
                 initial_risk_amount=trade.initial_risk_amount,
                 filled_quantity=trade.filled_quantity,
+        venue_max_leverage=Decimal("20"),
                 excursion_complete=True,
                 health_refs=trade.health_refs,
                 marks=(
