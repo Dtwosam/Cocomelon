@@ -10,6 +10,10 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.prospective_allowed_residual import (
+    AllowedResidualItem,
+    prospective_allowed_residual_attribution,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -186,6 +190,15 @@ def prospective_top10_rank_filter_summary(
             for trade, evidence in attributed
         )
     )
+    allowed_residual = prospective_allowed_residual_attribution(
+        tuple(
+            AllowedResidualItem(
+                trade,
+                ordinal=evidence.ordinal,
+            )
+            for trade, evidence in allowed
+        )
+    )
     actual_net_r = tuple(
         trade.net_r for trade, _ in attributed
     )
@@ -250,6 +263,7 @@ def prospective_top10_rank_filter_summary(
         "allowed_net_pnl": str(allowed_net_pnl),
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
+        "allowed_residual": allowed_residual,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl
