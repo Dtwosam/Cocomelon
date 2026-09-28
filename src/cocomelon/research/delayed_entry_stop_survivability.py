@@ -17,6 +17,7 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 from cocomelon.research.delayed_entry_fill_weighted import (
     EVALUABLE_SOURCES,
     DelayedEntryFillWeightedError,
+    DelayedEntryFillWeightedOutcome,
     evaluate_delayed_entry_fill_weighted_outcome,
 )
 
@@ -26,6 +27,12 @@ MIN_EVALUATED_FILLED_CANDIDATES: Final = 20
 
 
 class DelayedEntryStopSurvivabilityError(RuntimeError):
+    pass
+
+
+class DelayedEntryStopTimingError(
+    DelayedEntryStopSurvivabilityError
+):
     pass
 
 
@@ -269,6 +276,71 @@ def _first_stop_hit(
     return None
 
 
+def evaluate_delayed_entry_stop_outcome(
+    trade: TradeJournalEntry,
+    outcome: DelayedEntryOutcome,
+    weighted: DelayedEntryFillWeightedOutcome,
+    raw_path: Mapping[str, object],
+    *,
+    delay_ms: int = DELAY_MS,
+) -> DelayedEntryStopOutcome | None:
+    if delay_ms <= 0:
+        raise ValueError("delay_ms must be positive")
+    if weighted.trade_id != trade.trade_id:
+        raise DelayedEntryStopSurvivabilityError(
+            "fill-weighted outcome does not match journal trade"
+        )
+    if weighted.delayed_filled_quantity == ZERO:
+        return None
+
+    marks = _validated_marks(trade, raw_path)
+    delayed_price = weighted.delayed_average_fill_price
+    lag_ms = outcome.observation_lag_ms
+    if (
+        delayed_price is None
+        or lag_ms is None
+        or lag_ms < 0
+    ):
+        raise DelayedEntryStopSurvivabilityError(
+            "filled delayed outcome is missing valid timing"
+        )
+
+    candidate_open_ms = (
+        trade.opened_at_ms + delay_ms + lag_ms
+    )
+    if candidate_open_ms >= trade.closed_at_ms:
+        raise DelayedEntryStopTimingError(
+            "filled delayed outcome opens after trade close"
+        )
+
+    hit = _first_stop_hit(
+        direction=trade.direction.value,
+        stop_price=trade.initial_stop,
+        candidate_open_ms=candidate_open_ms,
+        actual_close_ms=trade.closed_at_ms,
+        marks=marks,
+    )
+    return DelayedEntryStopOutcome(
+        trade_id=trade.trade_id,
+        market=trade.market.canonical,
+        direction=trade.direction.value,
+        source=outcome.source,
+        candidate_open_ms=candidate_open_ms,
+        actual_close_ms=trade.closed_at_ms,
+        original_stop=trade.initial_stop,
+        delayed_entry_price=delayed_price,
+        delayed_filled_quantity=(
+            weighted.delayed_filled_quantity
+        ),
+        first_stop_hit_ms=(
+            None if hit is None else hit[0]
+        ),
+        first_stop_mark_px=(
+            None if hit is None else hit[1]
+        ),
+    )
+
+
 def _mean_int(values: Sequence[int]) -> int | None:
     if not values:
         return None
@@ -395,58 +467,26 @@ def delayed_entry_stop_survivability(
             continue
 
         try:
-            marks = _validated_marks(trade, raw_path)
-        except DelayedEntryStopSurvivabilityError:
-            lineage_mismatches += 1
+            stop_outcome = evaluate_delayed_entry_stop_outcome(
+                trade,
+                outcome,
+                weighted,
+                raw_path,
+                delay_ms=delay_ms,
+            )
+        except DelayedEntryStopTimingError:
+            invalid_candidate_timing += 1
             continue
-
-        delayed_price = weighted.delayed_average_fill_price
-        lag_ms = outcome.observation_lag_ms
-        if (
-            delayed_price is None
-            or lag_ms is None
-            or lag_ms < 0
+        except (
+            DelayedEntryStopSurvivabilityError,
+            ValueError,
         ):
             lineage_mismatches += 1
             continue
-        candidate_open_ms = (
-            trade.opened_at_ms + delay_ms + lag_ms
-        )
-        if candidate_open_ms >= trade.closed_at_ms:
-            invalid_candidate_timing += 1
-            continue
-
-        try:
-            hit = _first_stop_hit(
-                direction=trade.direction.value,
-                stop_price=trade.initial_stop,
-                candidate_open_ms=candidate_open_ms,
-                actual_close_ms=trade.closed_at_ms,
-                marks=marks,
-            )
-            evaluated.append(
-                DelayedEntryStopOutcome(
-                    trade_id=trade.trade_id,
-                    market=trade.market.canonical,
-                    direction=trade.direction.value,
-                    source=outcome.source,
-                    candidate_open_ms=candidate_open_ms,
-                    actual_close_ms=trade.closed_at_ms,
-                    original_stop=trade.initial_stop,
-                    delayed_entry_price=delayed_price,
-                    delayed_filled_quantity=(
-                        weighted.delayed_filled_quantity
-                    ),
-                    first_stop_hit_ms=(
-                        None if hit is None else hit[0]
-                    ),
-                    first_stop_mark_px=(
-                        None if hit is None else hit[1]
-                    ),
-                )
-            )
-        except ValueError:
+        if stop_outcome is None:
             lineage_mismatches += 1
+            continue
+        evaluated.append(stop_outcome)
 
     values = tuple(evaluated)
     by_side = {
