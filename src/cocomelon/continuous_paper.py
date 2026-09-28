@@ -3907,6 +3907,9 @@ def _live_status_payload(
             "execution_authority": False,
             "promotion_authority": False,
             "durable_across_workers": True,
+            "capture_started_at_ms": (
+                original_stop_book_store.capture_started_at_ms
+            ),
             "captured_books": original_stop_book_store.record_count,
             "pending_crossings": original_stop_book_store.pending_count,
             "state_digest": original_stop_book_store.state_digest,
@@ -4205,7 +4208,8 @@ async def run_continuous_paper_session(
         )
     )
     original_stop_book_store = OriginalStopBookEvidenceStore(
-        root / "original-stop-books"
+        root / "original-stop-books",
+        started_at_ms=started_at_ms,
     )
     rank_tracker = LatestCoarseRankTracker()
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
