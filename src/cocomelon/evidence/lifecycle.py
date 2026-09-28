@@ -86,6 +86,7 @@ class ClosedLifecycleSink(Protocol):
     def record(
         self,
         trade: TradeJournalEntry,
+        venue_max_leverage: Decimal,
         mark_observations: Sequence[ReplayRecord],
         known_gap_intervals: Sequence[tuple[int, int | None]],
     ) -> bool: ...
@@ -845,6 +846,7 @@ class BaselineReplayPipeline:
         if self._closed_lifecycle_sink is not None:
             self._closed_lifecycle_sink.record(
                 assembled,
+                lifecycle.venue_max_leverage,
                 tuple(lifecycle.marks.values()),
                 tuple(self._gap_intervals),
             )
