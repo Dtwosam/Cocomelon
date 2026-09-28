@@ -13,6 +13,10 @@ from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.strategy import Direction
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    funding_cash_delta,
+)
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_trade_paths import (
     CONTINUOUS_PAPER_TRADE_PATH_SCHEMA_VERSION,
@@ -71,9 +75,15 @@ def _trade(
     closed_at_ms: int,
     quantity: str = "2.5",
     pnl: str = "0",
+    funding: tuple[FundingAccrual, ...] = (),
 ) -> TradeJournalEntry:
     qty = Decimal(quantity)
-    net_pnl = Decimal(pnl)
+    gross_pnl = Decimal(pnl)
+    funding_pnl = sum(
+        (item.cash_delta for item in funding),
+        Decimal("0"),
+    )
+    net_pnl = gross_pnl + funding_pnl
     opening_plan = _plan_for(
         suffix=suffix,
         market=market,
@@ -94,16 +104,18 @@ def _trade(
         exit_attempt_ids=(f"exit-attempt-{suffix}",),
         fill_ids=(f"fill-open-{suffix}", f"fill-exit-{suffix}"),
         position_action_ids=(f"action-{suffix}",),
-        funding_event_ids=(),
+        funding_event_ids=tuple(
+            item.accrual_id for item in funding
+        ),
         initial_stop=Decimal("90"),
         initial_risk_amount=Decimal("25"),
         entry_price=Decimal("100"),
-        exit_price=Decimal("100") + net_pnl / qty,
+        exit_price=Decimal("100") + gross_pnl / qty,
         filled_quantity=qty,
-        gross_realized_pnl=net_pnl,
+        gross_realized_pnl=gross_pnl,
         entry_fees=Decimal("0"),
         exit_fees=Decimal("0"),
-        funding_cash_pnl=Decimal("0"),
+        funding_cash_pnl=funding_pnl,
         net_pnl=net_pnl,
         entry_slippage_amount=Decimal("0"),
         exit_slippage_amount=Decimal("0"),
@@ -274,6 +286,51 @@ def _outcome(
     )
 
 
+def _funding(
+    *,
+    market: MarketId,
+    boundary_ms: int,
+    quantity: str = "2.5",
+    rate: str = "0.01",
+) -> FundingAccrual:
+    signed_quantity = Decimal(quantity)
+    oracle_price = Decimal("100")
+    funding_rate = Decimal(rate)
+    return FundingAccrual(
+        market=market,
+        boundary_ms=boundary_ms,
+        position_id=f"position-{market.canonical}-{boundary_ms}",
+        signed_quantity=signed_quantity,
+        oracle_price=oracle_price,
+        funding_rate=funding_rate,
+        cash_delta=funding_cash_delta(
+            signed_quantity,
+            oracle_price,
+            funding_rate,
+        ),
+        oracle_event_key=f"oracle-{market.canonical}-{boundary_ms}",
+        funding_source="fixture",
+        funding_received_at_ms=boundary_ms + 100,
+    )
+
+
+def _funding_loader(
+    *accruals: FundingAccrual,
+):
+    def load(
+        market: MarketId,
+        start_ms: int,
+    ) -> tuple[FundingAccrual, ...]:
+        return tuple(
+            item
+            for item in accruals
+            if item.market == market
+            and item.boundary_ms >= start_ms
+        )
+
+    return load
+
+
 def _stores(tmp_path: Path):
     journal = JournalStore(tmp_path / "journal.sqlite3")
     paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
@@ -320,6 +377,7 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             paths,
             _plan_loader(background, candidate),
             _liquidity_loader(background, candidate),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -390,6 +448,7 @@ def test_admission_shadow_can_reject_later_background_opening(
             paths,
             _plan_loader(candidate, later_background),
             _liquidity_loader(candidate, later_background),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -467,6 +526,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             paths,
             _plan_loader(background, candidate),
             _liquidity_loader(background, candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -525,6 +585,7 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -583,6 +644,7 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             paths,
             _plan_loader(first, second, third),
             _liquidity_loader(first, second, third),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -632,6 +694,7 @@ def test_capacity_overlay_detects_available_margin_violation(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -687,6 +750,7 @@ def test_capacity_overlay_detects_liquidation_buffer_violation(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -751,6 +815,7 @@ def test_capacity_overlay_detects_visible_liquidity_violation(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -815,6 +880,7 @@ def test_liquidity_gate_uses_pre_ioc_reference_notional(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -868,6 +934,7 @@ def test_capacity_overlay_detects_venue_min_notional_violation(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -933,6 +1000,7 @@ def test_partial_fill_notional_does_not_trigger_venue_minimum(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=limits,
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -975,6 +1043,7 @@ def test_missing_delayed_reference_price_blocks_review(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -1015,6 +1084,7 @@ def test_missing_delayed_liquidity_blocks_review(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -1067,6 +1137,7 @@ def test_legacy_path_leverage_gap_blocks_margin_review(
             paths,
             _plan_loader(candidate),
             _liquidity_loader(candidate),
+            _funding_loader(),
             limits=RiskLimits(),
             paper_max_gross_leverage=Decimal("3"),
             native_perp_min_notional=Decimal("10"),
@@ -1078,4 +1149,131 @@ def test_legacy_path_leverage_gap_blocks_margin_review(
     assert isinstance(readiness, dict)
     assert result["missing_venue_max_leverage"] == 1
     assert result["lineage_mismatches"] == 0
+    assert readiness["ready_for_review"] is False
+
+
+
+def test_funding_timing_changes_later_admission_capacity(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    funding = _funding(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        rate="0.4",
+    )
+    try:
+        candidate = _trade(
+            suffix="funding-candidate",
+            market=MARKET,
+            opened_at_ms=3_550_000,
+            closed_at_ms=4_200_000,
+            funding=(funding,),
+        )
+        second = _trade(
+            suffix="funding-second",
+            market=MarketId("", "TWO"),
+            opened_at_ms=3_650_000,
+            closed_at_ms=4_200_000,
+        )
+        third = _trade(
+            suffix="funding-third",
+            market=MarketId("", "THREE"),
+            opened_at_ms=3_700_000,
+            closed_at_ms=4_200_000,
+        )
+        for trade in (candidate, second, third):
+            journal.record_trade(trade)
+            paths.record(
+                _path(
+                    trade,
+                    ((3_800_000, "100"),),
+                )
+            )
+
+        limits = RiskLimits(
+            max_open_risk=Decimal("0.0075"),
+            correlation_bucket_risk_limit=Decimal("1"),
+            max_gross_leverage=Decimal("3"),
+            max_available_margin_fraction=Decimal("1"),
+        )
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate),),
+            paths,
+            _plan_loader(candidate, second, third),
+            _liquidity_loader(candidate, second, third),
+            _funding_loader(funding),
+            limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    delayed = result["candidate"]
+    actual_admission = result["actual_admission"]
+    candidate_admission = result["candidate_admission"]
+    assert isinstance(actual, dict)
+    assert isinstance(delayed, dict)
+    assert isinstance(actual_admission, dict)
+    assert isinstance(candidate_admission, dict)
+    assert result["intratrade_funding_timing_modeled"] is True
+    assert actual["funding_events"] == 1
+    assert Decimal(str(actual["funding_cash_pnl"])) == Decimal("-100")
+    assert delayed["funding_events"] == 0
+    assert Decimal(str(delayed["funding_cash_pnl"])) == Decimal("0")
+    assert actual_admission["rejected_openings"] == 1
+    assert actual_admission["aggregate_risk_rejections"] == 1
+    assert candidate_admission["rejected_openings"] == 0
+    assert candidate_admission["admitted_openings"] == 3
+    assert Decimal(
+        str(result["admitted_candidate_final_realized_contribution"])
+    ) == Decimal("0")
+
+
+def test_missing_funding_lineage_blocks_capacity_review(
+    tmp_path: Path,
+) -> None:
+    journal, paths = _stores(tmp_path)
+    funding = _funding(
+        market=MARKET,
+        boundary_ms=3_600_000,
+        rate="0.01",
+    )
+    try:
+        candidate = _trade(
+            suffix="missing-funding",
+            market=MARKET,
+            opened_at_ms=3_500_000,
+            closed_at_ms=4_000_000,
+            funding=(funding,),
+        )
+        journal.record_trade(candidate)
+        paths.record(
+            _path(
+                candidate,
+                ((3_800_000, "100"),),
+            )
+        )
+
+        result = delayed_entry_portfolio_capacity_overlay(
+            journal,
+            (_outcome(candidate),),
+            paths,
+            _plan_loader(candidate),
+            _liquidity_loader(candidate),
+            _funding_loader(),
+            limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
+            native_perp_min_notional=Decimal("10"),
+        )
+    finally:
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert result["missing_funding_events"] == 1
+    assert result["candidate_filled_positions"] == 0
     assert readiness["ready_for_review"] is False

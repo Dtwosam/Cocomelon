@@ -1090,6 +1090,7 @@ def test_delayed_entry_portfolio_capacity_fails_open(
         SimpleNamespace(),  # type: ignore[arg-type]
         SimpleNamespace(load=lambda _plan_id: None),  # type: ignore[arg-type]
         lambda _plan_id: None,
+        lambda _market, _start_ms: (),
         BaselineReplayConfig().risk_limits,
         BaselineReplayConfig().execution.paper_max_gross_leverage,
         BaselineReplayConfig().execution.native_perp_min_notional,

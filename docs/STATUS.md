@@ -2035,3 +2035,21 @@ The 60-second delayed-entry mark-to-market portfolio shadow now applies funding 
 This is research-only accounting. It does not alter paper funding reconciliation, strategy selection, fills, sizing, exits, execution cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry capacity funding-timing replay — 2026-09-28
+
+The delayed-entry portfolio capacity and causal admission shadows now apply funding at the exact recorded funding boundaries before evaluating later opening opportunities.
+
+- funding lineage uses the same validated journal-to-execution accrual contract as the delayed-entry MTM portfolio;
+- actual positions receive each verified funding cash delta at its recorded boundary;
+- delayed candidates receive only funding boundaries strictly after their delayed open, with the recorded boundary quantity scaled by the delayed IOC fill fraction;
+- close contribution excludes funding once those boundary events are replayed, preventing double counting;
+- fixed-schedule capacity checks therefore see funding-adjusted equity and margin before later openings;
+- the causal admission shadow applies funding only for admitted positions; funding events belonging to rejected hypothetical openings are skipped and cannot leak into later equity;
+- missing funding accrual lineage is an explicit readiness gap rather than falling back to proportional close funding;
+- the shadow still does not invent replacement trades or changed exits.
+
+This remains research-only accounting. It does not alter paper funding reconciliation, strategy selection, risk limits, sizing, fills, exits, cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
