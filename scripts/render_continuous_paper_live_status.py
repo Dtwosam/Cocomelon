@@ -1571,7 +1571,9 @@ def _delayed_entry_portfolio_capacity_lines(
             (
                 "- candidate admitted max utilization aggregate / bucket / leverage: "
                 f"`{candidate_admission.get('max_admitted_aggregate_risk_utilization', '0')} / "
-                f"{candidate_admission.get('max_admitted_correlation_bucket_risk_utilization', '0')} / "
+                f"{candidate_admission.get("
+                "'max_admitted_correlation_bucket_risk_utilization', "
+                "'0')} / "
                 f"{candidate_admission.get('max_admitted_gross_leverage', '0')}`"
             ),
             (
