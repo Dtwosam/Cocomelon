@@ -1893,6 +1893,8 @@ The 60-second delayed-entry research now checks the alternate fixed schedule aga
 
 Review readiness requires 30 closed delayed-shadow outcomes, 20 filled delayed candidate positions, at least 5 candidate overlap openings, zero unresolved/missing/incomplete/lineage gaps, and zero capacity violations in the reconstructed actual baseline.
 
-This remains a diagnostic overlay, not a full alternate portfolio replay. It does not resize violating candidate orders, replay later strategy/risk decisions, invent replacement trades, or model changed exits.
+The fixed overlay remains intact, and a causal admission shadow now applies those same three capacity ceilings chronologically. If an opening would breach a configured ceiling, that hypothetical opening is skipped completely; its entry fee, later marks, and close contribution are removed, and subsequent opening opportunities are evaluated against the surviving portfolio. The observed baseline must reconstruct with zero rejected openings before the evidence can become review-ready.
+
+This still is not a full alternate strategy replay. The admission shadow does not resize rejected orders, rerun strategy generation, invent replacement trades, change exit timing, reconstruct available-margin or liquidation-buffer policy, or infer unseen liquidity. Candidate admission rejections are valid research outcomes; actual-baseline admission rejections are integrity failures.
 
 **LIVE TRADING: DISABLED.**
