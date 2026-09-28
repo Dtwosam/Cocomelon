@@ -965,7 +965,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "durable_state": True,
             "state_restored": True,
             "state_restore_error": None,
-            "state_schema_version": 2,
+            "state_schema_version": 3,
             "started_at_ms": 1700000000000,
             "delay_ms": 60000,
             "max_observation_lag_ms": 60000,
@@ -1005,7 +1005,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "durable_state": True,
             "state_restored": True,
             "state_restore_error": None,
-            "state_schema_version": 2,
+            "state_schema_version": 3,
             "started_at_ms": 1700000500000,
             "delay_ms": 120000,
             "max_observation_lag_ms": 60000,
@@ -3408,7 +3408,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "### Fixed profit-lock counterfactual" in output
     assert "### 60s delayed-entry execution shadow" in output
     assert "prospective start / state schema" in output
-    assert "`1700000000000` / `v2`" in output
+    assert "`1700000000000` / `v3`" in output
     assert "frozen delay / max observation lag" in output
     assert "`60000ms / 60000ms`" in output
     assert "stop source" in output
