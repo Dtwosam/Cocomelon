@@ -2744,6 +2744,75 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             },
             "error": None,
         },
+        "delayed_entry_stop_exit_proxy": {
+            "enabled": True,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "delayed_entry_stop_exit_full_quantity_proxy_range_only"
+            ),
+            "delay_ms": 60000,
+            "stop_price_proxy": (
+                "idealized_full_exit_at_immutable_original_stop"
+            ),
+            "crossing_mark_proxy": (
+                "full_exit_at_first_observed_stop_crossing_mark"
+            ),
+            "ioc_boundary_proxy": (
+                "full_exit_at_first_crossing_mark_plus_configured_"
+                "max_ioc_slippage_boundary"
+            ),
+            "visible_exit_depth_modeled": False,
+            "partial_stop_fill_modeled": False,
+            "exact_stop_fill_price_modeled": False,
+            "funding_at_exact_stop_timestamp_modeled": False,
+            "taker_fee_rate": "0.00045",
+            "max_ioc_slippage_bps": "25",
+            "closed_shadow_outcomes": 12,
+            "evaluated_filled_candidates": 8,
+            "candidate_no_fill_trades": 1,
+            "unresolved_outcomes": 2,
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 1,
+            "incomplete_or_gapped_paths": 0,
+            "missing_funding_events": 0,
+            "ambiguous_stop_funding_timing": 0,
+            "lineage_mismatches": 0,
+            "invalid_candidate_timing": 0,
+            "overall": {
+                "filled_candidates": 8,
+                "definite_original_stop_crossings": 3,
+                "survived_observed_path_to_actual_close": 5,
+                "actual_net_pnl": "-10",
+                "same_exit_candidate_net_pnl": "5",
+                "same_exit_candidate_pnl_on_stop_crossings": "4",
+                "stop_price_proxy_pnl_on_stop_crossings": "-7",
+                "crossing_mark_proxy_pnl_on_stop_crossings": "-9",
+                "ioc_boundary_proxy_pnl_on_stop_crossings": "-10",
+                "stop_price_proxy_cohort_net_pnl": "-6",
+                "crossing_mark_proxy_cohort_net_pnl": "-8",
+                "ioc_boundary_proxy_cohort_net_pnl": "-9",
+                "same_exit_delta_vs_actual": "15",
+                "stop_price_proxy_delta_vs_actual": "4",
+                "crossing_mark_proxy_delta_vs_actual": "2",
+                "ioc_boundary_proxy_delta_vs_actual": "1",
+                "same_exit_minus_ioc_boundary_proxy_pnl": "14",
+                "positive_same_exit_crossings_to_nonpositive_boundary": 2,
+                "ioc_boundary_proxy_positive_crossings": 0,
+                "mean_stop_to_ioc_boundary_proxy_spread": "1",
+            },
+            "by_side": {},
+            "by_source": {},
+            "readiness": {
+                "ready_for_review": False,
+                "min_closed_shadow_outcomes": 30,
+                "min_evaluated_filled_candidates": 20,
+                "missing_closed_shadow_outcomes": 18,
+                "missing_evaluated_filled_candidates": 12,
+            },
+            "error": None,
+        },
         "delayed_entry_portfolio_capacity": {
             "enabled": True,
             "research_only": True,
@@ -3910,6 +3979,30 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1 / 0 / 0`" in output
     assert "flagged as path-invalid" in output
     assert "not repriced into a synthetic stop-fill result" in output
+    assert (
+        "stop-exit cohort PnL same-exit / stop / mark / IOC-boundary"
+        in output
+    )
+    assert "`5 / -6 / -8 / -9`" in output
+    assert (
+        "stop-exit Δ vs actual same-exit / stop / mark / IOC-boundary"
+        in output
+    )
+    assert "`15 / 4 / 2 / 1`" in output
+    assert (
+        "same-exit edge removed by IOC-boundary proxy / "
+        "positive→nonpositive crossings"
+    ) in output
+    assert "`14 / 2`" in output
+    assert "stop proxy config taker fee / max slippage bps" in output
+    assert "`0.00045 / 25`" in output
+    assert (
+        "stop proxy missing path / funding / ambiguous funding / lineage"
+        in output
+    )
+    assert "`1 / 0 / 0 / 0`" in output
+    assert "full-exit price proxies only" in output
+    assert "Exit-side L2 depth and partial stop fills are not reconstructed" in output
     assert "### 60s delayed-entry portfolio capacity overlay" in output
     assert "fixed_observed_schedule_portfolio_capacity_overlay" in output
     assert (
