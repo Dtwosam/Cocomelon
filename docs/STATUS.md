@@ -2183,6 +2183,7 @@ The continuous paper trader now preserves the exact L2 evidence needed to replay
 - when the first post-crossing book is already latency-eligible, the same snapshot serves as both plan and execution evidence;
 - the capture runs before paper position management but has no execution authority and fails open if its own research state breaks;
 - non-crossed positions create no stop-book record, avoiding continuous full-book storage.
+- the store persists a one-time capture-start timestamp; restarts preserve the original boundary so later exact-stop replay can exclude pre-capture legacy trades instead of treating them as missing evidence;
 
 This closes the evidence-collection prerequisite behind the delayed stop-exit proxy. Existing historical trades without this prospective capture remain explicitly unmodeled; no L2 history is synthesized from marks or candles.
 
