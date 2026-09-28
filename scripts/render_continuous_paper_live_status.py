@@ -1319,6 +1319,122 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
     return lines
 
 
+def _delayed_entry_mtm_portfolio_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### 60s delayed-entry mark-to-market portfolio shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No delayed-entry MTM portfolio telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    actual = raw.get("actual", {})
+    candidate = raw.get("candidate", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(actual, dict):
+        actual = {}
+    if not isinstance(candidate, dict):
+        candidate = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
+            f"- mark model: `{raw.get('mark_model', 'unknown')}`",
+            (
+                "- closed shadow / complete paths / unresolved: "
+                f"`{raw.get('closed_shadow_outcomes', 0)} / "
+                f"{raw.get('evaluated_complete_path_trades', 0)} / "
+                f"{raw.get('unresolved_outcomes', 0)}`"
+            ),
+            (
+                "- missing journal / exact path / incomplete / lineage: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_exact_paths', 0)} / "
+                f"{raw.get('incomplete_exact_paths', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- candidate filled / no-fill positions: "
+                f"`{raw.get('candidate_filled_positions', 0)} / "
+                f"{raw.get('candidate_no_fill_trades', 0)}`"
+            ),
+            (
+                "- actual / candidate realized contribution / delta: "
+                f"`{actual.get('final_realized_contribution', '0')}` / "
+                f"`{candidate.get('final_realized_contribution', '0')}` / "
+                f"`{raw.get('delta_final_realized_contribution', '0')}`"
+            ),
+            (
+                "- actual / candidate observed equity drawdown / delta: "
+                f"`{actual.get('max_observed_equity_drawdown', '0')}` / "
+                f"`{candidate.get('max_observed_equity_drawdown', '0')}` / "
+                f"`{raw.get('delta_max_observed_equity_drawdown', '0')}`"
+            ),
+            (
+                "- actual / candidate min observed equity contribution: "
+                f"`{actual.get('min_observed_equity_contribution', '0')} / "
+                f"{candidate.get('min_observed_equity_contribution', '0')}`"
+            ),
+            (
+                "- actual / candidate max concurrent positions: "
+                f"`{actual.get('max_concurrent_positions', 0)} / "
+                f"{candidate.get('max_concurrent_positions', 0)}`"
+            ),
+            (
+                "- actual / candidate overlap openings: "
+                f"`{actual.get('overlap_openings', 0)} / "
+                f"{candidate.get('overlap_openings', 0)}`"
+            ),
+            (
+                "- actual / candidate max carried-mark age: "
+                f"`{actual.get('max_mark_carry_age_ms', 0)}ms / "
+                f"{candidate.get('max_mark_carry_age_ms', 0)}ms`"
+            ),
+            (
+                "- evidence gate closed / complete-path / overlap: "
+                f"`{readiness.get('min_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('min_evaluated_complete_path_trades', 0)} / "
+                f"{readiness.get('min_actual_overlap_openings', 0)}`"
+            ),
+            (
+                "- still needed C/P/O: "
+                f"`{readiness.get('missing_closed_shadow_outcomes', 0)} / "
+                f"{readiness.get('missing_evaluated_complete_path_trades', 0)} / "
+                f"{readiness.get('missing_actual_overlap_openings', 0)}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Observed-mark contribution equity only. Entry fees are timed "
+                "at open and exit fees/funding settle at the actual close; "
+                "intratrade funding timing, replacement trades, and changed "
+                "exit timing are not modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _delayed_entry_contribution_decomposition_lines(
     raw: object,
 ) -> list[str]:
@@ -5130,6 +5246,11 @@ def render_live_status(
     lines.extend(
         _delayed_entry_fixed_schedule_portfolio_lines(
             payload.get("delayed_entry_fixed_schedule_portfolio")
+        )
+    )
+    lines.extend(
+        _delayed_entry_mtm_portfolio_lines(
+            payload.get("delayed_entry_mtm_portfolio")
         )
     )
     lines.extend(
