@@ -1946,3 +1946,21 @@ Exact venue leverage is now retained with new continuous-paper trade-path eviden
 This is an evidence prerequisite, not a trading-rule change. The delayed-entry capacity overlay still reports available-margin capacity as unmodeled until a separate causal replay consumes this new leverage lineage. Entries, sizing, stops, fills, risk limits, and live-order capability are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry available-margin capacity replay — 2026-09-28
+
+The fixed-schedule delayed-entry portfolio capacity study now consumes the exact venue-max-leverage lineage introduced by #573 and reconstructs the paper engine's available-margin capacity causally.
+
+- leverage-aware trade-path v2 evidence supplies each position's exact venue max leverage;
+- legacy v1 trade paths remain readable, but a relevant v1 path is counted as missing venue-leverage evidence and blocks review readiness rather than inheriting a guessed leverage;
+- active reserved margin is reconstructed from the latest causally available mark notional divided by `min(paper_max_gross_leverage, venue_max_leverage)`, matching paper accounting;
+- available margin is reconstructed as `max(0, equity - reserved_margin)`;
+- a new opening's margin capacity uses `available_margin * max_available_margin_fraction * min(risk_max_gross_leverage, opening_venue_max_leverage)`, matching the independent risk engine;
+- the fixed overlay reports margin-capacity violations/headroom/utilization, while the causal admission shadow rejects a hypothetical opening that exceeds the same available-margin capacity and reevaluates later openings against the surviving portfolio;
+- the observed paper baseline must still reconstruct with zero capacity violations and zero admission rejections before the study can become review-ready;
+- visible-liquidity capacity and liquidation-buffer policy remain explicitly unmodeled, and rejected hypothetical orders are not resized or replaced.
+
+This is research/shadow accounting only. It does not change strategy thresholds, risk limits, paper sizing, actual entries/exits, execution cadence, position management, or any live-order capability.
+
+**LIVE TRADING: DISABLED.**
