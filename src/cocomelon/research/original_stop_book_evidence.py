@@ -261,7 +261,14 @@ class OriginalStopBookEvidence:
     book_event_key: str
     book_received_ms: int
     book_exchange_ms: int | None
+    book_source: str
+    book_schema_version: int
     reference_price: Decimal
+    instrument_sz_decimals: int
+    instrument_venue_max_leverage: Decimal
+    instrument_minimum_order_notional: Decimal
+    instrument_metadata_received_at_ms: int
+    instrument_metadata_source: str
     bids: tuple[StopBookLevel, ...]
     asks: tuple[StopBookLevel, ...]
     schema_version: int = SCHEMA_VERSION
@@ -269,6 +276,34 @@ class OriginalStopBookEvidence:
     def __post_init__(self) -> None:
         if not self.book_event_key.strip():
             raise ValueError("book_event_key must not be empty")
+        if not self.book_source.strip():
+            raise ValueError("book_source must not be empty")
+        if not self.instrument_metadata_source.strip():
+            raise ValueError(
+                "instrument_metadata_source must not be empty"
+            )
+        if self.book_schema_version <= 0:
+            raise ValueError("book_schema_version must be positive")
+        if self.instrument_sz_decimals < 0:
+            raise ValueError(
+                "instrument_sz_decimals must be non-negative"
+            )
+        if self.instrument_metadata_received_at_ms < 0:
+            raise ValueError(
+                "instrument metadata timestamp must be non-negative"
+            )
+        for value, field in (
+            (
+                self.instrument_venue_max_leverage,
+                "instrument_venue_max_leverage",
+            ),
+            (
+                self.instrument_minimum_order_notional,
+                "instrument_minimum_order_notional",
+            ),
+        ):
+            if not value.is_finite() or value <= ZERO:
+                raise ValueError(f"{field} must be positive and finite")
         if self.book_received_ms < self.crossing.crossing_mark_received_ms:
             raise ValueError(
                 "stop execution book must not precede crossing mark"
@@ -304,7 +339,22 @@ class OriginalStopBookEvidence:
             "book_event_key": self.book_event_key,
             "book_received_ms": self.book_received_ms,
             "book_exchange_ms": self.book_exchange_ms,
+            "book_source": self.book_source,
+            "book_schema_version": self.book_schema_version,
             "reference_price": str(self.reference_price),
+            "instrument_sz_decimals": self.instrument_sz_decimals,
+            "instrument_venue_max_leverage": str(
+                self.instrument_venue_max_leverage
+            ),
+            "instrument_minimum_order_notional": str(
+                self.instrument_minimum_order_notional
+            ),
+            "instrument_metadata_received_at_ms": (
+                self.instrument_metadata_received_at_ms
+            ),
+            "instrument_metadata_source": (
+                self.instrument_metadata_source
+            ),
             "bids": [level.to_dict() for level in self.bids],
             "asks": [level.to_dict() for level in self.asks],
             "schema_version": self.schema_version,
@@ -327,7 +377,14 @@ class OriginalStopBookEvidence:
             "book_event_key",
             "book_received_ms",
             "book_exchange_ms",
+            "book_source",
+            "book_schema_version",
             "reference_price",
+            "instrument_sz_decimals",
+            "instrument_venue_max_leverage",
+            "instrument_minimum_order_notional",
+            "instrument_metadata_received_at_ms",
+            "instrument_metadata_source",
             "bids",
             "asks",
             "schema_version",
@@ -351,9 +408,28 @@ class OriginalStopBookEvidence:
             book_exchange_ms=(
                 None if exchange_ms is None else int(exchange_ms)
             ),
+            book_source=str(raw["book_source"]),
+            book_schema_version=int(raw["book_schema_version"]),
             reference_price=_decimal(
                 raw["reference_price"],
                 "reference_price",
+            ),
+            instrument_sz_decimals=int(
+                raw["instrument_sz_decimals"]
+            ),
+            instrument_venue_max_leverage=_decimal(
+                raw["instrument_venue_max_leverage"],
+                "instrument_venue_max_leverage",
+            ),
+            instrument_minimum_order_notional=_decimal(
+                raw["instrument_minimum_order_notional"],
+                "instrument_minimum_order_notional",
+            ),
+            instrument_metadata_received_at_ms=int(
+                raw["instrument_metadata_received_at_ms"]
+            ),
+            instrument_metadata_source=str(
+                raw["instrument_metadata_source"]
             ),
             bids=tuple(StopBookLevel.from_dict(item) for item in bids),
             asks=tuple(StopBookLevel.from_dict(item) for item in asks),
@@ -374,8 +450,8 @@ class OriginalStopBookEvidence:
                 self.book_received_ms / 1000,
                 tz=UTC,
             ),
-            schema_version=1,
-            source="hyperliquid-mainnet-ws",
+            schema_version=self.book_schema_version,
+            source=self.book_source,
             event_key=self.book_event_key,
             payload={
                 "bids": tuple(
@@ -489,6 +565,7 @@ class OriginalStopBookEvidenceStore:
         book: StreamEvent,
         *,
         reference_price: Decimal,
+        instrument: InstrumentExecutionSpec,
     ) -> bool:
         if book.kind is not StreamKind.L2_BOOK:
             raise OriginalStopBookEvidenceError(
@@ -498,12 +575,29 @@ class OriginalStopBookEvidenceStore:
             raise OriginalStopBookEvidenceError(
                 "stop execution book market mismatch"
             )
+        if instrument.market != book.market:
+            raise OriginalStopBookEvidenceError(
+                "stop execution instrument market mismatch"
+            )
         evidence = OriginalStopBookEvidence(
             crossing=crossing,
             book_event_key=book.event_key,
             book_received_ms=_receive_ms(book),
             book_exchange_ms=book.exchange_time_ms,
+            book_source=book.source,
+            book_schema_version=book.schema_version,
             reference_price=reference_price,
+            instrument_sz_decimals=instrument.sz_decimals,
+            instrument_venue_max_leverage=(
+                instrument.venue_max_leverage
+            ),
+            instrument_minimum_order_notional=(
+                instrument.minimum_order_notional
+            ),
+            instrument_metadata_received_at_ms=(
+                instrument.metadata_received_at_ms
+            ),
+            instrument_metadata_source=instrument.metadata_source,
             bids=_levels(book.payload.get("bids")),
             asks=_levels(book.payload.get("asks")),
         )
@@ -661,7 +755,6 @@ class OriginalStopBookCapture:
         reference_price: Decimal,
         now_ms: int,
     ) -> None:
-        del instrument
         if self.error is not None:
             return
         try:
@@ -690,6 +783,7 @@ class OriginalStopBookCapture:
                 crossing,
                 book,
                 reference_price=reference_price,
+                instrument=instrument,
             )
         except Exception as exc:
             self._fail(exc)
