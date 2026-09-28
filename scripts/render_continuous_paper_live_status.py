@@ -4516,6 +4516,16 @@ def _research_readiness_board_lines(
     )
     if not isinstance(delayed_fill_weighted_overall, dict):
         delayed_fill_weighted_overall = {}
+    delayed_portfolio = mapping(
+        "delayed_entry_fixed_schedule_portfolio"
+    )
+    delayed_portfolio_gate = readiness(delayed_portfolio)
+    delayed_portfolio_ready = bool(
+        delayed_portfolio_gate.get("ready_for_review")
+    )
+    delayed_portfolio_actual = delayed_portfolio.get("actual", {})
+    if not isinstance(delayed_portfolio_actual, dict):
+        delayed_portfolio_actual = {}
     delayed_120 = mapping("delayed_entry_120s_execution_shadow")
     delayed_120_gate = readiness(delayed_120)
     delayed_120_ready = bool(
@@ -4769,6 +4779,25 @@ def _research_readiness_board_lines(
             (
                 f"missing={delayed_fill_weighted.get('missing_journal_trades', 0)}, "
                 f"mismatch={delayed_fill_weighted.get('lineage_mismatches', 0)}"
+            ),
+        ),
+        (
+            "60s delayed fixed-schedule portfolio",
+            status(
+                delayed_portfolio,
+                ready=delayed_portfolio_ready,
+            ),
+            (
+                f"closed={delayed_portfolio.get('closed_shadow_outcomes', 0)}, "
+                f"eval={delayed_portfolio.get('evaluated_delayed_attempts', 0)}, "
+                f"overlap={delayed_portfolio_actual.get('overlap_openings', 0)}"
+            ),
+            (
+                f"unresolved={delayed_portfolio.get('unresolved_outcomes', 0)}, "
+                f"missing={delayed_portfolio.get('missing_journal_trades', 0)}/"
+                f"{delayed_portfolio.get('missing_opening_plans', 0)}, "
+                f"mismatch={delayed_portfolio.get('lineage_mismatches', 0)}, "
+                f"risk={delayed_portfolio.get('candidate_risk_ceiling_exceeded', 0)}"
             ),
         ),
         (
