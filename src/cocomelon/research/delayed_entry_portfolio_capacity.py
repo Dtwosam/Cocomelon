@@ -1592,8 +1592,14 @@ def delayed_entry_portfolio_capacity_overlay(
         liquidity = opening_liquidity_by_trade_id.get(
             trade.trade_id
         )
-        funding = funding_by_trade_id.get(trade.trade_id)
-        if plan is None or liquidity is None or funding is None:
+        candidate_funding = funding_by_trade_id.get(
+            trade.trade_id
+        )
+        if (
+            plan is None
+            or liquidity is None
+            or candidate_funding is None
+        ):
             continue
         outcome = outcome_by_id.get(trade.trade_id)
         if outcome is None:
@@ -1604,7 +1610,7 @@ def delayed_entry_portfolio_capacity_overlay(
                     plan,
                     venue_max_leverage,
                     liquidity,
-                    funding,
+                    candidate_funding,
                 )
             )
             background_positions += 1
@@ -1669,7 +1675,7 @@ def delayed_entry_portfolio_capacity_overlay(
             * weighted.delayed_filled_quantity
         )
         candidate_funding_events = scaled_funding_events(
-            funding,
+            candidate_funding,
             fill_fraction=weighted.fill_fraction,
             open_ms=open_ms,
         )
