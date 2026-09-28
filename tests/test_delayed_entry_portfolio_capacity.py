@@ -133,6 +133,7 @@ def _path(
         initial_stop=trade.initial_stop,
         initial_risk_amount=trade.initial_risk_amount,
         filled_quantity=trade.filled_quantity,
+        venue_max_leverage=Decimal("20"),
         excursion_complete=True,
         health_refs=trade.health_refs,
         marks=tuple(
@@ -236,6 +237,7 @@ def test_capacity_overlay_detects_candidate_bucket_violation(
             paths,
             _plan_loader(background, candidate),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -303,6 +305,7 @@ def test_admission_shadow_can_reject_later_background_opening(
             paths,
             _plan_loader(candidate, later_background),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -376,6 +379,7 @@ def test_capacity_overlay_detects_candidate_gross_leverage_violation(
             paths,
             _plan_loader(background, candidate),
             limits=limits,
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -431,6 +435,7 @@ def test_capacity_overlay_no_fill_removes_candidate_position(
             paths,
             _plan_loader(candidate),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
@@ -486,6 +491,7 @@ def test_actual_admission_uses_filled_risk_not_approved_ceiling(
             paths,
             _plan_loader(first, second, third),
             limits=RiskLimits(),
+            paper_max_gross_leverage=Decimal("3"),
         )
     finally:
         journal.close()
