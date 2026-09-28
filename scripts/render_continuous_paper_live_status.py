@@ -8,6 +8,23 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+MAX_ISSUE_BODY_CHARS = 240_000
+
+
+def _bounded_issue_body(body: str) -> str:
+    if len(body) <= MAX_ISSUE_BODY_CHARS:
+        return body
+    footer = (
+        "\n\n> Live-status body was compacted to stay within the GitHub "
+        "issue limit. Durable artifacts remain the audit authority.\n"
+    )
+    budget = MAX_ISSUE_BODY_CHARS - len(footer)
+    clipped = body[:budget]
+    boundary = clipped.rfind("\n")
+    if boundary > 0:
+        clipped = clipped[:boundary]
+    return clipped + footer
+
 
 def _reason_summary(raw: object) -> str:
     if not isinstance(raw, dict) or not raw:
@@ -598,6 +615,7 @@ def _delayed_entry_pair_lines(raw: object) -> list[str]:
 
     lines.extend(
         [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             (
                 "- prospective start / delays: "
                 f"`{raw.get('started_at_ms')}` / "
@@ -744,6 +762,7 @@ def _delayed_entry_pair_fill_weighted_lines(
 
     lines.extend(
         [
+            f"- scope: `{raw.get('claim_scope', 'unknown')}`",
             (
                 "- prospective start / delays: "
                 f"`{raw.get('started_at_ms')}` / "
@@ -5927,20 +5946,14 @@ def render_live_status(
             f"- processed records: `{payload['processed_records']}`",
             f"- journal observations: `{payload['journal_observations']}`",
             "",
-            "<details><summary>Full heartbeat JSON</summary>",
-            "",
-            "```json",
-            json.dumps(dict(payload), indent=2, sort_keys=True),
-            "```",
-            "</details>",
-            "",
             (
-                "> Operational telemetry only. Completed artifacts and journal "
-                "state remain the durable audit authority."
+                "> Full heartbeat JSON is intentionally omitted from this live "
+                "issue to keep publication reliable. Completed artifacts and "
+                "journal state remain the durable audit authority."
             ),
         ]
     )
-    return "\n".join(lines) + "\n"
+    return _bounded_issue_body("\n".join(lines) + "\n")
 
 
 def main() -> None:
