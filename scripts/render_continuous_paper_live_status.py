@@ -1773,8 +1773,9 @@ def _delayed_entry_portfolio_capacity_lines(
                 "would breach aggregate risk, the shared bucket, venue-aware gross "
                 "leverage, available-margin capacity, visible-liquidity capacity, "
                 "the venue minimum notional, or the paper liquidation buffer, then "
-                "evaluates later openings against the surviving portfolio. It does "
-                "not invent resized or replacement trades or changed exits._"
+                "evaluates later openings against the surviving portfolio. Funding "
+                "is applied at exact recorded boundaries. It does not invent resized "
+                "or replacement trades or changed exits._"
             ),
         ]
     )
