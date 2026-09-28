@@ -494,7 +494,6 @@ def _delayed_entry_execution_shadow_lines(
     readiness = raw.get("readiness", {})
     if not isinstance(readiness, dict):
         readiness = {}
-
     lines.extend(
         [
             (
@@ -5986,6 +5985,23 @@ def _delayed_entry_stop_l2_lines(
         overall = {}
     if not isinstance(readiness, dict):
         readiness = {}
+    source_counts = raw.get("source_counts", {})
+    non_evaluable_sources = raw.get(
+        "non_evaluable_source_counts",
+        raw.get("unresolved_source_counts", {}),
+    )
+    if not isinstance(source_counts, dict):
+        source_counts = {}
+    if not isinstance(non_evaluable_sources, dict):
+        non_evaluable_sources = {}
+
+    def source_summary(value: dict[object, object]) -> str:
+        if not value:
+            return "none"
+        return ", ".join(
+            f"{key}={value[key]}"
+            for key in sorted(value, key=str)
+        )
 
     lines.extend(
         [
@@ -5994,6 +6010,26 @@ def _delayed_entry_stop_l2_lines(
                 "- capture start / legacy excluded: "
                 f"`{raw.get('capture_started_at_ms')} / "
                 f"{raw.get('pre_capture_legacy_outcomes', 0)}`"
+            ),
+            (
+                "- delayed-entry source counts: "
+                f"`{source_summary(source_counts)}`"
+            ),
+            (
+                "- post-capture non-evaluable entries / sources: "
+                f"`{raw.get('non_evaluable_entry_outcomes', raw.get('unresolved_outcomes', 0))} / "
+                f"{source_summary(non_evaluable_sources)}`"
+            ),
+            (
+                "- upstream integrity misses journal / path / gaps / funding / "
+                "lineage / timing / stop-book: "
+                f"`{raw.get('missing_journal_trades', 0)} / "
+                f"{raw.get('missing_exact_paths', 0)} / "
+                f"{raw.get('incomplete_or_gapped_paths', 0)} / "
+                f"{raw.get('missing_funding_events', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)} / "
+                f"{raw.get('invalid_candidate_timing', 0)} / "
+                f"{raw.get('stop_book_capture_errors', 0)}`"
             ),
             (
                 "- evaluated / mark crossings / captured stop plans: "

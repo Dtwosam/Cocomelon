@@ -1037,7 +1037,7 @@ def delayed_entry_stop_l2_replay(
 
     evaluated: list[DelayedEntryStopL2Outcome] = []
     pre_capture_legacy_outcomes = 0
-    unresolved_outcomes = 0
+    non_evaluable_entry_outcomes = 0
     candidate_no_fill = 0
     missing_journal = 0
     missing_paths = 0
@@ -1047,18 +1047,12 @@ def delayed_entry_stop_l2_replay(
     invalid_candidate_timing = 0
     stop_book_capture_errors = 0
     source_counts: dict[str, int] = {}
-    unresolved_source_counts: dict[str, int] = {}
+    non_evaluable_source_counts: dict[str, int] = {}
 
     for outcome in outcomes:
         source_counts[outcome.source] = (
             source_counts.get(outcome.source, 0) + 1
         )
-        if outcome.source not in EVALUABLE_SOURCES:
-            unresolved_outcomes += 1
-            unresolved_source_counts[outcome.source] = (
-                unresolved_source_counts.get(outcome.source, 0) + 1
-            )
-            continue
         trade = trades.get(outcome.trade_id)
         if trade is None:
             missing_journal += 1
@@ -1068,6 +1062,12 @@ def delayed_entry_stop_l2_replay(
             and trade.opened_at_ms < capture_started_at_ms
         ):
             pre_capture_legacy_outcomes += 1
+            continue
+        if outcome.source not in EVALUABLE_SOURCES:
+            non_evaluable_entry_outcomes += 1
+            non_evaluable_source_counts[outcome.source] = (
+                non_evaluable_source_counts.get(outcome.source, 0) + 1
+            )
             continue
         try:
             weighted = (
@@ -1154,7 +1154,6 @@ def delayed_entry_stop_l2_replay(
     integrity_clean = (
         protocol_present
         and capture_error is None
-        and unresolved_outcomes == 0
         and missing_journal == 0
         and missing_paths == 0
         and incomplete_or_gapped_paths == 0
@@ -1195,9 +1194,16 @@ def delayed_entry_stop_l2_replay(
         ),
         "candidate_no_fill_trades": candidate_no_fill,
         "source_counts": dict(sorted(source_counts.items())),
-        "unresolved_outcomes": unresolved_outcomes,
+        "non_evaluable_entry_outcomes": (
+            non_evaluable_entry_outcomes
+        ),
+        "non_evaluable_source_counts": dict(
+            sorted(non_evaluable_source_counts.items())
+        ),
+        # Backward-compatible aliases retained for existing consumers.
+        "unresolved_outcomes": non_evaluable_entry_outcomes,
         "unresolved_source_counts": dict(
-            sorted(unresolved_source_counts.items())
+            sorted(non_evaluable_source_counts.items())
         ),
         "missing_journal_trades": missing_journal,
         "missing_exact_paths": missing_paths,
