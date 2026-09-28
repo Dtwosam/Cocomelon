@@ -1268,13 +1268,6 @@ def _delayed_entry_fixed_schedule_portfolio_lines(
                 f"`{raw.get('delta_max_realized_drawdown', '0')}`"
             ),
             (
-                "- actual / candidate funding events / cash: "
-                f"`{actual.get('funding_events', 0)} / "
-                f"{candidate.get('funding_events', 0)} / "
-                f"{actual.get('funding_cash_pnl', '0')} / "
-                f"{candidate.get('funding_cash_pnl', '0')}`"
-            ),
-            (
                 "- actual / candidate max concurrent positions: "
                 f"`{actual.get('max_concurrent_positions', 0)} / "
                 f"{candidate.get('max_concurrent_positions', 0)}`"
@@ -1416,6 +1409,13 @@ def _delayed_entry_mtm_portfolio_lines(
                 "- actual / candidate min observed equity contribution: "
                 f"`{actual.get('min_observed_equity_contribution', '0')} / "
                 f"{candidate.get('min_observed_equity_contribution', '0')}`"
+            ),
+            (
+                "- actual / candidate funding events / cash: "
+                f"`{actual.get('funding_events', 0)} / "
+                f"{candidate.get('funding_events', 0)} / "
+                f"{actual.get('funding_cash_pnl', '0')} / "
+                f"{candidate.get('funding_cash_pnl', '0')}`"
             ),
             (
                 "- actual / candidate max concurrent positions: "
