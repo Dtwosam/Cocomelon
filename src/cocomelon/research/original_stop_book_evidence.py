@@ -183,11 +183,11 @@ class OriginalStopCrossing:
             raise ValueError(
                 "stop crossing must not precede position opening"
             )
-        for value, field in (
+        for metric, field in (
             (self.original_stop, "original_stop"),
             (self.crossing_mark_price, "crossing_mark_price"),
         ):
-            if not value.is_finite() or value <= ZERO:
+            if not metric.is_finite() or metric <= ZERO:
                 raise ValueError(f"{field} must be positive and finite")
         if self.direction == "long":
             if self.crossing_mark_price > self.original_stop:
@@ -493,7 +493,13 @@ class PendingOriginalStopExecution:
             )
 
         def opt_int(value: object) -> int | None:
-            return None if value is None else int(value)
+            if value is None:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise OriginalStopBookEvidenceError(
+                    "pending stop integer field is invalid"
+                )
+            return value
 
         def opt_str(value: object) -> str | None:
             return None if value is None else str(value)
