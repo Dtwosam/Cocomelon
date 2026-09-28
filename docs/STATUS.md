@@ -2175,13 +2175,15 @@ This is research-only attribution. It does not resize orders, change stops, loos
 The continuous paper trader now preserves the exact L2 evidence needed to replay an original-stop reduce-only IOC without bypassing the paper engine's latency contract.
 
 - the observer reads the original stop from the persisted opening plan, not the mutable current position stop;
-- the crossing is staged durably as soon as the mark reaches the original stop;
-- the first subsequent mainnet L2 snapshot stages the stop-exit plan reference price and exact plan-time instrument metadata;
-- if that first book arrives before paper IOC latency has elapsed, the pending plan remains durable across worker restarts and capture continues until the first latency-eligible L2 book;
+- before a stop plan exists, the durable candidate crossing follows the latest authoritative mark exactly: a later still-crossed mark replaces it, while a recovery back inside the original stop cancels the unstaged crossing;
+- the first subsequent mainnet L2 snapshot creates stop-plan evidence only when the latest mark still satisfies the original stop, matching the paper manager's actual decision point;
+- once that book stages the stop-exit plan reference price and exact plan-time instrument metadata, later mark recovery no longer cancels it, matching the paper adapter's pending reduce-only behavior;
+- if the plan-creation book arrives before paper IOC latency has elapsed, the pending plan remains durable across worker restarts and capture continues until the first latency-eligible L2 book;
 - the execution book preserves full bid/ask levels, source/schema provenance, timestamps, and its own instrument metadata so later replay can detect instrument-version drift exactly as paper execution would;
 - when the first post-crossing book is already latency-eligible, the same snapshot serves as both plan and execution evidence;
 - the capture runs before paper position management but has no execution authority and fails open if its own research state breaks;
 - non-crossed positions create no stop-book record, avoiding continuous full-book storage.
+- the store persists a one-time capture-start timestamp; restarts preserve the original boundary so later exact-stop replay can exclude pre-capture legacy trades instead of treating them as missing evidence;
 
 This closes the evidence-collection prerequisite behind the delayed stop-exit proxy. Existing historical trades without this prospective capture remain explicitly unmodeled; no L2 history is synthesized from marks or candles.
 

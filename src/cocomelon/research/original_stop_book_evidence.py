@@ -21,6 +21,7 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 
 SCHEMA_VERSION: Final = 1
+PROTOCOL_SCHEMA_VERSION: Final = 1
 ZERO: Final = Decimal("0")
 
 
@@ -866,12 +867,66 @@ class OriginalStopBookEvidence:
 
 
 class OriginalStopBookEvidenceStore:
-    def __init__(self, root: str | Path) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        started_at_ms: int | None = None,
+    ) -> None:
+        if started_at_ms is not None and started_at_ms < 0:
+            raise ValueError(
+                "started_at_ms must be non-negative"
+            )
         self.root = Path(root)
         self.records_root = self.root / "records"
         self.pending_root = self.root / "pending"
+        self.protocol_path = self.root / "protocol.json"
         self.records_root.mkdir(parents=True, exist_ok=True)
         self.pending_root.mkdir(parents=True, exist_ok=True)
+        self._capture_started_at_ms = (
+            self._load_or_create_protocol(started_at_ms)
+        )
+
+    def _load_or_create_protocol(
+        self,
+        started_at_ms: int | None,
+    ) -> int | None:
+        if self.protocol_path.exists():
+            raw = self._read(self.protocol_path)
+            if (
+                not isinstance(raw, dict)
+                or set(raw)
+                != {"schema_version", "started_at_ms"}
+                or raw.get("schema_version")
+                != PROTOCOL_SCHEMA_VERSION
+            ):
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture protocol is invalid"
+                )
+            value = raw.get("started_at_ms")
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture start must be an integer"
+                )
+            if value < 0:
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture start must be non-negative"
+                )
+            return value
+        if started_at_ms is None:
+            return None
+        self._write(
+            self.protocol_path,
+            {
+                "schema_version": PROTOCOL_SCHEMA_VERSION,
+                "started_at_ms": started_at_ms,
+            },
+        )
+        return started_at_ms
+
+    @property
+    def capture_started_at_ms(self) -> int | None:
+        return self._capture_started_at_ms
 
     @staticmethod
     def _name(opening_plan_id: str) -> str:
@@ -942,12 +997,40 @@ class OriginalStopBookEvidenceStore:
             crossing=crossing
         )
         if existing is not None:
-            if existing != candidate:
-                raise OriginalStopBookEvidenceError(
-                    "conflicting original-stop crossing evidence"
-                )
-            return False
+            if existing.plan_staged:
+                return False
+            if (
+                crossing.crossing_mark_received_ms
+                < existing.crossing.crossing_mark_received_ms
+            ):
+                return False
+            if existing == candidate:
+                return False
         self._write(path, candidate.to_dict())
+        return True
+
+    def clear_unstaged(
+        self,
+        opening_plan_id: str,
+        *,
+        observed_at_ms: int,
+    ) -> bool:
+        if observed_at_ms < 0:
+            raise ValueError(
+                "observed_at_ms must be non-negative"
+            )
+        pending = self.pending_for(opening_plan_id)
+        if pending is None or pending.plan_staged:
+            return False
+        if (
+            observed_at_ms
+            < pending.crossing.crossing_mark_received_ms
+        ):
+            return False
+        path = self._pending_path(opening_plan_id)
+        if not path.exists():
+            return False
+        path.unlink()
         return True
 
     def stage_plan(
@@ -1074,7 +1157,13 @@ class OriginalStopBookEvidenceStore:
             )
         ]
         return _digest(
-            {"records": rows, "pending": pending}
+            {
+                "capture_started_at_ms": (
+                    self._capture_started_at_ms
+                ),
+                "records": rows,
+                "pending": pending,
+            }
         )
 
 
@@ -1150,12 +1239,10 @@ class OriginalStopBookCapture:
                 is not None
             ):
                 return
-            if (
-                self.store.pending_for(
-                    position.opening_plan_id
-                )
-                is not None
-            ):
+            pending = self.store.pending_for(
+                position.opening_plan_id
+            )
+            if pending is not None and pending.plan_staged:
                 return
             plan = self._plan_for(position)
             raw_mark = mark_event.payload.get("mark_px")
@@ -1168,18 +1255,22 @@ class OriginalStopBookCapture:
                 raise OriginalStopBookEvidenceError(
                     "original-stop opening plan lost stop"
                 )
+            received_ms = _receive_ms(mark_event)
+            if now_ms < received_ms:
+                raise OriginalStopBookEvidenceError(
+                    "original-stop capture consumed future mark"
+                )
             crossed = (
                 raw_mark <= stop
                 if position.side is PositionSide.LONG
                 else raw_mark >= stop
             )
             if not crossed:
-                return
-            received_ms = _receive_ms(mark_event)
-            if now_ms < received_ms:
-                raise OriginalStopBookEvidenceError(
-                    "original-stop capture consumed future mark"
+                self.store.clear_unstaged(
+                    position.opening_plan_id,
+                    observed_at_ms=received_ms,
                 )
+                return
             self.store.stage(
                 OriginalStopCrossing(
                     opening_plan_id=(
