@@ -8,20 +8,28 @@ from cocomelon.domain.execution import (
     InstrumentExecutionSpec,
     OrderSide,
     OrderType,
+    PaperExecutionConfig,
     PaperOrderPlan,
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import StreamEvent, StreamKind
-from cocomelon.execution.accounting import PaperPosition, PositionSide
+from cocomelon.execution.accounting import (
+    PaperPosition,
+    PositionSide,
+)
 from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
 )
 
 MARKET = MarketId("", "SOL")
+CONFIG = PaperExecutionConfig(latency_ms=250)
 
 
-def _plan(*, side: OrderSide = OrderSide.BUY) -> PaperOrderPlan:
+def _plan(
+    *,
+    side: OrderSide = OrderSide.BUY,
+) -> PaperOrderPlan:
     return PaperOrderPlan(
         risk_decision_id="risk-1",
         strategy_decision_id="strategy-1",
@@ -70,7 +78,10 @@ def _position(
     )
 
 
-def _mark(price: str, receive_ms: int) -> StreamEvent:
+def _mark(
+    price: str,
+    receive_ms: int,
+) -> StreamEvent:
     return StreamEvent(
         kind=StreamKind.ACTIVE_ASSET_CTX,
         market=MARKET,
@@ -86,7 +97,9 @@ def _mark(price: str, receive_ms: int) -> StreamEvent:
     )
 
 
-def _book(receive_ms: int) -> StreamEvent:
+def _book(
+    receive_ms: int,
+) -> StreamEvent:
     return StreamEvent(
         kind=StreamKind.L2_BOOK,
         market=MARKET,
@@ -100,11 +113,23 @@ def _book(receive_ms: int) -> StreamEvent:
         event_key=f"book:{receive_ms}",
         payload={
             "bids": (
-                {"px": Decimal("94.9"), "sz": Decimal("1"), "n": 2},
-                {"px": Decimal("94.8"), "sz": Decimal("3"), "n": 1},
+                {
+                    "px": Decimal("94.9"),
+                    "sz": Decimal("1"),
+                    "n": 2,
+                },
+                {
+                    "px": Decimal("94.8"),
+                    "sz": Decimal("3"),
+                    "n": 1,
+                },
             ),
             "asks": (
-                {"px": Decimal("95.1"), "sz": Decimal("4"), "n": 1},
+                {
+                    "px": Decimal("95.1"),
+                    "sz": Decimal("4"),
+                    "n": 1,
+                },
             ),
         },
     )
@@ -121,33 +146,40 @@ def _instrument() -> InstrumentExecutionSpec:
     )
 
 
-def test_capture_persists_first_book_after_original_stop_crossing(
-    tmp_path: Path,
-) -> None:
-    store = OriginalStopBookEvidenceStore(tmp_path / "stop-books")
-    plan = _plan()
-    position = _position(plan)
-    capture = OriginalStopBookCapture(
-        store,
+def _capture(
+    root: Path,
+    plan: PaperOrderPlan,
+) -> OriginalStopBookCapture:
+    return OriginalStopBookCapture(
+        OriginalStopBookEvidenceStore(root),
         opening_plan_loader=lambda plan_id: (
             plan if plan_id == plan.plan_id else None
         ),
+        config=CONFIG,
     )
+
+
+def test_capture_uses_plan_book_then_first_latency_eligible_book(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    capture = _capture(root, plan)
 
     capture.observe_mark(
         (position,),
         _mark("96", 1_100),
         now_ms=1_100,
     )
-    assert store.pending_count == 0
-    assert store.record_count == 0
+    assert capture.store.pending_count == 0
 
     capture.observe_mark(
         (position,),
         _mark("94.95", 1_200),
         now_ms=1_200,
     )
-    assert store.pending_count == 1
+    assert capture.store.pending_count == 1
 
     capture.observe_book(
         (position,),
@@ -156,94 +188,156 @@ def test_capture_persists_first_book_after_original_stop_crossing(
         reference_price=Decimal("95"),
         now_ms=1_210,
     )
+    assert capture.store.pending_count == 1
+    assert capture.store.record_count == 0
+
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_460),
+        reference_price=Decimal("94.85"),
+        now_ms=1_460,
+    )
 
     assert capture.error is None
-    assert store.pending_count == 0
-    assert store.record_count == 1
+    assert capture.store.pending_count == 0
+    assert capture.store.record_count == 1
 
-    restored = OriginalStopBookEvidenceStore(
-        tmp_path / "stop-books"
-    )
+    restored = OriginalStopBookEvidenceStore(root)
     evidence = restored.evidence_for(plan.plan_id)
     assert evidence is not None
     assert evidence.crossing.original_stop == Decimal("95")
-    assert evidence.crossing.crossing_mark_price == Decimal("94.95")
-    assert evidence.book_event_key == "book:1210"
+    assert (
+        evidence.crossing.crossing_mark_price
+        == Decimal("94.95")
+    )
+    assert (
+        evidence.pending.plan_book_event_key
+        == "book:1210"
+    )
     assert evidence.reference_price == Decimal("95")
-    assert evidence.book_source == "hyperliquid-mainnet-ws"
-    assert evidence.book_schema_version == 1
-    assert evidence.instrument_sz_decimals == 2
-    assert evidence.instrument_venue_max_leverage == Decimal("20")
     assert (
-        evidence.instrument_minimum_order_notional
-        == Decimal("10")
+        evidence.execution_book_event_key
+        == "book:1460"
     )
-    assert evidence.instrument_metadata_received_at_ms == 800
     assert (
-        evidence.instrument_metadata_source
-        == "hyperliquid-mainnet-meta"
+        evidence.execution_book_received_ms
+        == 1_460
     )
-    assert tuple(level.price for level in evidence.bids) == (
+    assert (
+        evidence.pending.plan_book_source
+        == "hyperliquid-mainnet-ws"
+    )
+    assert evidence.pending.instrument_sz_decimals == 2
+    assert (
+        evidence.pending.instrument_venue_max_leverage
+        == Decimal("20")
+    )
+    assert tuple(
+        level.price for level in evidence.bids
+    ) == (
         Decimal("94.9"),
         Decimal("94.8"),
     )
     rebuilt = evidence.book_event()
     assert rebuilt.kind is StreamKind.L2_BOOK
-    assert rebuilt.payload["bids"][0]["px"] == Decimal("94.9")
+    assert (
+        rebuilt.payload["bids"][0]["px"]
+        == Decimal("94.9")
+    )
     spec = evidence.instrument_spec()
     assert spec.size_quantum == Decimal("0.01")
     assert spec.metadata_received_at_ms == 800
 
 
-def test_pending_crossing_survives_store_restart_before_book(
+def test_same_book_can_create_and_execute_plan_after_latency(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "stop-books"
     plan = _plan()
     position = _position(plan)
-    first = OriginalStopBookCapture(
-        OriginalStopBookEvidenceStore(root),
-        opening_plan_loader=lambda _plan_id: plan,
+    capture = _capture(root, plan)
+
+    capture.observe_mark(
+        (position,),
+        _mark("94.9", 1_200),
+        now_ms=1_200,
     )
+    capture.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_500),
+        reference_price=Decimal("94.95"),
+        now_ms=1_500,
+    )
+
+    evidence = capture.store.evidence_for(plan.plan_id)
+    assert evidence is not None
+    assert (
+        evidence.pending.plan_book_event_key
+        == evidence.execution_book_event_key
+    )
+    assert evidence.reference_price == Decimal("94.95")
+
+
+def test_pending_plan_survives_restart_before_execution_book(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "stop-books"
+    plan = _plan()
+    position = _position(plan)
+    first = _capture(root, plan)
 
     first.observe_mark(
         (position,),
         _mark("94.9", 1_200),
         now_ms=1_200,
     )
-    assert first.store.pending_count == 1
-
-    restored_store = OriginalStopBookEvidenceStore(root)
-    restored = OriginalStopBookCapture(
-        restored_store,
-        opening_plan_loader=lambda _plan_id: plan,
+    first.observe_book(
+        (position,),
+        _instrument(),
+        _book(1_210),
+        reference_price=Decimal("95"),
+        now_ms=1_210,
     )
+    pending = first.store.pending_for(plan.plan_id)
+    assert pending is not None
+    assert pending.plan_staged is True
+
+    restored = _capture(root, plan)
     restored.observe_book(
         (position,),
         _instrument(),
-        _book(1_240),
-        reference_price=Decimal("95"),
-        now_ms=1_240,
+        _book(1_460),
+        reference_price=Decimal("94.8"),
+        now_ms=1_460,
     )
 
     assert restored.error is None
-    assert restored_store.pending_count == 0
-    evidence = restored_store.evidence_for(plan.plan_id)
+    assert restored.store.pending_count == 0
+    evidence = restored.store.evidence_for(plan.plan_id)
     assert evidence is not None
-    assert evidence.crossing.crossing_mark_event_key == "mark:1200"
-    assert evidence.book_event_key == "book:1240"
+    assert (
+        evidence.pending.plan_book_event_key
+        == "book:1210"
+    )
+    assert evidence.reference_price == Decimal("95")
+    assert (
+        evidence.execution_book_event_key
+        == "book:1460"
+    )
 
 
-def test_short_crossing_captures_ask_side_book(
+def test_short_crossing_captures_execution_book(
     tmp_path: Path,
 ) -> None:
-    store = OriginalStopBookEvidenceStore(tmp_path / "stop-books")
+    root = tmp_path / "stop-books"
     plan = _plan(side=OrderSide.SELL)
-    position = _position(plan, side=PositionSide.SHORT)
-    capture = OriginalStopBookCapture(
-        store,
-        opening_plan_loader=lambda _plan_id: plan,
+    position = _position(
+        plan,
+        side=PositionSide.SHORT,
     )
+    capture = _capture(root, plan)
 
     capture.observe_mark(
         (position,),
@@ -253,26 +347,32 @@ def test_short_crossing_captures_ask_side_book(
     capture.observe_book(
         (position,),
         _instrument(),
-        _book(1_205),
-        reference_price=Decimal("95"),
-        now_ms=1_205,
+        _book(1_500),
+        reference_price=Decimal("105.05"),
+        now_ms=1_500,
     )
 
-    evidence = store.evidence_for(plan.plan_id)
+    evidence = capture.store.evidence_for(plan.plan_id)
     assert evidence is not None
     assert evidence.crossing.direction == "short"
-    assert evidence.crossing.crossing_mark_price == Decimal("105.1")
+    assert (
+        evidence.crossing.crossing_mark_price
+        == Decimal("105.1")
+    )
     assert evidence.asks[0].price == Decimal("95.1")
 
 
 def test_capture_is_fail_open_when_opening_plan_is_missing(
     tmp_path: Path,
 ) -> None:
-    store = OriginalStopBookEvidenceStore(tmp_path / "stop-books")
+    store = OriginalStopBookEvidenceStore(
+        tmp_path / "stop-books"
+    )
     plan = _plan()
     capture = OriginalStopBookCapture(
         store,
         opening_plan_loader=lambda _plan_id: None,
+        config=CONFIG,
     )
 
     capture.observe_mark(
