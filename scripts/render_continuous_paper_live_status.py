@@ -1539,8 +1539,8 @@ def _delayed_entry_stop_survivability_lines(
             (
                 "_A crossing means a complete gap-free observed mark path "
                 "definitely touched the immutable original stop after the "
-                "delayed fill existed; same-millisecond marks are excluded. "
-                "Stop fill price and the full exit policy are not modeled._"
+                "delayed fill existed; same-millisecond marks are excluded; "
+                "stop fill price and the full exit policy are not modeled._"
             ),
         ]
     )
