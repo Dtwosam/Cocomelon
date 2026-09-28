@@ -1898,3 +1898,18 @@ The fixed overlay remains intact, and a causal admission shadow now applies thos
 This still is not a full alternate strategy replay. The admission shadow does not resize rejected orders, rerun strategy generation, invent replacement trades, change exit timing, reconstruct available-margin or liquidation-buffer policy, or infer unseen liquidity. Candidate admission rejections are valid research outcomes; actual-baseline admission rejections are integrity failures.
 
 **LIVE TRADING: DISABLED.**
+
+
+### allMids markout opening-risk lineage repair — 2026-09-28
+
+The prospective allMids entry-markout shadow now receives the immutable approved opening risk ceiling from the persisted opening plan before it tracks or reconciles a paper position.
+
+- authoritative paper positions are not mutated;
+- the shadow no longer compares actual filled position risk against the journal's approved opening risk ceiling;
+- close lineage remains strict for market, side, entry price, opening timestamp, quantity, and approved risk;
+- the allMids research-state schema is bumped so previously accumulated systematic lineage-mismatch counters are discarded rather than carried into future readiness;
+- an incompatible old state fails open for trading and restarts only this research stream from the fixed protocol.
+
+This repair changes research evidence integrity only. It does not alter entries, stops, sizing, risk, fills, accounting, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
