@@ -21,6 +21,7 @@ from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 
 SCHEMA_VERSION: Final = 1
+PROTOCOL_SCHEMA_VERSION: Final = 1
 ZERO: Final = Decimal("0")
 
 
@@ -866,12 +867,66 @@ class OriginalStopBookEvidence:
 
 
 class OriginalStopBookEvidenceStore:
-    def __init__(self, root: str | Path) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        started_at_ms: int | None = None,
+    ) -> None:
+        if started_at_ms is not None and started_at_ms < 0:
+            raise ValueError(
+                "started_at_ms must be non-negative"
+            )
         self.root = Path(root)
         self.records_root = self.root / "records"
         self.pending_root = self.root / "pending"
+        self.protocol_path = self.root / "protocol.json"
         self.records_root.mkdir(parents=True, exist_ok=True)
         self.pending_root.mkdir(parents=True, exist_ok=True)
+        self._capture_started_at_ms = (
+            self._load_or_create_protocol(started_at_ms)
+        )
+
+    def _load_or_create_protocol(
+        self,
+        started_at_ms: int | None,
+    ) -> int | None:
+        if self.protocol_path.exists():
+            raw = self._read(self.protocol_path)
+            if (
+                not isinstance(raw, dict)
+                or set(raw)
+                != {"schema_version", "started_at_ms"}
+                or raw.get("schema_version")
+                != PROTOCOL_SCHEMA_VERSION
+            ):
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture protocol is invalid"
+                )
+            value = raw.get("started_at_ms")
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture start must be an integer"
+                )
+            if value < 0:
+                raise OriginalStopBookEvidenceError(
+                    "stop-book capture start must be non-negative"
+                )
+            return value
+        if started_at_ms is None:
+            return None
+        self._write(
+            self.protocol_path,
+            {
+                "schema_version": PROTOCOL_SCHEMA_VERSION,
+                "started_at_ms": started_at_ms,
+            },
+        )
+        return started_at_ms
+
+    @property
+    def capture_started_at_ms(self) -> int | None:
+        return self._capture_started_at_ms
 
     @staticmethod
     def _name(opening_plan_id: str) -> str:
@@ -1102,7 +1157,13 @@ class OriginalStopBookEvidenceStore:
             )
         ]
         return _digest(
-            {"records": rows, "pending": pending}
+            {
+                "capture_started_at_ms": (
+                    self._capture_started_at_ms
+                ),
+                "records": rows,
+                "pending": pending,
+            }
         )
 
 
