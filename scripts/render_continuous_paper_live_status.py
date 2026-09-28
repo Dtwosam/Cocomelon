@@ -3285,6 +3285,152 @@ def _prospective_top10_rank_filter_lines(
     return lines
 
 
+def _prospective_combined_entry_filter_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective top-10 + no LONG-trend entry filter",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective combined-filter telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    rule = raw.get("rule", {})
+    readiness = raw.get("readiness", {})
+    reasons = raw.get("by_block_reason", {})
+    if not isinstance(rule, dict):
+        rule = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+    if not isinstance(reasons, dict):
+        reasons = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            f"- prospective start: `{raw.get('started_at_ms')}`",
+            (
+                "- frozen rule: require scanner rank "
+                f"`1-{rule.get('max_admitted_ordinal', 'unknown')}` "
+                "and reject `long + trend`"
+            ),
+            (
+                "- maximum accepted rank age: "
+                f"`{rule.get('max_rank_age_ms')}`ms"
+            ),
+            (
+                "- prospective closed / attributed: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('attributed_trades', 0)}`"
+            ),
+            (
+                "- allowed / blocked trades: "
+                f"`{raw.get('allowed_trades', 0)} / "
+                f"{raw.get('blocked_trades', 0)}`"
+            ),
+            (
+                "- allowed W/L · blocked W/L: "
+                f"`{raw.get('allowed_wins', 0)}/"
+                f"{raw.get('allowed_losses', 0)} · "
+                f"{raw.get('blocked_wins', 0)}/"
+                f"{raw.get('blocked_losses', 0)}`"
+            ),
+            (
+                "- allowed / blocked net PnL: "
+                f"`{raw.get('allowed_net_pnl', '0')} / "
+                f"{raw.get('blocked_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / candidate / delta trade contribution: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('candidate_trade_contribution_pnl', '0')} / "
+                f"{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- decision misses / missing rank / stale rank: "
+                f"`{raw.get('decision_attribution_misses', 0)} / "
+                f"{raw.get('missing_rank_evidence', 0)} / "
+                f"{raw.get('stale_rank_evidence', 0)}`"
+            ),
+            (
+                "- evidence gate prospective / blocked / allowed: "
+                f"`{readiness.get('min_prospective_closed_trades', 0)} / "
+                f"{readiness.get('min_blocked_trades', 0)} / "
+                f"{readiness.get('min_allowed_trades', 0)}`"
+            ),
+            (
+                "- still needed P/B/A: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_blocked_trades', 0)} / "
+                f"{readiness.get('missing_allowed_trades', 0)}`"
+            ),
+            (
+                "- integrity clean / ready for review: "
+                f"`{str(bool(readiness.get('integrity_clean'))).lower()} / "
+                f"{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            "| Block reason | Trades | W | L | Net PnL | Mean R | Mean rank |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("long_trend", "LONG+trend"),
+        ("rank_above_10", "rank >10"),
+        (
+            "long_trend_and_rank_above_10",
+            "LONG+trend & rank >10",
+        ),
+    ):
+        item = reasons.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {label} | {trades} | {wins} | {losses} | {pnl} | "
+            "{mean_r} | {mean_rank} |".format(
+                label=label,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+                mean_rank=item.get("mean_ordinal"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Fresh prospective intersection only: evidence from the earlier "
+                "standalone LONG+trend and top-10 studies does not count toward "
+                "this gate. Skipped trades contribute zero; replacement trades, "
+                "changed capacity, and changed exits are not modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _opening_rank_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -5305,6 +5451,13 @@ def _research_readiness_board_lines(
         rank_filter_gate.get("ready_for_review")
     )
 
+    combined_filter = mapping(
+        "prospective_combined_entry_filter"
+    )
+    combined_filter_gate = readiness(combined_filter)
+    combined_filter_ready = bool(
+        combined_filter_gate.get("ready_for_review")
+    )
     fill_liquidity = mapping("opening_fill_liquidity")
     fill_liquidity_ready = bool(
         fill_liquidity.get("ready_for_review")
@@ -5609,6 +5762,23 @@ def _research_readiness_board_lines(
             (
                 f"missing={rank_filter.get('missing_rank_evidence', 0)}, "
                 f"stale={rank_filter.get('stale_rank_evidence', 0)}"
+            ),
+        ),
+        (
+            "top-10 + no LONG-trend",
+            status(
+                combined_filter,
+                ready=combined_filter_ready,
+            ),
+            (
+                f"closed={combined_filter.get('prospective_closed_trades', 0)}, "
+                f"blocked={combined_filter.get('blocked_trades', 0)}, "
+                f"allowed={combined_filter.get('allowed_trades', 0)}"
+            ),
+            (
+                f"fact={combined_filter.get('decision_attribution_misses', 0)}, "
+                f"rank={combined_filter.get('missing_rank_evidence', 0)}, "
+                f"stale={combined_filter.get('stale_rank_evidence', 0)}"
             ),
         ),
         (
@@ -6064,6 +6234,11 @@ def render_live_status(
     lines.extend(
         _prospective_top10_rank_filter_lines(
             payload.get("prospective_top10_rank_filter")
+        )
+    )
+    lines.extend(
+        _prospective_combined_entry_filter_lines(
+            payload.get("prospective_combined_entry_filter")
         )
     )
     lines.extend(

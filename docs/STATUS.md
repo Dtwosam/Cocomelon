@@ -2207,3 +2207,23 @@ The continuous paper heartbeat now exposes the manager-triggered 60-second delay
 This is research-only observability. It changes no strategy decisions, stops, sizing, risk limits, paper execution, cadence, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Prospective top-10 + no LONG-trend intersection — 2026-09-28
+
+A new frozen prospective entry-screen candidate now tests whether the two strongest current loss-filtering signals reinforce each other when combined.
+
+The rule is fixed as:
+
+- require the persisted opening scanner rank to be `1-10`, using rank evidence no older than 300 seconds;
+- reject `LONG` entries whose persisted decision fact names `trend` as the lead strategy;
+- admit only when both conditions pass.
+
+This candidate starts from a new durable `started_at_ms` on the first worker that runs the merged code. Earlier evidence from the standalone LONG+trend and top-10 studies motivated the candidate but does **not** count toward its review gate. That keeps the intersection test prospective rather than converting an observed combination into retrospective evidence.
+
+The study records exact decision-fact and opening-rank lineage, separates blocked contribution into `long_trend`, `rank_above_10`, and `long_trend_and_rank_above_10`, and requires zero missing/stale attribution before review readiness. Its frozen gate remains 30 prospective closed trades, at least 10 blocked trades, and at least 10 allowed trades.
+
+This is closed-trade contribution evidence only. Skipped trades contribute zero; replacement trades, changed portfolio capacity, and changed exits are not modeled. The candidate has no promotion or execution authority and does not alter paper entries.
+
+**LIVE TRADING: DISABLED.**

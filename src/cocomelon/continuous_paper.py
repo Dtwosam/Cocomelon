@@ -210,6 +210,10 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
+from cocomelon.research.prospective_combined_entry_filter import (
+    ProspectiveCombinedEntryFilterState,
+    evaluate_prospective_combined_entry_filter,
+)
 from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
@@ -240,6 +244,9 @@ PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (
 )
 PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
     "prospective-top10-rank-filter-state.json"
+)
+PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
+    "prospective-top10-no-long-trend-state.json"
 )
 ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
     "adaptive-delay-selector-state.json"
@@ -1617,6 +1624,66 @@ def _restore_prospective_top10_rank_filter(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_combined_entry_filter(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveCombinedEntryFilterState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveCombinedEntryFilterState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveCombinedEntryFilterState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveCombinedEntryFilterState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_combined_entry_filter_payload(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore,
+    state: ProspectiveCombinedEntryFilterState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_combined_entry_filter(
+            journal,
+            fact_store,
+            opening_rank_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _prospective_top10_rank_filter_payload(
@@ -3514,6 +3581,7 @@ def _live_status_payload(
         ProspectiveDelayedPriceConfirmationState
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -3524,6 +3592,7 @@ def _live_status_payload(
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    prospective_combined_entry_filter_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -3672,6 +3741,17 @@ def _live_status_payload(
             prospective_top10_rank_filter_state,
             restore_error=(
                 prospective_top10_rank_filter_restore_error
+            ),
+        )
+    )
+    prospective_combined_entry_filter = (
+        _prospective_combined_entry_filter_payload(
+            pump.journal,
+            fact_store,
+            opening_rank_store,
+            prospective_combined_entry_filter_state,
+            restore_error=(
+                prospective_combined_entry_filter_restore_error
             ),
         )
     )
@@ -4040,6 +4120,9 @@ def _live_status_payload(
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter
         ),
+        "prospective_combined_entry_filter": (
+            prospective_combined_entry_filter
+        ),
         "opening_scanner_rank": opening_rank,
         "opening_fill_liquidity": opening_fill_liquidity,
         "entry_markout": entry_markout,
@@ -4086,6 +4169,7 @@ def _emit_live_status(
         ProspectiveDelayedPriceConfirmationState
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -4096,6 +4180,7 @@ def _emit_live_status(
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    prospective_combined_entry_filter_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -4125,6 +4210,7 @@ def _emit_live_status(
         prospective_entry_filter_state,
         prospective_delayed_price_confirmation_state,
         prospective_top10_rank_filter_state,
+        prospective_combined_entry_filter_state,
         adaptive_delay_selector_state,
         fill_aware_delay_selector_state,
         delay_selector_comparison_state,
@@ -4141,6 +4227,9 @@ def _emit_live_status(
         ),
         prospective_top10_rank_filter_restore_error=(
             prospective_top10_rank_filter_restore_error
+        ),
+        prospective_combined_entry_filter_restore_error=(
+            prospective_combined_entry_filter_restore_error
         ),
         adaptive_delay_selector_restore_error=(
             adaptive_delay_selector_restore_error
@@ -4367,6 +4456,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_combined_entry_filter_state,
+        prospective_combined_entry_filter_restore_error,
+    ) = _restore_prospective_combined_entry_filter(
+        root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         adaptive_delay_selector_state,
         adaptive_delay_selector_restore_error,
     ) = _restore_adaptive_delay_selector(
@@ -4563,6 +4659,10 @@ async def run_continuous_paper_session(
                 prospective_top10_rank_filter_state.payload(),
             )
             _write_json_atomic(
+                root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
+                prospective_combined_entry_filter_state.payload(),
+            )
+            _write_json_atomic(
                 root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
                 adaptive_delay_selector_state.payload(),
             )
@@ -4604,6 +4704,7 @@ async def run_continuous_paper_session(
             prospective_entry_filter_state,
             prospective_delayed_price_confirmation_state,
             prospective_top10_rank_filter_state,
+            prospective_combined_entry_filter_state,
             adaptive_delay_selector_state,
             fill_aware_delay_selector_state,
             delay_selector_comparison_state,
@@ -4624,6 +4725,9 @@ async def run_continuous_paper_session(
             ),
             prospective_top10_rank_filter_restore_error=(
                 prospective_top10_rank_filter_restore_error
+            ),
+            prospective_combined_entry_filter_restore_error=(
+                prospective_combined_entry_filter_restore_error
             ),
             adaptive_delay_selector_restore_error=(
                 adaptive_delay_selector_restore_error
@@ -4791,6 +4895,7 @@ async def run_continuous_paper_session(
                     prospective_entry_filter_state,
                     prospective_delayed_price_confirmation_state,
                     prospective_top10_rank_filter_state,
+                    prospective_combined_entry_filter_state,
                     adaptive_delay_selector_state,
                     fill_aware_delay_selector_state,
                     delay_selector_comparison_state,
@@ -4811,6 +4916,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
+                    ),
+                    prospective_combined_entry_filter_restore_error=(
+                        prospective_combined_entry_filter_restore_error
                     ),
                     adaptive_delay_selector_restore_error=(
                         adaptive_delay_selector_restore_error
