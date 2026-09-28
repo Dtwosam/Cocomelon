@@ -546,6 +546,11 @@ class OriginalStopBookEvidence:
     execution_book_exchange_ms: int | None
     execution_book_source: str
     execution_book_schema_version: int
+    execution_instrument_sz_decimals: int
+    execution_instrument_venue_max_leverage: Decimal
+    execution_instrument_minimum_order_notional: Decimal
+    execution_instrument_metadata_received_at_ms: int
+    execution_instrument_metadata_source: str
     bids: tuple[StopBookLevel, ...]
     asks: tuple[StopBookLevel, ...]
     schema_version: int = SCHEMA_VERSION
@@ -567,6 +572,32 @@ class OriginalStopBookEvidence:
             raise ValueError(
                 "execution_book_schema_version must be positive"
             )
+        if self.execution_instrument_sz_decimals < 0:
+            raise ValueError(
+                "execution instrument sz decimals must be non-negative"
+            )
+        if self.execution_instrument_metadata_received_at_ms < 0:
+            raise ValueError(
+                "execution instrument metadata timestamp must be non-negative"
+            )
+        if not self.execution_instrument_metadata_source.strip():
+            raise ValueError(
+                "execution instrument metadata source must not be empty"
+            )
+        for value, field in (
+            (
+                self.execution_instrument_venue_max_leverage,
+                "execution_instrument_venue_max_leverage",
+            ),
+            (
+                self.execution_instrument_minimum_order_notional,
+                "execution_instrument_minimum_order_notional",
+            ),
+        ):
+            if not value.is_finite() or value <= ZERO:
+                raise ValueError(
+                    f"{field} must be positive and finite"
+                )
         if (
             self.execution_book_received_ms
             < self.pending.crossing.crossing_mark_received_ms
@@ -625,6 +656,21 @@ class OriginalStopBookEvidence:
             "execution_book_schema_version": (
                 self.execution_book_schema_version
             ),
+            "execution_instrument_sz_decimals": (
+                self.execution_instrument_sz_decimals
+            ),
+            "execution_instrument_venue_max_leverage": str(
+                self.execution_instrument_venue_max_leverage
+            ),
+            "execution_instrument_minimum_order_notional": str(
+                self.execution_instrument_minimum_order_notional
+            ),
+            "execution_instrument_metadata_received_at_ms": (
+                self.execution_instrument_metadata_received_at_ms
+            ),
+            "execution_instrument_metadata_source": (
+                self.execution_instrument_metadata_source
+            ),
             "bids": [level.to_dict() for level in self.bids],
             "asks": [level.to_dict() for level in self.asks],
             "schema_version": self.schema_version,
@@ -652,6 +698,11 @@ class OriginalStopBookEvidence:
             "execution_book_exchange_ms",
             "execution_book_source",
             "execution_book_schema_version",
+            "execution_instrument_sz_decimals",
+            "execution_instrument_venue_max_leverage",
+            "execution_instrument_minimum_order_notional",
+            "execution_instrument_metadata_received_at_ms",
+            "execution_instrument_metadata_source",
             "bids",
             "asks",
             "schema_version",
@@ -687,6 +738,23 @@ class OriginalStopBookEvidence:
             execution_book_schema_version=int(
                 raw["execution_book_schema_version"]
             ),
+            execution_instrument_sz_decimals=int(
+                raw["execution_instrument_sz_decimals"]
+            ),
+            execution_instrument_venue_max_leverage=_decimal(
+                raw["execution_instrument_venue_max_leverage"],
+                "execution_instrument_venue_max_leverage",
+            ),
+            execution_instrument_minimum_order_notional=_decimal(
+                raw["execution_instrument_minimum_order_notional"],
+                "execution_instrument_minimum_order_notional",
+            ),
+            execution_instrument_metadata_received_at_ms=int(
+                raw["execution_instrument_metadata_received_at_ms"]
+            ),
+            execution_instrument_metadata_source=str(
+                raw["execution_instrument_metadata_source"]
+            ),
             bids=tuple(
                 StopBookLevel.from_dict(item)
                 for item in bids
@@ -703,7 +771,7 @@ class OriginalStopBookEvidence:
             )
         return evidence
 
-    def instrument_spec(self) -> InstrumentExecutionSpec:
+    def plan_instrument_spec(self) -> InstrumentExecutionSpec:
         pending = self.pending
         if (
             pending.instrument_sz_decimals is None
@@ -730,6 +798,30 @@ class OriginalStopBookEvidence:
                 pending.instrument_metadata_received_at_ms
             ),
             metadata_source=pending.instrument_metadata_source,
+        )
+
+    def execution_instrument_spec(
+        self,
+    ) -> InstrumentExecutionSpec:
+        return InstrumentExecutionSpec(
+            market=_market_from_canonical(
+                self.pending.crossing.market
+            ),
+            sz_decimals=(
+                self.execution_instrument_sz_decimals
+            ),
+            venue_max_leverage=(
+                self.execution_instrument_venue_max_leverage
+            ),
+            minimum_order_notional=(
+                self.execution_instrument_minimum_order_notional
+            ),
+            metadata_received_at_ms=(
+                self.execution_instrument_metadata_received_at_ms
+            ),
+            metadata_source=(
+                self.execution_instrument_metadata_source
+            ),
         )
 
     def book_event(self) -> StreamEvent:
@@ -882,6 +974,7 @@ class OriginalStopBookEvidenceStore:
         self,
         pending: PendingOriginalStopExecution,
         book: StreamEvent,
+        instrument: InstrumentExecutionSpec,
     ) -> bool:
         if not pending.plan_staged:
             raise OriginalStopBookEvidenceError(
@@ -895,6 +988,10 @@ class OriginalStopBookEvidenceStore:
             raise OriginalStopBookEvidenceError(
                 "stop execution book market mismatch"
             )
+        if instrument.market != book.market:
+            raise OriginalStopBookEvidenceError(
+                "stop execution instrument market mismatch"
+            )
         evidence = OriginalStopBookEvidence(
             pending=pending,
             execution_book_event_key=book.event_key,
@@ -902,6 +999,21 @@ class OriginalStopBookEvidenceStore:
             execution_book_exchange_ms=book.exchange_time_ms,
             execution_book_source=book.source,
             execution_book_schema_version=book.schema_version,
+            execution_instrument_sz_decimals=(
+                instrument.sz_decimals
+            ),
+            execution_instrument_venue_max_leverage=(
+                instrument.venue_max_leverage
+            ),
+            execution_instrument_minimum_order_notional=(
+                instrument.minimum_order_notional
+            ),
+            execution_instrument_metadata_received_at_ms=(
+                instrument.metadata_received_at_ms
+            ),
+            execution_instrument_metadata_source=(
+                instrument.metadata_source
+            ),
             bids=_levels(book.payload.get("bids")),
             asks=_levels(book.payload.get("asks")),
         )
@@ -1134,6 +1246,7 @@ class OriginalStopBookCapture:
             self.store.capture_execution_book(
                 pending,
                 book,
+                instrument,
             )
         except Exception as exc:
             self._fail(exc)
