@@ -9,6 +9,10 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.prospective_allowed_residual import (
+    AllowedResidualItem,
+    prospective_allowed_residual_attribution,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -146,6 +150,7 @@ def prospective_entry_filter_summary(
         if trade.opened_at_ms >= state.started_at_ms
     )
     attributed: list[tuple[TradeJournalEntry, bool]] = []
+    lead_strategy_by_trade_id: dict[str, str] = {}
     attribution_misses = 0
 
     for trade in prospective:
@@ -155,6 +160,9 @@ def prospective_entry_filter_summary(
             continue
         attributed.append(
             (trade, _rejects(trade, fact.lead_strategy))
+        )
+        lead_strategy_by_trade_id[trade.trade_id] = (
+            fact.lead_strategy
         )
 
     blocked = tuple(
@@ -177,6 +185,17 @@ def prospective_entry_filter_summary(
     )
     robustness = prospective_filter_robustness(
         tuple(attributed)
+    )
+    allowed_residual = prospective_allowed_residual_attribution(
+        tuple(
+            AllowedResidualItem(
+                trade,
+                lead_strategy=lead_strategy_by_trade_id[
+                    trade.trade_id
+                ],
+            )
+            for trade in allowed
+        )
     )
     actual_net_r = sum(
         (trade.net_r for trade, _ in attributed),
@@ -243,6 +262,7 @@ def prospective_entry_filter_summary(
         ),
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
+        "allowed_residual": allowed_residual,
         "allowed_net_pnl": str(allowed_net_pnl),
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
