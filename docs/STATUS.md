@@ -1885,6 +1885,7 @@ The 60-second delayed-entry research now checks the alternate fixed schedule aga
 - non-cohort trades that overlap the delayed cohort stay on their observed schedule as background positions;
 - exact trade paths mark open positions to observed contribution equity at every candidate opening;
 - every opening is checked against max aggregate open risk, the shared runtime correlation-bucket risk ceiling, and max gross leverage using candidate equity at that moment;
+- available-margin capacity, visible-liquidity capacity, and liquidation-buffer checks are not reconstructed in this overlay and remain explicit limitations;
 - both delayed candidate openings and unchanged background openings are checked, because a delayed position can change whether a later observed opening still fits;
 - actual-schedule capacity violations are treated as reconstruction/integrity failures; candidate-schedule violations are the research result and are surfaced rather than silently resized;
 - no-fill delayed outcomes create no candidate exposure;
