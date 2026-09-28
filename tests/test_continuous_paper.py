@@ -1089,6 +1089,7 @@ def test_delayed_entry_portfolio_capacity_fails_open(
         SimpleNamespace(),  # type: ignore[arg-type]
         lambda _plan_id: None,
         BaselineReplayConfig().risk_limits,
+        BaselineReplayConfig().execution.paper_max_gross_leverage,
     )
 
     assert payload["enabled"] is False
