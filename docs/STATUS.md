@@ -2053,3 +2053,21 @@ The delayed-entry portfolio capacity and causal admission shadows now apply fund
 This remains research-only accounting. It does not alter paper funding reconciliation, strategy selection, risk limits, sizing, fills, exits, cadence, or live-order capability.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Delayed-entry original-stop survivability — 2026-09-28
+
+The 60-second delayed-entry research now measures whether a filled delayed candidate definitely crosses the immutable original stop before the actual trade close.
+
+- only closed delayed outcomes with an actual delayed fill are evaluated; no-fill outcomes contribute no exposure;
+- the original stop comes from the immutable closed-trade journal lineage;
+- only complete, gap-free exact trade paths are eligible;
+- marks at the exact delayed-open millisecond are excluded because their causal order relative to the hypothetical fill is not preserved by this study;
+- for LONG candidates, the first later observed mark at or below the original stop is a definite crossing; for SHORT candidates, the first later observed mark at or above the original stop is a definite crossing;
+- the study reports definite crossings, observed survivors, crossing fraction, and time-to-stop statistics;
+- a survivor means the complete observed path did not cross the original stop after the delayed fill existed; it is not a claim about unobserved intramillisecond prices;
+- the study does not invent stop fill prices, slippage, replacement trades, or the complete counterfactual exit-management policy.
+
+This is a research-only survivability diagnostic. It does not change paper stops, exits, risk limits, sizing, execution cadence, or live-order capability.
+
+**LIVE TRADING: DISABLED.**
