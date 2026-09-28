@@ -65,6 +65,7 @@ from cocomelon.continuous_paper import (
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
     _restore_prospective_top10_rank_filter,
+    _restore_prospective_combined_entry_filter,
 )
 from cocomelon.domain.execution import (
     PaperExecutionConfig,
@@ -273,6 +274,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         'PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (' in source
     )
     assert (
+        'PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (' in source
+    )
+    assert (
         'ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (' in source
     )
     assert '"adaptive_delay_selector": adaptive_delay_selector' in source
@@ -300,6 +304,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_top10_rank_filter": (' in source
     )
     assert "prospective_top10_rank_filter_state.payload()" in source
+    assert "prospective_combined_entry_filter_state.payload()" in source
+    assert (
+        '"prospective_combined_entry_filter": (' in source
+    )
+    assert "evaluate_prospective_combined_entry_filter(" in source
     assert 'ContinuousPaperOpeningRankStore(' in source
     assert 'root / "opening-ranks"' in source
     assert '"opening_scanner_rank": opening_rank' in source
