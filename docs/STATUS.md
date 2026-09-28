@@ -2150,3 +2150,20 @@ These are price-and-cost proxies, not executable stop simulations. Exit-side L2 
 This is research-only evidence. It changes no live paper stops, exits, sizing, risk limits, cadence, or order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Original-stop executable-book capture — 2026-09-28
+
+The continuous paper trader now preserves the exact first L2 book available after an open position's immutable original stop is first crossed by the authoritative mark path.
+
+- the observer reads the original stop from the persisted opening plan, not the mutable current position stop;
+- the crossing is staged durably as soon as the mark reaches the original stop, so a worker restart before the next book does not erase the event;
+- the first subsequent mainnet L2 snapshot seen by position management is persisted with both bid and ask levels, exact event lineage, timestamps, crossing mark, stop, side, and reference price;
+- the capture runs before paper position management but has no execution authority and fails open if its own research state breaks;
+- non-crossed positions create no stop-book record, avoiding continuous full-book storage;
+- the stored book can be reconstructed as a real L2 event for a later delayed-candidate reduce-only IOC simulation.
+
+This closes the evidence-collection prerequisite behind the delayed stop-exit proxy. Existing historical trades without this prospective capture remain explicitly unmodeled; no L2 history is synthesized from marks or candles.
+
+**LIVE TRADING: DISABLED.**
