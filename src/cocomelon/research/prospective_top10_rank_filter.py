@@ -10,6 +10,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.prospective_filter_robustness import (
+    prospective_filter_robustness,
+)
 
 TOP10_RANK_FILTER_STATE_SCHEMA_VERSION: Final = 1
 TOP10_RANK_FILTER_CANDIDATE_ID: Final = "prospective-admit-top10-rank-v1"
@@ -174,6 +177,15 @@ def prospective_top10_rank_filter_summary(
         (trade.net_pnl for trade, _ in blocked),
         ZERO,
     )
+    robustness = prospective_filter_robustness(
+        tuple(
+            (
+                trade,
+                evidence.ordinal > TOP10_MAX_ORDINAL,
+            )
+            for trade, evidence in attributed
+        )
+    )
     actual_net_r = tuple(
         trade.net_r for trade, _ in attributed
     )
@@ -237,6 +249,7 @@ def prospective_top10_rank_filter_summary(
         ),
         "allowed_net_pnl": str(allowed_net_pnl),
         "blocked_net_pnl": str(blocked_net_pnl),
+        "robustness": robustness,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl

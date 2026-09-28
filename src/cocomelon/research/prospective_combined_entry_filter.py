@@ -13,6 +13,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.prospective_filter_robustness import (
+    prospective_filter_robustness,
+)
 
 COMBINED_FILTER_STATE_SCHEMA_VERSION: Final = 1
 COMBINED_FILTER_CANDIDATE_ID: Final = (
@@ -250,6 +253,15 @@ def prospective_combined_entry_filter_summary(
         (trade.net_pnl for trade, _, _, _ in blocked),
         ZERO,
     )
+    robustness = prospective_filter_robustness(
+        tuple(
+            (
+                trade,
+                reason is not None,
+            )
+            for trade, _rank, _lead_strategy, reason in attributed
+        )
+    )
 
     reason_names = (
         "long_trend",
@@ -353,6 +365,7 @@ def prospective_combined_entry_filter_summary(
         ),
         "allowed_net_pnl": str(allowed_net_pnl),
         "blocked_net_pnl": str(blocked_net_pnl),
+        "robustness": robustness,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
             allowed_net_pnl

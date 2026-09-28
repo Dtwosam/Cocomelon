@@ -2227,3 +2227,21 @@ The study records exact decision-fact and opening-rank lineage, separates blocke
 This is closed-trade contribution evidence only. Skipped trades contribute zero; replacement trades, changed portfolio capacity, and changed exits are not modeled. The candidate has no promotion or execution authority and does not alter paper entries.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Prospective entry-filter robustness diagnostics — 2026-09-28
+
+The prospective LONG+trend, top-10 rank, and fresh combined top-10 + no LONG-trend studies now carry descriptive robustness diagnostics alongside their frozen readiness gates.
+
+For each attributed cohort the diagnostics report:
+
+- total trade-contribution delta from blocked trades;
+- largest absolute single-trade contribution and its share of absolute blocked contribution;
+- the minimum remaining delta after removing any one blocked trade;
+- largest absolute market contribution and the minimum remaining delta after removing any one contributing market;
+- four chronological blocks, including how many full blocks have positive filter delta.
+
+This is a concentration/stability check, not a new promotion rule. It does not alter the candidate definition, prospective start boundary, evidence gate, paper admission, sizing, stops, risk, cadence, or execution. A candidate may be review-ready while still showing weak robustness, and the dashboard now keeps those statements separate.
+
+**LIVE TRADING: DISABLED.**
