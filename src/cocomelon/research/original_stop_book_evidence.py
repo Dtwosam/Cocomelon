@@ -942,12 +942,40 @@ class OriginalStopBookEvidenceStore:
             crossing=crossing
         )
         if existing is not None:
-            if existing != candidate:
-                raise OriginalStopBookEvidenceError(
-                    "conflicting original-stop crossing evidence"
-                )
-            return False
+            if existing.plan_staged:
+                return False
+            if (
+                crossing.crossing_mark_received_ms
+                < existing.crossing.crossing_mark_received_ms
+            ):
+                return False
+            if existing == candidate:
+                return False
         self._write(path, candidate.to_dict())
+        return True
+
+    def clear_unstaged(
+        self,
+        opening_plan_id: str,
+        *,
+        observed_at_ms: int,
+    ) -> bool:
+        if observed_at_ms < 0:
+            raise ValueError(
+                "observed_at_ms must be non-negative"
+            )
+        pending = self.pending_for(opening_plan_id)
+        if pending is None or pending.plan_staged:
+            return False
+        if (
+            observed_at_ms
+            < pending.crossing.crossing_mark_received_ms
+        ):
+            return False
+        path = self._pending_path(opening_plan_id)
+        if not path.exists():
+            return False
+        path.unlink()
         return True
 
     def stage_plan(
@@ -1150,12 +1178,10 @@ class OriginalStopBookCapture:
                 is not None
             ):
                 return
-            if (
-                self.store.pending_for(
-                    position.opening_plan_id
-                )
-                is not None
-            ):
+            pending = self.store.pending_for(
+                position.opening_plan_id
+            )
+            if pending is not None and pending.plan_staged:
                 return
             plan = self._plan_for(position)
             raw_mark = mark_event.payload.get("mark_px")
@@ -1168,18 +1194,22 @@ class OriginalStopBookCapture:
                 raise OriginalStopBookEvidenceError(
                     "original-stop opening plan lost stop"
                 )
+            received_ms = _receive_ms(mark_event)
+            if now_ms < received_ms:
+                raise OriginalStopBookEvidenceError(
+                    "original-stop capture consumed future mark"
+                )
             crossed = (
                 raw_mark <= stop
                 if position.side is PositionSide.LONG
                 else raw_mark >= stop
             )
             if not crossed:
-                return
-            received_ms = _receive_ms(mark_event)
-            if now_ms < received_ms:
-                raise OriginalStopBookEvidenceError(
-                    "original-stop capture consumed future mark"
+                self.store.clear_unstaged(
+                    position.opening_plan_id,
+                    observed_at_ms=received_ms,
                 )
+                return
             self.store.stage(
                 OriginalStopCrossing(
                     opening_plan_id=(
