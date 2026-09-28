@@ -218,6 +218,55 @@ def test_mtm_portfolio_exposes_intratrade_drawdown_difference(
     assert readiness["missing_actual_overlap_openings"] == 4
 
 
+def test_mtm_portfolio_ignores_marks_before_delayed_open(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    try:
+        trade = _trade(
+            suffix="pre-delay-mark",
+            direction=Direction.LONG,
+            opened_at_ms=100_000,
+            closed_at_ms=400_000,
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                (
+                    (120_000, "80"),
+                    (160_000, "90"),
+                    (300_000, "100"),
+                ),
+            )
+        )
+
+        result = delayed_entry_mtm_portfolio(
+            journal,
+            (
+                _outcome(
+                    trade,
+                    source="full_visible_book_ioc",
+                    quantity="1",
+                    price="90",
+                ),
+            ),
+            paths,
+        )
+    finally:
+        journal.close()
+
+    actual = result["actual"]
+    candidate = result["candidate"]
+    assert isinstance(actual, dict)
+    assert isinstance(candidate, dict)
+    assert actual["max_observed_equity_drawdown"] == "20"
+    assert candidate["max_observed_equity_drawdown"] == "0"
+    assert result["candidate_filled_positions"] == 1
+    assert result["lineage_mismatches"] == 0
+
+
 def test_mtm_portfolio_no_fill_has_no_candidate_exposure(
     tmp_path: Path,
 ) -> None:

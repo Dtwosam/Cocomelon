@@ -458,6 +458,11 @@ def delayed_entry_mtm_portfolio(
             actual_positions.pop()
             continue
 
+        candidate_marks = tuple(
+            (timestamp_ms, mark_px)
+            for timestamp_ms, mark_px in marks
+            if candidate_open_ms <= timestamp_ms <= trade.closed_at_ms
+        )
         candidate_positions.append(
             _PositionPath(
                 trade_id=trade.trade_id,
@@ -471,7 +476,7 @@ def delayed_entry_mtm_portfolio(
                     weighted.candidate_net_pnl_estimate
                     + weighted.delayed_entry_fee
                 ),
-                marks=marks,
+                marks=candidate_marks,
             )
         )
 
