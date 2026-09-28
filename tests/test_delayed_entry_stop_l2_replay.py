@@ -38,7 +38,10 @@ def _trade(
     *,
     suffix: str,
     opened_at_ms: int = 100_000,
+    quantity: str = "1",
 ) -> TradeJournalEntry:
+    filled_quantity = Decimal(quantity)
+    risk_amount = Decimal("10") * filled_quantity
     return TradeJournalEntry(
         market=MARKET,
         direction=Direction.LONG,
@@ -58,15 +61,15 @@ def _trade(
         position_action_ids=(f"action-{suffix}",),
         funding_event_ids=(),
         initial_stop=Decimal("90"),
-        initial_risk_amount=Decimal("10"),
+        initial_risk_amount=risk_amount,
         entry_price=Decimal("100"),
         exit_price=Decimal("110"),
-        filled_quantity=Decimal("1"),
-        gross_realized_pnl=Decimal("10"),
+        filled_quantity=filled_quantity,
+        gross_realized_pnl=risk_amount,
         entry_fees=Decimal("0"),
         exit_fees=Decimal("0"),
         funding_cash_pnl=Decimal("0"),
-        net_pnl=Decimal("10"),
+        net_pnl=risk_amount,
         entry_slippage_amount=Decimal("0"),
         exit_slippage_amount=Decimal("0"),
         entry_slippage_fraction=Decimal("0"),
@@ -76,7 +79,7 @@ def _trade(
         mae=None,
         net_r=Decimal("1"),
         equity_before=Decimal("10000"),
-        equity_after=Decimal("10010"),
+        equity_after=Decimal("10000") + risk_amount,
         exit_reason="fixture",
         health_refs=("paper-state-healthy",),
         evidence_class=EvidenceClass.MICROSTRUCTURE,
@@ -125,7 +128,7 @@ def _outcome(
         market=trade.market.canonical,
         direction=trade.direction.value,
         source="full_visible_book_ioc",
-        delayed_filled_quantity=Decimal("1"),
+        delayed_filled_quantity=trade.filled_quantity,
         delayed_average_fill_price=Decimal("100"),
         delayed_fee=Decimal("0"),
         observation_lag_ms=0,
@@ -139,10 +142,11 @@ def _outcome(
 def _instrument(
     *,
     metadata_ms: int = 90_000,
+    sz_decimals: int = 1,
 ) -> InstrumentExecutionSpec:
     return InstrumentExecutionSpec(
         market=MARKET,
-        sz_decimals=1,
+        sz_decimals=sz_decimals,
         venue_max_leverage=Decimal("20"),
         minimum_order_notional=Decimal("10"),
         metadata_received_at_ms=metadata_ms,
@@ -203,6 +207,7 @@ def _capture_stop_book(
     crossing_ms: int = 170_000,
     bid_size: str = "2",
     execution_metadata_ms: int = 90_000,
+    plan_sz_decimals: int = 1,
 ) -> OriginalStopBookEvidenceStore:
     store = _stop_books(root)
     crossing = OriginalStopCrossing(
@@ -228,7 +233,9 @@ def _capture_stop_book(
             bid_size="2",
         ),
         reference_price=Decimal("89.05"),
-        instrument=_instrument(),
+        instrument=_instrument(
+            sz_decimals=plan_sz_decimals
+        ),
     )
     assert store.capture_execution_book(
         pending,
@@ -237,7 +244,8 @@ def _capture_stop_book(
             bid_size=bid_size,
         ),
         _instrument(
-            metadata_ms=execution_metadata_ms
+            metadata_ms=execution_metadata_ms,
+            sz_decimals=plan_sz_decimals,
         ),
     ) is True
     return store
@@ -434,6 +442,53 @@ def test_partial_stop_ioc_does_not_invent_remainder_exit(
     assert overall["resolved_candidates"] == 0
     assert overall["unresolved_stop_actions"] == 1
     assert overall["exact_pnl_on_full_stop_exits"] == "0"
+
+
+def test_full_ioc_with_quantized_position_remainder_is_unresolved(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(
+        tmp_path / "paths"
+    )
+    try:
+        trade = _trade(
+            suffix="quantized-remainder",
+            quantity="1.5",
+        )
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((170_000, "89"), (300_000, "100")),
+            )
+        )
+        books = _capture_stop_book(
+            tmp_path / "stop-books",
+            trade,
+            bid_size="10",
+            plan_sz_decimals=0,
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (_outcome(trade),),
+            paths,
+            books,
+            _funding_loader,
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert (
+        overall["full_ioc_position_remainders"]
+        == 1
+    )
+    assert overall["full_stop_exits"] == 0
+    assert overall["resolved_candidates"] == 0
+    assert overall["unresolved_stop_actions"] == 1
 
 
 def test_instrument_version_drift_is_execution_rejection(
