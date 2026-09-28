@@ -4724,6 +4724,21 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
             ),
             "capture_started_at_ms": 1_700_000_000_000,
             "pre_capture_legacy_outcomes": 9,
+            "source_counts": {
+                "full_visible_book_ioc": 8,
+                "expired": 2,
+            },
+            "non_evaluable_entry_outcomes": 2,
+            "non_evaluable_source_counts": {
+                "expired": 2,
+            },
+            "missing_journal_trades": 0,
+            "missing_exact_paths": 0,
+            "incomplete_or_gapped_paths": 0,
+            "missing_funding_events": 0,
+            "lineage_mismatches": 0,
+            "invalid_candidate_timing": 0,
+            "stop_book_capture_errors": 0,
             "overall": {
                 "evaluated_filled_candidates": 8,
                 "mark_stop_crossings": 4,
@@ -4759,6 +4774,12 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     output = "\n".join(lines)
 
     assert "### 60s delayed-entry exact stop L2 replay" in output
+    assert "delayed-entry source counts" in output
+    assert "`expired=2, full_visible_book_ioc=8`" in output
+    assert "post-capture non-evaluable entries / sources" in output
+    assert "`2 / expired=2`" in output
+    assert "upstream integrity misses journal / path / gaps / funding / lineage / timing / stop-book" in output
+    assert "`0 / 0 / 0 / 0 / 0 / 0 / 0`" in output
     assert "evaluated / mark crossings / captured stop plans" in output
     assert "`8 / 4 / 3`" in output
     assert "full / partial / no-fill / quantized remainder exits" in output
