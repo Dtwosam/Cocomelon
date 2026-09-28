@@ -2970,6 +2970,54 @@ def _delayed_entry_risk_geometry_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_filter_robustness_lines(
+    raw: object,
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return [
+            "- robustness: `not available`",
+        ]
+    temporal = raw.get("temporal", {})
+    if not isinstance(temporal, dict):
+        temporal = {}
+    return [
+        (
+            "- robustness delta / largest trade contribution / share: "
+            f"`{raw.get('total_delta_trade_contribution_pnl', '0')} / "
+            f"{raw.get('largest_abs_trade_contribution')} / "
+            f"{raw.get('largest_abs_trade_share')}`"
+        ),
+        (
+            "- leave-one-trade min delta / positive after any one removed: "
+            f"`{raw.get('leave_one_trade_out_min_delta')} / "
+            f"{str(bool(raw.get('positive_after_any_single_trade_removed'))).lower() "
+            "if raw.get('positive_after_any_single_trade_removed') is not None else 'n/a'}`"
+        ),
+        (
+            "- largest market / contribution / share: "
+            f"`{raw.get('largest_abs_market')} / "
+            f"{raw.get('largest_abs_market_contribution')} / "
+            f"{raw.get('largest_abs_market_share')}`"
+        ),
+        (
+            "- leave-one-market min delta / positive after any one removed: "
+            f"`{raw.get('leave_one_market_out_min_delta')} / "
+            f"{str(bool(raw.get('positive_after_any_single_market_removed'))).lower() "
+            "if raw.get('positive_after_any_single_market_removed') is not None else 'n/a'}`"
+        ),
+        (
+            "- chronological full blocks / positive / all positive: "
+            f"`{temporal.get('full_blocks', 0)} / "
+            f"{temporal.get('positive_full_blocks', 0)} / "
+            f"{str(bool(temporal.get('all_full_blocks_positive'))).lower()}`"
+        ),
+        (
+            "_Robustness is descriptive only and does not change the frozen "
+            "prospective readiness gate._"
+        ),
+    ]
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -3060,6 +3108,11 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
                 "cooldowns, and replacement opportunities._"
             ),
         ]
+    )
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("robustness")
+        )
     )
     return lines
 
@@ -3282,6 +3335,11 @@ def _prospective_top10_rank_filter_lines(
             ),
         ]
     )
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("robustness")
+        )
+    )
     return lines
 
 
@@ -3427,6 +3485,11 @@ def _prospective_combined_entry_filter_lines(
                 "changed capacity, and changed exits are not modeled._"
             ),
         ]
+    )
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("robustness")
+        )
     )
     return lines
 
