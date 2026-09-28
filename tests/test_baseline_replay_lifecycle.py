@@ -366,6 +366,11 @@ def test_opening_research_observer_receives_exact_ioc_book(
     assert len(traces) == 1
     trace = traces[0]
     assert trace.book_event.event_key == open_book.event_key
+    assert trace.instrument.venue_max_leverage == Decimal("20")
+    assert (
+        pipeline.open_lifecycle_mark_paths[0].venue_max_leverage
+        == Decimal("20")
+    )
     assert trace.submission.simulation is not None
     assert trace.submission.simulation.fills
 

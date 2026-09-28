@@ -41,6 +41,7 @@ class _PendingOpening:
 class BaselineOpeningTrace:
     evaluation: EpochMarketEvaluation
     submission: OpeningSubmission
+    instrument: InstrumentExecutionSpec
     equity_before: Decimal
     book_event: StreamEvent
 
@@ -52,6 +53,8 @@ class BaselineOpeningTrace:
             != self.submission.risk_decision.strategy_decision_id
         ):
             raise ValueError("opening trace strategy lineage mismatch")
+        if self.instrument.market != self.evaluation.decision.market:
+            raise ValueError("opening trace instrument market mismatch")
         if self.book_event.kind is not StreamKind.L2_BOOK:
             raise ValueError("opening trace requires an L2 book event")
         if self.book_event.market != self.evaluation.decision.market:
@@ -309,6 +312,7 @@ class BaselineOpeningEngine:
                 BaselineOpeningTrace(
                     evaluation=pending.evaluation,
                     submission=submission,
+                    instrument=instrument,
                     equity_before=equity_before,
                     book_event=candidate_book,
                 )

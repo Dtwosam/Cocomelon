@@ -152,7 +152,21 @@ class OpenLifecycleMarkPath:
     market: MarketId
     opening_plan_id: str
     opened_at_ms: int
+    venue_max_leverage: Decimal
     mark_observations: tuple[ReplayRecord, ...]
+
+    def __post_init__(self) -> None:
+        if not self.opening_plan_id.strip():
+            raise ValueError("open lifecycle path plan id must not be empty")
+        if self.opened_at_ms < 0:
+            raise ValueError("open lifecycle path opened_at_ms must be non-negative")
+        if (
+            not self.venue_max_leverage.is_finite()
+            or self.venue_max_leverage <= ZERO
+        ):
+            raise ValueError(
+                "open lifecycle path venue_max_leverage must be positive"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,6 +193,7 @@ class _OpenTradeLifecycle:
     opening_attempt: ExecutionAttempt
     equity_before: Decimal
     opened_at_ms: int
+    venue_max_leverage: Decimal
     exit_plans: dict[str, PaperOrderPlan] = field(default_factory=dict)
     exit_attempts: dict[str, ExecutionAttempt] = field(default_factory=dict)
     fills: dict[str, PaperFill] = field(default_factory=dict)
@@ -340,6 +355,7 @@ class BaselineReplayPipeline:
                 market=item.market,
                 opening_plan_id=item.opening_plan.plan_id,
                 opened_at_ms=item.opened_at_ms,
+                venue_max_leverage=item.venue_max_leverage,
                 mark_observations=tuple(
                     sorted(
                         item.marks.values(),
@@ -435,6 +451,7 @@ class BaselineReplayPipeline:
             opening_attempt=opening_attempt,
             equity_before=checkpoint.equity_before,
             opened_at_ms=position.opened_at_ms,
+            venue_max_leverage=position.venue_max_leverage,
         )
         for fill in fills:
             lifecycle.fills[fill.fill_id] = fill
@@ -729,6 +746,7 @@ class BaselineReplayPipeline:
             opening_attempt=simulation.attempt,
             equity_before=trace.equity_before,
             opened_at_ms=position.opened_at_ms,
+            venue_max_leverage=position.venue_max_leverage,
         )
         for fill in simulation.fills:
             lifecycle.fills[fill.fill_id] = fill

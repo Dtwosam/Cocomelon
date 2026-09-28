@@ -159,6 +159,7 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
         opening_plan_id="plan-open",
         market=MARKET,
         opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
         mark_observations=(
             _record(1_200, "101", "mark-1"),
             _record(1_500, "103", "mark-2"),
@@ -171,6 +172,7 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
         opening_plan_id="plan-open",
         market=MARKET,
         opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
         mark_observations=(
             _record(1_500, "103", "mark-2"),
             _record(1_800, "102.5", "mark-3"),
@@ -186,6 +188,8 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
     assert restored.open_path_count == 0
     assert restored.record_count == 1
     payload = restored.iter_payloads()[0]
+    assert payload["schema_version"] == 2
+    assert payload["venue_max_leverage"] == "20"
     marks = payload["marks"]
     assert isinstance(marks, list)
     assert [mark["event_key"] for mark in marks] == [
@@ -194,6 +198,35 @@ def test_open_path_checkpoint_survives_store_restart_and_finalizes(
         "mark-3",
         "mark-4",
     ]
+
+
+def test_open_path_checkpoint_upgrades_legacy_header_with_leverage(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperTradePathStore(tmp_path / "trade-paths")
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        mark_observations=(_record(1_200, "101", "mark-1"),),
+    ) == 1
+
+    assert store.checkpoint_open_path(
+        opening_plan_id="plan-open",
+        market=MARKET,
+        opened_at_ms=1_000,
+        venue_max_leverage=Decimal("20"),
+        mark_observations=(_record(1_500, "103", "mark-2"),),
+    ) == 1
+
+    assert store.finalize_trade(
+        _trade(),
+        (_record(1_900, "102", "mark-3"),),
+        (),
+    ) is True
+    payload = store.iter_payloads()[0]
+    assert payload["schema_version"] == 2
+    assert payload["venue_max_leverage"] == "20"
 
 
 def test_open_path_checkpoint_rejects_identity_drift(

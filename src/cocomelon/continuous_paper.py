@@ -31,6 +31,7 @@ from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import (
     BaselineReplayPipeline,
+    OpeningResearchObserver,
     OpenLifecycleCheckpoint,
     OpenLifecycleMarkPath,
     PositionResearchObserver,
@@ -274,6 +275,43 @@ class _ContinuousTradePathSink:
         if self.error is None:
             self.error = f"{type(exc).__name__}: {exc}"
 
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        plan = trace.submission.plan
+        simulation = trace.submission.simulation
+        if plan is None or simulation is None or not simulation.fills:
+            return
+        try:
+            matches = tuple(
+                position
+                for position in trace.submission.account.positions
+                if position.opening_plan_id == plan.plan_id
+            )
+            if len(matches) != 1:
+                raise RuntimeError(
+                    "trade-path opening position lineage is missing"
+                )
+            position = matches[0]
+            if (
+                position.market != plan.market
+                or position.venue_max_leverage
+                != trace.instrument.venue_max_leverage
+            ):
+                raise RuntimeError(
+                    "trade-path opening instrument lineage mismatch"
+                )
+            self._store.checkpoint_open_path(
+                opening_plan_id=plan.plan_id,
+                market=plan.market,
+                opened_at_ms=position.opened_at_ms,
+                mark_observations=(),
+                venue_max_leverage=position.venue_max_leverage,
+            )
+        except Exception as exc:
+            self._capture_error(exc)
+
     def checkpoint(
         self,
         open_paths: Sequence[OpenLifecycleMarkPath],
@@ -285,6 +323,7 @@ class _ContinuousTradePathSink:
                     market=path.market,
                     opened_at_ms=path.opened_at_ms,
                     mark_observations=path.mark_observations,
+                    venue_max_leverage=path.venue_max_leverage,
                 )
             except Exception as exc:
                 self._capture_error(exc)
@@ -325,6 +364,21 @@ class _ContinuousOpeningFillLiquiditySink:
         except Exception as exc:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
+
+
+class _CompositeOpeningResearchObserver:
+    def __init__(
+        self,
+        *observers: OpeningResearchObserver,
+    ) -> None:
+        self._observers = observers
+
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        for observer in self._observers:
+            observer.record_opening_trace(trace)
 
 
 class _CompositePositionResearchObserver:
@@ -3973,7 +4027,10 @@ async def run_continuous_paper_session(
             opening_lifecycle_sink=opening_lineage_sink,
             closed_lifecycle_sink=trade_path_sink,
             opening_research_observer=(
-                opening_fill_liquidity_sink
+                _CompositeOpeningResearchObserver(
+                    opening_fill_liquidity_sink,
+                    trade_path_sink,
+                )
             ),
             position_research_observer=(
                 _CompositePositionResearchObserver(
