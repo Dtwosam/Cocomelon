@@ -2407,3 +2407,14 @@ The paper execution adapter now performs a durable UTC-day rollover exactly once
 The live heartbeat now exposes `day_start_ms`, `day_start_equity`, and `daily_realized_pnl` so rollover behavior is directly auditable after worker handoff. This corrects paper risk accounting and can change future paper risk approvals that were previously rejected by a stale daily-loss ledger. It does not enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate-caused replacement entry fill shadow — 2026-09-29
+
+The capacity-reflow study now advances from “the frozen candidate would have freed capacity” to a research-only replacement-entry execution check. Only release options whose historical position lineage is complete and whose original entry the frozen `prospective-top10-no-long-trend-v1` rule would have blocked can enter this shadow.
+
+For a same-UTC-day release position, the shadow loads its immutable decision-time paper-position history and removes its exact realized gross PnL, fees, funding, unrealized PnL, marked notional, planned risk, and reserved margin from the captured baseline account. The candidate rolling seven-day peak is bounded conservatively so the weekly-drawdown veto cannot become artificially easier. The resulting counterfactual `RiskRequest` is sent through the production risk engine, the production opening-order planner, and the production IOC simulator using the exact instrument metadata and full L2 book captured at the original opportunity.
+
+The shadow reports risk approvals, planning approvals, full/partial/no-fill outcomes, simulated entry notional, and entry fees. It fails closed on execution-configuration drift, incomplete historical position state, cross-day release positions, or lineage mismatches. It does not choose a replacement exit, does not calculate replacement-trade PnL, does not change the frozen candidate, and grants no promotion or execution authority.
+
+**LIVE TRADING: DISABLED.**
