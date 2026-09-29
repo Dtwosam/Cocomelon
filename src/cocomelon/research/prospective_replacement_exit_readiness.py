@@ -116,6 +116,21 @@ def prospective_replacement_exit_readiness(
         raise ProspectiveReplacementExitReadinessError(
             "replacement robustness gross PnL values must be non-negative"
         )
+    if gross_profit - gross_loss_abs != total_pnl:
+        raise ProspectiveReplacementExitReadinessError(
+            "replacement robustness gross PnL does not reconcile"
+        )
+    if gross_loss_abs == ZERO:
+        if profit_factor is not None:
+            raise ProspectiveReplacementExitReadinessError(
+                "profit factor must be absent when gross loss is zero"
+            )
+    else:
+        expected_profit_factor = gross_profit / gross_loss_abs
+        if profit_factor != expected_profit_factor:
+            raise ProspectiveReplacementExitReadinessError(
+                "replacement robustness profit factor is inconsistent"
+            )
     profit_factor_above_one = (
         (
             profit_factor is not None
