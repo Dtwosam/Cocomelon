@@ -10,6 +10,7 @@ from scripts.render_continuous_paper_live_status import (
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
     _prospective_capacity_reflow_fill_feasibility_lines,
+    _prospective_capacity_reflow_forward_markout_lines,
     _prospective_capacity_reflow_opportunity_lines,
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
@@ -5111,6 +5112,58 @@ def test_capacity_reflow_release_lineage_renderer_exposes_causal_join() -> None:
     assert "BTC=1" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
     assert "exact historical opening plan" in output
+
+
+def test_capacity_reflow_forward_markout_renderer_exposes_horizons() -> None:
+    lines = _prospective_capacity_reflow_forward_markout_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "fillable_options": 3,
+            "paths_available": 2,
+            "paths_missing": 1,
+            "max_mark_lag_ms": 120_000,
+            "by_horizon": {
+                "300000": {
+                    "settled_options": 2,
+                    "pending_options": 0,
+                    "stale_options": 0,
+                    "missing_path_options": 1,
+                    "positive_options": 1,
+                    "negative_options": 1,
+                    "flat_options": 0,
+                    "gross_mark_to_market_pnl": "4",
+                    "entry_fee_adjusted_mark_to_market_pnl": "3.5",
+                    "mean_directional_return_fraction": "0.01",
+                },
+                "21600000": {
+                    "settled_options": 0,
+                    "pending_options": 2,
+                    "stale_options": 0,
+                    "missing_path_options": 1,
+                    "positive_options": 0,
+                    "negative_options": 0,
+                    "flat_options": 0,
+                    "gross_mark_to_market_pnl": "0",
+                    "entry_fee_adjusted_mark_to_market_pnl": "0",
+                    "mean_directional_return_fraction": None,
+                },
+            },
+            "replacement_entry_fills_modeled": True,
+            "replacement_forward_markouts_modeled": True,
+            "replacement_exits_modeled": False,
+            "realized_pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-caused replacement forward markouts" in output
+    assert "`3 / 2 / 1`" in output
+    assert "| 5m | 2 | 0 | 0 | 1 | 1 / 1 / 0 | 4 | 3.5 | 0.01 |" in output
+    assert "| 6h | 0 | 2 | 0 | 1 | 0 / 0 / 0 | 0 | 0 | None |" in output
+    assert "`true / true / false / false`" in output
+    assert "no synthetic exit fill" in output
 
 
 def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:

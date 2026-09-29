@@ -224,6 +224,9 @@ from cocomelon.research.profit_lock_readiness import (
 from cocomelon.research.prospective_capacity_reflow_fill_feasibility import (
     evaluate_prospective_capacity_reflow_fill_feasibility,
 )
+from cocomelon.research.prospective_capacity_reflow_forward_markout import (
+    evaluate_prospective_capacity_reflow_forward_markout,
+)
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     evaluate_prospective_capacity_reflow_opportunities,
 )
@@ -1967,6 +1970,34 @@ def _prospective_capacity_reflow_fill_feasibility_payload(
                 config=config,
                 position_history_loader=position_history_loader,
             )
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["candidate_id"] = state.candidate_id
+    payload["started_at_ms"] = state.started_at_ms
+    payload["error"] = None
+    return payload
+
+
+def _prospective_capacity_reflow_forward_markout_payload(
+    fill_feasibility: dict[str, object],
+    path_store: ContinuousPaperOpeningOpportunityPathStore,
+    state: ProspectiveCombinedEntryFilterState,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_capacity_reflow_forward_markout(
+            fill_feasibility,
+            path_store,
         )
     except Exception as exc:
         return {
@@ -4099,6 +4130,13 @@ def _live_status_payload(
             ),
         )
     )
+    prospective_capacity_reflow_forward_markout = (
+        _prospective_capacity_reflow_forward_markout_payload(
+            prospective_capacity_reflow_fill_feasibility,
+            opening_opportunity_path_store,
+            prospective_combined_entry_filter_state,
+        )
+    )
     prospective_daily_loss_lockout_reflow = (
         _prospective_daily_loss_lockout_reflow_payload(
             opening_opportunity_store,
@@ -4493,6 +4531,9 @@ def _live_status_payload(
         ),
         "prospective_capacity_reflow_fill_feasibility": (
             prospective_capacity_reflow_fill_feasibility
+        ),
+        "prospective_capacity_reflow_forward_markout": (
+            prospective_capacity_reflow_forward_markout
         ),
         "prospective_daily_loss_lockout_reflow": (
             prospective_daily_loss_lockout_reflow
