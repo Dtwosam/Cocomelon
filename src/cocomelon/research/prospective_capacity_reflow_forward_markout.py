@@ -299,7 +299,10 @@ def prospective_capacity_reflow_forward_markout_summary(
     option_markouts: list[dict[str, object]] = []
     for option in options:
         opportunity_id = str(option["opportunity_id"])
-        timestamp_ms = int(option["opportunity_timestamp_ms"])
+        timestamp_ms = _require_int(
+            option["opportunity_timestamp_ms"],
+            "opportunity_timestamp_ms",
+        )
         market = str(option["opportunity_market"])
         direction = str(option["opportunity_direction"])
         quantity = Decimal(str(option["filled_quantity"]))
