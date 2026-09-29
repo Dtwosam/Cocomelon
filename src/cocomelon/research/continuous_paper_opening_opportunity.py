@@ -880,6 +880,14 @@ def evidence_from_opening_trace(
             rank,
             rank_pool_size,
         ) = rank_snapshot
+        if rank.market != decision.market:
+            raise ContinuousPaperOpeningOpportunityError(
+                "opening opportunity rank market mismatch"
+            )
+        if rank_observed_at_ms > trace.risk_request.timestamp_ms:
+            raise ContinuousPaperOpeningOpportunityError(
+                "opening opportunity rank is from the future"
+            )
         rank_ordinal = rank.ordinal
         rank_score = rank.score
         rank_reasons = tuple(rank.reason_codes)
