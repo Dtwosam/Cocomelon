@@ -126,7 +126,13 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
         suffix="blocked-daily",
         direction=Direction.LONG,
         opened_at_ms=DAY_MS + 10_000,
-        pnl="-120",
+        pnl="-80",
+    )
+    allowed = _trade(
+        suffix="allowed-daily",
+        direction=Direction.SHORT,
+        opened_at_ms=DAY_MS + 20_000,
+        pnl="-40",
     )
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
@@ -138,10 +144,14 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
         facts.record_decision_fact(
             _fact(blocked, lead_strategy="trend")
         )
+        facts.record_decision_fact(
+            _fact(allowed, lead_strategy="breakout")
+        )
         ranks.record(_rank(blocked, ordinal=5))
+        ranks.record(_rank(allowed, ordinal=4))
         result = prospective_daily_loss_lockout_reflow_summary(
             (opportunity,),
-            (blocked,),
+            (blocked, allowed),
             facts,
             ranks,
             ProspectiveCombinedEntryFilterState(started_at_ms=0),
@@ -156,11 +166,11 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
     assert result["baseline_cash_reconciliation_clean"] is True
     assert result["exact_candidate_unlock_opportunities"] == 1
     assert result["closed_trade_adjusted_unlock_opportunities"] == 1
-    assert result["same_day_closed_trade_instances"] == 1
+    assert result["same_day_closed_trade_instances"] == 2
     assert result["candidate_blocked_closed_trade_instances"] == 1
     assert result["distinct_candidate_blocked_trade_ids"] == 1
     assert result["baseline_daily_realized_pnl_min"] == "-120"
-    assert result["candidate_daily_realized_pnl_min"] == "0"
+    assert result["candidate_daily_realized_pnl_min"] == "-40"
     assert result["daily_loss_threshold_min"] == "-100.00"
     assert result["by_removed_trade_block_reason"] == {
         "long_trend": 1
@@ -177,7 +187,7 @@ def test_daily_loss_reflow_marks_cross_day_and_open_cash_scope_incomplete(
     opportunity_ms = 2 * DAY_MS + 200_000
     cross_day = _trade(
         suffix="cross-day",
-        direction=Direction.LONG,
+        direction=Direction.SHORT,
         opened_at_ms=2 * DAY_MS - 10_000,
         pnl="-120",
     )
@@ -248,7 +258,7 @@ def test_daily_loss_reflow_excludes_same_timestamp_close(
     opportunity_ms = DAY_MS + 200_000
     same_timestamp_close = _trade(
         suffix="same-timestamp-close",
-        direction=Direction.LONG,
+        direction=Direction.SHORT,
         opened_at_ms=opportunity_ms - 60_000,
         pnl="-120",
     )
