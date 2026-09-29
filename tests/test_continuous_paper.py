@@ -341,6 +341,16 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_capacity_reflow_realized_pnl": ('
         in source
     )
+    assert "ProspectiveReplacementExitPolicyState(" in source
+    assert (
+        'PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME = ('
+        in source
+    )
+    assert 'prospective-replacement-5m-exit-state.json' in source
+    assert "prospective_replacement_exit_policy_summary(" in source
+    assert '"prospective_replacement_exit_policy": (' in source
+    assert "_restore_prospective_replacement_exit_policy(" in source
+    assert "prospective_replacement_exit_policy_state.payload()" in source
     realized_pnl_call = source.index(
         "evaluate_prospective_capacity_reflow_realized_pnl("
     )
