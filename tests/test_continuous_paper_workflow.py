@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/continuous-paper.yml")
@@ -167,3 +168,47 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert "trade_path_open_count" in source
     assert "trade_path_state_digest" in source
     assert "trade_path_capture_error" in source
+
+
+def _research_runtime_dependencies() -> tuple[str, ...]:
+    prefix = "cocomelon.research."
+    pending = [Path("src/cocomelon/continuous_paper.py")]
+    seen_files: set[Path] = set()
+    dependencies: set[str] = set()
+
+    while pending:
+        source_path = pending.pop()
+        if source_path in seen_files:
+            continue
+        seen_files.add(source_path)
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            module = node.module or ""
+            if not module.startswith(prefix):
+                continue
+            child = Path(
+                "src/cocomelon/research/"
+                + module.removeprefix(prefix).replace(".", "/")
+                + ".py"
+            )
+            if not child.exists():
+                continue
+            normalized = child.as_posix()
+            if normalized in dependencies:
+                continue
+            dependencies.add(normalized)
+            pending.append(child)
+
+    return tuple(sorted(dependencies))
+
+
+def test_continuous_paper_watches_recursive_research_dependencies() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    missing = [
+        dependency
+        for dependency in _research_runtime_dependencies()
+        if source.count(dependency) < 2
+    ]
+    assert missing == []
