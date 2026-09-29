@@ -220,6 +220,48 @@ def test_stream_zip_member_handles_stored_zip64_data_descriptor() -> None:
     assert result.stdout == payload
 
 
+def test_stream_zip_member_handles_stored_32bit_data_descriptor() -> None:
+    class UnseekableBytesIO(io.BytesIO):
+        def seekable(self) -> bool:
+            return False
+
+        def seek(self, *args: object, **kwargs: object) -> int:
+            raise io.UnsupportedOperation
+
+    payload = b"./\x00\x00" + (
+        b"stored-32bit-data-descriptor-" * 1024
+    ) + b"done"
+    archive_bytes = UnseekableBytesIO()
+    with zipfile.ZipFile(
+        archive_bytes,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        archive.writestr(
+            "continuous-paper-state.tar",
+            payload,
+        )
+
+    encoded = archive_bytes.getvalue()
+    assert encoded[:4] == b"PK\x03\x04"
+    assert encoded[6] & 0x08
+    assert encoded[18:26] == b"\x00" * 8
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STREAM_MEMBER),
+            "continuous-paper-state.tar",
+        ],
+        input=encoded,
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == payload
+
+
 def test_stream_zip_member_handles_zero_local_sizes_with_descriptor() -> None:
     class UnseekableBytesIO(io.BytesIO):
         def seekable(self) -> bool:
