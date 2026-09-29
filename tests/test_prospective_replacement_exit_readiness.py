@@ -113,3 +113,19 @@ def test_replacement_exit_readiness_accepts_zero_loss_as_infinite_profit_factor(
     assert result["ready_for_review"] is True
     assert result["profit_factor"] is None
     assert result["profit_factor_above_one"] is True
+
+
+def test_replacement_exit_readiness_rejects_inconsistent_economics() -> None:
+    try:
+        prospective_replacement_exit_readiness(
+            _robustness(
+                total_pnl="12",
+                profit_factor="2",
+                gross_profit="20",
+                gross_loss_abs="10",
+            )
+        )
+    except Exception as exc:
+        assert "does not reconcile" in str(exc)
+    else:
+        raise AssertionError("inconsistent robustness economics must fail closed")
