@@ -4162,6 +4162,91 @@ def _prospective_capacity_reflow_release_lineage_lines(
     return lines
 
 
+def _prospective_capacity_reflow_forward_markout_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-caused replacement entry 6h markout",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement-entry forward-markout telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- fillable / matched paths / complete markouts: "
+                f"`{raw.get('fillable_options', 0)} / "
+                f"{raw.get('matched_paths', 0)} / "
+                f"{raw.get('complete_markouts', 0)}`"
+            ),
+            (
+                "- pending paths / missing paths: "
+                f"`{raw.get('pending_paths', 0)} / "
+                f"{raw.get('missing_paths', 0)}`"
+            ),
+            (
+                "- positive / negative / flat after entry fee: "
+                f"`{raw.get('positive_after_entry_fee_markouts', 0)} / "
+                f"{raw.get('negative_after_entry_fee_markouts', 0)} / "
+                f"{raw.get('flat_after_entry_fee_markouts', 0)}`"
+            ),
+            (
+                "- gross markout / entry fees / after-entry-fee markout: "
+                f"`{raw.get('gross_markout_cash', '0')} / "
+                f"{raw.get('entry_fees', '0')} / "
+                f"{raw.get('after_entry_fee_markout_cash', '0')}`"
+            ),
+            (
+                "- opportunity markets: "
+                f"`{counts(raw.get('by_opportunity_market'))}`"
+            ),
+            (
+                "- released markets: "
+                f"`{counts(raw.get('by_release_market'))}`"
+            ),
+            (
+                "- entry fills / forward markouts / exits / trade PnL modeled: "
+                f"`{str(bool(raw.get('replacement_entry_fills_modeled'))).lower()} / "
+                f"{str(bool(raw.get('forward_markouts_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_exits_modeled'))).lower()} / "
+                f"{str(bool(raw.get('pnl_modeled'))).lower()}`"
+            ),
+            "",
+            (
+                "_Each completed observation uses the exact simulated replacement "
+                "entry fill and the first real captured market mark at or after the "
+                "six-hour opportunity horizon. The cash figure subtracts entry fee "
+                "only. It is a forward markout, not an exit simulation or realized "
+                "replacement-trade PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_fill_feasibility_lines(
     raw: object,
 ) -> list[str]:
@@ -7157,6 +7242,13 @@ def render_live_status(
         _prospective_capacity_reflow_fill_feasibility_lines(
             payload.get(
                 "prospective_capacity_reflow_fill_feasibility"
+            )
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_forward_markout_lines(
+            payload.get(
+                "prospective_capacity_reflow_forward_markout"
             )
         )
     )
