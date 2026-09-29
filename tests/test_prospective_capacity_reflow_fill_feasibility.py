@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -258,4 +259,27 @@ def test_fill_feasibility_refuses_execution_config_drift() -> None:
             (_release(evidence),),
             PaperExecutionConfig(max_ioc_slippage_bps=Decimal("20")),
             position_history_loader=_history,
+        )
+
+
+def test_fill_feasibility_refuses_ambiguous_decision_time_position_state() -> None:
+    evidence = _evidence()
+    current = _history("release-plan-btc", 10_000)[0]
+    ambiguous = (
+        replace(
+            current,
+            cumulative_fees=Decimal("0.5"),
+        ),
+        current,
+    )
+
+    with pytest.raises(
+        ProspectiveCapacityReflowFillFeasibilityError,
+        match="decision-time history is missing or ambiguous",
+    ):
+        prospective_capacity_reflow_fill_feasibility_summary(
+            (evidence,),
+            (_release(evidence),),
+            PaperExecutionConfig(),
+            position_history_loader=lambda _plan_id, _through_ms: ambiguous,
         )
