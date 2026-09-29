@@ -238,6 +238,7 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert option["execution_result"] == "partial"
     assert isinstance(option["attempt_id"], str)
     assert option["entry_attempt_timestamp_ms"] == 10_000
+    assert isinstance(option["opening_plan_id"], str)
     assert isinstance(option["opening_risk_decision_id"], str)
     assert option["opening_strategy_decision_id"] == (
         evidence.strategy_decision_id
