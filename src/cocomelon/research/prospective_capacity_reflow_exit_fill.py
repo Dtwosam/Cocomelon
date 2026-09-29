@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
@@ -30,6 +31,42 @@ BPS: Final = Decimal("10000")
 
 class ProspectiveCapacityReflowExitFillError(RuntimeError):
     pass
+
+
+@dataclass(slots=True)
+class _HorizonAggregate:
+    horizon_ms: int
+    fillable_options: int
+    captured_exit_books: int = 0
+    missing_exit_books: int = 0
+    full_exit_fills: int = 0
+    partial_exit_fills: int = 0
+    no_exit_fills: int = 0
+    rejected_exit_attempts: int = 0
+    gross_realized_pnl: Decimal = ZERO
+    allocated_entry_fee: Decimal = ZERO
+    exit_fee: Decimal = ZERO
+    entry_exit_fee_adjusted_pnl: Decimal = ZERO
+    unclosed_quantity: Decimal = ZERO
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "horizon_ms": self.horizon_ms,
+            "fillable_options": self.fillable_options,
+            "captured_exit_books": self.captured_exit_books,
+            "missing_exit_books": self.missing_exit_books,
+            "full_exit_fills": self.full_exit_fills,
+            "partial_exit_fills": self.partial_exit_fills,
+            "no_exit_fills": self.no_exit_fills,
+            "rejected_exit_attempts": self.rejected_exit_attempts,
+            "gross_realized_pnl": str(self.gross_realized_pnl),
+            "allocated_entry_fee": str(self.allocated_entry_fee),
+            "exit_fee": str(self.exit_fee),
+            "entry_exit_fee_adjusted_pnl": str(
+                self.entry_exit_fee_adjusted_pnl
+            ),
+            "unclosed_quantity": str(self.unclosed_quantity),
+        }
 
 
 def _text(value: object, field: str) -> str:
@@ -221,21 +258,10 @@ def prospective_capacity_reflow_exit_fill_summary(
     options = _fillable_options(fill_feasibility)
     books = _book_index(exit_books)
     by_horizon = {
-        str(horizon_ms): {
-            "horizon_ms": horizon_ms,
-            "fillable_options": len(options),
-            "captured_exit_books": 0,
-            "missing_exit_books": 0,
-            "full_exit_fills": 0,
-            "partial_exit_fills": 0,
-            "no_exit_fills": 0,
-            "rejected_exit_attempts": 0,
-            "gross_realized_pnl": ZERO,
-            "allocated_entry_fee": ZERO,
-            "exit_fee": ZERO,
-            "entry_exit_fee_adjusted_pnl": ZERO,
-            "unclosed_quantity": ZERO,
-        }
+        str(horizon_ms): _HorizonAggregate(
+            horizon_ms=horizon_ms,
+            fillable_options=len(options),
+        )
         for horizon_ms in horizons_ms
     }
 
@@ -335,13 +361,13 @@ def prospective_capacity_reflow_exit_fill_summary(
             aggregate = by_horizon[horizon_key]
             evidence = books.get((opportunity_id, horizon_ms))
             if evidence is None:
-                aggregate["missing_exit_books"] += 1
+                aggregate.missing_exit_books += 1
                 exits[horizon_key] = {
                     "status": "missing_exit_book",
                     "horizon_ms": horizon_ms,
                 }
                 continue
-            aggregate["captured_exit_books"] += 1
+            aggregate.captured_exit_books += 1
             if (
                 evidence.market != market
                 or evidence.direction != direction
@@ -391,7 +417,7 @@ def prospective_capacity_reflow_exit_fill_summary(
                 created_at_ms=evidence.observed_at_ms,
             )
             if isinstance(plan, PlanningRejection):
-                aggregate["rejected_exit_attempts"] += 1
+                aggregate.rejected_exit_attempts += 1
                 by_result["planning_rejected"] += 1
                 exits[horizon_key] = {
                     "status": "planning_rejected",
@@ -411,13 +437,13 @@ def prospective_capacity_reflow_exit_fill_summary(
             attempt = simulation.attempt
             by_result[attempt.result.value] += 1
             if attempt.result is ExecutionResult.FULL:
-                aggregate["full_exit_fills"] += 1
+                aggregate.full_exit_fills += 1
             elif attempt.result is ExecutionResult.PARTIAL:
-                aggregate["partial_exit_fills"] += 1
+                aggregate.partial_exit_fills += 1
             elif attempt.result is ExecutionResult.NO_FILL:
-                aggregate["no_exit_fills"] += 1
+                aggregate.no_exit_fills += 1
             else:
-                aggregate["rejected_exit_attempts"] += 1
+                aggregate.rejected_exit_attempts += 1
 
             gross = sum(
                 (
@@ -441,11 +467,11 @@ def prospective_capacity_reflow_exit_fill_summary(
             net = gross - allocated_entry_fee - attempt.fee
             unclosed = entry_quantity - attempt.filled_quantity
 
-            aggregate["gross_realized_pnl"] += gross
-            aggregate["allocated_entry_fee"] += allocated_entry_fee
-            aggregate["exit_fee"] += attempt.fee
-            aggregate["entry_exit_fee_adjusted_pnl"] += net
-            aggregate["unclosed_quantity"] += unclosed
+            aggregate.gross_realized_pnl += gross
+            aggregate.allocated_entry_fee += allocated_entry_fee
+            aggregate.exit_fee += attempt.fee
+            aggregate.entry_exit_fee_adjusted_pnl += net
+            aggregate.unclosed_quantity += unclosed
             total_gross += gross
             total_entry_fee += allocated_entry_fee
             total_exit_fee += attempt.fee
@@ -496,20 +522,10 @@ def prospective_capacity_reflow_exit_fill_summary(
             }
         )
 
-    by_horizon_payload: dict[str, object] = {}
-    for horizon_ms in horizons_ms:
-        key = str(horizon_ms)
-        raw = by_horizon[key]
-        by_horizon_payload[key] = {
-            **raw,
-            "gross_realized_pnl": str(raw["gross_realized_pnl"]),
-            "allocated_entry_fee": str(raw["allocated_entry_fee"]),
-            "exit_fee": str(raw["exit_fee"]),
-            "entry_exit_fee_adjusted_pnl": str(
-                raw["entry_exit_fee_adjusted_pnl"]
-            ),
-            "unclosed_quantity": str(raw["unclosed_quantity"]),
-        }
+    by_horizon_payload: dict[str, object] = {
+        key: aggregate.payload()
+        for key, aggregate in by_horizon.items()
+    }
 
     return {
         "research_only": True,
