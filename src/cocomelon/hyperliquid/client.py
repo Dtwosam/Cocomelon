@@ -129,6 +129,15 @@ class InfoClient:
     def meta_and_asset_ctxs(self, dex: str = "") -> object:
         return self.post_info({"type": "metaAndAssetCtxs", "dex": dex}, weight=20)
 
+    def l2_book(self, market: MarketId) -> object:
+        return self.post_info(
+            {
+                "type": "l2Book",
+                "coin": market.wire_name,
+            },
+            weight=2,
+        )
+
     def candles(
         self,
         market: MarketId,
