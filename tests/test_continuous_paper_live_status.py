@@ -3270,6 +3270,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "entry_fee_effect_pnl": "1.2",
                 "exposure_effect_pnl": "0.8",
                 "total_delta_pnl": "16",
+                "decimal_rounding_residual_pnl": "-1E-26",
                 "mean_price_effect_r": "0.20",
                 "mean_entry_fee_effect_r": "0.02",
                 "mean_exposure_effect_r": "0.03",
@@ -3398,6 +3399,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "corrected_total_delta_pnl": "17",
                 "actual_net_pnl": "-12",
                 "corrected_candidate_net_pnl": "5",
+                "component_decimal_rounding_residual_pnl": "-2E-26",
+                "legacy_bridge_decimal_rounding_residual_pnl": "1E-26",
+                "candidate_bridge_decimal_rounding_residual_pnl": "0",
                 "mean_price_effect_r": "0.20",
                 "mean_entry_fee_effect_r": "0.02",
                 "mean_exposure_effect_r": "0.03",
@@ -4163,6 +4167,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "price_effect + entry_fee_effect + exposure_effect = total_delta" in output
     assert "price / entry-fee / exposure / total Δ PnL" in output
     assert "`14` / `1.2` / `0.8` / `16`" in output
+    assert "aggregate Decimal rounding residual" in output
+    assert "`-1E-26`" in output
     assert (
         "| Partial fill | 1 | 0.5 | 2 | 0.2 | -3.2 | -1 | -0.1 |"
         in output
@@ -4175,6 +4181,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1 / 17`" in output
     assert "legacy / corrected total Δ PnL" in output
     assert "`16 / 17`" in output
+    assert "funding summary Decimal residuals" in output
+    assert "`-2E-26 / 1E-26 / 0`" in output
     assert "funding-aware missing journal / funding / lineage" in output
     assert "`0 / 0 / 0`" in output
     assert "Funding timing is the explicit fourth effect" in output
