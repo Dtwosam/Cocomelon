@@ -2581,3 +2581,14 @@ The uncompressed packed artifact had grown to roughly 8.84 GB on the live worker
 This changes only state transport. It does not prune research evidence, change paper accounting, alter strategy/risk/execution behavior, or enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-paper durable state size telemetry — 2026-09-29
+
+The continuous-paper handoff workflow now measures the durable state before packing or uploading it. The diagnostic reports total logical and allocated bytes, total file count, a descending top-level store breakdown, and the largest individual files.
+
+This was added after the exact paper state reached roughly 8.84 GB uncompressed. Transport compression fixes the network handoff cost, but it does not identify which durable research store is responsible for the on-disk footprint. The size manifest is intentionally read-only and runs before packing so its output remains available in the Actions log and step summary even if a later artifact transfer is slow.
+
+The next lossless compaction step will be based on this measured breakdown rather than deleting or sampling evidence speculatively. No strategy, risk, paper-accounting, or execution behavior changes.
+
+**LIVE TRADING: DISABLED.**
