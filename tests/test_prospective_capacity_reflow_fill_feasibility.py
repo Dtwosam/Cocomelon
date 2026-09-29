@@ -311,3 +311,19 @@ def test_fill_feasibility_refuses_ambiguous_decision_time_position_state() -> No
             PaperExecutionConfig(),
             position_history_loader=lambda _plan_id, _through_ms: ambiguous,
         )
+
+
+def test_fill_feasibility_rejects_duplicate_release_option() -> None:
+    evidence = _evidence()
+    release = _release(evidence)
+
+    with pytest.raises(
+        ProspectiveCapacityReflowFillFeasibilityError,
+        match="duplicate candidate release option id",
+    ):
+        prospective_capacity_reflow_fill_feasibility_summary(
+            (evidence,),
+            (release, release),
+            PaperExecutionConfig(),
+            position_history_loader=_history,
+        )
