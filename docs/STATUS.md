@@ -2336,3 +2336,13 @@ This overlap is not prospective evidence for the newer combined candidate. It al
 
 **LIVE TRADING: DISABLED.**
 
+### Decision-time opening-opportunity evidence — 2026-09-29
+
+The continuous-paper runtime now preserves every directional opening opportunity at the point where the baseline risk engine evaluates it, including opportunities that are rejected and therefore never produce an opening plan.
+
+Each prospective record carries the exact original `RiskRequest`, instrument metadata, full visible L2 book consumed at the opportunity timestamp, baseline risk decision/reason, and the latest scanner rank snapshot available at that time. Records are content-addressed, conflict-detecting, stored inside durable continuous-paper state, and surfaced with approval/rejection/rank-completeness counts plus a state digest.
+
+This capture exists to make future capacity-reflow research causal: if a filter removes an earlier trade and frees capacity, later replacement candidates can only come from opening opportunities that were actually observed with decision-time market and risk evidence. The capture itself does **not** model replacement trades, alter risk decisions, change entries, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**
+
