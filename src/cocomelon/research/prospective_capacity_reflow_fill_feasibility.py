@@ -383,6 +383,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
     option_results: list[dict[str, object]] = []
     fillable_option_ids: set[str] = set()
     fillable_opportunity_ids: set[str] = set()
+    seen_option_ids: set[str] = set()
 
     for release in releases:
         evidence = by_id.get(release.opportunity_id)
@@ -405,6 +406,11 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             f"{evidence.opportunity_id}:"
             f"{release.release_opening_plan_id}"
         )
+        if option_id in seen_option_ids:
+            raise ProspectiveCapacityReflowFillFeasibilityError(
+                "duplicate candidate release option id"
+            )
+        seen_option_ids.add(option_id)
         option_payload: dict[str, object] = {
             "option_id": option_id,
             "opportunity_id": evidence.opportunity_id,
