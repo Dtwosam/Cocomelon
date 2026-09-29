@@ -17,8 +17,10 @@ from cocomelon.research.continuous_paper_trade_paths import (
 from cocomelon.research.delayed_entry_execution_shadow import DelayedEntryOutcome
 from cocomelon.research.delayed_entry_same_exit_stop_validity import (
     DelayedEntrySameExitStopValidityOutcome,
-    _summary as stop_validity_summary,
     delayed_entry_same_exit_stop_validity,
+)
+from cocomelon.research.delayed_entry_same_exit_stop_validity import (
+    _summary as stop_validity_summary,
 )
 
 MARKET = MarketId("", "SOL")
