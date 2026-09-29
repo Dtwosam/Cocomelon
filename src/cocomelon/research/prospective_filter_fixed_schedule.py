@@ -273,22 +273,22 @@ def prospective_filter_fixed_schedule_portfolio(
         "candidate": candidate,
         "delta_final_realized_contribution": str(
             exact_decimal_sum(
-                (candidate_final, -actual_final)
+                (candidate_final, actual_final.copy_negate())
             )
         ),
         "delta_max_realized_drawdown": str(
             exact_decimal_sum(
-                (candidate_drawdown, -actual_drawdown)
+                (candidate_drawdown, actual_drawdown.copy_negate())
             )
         ),
         "delta_max_gross_notional": str(
             exact_decimal_sum(
-                (candidate_notional, -actual_notional)
+                (candidate_notional, actual_notional.copy_negate())
             )
         ),
         "delta_max_planned_risk": str(
             exact_decimal_sum(
-                (candidate_risk, -actual_risk)
+                (candidate_risk, actual_risk.copy_negate())
             )
         ),
     }
