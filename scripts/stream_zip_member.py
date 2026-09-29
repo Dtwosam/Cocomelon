@@ -163,31 +163,32 @@ def _stream_stored_descriptor_member(
     pending = bytearray()
     crc = 0
     output_size = 0
-    descriptor_size = 24
+    minimum_descriptor_size = 16
+    zip64_descriptor_size = 24
     signature_keep = len(DATA_DESCRIPTOR_SIGNATURE_BYTES) - 1
 
     while True:
-        if len(pending) < descriptor_size:
+        if len(pending) < minimum_descriptor_size:
             chunk = buffered.read(CHUNK_SIZE)
             if chunk:
                 pending.extend(chunk)
             elif not pending:
                 raise StreamZipError(
-                    "stored ZIP64 data-descriptor member ended prematurely"
+                    "stored ZIP data-descriptor member ended prematurely"
                 )
 
         candidate_at = pending.find(DATA_DESCRIPTOR_SIGNATURE_BYTES)
         if candidate_at < 0:
             if not pending:
                 raise StreamZipError(
-                    "stored ZIP64 data descriptor is missing"
+                    "stored ZIP data descriptor is missing"
                 )
             emit_count = max(0, len(pending) - signature_keep)
             if emit_count == 0:
                 chunk = buffered.read(CHUNK_SIZE)
                 if not chunk:
                     raise StreamZipError(
-                        "stored ZIP64 data descriptor is missing"
+                        "stored ZIP data descriptor is missing"
                     )
                 pending.extend(chunk)
                 continue
@@ -211,22 +212,47 @@ def _stream_stored_descriptor_member(
                 output_size=output_size,
             )
 
-        while len(pending) < descriptor_size:
+        while len(pending) < minimum_descriptor_size:
             chunk = buffered.read(CHUNK_SIZE)
             if not chunk:
                 raise StreamZipError(
-                    "stored ZIP64 data descriptor is truncated"
+                    "stored ZIP data descriptor is truncated"
                 )
             pending.extend(chunk)
 
         expected_crc = struct.unpack("<I", pending[4:8])[0]
-        compressed_size = struct.unpack("<Q", pending[8:16])[0]
-        uncompressed_size = struct.unpack("<Q", pending[16:24])[0]
+        compressed_size_32 = struct.unpack("<I", pending[8:12])[0]
+        uncompressed_size_32 = struct.unpack("<I", pending[12:16])[0]
+        descriptor_size: int | None = None
         if (
             expected_crc == crc
-            and compressed_size == output_size
-            and uncompressed_size == output_size
+            and compressed_size_32 == output_size
+            and uncompressed_size_32 == output_size
         ):
+            descriptor_size = minimum_descriptor_size
+        else:
+            while len(pending) < zip64_descriptor_size:
+                chunk = buffered.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                pending.extend(chunk)
+            if len(pending) >= zip64_descriptor_size:
+                compressed_size_64 = struct.unpack(
+                    "<Q",
+                    pending[8:16],
+                )[0]
+                uncompressed_size_64 = struct.unpack(
+                    "<Q",
+                    pending[16:24],
+                )[0]
+                if (
+                    expected_crc == crc
+                    and compressed_size_64 == output_size
+                    and uncompressed_size_64 == output_size
+                ):
+                    descriptor_size = zip64_descriptor_size
+
+        if descriptor_size is not None:
             del pending[:descriptor_size]
             buffered.prepend(bytes(pending))
             output.flush()
@@ -287,10 +313,6 @@ def stream_member(
         )
 
     extra = buffered.read_exact(extra_length)
-    zip64_size_placeholders = (
-        compressed_size == UINT32_MAX
-        or uncompressed_size == UINT32_MAX
-    )
     compressed_size, uncompressed_size = _member_sizes(
         compressed_size,
         uncompressed_size,
@@ -302,7 +324,6 @@ def stream_member(
     if (
         method == STORED_METHOD
         and flags & 0x8
-        and zip64_size_placeholders
         and compressed_size == 0
         and uncompressed_size == 0
     ):
