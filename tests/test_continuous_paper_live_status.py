@@ -9,6 +9,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
+    _prospective_capacity_reflow_opportunity_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
@@ -4968,6 +4969,48 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "`" + "b" * 64 + "`" in output
     assert "replacement trades modeled: `false`" in output
     assert "forward mark paths" in output
+
+
+def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None:
+    lines = _prospective_capacity_reflow_opportunity_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "opportunities": 10,
+            "baseline_rejections": 10,
+            "candidate_eligible_rejections": 4,
+            "candidate_blocked_rejections": 6,
+            "missing_rank_evidence": 0,
+            "stale_rank_evidence": 0,
+            "integrity_clean": True,
+            "candidate_eligible_capacity_rejections": 3,
+            "single_position_release_unblocked": 2,
+            "single_position_release_options": 3,
+            "by_baseline_rejection_reason": {
+                "correlation_bucket_exhausted": 8,
+                "aggregate_risk_exhausted": 2,
+            },
+            "by_candidate_block_reason": {
+                "long_trend": 4,
+                "rank_above_10": 2,
+            },
+            "by_release_market": {"BTC": 2, "ETH": 1},
+            "by_release_bucket": {"majors": 3},
+            "replacement_trades_modeled": False,
+            "pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate capacity-reflow opportunity diagnostic" in output
+    assert "`10 / 10`" in output
+    assert "`4 / 6`" in output
+    assert "`3 / 2`" in output
+    assert "correlation_bucket_exhausted=8" in output
+    assert "BTC=2" in output
+    assert "replacement trades / PnL modeled: `false / false`" in output
+    assert "does not yet claim" in output
 
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
