@@ -97,6 +97,11 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.continuous_paper_opening_opportunity import (
     evidence_from_opening_trace as opportunity_evidence_from_trace,
 )
+from cocomelon.research.continuous_paper_opening_opportunity_paths import (
+    DEFAULT_MAX_COMPLETION_LAG_MS,
+    DEFAULT_MAX_PATH_AGE_MS,
+    ContinuousPaperOpeningOpportunityPathStore,
+)
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
     LatestCoarseRankTracker,
@@ -407,11 +412,14 @@ class _ContinuousOpeningOpportunitySink:
     def __init__(
         self,
         store: ContinuousPaperOpeningOpportunityStore,
+        path_store: ContinuousPaperOpeningOpportunityPathStore,
         rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
+        self._path_store = path_store
         self._rank_tracker = rank_tracker
         self.error: str | None = None
+        self.path_error: str | None = None
 
     def record_opening_trace(
         self,
@@ -422,15 +430,45 @@ class _ContinuousOpeningOpportunitySink:
                 trace.evaluation.decision.market,
                 at_ms=trace.risk_request.timestamp_ms,
             )
-            self._store.record(
-                opportunity_evidence_from_trace(
-                    trace,
-                    rank_snapshot=rank_snapshot,
-                )
+            evidence = opportunity_evidence_from_trace(
+                trace,
+                rank_snapshot=rank_snapshot,
             )
+            self._store.record(evidence)
         except Exception as exc:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
+            return
+
+        try:
+            self._path_store.register(
+                opportunity_id=evidence.opportunity_id,
+                market=evidence.market,
+                direction=evidence.direction,
+                opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
+            )
+        except Exception as exc:
+            if self.path_error is None:
+                self.path_error = f"{type(exc).__name__}: {exc}"
+
+    def observe_snapshots(
+        self,
+        snapshots: dict[str, PerpMarketSnapshot],
+    ) -> None:
+        for snapshot in snapshots.values():
+            mark_px = snapshot.context.mark_px
+            if mark_px is None:
+                continue
+            try:
+                self._path_store.observe(
+                    market=snapshot.meta.market.canonical,
+                    observed_at_ms=snapshot.received_at_ms,
+                    mark_px=mark_px,
+                    source=snapshot.source,
+                )
+            except Exception as exc:
+                if self.path_error is None:
+                    self.path_error = f"{type(exc).__name__}: {exc}"
 
 
 class _CompositeOpeningResearchObserver:
@@ -1093,6 +1131,10 @@ class ContinuousPaperSummary:
     equity: Decimal
     execution_healthy: bool
     execution_reason_codes: tuple[str, ...]
+    opening_opportunity_path_count: int = 0
+    opening_opportunity_path_complete_count: int = 0
+    opening_opportunity_path_state_digest: str = ""
+    opening_opportunity_path_capture_error: str | None = None
     network_access: bool = True
     live_orders: bool = False
 
@@ -1144,6 +1186,18 @@ class ContinuousPaperSummary:
             "equity": str(self.equity),
             "execution_healthy": self.execution_healthy,
             "execution_reason_codes": list(self.execution_reason_codes),
+            "opening_opportunity_path_count": (
+                self.opening_opportunity_path_count
+            ),
+            "opening_opportunity_path_complete_count": (
+                self.opening_opportunity_path_complete_count
+            ),
+            "opening_opportunity_path_state_digest": (
+                self.opening_opportunity_path_state_digest
+            ),
+            "opening_opportunity_path_capture_error": (
+                self.opening_opportunity_path_capture_error
+            ),
             "network_access": self.network_access,
             "live_orders": self.live_orders,
         }
@@ -3657,6 +3711,9 @@ def _live_status_payload(
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     opening_opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    opening_opportunity_path_store: (
+        ContinuousPaperOpeningOpportunityPathStore
+    ),
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -3678,6 +3735,7 @@ def _live_status_payload(
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
     opening_opportunity_capture_error: str | None,
+    opening_opportunity_path_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4237,11 +4295,17 @@ def _live_status_payload(
         "execution_reason_codes": list(execution.health.reason_codes),
         "last_observation": last_observation,
         "opening_opportunity_evidence": {
-            "enabled": opening_opportunity_capture_error is None,
+            "enabled": (
+                opening_opportunity_capture_error is None
+                and opening_opportunity_path_capture_error is None
+            ),
             "research_only": True,
             "execution_authority": False,
             "promotion_authority": False,
-            "claim_scope": "prospective_decision_time_opening_opportunity_capture",
+            "claim_scope": (
+                "prospective_decision_time_opening_opportunity_"
+                "and_forward_mark_capture"
+            ),
             "records": opening_opportunity_store.record_count,
             "baseline_approvals": opening_opportunity_store.approved_count,
             "baseline_rejections": opening_opportunity_store.rejected_count,
@@ -4253,6 +4317,24 @@ def _live_status_payload(
             ),
             "state_digest": opening_opportunity_store.state_digest,
             "capture_error": opening_opportunity_capture_error,
+            "forward_mark_paths": (
+                opening_opportunity_path_store.record_count
+            ),
+            "forward_mark_paths_complete": (
+                opening_opportunity_path_store.complete_count
+            ),
+            "forward_mark_max_age_ms": (
+                opening_opportunity_path_store.max_path_age_ms
+            ),
+            "forward_mark_max_completion_lag_ms": (
+                opening_opportunity_path_store.max_completion_lag_ms
+            ),
+            "forward_mark_state_digest": (
+                opening_opportunity_path_store.state_digest
+            ),
+            "forward_mark_capture_error": (
+                opening_opportunity_path_capture_error
+            ),
             "full_l2_book_captured": True,
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
@@ -4270,6 +4352,9 @@ def _emit_live_status(
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
     opening_opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    opening_opportunity_path_store: (
+        ContinuousPaperOpeningOpportunityPathStore
+    ),
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4291,6 +4376,7 @@ def _emit_live_status(
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
     opening_opportunity_capture_error: str | None,
+    opening_opportunity_path_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4315,6 +4401,7 @@ def _emit_live_status(
         opening_rank_store,
         opening_fill_liquidity_store,
         opening_opportunity_store,
+        opening_opportunity_path_store,
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
@@ -4336,6 +4423,9 @@ def _emit_live_status(
         ),
         opening_opportunity_capture_error=(
             opening_opportunity_capture_error
+        ),
+        opening_opportunity_path_capture_error=(
+            opening_opportunity_path_capture_error
         ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
@@ -4487,6 +4577,13 @@ async def run_continuous_paper_session(
     opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
         root / "opening-opportunities"
     )
+    opening_opportunity_path_store = (
+        ContinuousPaperOpeningOpportunityPathStore(
+            root / "opening-opportunity-paths",
+            max_path_age_ms=DEFAULT_MAX_PATH_AGE_MS,
+            max_completion_lag_ms=DEFAULT_MAX_COMPLETION_LAG_MS,
+        )
+    )
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
@@ -4494,6 +4591,7 @@ async def run_continuous_paper_session(
     rank_tracker = LatestCoarseRankTracker()
     opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
         opening_opportunity_store,
+        opening_opportunity_path_store,
         rank_tracker,
     )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
@@ -4622,6 +4720,7 @@ async def run_continuous_paper_session(
             reader,
             received_at_ms=initial_received_at_ms,
         )
+        opening_opportunity_sink.observe_snapshots(snapshots)
         pinned = tuple(position.market for position in execution.account.positions)
         initial_rank_observed_at_ms = utc_now_ms()
         _initial_features, initial_ranks = _startup_ranks(
@@ -4821,6 +4920,7 @@ async def run_continuous_paper_session(
             opening_rank_store,
             opening_fill_liquidity_store,
             opening_opportunity_store,
+            opening_opportunity_path_store,
             original_stop_book_store,
             original_stop_book_capture,
             profit_lock_execution_shadow,
@@ -4846,6 +4946,9 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_capture_error=(
                 opening_opportunity_sink.error
+            ),
+            opening_opportunity_path_capture_error=(
+                opening_opportunity_sink.path_error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -4942,6 +5045,7 @@ async def run_continuous_paper_session(
                     reader,
                     received_at_ms=now_ms,
                 )
+                opening_opportunity_sink.observe_snapshots(refreshed)
                 for market in selected:
                     snapshot = refreshed.get(market.canonical)
                     if snapshot is not None:
@@ -5016,6 +5120,7 @@ async def run_continuous_paper_session(
                     opening_rank_store,
                     opening_fill_liquidity_store,
                     opening_opportunity_store,
+                    opening_opportunity_path_store,
                     original_stop_book_store,
                     original_stop_book_capture,
                     profit_lock_execution_shadow,
@@ -5041,6 +5146,9 @@ async def run_continuous_paper_session(
                     ),
                     opening_opportunity_capture_error=(
                         opening_opportunity_sink.error
+                    ),
+                    opening_opportunity_path_capture_error=(
+                        opening_opportunity_sink.path_error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
@@ -5140,6 +5248,18 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_capture_error=(
                 opening_opportunity_sink.error
+            ),
+            opening_opportunity_path_count=(
+                opening_opportunity_path_store.record_count
+            ),
+            opening_opportunity_path_complete_count=(
+                opening_opportunity_path_store.complete_count
+            ),
+            opening_opportunity_path_state_digest=(
+                opening_opportunity_path_store.state_digest
+            ),
+            opening_opportunity_path_capture_error=(
+                opening_opportunity_sink.path_error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,

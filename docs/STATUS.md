@@ -2346,3 +2346,13 @@ This capture exists to make future capacity-reflow research causal: if a filter 
 
 **LIVE TRADING: DISABLED.**
 
+
+### Opening-opportunity forward mark paths — 2026-09-29
+
+Decision-time opening-opportunity evidence now has a durable post-decision market path. Every captured directional opportunity, including baseline risk rejections, is registered into a research-only forward-mark store. The continuous-paper worker advances those paths from the full native-market `metaAndAssetCtxs` snapshot on every context poll, not only from markets that remain in the selected websocket set.
+
+The default path horizon is six hours with a two-minute completion-lag allowance. A path is complete only after the first real observed mark at or after that horizon; missing or late observations are not imputed. Path state is canonical, conflict-detecting, digestible, included in worker summaries/live telemetry, and preserved inside the exact continuous-paper state artifact across worker handoffs.
+
+This closes a key evidence gap for future causal capacity-reflow work: a later opportunity that was rejected only because earlier baseline positions consumed capacity can now carry both its exact decision-time inputs and a real subsequently observed price path. This change still does **not** simulate replacement execution, choose an exit, claim counterfactual PnL, change risk decisions, or grant promotion/execution authority.
+
+**LIVE TRADING: DISABLED.**

@@ -3999,6 +3999,11 @@ def _opening_opportunity_evidence_lines(
     capture_error = raw.get("capture_error")
     if capture_error:
         lines.append(f"- capture warning: `{capture_error}`")
+    forward_mark_error = raw.get("forward_mark_capture_error")
+    if forward_mark_error:
+        lines.append(
+            f"- forward-mark capture warning: `{forward_mark_error}`"
+        )
     lines.extend(
         [
             (
@@ -4013,6 +4018,19 @@ def _opening_opportunity_evidence_lines(
                 f"{raw.get('rank_missing', 0)}`"
             ),
             (
+                "- forward mark paths / horizon-complete: "
+                f"`{raw.get('forward_mark_paths', 0)} / "
+                f"{raw.get('forward_mark_paths_complete', 0)}`"
+            ),
+            (
+                "- forward mark horizon: "
+                f"`{raw.get('forward_mark_max_age_ms')}`ms"
+            ),
+            (
+                "- forward mark completion lag: "
+                f"`{raw.get('forward_mark_max_completion_lag_ms')}`ms"
+            ),
+            (
                 "- exact risk request / full L2 book captured: "
                 f"`{str(bool(raw.get('exact_risk_request_captured'))).lower()} / "
                 f"{str(bool(raw.get('full_l2_book_captured'))).lower()}`"
@@ -4022,15 +4040,20 @@ def _opening_opportunity_evidence_lines(
                 f"`{str(bool(raw.get('replacement_trades_modeled'))).lower()}`"
             ),
             (
-                "- state digest: "
+                "- opportunity state digest: "
                 f"`{raw.get('state_digest', 'unknown')}`"
+            ),
+            (
+                "- forward mark state digest: "
+                f"`{raw.get('forward_mark_state_digest', 'unknown')}`"
             ),
             "",
             (
-                "_Prospective decision-time evidence only. This preserves real "
-                "directional opening opportunities before the risk veto so future "
-                "capacity-reflow research can use observed opportunities instead "
-                "of inventing trades. It does not change execution or readiness._"
+                "_Prospective decision-time evidence plus durable forward mark paths. "
+                "This preserves real directional opportunities and subsequent observed "
+                "market marks for causal capacity-reflow research. Replacement trade "
+                "execution and exits are still not modeled, and this does not change "
+                "execution or readiness._"
             ),
         ]
     )
