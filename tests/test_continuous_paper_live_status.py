@@ -4947,6 +4947,11 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
             "rank_missing": 1,
             "state_digest": "a" * 64,
             "capture_error": None,
+            "forward_mark_paths": 12,
+            "forward_mark_paths_complete": 7,
+            "forward_mark_max_age_ms": 21_600_000,
+            "forward_mark_state_digest": "b" * 64,
+            "forward_mark_capture_error": None,
             "full_l2_book_captured": True,
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
@@ -4958,8 +4963,11 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "`12 / 8 / 4`" in output
     assert "`11 / 1`" in output
     assert "`true / true`" in output
+    assert "`12 / 7`" in output
+    assert "`21600000`ms" in output
+    assert "`" + "b" * 64 + "`" in output
     assert "replacement trades modeled: `false`" in output
-    assert "observed opportunities instead of inventing trades" in output
+    assert "forward mark paths" in output
 
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
