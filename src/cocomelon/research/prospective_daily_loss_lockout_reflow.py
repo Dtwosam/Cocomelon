@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Context, Decimal, localcontext
 from typing import Final
 
 from cocomelon.domain.execution import OrderSide, PaperFill
@@ -32,6 +32,10 @@ from cocomelon.research.prospective_combined_entry_filter import (
 DAY_MS: Final = 86_400_000
 DAILY_LOSS_LOCKOUT: Final = "daily_loss_lockout"
 ZERO: Final = Decimal("0")
+AUTHORITATIVE_CONTEXT: Final = Context(
+    prec=28,
+    rounding=ROUND_HALF_EVEN,
+)
 
 ExitFillLoader = Callable[[str], tuple[PaperFill, ...]]
 
@@ -188,63 +192,85 @@ def _cross_day_trade_daily_cash(
             "cross-day exit fills are missing"
         )
 
-    exit_quantity = exact_decimal_sum(
-        fill.quantity for fill in exit_fills
-    )
-    exit_fees = exact_decimal_sum(
-        fill.taker_fee for fill in exit_fills
-    )
-    gross_realized = exact_decimal_sum(
-        (
-            (fill.price - trade.entry_price) * fill.quantity
-            if trade.direction is Direction.LONG
-            else (trade.entry_price - fill.price) * fill.quantity
-        )
+    if any(
+        fill.notional != fill.price * fill.quantity
         for fill in exit_fills
-    )
-    if (
-        exit_quantity != trade.filled_quantity
-        or exit_fees != trade.exit_fees
-        or gross_realized != trade.gross_realized_pnl
     ):
         raise ProspectiveDailyLossLockoutReflowError(
-            "cross-day exit fill economics do not reconcile"
+            "cross-day exit fill notional mismatch"
         )
 
     funding = trade_funding_accruals(
         trade,
         funding_loader,
     )
-    current_day_realized = exact_decimal_sum(
-        (
-            (fill.price - trade.entry_price) * fill.quantity
-            if trade.direction is Direction.LONG
-            else (trade.entry_price - fill.price) * fill.quantity
+    with localcontext(AUTHORITATIVE_CONTEXT):
+        exit_quantity = sum(
+            (fill.quantity for fill in exit_fills),
+            ZERO,
         )
-        for fill in exit_fills
-        if day_start_ms
-        <= fill.timestamp_ms
-        < opportunity_timestamp_ms
-    )
-    current_day_exit_fees = exact_decimal_sum(
-        fill.taker_fee
-        for fill in exit_fills
-        if day_start_ms
-        <= fill.timestamp_ms
-        < opportunity_timestamp_ms
-    )
-    current_day_funding = exact_decimal_sum(
-        accrual.cash_delta
-        for accrual in funding
-        if day_start_ms
-        <= accrual.boundary_ms
-        < opportunity_timestamp_ms
-    )
-    return (
-        current_day_realized
-        - current_day_exit_fees
-        + current_day_funding
-    )
+        exit_notional = sum(
+            (fill.notional for fill in exit_fills),
+            ZERO,
+        )
+        exit_fees = sum(
+            (fill.taker_fee for fill in exit_fills),
+            ZERO,
+        )
+        if exit_quantity <= ZERO:
+            raise ProspectiveDailyLossLockoutReflowError(
+                "cross-day exit quantity must be positive"
+            )
+        exit_price = exit_notional / exit_quantity
+        gross_realized = (
+            (exit_price - trade.entry_price) * exit_quantity
+            if trade.direction is Direction.LONG
+            else (trade.entry_price - exit_price) * exit_quantity
+        )
+        if (
+            exit_quantity != trade.filled_quantity
+            or exit_price != trade.exit_price
+            or exit_fees != trade.exit_fees
+            or gross_realized != trade.gross_realized_pnl
+        ):
+            raise ProspectiveDailyLossLockoutReflowError(
+                "cross-day exit fill economics do not reconcile"
+            )
+
+        current_day_realized = ZERO
+        current_day_exit_fees = ZERO
+        for fill in exit_fills:
+            if not (
+                day_start_ms
+                <= fill.timestamp_ms
+                < opportunity_timestamp_ms
+            ):
+                continue
+            if trade.direction is Direction.LONG:
+                current_day_realized += (
+                    fill.price - trade.entry_price
+                ) * fill.quantity
+            else:
+                current_day_realized += (
+                    trade.entry_price - fill.price
+                ) * fill.quantity
+            current_day_exit_fees += fill.taker_fee
+
+        current_day_funding = sum(
+            (
+                accrual.cash_delta
+                for accrual in funding
+                if day_start_ms
+                <= accrual.boundary_ms
+                < opportunity_timestamp_ms
+            ),
+            ZERO,
+        )
+        return (
+            current_day_realized
+            - current_day_exit_fees
+            + current_day_funding
+        )
 
 
 def _decimal_min(values: tuple[Decimal, ...]) -> str | None:
