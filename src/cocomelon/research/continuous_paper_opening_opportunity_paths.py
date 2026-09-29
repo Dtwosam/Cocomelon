@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Final
 
 SCHEMA_VERSION: Final = 1
+DEFAULT_MAX_PATH_AGE_MS: Final = 21_600_000
+DEFAULT_MAX_COMPLETION_LAG_MS: Final = 120_000
 ZERO: Final = Decimal("0")
 
 
