@@ -387,6 +387,20 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'root / "replacement-funding-boundaries"' in source
     assert "capture_replacement_funding_oracles()" in source
     assert "reader.meta_and_asset_ctxs" in source
+    assert source.count("replacement_funding_store.observe_snapshot(") == 1
+    precise_raw_at = source.index(
+        "raw = await asyncio.to_thread(\n"
+        "                        reader.meta_and_asset_ctxs"
+    )
+    precise_received_at = source.index(
+        "received_at_ms = utc_now_ms()",
+        precise_raw_at,
+    )
+    precise_normalize_at = source.index(
+        "snapshots = normalize_meta_and_asset_ctxs(",
+        precise_received_at,
+    )
+    assert precise_raw_at < precise_received_at < precise_normalize_at
     assert "capture_due_replacement_funding(" in source
     assert "reader.funding_history" in source
     assert "funding_boundary_for_record_time(" in source
