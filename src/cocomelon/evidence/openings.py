@@ -40,6 +40,7 @@ class _PendingOpening:
 @dataclass(frozen=True, slots=True)
 class BaselineOpeningTrace:
     evaluation: EpochMarketEvaluation
+    risk_request: RiskRequest
     submission: OpeningSubmission
     instrument: InstrumentExecutionSpec
     equity_before: Decimal
@@ -50,6 +51,8 @@ class BaselineOpeningTrace:
             raise ValueError("equity_before must be positive and finite")
         if (
             self.evaluation.decision.decision_id
+            != self.risk_request.strategy_decision_id
+            or self.risk_request.strategy_decision_id
             != self.submission.risk_decision.strategy_decision_id
         ):
             raise ValueError("opening trace strategy lineage mismatch")
@@ -311,6 +314,7 @@ class BaselineOpeningEngine:
             self._traces.append(
                 BaselineOpeningTrace(
                     evaluation=pending.evaluation,
+                    risk_request=request,
                     submission=submission,
                     instrument=instrument,
                     equity_before=equity_before,
