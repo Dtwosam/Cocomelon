@@ -2598,7 +2598,7 @@ The next lossless compaction step will be based on this measured breakdown rathe
 
 Packed continuous-paper artifacts are now restored without materializing both the artifact ZIP and the packed tar on the runner. For predecessor commits whose own workflow used the packed-state format, the restore path streams the trusted artifact through `funzip` directly into `tar` extraction under the state root.
 
-The previous restore path could temporarily hold the roughly 8.84 GB artifact ZIP, another roughly 8.84 GB extracted tar, and the restored state at the same time. That multiplied peak disk usage during worker handoffs and could stall recovery before the trader restarted. Legacy multi-file artifacts remain supported through the existing unzip/copy path; packed-vs-legacy format is determined from the trusted predecessor commit's workflow rather than guessed from artifact size.
+The previous restore path could temporarily hold the roughly 8.84 GB artifact ZIP, another roughly 8.84 GB extracted tar, and the restored state at the same time. That multiplied peak disk usage during worker handoffs and could stall recovery before the trader restarted. Legacy multi-file artifacts remain supported through the existing unzip/copy path; packed-vs-legacy format is determined from the trusted predecessor commit's workflow rather than guessed from artifact size. Both restore modes are bounded by a 30-minute workflow timeout so a broken transfer cannot occupy the paper concurrency slot indefinitely.
 
 The streamed restore is transport-only. It preserves the exact predecessor state, does not prune evidence, and does not change strategy, risk, accounting, execution authority, or live-order behavior.
 
