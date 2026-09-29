@@ -28,6 +28,8 @@ from cocomelon.evidence.openings import (
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityStore,
+)
+from cocomelon.research.continuous_paper_opening_opportunity import (
     evidence_from_opening_trace as opportunity_evidence_from_trace,
 )
 from cocomelon.research.opening_fill_liquidity import (
