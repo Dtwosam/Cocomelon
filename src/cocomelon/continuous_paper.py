@@ -1978,6 +1978,12 @@ def _prospective_daily_loss_lockout_reflow_payload(
     fact_store: EvaluationFactStore,
     rank_store: ContinuousPaperOpeningRankStore,
     state: ProspectiveCombinedEntryFilterState,
+    *,
+    exit_fill_loader: Callable[[str], tuple[PaperFill, ...]],
+    funding_loader: Callable[
+        [MarketId, int],
+        tuple[FundingAccrual, ...],
+    ],
 ) -> dict[str, object]:
     try:
         payload = evaluate_prospective_daily_loss_lockout_reflow(
@@ -1986,6 +1992,8 @@ def _prospective_daily_loss_lockout_reflow_payload(
             fact_store,
             rank_store,
             state,
+            exit_fill_loader=exit_fill_loader,
+            funding_loader=funding_loader,
         )
     except Exception as exc:
         return {
@@ -4030,6 +4038,15 @@ def _live_status_payload(
             fact_store,
             opening_rank_store,
             prospective_combined_entry_filter_state,
+            exit_fill_loader=lambda plan_id: (
+                execution.store.load_execution_history(plan_id)[1]
+            ),
+            funding_loader=lambda market, start_ms: (
+                execution.store.load_funding_for_market(
+                    market,
+                    start_ms=start_ms,
+                )
+            ),
         )
     )
     delayed_entry_fill_capacity = (
