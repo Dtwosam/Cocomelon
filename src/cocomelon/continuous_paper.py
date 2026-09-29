@@ -23,7 +23,12 @@ from cocomelon.domain.execution import (
     PositionActionType,
 )
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
-from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
+from cocomelon.domain.market import (
+    Candle,
+    FundingRate,
+    MarketId,
+    PerpMarketSnapshot,
+)
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent
@@ -116,6 +121,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
 )
 from cocomelon.research.continuous_paper_replacement_funding import (
     ContinuousPaperReplacementFundingStore,
+    ReplacementFundingBoundaryRequest,
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -5230,7 +5236,10 @@ async def run_continuous_paper_session(
         )
         if not requests:
             return
-        by_market: dict[str, list[object]] = {}
+        by_market: dict[
+            str,
+            list[ReplacementFundingBoundaryRequest],
+        ] = {}
         for request in requests:
             by_market.setdefault(request.market, []).append(request)
         cycle_error: str | None = None
@@ -5253,7 +5262,7 @@ async def run_continuous_paper_session(
                     raw,
                     received_at_ms=received_at_ms,
                 )
-                by_boundary: dict[int, object] = {}
+                by_boundary: dict[int, FundingRate] = {}
                 for rate in rates:
                     boundary_ms = funding_boundary_for_record_time(
                         rate.time_ms
@@ -5278,7 +5287,11 @@ async def run_continuous_paper_session(
             except Exception as exc:
                 if cycle_error is None:
                     cycle_error = f"{type(exc).__name__}: {exc}"
-        opening_opportunity_sink.funding_error = cycle_error
+        if (
+            cycle_error is not None
+            and opening_opportunity_sink.funding_error is None
+        ):
+            opening_opportunity_sink.funding_error = cycle_error
 
     async def capture_replacement_funding_oracles() -> None:
         while True:
