@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import os
 import subprocess
 import sys
@@ -173,6 +174,45 @@ def test_stream_zip_member_handles_forced_zip64_stored_member(
             "continuous-paper-state.tar",
         ],
         input=archive_path.read_bytes(),
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == payload
+
+
+def test_stream_zip_member_handles_stored_zip64_data_descriptor() -> None:
+    class UnseekableBytesIO(io.BytesIO):
+        def seekable(self) -> bool:
+            return False
+
+        def seek(self, *args: object, **kwargs: object) -> int:
+            raise io.UnsupportedOperation
+
+    payload = b"./\x00\x00" + (
+        b"zip64-stored-data-descriptor-" * 1024
+    ) + b"done"
+    archive_bytes = UnseekableBytesIO()
+    with zipfile.ZipFile(
+        archive_bytes,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(payload)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STREAM_MEMBER),
+            "continuous-paper-state.tar",
+        ],
+        input=archive_bytes.getvalue(),
         capture_output=True,
         check=True,
     )
