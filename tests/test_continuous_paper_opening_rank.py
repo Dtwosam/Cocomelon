@@ -58,6 +58,30 @@ def test_tracker_records_latest_rank_before_open() -> None:
     assert evidence.rank_pool_size == 2
 
 
+def test_tracker_exposes_point_in_time_rank_snapshot() -> None:
+    tracker = LatestCoarseRankTracker()
+    tracker.update(
+        (
+            _rank(BTC, 1, "0.9"),
+            _rank(ETH, 2, "0.8"),
+        ),
+        observed_at_ms=1_000,
+    )
+
+    snapshot = tracker.snapshot_for_market(
+        ETH,
+        at_ms=1_250,
+    )
+
+    assert snapshot is not None
+    observed_at_ms, rank, pool_size = snapshot
+    assert observed_at_ms == 1_000
+    assert rank.ordinal == 2
+    assert rank.score == Decimal("0.8")
+    assert pool_size == 2
+    assert tracker.snapshot_for_market(BTC, at_ms=999) is None
+
+
 def test_tracker_never_uses_rank_observed_after_open() -> None:
     tracker = LatestCoarseRankTracker()
     tracker.update(
