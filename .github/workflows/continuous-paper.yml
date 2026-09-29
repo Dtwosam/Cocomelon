@@ -9,6 +9,7 @@ on:
       - "pyproject.toml"
       - "scripts/render_continuous_paper_live_status.py"
       - "scripts/summarize_continuous_paper_state.py"
+      - "scripts/restore_continuous_paper_state.sh"
       - "src/cocomelon/config.py"
       - "src/cocomelon/continuous_paper.py"
       - "src/cocomelon/continuous_paper_cli.py"
@@ -200,6 +201,16 @@ jobs:
           if run.get("status") not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
           '
+          SOURCE_HEAD_SHA="$(
+            printf '%s' "$RUN_JSON" | python -c '
+import json, sys
+run = json.load(sys.stdin)
+head_sha = run.get("head_sha")
+if not isinstance(head_sha, str) or len(head_sha) != 40:
+    raise SystemExit("predecessor head sha is invalid")
+print(head_sha)
+'
+          )"
           ARTIFACT_NAME="continuous-paper-state-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/source-artifacts.json
           ARTIFACT_ID="$(
@@ -218,16 +229,10 @@ jobs:
           print(matches[0]["id"])
           PY
           )"
-          rm -rf /tmp/state-artifact
-          mkdir -p /tmp/state-artifact "$STATE_ROOT"
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/state.zip
-          unzip -q /tmp/state.zip -d /tmp/state-artifact
-          if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then
-            tar -tf /tmp/state-artifact/continuous-paper-state.tar >/dev/null
-            tar -xf /tmp/state-artifact/continuous-paper-state.tar -C "$STATE_ROOT"
-          else
-            cp -a /tmp/state-artifact/. "$STATE_ROOT"/
-          fi
+          bash scripts/restore_continuous_paper_state.sh \
+            "$ARTIFACT_ID" \
+            "$SOURCE_HEAD_SHA" \
+            "$STATE_ROOT"
 
       - name: Restore latest trusted state for watchdog/manual recovery
         if: ${{ steps.guard.outputs.skip != 'true' && inputs.source_run_id == '' }}
@@ -275,21 +280,19 @@ jobs:
                   and (run.get("head_repository") or {}).get("full_name")
                   == os.environ["GITHUB_REPOSITORY"]
               ):
-                  print(artifact["id"])
+                  head_sha = run.get("head_sha")
+                  if not isinstance(head_sha, str) or len(head_sha) != 40:
+                      continue
+                  print(f"{artifact['id']} {head_sha}")
                   break
           PY
           )"
           if [ -n "$ARTIFACT_ID" ]; then
-            rm -rf /tmp/state-artifact
-            mkdir -p /tmp/state-artifact
-            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/state.zip
-            unzip -q /tmp/state.zip -d /tmp/state-artifact
-            if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then
-              tar -tf /tmp/state-artifact/continuous-paper-state.tar >/dev/null
-              tar -xf /tmp/state-artifact/continuous-paper-state.tar -C "$STATE_ROOT"
-            else
-              cp -a /tmp/state-artifact/. "$STATE_ROOT"/
-            fi
+            read -r ARTIFACT_ID ARTIFACT_HEAD_SHA <<< "$ARTIFACT_ID"
+            bash scripts/restore_continuous_paper_state.sh \
+              "$ARTIFACT_ID" \
+              "$ARTIFACT_HEAD_SHA" \
+              "$STATE_ROOT"
           else
             echo "No prior trusted continuous-paper state; starting a fresh paper account."
           fi
@@ -374,7 +377,7 @@ jobs:
                 heartbeat="${line#COCOMELON_PAPER_HEARTBEAT }"
                 git fetch --quiet --depth=1 origin main
                 changed_runtime="$(
-                  git diff --name-only "$GITHUB_SHA" FETCH_HEAD --                     .github/workflows/continuous-paper.yml                     pyproject.toml                     scripts/render_continuous_paper_live_status.py                     scripts/summarize_continuous_paper_state.py                     src/cocomelon/config.py                     src/cocomelon/continuous_paper.py                     src/cocomelon/continuous_paper_cli.py                     src/cocomelon/domain                     src/cocomelon/evaluation                     src/cocomelon/evidence                     src/cocomelon/execution                     src/cocomelon/hyperliquid                     src/cocomelon/journal                     src/cocomelon/risk                     src/cocomelon/research/account_lifecycle_bridge.py                     src/cocomelon/research/cadence_shadow.py                     src/cocomelon/research/closed_trade_concentration.py                     src/cocomelon/research/closed_trade_friction.py                     src/cocomelon/research/closed_trade_robustness.py                     src/cocomelon/research/closed_trade_stability.py                     src/cocomelon/research/closed_trade_utc_hour.py                     src/cocomelon/research/continuous_paper_trade_paths.py                     src/cocomelon/research/continuous_paper_opening_rank.py                     src/cocomelon/research/continuous_paper_opening_opportunity.py                     src/cocomelon/research/continuous_paper_opening_opportunity_paths.py                     src/cocomelon/research/continuous_paper_opening_opportunity_exit_books.py                     src/cocomelon/research/continuous_paper_replacement_funding.py                     src/cocomelon/research/continuous_paper_drawdown.py                     src/cocomelon/research/delayed_entry_execution_shadow.py                     src/cocomelon/research/delayed_entry_contribution_decomposition.py                     src/cocomelon/research/delayed_entry_fill_capacity.py                     src/cocomelon/research/delayed_entry_fill_weighted.py                     src/cocomelon/research/delayed_entry_fixed_schedule_portfolio.py                     src/cocomelon/research/delayed_entry_mtm_portfolio.py                     src/cocomelon/research/delayed_entry_portfolio_capacity.py                     src/cocomelon/research/delayed_entry_risk_geometry.py                     src/cocomelon/research/delayed_entry_pair.py                     src/cocomelon/research/delayed_entry_pair_fill_weighted.py                     src/cocomelon/research/adaptive_delay_selector.py                     src/cocomelon/research/fill_aware_delay_selector.py                     src/cocomelon/research/delay_selector_comparison.py                     src/cocomelon/research/delayed_entry_same_exit.py                     src/cocomelon/research/entry_decision_age.py                     src/cocomelon/research/entry_markout.py                     src/cocomelon/research/entry_markout_predictiveness.py                     src/cocomelon/research/entry_markout_readiness.py                     src/cocomelon/research/excursion_timing.py                     src/cocomelon/research/entry_mid_markout_shadow.py                     src/cocomelon/research/entry_mid_markout_readiness.py                     src/cocomelon/research/opening_fill_liquidity.py                     src/cocomelon/research/profit_lock_counterfactual.py                     src/cocomelon/research/profit_lock_execution_readiness.py                     src/cocomelon/research/profit_lock_execution_shadow.py                     src/cocomelon/research/profit_lock_readiness.py                     src/cocomelon/research/prospective_delayed_price_confirmation.py                     src/cocomelon/research/prospective_entry_filter.py                     src/cocomelon/research/prospective_top10_rank_filter.py                     src/cocomelon/research/continuous_paper_learning.py                    src/cocomelon/research/delayed_entry_contribution_decomposition_funding.py                    src/cocomelon/research/delayed_entry_fill_weighted_funding.py                    src/cocomelon/research/delayed_entry_funding.py                    src/cocomelon/research/delayed_entry_same_exit_stop_validity.py                    src/cocomelon/research/delayed_entry_stop_exit_proxy.py                    src/cocomelon/research/delayed_entry_stop_l2_replay.py                    src/cocomelon/research/delayed_entry_stop_survivability.py                    src/cocomelon/research/exact_decimal_aggregation.py                    src/cocomelon/research/learning_feature_snapshots.py                    src/cocomelon/research/original_stop_book_evidence.py                    src/cocomelon/research/outcome_learning.py                    src/cocomelon/research/prospective_allowed_residual.py                    src/cocomelon/research/prospective_combined_entry_filter.py                    src/cocomelon/research/prospective_capacity_reflow_opportunities.py                    src/cocomelon/research/prospective_capacity_reflow_fill_feasibility.py                    src/cocomelon/research/prospective_capacity_reflow_forward_markout.py                    src/cocomelon/research/prospective_capacity_reflow_forward_excursion.py                    src/cocomelon/research/prospective_capacity_reflow_exit_fill.py                    src/cocomelon/research/prospective_capacity_reflow_realized_pnl.py                    src/cocomelon/research/prospective_replacement_exit_policy.py                    src/cocomelon/research/prospective_replacement_exit_robustness.py                    src/cocomelon/research/prospective_replacement_exit_readiness.py                    src/cocomelon/research/prospective_capacity_reflow_release_lineage.py                    src/cocomelon/research/prospective_daily_loss_lockout_reflow.py                    src/cocomelon/research/prospective_filter_fixed_schedule.py                    src/cocomelon/research/prospective_filter_robustness.py                    src/cocomelon/research/historical_discovery_freeze.py                    src/cocomelon/research/prospective_context_evidence.py                    src/cocomelon/research/prospective_context_report.py                    src/cocomelon/research/historical_baselines.py                    src/cocomelon/research/historical_features.py                    src/cocomelon/research/historical_learning.py                    src/cocomelon/scanner                     src/cocomelon/strategies
+                  git diff --name-only "$GITHUB_SHA" FETCH_HEAD --                     .github/workflows/continuous-paper.yml                     pyproject.toml                     scripts/render_continuous_paper_live_status.py                     scripts/summarize_continuous_paper_state.py                     scripts/restore_continuous_paper_state.sh                     src/cocomelon/config.py                     src/cocomelon/continuous_paper.py                     src/cocomelon/continuous_paper_cli.py                     src/cocomelon/domain                     src/cocomelon/evaluation                     src/cocomelon/evidence                     src/cocomelon/execution                     src/cocomelon/hyperliquid                     src/cocomelon/journal                     src/cocomelon/risk                     src/cocomelon/research/account_lifecycle_bridge.py                     src/cocomelon/research/cadence_shadow.py                     src/cocomelon/research/closed_trade_concentration.py                     src/cocomelon/research/closed_trade_friction.py                     src/cocomelon/research/closed_trade_robustness.py                     src/cocomelon/research/closed_trade_stability.py                     src/cocomelon/research/closed_trade_utc_hour.py                     src/cocomelon/research/continuous_paper_trade_paths.py                     src/cocomelon/research/continuous_paper_opening_rank.py                     src/cocomelon/research/continuous_paper_opening_opportunity.py                     src/cocomelon/research/continuous_paper_opening_opportunity_paths.py                     src/cocomelon/research/continuous_paper_opening_opportunity_exit_books.py                     src/cocomelon/research/continuous_paper_replacement_funding.py                     src/cocomelon/research/continuous_paper_drawdown.py                     src/cocomelon/research/delayed_entry_execution_shadow.py                     src/cocomelon/research/delayed_entry_contribution_decomposition.py                     src/cocomelon/research/delayed_entry_fill_capacity.py                     src/cocomelon/research/delayed_entry_fill_weighted.py                     src/cocomelon/research/delayed_entry_fixed_schedule_portfolio.py                     src/cocomelon/research/delayed_entry_mtm_portfolio.py                     src/cocomelon/research/delayed_entry_portfolio_capacity.py                     src/cocomelon/research/delayed_entry_risk_geometry.py                     src/cocomelon/research/delayed_entry_pair.py                     src/cocomelon/research/delayed_entry_pair_fill_weighted.py                     src/cocomelon/research/adaptive_delay_selector.py                     src/cocomelon/research/fill_aware_delay_selector.py                     src/cocomelon/research/delay_selector_comparison.py                     src/cocomelon/research/delayed_entry_same_exit.py                     src/cocomelon/research/entry_decision_age.py                     src/cocomelon/research/entry_markout.py                     src/cocomelon/research/entry_markout_predictiveness.py                     src/cocomelon/research/entry_markout_readiness.py                     src/cocomelon/research/excursion_timing.py                     src/cocomelon/research/entry_mid_markout_shadow.py                     src/cocomelon/research/entry_mid_markout_readiness.py                     src/cocomelon/research/opening_fill_liquidity.py                     src/cocomelon/research/profit_lock_counterfactual.py                     src/cocomelon/research/profit_lock_execution_readiness.py                     src/cocomelon/research/profit_lock_execution_shadow.py                     src/cocomelon/research/profit_lock_readiness.py                     src/cocomelon/research/prospective_delayed_price_confirmation.py                     src/cocomelon/research/prospective_entry_filter.py                     src/cocomelon/research/prospective_top10_rank_filter.py                     src/cocomelon/research/continuous_paper_learning.py                    src/cocomelon/research/delayed_entry_contribution_decomposition_funding.py                    src/cocomelon/research/delayed_entry_fill_weighted_funding.py                    src/cocomelon/research/delayed_entry_funding.py                    src/cocomelon/research/delayed_entry_same_exit_stop_validity.py                    src/cocomelon/research/delayed_entry_stop_exit_proxy.py                    src/cocomelon/research/delayed_entry_stop_l2_replay.py                    src/cocomelon/research/delayed_entry_stop_survivability.py                    src/cocomelon/research/exact_decimal_aggregation.py                    src/cocomelon/research/learning_feature_snapshots.py                    src/cocomelon/research/original_stop_book_evidence.py                    src/cocomelon/research/outcome_learning.py                    src/cocomelon/research/prospective_allowed_residual.py                    src/cocomelon/research/prospective_combined_entry_filter.py                    src/cocomelon/research/prospective_capacity_reflow_opportunities.py                    src/cocomelon/research/prospective_capacity_reflow_fill_feasibility.py                    src/cocomelon/research/prospective_capacity_reflow_forward_markout.py                    src/cocomelon/research/prospective_capacity_reflow_forward_excursion.py                    src/cocomelon/research/prospective_capacity_reflow_exit_fill.py                    src/cocomelon/research/prospective_capacity_reflow_realized_pnl.py                    src/cocomelon/research/prospective_replacement_exit_policy.py                    src/cocomelon/research/prospective_replacement_exit_robustness.py                    src/cocomelon/research/prospective_replacement_exit_readiness.py                    src/cocomelon/research/prospective_capacity_reflow_release_lineage.py                    src/cocomelon/research/prospective_daily_loss_lockout_reflow.py                    src/cocomelon/research/prospective_filter_fixed_schedule.py                    src/cocomelon/research/prospective_filter_robustness.py                    src/cocomelon/research/historical_discovery_freeze.py                    src/cocomelon/research/prospective_context_evidence.py                    src/cocomelon/research/prospective_context_report.py                    src/cocomelon/research/historical_baselines.py                    src/cocomelon/research/historical_features.py                    src/cocomelon/research/historical_learning.py                    src/cocomelon/scanner                     src/cocomelon/strategies
                 )"
                 if [ -n "$changed_runtime" ]; then
                   echo "::notice::new continuous-paper runtime code detected on main; requesting graceful handoff"
