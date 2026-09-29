@@ -8,6 +8,7 @@ from typing import BinaryIO
 
 LOCAL_FILE_HEADER_SIGNATURE = 0x04034B50
 DATA_DESCRIPTOR_SIGNATURE = 0x08074B50
+DATA_DESCRIPTOR_SIGNATURE_BYTES = b"PK\\x07\\x08"
 ZIP64_EXTRA_ID = 0x0001
 UINT32_MAX = 0xFFFFFFFF
 STORED_METHOD = 0
@@ -139,6 +140,112 @@ def _stream_stored_member(
     return crc, output_size
 
 
+def _write_payload(
+    output: BinaryIO,
+    payload: bytes,
+    *,
+    crc: int,
+    output_size: int,
+) -> tuple[int, int]:
+    if not payload:
+        return crc, output_size
+    output.write(payload)
+    return (
+        binascii.crc32(payload, crc) & 0xFFFFFFFF,
+        output_size + len(payload),
+    )
+
+
+def _stream_stored_descriptor_member(
+    buffered: _BufferedSource,
+    output: BinaryIO,
+) -> tuple[int, int, int]:
+    pending = bytearray()
+    crc = 0
+    output_size = 0
+    descriptor_size = 24
+    signature_keep = len(DATA_DESCRIPTOR_SIGNATURE_BYTES) - 1
+
+    while True:
+        if len(pending) < descriptor_size:
+            chunk = buffered.read(CHUNK_SIZE)
+            if chunk:
+                pending.extend(chunk)
+            elif not pending:
+                raise StreamZipError(
+                    "stored ZIP64 data-descriptor member ended prematurely"
+                )
+
+        candidate_at = pending.find(DATA_DESCRIPTOR_SIGNATURE_BYTES)
+        if candidate_at < 0:
+            if not pending:
+                raise StreamZipError(
+                    "stored ZIP64 data descriptor is missing"
+                )
+            emit_count = max(0, len(pending) - signature_keep)
+            if emit_count == 0:
+                chunk = buffered.read(CHUNK_SIZE)
+                if not chunk:
+                    raise StreamZipError(
+                        "stored ZIP64 data descriptor is missing"
+                    )
+                pending.extend(chunk)
+                continue
+            payload = bytes(pending[:emit_count])
+            del pending[:emit_count]
+            crc, output_size = _write_payload(
+                output,
+                payload,
+                crc=crc,
+                output_size=output_size,
+            )
+            continue
+
+        if candidate_at:
+            payload = bytes(pending[:candidate_at])
+            del pending[:candidate_at]
+            crc, output_size = _write_payload(
+                output,
+                payload,
+                crc=crc,
+                output_size=output_size,
+            )
+
+        while len(pending) < descriptor_size:
+            chunk = buffered.read(CHUNK_SIZE)
+            if not chunk:
+                raise StreamZipError(
+                    "stored ZIP64 data descriptor is truncated"
+                )
+            pending.extend(chunk)
+
+        expected_crc = struct.unpack("<I", pending[4:8])[0]
+        compressed_size = struct.unpack("<Q", pending[8:16])[0]
+        uncompressed_size = struct.unpack("<Q", pending[16:24])[0]
+        if (
+            expected_crc == crc
+            and compressed_size == output_size
+            and uncompressed_size == output_size
+        ):
+            del pending[:descriptor_size]
+            buffered.prepend(bytes(pending))
+            output.flush()
+            return crc, output_size, expected_crc
+
+        # The signature can legally occur inside a stored payload. Emit one
+        # byte and search again so overlapping candidate signatures remain
+        # detectable while CRC and byte count continue to describe only
+        # confirmed payload bytes.
+        payload = bytes(pending[:1])
+        del pending[:1]
+        crc, output_size = _write_payload(
+            output,
+            payload,
+            crc=crc,
+            output_size=output_size,
+        )
+
+
 def stream_member(
     expected_name: str,
     source: BinaryIO,
@@ -180,13 +287,35 @@ def stream_member(
         )
 
     extra = buffered.read_exact(extra_length)
+    zip64_size_placeholders = (
+        compressed_size == UINT32_MAX
+        or uncompressed_size == UINT32_MAX
+    )
     compressed_size, uncompressed_size = _member_sizes(
         compressed_size,
         uncompressed_size,
         extra,
     )
 
-    if method == STORED_METHOD:
+    descriptor_consumed = False
+    descriptor_expected_crc: int | None = None
+    if (
+        method == STORED_METHOD
+        and flags & 0x8
+        and zip64_size_placeholders
+        and compressed_size == 0
+        and uncompressed_size == 0
+    ):
+        (
+            crc,
+            output_size,
+            descriptor_expected_crc,
+        ) = _stream_stored_descriptor_member(
+            buffered,
+            output,
+        )
+        descriptor_consumed = True
+    elif method == STORED_METHOD:
         crc, output_size = _stream_stored_member(
             buffered,
             output,
@@ -223,7 +352,13 @@ def stream_member(
         )
     output.flush()
 
-    if flags & 0x8:
+    if descriptor_consumed:
+        if descriptor_expected_crc is None:
+            raise StreamZipError(
+                "stored ZIP64 descriptor CRC is missing"
+            )
+        expected_crc = descriptor_expected_crc
+    elif flags & 0x8:
         first = struct.unpack(
             "<I",
             buffered.read_exact(4),
