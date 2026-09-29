@@ -4216,9 +4216,19 @@ def _prospective_daily_loss_lockout_reflow_lines(
                 f"{raw.get('open_position_instances', 0)}`"
             ),
             (
+                "- cross-day cash modeled / misses / complete: "
+                f"`{raw.get('cross_day_cash_modeled_instances', 0)} / "
+                f"{raw.get('cross_day_cash_model_misses', 0)} / "
+                f"{str(bool(raw.get('cross_day_cash_model_complete'))).lower()}`"
+            ),
+            (
                 "- candidate-blocked closed-trade instances / distinct trades: "
                 f"`{raw.get('candidate_blocked_closed_trade_instances', 0)} / "
                 f"{raw.get('distinct_candidate_blocked_trade_ids', 0)}`"
+            ),
+            (
+                "- candidate-blocked cross-day trade instances: "
+                f"`{raw.get('candidate_blocked_cross_day_trade_instances', 0)}`"
             ),
             (
                 "- baseline cash reconciliation misses / clean: "
@@ -4251,26 +4261,33 @@ def _prospective_daily_loss_lockout_reflow_lines(
                 f"{raw.get('daily_loss_threshold_max')}`"
             ),
             (
-                "- removed blocked-trade net PnL range: "
-                f"`{raw.get('removed_blocked_trade_net_pnl_min')} .. "
-                f"{raw.get('removed_blocked_trade_net_pnl_max')}`"
+                "- removed blocked-trade daily cash range: "
+                f"`{raw.get('removed_blocked_trade_cash_pnl_min')} .. "
+                f"{raw.get('removed_blocked_trade_cash_pnl_max')}`"
+            ),
+            (
+                "- cross-day reconstructed daily cash range: "
+                f"`{raw.get('cross_day_daily_cash_min')} .. "
+                f"{raw.get('cross_day_daily_cash_max')}`"
             ),
             (
                 "- removed-trade candidate block reasons: "
                 f"`{counts(raw.get('by_removed_trade_block_reason'))}`"
             ),
             "- open-position cash effects modeled: `false`",
-            "- cross-day trade cash effects modeled: `false`",
+            (
+                "- cross-day trade cash effects modeled: "
+                f"`{str(bool(raw.get('cross_day_trade_cash_effects_modeled'))).lower()}`"
+            ),
             "- replacement trades / PnL modeled: `false / false`",
             "",
             (
-                "_The captured daily realized PnL is authoritative. This removes "
-                "only fully same-day closed trades that the frozen candidate would "
-                "have blocked. An exact unlock is credited only when the captured "
-                "daily cash reconciles exactly to those same-day closed trades, "
-                "candidate attribution is complete, and there are no cross-day "
-                "closed trades or open positions whose same-day cash effects would "
-                "need replay._"
+                "_The captured daily realized PnL is authoritative. Same-day "
+                "closed trades use journal net cash; cross-day trades reconstruct "
+                "only current-day exit-fill realized PnL, exit fees, and verified "
+                "funding accruals. Exact unlock credit requires complete candidate "
+                "attribution, exact daily-cash reconciliation, and no unmodeled "
+                "open-position cash effects._"
             ),
         ]
     )

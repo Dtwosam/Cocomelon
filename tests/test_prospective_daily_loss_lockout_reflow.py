@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
+from cocomelon.domain.execution import OrderSide, PaperFill
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import (
     ExecutionCostEstimate,
@@ -14,6 +16,7 @@ from cocomelon.domain.risk import (
 )
 from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.evaluation.store import EvaluationFactStore
+from cocomelon.execution.funding import FundingAccrual
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
     _risk_request_payload,
@@ -284,3 +287,97 @@ def test_daily_loss_reflow_excludes_same_timestamp_close(
     assert result["baseline_cash_reconciliation_misses"] == 1
     assert result["exact_cash_scope_opportunities"] == 0
     assert result["exact_candidate_unlock_opportunities"] == 0
+
+
+def test_daily_loss_reflow_exactly_models_cross_day_cash(
+    tmp_path,
+) -> None:
+    day_start_ms = 2 * DAY_MS
+    opportunity_ms = day_start_ms + 200_000
+    cross_day = _trade(
+        suffix="cross-day-exact",
+        direction=Direction.SHORT,
+        opened_at_ms=day_start_ms - 10_000,
+        pnl="-119",
+    )
+    funding = FundingAccrual(
+        market=cross_day.market,
+        boundary_ms=day_start_ms,
+        position_id="position-cross-day-exact",
+        signed_quantity=Decimal("-1"),
+        oracle_price=Decimal("100"),
+        funding_rate=Decimal("-0.01"),
+        cash_delta=Decimal("-1"),
+        oracle_event_key="oracle-cross-day-exact",
+        funding_source="fixture",
+        funding_received_at_ms=day_start_ms,
+    )
+    cross_day = replace(
+        cross_day,
+        funding_event_ids=(funding.accrual_id,),
+        funding_cash_pnl=Decimal("-1"),
+        net_pnl=Decimal("-120"),
+        net_r=Decimal("-12"),
+        equity_after=Decimal("9880"),
+    )
+    exit_fill = PaperFill(
+        plan_id=cross_day.exit_plan_ids[0],
+        attempt_id=cross_day.exit_attempt_ids[0],
+        market=cross_day.market,
+        side=OrderSide.BUY,
+        price=cross_day.exit_price,
+        quantity=cross_day.filled_quantity,
+        notional=cross_day.exit_price * cross_day.filled_quantity,
+        taker_fee=Decimal("0"),
+        source_event_key="exit-book-cross-day-exact",
+        timestamp_ms=cross_day.closed_at_ms,
+    )
+    cross_day = replace(
+        cross_day,
+        fill_ids=(cross_day.fill_ids[0], exit_fill.fill_id),
+    )
+    opportunity = _opportunity(
+        timestamp_ms=opportunity_ms,
+        daily_realized_pnl="-120",
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    try:
+        facts.record_decision_fact(
+            _fact(cross_day, lead_strategy="breakout")
+        )
+        ranks.record(_rank(cross_day, ordinal=15))
+        result = prospective_daily_loss_lockout_reflow_summary(
+            (opportunity,),
+            (cross_day,),
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(started_at_ms=0),
+            exit_fill_loader=lambda plan_id: (
+                (exit_fill,)
+                if plan_id == cross_day.exit_plan_ids[0]
+                else ()
+            ),
+            funding_loader=lambda market, start_ms: (
+                (funding,)
+                if market == cross_day.market
+                and start_ms <= funding.boundary_ms
+                else ()
+            ),
+        )
+    finally:
+        facts.close()
+
+    assert result["cross_day_closed_trade_instances"] == 1
+    assert result["cross_day_cash_modeled_instances"] == 1
+    assert result["cross_day_cash_model_misses"] == 0
+    assert result["cross_day_cash_model_complete"] is True
+    assert result["cross_day_trade_cash_effects_modeled"] is True
+    assert result["candidate_blocked_cross_day_trade_instances"] == 1
+    assert result["baseline_cash_reconciliation_misses"] == 0
+    assert result["baseline_cash_reconciliation_clean"] is True
+    assert result["exact_cash_scope_opportunities"] == 1
+    assert result["exact_candidate_unlock_opportunities"] == 1
+    assert result["closed_trade_adjusted_unlock_opportunities"] == 1
+    assert result["candidate_daily_realized_pnl_min"] == "0"
+    assert result["removed_blocked_trade_cash_pnl_min"] == "-120"

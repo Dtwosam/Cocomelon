@@ -5069,11 +5069,16 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
             "opportunity_stale_rank_evidence": 0,
             "opportunity_integrity_clean": True,
             "same_day_closed_trade_instances": 8,
-            "cross_day_closed_trade_instances": 0,
+            "cross_day_closed_trade_instances": 2,
+            "cross_day_cash_modeled_instances": 2,
+            "cross_day_cash_model_misses": 0,
+            "cross_day_cash_model_complete": True,
+            "cross_day_trade_cash_effects_modeled": True,
             "open_position_instances": 0,
             "baseline_cash_reconciliation_misses": 0,
             "baseline_cash_reconciliation_clean": True,
             "candidate_blocked_closed_trade_instances": 4,
+            "candidate_blocked_cross_day_trade_instances": 1,
             "distinct_candidate_blocked_trade_ids": 2,
             "trade_decision_attribution_misses": 0,
             "trade_rank_attribution_misses": 0,
@@ -5089,6 +5094,10 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
             "daily_loss_threshold_max": "-100",
             "removed_blocked_trade_net_pnl_min": "-60",
             "removed_blocked_trade_net_pnl_max": "-40",
+            "removed_blocked_trade_cash_pnl_min": "-60",
+            "removed_blocked_trade_cash_pnl_max": "-40",
+            "cross_day_daily_cash_min": "-20",
+            "cross_day_daily_cash_max": "-20",
             "by_removed_trade_block_reason": {"long_trend": 4},
             "error": None,
         }
@@ -5098,8 +5107,13 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
     assert "Candidate daily-loss lockout reflow" in output
     assert "`10 / 2 / 8`" in output
     assert "`2 / 2 / 2`" in output
+    assert "cross-day cash modeled / misses / complete" in output
+    assert "`2 / 0 / true`" in output
+    assert "candidate-blocked cross-day trade instances: `1`" in output
     assert "baseline cash reconciliation misses / clean" in output
     assert "`0 / true`" in output
+    assert "cross-day trade cash effects modeled: `true`" in output
+    assert "cross-day reconstructed daily cash range" in output
     assert "long_trend=4" in output
     assert "authoritative" in output
     assert "open-position cash effects modeled: `false`" in output
