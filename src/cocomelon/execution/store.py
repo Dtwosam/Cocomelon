@@ -515,6 +515,74 @@ class PaperExecutionStore:
             raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
         return plan
 
+    def load_position_at(
+        self,
+        opening_plan_id: str,
+        *,
+        as_of_ms: int,
+    ) -> PaperPosition | None:
+        if not opening_plan_id.strip():
+            raise ValueError("opening_plan_id must not be empty")
+        if as_of_ms < 0:
+            raise ValueError("as_of_ms must be non-negative")
+
+        rows = self._conn.execute(
+            """
+            SELECT event_id, market, payload_json
+            FROM paper_position_events
+            ORDER BY event_id
+            """
+        ).fetchall()
+        candidates: list[PaperPosition] = []
+        for event_id, market, payload_json in rows:
+            try:
+                payload = json.loads(str(payload_json))
+                if not isinstance(payload, dict):
+                    raise ValueError(
+                        "position event payload is not an object"
+                    )
+                position = _position_from_payload(payload)
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise ValueError(
+                    "persisted position event is unreadable"
+                ) from exc
+            if (
+                str(market) != position.market.canonical
+                or not str(event_id).endswith(
+                    f":{position.position_id}"
+                )
+                or _canonical_json(_position_payload(position))
+                != str(payload_json)
+            ):
+                raise ValueError(
+                    "persisted position event lineage mismatch"
+                )
+            if position.opening_plan_id != opening_plan_id:
+                continue
+            if position.updated_at_ms <= as_of_ms:
+                candidates.append(position)
+
+        if not candidates:
+            return None
+        latest_ms = max(
+            position.updated_at_ms for position in candidates
+        )
+        latest = tuple(
+            position
+            for position in candidates
+            if position.updated_at_ms == latest_ms
+        )
+        if len(latest) != 1:
+            raise ValueError(
+                "ambiguous persisted position state at timestamp"
+            )
+        return latest[0]
+
     def load_execution_history(
         self,
         plan_id: str,
