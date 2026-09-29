@@ -4407,17 +4407,33 @@ def _prospective_daily_loss_lockout_reflow_lines(
         [
             f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
             (
-                "- daily-loss lockouts / candidate-eligible / "
+                "- daily-loss lockouts / rule-eligible / "
                 "candidate-blocked: "
                 f"`{raw.get('daily_loss_lockout_opportunities', 0)} / "
-                f"{raw.get('candidate_eligible_lockout_opportunities', 0)} / "
+                f"{raw.get('candidate_rule_eligible_lockout_opportunities', 0)} / "
                 f"{raw.get('candidate_blocked_lockout_opportunities', 0)}`"
+            ),
+            (
+                "- causal eligible after account-day verification: "
+                f"`{raw.get('candidate_eligible_lockout_opportunities', 0)}`"
+            ),
+            (
+                "- account day verified / legacy-unverified / mismatched / "
+                "provenance complete: "
+                f"`{raw.get('account_day_verified_lockout_opportunities', 0)} / "
+                f"{raw.get('account_day_unverified_lockout_opportunities', 0)} / "
+                f"{raw.get('account_day_mismatch_lockout_opportunities', 0)} / "
+                f"{str(bool(raw.get('account_day_provenance_complete'))).lower()}`"
             ),
             (
                 "- opportunity rank missing / stale / integrity clean: "
                 f"`{raw.get('opportunity_missing_rank_evidence', 0)} / "
                 f"{raw.get('opportunity_stale_rank_evidence', 0)} / "
                 f"{str(bool(raw.get('opportunity_integrity_clean'))).lower()}`"
+            ),
+            (
+                "- causal opportunity integrity clean: "
+                f"`{str(bool(raw.get('causal_opportunity_integrity_clean'))).lower()}`"
             ),
             (
                 "- same-day / cross-day closed-trade instances / open positions: "
@@ -4495,9 +4511,12 @@ def _prospective_daily_loss_lockout_reflow_lines(
                 "_The captured daily realized PnL is authoritative. Same-day "
                 "closed trades use journal net cash; cross-day trades reconstruct "
                 "only current-day exit-fill realized PnL, exit fees, and verified "
-                "funding accruals. Exact unlock credit requires complete candidate "
-                "attribution, exact daily-cash reconciliation, and no unmodeled "
-                "open-position cash effects._"
+                "funding accruals. Causal unlock analysis additionally requires the "
+                "captured risk snapshot to prove the correct UTC account-day start; "
+                "legacy or mismatched day state is quarantined rather than inferred. "
+                "Exact unlock credit then requires complete candidate attribution, "
+                "exact daily-cash reconciliation, and no unmodeled open-position "
+                "cash effects._"
             ),
         ]
     )

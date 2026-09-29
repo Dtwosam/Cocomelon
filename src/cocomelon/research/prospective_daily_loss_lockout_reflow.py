@@ -307,6 +307,9 @@ def prospective_daily_loss_lockout_reflow_summary(
         in evidence.baseline_risk_reason_codes
     )
 
+    candidate_rule_eligible: list[
+        ContinuousPaperOpeningOpportunityEvidence
+    ] = []
     candidate_eligible: list[
         ContinuousPaperOpeningOpportunityEvidence
     ] = []
@@ -324,6 +327,23 @@ def prospective_daily_loss_lockout_reflow_summary(
         if _opportunity_block_reason(evidence) is not None:
             opportunity_candidate_blocked += 1
             continue
+        candidate_rule_eligible.append(evidence)
+
+    account_day_verified = 0
+    account_day_unverified = 0
+    account_day_mismatch = 0
+    for evidence in candidate_rule_eligible:
+        account = evidence.risk_request_object.account_state
+        expected_day_start_ms = (
+            evidence.opportunity_timestamp_ms // DAY_MS
+        ) * DAY_MS
+        if account.day_start_ms is None:
+            account_day_unverified += 1
+            continue
+        if account.day_start_ms != expected_day_start_ms:
+            account_day_mismatch += 1
+            continue
+        account_day_verified += 1
         candidate_eligible.append(evidence)
 
     closed_trade_adjusted_unlocks = 0
@@ -347,6 +367,10 @@ def prospective_daily_loss_lockout_reflow_summary(
     threshold_values: list[Decimal] = []
     removed_net_values: list[Decimal] = []
     cross_day_cash_values: list[Decimal] = []
+    candidate_rule_eligible_opportunity_ids = sorted(
+        evidence.opportunity_id
+        for evidence in candidate_rule_eligible
+    )
     candidate_eligible_opportunity_ids: list[str] = []
     closed_trade_adjusted_unlock_opportunity_ids: list[str] = []
     exact_cash_scope_opportunity_ids: list[str] = []
@@ -559,11 +583,30 @@ def prospective_daily_loss_lockout_reflow_summary(
             and funding_loader is not None
         ),
         "daily_loss_lockout_opportunities": len(lockouts),
+        "candidate_rule_eligible_lockout_opportunities": len(
+            candidate_rule_eligible
+        ),
+        "candidate_rule_eligible_opportunity_ids": (
+            candidate_rule_eligible_opportunity_ids
+        ),
         "candidate_eligible_lockout_opportunities": len(
             candidate_eligible
         ),
         "candidate_eligible_opportunity_ids": sorted(
             candidate_eligible_opportunity_ids
+        ),
+        "account_day_verified_lockout_opportunities": (
+            account_day_verified
+        ),
+        "account_day_unverified_lockout_opportunities": (
+            account_day_unverified
+        ),
+        "account_day_mismatch_lockout_opportunities": (
+            account_day_mismatch
+        ),
+        "account_day_provenance_complete": (
+            account_day_unverified == 0
+            and account_day_mismatch == 0
         ),
         "candidate_blocked_lockout_opportunities": (
             opportunity_candidate_blocked
@@ -575,6 +618,11 @@ def prospective_daily_loss_lockout_reflow_summary(
             opportunity_stale_rank
         ),
         "opportunity_integrity_clean": opportunity_integrity_clean,
+        "causal_opportunity_integrity_clean": (
+            opportunity_integrity_clean
+            and account_day_unverified == 0
+            and account_day_mismatch == 0
+        ),
         "same_day_closed_trade_instances": (
             same_day_closed_trade_instances
         ),

@@ -137,25 +137,28 @@ def _risk_request_payload(request: RiskRequest) -> dict[str, object]:
     health = request.health_state
     cost = request.cost_estimate
     liquidity = request.liquidity_state
+    account_state: dict[str, object] = {
+        "equity": str(account.equity),
+        "day_start_equity": str(account.day_start_equity),
+        "daily_realized_pnl": str(account.daily_realized_pnl),
+        "rolling_7d_peak_equity": str(
+            account.rolling_7d_peak_equity
+        ),
+        "available_margin": str(account.available_margin),
+        "gross_open_notional": str(account.gross_open_notional),
+        "consecutive_losses": account.consecutive_losses,
+        "last_closed_trade_ms": account.last_closed_trade_ms,
+        "as_of_ms": account.as_of_ms,
+    }
+    if account.day_start_ms is not None:
+        account_state["day_start_ms"] = account.day_start_ms
     return {
         "strategy_decision": _decision_payload(
             request.strategy_decision
         ),
         "entry_reference_price": str(request.entry_reference_price),
         "correlation_bucket": request.correlation_bucket,
-        "account_state": {
-            "equity": str(account.equity),
-            "day_start_equity": str(account.day_start_equity),
-            "daily_realized_pnl": str(account.daily_realized_pnl),
-            "rolling_7d_peak_equity": str(
-                account.rolling_7d_peak_equity
-            ),
-            "available_margin": str(account.available_margin),
-            "gross_open_notional": str(account.gross_open_notional),
-            "consecutive_losses": account.consecutive_losses,
-            "last_closed_trade_ms": account.last_closed_trade_ms,
-            "as_of_ms": account.as_of_ms,
-        },
+        "account_state": account_state,
         "open_positions": [
             {
                 "market": item.market.canonical,
@@ -309,6 +312,11 @@ def risk_request_from_payload(raw: object) -> RiskRequest:
                 else int(account["last_closed_trade_ms"])
             ),
             as_of_ms=int(account["as_of_ms"]),
+            day_start_ms=(
+                None
+                if account.get("day_start_ms") is None
+                else int(account["day_start_ms"])
+            ),
         ),
         open_positions=tuple(
             OpenPositionRisk(

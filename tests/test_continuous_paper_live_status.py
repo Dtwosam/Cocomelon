@@ -5172,11 +5172,17 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
             "enabled": True,
             "candidate_id": "prospective-top10-no-long-trend-v1",
             "daily_loss_lockout_opportunities": 10,
+            "candidate_rule_eligible_lockout_opportunities": 2,
             "candidate_eligible_lockout_opportunities": 2,
             "candidate_blocked_lockout_opportunities": 8,
+            "account_day_verified_lockout_opportunities": 2,
+            "account_day_unverified_lockout_opportunities": 0,
+            "account_day_mismatch_lockout_opportunities": 0,
+            "account_day_provenance_complete": True,
             "opportunity_missing_rank_evidence": 0,
             "opportunity_stale_rank_evidence": 0,
             "opportunity_integrity_clean": True,
+            "causal_opportunity_integrity_clean": True,
             "same_day_closed_trade_instances": 8,
             "cross_day_closed_trade_instances": 2,
             "cross_day_cash_modeled_instances": 2,
@@ -5215,6 +5221,9 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
 
     assert "Candidate daily-loss lockout reflow" in output
     assert "`10 / 2 / 8`" in output
+    assert "causal eligible after account-day verification: `2`" in output
+    assert "`2 / 0 / 0 / true`" in output
+    assert "causal opportunity integrity clean: `true`" in output
     assert "`2 / 2 / 2`" in output
     assert "cross-day cash modeled / misses / complete" in output
     assert "`2 / 0 / true`" in output

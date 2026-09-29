@@ -111,6 +111,7 @@ class RiskAccountState:
     consecutive_losses: int
     last_closed_trade_ms: int | None
     as_of_ms: int
+    day_start_ms: int | None = None
 
     def __post_init__(self) -> None:
         _require_positive(self.equity, "equity")
@@ -127,22 +128,28 @@ class RiskAccountState:
             raise ValueError("last_closed_trade_ms must be non-negative")
         if self.as_of_ms < 0:
             raise ValueError("as_of_ms must be non-negative")
+        if self.day_start_ms is not None:
+            if self.day_start_ms < 0:
+                raise ValueError("day_start_ms must be non-negative")
+            if self.day_start_ms > self.as_of_ms:
+                raise ValueError("day_start_ms must not follow as_of_ms")
 
     @property
     def state_id(self) -> str:
-        return _digest(
-            {
-                "equity": str(self.equity),
-                "day_start_equity": str(self.day_start_equity),
-                "daily_realized_pnl": str(self.daily_realized_pnl),
-                "rolling_7d_peak_equity": str(self.rolling_7d_peak_equity),
-                "available_margin": str(self.available_margin),
-                "gross_open_notional": str(self.gross_open_notional),
-                "consecutive_losses": self.consecutive_losses,
-                "last_closed_trade_ms": self.last_closed_trade_ms,
-                "as_of_ms": self.as_of_ms,
-            }
-        )
+        payload: dict[str, object] = {
+            "equity": str(self.equity),
+            "day_start_equity": str(self.day_start_equity),
+            "daily_realized_pnl": str(self.daily_realized_pnl),
+            "rolling_7d_peak_equity": str(self.rolling_7d_peak_equity),
+            "available_margin": str(self.available_margin),
+            "gross_open_notional": str(self.gross_open_notional),
+            "consecutive_losses": self.consecutive_losses,
+            "last_closed_trade_ms": self.last_closed_trade_ms,
+            "as_of_ms": self.as_of_ms,
+        }
+        if self.day_start_ms is not None:
+            payload["day_start_ms"] = self.day_start_ms
+        return _digest(payload)
 
 
 @dataclass(frozen=True, slots=True)

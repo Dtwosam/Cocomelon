@@ -48,6 +48,8 @@ def _opportunity(
     timestamp_ms: int,
     daily_realized_pnl: str,
     open_positions=(),
+    include_day_start_ms: bool = True,
+    account_day_start_ms: int | None = None,
 ) -> ContinuousPaperOpeningOpportunityEvidence:
     decision = StrategyDecision(
         market=_market("XRP"),
@@ -74,6 +76,14 @@ def _opportunity(
             consecutive_losses=2,
             last_closed_trade_ms=timestamp_ms - 1_000,
             as_of_ms=timestamp_ms,
+            day_start_ms=(
+                (
+                    timestamp_ms // DAY_MS
+                ) * DAY_MS
+                if include_day_start_ms
+                and account_day_start_ms is None
+                else account_day_start_ms
+            ),
         ),
         open_positions=tuple(open_positions),
         health_state=RiskHealthState(
@@ -163,7 +173,13 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
         facts.close()
 
     assert result["daily_loss_lockout_opportunities"] == 1
+    assert result["candidate_rule_eligible_lockout_opportunities"] == 1
     assert result["candidate_eligible_lockout_opportunities"] == 1
+    assert result["account_day_verified_lockout_opportunities"] == 1
+    assert result["account_day_unverified_lockout_opportunities"] == 0
+    assert result["account_day_mismatch_lockout_opportunities"] == 0
+    assert result["account_day_provenance_complete"] is True
+    assert result["causal_opportunity_integrity_clean"] is True
     assert result["exact_cash_scope_opportunities"] == 1
     assert result["baseline_cash_reconciliation_misses"] == 0
     assert result["baseline_cash_reconciliation_clean"] is True
@@ -203,6 +219,72 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
     assert result["cross_day_trade_cash_effects_modeled"] is False
     assert result["replacement_trades_modeled"] is False
     assert result["pnl_modeled"] is False
+
+
+def test_daily_loss_reflow_quarantines_legacy_missing_account_day(
+    tmp_path,
+) -> None:
+    opportunity = _opportunity(
+        timestamp_ms=DAY_MS + 200_000,
+        daily_realized_pnl="-120",
+        include_day_start_ms=False,
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    try:
+        result = prospective_daily_loss_lockout_reflow_summary(
+            (opportunity,),
+            (),
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(started_at_ms=0),
+        )
+    finally:
+        facts.close()
+
+    assert result["daily_loss_lockout_opportunities"] == 1
+    assert result["candidate_rule_eligible_lockout_opportunities"] == 1
+    assert result["candidate_eligible_lockout_opportunities"] == 0
+    assert result["account_day_verified_lockout_opportunities"] == 0
+    assert result["account_day_unverified_lockout_opportunities"] == 1
+    assert result["account_day_mismatch_lockout_opportunities"] == 0
+    assert result["account_day_provenance_complete"] is False
+    assert result["causal_opportunity_integrity_clean"] is False
+    assert result["closed_trade_adjusted_unlock_opportunities"] == 0
+    assert result["exact_cash_scope_opportunities"] == 0
+    assert result["exact_candidate_unlock_opportunities"] == 0
+
+
+def test_daily_loss_reflow_quarantines_mismatched_account_day(
+    tmp_path,
+) -> None:
+    opportunity_ms = 2 * DAY_MS + 200_000
+    opportunity = _opportunity(
+        timestamp_ms=opportunity_ms,
+        daily_realized_pnl="-120",
+        account_day_start_ms=DAY_MS,
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    try:
+        result = prospective_daily_loss_lockout_reflow_summary(
+            (opportunity,),
+            (),
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(started_at_ms=0),
+        )
+    finally:
+        facts.close()
+
+    assert result["candidate_rule_eligible_lockout_opportunities"] == 1
+    assert result["candidate_eligible_lockout_opportunities"] == 0
+    assert result["account_day_verified_lockout_opportunities"] == 0
+    assert result["account_day_unverified_lockout_opportunities"] == 0
+    assert result["account_day_mismatch_lockout_opportunities"] == 1
+    assert result["account_day_provenance_complete"] is False
+    assert result["causal_opportunity_integrity_clean"] is False
+    assert result["exact_candidate_unlock_opportunities"] == 0
 
 
 def test_daily_loss_reflow_marks_cross_day_and_open_cash_scope_incomplete(
