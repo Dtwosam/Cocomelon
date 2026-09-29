@@ -5610,6 +5610,9 @@ async def run_continuous_paper_session(
                     )
 
         await refresh_funding()
+        await capture_due_replacement_funding(
+            now_ms=utc_now_ms()
+        )
 
         def persist_checkpoint() -> None:
             checkpoint_timestamp_ms = utc_now_ms()
@@ -5807,6 +5810,9 @@ async def run_continuous_paper_session(
             return tuple(supervisors), tuple(tasks)
 
         _supervisors, supervisor_tasks = await start_supervisors(selected)
+        replacement_funding_oracle_task = asyncio.create_task(
+            capture_replacement_funding_oracles()
+        )
         deadline_ms = started_at_ms + config.duration_seconds * 1000
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
@@ -5854,6 +5860,9 @@ async def run_continuous_paper_session(
                     observed_at_ms=rank_observed_at_ms,
                 )
                 await refresh_funding()
+                await capture_due_replacement_funding(
+                    now_ms=utc_now_ms()
+                )
 
                 if now_ms >= next_selection_refresh_ms:
                     pinned = tuple(
@@ -5996,9 +6005,14 @@ async def run_continuous_paper_session(
                     if exc is not None:
                         raise exc
         finally:
+            replacement_funding_oracle_task.cancel()
             for task in supervisor_tasks:
                 task.cancel()
-            await asyncio.gather(*supervisor_tasks, return_exceptions=True)
+            await asyncio.gather(
+                *supervisor_tasks,
+                replacement_funding_oracle_task,
+                return_exceptions=True,
+            )
 
         persist_checkpoint()
         ended_at_ms = utc_now_ms()
