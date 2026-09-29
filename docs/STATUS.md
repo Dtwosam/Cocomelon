@@ -2482,3 +2482,14 @@ The capture protocol is durable and explicitly non-retroactive. An opportunity c
 This evidence is a prerequisite for executable replacement-exit research. The next replay layer can use the captured book to simulate a reduce-only exit against real spread and visible depth instead of treating a mark price as a fill. Historical horizons that were not captured remain missing. No replacement exit, realized replacement PnL, promotion authority, or live order is created by this capture layer.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Replacement fixed-horizon L2 exit fills — 2026-09-29
+
+The candidate-caused replacement study now takes the next step beyond mark-to-market endpoints: when a real exit-horizon L2 book has been prospectively captured, it reconstructs the exact simulated replacement entry as a paper position and runs the production reduce-only planner plus IOC depth simulator against that captured exit book.
+
+The replay preserves the replacement opening plan/risk/strategy lineage, entry fill quantity and fees, correlation bucket, venue leverage, and the exact paper execution config used for the entry. At each 5-minute, 15-minute, 1-hour, or 6-hour horizon it uses the executable top-of-book side as the exit reference, applies the normal 250ms paper latency and 25 bps IOC envelope, consumes only visible depth, and reports full/partial/no-fill/rejected outcomes, exit fees, fee-adjusted realized PnL on the quantity actually closed, and any unclosed residual.
+
+Funding remains deliberately unmodeled in this layer, so the reported entry/exit fee-adjusted economics are not yet a complete replacement-trade realized PnL claim. Missing exit books remain missing and are never synthesized or backfilled. This remains research-only and cannot authorize execution or promotion.
+
+**LIVE TRADING: DISABLED.**
