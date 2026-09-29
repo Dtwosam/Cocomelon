@@ -2535,3 +2535,16 @@ For every fully closed replacement option-horizon, the evaluator preserves the e
 The evaluator fails closed: missing funding evidence leaves that option-horizon incomplete, duplicate funding evidence is rejected, alternative exit horizons remain economically separate, and no missing hour is estimated or backfilled. This produces exact option-horizon realized PnL only; it is not yet a complete portfolio counterfactual or strategy-level PnL claim and grants no promotion or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective 5-minute replacement exit candidate — 2026-09-29
+
+The replacement-trade research pipeline now freezes a single five-minute exit policy for prospective validation: `prospective-replacement-5m-real-l2-exit-v1`.
+
+The five-minute horizon was nominated only from the pre-freeze discovery cohort, where the candidate-caused replacement markouts decayed materially between five minutes and one hour. That discovery cohort is explicitly excluded from this candidate's validation results. The durable state records its own start timestamp, survives paper-worker rotations, and only admits replacement opportunities observed at or after that freeze.
+
+For admitted future opportunities, the policy uses the existing candidate-caused replacement entry simulation, the real captured L2 book at the fixed five-minute horizon, the normal reduce-only IOC execution model, and exact captured hourly funding evidence when a funding boundary is crossed. It reports only exact fully closed option-level realized PnL. Missing exit books, incomplete closes, or missing funding evidence remain incomplete rather than estimated.
+
+Alternative horizons remain descriptive research and cannot be selected after outcomes are observed. This candidate has no strategy-level PnL claim, no promotion authority, and no execution authority.
+
+**LIVE TRADING: DISABLED.**
