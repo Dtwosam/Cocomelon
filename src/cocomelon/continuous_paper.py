@@ -23,7 +23,12 @@ from cocomelon.domain.execution import (
     PositionActionType,
 )
 from cocomelon.domain.journal import JournalObservation, TradeJournalEntry
-from cocomelon.domain.market import Candle, MarketId, PerpMarketSnapshot
+from cocomelon.domain.market import (
+    Candle,
+    FundingRate,
+    MarketId,
+    PerpMarketSnapshot,
+)
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent
@@ -46,7 +51,10 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.execution.accounting import PaperPosition
-from cocomelon.execution.funding import FundingAccrual
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    funding_boundary_for_record_time,
+)
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
 from cocomelon.hyperliquid.normalize import (
@@ -110,6 +118,10 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
     LatestCoarseRankTracker,
     opening_rank_attribution,
+)
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ContinuousPaperReplacementFundingStore,
+    ReplacementFundingBoundaryRequest,
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -444,15 +456,18 @@ class _ContinuousOpeningOpportunitySink:
         store: ContinuousPaperOpeningOpportunityStore,
         path_store: ContinuousPaperOpeningOpportunityPathStore,
         exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
+        replacement_funding_store: ContinuousPaperReplacementFundingStore,
         rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
         self._path_store = path_store
         self._exit_book_store = exit_book_store
+        self._replacement_funding_store = replacement_funding_store
         self._rank_tracker = rank_tracker
         self.error: str | None = None
         self.path_error: str | None = None
         self.exit_book_error: str | None = None
+        self.funding_error: str | None = None
 
     def record_opening_trace(
         self,
@@ -495,24 +510,33 @@ class _ContinuousOpeningOpportunitySink:
             if self.exit_book_error is None:
                 self.exit_book_error = f"{type(exc).__name__}: {exc}"
 
+        try:
+            self._replacement_funding_store.register(
+                opportunity_id=evidence.opportunity_id,
+                market=evidence.market,
+                opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
+            )
+        except Exception as exc:
+            if self.funding_error is None:
+                self.funding_error = f"{type(exc).__name__}: {exc}"
+
     def observe_snapshots(
         self,
         snapshots: dict[str, PerpMarketSnapshot],
     ) -> None:
         for snapshot in snapshots.values():
             mark_px = snapshot.context.mark_px
-            if mark_px is None:
-                continue
-            try:
-                self._path_store.observe(
-                    market=snapshot.meta.market.canonical,
-                    observed_at_ms=snapshot.received_at_ms,
-                    mark_px=mark_px,
-                    source=snapshot.source,
-                )
-            except Exception as exc:
-                if self.path_error is None:
-                    self.path_error = f"{type(exc).__name__}: {exc}"
+            if mark_px is not None:
+                try:
+                    self._path_store.observe(
+                        market=snapshot.meta.market.canonical,
+                        observed_at_ms=snapshot.received_at_ms,
+                        mark_px=mark_px,
+                        source=snapshot.source,
+                    )
+                except Exception as exc:
+                    if self.path_error is None:
+                        self.path_error = f"{type(exc).__name__}: {exc}"
 
 
 class _CompositeOpeningResearchObserver:
@@ -1185,6 +1209,14 @@ class ContinuousPaperSummary:
     opening_opportunity_exit_book_missed_count: int = 0
     opening_opportunity_exit_book_state_digest: str = ""
     opening_opportunity_exit_book_capture_error: str | None = None
+    replacement_funding_registration_count: int = 0
+    replacement_funding_required_boundary_count: int = 0
+    replacement_funding_oracle_candidate_count: int = 0
+    replacement_funding_capture_count: int = 0
+    replacement_funding_pending_count: int = 0
+    replacement_funding_missed_count: int = 0
+    replacement_funding_state_digest: str = ""
+    replacement_funding_capture_error: str | None = None
     network_access: bool = True
     live_orders: bool = False
 
@@ -1265,6 +1297,30 @@ class ContinuousPaperSummary:
             ),
             "opening_opportunity_exit_book_capture_error": (
                 self.opening_opportunity_exit_book_capture_error
+            ),
+            "replacement_funding_registration_count": (
+                self.replacement_funding_registration_count
+            ),
+            "replacement_funding_required_boundary_count": (
+                self.replacement_funding_required_boundary_count
+            ),
+            "replacement_funding_oracle_candidate_count": (
+                self.replacement_funding_oracle_candidate_count
+            ),
+            "replacement_funding_capture_count": (
+                self.replacement_funding_capture_count
+            ),
+            "replacement_funding_pending_count": (
+                self.replacement_funding_pending_count
+            ),
+            "replacement_funding_missed_count": (
+                self.replacement_funding_missed_count
+            ),
+            "replacement_funding_state_digest": (
+                self.replacement_funding_state_digest
+            ),
+            "replacement_funding_capture_error": (
+                self.replacement_funding_capture_error
             ),
             "network_access": self.network_access,
             "live_orders": self.live_orders,
@@ -4045,6 +4101,7 @@ def _live_status_payload(
     opening_opportunity_exit_book_store: (
         ContinuousPaperOpeningOpportunityExitBookStore
     ),
+    replacement_funding_store: ContinuousPaperReplacementFundingStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4068,6 +4125,7 @@ def _live_status_payload(
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
     opening_opportunity_exit_book_capture_error: str | None,
+    replacement_funding_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4815,6 +4873,44 @@ def _live_status_payload(
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
         },
+        "replacement_funding_evidence": {
+            "enabled": replacement_funding_capture_error is None,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "prospective_replacement_hourly_funding_boundary_capture"
+            ),
+            "capture_started_at_ms": (
+                replacement_funding_store.capture_started_at_ms
+            ),
+            "registered_opportunities": (
+                replacement_funding_store.registration_count
+            ),
+            "required_boundaries": (
+                replacement_funding_store.required_boundary_count
+            ),
+            "oracle_candidates": (
+                replacement_funding_store.oracle_candidate_count
+            ),
+            "captured_boundaries": replacement_funding_store.record_count,
+            "pending_boundaries": replacement_funding_store.pending_count(
+                now_ms=timestamp_ms
+            ),
+            "missed_boundaries": replacement_funding_store.missed_count(
+                now_ms=timestamp_ms
+            ),
+            "max_window_ms": replacement_funding_store.max_window_ms,
+            "max_oracle_age_ms": (
+                replacement_funding_store.max_oracle_age_ms
+            ),
+            "max_funding_capture_lag_ms": (
+                replacement_funding_store.max_funding_capture_lag_ms
+            ),
+            "state_digest": replacement_funding_store.state_digest,
+            "capture_error": replacement_funding_capture_error,
+            "funding_pnl_modeled": False,
+        },
     }
 
 
@@ -4835,6 +4931,7 @@ def _emit_live_status(
     opening_opportunity_exit_book_store: (
         ContinuousPaperOpeningOpportunityExitBookStore
     ),
+    replacement_funding_store: ContinuousPaperReplacementFundingStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4858,6 +4955,7 @@ def _emit_live_status(
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
     opening_opportunity_exit_book_capture_error: str | None,
+    replacement_funding_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4885,6 +4983,7 @@ def _emit_live_status(
         opening_opportunity_store,
         opening_opportunity_path_store,
         opening_opportunity_exit_book_store,
+        replacement_funding_store,
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
@@ -4912,6 +5011,9 @@ def _emit_live_status(
         ),
         opening_opportunity_exit_book_capture_error=(
             opening_opportunity_exit_book_capture_error
+        ),
+        replacement_funding_capture_error=(
+            replacement_funding_capture_error
         ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
@@ -5037,9 +5139,10 @@ async def run_continuous_paper_session(
     checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
 
     reader = InfoClient(settings)
+    replay_config = BaselineReplayConfig()
     execution = PaperExecutionAdapter(
         root / "paper.sqlite3",
-        BaselineReplayConfig().execution,
+        replay_config.execution,
         starting_cash=Decimal("10000"),
         startup_timestamp_ms=started_at_ms,
     )
@@ -5078,6 +5181,21 @@ async def run_continuous_paper_session(
             max_capture_lag_ms=MAX_FORWARD_MARKOUT_LAG_MS,
         )
     )
+    replacement_funding_store = ContinuousPaperReplacementFundingStore(
+        root / "replacement-funding-boundaries",
+        capture_started_at_ms=started_at_ms,
+        max_window_ms=(
+            max(DEFAULT_FORWARD_MARKOUT_HORIZONS_MS)
+            + MAX_FORWARD_MARKOUT_LAG_MS
+            + replay_config.execution.latency_ms
+        ),
+        max_oracle_age_ms=(
+            replay_config.execution.max_asset_ctx_age_ms
+        ),
+        max_funding_capture_lag_ms=(
+            replay_config.execution.funding_reconciliation_grace_ms
+        ),
+    )
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
@@ -5087,11 +5205,11 @@ async def run_continuous_paper_session(
         opening_opportunity_store,
         opening_opportunity_path_store,
         opening_opportunity_exit_book_store,
+        replacement_funding_store,
         rank_tracker,
     )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
-    replay_config = BaselineReplayConfig()
 
     async def capture_due_exit_books(
         snapshots: dict[str, PerpMarketSnapshot],
@@ -5147,6 +5265,145 @@ async def run_continuous_paper_session(
                 if cycle_error is None:
                     cycle_error = f"{type(exc).__name__}: {exc}"
         opening_opportunity_sink.exit_book_error = cycle_error
+
+    async def capture_due_replacement_funding(
+        *,
+        now_ms: int,
+    ) -> None:
+        requests = replacement_funding_store.due_requests(
+            now_ms=now_ms
+        )
+        if not requests:
+            return
+        by_market: dict[
+            str,
+            list[ReplacementFundingBoundaryRequest],
+        ] = {}
+        for request in requests:
+            by_market.setdefault(request.market, []).append(request)
+        cycle_error: str | None = None
+        for market_key, market_requests in sorted(by_market.items()):
+            try:
+                market = _market_from_canonical(market_key)
+                first_boundary = min(
+                    int(request.boundary_ms)
+                    for request in market_requests
+                )
+                raw = await asyncio.to_thread(
+                    reader.funding_history,
+                    market,
+                    start_ms=max(0, first_boundary - 1_000),
+                    end_ms=now_ms,
+                )
+                received_at_ms = utc_now_ms()
+                rates = normalize_funding_history(
+                    market,
+                    raw,
+                    received_at_ms=received_at_ms,
+                )
+                by_boundary: dict[int, FundingRate] = {}
+                for rate in rates:
+                    boundary_ms = funding_boundary_for_record_time(
+                        rate.time_ms
+                    )
+                    if boundary_ms is None:
+                        continue
+                    existing = by_boundary.get(boundary_ms)
+                    if existing is not None and existing != rate:
+                        raise RuntimeError(
+                            "conflicting funding rates for boundary "
+                            f"{market_key}:{boundary_ms}"
+                        )
+                    by_boundary[boundary_ms] = rate
+                for request in market_requests:
+                    matched_rate = by_boundary.get(
+                        request.boundary_ms
+                    )
+                    if matched_rate is None:
+                        continue
+                    replacement_funding_store.capture(
+                        request,
+                        matched_rate,
+                    )
+            except Exception as exc:
+                if cycle_error is None:
+                    cycle_error = f"{type(exc).__name__}: {exc}"
+        if (
+            cycle_error is not None
+            and opening_opportunity_sink.funding_error is None
+        ):
+            opening_opportunity_sink.funding_error = cycle_error
+
+    async def capture_replacement_funding_oracles() -> None:
+        while True:
+            now_ms = utc_now_ms()
+            future_boundaries = tuple(
+                request.boundary_ms
+                for request in replacement_funding_store.required_boundaries()
+                if request.boundary_ms >= now_ms
+                and replacement_funding_store.markets_for_boundary(
+                    request.boundary_ms
+                )
+            )
+            if not future_boundaries:
+                await asyncio.sleep(5.0)
+                continue
+            boundary_ms = min(future_boundaries)
+            capture_window_ms = (
+                boundary_ms
+                - replacement_funding_store.max_oracle_age_ms
+            )
+            if now_ms < capture_window_ms:
+                await asyncio.sleep(
+                    min(
+                        5.0,
+                        max(
+                            0.05,
+                            (capture_window_ms - now_ms) / 1_000,
+                        ),
+                    )
+                )
+                continue
+            while utc_now_ms() <= boundary_ms:
+                markets = replacement_funding_store.markets_for_boundary(
+                    boundary_ms
+                )
+                if not markets:
+                    break
+                try:
+                    raw = await asyncio.to_thread(
+                        reader.meta_and_asset_ctxs,
+                        "",
+                    )
+                    received_at_ms = utc_now_ms()
+                    snapshots = normalize_meta_and_asset_ctxs(
+                        "",
+                        raw,
+                        received_at_ms=received_at_ms,
+                    )
+                    by_market = {
+                        snapshot.meta.market.canonical: snapshot
+                        for snapshot in snapshots
+                    }
+                    for market_key in markets:
+                        snapshot = by_market.get(market_key)
+                        if snapshot is not None:
+                            replacement_funding_store.observe_snapshot(
+                                snapshot
+                            )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if opening_opportunity_sink.funding_error is None:
+                        opening_opportunity_sink.funding_error = (
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                remaining_ms = boundary_ms - utc_now_ms()
+                if remaining_ms <= 0:
+                    break
+                await asyncio.sleep(
+                    min(1.0, max(0.05, remaining_ms / 1_000))
+                )
 
     original_stop_book_capture = OriginalStopBookCapture(
         original_stop_book_store,
@@ -5386,6 +5643,9 @@ async def run_continuous_paper_session(
                     )
 
         await refresh_funding()
+        await capture_due_replacement_funding(
+            now_ms=utc_now_ms()
+        )
 
         def persist_checkpoint() -> None:
             checkpoint_timestamp_ms = utc_now_ms()
@@ -5478,6 +5738,7 @@ async def run_continuous_paper_session(
             opening_opportunity_store,
             opening_opportunity_path_store,
             opening_opportunity_exit_book_store,
+            replacement_funding_store,
             original_stop_book_store,
             original_stop_book_capture,
             profit_lock_execution_shadow,
@@ -5509,6 +5770,9 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_exit_book_capture_error=(
                 opening_opportunity_sink.exit_book_error
+            ),
+            replacement_funding_capture_error=(
+                opening_opportunity_sink.funding_error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -5579,6 +5843,9 @@ async def run_continuous_paper_session(
             return tuple(supervisors), tuple(tasks)
 
         _supervisors, supervisor_tasks = await start_supervisors(selected)
+        replacement_funding_oracle_task = asyncio.create_task(
+            capture_replacement_funding_oracles()
+        )
         deadline_ms = started_at_ms + config.duration_seconds * 1000
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
@@ -5626,6 +5893,9 @@ async def run_continuous_paper_session(
                     observed_at_ms=rank_observed_at_ms,
                 )
                 await refresh_funding()
+                await capture_due_replacement_funding(
+                    now_ms=utc_now_ms()
+                )
 
                 if now_ms >= next_selection_refresh_ms:
                     pinned = tuple(
@@ -5687,6 +5957,7 @@ async def run_continuous_paper_session(
                     opening_opportunity_store,
                     opening_opportunity_path_store,
                     opening_opportunity_exit_book_store,
+                    replacement_funding_store,
                     original_stop_book_store,
                     original_stop_book_capture,
                     profit_lock_execution_shadow,
@@ -5718,6 +5989,9 @@ async def run_continuous_paper_session(
                     ),
                     opening_opportunity_exit_book_capture_error=(
                         opening_opportunity_sink.exit_book_error
+                    ),
+                    replacement_funding_capture_error=(
+                        opening_opportunity_sink.funding_error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
@@ -5764,9 +6038,14 @@ async def run_continuous_paper_session(
                     if exc is not None:
                         raise exc
         finally:
+            replacement_funding_oracle_task.cancel()
             for task in supervisor_tasks:
                 task.cancel()
-            await asyncio.gather(*supervisor_tasks, return_exceptions=True)
+            await asyncio.gather(
+                *supervisor_tasks,
+                replacement_funding_oracle_task,
+                return_exceptions=True,
+            )
 
         persist_checkpoint()
         ended_at_ms = utc_now_ms()
@@ -5851,6 +6130,34 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_exit_book_capture_error=(
                 opening_opportunity_sink.exit_book_error
+            ),
+            replacement_funding_registration_count=(
+                replacement_funding_store.registration_count
+            ),
+            replacement_funding_required_boundary_count=(
+                replacement_funding_store.required_boundary_count
+            ),
+            replacement_funding_oracle_candidate_count=(
+                replacement_funding_store.oracle_candidate_count
+            ),
+            replacement_funding_capture_count=(
+                replacement_funding_store.record_count
+            ),
+            replacement_funding_pending_count=(
+                replacement_funding_store.pending_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            replacement_funding_missed_count=(
+                replacement_funding_store.missed_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            replacement_funding_state_digest=(
+                replacement_funding_store.state_digest
+            ),
+            replacement_funding_capture_error=(
+                opening_opportunity_sink.funding_error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,

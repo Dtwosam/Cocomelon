@@ -2513,3 +2513,14 @@ An option-horizon receives exact realized-PnL credit only when the real-L2 reduc
 Alternative 5-minute, 15-minute, 1-hour, and 6-hour exit policies remain economically separate and are never summed into a synthetic strategy PnL. This layer reports exact option-horizon PnL only; it does not claim a complete portfolio counterfactual, strategy-level realized PnL, promotion authority, or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective replacement funding-boundary evidence — 2026-09-29
+
+Replacement-entry and fixed-horizon exit replay can now collect the exact market inputs needed to price hourly funding for hypothetical replacement positions without weakening the paper execution freshness rules.
+
+Every newly observed opening opportunity is registered prospectively for hourly funding boundaries through the longest replacement-exit window. Near each required hour, a dedicated collector polls the native market registry and retains only real oracle observations received at or before the boundary and within the same maximum asset-context age used by paper execution. After the boundary, the runtime fetches public funding history, requires the rate to canonicalize to that exact hour, and persists the oracle/rate pair with source, receipt timestamps, freshness, protocol start, and a durable state digest. Missing windows are counted as missed rather than backfilled.
+
+This layer is evidence capture only. It does not yet add funding cash to replacement PnL, aggregate alternative exit horizons, alter the frozen candidate, change risk decisions, or grant promotion/execution authority. A follow-on evaluator can consume only complete captured boundary evidence and use the same authoritative funding-cash formula as paper execution.
+
+**LIVE TRADING: DISABLED.**
