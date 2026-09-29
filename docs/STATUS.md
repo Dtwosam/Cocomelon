@@ -2592,3 +2592,14 @@ This was added after the exact paper state reached roughly 8.84 GB uncompressed.
 The next lossless compaction step will be based on this measured breakdown rather than deleting or sampling evidence speculatively. No strategy, risk, paper-accounting, or execution behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Streamed packed-state restore — 2026-09-29
+
+Packed continuous-paper artifacts are now restored without materializing both the artifact ZIP and the packed tar on the runner. For predecessor commits whose own workflow used the packed-state format, the restore path streams the trusted artifact through `funzip` directly into `tar` extraction under the state root.
+
+The previous restore path could temporarily hold the roughly 8.84 GB artifact ZIP, another roughly 8.84 GB extracted tar, and the restored state at the same time. That multiplied peak disk usage during worker handoffs and could stall recovery before the trader restarted. Legacy multi-file artifacts remain supported through the existing unzip/copy path; packed-vs-legacy format is determined from the trusted predecessor commit's workflow rather than guessed from artifact size.
+
+The streamed restore is transport-only. It preserves the exact predecessor state, does not prune evidence, and does not change strategy, risk, accounting, execution authority, or live-order behavior.
+
+**LIVE TRADING: DISABLED.**
