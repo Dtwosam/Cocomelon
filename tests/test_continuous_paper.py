@@ -383,6 +383,16 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'root / "opening-opportunity-paths"' in source
     assert "ContinuousPaperOpeningOpportunityExitBookStore(" in source
     assert 'root / "opening-opportunity-exit-books"' in source
+    assert "ContinuousPaperReplacementFundingStore(" in source
+    assert 'root / "replacement-funding-boundaries"' in source
+    assert "capture_replacement_funding_oracles()" in source
+    assert "reader.meta_and_asset_ctxs" in source
+    assert "capture_due_replacement_funding(" in source
+    assert "reader.funding_history" in source
+    assert "funding_boundary_for_record_time(" in source
+    assert '"replacement_funding_evidence": {' in source
+    assert '"required_boundaries": (' in source
+    assert '"captured_boundaries": replacement_funding_store.record_count' in source
     assert "opening_opportunity_sink.observe_snapshots(" in source
     assert "capture_due_exit_books(" in source
     assert "reader.l2_book" in source
