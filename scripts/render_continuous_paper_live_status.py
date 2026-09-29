@@ -4073,6 +4073,95 @@ def _prospective_capacity_reflow_opportunity_lines(
     return lines
 
 
+def _prospective_capacity_reflow_release_lineage_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-filtered capacity release lineage",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No candidate-filtered release-lineage telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- release options / resolved: "
+                f"`{raw.get('release_options', 0)} / "
+                f"{raw.get('resolved_release_options', 0)}`"
+            ),
+            (
+                "- resolved opportunities / candidate-caused capacity "
+                "release opportunities: "
+                f"`{raw.get('resolved_opportunities', 0)} / "
+                f"{raw.get('candidate_capacity_release_opportunities', 0)}`"
+            ),
+            (
+                "- candidate-blocked / candidate-allowed release options: "
+                f"`{raw.get('candidate_blocked_release_options', 0)} / "
+                f"{raw.get('candidate_allowed_release_options', 0)}`"
+            ),
+            (
+                "- lineage / plan / decision / rank / stale-rank misses: "
+                f"`{raw.get('release_lineage_misses', 0)} / "
+                f"{raw.get('release_plan_misses', 0)} / "
+                f"{raw.get('release_decision_misses', 0)} / "
+                f"{raw.get('release_rank_misses', 0)} / "
+                f"{raw.get('release_stale_ranks', 0)}`"
+            ),
+            (
+                "- integrity clean: "
+                f"`{str(bool(raw.get('integrity_clean'))).lower()}`"
+            ),
+            (
+                "- release-position candidate block reasons: "
+                f"`{counts(raw.get('by_release_position_block_reason'))}`"
+            ),
+            (
+                "- candidate-blocked release markets: "
+                f"`{counts(raw.get('by_candidate_blocked_release_market'))}`"
+            ),
+            (
+                "- replacement trades / PnL modeled: "
+                f"`{str(bool(raw.get('replacement_trades_modeled'))).lower()} / "
+                f"{str(bool(raw.get('pnl_modeled'))).lower()}`"
+            ),
+            "",
+            (
+                "_This joins each capacity-release option back to the exact "
+                "historical opening plan, decision fact, and opening scanner rank. "
+                "A candidate-caused capacity release therefore requires a real "
+                "capacity-consuming position that the frozen rule itself would "
+                "have blocked. Replacement fill, exit, and PnL are still not "
+                "modeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _opening_opportunity_evidence_lines(
     raw: object,
 ) -> list[str]:
@@ -6808,6 +6897,11 @@ def render_live_status(
     lines.extend(
         _prospective_capacity_reflow_opportunity_lines(
             payload.get("prospective_capacity_reflow_opportunities")
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_release_lineage_lines(
+            payload.get("prospective_capacity_reflow_release_lineage")
         )
     )
     lines.extend(
