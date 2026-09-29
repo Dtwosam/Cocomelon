@@ -3956,6 +3956,9 @@ def _live_status_payload(
     opening_opportunity_path_store: (
         ContinuousPaperOpeningOpportunityPathStore
     ),
+    opening_opportunity_exit_book_store: (
+        ContinuousPaperOpeningOpportunityExitBookStore
+    ),
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -3978,6 +3981,7 @@ def _live_status_payload(
     opening_fill_liquidity_capture_error: str | None,
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
+    opening_opportunity_exit_book_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4667,6 +4671,40 @@ def _live_status_payload(
             "forward_mark_capture_error": (
                 opening_opportunity_path_capture_error
             ),
+            "exit_book_capture_started_at_ms": (
+                opening_opportunity_exit_book_store.capture_started_at_ms
+            ),
+            "exit_book_registered_opportunities": (
+                opening_opportunity_exit_book_store.registration_count
+            ),
+            "exit_book_captures": (
+                opening_opportunity_exit_book_store.capture_count
+            ),
+            "exit_book_pending": (
+                opening_opportunity_exit_book_store.pending_count(
+                    now_ms=timestamp_ms
+                )
+            ),
+            "exit_book_missed": (
+                opening_opportunity_exit_book_store.missed_count(
+                    now_ms=timestamp_ms
+                )
+            ),
+            "exit_book_horizons_ms": list(
+                opening_opportunity_exit_book_store.horizons_ms
+            ),
+            "exit_book_max_capture_lag_ms": (
+                opening_opportunity_exit_book_store.max_capture_lag_ms
+            ),
+            "exit_book_state_digest": (
+                opening_opportunity_exit_book_store.state_digest
+            ),
+            "exit_book_enabled": (
+                opening_opportunity_exit_book_capture_error is None
+            ),
+            "exit_book_capture_error": (
+                opening_opportunity_exit_book_capture_error
+            ),
             "full_l2_book_captured": True,
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
@@ -4687,6 +4725,9 @@ def _emit_live_status(
     opening_opportunity_store: ContinuousPaperOpeningOpportunityStore,
     opening_opportunity_path_store: (
         ContinuousPaperOpeningOpportunityPathStore
+    ),
+    opening_opportunity_exit_book_store: (
+        ContinuousPaperOpeningOpportunityExitBookStore
     ),
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
@@ -4710,6 +4751,7 @@ def _emit_live_status(
     opening_fill_liquidity_capture_error: str | None,
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
+    opening_opportunity_exit_book_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4736,6 +4778,7 @@ def _emit_live_status(
         opening_fill_liquidity_store,
         opening_opportunity_store,
         opening_opportunity_path_store,
+        opening_opportunity_exit_book_store,
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
@@ -4760,6 +4803,9 @@ def _emit_live_status(
         ),
         opening_opportunity_path_capture_error=(
             opening_opportunity_path_capture_error
+        ),
+        opening_opportunity_exit_book_capture_error=(
+            opening_opportunity_exit_book_capture_error
         ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
@@ -5320,6 +5366,7 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store,
             opening_opportunity_store,
             opening_opportunity_path_store,
+            opening_opportunity_exit_book_store,
             original_stop_book_store,
             original_stop_book_capture,
             profit_lock_execution_shadow,
@@ -5348,6 +5395,9 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_path_capture_error=(
                 opening_opportunity_sink.path_error
+            ),
+            opening_opportunity_exit_book_capture_error=(
+                opening_opportunity_sink.exit_book_error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -5525,6 +5575,7 @@ async def run_continuous_paper_session(
                     opening_fill_liquidity_store,
                     opening_opportunity_store,
                     opening_opportunity_path_store,
+                    opening_opportunity_exit_book_store,
                     original_stop_book_store,
                     original_stop_book_capture,
                     profit_lock_execution_shadow,
@@ -5553,6 +5604,9 @@ async def run_continuous_paper_session(
                     ),
                     opening_opportunity_path_capture_error=(
                         opening_opportunity_sink.path_error
+                    ),
+                    opening_opportunity_exit_book_capture_error=(
+                        opening_opportunity_sink.exit_book_error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
