@@ -28,6 +28,9 @@ from cocomelon.research.delayed_entry_funding import (
     DelayedEntryFundingMissingError,
     FundingLoader,
 )
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
+)
 from cocomelon.research.delayed_entry_stop_survivability import (
     DelayedEntryStopPathEvidenceError,
     DelayedEntryStopSurvivabilityError,
@@ -85,7 +88,12 @@ class DelayedEntrySameExitStopValidityOutcome:
                     "same-exit stop-validity economics must be finite"
                 )
         if (
-            self.same_exit_candidate_net_pnl - self.actual_net_pnl
+            exact_decimal_sum(
+                (
+                    self.same_exit_candidate_net_pnl,
+                    self.actual_net_pnl.copy_negate(),
+                )
+            )
             != self.same_exit_delta_vs_actual
         ):
             raise ValueError(
@@ -134,68 +142,68 @@ def _summary(
     crossed = tuple(item for item in values if item.stop_hit)
     survived = tuple(item for item in values if not item.stop_hit)
 
-    candidate_total = sum(
-        (item.same_exit_candidate_net_pnl for item in values),
-        ZERO,
+    candidate_total = exact_decimal_sum(
+        item.same_exit_candidate_net_pnl for item in values
     )
-    crossed_candidate = sum(
-        (
-            item.same_exit_candidate_net_pnl
-            for item in crossed
-        ),
-        ZERO,
+    crossed_candidate = exact_decimal_sum(
+        item.same_exit_candidate_net_pnl for item in crossed
     )
-    survived_candidate = sum(
-        (
-            item.same_exit_candidate_net_pnl
-            for item in survived
-        ),
-        ZERO,
+    survived_candidate = exact_decimal_sum(
+        item.same_exit_candidate_net_pnl for item in survived
     )
-    actual_total = sum(
-        (item.actual_net_pnl for item in values),
-        ZERO,
+    actual_total = exact_decimal_sum(
+        item.actual_net_pnl for item in values
     )
-    delta_total = sum(
-        (item.same_exit_delta_vs_actual for item in values),
-        ZERO,
+    delta_total = exact_decimal_sum(
+        item.same_exit_delta_vs_actual for item in values
     )
-    crossed_delta = sum(
-        (
-            item.same_exit_delta_vs_actual
-            for item in crossed
-        ),
-        ZERO,
+    crossed_delta = exact_decimal_sum(
+        item.same_exit_delta_vs_actual for item in crossed
     )
-    survived_delta = sum(
-        (
-            item.same_exit_delta_vs_actual
-            for item in survived
-        ),
-        ZERO,
+    survived_delta = exact_decimal_sum(
+        item.same_exit_delta_vs_actual for item in survived
     )
-    absolute_candidate = sum(
-        (abs(item.same_exit_candidate_net_pnl) for item in values),
-        ZERO,
+    absolute_candidate = exact_decimal_sum(
+        abs(item.same_exit_candidate_net_pnl) for item in values
     )
-    crossed_absolute_candidate = sum(
-        (
-            abs(item.same_exit_candidate_net_pnl)
-            for item in crossed
-        ),
-        ZERO,
+    crossed_absolute_candidate = exact_decimal_sum(
+        abs(item.same_exit_candidate_net_pnl) for item in crossed
     )
-    if candidate_total != crossed_candidate + survived_candidate:
+    candidate_partition = exact_decimal_sum(
+        (crossed_candidate, survived_candidate)
+    )
+    delta_partition = exact_decimal_sum(
+        (crossed_delta, survived_delta)
+    )
+    if candidate_total != candidate_partition:
         raise DelayedEntrySameExitStopValidityError(
             "candidate stop-validity partition does not reconcile"
         )
-    if delta_total != crossed_delta + survived_delta:
+    if delta_total != delta_partition:
         raise DelayedEntrySameExitStopValidityError(
             "delta stop-validity partition does not reconcile"
         )
-    if actual_total + delta_total != candidate_total:
+
+    candidate_from_actual_and_delta = exact_decimal_sum(
+        (actual_total, delta_total)
+    )
+    rounding_residual = exact_decimal_sum(
+        (
+            candidate_total,
+            candidate_from_actual_and_delta.copy_negate(),
+        )
+    )
+    if (
+        exact_decimal_sum(
+            (
+                candidate_from_actual_and_delta,
+                rounding_residual,
+            )
+        )
+        != candidate_total
+    ):
         raise DelayedEntrySameExitStopValidityError(
-            "same-exit candidate and actual totals do not reconcile"
+            "same-exit rounding bridge does not reconcile"
         )
 
     return {
@@ -210,6 +218,9 @@ def _summary(
         "actual_net_pnl": str(actual_total),
         "same_exit_candidate_net_pnl": str(candidate_total),
         "same_exit_delta_vs_actual": str(delta_total),
+        "candidate_actual_decimal_rounding_residual_pnl": str(
+            rounding_residual
+        ),
         "same_exit_candidate_pnl_on_definite_stop_crossings": str(
             crossed_candidate
         ),
@@ -230,23 +241,17 @@ def _summary(
             )
         ),
         "positive_same_exit_candidate_pnl_on_stop_crossings": str(
-            sum(
-                (
-                    item.same_exit_candidate_net_pnl
-                    for item in crossed
-                    if item.same_exit_candidate_net_pnl > ZERO
-                ),
-                ZERO,
+            exact_decimal_sum(
+                item.same_exit_candidate_net_pnl
+                for item in crossed
+                if item.same_exit_candidate_net_pnl > ZERO
             )
         ),
         "negative_same_exit_candidate_pnl_on_stop_crossings": str(
-            sum(
-                (
-                    item.same_exit_candidate_net_pnl
-                    for item in crossed
-                    if item.same_exit_candidate_net_pnl < ZERO
-                ),
-                ZERO,
+            exact_decimal_sum(
+                item.same_exit_candidate_net_pnl
+                for item in crossed
+                if item.same_exit_candidate_net_pnl < ZERO
             )
         ),
         "mean_time_to_stop_ms": (
