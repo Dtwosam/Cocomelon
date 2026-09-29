@@ -2130,11 +2130,13 @@ def _prospective_capacity_reflow_exit_fill_payload(
 
 def _prospective_capacity_reflow_realized_pnl_payload(
     exit_fill: dict[str, object],
+    funding_store: ContinuousPaperReplacementFundingStore,
     state: ProspectiveCombinedEntryFilterState,
 ) -> dict[str, object]:
     try:
         payload = evaluate_prospective_capacity_reflow_realized_pnl(
-            exit_fill
+            exit_fill,
+            funding_store,
         )
     except Exception as exc:
         return {
@@ -4340,6 +4342,7 @@ def _live_status_payload(
     prospective_capacity_reflow_realized_pnl = (
         _prospective_capacity_reflow_realized_pnl_payload(
             prospective_capacity_reflow_exit_fill,
+            replacement_funding_store,
             prospective_combined_entry_filter_state,
         )
     )
