@@ -278,6 +278,58 @@ jobs:
         run: |
           set -euo pipefail
           last_status_publish=0
+
+          watch_for_newer_runtime_run() {
+            while true; do
+              sleep 60
+              if ! runs_json="$(
+                gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&per_page=100"
+              )"; then
+                echo "::warning::failed to query continuous-paper workflow for upgrade watchdog"
+                continue
+              fi
+              replacement_run="$(
+                printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          current_id = int(os.environ["GITHUB_RUN_ID"])
+          runs = payload.get("workflow_runs", [])
+          current = next(
+              (run for run in runs if run.get("id") == current_id),
+              None,
+          )
+          if current is None:
+              print("")
+              raise SystemExit(0)
+          current_number = int(current.get("run_number", 0))
+          newer = [
+              run for run in runs
+              if run.get("id") != current_id
+              and run.get("event") == "push"
+              and run.get("head_branch") == "main"
+              and run.get("head_sha") != os.environ["GITHUB_SHA"]
+              and run.get("status") in {"queued", "pending", "in_progress"}
+              and int(run.get("run_number", 0)) > current_number
+          ]
+          newer.sort(
+              key=lambda run: int(run.get("run_number", 0)),
+              reverse=True,
+          )
+          print(newer[0]["id"] if newer else "")
+          '
+              )"
+              if [ -n "$replacement_run" ]; then
+                echo "::notice::newer continuous-paper push run $replacement_run is waiting; requesting graceful handoff independently of heartbeat"
+                touch /tmp/continuous-paper-upgrade-requested
+                return 0
+              fi
+            done
+          }
+
+          watch_for_newer_runtime_run &
+          upgrade_watch_pid=$!
+          trap 'kill "$upgrade_watch_pid" 2>/dev/null || true' EXIT
+
           cocomelon-continuous-paper \
             --state-root "$STATE_ROOT" \
             --duration-seconds 19800 \
