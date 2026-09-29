@@ -2356,3 +2356,14 @@ The default path horizon is six hours with a two-minute completion-lag allowance
 This closes a key evidence gap for future causal capacity-reflow work: a later opportunity that was rejected only because earlier baseline positions consumed capacity can now carry both its exact decision-time inputs and a real subsequently observed price path. This change still does **not** simulate replacement execution, choose an exit, claim counterfactual PnL, change risk decisions, or grant promotion/execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate capacity-reflow opportunity diagnostic — 2026-09-29
+
+The continuous-paper dashboard now evaluates captured decision-time opening opportunities against the frozen `prospective-top10-no-long-trend-v1` rule before attempting any replacement-trade claim.
+
+For baseline risk rejections with complete, fresh scanner-rank evidence, the diagnostic separates candidate-eligible opportunities from those the frozen rule would itself block. It then isolates aggregate-risk and correlation-bucket exhaustion and runs a one-position release sensitivity against the exact captured `RiskRequest`: each existing position is removed one at a time to test whether risk capacity would become positive. Results include rejection-reason counts, candidate block reasons, release-option counts, and the markets/correlation buckets whose removal would restore capacity.
+
+This is intentionally narrower than a portfolio counterfactual. It does not assert that the released position would itself have been filtered, does not simulate a replacement fill or exit, and does not calculate replacement PnL. Its purpose is to identify real observed opportunities where capacity is demonstrably the binding obstacle so the next causal replay layer can focus on evidence-backed replacements.
+
+**LIVE TRADING: DISABLED.**
