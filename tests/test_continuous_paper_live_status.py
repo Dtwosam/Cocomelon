@@ -10,6 +10,7 @@ from scripts.render_continuous_paper_live_status import (
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
     _prospective_capacity_reflow_opportunity_lines,
+    _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
@@ -5011,6 +5012,48 @@ def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None
     assert "BTC=2" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
     assert "does not yet claim" in output
+
+
+def test_capacity_reflow_release_lineage_renderer_exposes_causal_join() -> None:
+    lines = _prospective_capacity_reflow_release_lineage_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "release_options": 5,
+            "resolved_release_options": 5,
+            "resolved_opportunities": 3,
+            "candidate_blocked_release_options": 2,
+            "candidate_allowed_release_options": 3,
+            "candidate_capacity_release_opportunities": 2,
+            "release_lineage_misses": 0,
+            "release_plan_misses": 0,
+            "release_decision_misses": 0,
+            "release_rank_misses": 0,
+            "release_stale_ranks": 0,
+            "integrity_clean": True,
+            "by_release_position_block_reason": {
+                "long_trend": 2,
+            },
+            "by_candidate_blocked_release_market": {
+                "BTC": 1,
+                "SOL": 1,
+            },
+            "replacement_trades_modeled": False,
+            "pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-filtered capacity release lineage" in output
+    assert "`5 / 5`" in output
+    assert "`3 / 2`" in output
+    assert "`2 / 3`" in output
+    assert "`0 / 0 / 0 / 0 / 0`" in output
+    assert "long_trend=2" in output
+    assert "BTC=1" in output
+    assert "replacement trades / PnL modeled: `false / false`" in output
+    assert "exact historical opening plan" in output
 
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:

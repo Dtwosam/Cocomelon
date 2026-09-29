@@ -224,6 +224,9 @@ from cocomelon.research.profit_lock_readiness import (
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     evaluate_prospective_capacity_reflow_opportunities,
 )
+from cocomelon.research.prospective_capacity_reflow_release_lineage import (
+    evaluate_prospective_capacity_reflow_release_lineage,
+)
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
     evaluate_prospective_combined_entry_filter,
@@ -1913,6 +1916,42 @@ def _prospective_capacity_reflow_opportunity_payload(
         payload = evaluate_prospective_capacity_reflow_opportunities(
             store,
             state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_capacity_reflow_release_lineage_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    lineage_store: ContinuousPaperOpeningLineageStore,
+    journal: JournalStore,
+    *,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    state: ProspectiveCombinedEntryFilterState,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_capacity_reflow_release_lineage(
+            opportunity_store,
+            lineage_store,
+            journal,
+            plan_loader=plan_loader,
+            fact_store=fact_store,
+            rank_store=rank_store,
+            state=state,
         )
     except Exception as exc:
         return {
@@ -3735,6 +3774,7 @@ def _live_status_payload(
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
+    opening_lineage_store: ContinuousPaperOpeningLineageStore,
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
@@ -3936,6 +3976,17 @@ def _live_status_payload(
         _prospective_capacity_reflow_opportunity_payload(
             opening_opportunity_store,
             prospective_combined_entry_filter_state,
+        )
+    )
+    prospective_capacity_reflow_release_lineage = (
+        _prospective_capacity_reflow_release_lineage_payload(
+            opening_opportunity_store,
+            opening_lineage_store,
+            pump.journal,
+            plan_loader=execution.store.load_plan,
+            fact_store=fact_store,
+            rank_store=opening_rank_store,
+            state=prospective_combined_entry_filter_state,
         )
     )
     delayed_entry_fill_capacity = (
@@ -4309,6 +4360,9 @@ def _live_status_payload(
         "prospective_capacity_reflow_opportunities": (
             prospective_capacity_reflow_opportunities
         ),
+        "prospective_capacity_reflow_release_lineage": (
+            prospective_capacity_reflow_release_lineage
+        ),
         "opening_scanner_rank": opening_rank,
         "opening_fill_liquidity": opening_fill_liquidity,
         "entry_markout": entry_markout,
@@ -4385,6 +4439,7 @@ def _emit_live_status(
     selected_markets: tuple[MarketId, ...],
     feature_store: LearningFeatureSnapshotStore,
     fact_store: EvaluationFactStore,
+    opening_lineage_store: ContinuousPaperOpeningLineageStore,
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
@@ -4434,6 +4489,7 @@ def _emit_live_status(
         selected_markets,
         feature_store,
         fact_store,
+        opening_lineage_store,
         trade_path_store,
         opening_rank_store,
         opening_fill_liquidity_store,
@@ -4953,6 +5009,7 @@ async def run_continuous_paper_session(
             selected,
             feature_store,
             facts,
+            opening_lineage_store,
             trade_path_store,
             opening_rank_store,
             opening_fill_liquidity_store,
@@ -5153,6 +5210,7 @@ async def run_continuous_paper_session(
                     selected,
                     feature_store,
                     facts,
+                    opening_lineage_store,
                     trade_path_store,
                     opening_rank_store,
                     opening_fill_liquidity_store,

@@ -18,6 +18,7 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
     _risk_request_payload,
 )
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
+    candidate_eligible_capacity_release_options,
     prospective_capacity_reflow_opportunity_summary,
 )
 from cocomelon.research.prospective_combined_entry_filter import (
@@ -215,6 +216,34 @@ def test_capacity_reflow_summary_finds_candidate_eligible_rejections() -> None:
     assert summary["pnl_modeled"] is False
     assert summary["execution_authority"] is False
     assert summary["promotion_authority"] is False
+
+
+    options = candidate_eligible_capacity_release_options(
+        (
+            _evidence(
+                allowed_request,
+                rank_ordinal=5,
+                rank_observed_at_ms=9_900,
+            ),
+            _evidence(
+                blocked_request,
+                rank_ordinal=4,
+                rank_observed_at_ms=10_900,
+            ),
+        ),
+        ProspectiveCombinedEntryFilterState(started_at_ms=0),
+    )
+    assert tuple(
+        (
+            option.opportunity_market,
+            option.release_market,
+            option.release_correlation_bucket,
+        )
+        for option in options
+    ) == (
+        ("SOL", "BTC", "majors"),
+        ("SOL", "ETH", "majors"),
+    )
 
 
 def test_capacity_reflow_summary_rejects_stale_rank_from_candidate_cohort() -> None:
