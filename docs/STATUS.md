@@ -2449,3 +2449,14 @@ Each settled observation reports directional return, gross mark-to-market PnL, a
 These are fixed-horizon mark-to-market observations, not exits. No synthetic exit fill, exit fee, realized replacement PnL, promotion authority, or live-order authority is introduced.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Account-day provenance for lockout evidence — 2026-09-29
+
+The paper risk snapshot now carries the persisted account's exact UTC `day_start_ms` alongside `day_start_equity` and `daily_realized_pnl`. New opening-opportunity records preserve that value inside their exact `RiskRequest`, while legacy durable records remain readable with the field absent.
+
+The daily-loss reflow now separates frozen-rule eligibility from causal eligibility. A rule-eligible lockout can enter cash-reflow analysis only when its captured account-day start exists and exactly matches the UTC day containing the opportunity. Legacy records without account-day provenance and records with a mismatched day are quarantined, counted explicitly, and cannot contribute adjusted-unlock or exact-unlock evidence.
+
+This closes the evidence leak exposed by the earlier UTC-day rollover defect: historical lockouts captured with stale day state remain useful as documented historical observations, but they cannot be interpreted as evidence that the candidate would have causally reopened trading. New post-fix opportunities can earn causal credit only from verified day-state snapshots.
+
+**LIVE TRADING: DISABLED.**
