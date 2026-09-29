@@ -105,40 +105,28 @@ class DelayedEntryFundingDecompositionOutcome:
                     "funding decomposition economics must be finite"
                 )
         if (
-            exact_decimal_sum(
-                (
-                    self.price_effect_pnl,
-                    self.entry_fee_effect_pnl,
-                    self.exposure_effect_pnl,
-                    self.funding_timing_effect_pnl,
-                )
-            )
+            self.price_effect_pnl
+            + self.entry_fee_effect_pnl
+            + self.exposure_effect_pnl
+            + self.funding_timing_effect_pnl
             != self.corrected_total_delta_pnl
         ):
             raise ValueError(
                 "funding decomposition PnL effects must reconcile"
             )
         if (
-            exact_decimal_sum(
-                (
-                    self.price_effect_r,
-                    self.entry_fee_effect_r,
-                    self.exposure_effect_r,
-                    self.funding_timing_effect_r,
-                )
-            )
+            self.price_effect_r
+            + self.entry_fee_effect_r
+            + self.exposure_effect_r
+            + self.funding_timing_effect_r
             != self.corrected_total_delta_r
         ):
             raise ValueError(
                 "funding decomposition R effects must reconcile"
             )
         if (
-            exact_decimal_sum(
-                (
-                    self.legacy_total_delta_pnl,
-                    self.funding_timing_effect_pnl,
-                )
-            )
+            self.legacy_total_delta_pnl
+            + self.funding_timing_effect_pnl
             != self.corrected_total_delta_pnl
         ):
             raise ValueError(
@@ -183,15 +171,13 @@ def evaluate_delayed_entry_funding_decomposition(
         )
     )
     funding_effect = corrected.funding_timing_delta_pnl
-    corrected_delta = exact_decimal_sum(
-        (legacy.total_delta_pnl, funding_effect)
+    corrected_delta = (
+        legacy.total_delta_pnl + funding_effect
     )
     if (
         corrected_delta != corrected.corrected_delta_net_pnl
         or corrected.corrected_candidate_net_pnl
-        != exact_decimal_sum(
-            (trade.net_pnl, corrected_delta)
-        )
+        != trade.net_pnl + corrected_delta
     ):
         raise DelayedEntryFundingDecompositionError(
             "corrected decomposition does not match corrected candidate"
