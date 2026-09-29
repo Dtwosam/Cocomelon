@@ -247,14 +247,49 @@ def _summary(
     corrected_candidate = exact_decimal_sum(
         item.corrected_candidate_net_pnl for item in items
     )
+    component_total = exact_decimal_sum(
+        (price, entry_fee, exposure, funding)
+    )
+    component_rounding_residual = exact_decimal_sum(
+        (corrected_delta, component_total.copy_negate())
+    )
+    legacy_bridge = exact_decimal_sum(
+        (legacy_delta, funding)
+    )
+    legacy_bridge_rounding_residual = exact_decimal_sum(
+        (corrected_delta, legacy_bridge.copy_negate())
+    )
+    candidate_bridge = exact_decimal_sum(
+        (actual, corrected_delta)
+    )
+    candidate_bridge_rounding_residual = exact_decimal_sum(
+        (corrected_candidate, candidate_bridge.copy_negate())
+    )
     if (
-        price + entry_fee + exposure + funding
+        exact_decimal_sum(
+            (
+                component_total,
+                component_rounding_residual,
+            )
+        )
         != corrected_delta
-        or legacy_delta + funding != corrected_delta
-        or actual + corrected_delta != corrected_candidate
+        or exact_decimal_sum(
+            (
+                legacy_bridge,
+                legacy_bridge_rounding_residual,
+            )
+        )
+        != corrected_delta
+        or exact_decimal_sum(
+            (
+                candidate_bridge,
+                candidate_bridge_rounding_residual,
+            )
+        )
+        != corrected_candidate
     ):
         raise DelayedEntryFundingDecompositionError(
-            "funding decomposition summary does not reconcile"
+            "funding summary rounding bridge does not reconcile"
         )
 
     return {
@@ -279,6 +314,15 @@ def _summary(
         "actual_net_pnl": str(actual),
         "corrected_candidate_net_pnl": str(
             corrected_candidate
+        ),
+        "component_decimal_rounding_residual_pnl": str(
+            component_rounding_residual
+        ),
+        "legacy_bridge_decimal_rounding_residual_pnl": str(
+            legacy_bridge_rounding_residual
+        ),
+        "candidate_bridge_decimal_rounding_residual_pnl": str(
+            candidate_bridge_rounding_residual
         ),
         "mean_price_effect_r": (
             None
@@ -423,6 +467,10 @@ def delayed_entry_funding_decomposition(
         "legacy_identity": (
             "price_effect + entry_fee_effect + exposure_effect = "
             "legacy_total_delta"
+        ),
+        "summary_identity": (
+            "economic components + decimal rounding residuals "
+            "reconcile corrected totals exactly"
         ),
         "closed_shadow_outcomes": len(outcomes),
         "evaluated_delayed_attempts": len(items),

@@ -18,6 +18,9 @@ from cocomelon.research.delayed_entry_fill_weighted import (
     DelayedEntryFillWeightedError,
     evaluate_delayed_entry_fill_weighted_outcome,
 )
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
+)
 
 ZERO: Final = Decimal("0")
 HOUR_MS: Final = Decimal("3600000")
@@ -176,17 +179,38 @@ def _timeline(events: tuple[_Event, ...]) -> dict[str, object]:
                 "portfolio timeline moved backward"
             )
         elapsed_decimal = Decimal(elapsed)
-        position_ms += Decimal(count) * elapsed_decimal
-        notional_ms += notional * elapsed_decimal
-        risk_ms += risk * elapsed_decimal
+        position_ms = exact_decimal_sum(
+            (
+                position_ms,
+                Decimal(count) * elapsed_decimal,
+            )
+        )
+        notional_ms = exact_decimal_sum(
+            (
+                notional_ms,
+                notional * elapsed_decimal,
+            )
+        )
+        risk_ms = exact_decimal_sum(
+            (
+                risk_ms,
+                risk * elapsed_decimal,
+            )
+        )
         previous_ms = event.timestamp_ms
 
         if event.count_delta > 0 and count > 0:
             overlap_openings += 1
         count += event.count_delta
-        notional += event.notional_delta
-        risk += event.risk_delta
-        realized += event.realized_pnl_delta
+        notional = exact_decimal_sum(
+            (notional, event.notional_delta)
+        )
+        risk = exact_decimal_sum(
+            (risk, event.risk_delta)
+        )
+        realized = exact_decimal_sum(
+            (realized, event.realized_pnl_delta)
+        )
 
         if count < 0 or notional < ZERO or risk < ZERO:
             raise DelayedEntryFixedSchedulePortfolioError(
@@ -468,19 +492,33 @@ def delayed_entry_fixed_schedule_portfolio(
         "actual": actual,
         "candidate": candidate,
         "delta_final_realized_contribution": str(
-            candidate_final - actual_final
+            exact_decimal_sum(
+                (candidate_final, actual_final.copy_negate())
+            )
         ),
         "delta_max_realized_drawdown": str(
-            Decimal(str(candidate["max_realized_drawdown"]))
-            - Decimal(str(actual["max_realized_drawdown"]))
+            exact_decimal_sum(
+                (
+                    Decimal(str(candidate["max_realized_drawdown"])),
+                    Decimal(str(actual["max_realized_drawdown"])).copy_negate(),
+                )
+            )
         ),
         "delta_max_gross_notional": str(
-            Decimal(str(candidate["max_gross_notional"]))
-            - Decimal(str(actual["max_gross_notional"]))
+            exact_decimal_sum(
+                (
+                    Decimal(str(candidate["max_gross_notional"])),
+                    Decimal(str(actual["max_gross_notional"])).copy_negate(),
+                )
+            )
         ),
         "delta_max_planned_risk": str(
-            Decimal(str(candidate["max_planned_risk"]))
-            - Decimal(str(actual["max_planned_risk"]))
+            exact_decimal_sum(
+                (
+                    Decimal(str(candidate["max_planned_risk"])),
+                    Decimal(str(actual["max_planned_risk"])).copy_negate(),
+                )
+            )
         ),
         "readiness": {
             "ready_for_review": ready,
