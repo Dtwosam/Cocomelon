@@ -2418,3 +2418,12 @@ For a same-UTC-day release position, the shadow loads its immutable decision-tim
 The shadow reports risk approvals, planning approvals, full/partial/no-fill outcomes, simulated entry notional, and entry fees. It fails closed on execution-configuration drift, incomplete historical position state, cross-day release positions, or lineage mismatches. It does not choose a replacement exit, does not calculate replacement-trade PnL, does not change the frozen candidate, and grants no promotion or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact daily-loss unlock lineage — 2026-09-29
+
+The daily-loss reflow now exposes deterministic opportunity-level lineage in addition to aggregate counts. For every candidate-eligible lockout it records the exact opening-opportunity ID, candidate-adjusted daily realized PnL, captured daily-loss threshold, and candidate-blocked cash removed by the reconstruction. Separate ID sets identify closed-trade-adjusted unlocks, exact cash-scope opportunities, and exact candidate unlocks.
+
+This is the handoff contract for later replacement-entry research: downstream execution simulation can consume only opportunity IDs that the exact cash model actually unlocked instead of reconstructing or broadening the cohort independently. It adds no execution authority and does not yet claim that an unlocked opportunity passes every remaining risk veto, would fill, or would be profitable.
+
+**LIVE TRADING: DISABLED.**
