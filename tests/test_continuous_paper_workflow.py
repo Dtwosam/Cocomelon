@@ -66,6 +66,10 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
         "src/cocomelon/research/continuous_paper_opening_opportunity_paths.py"
         in source
     )
+    assert (
+        "src/cocomelon/research/continuous_paper_opening_opportunity_exit_books.py"
+        in source
+    )
     assert "src/cocomelon/research/continuous_paper_drawdown.py" in source
     assert "src/cocomelon/research/delayed_entry_execution_shadow.py" in source
     assert "src/cocomelon/research/delayed_entry_contribution_decomposition.py" in source
@@ -128,6 +132,10 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/continuous_paper_opening_opportunity.py"' in source
     assert (
         '"src/cocomelon/research/continuous_paper_opening_opportunity_paths.py"'
+        in source
+    )
+    assert (
+        '"src/cocomelon/research/continuous_paper_opening_opportunity_exit_books.py"'
         in source
     )
     assert '"src/cocomelon/research/continuous_paper_drawdown.py"' in source
