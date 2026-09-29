@@ -4,6 +4,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     ContinuousPaperOpeningOpportunityPathError,
     ContinuousPaperOpeningOpportunityPathStore,
