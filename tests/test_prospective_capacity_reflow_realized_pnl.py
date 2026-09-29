@@ -20,6 +20,7 @@ def _exit_fill_payload() -> dict[str, object]:
             {
                 "option_id": "option-1",
                 "opportunity_id": "opp-1",
+                "opportunity_timestamp_ms": 9_000,
                 "opportunity_market": "BTC",
                 "opportunity_direction": "long",
                 "entry_attempt_timestamp_ms": 10_000,
@@ -69,6 +70,7 @@ def test_realized_pnl_is_exact_only_when_no_funding_boundary_is_crossed() -> Non
     assert one_hour["exact_realized_pnl"] == "0"
 
     option = result["option_results"][0]
+    assert option["opportunity_timestamp_ms"] == 9_000
     assert option["exits"]["300000"]["funding_boundary_count"] == 0
     assert option["exits"]["300000"]["exact_realized_pnl"] == "3.80"
     assert option["exits"]["3600000"]["funding_boundary_count"] == 1
