@@ -102,6 +102,9 @@ def _trade(
 def _path(
     trade: TradeJournalEntry,
     marks: tuple[tuple[int, str], ...],
+    *,
+    complete: bool = True,
+    gaps: tuple[tuple[int, int | None], ...] = (),
 ) -> ContinuousPaperTradePath:
     return ContinuousPaperTradePath(
         trade_id=trade.trade_id,
@@ -114,7 +117,7 @@ def _path(
         initial_stop=trade.initial_stop,
         initial_risk_amount=trade.initial_risk_amount,
         filled_quantity=trade.filled_quantity,
-        excursion_complete=True,
+        excursion_complete=complete,
         health_refs=trade.health_refs,
         marks=tuple(
             ContinuousPaperTradePathMark(
@@ -127,7 +130,7 @@ def _path(
             )
             for timestamp_ms, mark_px in marks
         ),
-        known_gap_intervals=(),
+        known_gap_intervals=gaps,
     )
 
 
@@ -886,3 +889,47 @@ def test_pre_capture_non_evaluable_entry_is_legacy_not_current_cohort(
     readiness = result["readiness"]
     assert isinstance(readiness, dict)
     assert readiness["integrity_clean"] is True
+
+
+
+def test_stop_l2_ignores_noncausal_session_gaps(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    paths = ContinuousPaperTradePathStore(tmp_path / "paths")
+    try:
+        trade = _trade(suffix="noncausal-gap")
+        journal.record_trade(trade)
+        paths.record(
+            _path(
+                trade,
+                ((170_000, "89"), (300_000, "100")),
+                complete=False,
+                gaps=(
+                    (10_000, 50_000),
+                    (120_000, 160_000),
+                    (500_000, 600_000),
+                ),
+            )
+        )
+        books = _capture_stop_book(
+            tmp_path / "stop-books",
+            trade,
+        )
+        result = delayed_entry_stop_l2_replay(
+            journal,
+            (_outcome(trade),),
+            paths,
+            books,
+            EMPTY_FUNDING_LOADER,
+            _config(),
+        )
+    finally:
+        journal.close()
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert result["incomplete_or_gapped_paths"] == 0
+    assert result["lineage_mismatches"] == 0
+    assert overall["evaluated_filled_candidates"] == 1
+    assert overall["full_stop_exits"] == 1

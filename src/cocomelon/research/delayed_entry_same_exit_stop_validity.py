@@ -29,6 +29,7 @@ from cocomelon.research.delayed_entry_funding import (
     FundingLoader,
 )
 from cocomelon.research.delayed_entry_stop_survivability import (
+    DelayedEntryStopPathEvidenceError,
     DelayedEntryStopSurvivabilityError,
     DelayedEntryStopTimingError,
     evaluate_delayed_entry_stop_outcome,
@@ -317,13 +318,6 @@ def delayed_entry_same_exit_stop_validity(
         if raw_path is None:
             missing_paths += 1
             continue
-        if (
-            raw_path.get("path_complete") is not True
-            or raw_path.get("known_gap_intervals") != []
-        ):
-            incomplete_or_gapped_paths += 1
-            continue
-
         try:
             corrected = (
                 evaluate_delayed_entry_funding_corrected_fill_weighted_outcome(
@@ -346,6 +340,9 @@ def delayed_entry_same_exit_stop_validity(
             continue
         except DelayedEntryStopTimingError:
             invalid_candidate_timing += 1
+            continue
+        except DelayedEntryStopPathEvidenceError:
+            incomplete_or_gapped_paths += 1
             continue
         except (
             DelayedEntryFundingCorrectedFillError,

@@ -36,6 +36,12 @@ class DelayedEntryStopTimingError(
     pass
 
 
+class DelayedEntryStopPathEvidenceError(
+    DelayedEntryStopSurvivabilityError
+):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class DelayedEntryStopOutcome:
     trade_id: str
@@ -177,6 +183,8 @@ def _path_map(
 def _validated_marks(
     trade: TradeJournalEntry,
     raw: Mapping[str, object],
+    *,
+    candidate_open_ms: int,
 ) -> tuple[tuple[int, Decimal], ...]:
     expected = {
         "trade_id": trade.trade_id,
@@ -206,16 +214,40 @@ def _validated_marks(
         raise DelayedEntryStopSurvivabilityError(
             "trade path lineage does not match journal"
         )
-    if raw.get("path_complete") is not True:
-        raise DelayedEntryStopSurvivabilityError(
-            "trade path is incomplete"
-        )
 
     gaps = raw.get("known_gap_intervals")
-    if not isinstance(gaps, list) or gaps:
+    if not isinstance(gaps, list):
         raise DelayedEntryStopSurvivabilityError(
-            "stop survivability requires a gap-free trade path"
+            "trade path gaps must be an array"
         )
+    for gap in gaps:
+        if not isinstance(gap, list) or len(gap) != 2:
+            raise DelayedEntryStopSurvivabilityError(
+                "trade path gap must be a two-item array"
+            )
+        started_ms = _integer(gap[0], "gap_started_ms")
+        ended_raw = gap[1]
+        ended_ms = (
+            None
+            if ended_raw is None
+            else _integer(ended_raw, "gap_ended_ms")
+        )
+        if ended_ms is not None and ended_ms < started_ms:
+            raise DelayedEntryStopSurvivabilityError(
+                "trade path gap end precedes start"
+            )
+        effective_end = (
+            trade.closed_at_ms
+            if ended_ms is None
+            else ended_ms
+        )
+        if (
+            started_ms <= trade.closed_at_ms
+            and effective_end > candidate_open_ms
+        ):
+            raise DelayedEntryStopPathEvidenceError(
+                "trade path gap overlaps delayed-position interval"
+            )
 
     marks_raw = raw.get("marks")
     if not isinstance(marks_raw, list):
@@ -245,10 +277,11 @@ def _validated_marks(
                 "trade path mark is invalid"
             )
         previous = timestamp_ms
-        marks.append((timestamp_ms, mark_px))
+        if timestamp_ms > candidate_open_ms:
+            marks.append((timestamp_ms, mark_px))
     if not marks:
-        raise DelayedEntryStopSurvivabilityError(
-            "trade path has no observed marks"
+        raise DelayedEntryStopPathEvidenceError(
+            "trade path has no causal marks after delayed open"
         )
     return tuple(marks)
 
@@ -293,7 +326,6 @@ def evaluate_delayed_entry_stop_outcome(
     if weighted.delayed_filled_quantity == ZERO:
         return None
 
-    marks = _validated_marks(trade, raw_path)
     delayed_price = weighted.delayed_average_fill_price
     lag_ms = outcome.observation_lag_ms
     if (
@@ -313,6 +345,11 @@ def evaluate_delayed_entry_stop_outcome(
             "filled delayed outcome opens after trade close"
         )
 
+    marks = _validated_marks(
+        trade,
+        raw_path,
+        candidate_open_ms=candidate_open_ms,
+    )
     hit = _first_stop_hit(
         direction=trade.direction.value,
         stop_price=trade.initial_stop,
@@ -459,13 +496,6 @@ def delayed_entry_stop_survivability(
         if raw_path is None:
             missing_paths += 1
             continue
-        if (
-            raw_path.get("path_complete") is not True
-            or raw_path.get("known_gap_intervals") != []
-        ):
-            incomplete_or_gapped_paths += 1
-            continue
-
         try:
             stop_outcome = evaluate_delayed_entry_stop_outcome(
                 trade,
@@ -476,6 +506,9 @@ def delayed_entry_stop_survivability(
             )
         except DelayedEntryStopTimingError:
             invalid_candidate_timing += 1
+            continue
+        except DelayedEntryStopPathEvidenceError:
+            incomplete_or_gapped_paths += 1
             continue
         except (
             DelayedEntryStopSurvivabilityError,
