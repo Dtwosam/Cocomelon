@@ -16,7 +16,11 @@ from cocomelon.research.continuous_paper_trade_paths import (
 )
 from cocomelon.research.delayed_entry_execution_shadow import DelayedEntryOutcome
 from cocomelon.research.delayed_entry_same_exit_stop_validity import (
+    DelayedEntrySameExitStopValidityOutcome,
     delayed_entry_same_exit_stop_validity,
+)
+from cocomelon.research.delayed_entry_same_exit_stop_validity import (
+    _summary as stop_validity_summary,
 )
 
 MARKET = MarketId("", "SOL")
@@ -372,3 +376,86 @@ def test_same_exit_stop_validity_missing_funding_blocks_review(
     assert result["missing_funding_events"] == 1
     assert result["evaluated_filled_candidates"] == 0
     assert readiness["ready_for_review"] is False
+
+
+def test_same_exit_stop_validity_summary_uses_exact_partition_accounting() -> None:
+    deltas = (
+        Decimal("7.167457796996125567260611304"),
+        Decimal("68.05568864107346224498046230"),
+        Decimal("-497914383.6658258066901906261"),
+    )
+    items = tuple(
+        DelayedEntrySameExitStopValidityOutcome(
+            trade_id=f"precision-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            stop_hit=index != 1,
+            time_to_stop_ms=None if index == 1 else 1_000 + index,
+            actual_net_pnl=Decimal("0"),
+            same_exit_candidate_net_pnl=delta,
+            same_exit_delta_vs_actual=delta,
+        )
+        for index, delta in enumerate(deltas)
+    )
+
+    summary = stop_validity_summary(items)
+
+    expected = "-497914308.442679368620602813858926396"
+    assert summary["same_exit_candidate_net_pnl"] == expected
+    assert summary["same_exit_delta_vs_actual"] == expected
+    assert summary[
+        "candidate_actual_decimal_rounding_residual_pnl"
+    ] == "0"
+    assert summary[
+        "same_exit_delta_on_definite_stop_crossings"
+    ] == "-497914376.498368009694065058839388696"
+    assert summary[
+        "same_exit_delta_on_observed_survivors"
+    ] == "68.05568864107346224498046230"
+
+
+def test_same_exit_stop_validity_summary_exposes_candidate_delta_rounding_bridge() -> None:
+    rows = (
+        (
+            "6.433218196001338908386379402654",
+            "-195.511615594078161849593103413164",
+            "-201.9448337900795007579794828",
+        ),
+        (
+            "-93.255341928327648350305641395376",
+            "164.724238849696532871012269166978",
+            "257.9795807780241812213179106",
+        ),
+        (
+            "-141.018451462704828148932528809570",
+            "-92.430391171822782489638346578713",
+            "48.58806029088204565929418223",
+        ),
+        (
+            "-86.098393010310518347382997376311",
+            "90.667010651333872624731781080132",
+            "176.7654036616443909721147785",
+        ),
+    )
+    items = tuple(
+        DelayedEntrySameExitStopValidityOutcome(
+            trade_id=f"bridge-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            stop_hit=index % 2 == 0,
+            time_to_stop_ms=1_000 + index if index % 2 == 0 else None,
+            actual_net_pnl=Decimal(actual),
+            same_exit_candidate_net_pnl=Decimal(candidate),
+            same_exit_delta_vs_actual=Decimal(delta),
+        )
+        for index, (actual, candidate, delta) in enumerate(rows)
+    )
+
+    summary = stop_validity_summary(items)
+
+    assert summary[
+        "candidate_actual_decimal_rounding_residual_pnl"
+    ] == "-9.6164E-26"
+

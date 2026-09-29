@@ -1673,6 +1673,13 @@ def _delayed_entry_stop_survivability_lines(
                         f"{delta_survived}`"
                     ),
                     (
+                        "- stop-validity candidate/actual Decimal residual: "
+                        f"`{validity_overall.get(
+                            'candidate_actual_decimal_rounding_residual_pnl',
+                            '0',
+                        )}`"
+                    ),
+                    (
                         "- absolute candidate PnL on definite stop crossings: "
                         f"`{validity_overall.get('absolute_candidate_pnl_on_stop_crossings_fraction')}`"
                     ),
