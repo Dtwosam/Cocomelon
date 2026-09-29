@@ -515,16 +515,16 @@ class PaperExecutionStore:
             raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
         return plan
 
-    def load_position_at(
+    def load_position_history(
         self,
         opening_plan_id: str,
         *,
-        as_of_ms: int,
-    ) -> PaperPosition | None:
+        through_ms: int,
+    ) -> tuple[PaperPosition, ...]:
         if not opening_plan_id.strip():
             raise ValueError("opening_plan_id must not be empty")
-        if as_of_ms < 0:
-            raise ValueError("as_of_ms must be non-negative")
+        if through_ms < 0:
+            raise ValueError("through_ms must be non-negative")
 
         rows = self._conn.execute(
             """
@@ -533,7 +533,7 @@ class PaperExecutionStore:
             ORDER BY event_id
             """
         ).fetchall()
-        candidates: list[PaperPosition] = []
+        by_position_id: dict[str, PaperPosition] = {}
         for event_id, market, payload_json in rows:
             try:
                 payload = json.loads(str(payload_json))
@@ -564,17 +564,41 @@ class PaperExecutionStore:
                 )
             if position.opening_plan_id != opening_plan_id:
                 continue
-            if position.updated_at_ms <= as_of_ms:
-                candidates.append(position)
+            if position.updated_at_ms > through_ms:
+                continue
+            existing = by_position_id.get(position.position_id)
+            if existing is not None and existing != position:
+                raise ValueError(
+                    "immutable position id has conflicting payload"
+                )
+            by_position_id[position.position_id] = position
 
-        if not candidates:
-            return None
-        latest_ms = max(
-            position.updated_at_ms for position in candidates
+        return tuple(
+            sorted(
+                by_position_id.values(),
+                key=lambda position: (
+                    position.updated_at_ms,
+                    position.position_id,
+                ),
+            )
         )
+
+    def load_position_at(
+        self,
+        opening_plan_id: str,
+        *,
+        as_of_ms: int,
+    ) -> PaperPosition | None:
+        history = self.load_position_history(
+            opening_plan_id,
+            through_ms=as_of_ms,
+        )
+        if not history:
+            return None
+        latest_ms = history[-1].updated_at_ms
         latest = tuple(
             position
-            for position in candidates
+            for position in history
             if position.updated_at_ms == latest_ms
         )
         if len(latest) != 1:
