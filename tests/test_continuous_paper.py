@@ -333,6 +333,14 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_capacity_reflow_forward_markout": ('
         in source
     )
+    assert (
+        "evaluate_prospective_capacity_reflow_forward_excursion("
+        in source
+    )
+    assert (
+        '"prospective_capacity_reflow_forward_excursion": ('
+        in source
+    )
     assert "opening_opportunity_path_store," in source
     assert "execution.store.load_position_history(" in source
     assert "evaluate_prospective_daily_loss_lockout_reflow(" in source
