@@ -231,7 +231,7 @@ def _summary(
         (price_effect, fee_effect, exposure_effect)
     )
     rounding_residual = exact_decimal_sum(
-        (total_delta, -economic_components)
+        (total_delta, economic_components.copy_negate())
     )
     if (
         exact_decimal_sum(
