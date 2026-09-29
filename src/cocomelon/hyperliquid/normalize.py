@@ -15,6 +15,7 @@ from cocomelon.domain.market import (
     PerpMarketMeta,
     PerpMarketSnapshot,
 )
+from cocomelon.domain.stream import StreamEvent, StreamKind
 
 SOURCE = "hyperliquid-mainnet-info"
 SCHEMA_VERSION = 1
