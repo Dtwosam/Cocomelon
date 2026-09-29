@@ -647,3 +647,29 @@ def test_adapter_rolls_utc_day_once_and_persists_new_daily_baseline(
     assert restarted.account.day_start_ms == DAY_MS
     assert restarted.account.daily_realized_pnl == Decimal("0")
     restarted.close()
+
+
+def test_adapter_day_roll_write_failure_keeps_prior_account_and_degrades_health(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = adapter(tmp_path / "paper.sqlite3")
+    prior_state_id = engine.account.state_id
+
+    def fail_persist(_account: object) -> None:
+        raise RuntimeError("simulated day-roll write failure")
+
+    monkeypatch.setattr(engine.store, "persist_account", fail_persist)
+    with pytest.raises(
+        RuntimeError,
+        match="simulated day-roll write failure",
+    ):
+        engine.roll_account_day(DAY_MS)
+
+    assert engine.account.state_id == prior_state_id
+    assert engine.account.day_start_ms == 0
+    assert engine.health.healthy_for_new_exposure is False
+    assert engine.health.reason_codes == (
+        "DURABLE_ACCOUNT_DAY_ROLL_WRITE_FAILED",
+    )
+    engine.close()
