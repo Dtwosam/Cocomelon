@@ -4880,6 +4880,44 @@ def _live_status_payload(
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
         },
+        "replacement_funding_evidence": {
+            "enabled": replacement_funding_capture_error is None,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": (
+                "prospective_replacement_hourly_funding_boundary_capture"
+            ),
+            "capture_started_at_ms": (
+                replacement_funding_store.capture_started_at_ms
+            ),
+            "registered_opportunities": (
+                replacement_funding_store.registration_count
+            ),
+            "required_boundaries": (
+                replacement_funding_store.required_boundary_count
+            ),
+            "oracle_candidates": (
+                replacement_funding_store.oracle_candidate_count
+            ),
+            "captured_boundaries": replacement_funding_store.record_count,
+            "pending_boundaries": replacement_funding_store.pending_count(
+                now_ms=timestamp_ms
+            ),
+            "missed_boundaries": replacement_funding_store.missed_count(
+                now_ms=timestamp_ms
+            ),
+            "max_window_ms": replacement_funding_store.max_window_ms,
+            "max_oracle_age_ms": (
+                replacement_funding_store.max_oracle_age_ms
+            ),
+            "max_funding_capture_lag_ms": (
+                replacement_funding_store.max_funding_capture_lag_ms
+            ),
+            "state_digest": replacement_funding_store.state_digest,
+            "capture_error": replacement_funding_capture_error,
+            "funding_pnl_modeled": False,
+        },
     }
 
 
@@ -6097,6 +6135,34 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_exit_book_capture_error=(
                 opening_opportunity_sink.exit_book_error
+            ),
+            replacement_funding_registration_count=(
+                replacement_funding_store.registration_count
+            ),
+            replacement_funding_required_boundary_count=(
+                replacement_funding_store.required_boundary_count
+            ),
+            replacement_funding_oracle_candidate_count=(
+                replacement_funding_store.oracle_candidate_count
+            ),
+            replacement_funding_capture_count=(
+                replacement_funding_store.record_count
+            ),
+            replacement_funding_pending_count=(
+                replacement_funding_store.pending_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            replacement_funding_missed_count=(
+                replacement_funding_store.missed_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            replacement_funding_state_digest=(
+                replacement_funding_store.state_digest
+            ),
+            replacement_funding_capture_error=(
+                opening_opportunity_sink.funding_error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,
