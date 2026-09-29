@@ -225,7 +225,11 @@ def test_release_lineage_proves_candidate_filtered_capacity_source() -> None:
         ),
         rank_loader=ranks.get,
     )
-    assert caused == (options[0],)
+    assert len(caused) == 1
+    assert caused[0].opportunity_id == options[0].opportunity_id
+    assert caused[0].release_market == "BTC"
+    assert caused[0].release_opening_plan_id == btc_plan.plan_id
+    assert caused[0].release_block_reason == "long_trend"
 
     assert result["release_options"] == 2
     assert result["resolved_release_options"] == 2
