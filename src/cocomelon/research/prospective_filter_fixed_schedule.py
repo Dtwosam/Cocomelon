@@ -5,6 +5,9 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
+)
 
 ZERO: Final = Decimal("0")
 HOUR_MS: Final = Decimal("3600000")
@@ -117,17 +120,38 @@ def _timeline(
                 "fixed-schedule timeline moved backward"
             )
         elapsed_decimal = Decimal(elapsed)
-        position_ms += Decimal(count) * elapsed_decimal
-        notional_ms += notional * elapsed_decimal
-        risk_ms += risk * elapsed_decimal
+        position_ms = exact_decimal_sum(
+            (
+                position_ms,
+                Decimal(count) * elapsed_decimal,
+            )
+        )
+        notional_ms = exact_decimal_sum(
+            (
+                notional_ms,
+                notional * elapsed_decimal,
+            )
+        )
+        risk_ms = exact_decimal_sum(
+            (
+                risk_ms,
+                risk * elapsed_decimal,
+            )
+        )
         previous_ms = event.timestamp_ms
 
         if event.count_delta > 0 and count > 0:
             overlap_openings += 1
         count += event.count_delta
-        notional += event.notional_delta
-        risk += event.risk_delta
-        realized += event.realized_pnl_delta
+        notional = exact_decimal_sum(
+            (notional, event.notional_delta)
+        )
+        risk = exact_decimal_sum(
+            (risk, event.risk_delta)
+        )
+        realized = exact_decimal_sum(
+            (realized, event.realized_pnl_delta)
+        )
 
         if count < 0 or notional < ZERO or risk < ZERO:
             raise ProspectiveFilterFixedScheduleError(
@@ -236,7 +260,9 @@ def prospective_filter_fixed_schedule_portfolio(
         ),
         "blocked_trades": len(blocked),
         "blocked_actual_net_pnl": str(
-            sum((trade.net_pnl for trade in blocked), ZERO)
+            exact_decimal_sum(
+                trade.net_pnl for trade in blocked
+            )
         ),
         "cohort_reference_equity": (
             None
@@ -246,15 +272,23 @@ def prospective_filter_fixed_schedule_portfolio(
         "actual": actual,
         "candidate": candidate,
         "delta_final_realized_contribution": str(
-            candidate_final - actual_final
+            exact_decimal_sum(
+                (candidate_final, -actual_final)
+            )
         ),
         "delta_max_realized_drawdown": str(
-            candidate_drawdown - actual_drawdown
+            exact_decimal_sum(
+                (candidate_drawdown, -actual_drawdown)
+            )
         ),
         "delta_max_gross_notional": str(
-            candidate_notional - actual_notional
+            exact_decimal_sum(
+                (candidate_notional, -actual_notional)
+            )
         ),
         "delta_max_planned_risk": str(
-            candidate_risk - actual_risk
+            exact_decimal_sum(
+                (candidate_risk, -actual_risk)
+            )
         ),
     }
