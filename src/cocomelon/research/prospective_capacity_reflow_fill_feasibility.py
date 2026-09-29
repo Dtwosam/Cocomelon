@@ -572,6 +572,16 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "execution_config_compatibility": (
             "captured_cost_min_notional_leverage_and_latency"
         ),
+        "execution_config": {
+            "config_version": config.config_version,
+            "latency_ms": config.latency_ms,
+            "max_book_age_ms": config.max_book_age_ms,
+            "max_ioc_slippage_bps": str(
+                config.max_ioc_slippage_bps
+            ),
+            "taker_fee_rate": str(config.taker_fee_rate),
+            "fee_schedule_id": config.fee_schedule_id,
+        },
         "candidate_caused_release_options": len(releases),
         "candidate_caused_release_opportunities": len(
             opportunity_ids
