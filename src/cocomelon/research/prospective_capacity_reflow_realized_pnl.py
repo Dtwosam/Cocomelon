@@ -206,6 +206,10 @@ def prospective_capacity_reflow_realized_pnl_summary(
             raw_option.get("opportunity_id"),
             "opportunity_id",
         )
+        opportunity_timestamp_ms = _integer(
+            raw_option.get("opportunity_timestamp_ms"),
+            "opportunity_timestamp_ms",
+        )
         market = _text(
             raw_option.get("opportunity_market"),
             "opportunity_market",
@@ -357,6 +361,7 @@ def prospective_capacity_reflow_realized_pnl_summary(
             {
                 "option_id": option_id,
                 "opportunity_id": opportunity_id,
+                "opportunity_timestamp_ms": opportunity_timestamp_ms,
                 "opportunity_market": market,
                 "opportunity_direction": direction,
                 "entry_quantity": str(entry_quantity),
