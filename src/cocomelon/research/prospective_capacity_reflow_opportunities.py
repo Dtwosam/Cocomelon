@@ -35,6 +35,15 @@ class _ReleaseOption:
     correlation_bucket: str
 
 
+@dataclass(frozen=True, slots=True)
+class CapacityReleaseOpportunityOption:
+    opportunity_id: str
+    opportunity_timestamp_ms: int
+    opportunity_market: str
+    release_market: str
+    release_correlation_bucket: str
+
+
 def _candidate_block_reason(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
 ) -> str | None:
@@ -135,6 +144,62 @@ def _single_position_release_options(
                 )
             )
     return tuple(options)
+
+
+def candidate_eligible_capacity_release_options(
+    opportunities: tuple[
+        ContinuousPaperOpeningOpportunityEvidence,
+        ...,
+    ],
+    state: ProspectiveCombinedEntryFilterState,
+) -> tuple[CapacityReleaseOpportunityOption, ...]:
+    output: list[CapacityReleaseOpportunityOption] = []
+    for evidence in opportunities:
+        if evidence.opportunity_timestamp_ms < state.started_at_ms:
+            continue
+        if evidence.baseline_risk_approved:
+            continue
+        if not evidence.baseline_risk_reason_codes:
+            raise ProspectiveCapacityReflowOpportunityError(
+                "rejected opportunity is missing risk reason"
+            )
+        rank_age_ms = _rank_age_ms(evidence)
+        if rank_age_ms is None or evidence.rank_ordinal is None:
+            continue
+        if rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
+            continue
+        if _candidate_block_reason(evidence) is not None:
+            continue
+        if (
+            evidence.baseline_risk_reason_codes[0]
+            not in RISK_CAPACITY_REJECTION_REASONS
+        ):
+            continue
+        for option in _single_position_release_options(evidence):
+            output.append(
+                CapacityReleaseOpportunityOption(
+                    opportunity_id=evidence.opportunity_id,
+                    opportunity_timestamp_ms=(
+                        evidence.opportunity_timestamp_ms
+                    ),
+                    opportunity_market=evidence.market,
+                    release_market=option.market,
+                    release_correlation_bucket=(
+                        option.correlation_bucket
+                    ),
+                )
+            )
+    return tuple(
+        sorted(
+            output,
+            key=lambda item: (
+                item.opportunity_timestamp_ms,
+                item.opportunity_market,
+                item.release_market,
+                item.opportunity_id,
+            ),
+        )
+    )
 
 
 def prospective_capacity_reflow_opportunity_summary(
