@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Final
 
+from cocomelon.domain.execution import OrderSide, PaperFill
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.evaluation.store import EvaluationFactStore
@@ -13,6 +15,10 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 )
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
+)
+from cocomelon.research.delayed_entry_funding import (
+    FundingLoader,
+    trade_funding_accruals,
 )
 from cocomelon.research.exact_decimal_aggregation import (
     exact_decimal_sum,
@@ -26,6 +32,8 @@ from cocomelon.research.prospective_combined_entry_filter import (
 DAY_MS: Final = 86_400_000
 DAILY_LOSS_LOCKOUT: Final = "daily_loss_lockout"
 ZERO: Final = Decimal("0")
+
+ExitFillLoader = Callable[[str], tuple[PaperFill, ...]]
 
 
 class ProspectiveDailyLossLockoutReflowError(RuntimeError):
@@ -132,6 +140,113 @@ def _trade_block_reason(
     )
 
 
+def _cross_day_trade_daily_cash(
+    trade: TradeJournalEntry,
+    *,
+    day_start_ms: int,
+    opportunity_timestamp_ms: int,
+    exit_fill_loader: ExitFillLoader,
+    funding_loader: FundingLoader,
+) -> Decimal:
+    if not (
+        trade.opened_at_ms < day_start_ms
+        <= trade.closed_at_ms
+        < opportunity_timestamp_ms
+    ):
+        raise ProspectiveDailyLossLockoutReflowError(
+            "cross-day trade is outside requested daily cash window"
+        )
+
+    exit_fills: list[PaperFill] = []
+    seen_fill_ids: set[str] = set()
+    expected_side = (
+        OrderSide.SELL
+        if trade.direction is Direction.LONG
+        else OrderSide.BUY
+    )
+    for plan_id in trade.exit_plan_ids:
+        for fill in exit_fill_loader(plan_id):
+            if fill.fill_id in seen_fill_ids:
+                raise ProspectiveDailyLossLockoutReflowError(
+                    "duplicate cross-day exit fill"
+                )
+            if (
+                fill.plan_id != plan_id
+                or fill.market != trade.market
+                or fill.side is not expected_side
+                or fill.attempt_id not in trade.exit_attempt_ids
+                or fill.fill_id not in trade.fill_ids
+            ):
+                raise ProspectiveDailyLossLockoutReflowError(
+                    "cross-day exit fill lineage mismatch"
+                )
+            seen_fill_ids.add(fill.fill_id)
+            exit_fills.append(fill)
+
+    if not exit_fills:
+        raise ProspectiveDailyLossLockoutReflowError(
+            "cross-day exit fills are missing"
+        )
+
+    exit_quantity = exact_decimal_sum(
+        fill.quantity for fill in exit_fills
+    )
+    exit_fees = exact_decimal_sum(
+        fill.taker_fee for fill in exit_fills
+    )
+    gross_realized = exact_decimal_sum(
+        (
+            (fill.price - trade.entry_price) * fill.quantity
+            if trade.direction is Direction.LONG
+            else (trade.entry_price - fill.price) * fill.quantity
+        )
+        for fill in exit_fills
+    )
+    if (
+        exit_quantity != trade.filled_quantity
+        or exit_fees != trade.exit_fees
+        or gross_realized != trade.gross_realized_pnl
+    ):
+        raise ProspectiveDailyLossLockoutReflowError(
+            "cross-day exit fill economics do not reconcile"
+        )
+
+    funding = trade_funding_accruals(
+        trade,
+        funding_loader,
+    )
+    current_day_realized = exact_decimal_sum(
+        (
+            (fill.price - trade.entry_price) * fill.quantity
+            if trade.direction is Direction.LONG
+            else (trade.entry_price - fill.price) * fill.quantity
+        )
+        for fill in exit_fills
+        if day_start_ms
+        <= fill.timestamp_ms
+        < opportunity_timestamp_ms
+    )
+    current_day_exit_fees = exact_decimal_sum(
+        fill.taker_fee
+        for fill in exit_fills
+        if day_start_ms
+        <= fill.timestamp_ms
+        < opportunity_timestamp_ms
+    )
+    current_day_funding = exact_decimal_sum(
+        accrual.cash_delta
+        for accrual in funding
+        if day_start_ms
+        <= accrual.boundary_ms
+        < opportunity_timestamp_ms
+    )
+    return (
+        current_day_realized
+        - current_day_exit_fees
+        + current_day_funding
+    )
+
+
 def _decimal_min(values: tuple[Decimal, ...]) -> str | None:
     return None if not values else str(min(values))
 
@@ -149,6 +264,9 @@ def prospective_daily_loss_lockout_reflow_summary(
     fact_store: EvaluationFactStore,
     rank_store: ContinuousPaperOpeningRankStore,
     state: ProspectiveCombinedEntryFilterState,
+    *,
+    exit_fill_loader: ExitFillLoader | None = None,
+    funding_loader: FundingLoader | None = None,
 ) -> dict[str, object]:
     prospective = tuple(
         evidence
@@ -187,7 +305,10 @@ def prospective_daily_loss_lockout_reflow_summary(
     exact_candidate_unlocks = 0
     same_day_closed_trade_instances = 0
     cross_day_closed_trade_instances = 0
+    cross_day_cash_modeled_instances = 0
+    cross_day_cash_model_misses = 0
     candidate_blocked_closed_trade_instances = 0
+    candidate_blocked_cross_day_trade_instances = 0
     trade_decision_misses = 0
     trade_rank_misses = 0
     trade_stale_ranks = 0
@@ -199,6 +320,7 @@ def prospective_daily_loss_lockout_reflow_summary(
     adjusted_daily_values: list[Decimal] = []
     threshold_values: list[Decimal] = []
     removed_net_values: list[Decimal] = []
+    cross_day_cash_values: list[Decimal] = []
 
     ordered_trades = tuple(
         sorted(
@@ -246,9 +368,34 @@ def prospective_daily_loss_lockout_reflow_summary(
         cross_day_closed_trade_instances += len(cross_day)
         open_position_instances += len(request.open_positions)
 
-        blocked: list[TradeJournalEntry] = []
+        cross_day_cash_by_trade: dict[str, Decimal] = {}
+        if cross_day:
+            if (
+                exit_fill_loader is None
+                or funding_loader is None
+            ):
+                cross_day_cash_model_misses += len(cross_day)
+            else:
+                for trade in cross_day:
+                    cash = _cross_day_trade_daily_cash(
+                        trade,
+                        day_start_ms=day_start_ms,
+                        opportunity_timestamp_ms=(
+                            evidence.opportunity_timestamp_ms
+                        ),
+                        exit_fill_loader=exit_fill_loader,
+                        funding_loader=funding_loader,
+                    )
+                    cross_day_cash_by_trade[trade.trade_id] = cash
+                    cross_day_cash_modeled_instances += 1
+                    cross_day_cash_values.append(cash)
+
+        cross_day_cash_complete = (
+            len(cross_day_cash_by_trade) == len(cross_day)
+        )
+        blocked_cash: list[Decimal] = []
         attribution_clean = True
-        for trade in same_day:
+        for trade in (*same_day, *cross_day):
             if trade.opened_at_ms < state.started_at_ms:
                 continue
             reason, miss = _trade_block_reason(
@@ -269,39 +416,54 @@ def prospective_daily_loss_lockout_reflow_summary(
                 attribution_clean = False
                 continue
             if reason is not None:
-                blocked.append(trade)
                 candidate_blocked_closed_trade_instances += 1
                 blocked_trade_ids.add(trade.trade_id)
                 block_reason_counts[reason] += 1
+                if trade in same_day:
+                    blocked_cash.append(trade.net_pnl)
+                else:
+                    candidate_blocked_cross_day_trade_instances += 1
+                    cash = cross_day_cash_by_trade.get(trade.trade_id)
+                    if cash is not None:
+                        blocked_cash.append(cash)
 
         same_day_closed_net_pnl = exact_decimal_sum(
             trade.net_pnl for trade in same_day
         )
+        cross_day_daily_cash = exact_decimal_sum(
+            cross_day_cash_by_trade.values()
+        )
+        reconstructed_daily_cash = (
+            same_day_closed_net_pnl + cross_day_daily_cash
+        )
         baseline_cash_reconciles = (
-            not cross_day
-            and not request.open_positions
-            and same_day_closed_net_pnl
+            not request.open_positions
+            and cross_day_cash_complete
+            and reconstructed_daily_cash
             == account.daily_realized_pnl
         )
         if (
-            not cross_day
-            and not request.open_positions
+            not request.open_positions
+            and cross_day_cash_complete
             and not baseline_cash_reconciles
         ):
             baseline_cash_reconciliation_misses += 1
 
-        blocked_net_pnl = exact_decimal_sum(
-            trade.net_pnl for trade in blocked
-        )
+        blocked_net_pnl = exact_decimal_sum(blocked_cash)
         adjusted_daily = (
             account.daily_realized_pnl - blocked_net_pnl
         )
         unlocks = adjusted_daily > threshold
-        if attribution_clean and unlocks:
+        if (
+            attribution_clean
+            and cross_day_cash_complete
+            and unlocks
+        ):
             closed_trade_adjusted_unlocks += 1
 
         cash_scope_complete = (
             attribution_clean
+            and cross_day_cash_complete
             and baseline_cash_reconciles
         )
         if cash_scope_complete:
@@ -337,7 +499,10 @@ def prospective_daily_loss_lockout_reflow_summary(
         "replacement_trades_modeled": False,
         "pnl_modeled": False,
         "open_position_cash_effects_modeled": False,
-        "cross_day_trade_cash_effects_modeled": False,
+        "cross_day_trade_cash_effects_modeled": (
+            exit_fill_loader is not None
+            and funding_loader is not None
+        ),
         "daily_loss_lockout_opportunities": len(lockouts),
         "candidate_eligible_lockout_opportunities": len(
             candidate_eligible
@@ -358,6 +523,15 @@ def prospective_daily_loss_lockout_reflow_summary(
         "cross_day_closed_trade_instances": (
             cross_day_closed_trade_instances
         ),
+        "cross_day_cash_modeled_instances": (
+            cross_day_cash_modeled_instances
+        ),
+        "cross_day_cash_model_misses": (
+            cross_day_cash_model_misses
+        ),
+        "cross_day_cash_model_complete": (
+            cross_day_cash_model_misses == 0
+        ),
         "open_position_instances": open_position_instances,
         "baseline_cash_reconciliation_misses": (
             baseline_cash_reconciliation_misses
@@ -367,6 +541,9 @@ def prospective_daily_loss_lockout_reflow_summary(
         ),
         "candidate_blocked_closed_trade_instances": (
             candidate_blocked_closed_trade_instances
+        ),
+        "candidate_blocked_cross_day_trade_instances": (
+            candidate_blocked_cross_day_trade_instances
         ),
         "distinct_candidate_blocked_trade_ids": len(
             blocked_trade_ids
@@ -408,6 +585,18 @@ def prospective_daily_loss_lockout_reflow_summary(
         "removed_blocked_trade_net_pnl_max": _decimal_max(
             tuple(removed_net_values)
         ),
+        "removed_blocked_trade_cash_pnl_min": _decimal_min(
+            tuple(removed_net_values)
+        ),
+        "removed_blocked_trade_cash_pnl_max": _decimal_max(
+            tuple(removed_net_values)
+        ),
+        "cross_day_daily_cash_min": _decimal_min(
+            tuple(cross_day_cash_values)
+        ),
+        "cross_day_daily_cash_max": _decimal_max(
+            tuple(cross_day_cash_values)
+        ),
         "by_removed_trade_block_reason": dict(
             sorted(block_reason_counts.items())
         ),
@@ -420,6 +609,9 @@ def evaluate_prospective_daily_loss_lockout_reflow(
     fact_store: EvaluationFactStore,
     rank_store: ContinuousPaperOpeningRankStore,
     state: ProspectiveCombinedEntryFilterState,
+    *,
+    exit_fill_loader: ExitFillLoader | None = None,
+    funding_loader: FundingLoader | None = None,
 ) -> dict[str, object]:
     return prospective_daily_loss_lockout_reflow_summary(
         opportunity_store.iter_records(),
@@ -427,4 +619,6 @@ def evaluate_prospective_daily_loss_lockout_reflow(
         fact_store,
         rank_store,
         state,
+        exit_fill_loader=exit_fill_loader,
+        funding_loader=funding_loader,
     )
