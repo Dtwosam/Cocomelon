@@ -33,7 +33,6 @@ from tests.test_prospective_combined_entry_filter import (
     _trade,
 )
 
-
 DAY_MS = 86_400_000
 
 
