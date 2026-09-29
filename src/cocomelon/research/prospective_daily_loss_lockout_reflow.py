@@ -230,7 +230,7 @@ def prospective_daily_loss_lockout_reflow_summary(
             trade
             for trade in ordered_trades
             if day_start_ms <= trade.closed_at_ms
-            <= evidence.opportunity_timestamp_ms
+            < evidence.opportunity_timestamp_ms
         )
         cross_day = tuple(
             trade
