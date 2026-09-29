@@ -347,6 +347,13 @@ def prospective_daily_loss_lockout_reflow_summary(
     threshold_values: list[Decimal] = []
     removed_net_values: list[Decimal] = []
     cross_day_cash_values: list[Decimal] = []
+    candidate_eligible_opportunity_ids: list[str] = []
+    closed_trade_adjusted_unlock_opportunity_ids: list[str] = []
+    exact_cash_scope_opportunity_ids: list[str] = []
+    exact_candidate_unlock_opportunity_ids: list[str] = []
+    candidate_adjusted_daily_by_id: dict[str, str] = {}
+    threshold_by_id: dict[str, str] = {}
+    removed_blocked_cash_by_id: dict[str, str] = {}
 
     ordered_trades = tuple(
         sorted(
@@ -360,6 +367,9 @@ def prospective_daily_loss_lockout_reflow_summary(
     )
 
     for evidence in candidate_eligible:
+        candidate_eligible_opportunity_ids.append(
+            evidence.opportunity_id
+        )
         request = evidence.risk_request_object
         account = request.account_state
         threshold = -(
@@ -488,6 +498,9 @@ def prospective_daily_loss_lockout_reflow_summary(
             and unlocks
         ):
             closed_trade_adjusted_unlocks += 1
+            closed_trade_adjusted_unlock_opportunity_ids.append(
+                evidence.opportunity_id
+            )
 
         cash_scope_complete = (
             attribution_clean
@@ -496,8 +509,22 @@ def prospective_daily_loss_lockout_reflow_summary(
         )
         if cash_scope_complete:
             exact_cash_scope += 1
+            exact_cash_scope_opportunity_ids.append(
+                evidence.opportunity_id
+            )
             if unlocks:
                 exact_candidate_unlocks += 1
+                exact_candidate_unlock_opportunity_ids.append(
+                    evidence.opportunity_id
+                )
+
+        candidate_adjusted_daily_by_id[
+            evidence.opportunity_id
+        ] = str(adjusted_daily)
+        threshold_by_id[evidence.opportunity_id] = str(threshold)
+        removed_blocked_cash_by_id[
+            evidence.opportunity_id
+        ] = str(blocked_net_pnl)
 
         actual_daily_values.append(account.daily_realized_pnl)
         adjusted_daily_values.append(adjusted_daily)
@@ -534,6 +561,9 @@ def prospective_daily_loss_lockout_reflow_summary(
         "daily_loss_lockout_opportunities": len(lockouts),
         "candidate_eligible_lockout_opportunities": len(
             candidate_eligible
+        ),
+        "candidate_eligible_opportunity_ids": sorted(
+            candidate_eligible_opportunity_ids
         ),
         "candidate_blocked_lockout_opportunities": (
             opportunity_candidate_blocked
@@ -585,9 +615,27 @@ def prospective_daily_loss_lockout_reflow_summary(
         "closed_trade_adjusted_unlock_opportunities": (
             closed_trade_adjusted_unlocks
         ),
+        "closed_trade_adjusted_unlock_opportunity_ids": sorted(
+            closed_trade_adjusted_unlock_opportunity_ids
+        ),
         "exact_cash_scope_opportunities": exact_cash_scope,
+        "exact_cash_scope_opportunity_ids": sorted(
+            exact_cash_scope_opportunity_ids
+        ),
         "exact_candidate_unlock_opportunities": (
             exact_candidate_unlocks
+        ),
+        "exact_candidate_unlock_opportunity_ids": sorted(
+            exact_candidate_unlock_opportunity_ids
+        ),
+        "candidate_adjusted_daily_pnl_by_opportunity_id": dict(
+            sorted(candidate_adjusted_daily_by_id.items())
+        ),
+        "daily_loss_threshold_by_opportunity_id": dict(
+            sorted(threshold_by_id.items())
+        ),
+        "removed_blocked_trade_cash_pnl_by_opportunity_id": dict(
+            sorted(removed_blocked_cash_by_id.items())
         ),
         "baseline_daily_realized_pnl_min": _decimal_min(
             tuple(actual_daily_values)
