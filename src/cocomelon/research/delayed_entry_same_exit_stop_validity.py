@@ -88,12 +88,7 @@ class DelayedEntrySameExitStopValidityOutcome:
                     "same-exit stop-validity economics must be finite"
                 )
         if (
-            exact_decimal_sum(
-                (
-                    self.same_exit_candidate_net_pnl,
-                    self.actual_net_pnl.copy_negate(),
-                )
-            )
+            self.same_exit_candidate_net_pnl - self.actual_net_pnl
             != self.same_exit_delta_vs_actual
         ):
             raise ValueError(
