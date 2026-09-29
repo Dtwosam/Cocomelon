@@ -460,7 +460,7 @@ class ContinuousPaperReplacementFundingStore:
     @staticmethod
     def _boundary_name(market: str, boundary_ms: int) -> str:
         return hashlib.sha256(
-            f"{market}:{boundary_ms}".encode("utf-8")
+            f"{market}:{boundary_ms}".encode()
         ).hexdigest() + ".json"
 
     def _registration_path(self, opportunity_id: str) -> Path:
