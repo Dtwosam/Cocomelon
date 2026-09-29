@@ -51,6 +51,7 @@ def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
     ) == 2
     assert "SOURCE_HEAD_SHA" in source
     assert "ARTIFACT_HEAD_SHA" in source
+    assert source.count("timeout-minutes: 30") >= 2
     measure_at = source.index(
         "- name: Measure durable continuous paper state"
     )
