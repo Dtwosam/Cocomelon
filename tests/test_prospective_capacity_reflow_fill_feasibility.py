@@ -274,6 +274,14 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["account_capacity_credit_mode"] == (
         "exact_single_release_accounting_other_positions_fixed"
     )
+    assert result["execution_config"] == {
+        "config_version": "phase7-v1",
+        "latency_ms": 250,
+        "max_book_age_ms": 1000,
+        "max_ioc_slippage_bps": "25",
+        "taker_fee_rate": "0.00045",
+        "fee_schedule_id": "hyperliquid-native-base-2026-08-23",
+    }
     assert result["counterfactual_equity_delta_min"] == "1"
     assert result["counterfactual_equity_delta_max"] == "1"
     assert result["replacement_entry_fills_modeled"] is True
