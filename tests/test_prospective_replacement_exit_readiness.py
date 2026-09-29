@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from cocomelon.research.prospective_replacement_exit_readiness import (
     MIN_EXACT_OPTIONS_FOR_REVIEW,
+    ProspectiveReplacementExitReadinessError,
     prospective_replacement_exit_readiness,
 )
 
@@ -125,7 +126,7 @@ def test_replacement_exit_readiness_rejects_inconsistent_economics() -> None:
                 gross_loss_abs="10",
             )
         )
-    except Exception as exc:
+    except ProspectiveReplacementExitReadinessError as exc:
         assert "does not reconcile" in str(exc)
     else:
         raise AssertionError("inconsistent robustness economics must fail closed")
