@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from decimal import Decimal
 
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.risk import (
     ExecutionCostEstimate,
     LiquidityRiskState,
+    OpenPositionRisk,
     RiskAccountState,
     RiskHealthState,
     RiskLimits,
@@ -180,19 +180,19 @@ def test_daily_loss_reflow_marks_cross_day_and_open_cash_scope_incomplete(
         opened_at_ms=2 * DAY_MS - 10_000,
         pnl="-120",
     )
-    cross_day = replace(
-        cross_day,
-        closed_at_ms=2 * DAY_MS + 50_000,
-        holding_duration_ms=60_000,
-    )
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
         daily_realized_pnl="-120",
         open_positions=(
-            _opportunity(
-                timestamp_ms=opportunity_ms,
-                daily_realized_pnl="-120",
-            ).risk_request_object.open_positions
+            OpenPositionRisk(
+                market=_market("BTC"),
+                direction=Direction.LONG,
+                planned_risk=Decimal("25"),
+                notional=Decimal("1000"),
+                correlation_bucket="majors",
+                entry_price=Decimal("100"),
+                stop_price=Decimal("90"),
+            ),
         ),
     )
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
