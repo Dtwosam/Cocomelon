@@ -80,6 +80,8 @@ def test_replacement_exit_readiness_reports_every_failed_requirement() -> None:
             exact_options=12,
             total_pnl="-1",
             profit_factor="0.8",
+            gross_profit="4",
+            gross_loss_abs="5",
             option_leave_one_positive=False,
             market_leave_one_positive=False,
             full_blocks=3,
