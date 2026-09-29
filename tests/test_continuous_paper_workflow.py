@@ -36,6 +36,11 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
 
 def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
+    assert "- name: Measure durable continuous paper state" in source
+    assert "scripts/summarize_continuous_paper_state.py" in source
+    assert "--json-out /tmp/continuous-paper-state-size.json" in source
+    assert "--markdown-out /tmp/continuous-paper-state-size.md" in source
+    assert 'tee -a "$GITHUB_STEP_SUMMARY"' in source
     assert "- name: Pack durable continuous paper state" in source
     assert 'tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .' in source
     assert "path: continuous-paper-state.tar" in source
@@ -56,12 +61,15 @@ def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
         'cp -a /tmp/state-artifact/. "$STATE_ROOT"/'
         in source
     )
+    measure_at = source.index(
+        "- name: Measure durable continuous paper state"
+    )
     pack_at = source.index("- name: Pack durable continuous paper state")
     upload_at = source.index("- name: Upload durable continuous paper state")
     dispatch_at = source.index(
         "- name: Queue exact successor continuous paper worker"
     )
-    assert pack_at < upload_at < dispatch_at
+    assert measure_at < pack_at < upload_at < dispatch_at
 
 
 def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
@@ -97,6 +105,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert 'git fetch --quiet --depth=1 origin main' in source
     assert 'git diff --name-only "$GITHUB_SHA" FETCH_HEAD --' in source
     assert "src/cocomelon/continuous_paper.py" in source
+    assert "scripts/summarize_continuous_paper_state.py" in source
     assert "src/cocomelon/risk" in source
     assert "src/cocomelon/research/account_lifecycle_bridge.py" in source
     assert "src/cocomelon/research/cadence_shadow.py" in source
@@ -276,6 +285,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/strategies/**"' in source
     assert '"src/cocomelon/hyperliquid/**"' in source
     assert '"scripts/render_continuous_paper_live_status.py"' in source
+    assert '"scripts/summarize_continuous_paper_state.py"' in source
 
 
 def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> None:
