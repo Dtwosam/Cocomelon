@@ -192,6 +192,7 @@ def prospective_daily_loss_lockout_reflow_summary(
     trade_rank_misses = 0
     trade_stale_ranks = 0
     open_position_instances = 0
+    baseline_cash_reconciliation_misses = 0
     blocked_trade_ids: set[str] = set()
     block_reason_counts: Counter[str] = Counter()
     actual_daily_values: list[Decimal] = []
@@ -273,6 +274,22 @@ def prospective_daily_loss_lockout_reflow_summary(
                 blocked_trade_ids.add(trade.trade_id)
                 block_reason_counts[reason] += 1
 
+        same_day_closed_net_pnl = exact_decimal_sum(
+            trade.net_pnl for trade in same_day
+        )
+        baseline_cash_reconciles = (
+            not cross_day
+            and not request.open_positions
+            and same_day_closed_net_pnl
+            == account.daily_realized_pnl
+        )
+        if (
+            not cross_day
+            and not request.open_positions
+            and not baseline_cash_reconciles
+        ):
+            baseline_cash_reconciliation_misses += 1
+
         blocked_net_pnl = exact_decimal_sum(
             trade.net_pnl for trade in blocked
         )
@@ -285,8 +302,7 @@ def prospective_daily_loss_lockout_reflow_summary(
 
         cash_scope_complete = (
             attribution_clean
-            and not cross_day
-            and not request.open_positions
+            and baseline_cash_reconciles
         )
         if cash_scope_complete:
             exact_cash_scope += 1
@@ -343,6 +359,12 @@ def prospective_daily_loss_lockout_reflow_summary(
             cross_day_closed_trade_instances
         ),
         "open_position_instances": open_position_instances,
+        "baseline_cash_reconciliation_misses": (
+            baseline_cash_reconciliation_misses
+        ),
+        "baseline_cash_reconciliation_clean": (
+            baseline_cash_reconciliation_misses == 0
+        ),
         "candidate_blocked_closed_trade_instances": (
             candidate_blocked_closed_trade_instances
         ),
