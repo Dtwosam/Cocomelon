@@ -52,6 +52,7 @@ from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
 from cocomelon.hyperliquid.normalize import (
     normalize_candles,
     normalize_funding_history,
+    normalize_l2_book_snapshot,
     normalize_meta_and_asset_ctxs,
 )
 from cocomelon.hyperliquid.watchlist import DeepWatchlistManager
@@ -96,6 +97,9 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 )
 from cocomelon.research.continuous_paper_opening_opportunity import (
     evidence_from_opening_trace as opportunity_evidence_from_trace,
+)
+from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
+    ContinuousPaperOpeningOpportunityExitBookStore,
 )
 from cocomelon.research.continuous_paper_opening_opportunity_paths import (
     DEFAULT_MAX_COMPLETION_LAG_MS,
@@ -228,6 +232,8 @@ from cocomelon.research.prospective_capacity_reflow_forward_excursion import (
     evaluate_prospective_capacity_reflow_forward_excursion,
 )
 from cocomelon.research.prospective_capacity_reflow_forward_markout import (
+    DEFAULT_FORWARD_MARKOUT_HORIZONS_MS,
+    MAX_FORWARD_MARKOUT_LAG_MS,
     evaluate_prospective_capacity_reflow_forward_markout,
 )
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
@@ -431,13 +437,16 @@ class _ContinuousOpeningOpportunitySink:
         self,
         store: ContinuousPaperOpeningOpportunityStore,
         path_store: ContinuousPaperOpeningOpportunityPathStore,
+        exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
         rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
         self._path_store = path_store
+        self._exit_book_store = exit_book_store
         self._rank_tracker = rank_tracker
         self.error: str | None = None
         self.path_error: str | None = None
+        self.exit_book_error: str | None = None
 
     def record_opening_trace(
         self,
@@ -468,6 +477,17 @@ class _ContinuousOpeningOpportunitySink:
         except Exception as exc:
             if self.path_error is None:
                 self.path_error = f"{type(exc).__name__}: {exc}"
+
+        try:
+            self._exit_book_store.register(
+                opportunity_id=evidence.opportunity_id,
+                market=evidence.market,
+                direction=evidence.direction,
+                opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
+            )
+        except Exception as exc:
+            if self.exit_book_error is None:
+                self.exit_book_error = f"{type(exc).__name__}: {exc}"
 
     def observe_snapshots(
         self,
@@ -4898,6 +4918,14 @@ async def run_continuous_paper_session(
             max_completion_lag_ms=DEFAULT_MAX_COMPLETION_LAG_MS,
         )
     )
+    opening_opportunity_exit_book_store = (
+        ContinuousPaperOpeningOpportunityExitBookStore(
+            root / "opening-opportunity-exit-books",
+            capture_started_at_ms=started_at_ms,
+            horizons_ms=DEFAULT_FORWARD_MARKOUT_HORIZONS_MS,
+            max_capture_lag_ms=MAX_FORWARD_MARKOUT_LAG_MS,
+        )
+    )
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
@@ -4906,11 +4934,63 @@ async def run_continuous_paper_session(
     opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
         opening_opportunity_store,
         opening_opportunity_path_store,
+        opening_opportunity_exit_book_store,
         rank_tracker,
     )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
     replay_config = BaselineReplayConfig()
+
+    async def capture_due_exit_books(
+        snapshots: dict[str, PerpMarketSnapshot],
+        *,
+        now_ms: int,
+    ) -> None:
+        for request in opening_opportunity_exit_book_store.due_requests(
+            now_ms=now_ms
+        ):
+            snapshot = snapshots.get(request.market)
+            if snapshot is None:
+                if opening_opportunity_sink.exit_book_error is None:
+                    opening_opportunity_sink.exit_book_error = (
+                        "RuntimeError: due exit-book market missing "
+                        f"from native snapshot: {request.market}"
+                    )
+                continue
+            try:
+                raw_book = await asyncio.to_thread(
+                    reader.l2_book,
+                    snapshot.meta.market,
+                )
+                received_at_ms = utc_now_ms()
+                book = normalize_l2_book_snapshot(
+                    snapshot.meta.market,
+                    raw_book,
+                    received_at_ms=received_at_ms,
+                )
+                instrument = InstrumentExecutionSpec(
+                    market=snapshot.meta.market,
+                    sz_decimals=snapshot.meta.sz_decimals,
+                    venue_max_leverage=Decimal(
+                        snapshot.meta.max_leverage
+                    ),
+                    minimum_order_notional=(
+                        replay_config.execution.native_perp_min_notional
+                    ),
+                    metadata_received_at_ms=snapshot.received_at_ms,
+                    metadata_source=snapshot.source,
+                )
+                opening_opportunity_exit_book_store.capture(
+                    request,
+                    book,
+                    instrument,
+                )
+            except Exception as exc:
+                if opening_opportunity_sink.exit_book_error is None:
+                    opening_opportunity_sink.exit_book_error = (
+                        f"{type(exc).__name__}: {exc}"
+                    )
+
     original_stop_book_capture = OriginalStopBookCapture(
         original_stop_book_store,
         opening_plan_loader=execution.store.load_plan,
@@ -5035,6 +5115,10 @@ async def run_continuous_paper_session(
             received_at_ms=initial_received_at_ms,
         )
         opening_opportunity_sink.observe_snapshots(snapshots)
+        await capture_due_exit_books(
+            snapshots,
+            now_ms=initial_received_at_ms,
+        )
         pinned = tuple(position.market for position in execution.account.positions)
         initial_rank_observed_at_ms = utc_now_ms()
         _initial_features, initial_ranks = _startup_ranks(
@@ -5361,6 +5445,10 @@ async def run_continuous_paper_session(
                     received_at_ms=now_ms,
                 )
                 opening_opportunity_sink.observe_snapshots(refreshed)
+                await capture_due_exit_books(
+                    refreshed,
+                    now_ms=now_ms,
+                )
                 for market in selected:
                     snapshot = refreshed.get(market.canonical)
                     if snapshot is not None:
