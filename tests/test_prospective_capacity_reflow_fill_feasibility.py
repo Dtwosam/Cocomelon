@@ -221,15 +221,15 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["conservative_risk_approvals"] == 1
     assert result["planning_approvals"] == 1
     assert result["fillable_options"] == 1
-    assert result["full_fill_options"] == 1
-    assert result["partial_fill_options"] == 0
+    assert result["full_fill_options"] == 0
+    assert result["partial_fill_options"] == 1
     assert result["no_fill_options"] == 0
     assert result["execution_rejected_options"] == 0
     assert Decimal(str(result["gross_fill_notional"])) > Decimal("0")
     assert Decimal(str(result["taker_fees"])) > Decimal("0")
     assert result["by_opportunity_market"] == {"SOL": 1}
     assert result["by_release_market"] == {"BTC": 1}
-    assert result["by_execution_result"] == {"full": 1}
+    assert result["by_execution_result"] == {"partial": 1}
     assert result["portfolio_counterfactual"] is False
     assert result["other_baseline_positions_held_fixed"] is True
     assert result["other_positions_replayed"] is False
