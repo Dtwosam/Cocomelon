@@ -44,6 +44,8 @@ def _opportunity(
     *,
     timestamp_ms: int,
     daily_realized_pnl: str,
+    day_start_equity: str = "10000",
+    equity: str = "9880",
     open_positions=(),
 ) -> ContinuousPaperOpeningOpportunityEvidence:
     decision = StrategyDecision(
@@ -62,11 +64,14 @@ def _opportunity(
         entry_reference_price=Decimal("100"),
         correlation_bucket="majors",
         account_state=RiskAccountState(
-            equity=Decimal("9880"),
-            day_start_equity=Decimal("10000"),
+            equity=Decimal(equity),
+            day_start_equity=Decimal(day_start_equity),
             daily_realized_pnl=Decimal(daily_realized_pnl),
-            rolling_7d_peak_equity=Decimal("10000"),
-            available_margin=Decimal("9880"),
+            rolling_7d_peak_equity=max(
+                Decimal(day_start_equity),
+                Decimal(equity),
+            ),
+            available_margin=Decimal(equity),
             gross_open_notional=Decimal("0"),
             consecutive_losses=2,
             last_closed_trade_ms=timestamp_ms - 1_000,
@@ -136,7 +141,9 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
     )
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
-        daily_realized_pnl="-120",
+        daily_realized_pnl="-60",
+        day_start_equity="5000",
+        equity="4940",
     )
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
     ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
@@ -189,11 +196,13 @@ def test_daily_loss_reflow_marks_cross_day_and_open_cash_scope_incomplete(
         suffix="cross-day",
         direction=Direction.SHORT,
         opened_at_ms=2 * DAY_MS - 10_000,
-        pnl="-120",
+        pnl="-60",
     )
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
-        daily_realized_pnl="-120",
+        daily_realized_pnl="-60",
+        day_start_equity="5000",
+        equity="4940",
         open_positions=(
             OpenPositionRisk(
                 market=_market("BTC"),
@@ -229,7 +238,7 @@ def test_daily_loss_reflow_refuses_exact_scope_when_cash_does_not_reconcile(
 ) -> None:
     opportunity = _opportunity(
         timestamp_ms=DAY_MS + 200_000,
-        daily_realized_pnl="-120",
+        daily_realized_pnl="-60",
     )
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
     ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
@@ -260,12 +269,14 @@ def test_daily_loss_reflow_excludes_same_timestamp_close(
         suffix="same-timestamp-close",
         direction=Direction.SHORT,
         opened_at_ms=opportunity_ms - 60_000,
-        pnl="-120",
+        pnl="-60",
     )
     assert same_timestamp_close.closed_at_ms == opportunity_ms
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
-        daily_realized_pnl="-120",
+        daily_realized_pnl="-60",
+        day_start_equity="5000",
+        equity="4940",
     )
     facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
     ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
