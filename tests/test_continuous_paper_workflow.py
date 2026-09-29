@@ -34,6 +34,36 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     )
     assert upload_at < dispatch_at
 
+def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    assert "- name: Pack durable continuous paper state" in source
+    assert 'tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .' in source
+    assert "path: continuous-paper-state.tar" in source
+    assert "compression-level: 0" in source
+    assert "timeout-minutes: 10" in source
+    assert "mkdir -p /tmp/state-artifact" in source
+    assert "unzip -q /tmp/state.zip -d /tmp/state-artifact" in source
+    assert (
+        'if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then'
+        in source
+    )
+    assert (
+        'tar -xf /tmp/state-artifact/continuous-paper-state.tar '
+        '-C "$STATE_ROOT"'
+        in source
+    )
+    assert (
+        'cp -a /tmp/state-artifact/. "$STATE_ROOT"/'
+        in source
+    )
+    pack_at = source.index("- name: Pack durable continuous paper state")
+    upload_at = source.index("- name: Upload durable continuous paper state")
+    dispatch_at = source.index(
+        "- name: Queue exact successor continuous paper worker"
+    )
+    assert pack_at < upload_at < dispatch_at
+
+
 def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     watchdog_at = source.index("watch_for_newer_runtime_run()")
