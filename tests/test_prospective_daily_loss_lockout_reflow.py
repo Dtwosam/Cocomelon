@@ -169,6 +169,27 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
     assert result["baseline_cash_reconciliation_clean"] is True
     assert result["exact_candidate_unlock_opportunities"] == 1
     assert result["closed_trade_adjusted_unlock_opportunities"] == 1
+    assert result["candidate_eligible_opportunity_ids"] == [
+        opportunity.opportunity_id
+    ]
+    assert result["closed_trade_adjusted_unlock_opportunity_ids"] == [
+        opportunity.opportunity_id
+    ]
+    assert result["exact_cash_scope_opportunity_ids"] == [
+        opportunity.opportunity_id
+    ]
+    assert result["exact_candidate_unlock_opportunity_ids"] == [
+        opportunity.opportunity_id
+    ]
+    assert result["candidate_adjusted_daily_pnl_by_opportunity_id"] == {
+        opportunity.opportunity_id: "-40"
+    }
+    assert result["daily_loss_threshold_by_opportunity_id"] == {
+        opportunity.opportunity_id: "-100.00"
+    }
+    assert result["removed_blocked_trade_cash_pnl_by_opportunity_id"] == {
+        opportunity.opportunity_id: "-80"
+    }
     assert result["same_day_closed_trade_instances"] == 2
     assert result["candidate_blocked_closed_trade_instances"] == 1
     assert result["distinct_candidate_blocked_trade_ids"] == 1
