@@ -251,19 +251,19 @@ def _summary(
         (price, entry_fee, exposure, funding)
     )
     component_rounding_residual = exact_decimal_sum(
-        (corrected_delta, -component_total)
+        (corrected_delta, component_total.copy_negate())
     )
     legacy_bridge = exact_decimal_sum(
         (legacy_delta, funding)
     )
     legacy_bridge_rounding_residual = exact_decimal_sum(
-        (corrected_delta, -legacy_bridge)
+        (corrected_delta, legacy_bridge.copy_negate())
     )
     candidate_bridge = exact_decimal_sum(
         (actual, corrected_delta)
     )
     candidate_bridge_rounding_residual = exact_decimal_sum(
-        (corrected_candidate, -candidate_bridge)
+        (corrected_candidate, candidate_bridge.copy_negate())
     )
     if (
         exact_decimal_sum(
