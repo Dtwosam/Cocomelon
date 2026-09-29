@@ -504,10 +504,17 @@ class ContinuousPaperOpeningOpportunityExitBookStore:
 
     @staticmethod
     def _write(path: Path, value: object) -> None:
-        encoded = _canonical_json(value)
+        encoded = _canonical_json(value).encode("utf-8")
         tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(encoded, encoding="utf-8")
-        os.replace(tmp, path)
+        try:
+            with tmp.open("wb") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+        finally:
+            if tmp.exists():
+                tmp.unlink()
 
     @staticmethod
     def _read(path: Path) -> object:
