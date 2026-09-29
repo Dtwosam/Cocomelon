@@ -14,7 +14,6 @@ from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
     ContinuousPaperOpeningOpportunityExitBookStore,
 )
 
-
 MARKET = MarketId(dex="", coin="SOL")
 
 
