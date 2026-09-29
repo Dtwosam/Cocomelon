@@ -29,6 +29,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "total_account_pnl": "2.5",
         "total_return_fraction": "0.00025",
         "cash": "9990",
+        "day_start_ms": 1_699_920_000_000,
+        "day_start_equity": "10010",
+        "daily_realized_pnl": "-7.5",
         "unrealized_pnl": "12.5",
         "realized_gross_pnl": "0",
         "cumulative_fees": "0.5",
@@ -4462,6 +4465,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "total account PnL" in output
     assert "2.5" in output
     assert "total return fraction" in output
+    assert "UTC day start / equity" in output
+    assert "`1699920000000 / 10010`" in output
+    assert "daily realized PnL: `-7.5`" in output
     assert "gross open notional / equity" in output
     assert "### Drawdown / high-water" in output
     assert "#### Sampled account equity" in output
