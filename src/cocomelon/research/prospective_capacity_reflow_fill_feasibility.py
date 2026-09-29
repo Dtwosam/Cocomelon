@@ -214,7 +214,17 @@ def _counterfactual_request(
             "release opportunity lineage mismatch"
         )
 
-    current = history[-1]
+    decision_time_states = tuple(
+        position
+        for position in history
+        if position.updated_at_ms
+        == evidence.opportunity_timestamp_ms
+    )
+    if len(decision_time_states) != 1:
+        raise ProspectiveCapacityReflowFillFeasibilityError(
+            "release position decision-time history is missing or ambiguous"
+        )
+    current = decision_time_states[0]
     risk_position = _risk_position(request, release)
     _validate_position_lineage(
         risk_position,
