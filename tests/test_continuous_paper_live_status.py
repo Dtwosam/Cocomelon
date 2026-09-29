@@ -5071,6 +5071,8 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
             "same_day_closed_trade_instances": 8,
             "cross_day_closed_trade_instances": 0,
             "open_position_instances": 0,
+            "baseline_cash_reconciliation_misses": 0,
+            "baseline_cash_reconciliation_clean": True,
             "candidate_blocked_closed_trade_instances": 4,
             "distinct_candidate_blocked_trade_ids": 2,
             "trade_decision_attribution_misses": 0,
@@ -5096,6 +5098,8 @@ def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
     assert "Candidate daily-loss lockout reflow" in output
     assert "`10 / 2 / 8`" in output
     assert "`2 / 2 / 2`" in output
+    assert "baseline cash reconciliation misses / clean" in output
+    assert "`0 / true`" in output
     assert "long_trend=4" in output
     assert "authoritative" in output
     assert "open-position cash effects modeled: `false`" in output
