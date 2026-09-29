@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/continuous-paper.yml")
@@ -147,6 +148,37 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/strategies/**"' in source
     assert '"src/cocomelon/hyperliquid/**"' in source
     assert '"scripts/render_continuous_paper_live_status.py"' in source
+
+
+def test_continuous_paper_worker_watches_runtime_research_dependencies() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    runtime_source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    runtime_tree = ast.parse(runtime_source)
+    direct_research_paths = sorted(
+        {
+            "src/" + node.module.replace(".", "/") + ".py"
+            for node in ast.walk(runtime_tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module is not None
+            and node.module.startswith("cocomelon.research.")
+        }
+    )
+    transitive_runtime_paths = (
+        "src/cocomelon/research/delayed_entry_funding.py",
+        "src/cocomelon/research/exact_decimal_aggregation.py",
+        "src/cocomelon/research/outcome_learning.py",
+        "src/cocomelon/research/prospective_allowed_residual.py",
+        "src/cocomelon/research/prospective_filter_fixed_schedule.py",
+        "src/cocomelon/research/prospective_filter_robustness.py",
+    )
+
+    for path in (*direct_research_paths, *transitive_runtime_paths):
+        assert source.count(path) >= 2, (
+            f"continuous paper runtime dependency is not watched for "
+            f"bootstrap and graceful rotation: {path}"
+        )
 
 
 def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> None:
