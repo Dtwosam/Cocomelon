@@ -14,7 +14,11 @@ from cocomelon.domain.execution import (
     PaperOrderPlan,
 )
 from cocomelon.domain.market import MarketId
-from cocomelon.execution.accounting import apply_opening_fills, empty_account
+from cocomelon.execution.accounting import (
+    apply_opening_fills,
+    empty_account,
+    mark_to_market,
+)
 from cocomelon.execution.funding import FundingAccrual, funding_cash_delta
 from cocomelon.execution.store import PaperExecutionStore
 
@@ -516,3 +520,48 @@ def test_database_enforces_one_active_position_per_market(tmp_path: Path) -> Non
                 (MARKET.canonical, "two", "{}"),
             )
     store.close()
+
+
+def test_position_history_loads_exact_state_at_or_before_timestamp(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "paper.sqlite3"
+    order = plan()
+    paper_fill = fill(order)
+    execution = attempt(order)
+    opened = opened_state(order, paper_fill)
+    store = PaperExecutionStore(path)
+    store.persist_plan(order)
+    store.persist_execution(execution, (paper_fill,), opened)
+
+    marked = mark_to_market(
+        opened,
+        {MARKET: Decimal("105")},
+        2_000,
+    )
+    store.persist_account(marked)
+
+    assert (
+        store.load_position_at(
+            order.plan_id,
+            as_of_ms=1_299,
+        )
+        is None
+    )
+    at_open = store.load_position_at(
+        order.plan_id,
+        as_of_ms=1_500,
+    )
+    at_mark = store.load_position_at(
+        order.plan_id,
+        as_of_ms=2_500,
+    )
+    store.close()
+
+    assert at_open is not None
+    assert at_open.opening_plan_id == order.plan_id
+    assert at_open.updated_at_ms == 1_300
+    assert at_open.latest_mark == Decimal("100")
+    assert at_mark is not None
+    assert at_mark.updated_at_ms == 2_000
+    assert at_mark.latest_mark == Decimal("105")
