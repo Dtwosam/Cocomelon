@@ -4257,11 +4257,13 @@ def _prospective_capacity_reflow_fill_feasibility_lines(
             "",
             (
                 "_This starts only from release positions the frozen candidate "
-                "itself would have blocked. It reconstructs the persisted same-day "
-                "position accounting, applies a conservative weekly-peak bound, "
-                "reruns the exact risk engine and opening planner, and simulates "
-                "the exact captured decision-time L2 IOC. Exit selection and "
-                "replacement-trade PnL remain unmodeled._"
+                "itself would have blocked. It reconstructs that persisted same-day "
+                "position exactly while holding every other baseline position fixed, "
+                "applies a conservative weekly-peak bound, reruns the production "
+                "risk engine and opening planner, and simulates the exact captured "
+                "decision-time L2 IOC. This is a single-release sensitivity, not a "
+                "full candidate-portfolio replay; exit selection and replacement "
+                "trade PnL remain unmodeled._"
             ),
         ]
     )
