@@ -7,12 +7,12 @@ import sys
 
 from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
+    _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
-    _opening_opportunity_evidence_lines,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
