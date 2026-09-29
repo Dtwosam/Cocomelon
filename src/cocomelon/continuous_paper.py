@@ -537,13 +537,6 @@ class _ContinuousOpeningOpportunitySink:
                 except Exception as exc:
                     if self.path_error is None:
                         self.path_error = f"{type(exc).__name__}: {exc}"
-            try:
-                self._replacement_funding_store.observe_snapshot(
-                    snapshot
-                )
-            except Exception as exc:
-                if self.funding_error is None:
-                    self.funding_error = f"{type(exc).__name__}: {exc}"
 
 
 class _CompositeOpeningResearchObserver:
