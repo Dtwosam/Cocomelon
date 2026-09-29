@@ -276,6 +276,10 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_replacement_exit_policy import (
+    ProspectiveReplacementExitPolicyState,
+    prospective_replacement_exit_policy_summary,
+)
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
@@ -301,6 +305,9 @@ PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
+)
+PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME = (
+    "prospective-replacement-5m-exit-state.json"
 )
 ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
     "adaptive-delay-selector-state.json"
@@ -1863,6 +1870,33 @@ def _restore_prospective_top10_rank_filter(
         )
 
 
+def _restore_prospective_replacement_exit_policy(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveReplacementExitPolicyState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveReplacementExitPolicyState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveReplacementExitPolicyState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveReplacementExitPolicyState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _restore_prospective_combined_entry_filter(
     path: Path,
     *,
@@ -2152,6 +2186,36 @@ def _prospective_capacity_reflow_realized_pnl_payload(
     payload["enabled"] = True
     payload["candidate_id"] = state.candidate_id
     payload["started_at_ms"] = state.started_at_ms
+    payload["error"] = None
+    return payload
+
+
+def _prospective_replacement_exit_policy_payload(
+    realized_pnl: dict[str, object],
+    state: ProspectiveReplacementExitPolicyState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = prospective_replacement_exit_policy_summary(
+            realized_pnl,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "exit_horizon_ms": state.exit_horizon_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
     payload["error"] = None
     return payload
 
@@ -4117,6 +4181,9 @@ def _live_status_payload(
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_replacement_exit_policy_state: (
+        ProspectiveReplacementExitPolicyState
+    ),
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -4132,6 +4199,7 @@ def _live_status_payload(
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -4344,6 +4412,15 @@ def _live_status_payload(
             prospective_capacity_reflow_exit_fill,
             replacement_funding_store,
             prospective_combined_entry_filter_state,
+        )
+    )
+    prospective_replacement_exit_policy = (
+        _prospective_replacement_exit_policy_payload(
+            prospective_capacity_reflow_realized_pnl,
+            prospective_replacement_exit_policy_state,
+            restore_error=(
+                prospective_replacement_exit_policy_restore_error
+            ),
         )
     )
     prospective_capacity_reflow_forward_markout = (
@@ -4761,6 +4838,9 @@ def _live_status_payload(
         "prospective_capacity_reflow_realized_pnl": (
             prospective_capacity_reflow_realized_pnl
         ),
+        "prospective_replacement_exit_policy": (
+            prospective_replacement_exit_policy
+        ),
         "prospective_capacity_reflow_forward_markout": (
             prospective_capacity_reflow_forward_markout
         ),
@@ -4948,6 +5028,9 @@ def _emit_live_status(
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_replacement_exit_policy_state: (
+        ProspectiveReplacementExitPolicyState
+    ),
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -4963,6 +5046,7 @@ def _emit_live_status(
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -4998,6 +5082,7 @@ def _emit_live_status(
         prospective_delayed_price_confirmation_state,
         prospective_top10_rank_filter_state,
         prospective_combined_entry_filter_state,
+        prospective_replacement_exit_policy_state,
         adaptive_delay_selector_state,
         fill_aware_delay_selector_state,
         delay_selector_comparison_state,
@@ -5029,6 +5114,9 @@ def _emit_live_status(
         ),
         prospective_combined_entry_filter_restore_error=(
             prospective_combined_entry_filter_restore_error
+        ),
+        prospective_replacement_exit_policy_restore_error=(
+            prospective_replacement_exit_policy_restore_error
         ),
         adaptive_delay_selector_restore_error=(
             adaptive_delay_selector_restore_error
@@ -5497,6 +5585,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_replacement_exit_policy_state,
+        prospective_replacement_exit_policy_restore_error,
+    ) = _restore_prospective_replacement_exit_policy(
+        root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         adaptive_delay_selector_state,
         adaptive_delay_selector_restore_error,
     ) = _restore_adaptive_delay_selector(
@@ -5706,6 +5801,10 @@ async def run_continuous_paper_session(
                 prospective_combined_entry_filter_state.payload(),
             )
             _write_json_atomic(
+                root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
+                prospective_replacement_exit_policy_state.payload(),
+            )
+            _write_json_atomic(
                 root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
                 adaptive_delay_selector_state.payload(),
             )
@@ -5753,6 +5852,7 @@ async def run_continuous_paper_session(
             prospective_delayed_price_confirmation_state,
             prospective_top10_rank_filter_state,
             prospective_combined_entry_filter_state,
+            prospective_replacement_exit_policy_state,
             adaptive_delay_selector_state,
             fill_aware_delay_selector_state,
             delay_selector_comparison_state,
@@ -5788,6 +5888,9 @@ async def run_continuous_paper_session(
             ),
             prospective_combined_entry_filter_restore_error=(
                 prospective_combined_entry_filter_restore_error
+            ),
+            prospective_replacement_exit_policy_restore_error=(
+                prospective_replacement_exit_policy_restore_error
             ),
             adaptive_delay_selector_restore_error=(
                 adaptive_delay_selector_restore_error
@@ -5972,6 +6075,7 @@ async def run_continuous_paper_session(
                     prospective_delayed_price_confirmation_state,
                     prospective_top10_rank_filter_state,
                     prospective_combined_entry_filter_state,
+                    prospective_replacement_exit_policy_state,
                     adaptive_delay_selector_state,
                     fill_aware_delay_selector_state,
                     delay_selector_comparison_state,
@@ -6007,6 +6111,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_combined_entry_filter_restore_error=(
                         prospective_combined_entry_filter_restore_error
+                    ),
+                    prospective_replacement_exit_policy_restore_error=(
+                        prospective_replacement_exit_policy_restore_error
                     ),
                     adaptive_delay_selector_restore_error=(
                         adaptive_delay_selector_restore_error
