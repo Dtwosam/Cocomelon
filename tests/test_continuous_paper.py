@@ -310,6 +310,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "evaluate_prospective_combined_entry_filter(" in source
     assert "evaluate_prospective_combined_matched_overlap(" in source
     assert '"matched_standalone_overlap"' in source
+    assert "evaluate_prospective_capacity_reflow_opportunities(" in source
+    assert '"prospective_capacity_reflow_opportunities": (' in source
     assert 'ContinuousPaperOpeningRankStore(' in source
     assert 'root / "opening-ranks"' in source
     assert '"opening_scanner_rank": opening_rank' in source
