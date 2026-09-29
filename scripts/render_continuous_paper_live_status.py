@@ -4221,6 +4221,11 @@ def _prospective_daily_loss_lockout_reflow_lines(
                 f"{raw.get('distinct_candidate_blocked_trade_ids', 0)}`"
             ),
             (
+                "- baseline cash reconciliation misses / clean: "
+                f"`{raw.get('baseline_cash_reconciliation_misses', 0)} / "
+                f"{str(bool(raw.get('baseline_cash_reconciliation_clean'))).lower()}`"
+            ),
+            (
                 "- trade decision / rank / stale-rank misses: "
                 f"`{raw.get('trade_decision_attribution_misses', 0)} / "
                 f"{raw.get('trade_rank_attribution_misses', 0)} / "
@@ -4261,9 +4266,11 @@ def _prospective_daily_loss_lockout_reflow_lines(
             (
                 "_The captured daily realized PnL is authoritative. This removes "
                 "only fully same-day closed trades that the frozen candidate would "
-                "have blocked. An exact unlock is credited only when candidate "
-                "attribution is complete and there are no cross-day closed trades "
-                "or open positions whose same-day cash effects would need replay._"
+                "have blocked. An exact unlock is credited only when the captured "
+                "daily cash reconciles exactly to those same-day closed trades, "
+                "candidate attribution is complete, and there are no cross-day "
+                "closed trades or open positions whose same-day cash effects would "
+                "need replay._"
             ),
         ]
     )
