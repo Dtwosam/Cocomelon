@@ -176,3 +176,42 @@ def test_exit_book_store_requires_exact_market_lineage(tmp_path: Path) -> None:
                 metadata_source="hyperliquid-mainnet-info",
             ),
         )
+
+
+def test_exit_book_store_preserves_protocol_start_across_restart(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "exit-books"
+    first = ContinuousPaperOpeningOpportunityExitBookStore(
+        root,
+        capture_started_at_ms=1_000,
+        horizons_ms=(300, 900),
+        max_capture_lag_ms=120,
+    )
+    first.register(
+        opportunity_id="opp-1",
+        market="SOL",
+        direction="long",
+        opportunity_timestamp_ms=1_100,
+    )
+
+    restored = ContinuousPaperOpeningOpportunityExitBookStore(
+        root,
+        capture_started_at_ms=5_000,
+        horizons_ms=(300, 900),
+        max_capture_lag_ms=120,
+    )
+
+    assert restored.capture_started_at_ms == 1_000
+    assert restored.registration_count == 1
+    assert restored.request("opp-1", 300).target_at_ms == 1_400
+    with pytest.raises(
+        ContinuousPaperOpeningOpportunityExitBookError,
+        match="predates capture protocol",
+    ):
+        restored.register(
+            opportunity_id="older-than-protocol",
+            market="SOL",
+            direction="short",
+            opportunity_timestamp_ms=999,
+        )
