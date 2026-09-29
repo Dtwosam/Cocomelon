@@ -180,6 +180,7 @@ jobs:
 
       - name: Restore exact predecessor state
         if: ${{ steps.guard.outputs.skip != 'true' && inputs.source_run_id != '' }}
+        timeout-minutes: 30
         env:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
@@ -232,6 +233,7 @@ jobs:
 
       - name: Restore latest trusted state for watchdog/manual recovery
         if: ${{ steps.guard.outputs.skip != 'true' && inputs.source_run_id == '' }}
+        timeout-minutes: 30
         run: |
           set -euo pipefail
           mkdir -p "$STATE_ROOT"
