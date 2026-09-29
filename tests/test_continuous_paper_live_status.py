@@ -21,6 +21,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_daily_loss_lockout_reflow_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
+    _replacement_funding_evidence_lines,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
@@ -5003,6 +5004,40 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "forward mark paths" in output
     assert "real horizon L2 exit books" in output
     assert "never retroactively" in output
+
+
+
+
+def test_replacement_funding_renderer_exposes_boundary_coverage() -> None:
+    lines = _replacement_funding_evidence_lines(
+        {
+            "enabled": True,
+            "capture_started_at_ms": 1_000,
+            "registered_opportunities": 4,
+            "required_boundaries": 9,
+            "oracle_candidates": 7,
+            "captured_boundaries": 6,
+            "pending_boundaries": 2,
+            "missed_boundaries": 1,
+            "max_window_ms": 21_720_250,
+            "max_oracle_age_ms": 5_000,
+            "max_funding_capture_lag_ms": 300_000,
+            "state_digest": "d" * 64,
+            "capture_error": None,
+            "funding_pnl_modeled": False,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Replacement funding boundary evidence" in output
+    assert "`4`" in output
+    assert "`9 / 7 / 6`" in output
+    assert "`2 / 1`" in output
+    assert "`5000`ms" in output
+    assert "`300000`ms" in output
+    assert "funding PnL modeled: `false`" in output
+    assert "`" + "d" * 64 + "`" in output
+    assert "observed before the boundary" in output
 
 
 def test_capacity_reflow_fill_renderer_exposes_exact_entry_shadow() -> None:
