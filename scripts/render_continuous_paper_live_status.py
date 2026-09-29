@@ -4162,6 +4162,114 @@ def _prospective_capacity_reflow_release_lineage_lines(
     return lines
 
 
+def _prospective_daily_loss_lockout_reflow_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate daily-loss lockout reflow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No daily-loss lockout reflow telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- daily-loss lockouts / candidate-eligible / "
+                "candidate-blocked: "
+                f"`{raw.get('daily_loss_lockout_opportunities', 0)} / "
+                f"{raw.get('candidate_eligible_lockout_opportunities', 0)} / "
+                f"{raw.get('candidate_blocked_lockout_opportunities', 0)}`"
+            ),
+            (
+                "- opportunity rank missing / stale / integrity clean: "
+                f"`{raw.get('opportunity_missing_rank_evidence', 0)} / "
+                f"{raw.get('opportunity_stale_rank_evidence', 0)} / "
+                f"{str(bool(raw.get('opportunity_integrity_clean'))).lower()}`"
+            ),
+            (
+                "- same-day / cross-day closed-trade instances / open positions: "
+                f"`{raw.get('same_day_closed_trade_instances', 0)} / "
+                f"{raw.get('cross_day_closed_trade_instances', 0)} / "
+                f"{raw.get('open_position_instances', 0)}`"
+            ),
+            (
+                "- candidate-blocked closed-trade instances / distinct trades: "
+                f"`{raw.get('candidate_blocked_closed_trade_instances', 0)} / "
+                f"{raw.get('distinct_candidate_blocked_trade_ids', 0)}`"
+            ),
+            (
+                "- trade decision / rank / stale-rank misses: "
+                f"`{raw.get('trade_decision_attribution_misses', 0)} / "
+                f"{raw.get('trade_rank_attribution_misses', 0)} / "
+                f"{raw.get('trade_stale_rank_attribution', 0)}`"
+            ),
+            (
+                "- closed-trade-adjusted unlocks / exact cash scope / "
+                "exact candidate unlocks: "
+                f"`{raw.get('closed_trade_adjusted_unlock_opportunities', 0)} / "
+                f"{raw.get('exact_cash_scope_opportunities', 0)} / "
+                f"{raw.get('exact_candidate_unlock_opportunities', 0)}`"
+            ),
+            (
+                "- baseline daily PnL range / candidate-adjusted range: "
+                f"`{raw.get('baseline_daily_realized_pnl_min')} .. "
+                f"{raw.get('baseline_daily_realized_pnl_max')} / "
+                f"{raw.get('candidate_daily_realized_pnl_min')} .. "
+                f"{raw.get('candidate_daily_realized_pnl_max')}`"
+            ),
+            (
+                "- daily-loss threshold range: "
+                f"`{raw.get('daily_loss_threshold_min')} .. "
+                f"{raw.get('daily_loss_threshold_max')}`"
+            ),
+            (
+                "- removed blocked-trade net PnL range: "
+                f"`{raw.get('removed_blocked_trade_net_pnl_min')} .. "
+                f"{raw.get('removed_blocked_trade_net_pnl_max')}`"
+            ),
+            (
+                "- removed-trade candidate block reasons: "
+                f"`{counts(raw.get('by_removed_trade_block_reason'))}`"
+            ),
+            "- open-position cash effects modeled: `false`",
+            "- cross-day trade cash effects modeled: `false`",
+            "- replacement trades / PnL modeled: `false / false`",
+            "",
+            (
+                "_The captured daily realized PnL is authoritative. This removes "
+                "only fully same-day closed trades that the frozen candidate would "
+                "have blocked. An exact unlock is credited only when candidate "
+                "attribution is complete and there are no cross-day closed trades "
+                "or open positions whose same-day cash effects would need replay._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _opening_opportunity_evidence_lines(
     raw: object,
 ) -> list[str]:
@@ -6902,6 +7010,11 @@ def render_live_status(
     lines.extend(
         _prospective_capacity_reflow_release_lineage_lines(
             payload.get("prospective_capacity_reflow_release_lineage")
+        )
+    )
+    lines.extend(
+        _prospective_daily_loss_lockout_reflow_lines(
+            payload.get("prospective_daily_loss_lockout_reflow")
         )
     )
     lines.extend(
