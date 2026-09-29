@@ -2438,3 +2438,14 @@ The record then follows the production path explicitly: risk approval plus reaso
 This still models entry feasibility only. It does not choose replacement exits, calculate replacement PnL, alter the frozen candidate, grant promotion authority, or enable live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate replacement forward markouts — 2026-09-29
+
+The candidate-caused replacement-entry shadow now joins each simulated full or partial IOC fill to the durable observed forward path for the exact opening-opportunity ID. Fixed research horizons are 5 minutes, 15 minutes, 1 hour, and 6 hours. At each horizon the study uses the first real market mark at or after the target only when it arrives within a two-minute observation-lag bound; missing paths remain missing, horizons that have not matured remain pending, and late observations are labeled stale rather than imputed.
+
+Each settled observation reports directional return, gross mark-to-market PnL, and entry-fee-adjusted mark-to-market PnL using the exact simulated fill quantity and average entry price. The output preserves option, opportunity, release-position, and IOC-attempt lineage so later research cannot broaden or duplicate the cohort independently.
+
+These are fixed-horizon mark-to-market observations, not exits. No synthetic exit fill, exit fee, realized replacement PnL, promotion authority, or live-order authority is introduced.
+
+**LIVE TRADING: DISABLED.**
