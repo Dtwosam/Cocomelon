@@ -301,8 +301,11 @@ def prospective_replacement_exit_policy_summary(
         "option_results": sorted(
             option_results,
             key=lambda item: (
-                int(item["opportunity_timestamp_ms"]),
-                str(item["option_id"]),
+                _integer(
+                    item.get("opportunity_timestamp_ms"),
+                    "opportunity_timestamp_ms",
+                ),
+                _text(item.get("option_id"), "option_id"),
             ),
         ),
         "strategy_level_pnl_claimed": False,
