@@ -257,10 +257,6 @@ from cocomelon.research.prospective_capacity_reflow_opportunities import (
 from cocomelon.research.prospective_capacity_reflow_realized_pnl import (
     evaluate_prospective_capacity_reflow_realized_pnl,
 )
-from cocomelon.research.prospective_replacement_exit_policy import (
-    ProspectiveReplacementExitPolicyState,
-    prospective_replacement_exit_policy_summary,
-)
 from cocomelon.research.prospective_capacity_reflow_release_lineage import (
     evaluate_prospective_capacity_reflow_release_lineage,
 )
@@ -279,6 +275,10 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
+)
+from cocomelon.research.prospective_replacement_exit_policy import (
+    ProspectiveReplacementExitPolicyState,
+    prospective_replacement_exit_policy_summary,
 )
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
