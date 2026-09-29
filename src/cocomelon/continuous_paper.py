@@ -5304,7 +5304,7 @@ async def run_continuous_paper_session(
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
     stop_path = None if stop_file is None else Path(stop_file)
-    if _stop_requested(stop_path):
+    if stop_path is not None and stop_path.exists():
         stop_path.unlink()
     started_at_ms = utc_now_ms()
     checkpoint_path = root / CHECKPOINT_FILENAME
