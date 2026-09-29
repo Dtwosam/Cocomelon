@@ -4108,6 +4108,7 @@ def _live_status_payload(
     opening_opportunity_exit_book_store: (
         ContinuousPaperOpeningOpportunityExitBookStore
     ),
+    replacement_funding_store: ContinuousPaperReplacementFundingStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4131,6 +4132,7 @@ def _live_status_payload(
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
     opening_opportunity_exit_book_capture_error: str | None,
+    replacement_funding_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4898,6 +4900,7 @@ def _emit_live_status(
     opening_opportunity_exit_book_store: (
         ContinuousPaperOpeningOpportunityExitBookStore
     ),
+    replacement_funding_store: ContinuousPaperReplacementFundingStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4921,6 +4924,7 @@ def _emit_live_status(
     opening_opportunity_capture_error: str | None,
     opening_opportunity_path_capture_error: str | None,
     opening_opportunity_exit_book_capture_error: str | None,
+    replacement_funding_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4948,6 +4952,7 @@ def _emit_live_status(
         opening_opportunity_store,
         opening_opportunity_path_store,
         opening_opportunity_exit_book_store,
+        replacement_funding_store,
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
@@ -4975,6 +4980,9 @@ def _emit_live_status(
         ),
         opening_opportunity_exit_book_capture_error=(
             opening_opportunity_exit_book_capture_error
+        ),
+        replacement_funding_capture_error=(
+            replacement_funding_capture_error
         ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
@@ -5694,6 +5702,7 @@ async def run_continuous_paper_session(
             opening_opportunity_store,
             opening_opportunity_path_store,
             opening_opportunity_exit_book_store,
+            replacement_funding_store,
             original_stop_book_store,
             original_stop_book_capture,
             profit_lock_execution_shadow,
@@ -5725,6 +5734,9 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_exit_book_capture_error=(
                 opening_opportunity_sink.exit_book_error
+            ),
+            replacement_funding_capture_error=(
+                opening_opportunity_sink.funding_error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -5903,6 +5915,7 @@ async def run_continuous_paper_session(
                     opening_opportunity_store,
                     opening_opportunity_path_store,
                     opening_opportunity_exit_book_store,
+                    replacement_funding_store,
                     original_stop_book_store,
                     original_stop_book_capture,
                     profit_lock_execution_shadow,
@@ -5934,6 +5947,9 @@ async def run_continuous_paper_session(
                     ),
                     opening_opportunity_exit_book_capture_error=(
                         opening_opportunity_sink.exit_book_error
+                    ),
+                    replacement_funding_capture_error=(
+                        opening_opportunity_sink.funding_error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
