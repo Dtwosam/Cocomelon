@@ -127,6 +127,7 @@ def test_mark_to_market_computes_margin_available_equity_and_phase6_adapter() ->
     assert risk_account.available_margin == marked.available_margin
     assert risk_account.gross_open_notional == marked.gross_open_notional
     assert risk_account.daily_realized_pnl == Decimal("-0.5")
+    assert risk_account.day_start_ms == marked.day_start_ms
     assert risk_account.rolling_7d_peak_equity == marked.rolling_7d_peak_equity
     assert risk_account.consecutive_losses == 0
     assert risk_account.last_closed_trade_ms is None
