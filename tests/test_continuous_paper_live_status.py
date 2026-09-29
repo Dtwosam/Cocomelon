@@ -2808,6 +2808,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "actual_net_pnl": "-10",
                 "same_exit_candidate_net_pnl": "5",
                 "same_exit_delta_vs_actual": "15",
+                "candidate_actual_decimal_rounding_residual_pnl": "-1E-25",
                 "same_exit_candidate_pnl_on_definite_stop_crossings": "4",
                 "same_exit_candidate_pnl_on_observed_survivors": "1",
                 "same_exit_delta_on_definite_stop_crossings": "8",
@@ -4066,6 +4067,8 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`5 / 4 / 1`" in output
     assert "same-exit Δ vs actual all / stop-crossed / survived" in output
     assert "`15 / 8 / 7`" in output
+    assert "stop-validity candidate/actual Decimal residual" in output
+    assert "`-1E-25`" in output
     assert "absolute candidate PnL on definite stop crossings" in output
     assert "`0.8`" in output
     assert "stop-validity missing path / funding / lineage" in output
