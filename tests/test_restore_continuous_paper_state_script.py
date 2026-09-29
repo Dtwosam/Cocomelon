@@ -3,11 +3,13 @@ from __future__ import annotations
 import base64
 import os
 import subprocess
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
 
 SCRIPT = Path("scripts/restore_continuous_paper_state.sh")
+STREAM_MEMBER = Path("scripts/stream_zip_member.py")
 SOURCE_SHA = "a" * 40
 
 
@@ -78,11 +80,14 @@ def test_restore_script_streams_packed_artifact_end_to_end(
         artifact_zip,
         "w",
         compression=zipfile.ZIP_DEFLATED,
+        allowZip64=True,
     ) as archive:
-        archive.write(
-            tar_path,
-            arcname="continuous-paper-state.tar",
-        )
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(tar_path.read_bytes())
 
     _, env = _fake_gh(
         tmp_path,
@@ -109,6 +114,39 @@ def test_restore_script_streams_packed_artifact_end_to_end(
         encoding="utf-8"
     ) == '{"state":"exact"}\n'
     assert not (tmp_path / "state.zip").exists()
+
+
+def test_stream_zip_member_handles_forced_zip64(
+    tmp_path: Path,
+) -> None:
+    payload = (b"zip64-stream-member-" * 1024) + b"done"
+    archive_path = tmp_path / "forced-zip64.zip"
+    with zipfile.ZipFile(
+        archive_path,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        allowZip64=True,
+    ) as archive:
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(payload)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STREAM_MEMBER),
+            "continuous-paper-state.tar",
+        ],
+        input=archive_path.read_bytes(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+
+    assert result.stdout == payload
 
 
 def test_restore_script_keeps_legacy_multifile_compatibility(
@@ -154,6 +192,11 @@ def test_restore_script_uses_stream_for_packed_artifacts() -> None:
         'grep -Fq -- "- name: Pack durable continuous paper state"'
         in source
     )
-    assert "| funzip \\\n    | tar -xf - -C \"$state_root\"" in source
+    assert (
+        "| python scripts/stream_zip_member.py "
+        "continuous-paper-state.tar \\\n"
+        "    | tar -xf - -C \"$state_root\""
+        in source
+    )
     assert '> "$tmp_root/state.zip"' in source
     assert 'unzip -q "$tmp_root/state.zip" -d "$artifact_root"' in source
