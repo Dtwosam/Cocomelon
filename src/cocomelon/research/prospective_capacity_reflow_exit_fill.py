@@ -17,6 +17,7 @@ from cocomelon.execution.planner import (
     plan_reduce_only_order,
 )
 from cocomelon.research.continuous_paper_opening_opportunity_exit_books import (
+    ContinuousPaperOpeningOpportunityExitBookStore,
     OpeningOpportunityExitBookEvidence,
 )
 from cocomelon.research.prospective_capacity_reflow_forward_markout import (
@@ -534,3 +535,16 @@ def prospective_capacity_reflow_exit_fill_summary(
         "replacement_trade_pnl_complete": False,
         "realized_pnl_claimed": False,
     }
+
+
+def evaluate_prospective_capacity_reflow_exit_fill(
+    fill_feasibility: dict[str, object],
+    exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
+    config: PaperExecutionConfig,
+) -> dict[str, object]:
+    return prospective_capacity_reflow_exit_fill_summary(
+        fill_feasibility,
+        exit_book_store.iter_records(),
+        config,
+        horizons_ms=exit_book_store.horizons_ms,
+    )
