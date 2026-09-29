@@ -719,6 +719,7 @@ def risk_state_from_paper(
         consecutive_losses=account.consecutive_losses,
         last_closed_trade_ms=account.last_closed_trade_ms,
         as_of_ms=account.updated_at_ms,
+        day_start_ms=account.day_start_ms,
     )
     open_positions: list[OpenPositionRisk] = []
     for position in account.positions:
