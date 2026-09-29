@@ -11,6 +11,8 @@ def _robustness(
     exact_options: int = 30,
     total_pnl: str = "12",
     profit_factor: str | None = "1.8",
+    gross_profit: str = "27",
+    gross_loss_abs: str = "15",
     option_leave_one_positive: bool | None = True,
     market_leave_one_positive: bool | None = True,
     full_blocks: int = 4,
@@ -32,6 +34,8 @@ def _robustness(
             exact_options >= MIN_EXACT_OPTIONS_FOR_REVIEW
         ),
         "total_exact_realized_pnl": total_pnl,
+        "gross_profit": gross_profit,
+        "gross_loss_abs": gross_loss_abs,
         "profit_factor": profit_factor,
         "positive_after_any_single_option_removed": (
             option_leave_one_positive
@@ -95,10 +99,15 @@ def test_replacement_exit_readiness_reports_every_failed_requirement() -> None:
     assert result["missing_exact_options"] == 18
 
 
-def test_replacement_exit_readiness_fails_closed_on_unresolved_profit_factor() -> None:
+def test_replacement_exit_readiness_accepts_zero_loss_as_infinite_profit_factor() -> None:
     result = prospective_replacement_exit_readiness(
-        _robustness(profit_factor=None)
+        _robustness(
+            profit_factor=None,
+            gross_profit="12",
+            gross_loss_abs="0",
+        )
     )
 
-    assert result["ready_for_review"] is False
-    assert "profit_factor_above_one" in result["failed_requirements"]
+    assert result["ready_for_review"] is True
+    assert result["profit_factor"] is None
+    assert result["profit_factor_above_one"] is True
