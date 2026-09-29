@@ -4919,6 +4919,73 @@ def _opening_opportunity_evidence_lines(
     return lines
 
 
+def _replacement_funding_evidence_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Replacement funding boundary evidence",
+        "",
+        "- authority: `RESEARCH CAPTURE ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement-funding capture telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("capture_error")
+    if error:
+        lines.append(f"- capture warning: `{error}`")
+
+    lines.extend(
+        [
+            (
+                "- capture start / registered opportunities: "
+                f"`{raw.get('capture_started_at_ms')} / "
+                f"{raw.get('registered_opportunities', 0)}`"
+            ),
+            (
+                "- required boundaries / fresh oracle candidates / captured: "
+                f"`{raw.get('required_boundaries', 0)} / "
+                f"{raw.get('oracle_candidates', 0)} / "
+                f"{raw.get('captured_boundaries', 0)}`"
+            ),
+            (
+                "- pending / missed boundaries: "
+                f"`{raw.get('pending_boundaries', 0)} / "
+                f"{raw.get('missed_boundaries', 0)}`"
+            ),
+            (
+                "- maximum replacement window / oracle age / funding lag: "
+                f"`{raw.get('max_window_ms')}`ms / "
+                f"`{raw.get('max_oracle_age_ms')}`ms / "
+                f"`{raw.get('max_funding_capture_lag_ms')}`ms"
+            ),
+            (
+                "- funding PnL modeled: "
+                f"`{str(bool(raw.get('funding_pnl_modeled'))).lower()}`"
+            ),
+            (
+                "- state digest: "
+                f"`{raw.get('state_digest', 'unknown')}`"
+            ),
+            "",
+            (
+                "_Funding-boundary evidence is prospective only. Each captured hour "
+                "requires a real oracle snapshot observed before the boundary within "
+                "the same freshness limit used by paper execution, plus the exact "
+                "public funding-history rate for that boundary. This capture does not "
+                "yet add funding to replacement PnL or change execution authority._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _entry_markout_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -7641,6 +7708,11 @@ def render_live_status(
     lines.extend(
         _opening_opportunity_evidence_lines(
             payload.get("opening_opportunity_evidence")
+        )
+    )
+    lines.extend(
+        _replacement_funding_evidence_lines(
+            payload.get("replacement_funding_evidence")
         )
     )
     lines.extend(
