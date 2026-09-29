@@ -227,9 +227,20 @@ def _summary(
     total_delta = exact_decimal_sum(
         item.total_delta_pnl for item in items
     )
-    if price_effect + fee_effect + exposure_effect != total_delta:
+    economic_components = exact_decimal_sum(
+        (price_effect, fee_effect, exposure_effect)
+    )
+    rounding_residual = exact_decimal_sum(
+        (total_delta, -economic_components)
+    )
+    if (
+        exact_decimal_sum(
+            (economic_components, rounding_residual)
+        )
+        != total_delta
+    ):
         raise DelayedEntryContributionDecompositionError(
-            "summary decomposition does not reconcile"
+            "summary rounding bridge does not reconcile"
         )
     return {
         "trades": count,
@@ -248,6 +259,9 @@ def _summary(
         "entry_fee_effect_pnl": str(fee_effect),
         "exposure_effect_pnl": str(exposure_effect),
         "total_delta_pnl": str(total_delta),
+        "decimal_rounding_residual_pnl": str(
+            rounding_residual
+        ),
         "mean_price_effect_r": (
             None
             if count == 0
@@ -362,6 +376,10 @@ def delayed_entry_contribution_decomposition(
         "identity": (
             "price_effect + entry_fee_effect + "
             "exposure_effect = total_delta"
+        ),
+        "summary_identity": (
+            "price_effect + entry_fee_effect + exposure_effect + "
+            "decimal_rounding_residual = total_delta"
         ),
         "closed_shadow_outcomes": len(outcomes),
         "evaluated_delayed_attempts": len(items),
