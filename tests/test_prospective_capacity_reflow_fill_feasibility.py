@@ -230,8 +230,11 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["by_opportunity_market"] == {"SOL": 1}
     assert result["by_release_market"] == {"BTC": 1}
     assert result["by_execution_result"] == {"full": 1}
+    assert result["portfolio_counterfactual"] is False
+    assert result["other_baseline_positions_held_fixed"] is True
+    assert result["other_positions_replayed"] is False
     assert result["account_capacity_credit_mode"] == (
-        "exact_same_day_release_position"
+        "exact_single_release_accounting_other_positions_fixed"
     )
     assert result["counterfactual_equity_delta_min"] == "1"
     assert result["counterfactual_equity_delta_max"] == "1"
