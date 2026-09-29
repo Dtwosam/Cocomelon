@@ -4270,6 +4270,108 @@ def _prospective_capacity_reflow_fill_feasibility_lines(
     return lines
 
 
+def _prospective_capacity_reflow_forward_markout_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-caused replacement forward markouts",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement forward-markout telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- fillable options / paths available / paths missing: "
+                f"`{raw.get('fillable_options', 0)} / "
+                f"{raw.get('paths_available', 0)} / "
+                f"{raw.get('paths_missing', 0)}`"
+            ),
+            (
+                "- maximum accepted mark lag: "
+                f"`{raw.get('max_mark_lag_ms', 0)}`ms"
+            ),
+            "",
+            (
+                "| Horizon | Settled | Pending | Stale | Missing path | "
+                "+ / - / flat | Gross MTM | Entry-fee-adjusted MTM | "
+                "Mean directional return |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: |"
+            ),
+        ]
+    )
+
+    by_horizon = raw.get("by_horizon")
+    if isinstance(by_horizon, dict):
+        labels = {
+            "300000": "5m",
+            "900000": "15m",
+            "3600000": "1h",
+            "21600000": "6h",
+        }
+        for horizon_key in sorted(
+            by_horizon,
+            key=lambda value: int(str(value)),
+        ):
+            item = by_horizon[horizon_key]
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| "
+                f"{labels.get(str(horizon_key), str(horizon_key) + 'ms')} | "
+                f"{item.get('settled_options', 0)} | "
+                f"{item.get('pending_options', 0)} | "
+                f"{item.get('stale_options', 0)} | "
+                f"{item.get('missing_path_options', 0)} | "
+                f"{item.get('positive_options', 0)} / "
+                f"{item.get('negative_options', 0)} / "
+                f"{item.get('flat_options', 0)} | "
+                f"{item.get('gross_mark_to_market_pnl', '0')} | "
+                f"{item.get('entry_fee_adjusted_mark_to_market_pnl', '0')} | "
+                f"{item.get('mean_directional_return_fraction')} |"
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "- replacement entry fills / forward markouts / exits / "
+                "realized PnL modeled: "
+                f"`{str(bool(raw.get('replacement_entry_fills_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_forward_markouts_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_exits_modeled'))).lower()} / "
+                f"{str(bool(raw.get('realized_pnl_modeled'))).lower()}`"
+            ),
+            (
+                "_A settled markout uses the first real observed market mark at or "
+                "after the fixed horizon, only when it arrives within the configured "
+                "lag bound. The economic snapshot includes the simulated entry fee "
+                "but no synthetic exit fill or exit fee, so it is mark-to-market "
+                "research rather than realized replacement-trade PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_daily_loss_lockout_reflow_lines(
     raw: object,
 ) -> list[str]:
@@ -7157,6 +7259,13 @@ def render_live_status(
         _prospective_capacity_reflow_fill_feasibility_lines(
             payload.get(
                 "prospective_capacity_reflow_fill_feasibility"
+            )
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_forward_markout_lines(
+            payload.get(
+                "prospective_capacity_reflow_forward_markout"
             )
         )
     )
