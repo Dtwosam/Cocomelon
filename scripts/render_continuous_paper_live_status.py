@@ -4404,7 +4404,7 @@ def _prospective_capacity_reflow_exit_fill_lines(
             ),
             "",
             (
-                "| Horizon | Books | Missing | Full | Partial | No fill | "
+                "| Horizon | Books | Missing | Full close | Partial close | No fill | "
                 "Rejected | Fee-adjusted PnL | Unclosed qty |"
             ),
             (
