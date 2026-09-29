@@ -4555,6 +4555,95 @@ def _prospective_capacity_reflow_realized_pnl_lines(
     )
     return lines
 
+def _prospective_replacement_exit_policy_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective 5m replacement exit candidate",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective replacement-exit telemetry in this heartbeat._"
+        )
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- freeze start / fixed exit horizon: "
+                f"`{raw.get('started_at_ms')} / "
+                f"{raw.get('exit_horizon_ms')}ms`"
+            ),
+            (
+                "- discovery options excluded / discovery reused: "
+                f"`{raw.get('discovery_options_excluded', 0)} / "
+                f"{str(bool(raw.get('discovery_cohort_reused_for_validation'))).lower()}`"
+            ),
+            (
+                "- prospective / exact / incomplete options: "
+                f"`{raw.get('prospective_options', 0)} / "
+                f"{raw.get('exact_realized_pnl_options', 0)} / "
+                f"{raw.get('incomplete_options', 0)}`"
+            ),
+            (
+                "- wins / losses / breakeven: "
+                f"`{raw.get('wins', 0)} / "
+                f"{raw.get('losses', 0)} / "
+                f"{raw.get('breakeven', 0)}`"
+            ),
+            (
+                "- exact realized PnL / mean exact PnL: "
+                f"`{raw.get('exact_realized_pnl', '0')} / "
+                f"{raw.get('mean_exact_realized_pnl')}`"
+            ),
+            (
+                "- zero-boundary / funded exact options: "
+                f"`{raw.get('zero_boundary_exact_options', 0)} / "
+                f"{raw.get('funded_exact_options', 0)}`"
+            ),
+            (
+                "- incomplete reasons: "
+                f"`{counts(raw.get('incomplete_reason_counts'))}`"
+            ),
+            (
+                "- cross-horizon selection frozen / strategy PnL claimed: "
+                f"`{str(bool(raw.get('cross_horizon_selection_frozen'))).lower()} / "
+                f"{str(bool(raw.get('strategy_level_pnl_claimed'))).lower()}`"
+            ),
+            "",
+            (
+                "_The 5-minute horizon was nominated from a pre-freeze discovery "
+                "cohort. This gate counts only opportunities observed after the "
+                "durable freeze timestamp and requires exact real-L2 exits plus "
+                "complete captured funding evidence. It cannot promote or execute._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
 ) -> list[str]:
@@ -7678,6 +7767,11 @@ def render_live_status(
             payload.get(
                 "prospective_capacity_reflow_realized_pnl"
             )
+        )
+    )
+    lines.extend(
+        _prospective_replacement_exit_policy_lines(
+            payload.get("prospective_replacement_exit_policy")
         )
     )
     lines.extend(
