@@ -458,10 +458,7 @@ def prospective_capacity_reflow_forward_excursion_summary(
             if ending_pnl < ZERO:
                 aggregate.negative_end_options += 1
             if reversal:
-                (
-                    aggregate
-                    .positive_peak_to_negative_end_options
-                ) += 1
+                aggregate.positive_peak_to_negative_end_options += 1
 
         option_excursions.append(
             {
