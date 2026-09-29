@@ -2377,3 +2377,13 @@ A release now earns the stronger `candidate_capacity_release_opportunities` clas
 This still stops before replacement execution. It does not assume the later opportunity would fill, does not reuse baseline portfolio state as a full counterfactual, does not choose a replacement exit, and does not calculate replacement PnL. It narrows the next replay stage to evidence-backed cases where the candidate can be shown to have freed the required capacity.
 
 **LIVE TRADING: DISABLED.**
+
+### Candidate daily-loss lockout reflow — 2026-09-29
+
+Live decision-time evidence showed that the current rejected-opportunity cohort is dominated by `daily_loss_lockout`, so the next causal diagnostic now reconstructs how the frozen `prospective-top10-no-long-trend-v1` filter would change same-day realized cash before each rejected opportunity.
+
+The captured `RiskRequest.account_state.daily_realized_pnl` remains authoritative. For candidate-eligible daily-loss rejections, the study finds closed trades from the same UTC accounting day that were fully opened and closed before the opportunity, attributes those trades using their persisted decision facts and opening scanner ranks, and removes the exact net PnL contribution of trades the frozen candidate would have blocked. It then compares the adjusted daily realized PnL with the exact captured daily-loss threshold.
+
+An `exact_candidate_unlock_opportunities` count is granted only when trade attribution is complete and the opportunity has neither cross-day closed trades nor open positions whose same-day cash effects would require additional replay. Cross-day and open-position cash effects are deliberately reported as unmodeled rather than estimated. Replacement entries, fills, exits, and replacement PnL remain unmodeled.
+
+**LIVE TRADING: DISABLED.**
