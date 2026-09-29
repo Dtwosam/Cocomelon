@@ -414,24 +414,46 @@ def test_same_exit_stop_validity_summary_uses_exact_partition_accounting() -> No
 
 
 def test_same_exit_stop_validity_summary_exposes_candidate_delta_rounding_bridge() -> None:
-    item = DelayedEntrySameExitStopValidityOutcome(
-        trade_id="bridge",
-        market="SOL",
-        direction="long",
-        source="full_visible_book_ioc",
-        stop_hit=False,
-        time_to_stop_ms=None,
-        actual_net_pnl=Decimal("-111.6173098789314111000000006"),
-        same_exit_candidate_net_pnl=Decimal(
-            "-111.3469530754089630566680558"
+    rows = (
+        (
+            "6.433218196001338908386379402654",
+            "-195.511615594078161849593103413164",
+            "-201.9448337900795007579794828",
         ),
-        same_exit_delta_vs_actual=Decimal(
-            "0.2703568035224480433319448"
+        (
+            "-93.255341928327648350305641395376",
+            "164.724238849696532871012269166978",
+            "257.9795807780241812213179106",
+        ),
+        (
+            "-141.018451462704828148932528809570",
+            "-92.430391171822782489638346578713",
+            "48.58806029088204565929418223",
+        ),
+        (
+            "-86.098393010310518347382997376311",
+            "90.667010651333872624731781080132",
+            "176.7654036616443909721147785",
         ),
     )
+    items = tuple(
+        DelayedEntrySameExitStopValidityOutcome(
+            trade_id=f"bridge-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            stop_hit=index % 2 == 0,
+            time_to_stop_ms=1_000 + index if index % 2 == 0 else None,
+            actual_net_pnl=Decimal(actual),
+            same_exit_candidate_net_pnl=Decimal(candidate),
+            same_exit_delta_vs_actual=Decimal(delta),
+        )
+        for index, (actual, candidate, delta) in enumerate(rows)
+    )
 
-    summary = stop_validity_summary((item,))
+    summary = stop_validity_summary(items)
 
     assert summary[
         "candidate_actual_decimal_rounding_residual_pnl"
-    ] == "0"
+    ] == "-9.6164E-26"
+
