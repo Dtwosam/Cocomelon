@@ -493,14 +493,14 @@ def delayed_entry_fixed_schedule_portfolio(
         "candidate": candidate,
         "delta_final_realized_contribution": str(
             exact_decimal_sum(
-                (candidate_final, -actual_final)
+                (candidate_final, actual_final.copy_negate())
             )
         ),
         "delta_max_realized_drawdown": str(
             exact_decimal_sum(
                 (
                     Decimal(str(candidate["max_realized_drawdown"])),
-                    -Decimal(str(actual["max_realized_drawdown"])),
+                    Decimal(str(actual["max_realized_drawdown"])).copy_negate(),
                 )
             )
         ),
@@ -508,7 +508,7 @@ def delayed_entry_fixed_schedule_portfolio(
             exact_decimal_sum(
                 (
                     Decimal(str(candidate["max_gross_notional"])),
-                    -Decimal(str(actual["max_gross_notional"])),
+                    Decimal(str(actual["max_gross_notional"])).copy_negate(),
                 )
             )
         ),
@@ -516,7 +516,7 @@ def delayed_entry_fixed_schedule_portfolio(
             exact_decimal_sum(
                 (
                     Decimal(str(candidate["max_planned_risk"])),
-                    -Decimal(str(actual["max_planned_risk"])),
+                    Decimal(str(actual["max_planned_risk"])).copy_negate(),
                 )
             )
         ),
