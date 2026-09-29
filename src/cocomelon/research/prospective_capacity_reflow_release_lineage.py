@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Final
 
 from cocomelon.domain.evaluation import DecisionEvaluationFact
@@ -40,6 +41,17 @@ LONG_TREND_AND_RANK_ABOVE_10: Final = (
 
 class ProspectiveCapacityReflowReleaseLineageError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateCausedCapacityRelease:
+    opportunity_id: str
+    opportunity_timestamp_ms: int
+    opportunity_market: str
+    release_market: str
+    release_correlation_bucket: str
+    release_opening_plan_id: str
+    release_block_reason: str
 
 
 def _candidate_block_reason(
@@ -123,9 +135,9 @@ def candidate_caused_capacity_release_options(
         [str],
         ContinuousPaperOpeningRankEvidence | None,
     ],
-) -> tuple[CapacityReleaseOpportunityOption, ...]:
+) -> tuple[CandidateCausedCapacityRelease, ...]:
     closed_by_plan = _closed_by_plan(closed_trades)
-    output: list[CapacityReleaseOpportunityOption] = []
+    output: list[CandidateCausedCapacityRelease] = []
     for option in options:
         lineage = _active_lineage(
             option,
@@ -188,8 +200,25 @@ def candidate_caused_capacity_release_options(
             raise ProspectiveCapacityReflowReleaseLineageError(
                 "candidate capacity release rank is stale"
             )
-        if _candidate_block_reason(fact, rank) is not None:
-            output.append(option)
+        block_reason = _candidate_block_reason(fact, rank)
+        if block_reason is not None:
+            output.append(
+                CandidateCausedCapacityRelease(
+                    opportunity_id=option.opportunity_id,
+                    opportunity_timestamp_ms=(
+                        option.opportunity_timestamp_ms
+                    ),
+                    opportunity_market=option.opportunity_market,
+                    release_market=option.release_market,
+                    release_correlation_bucket=(
+                        option.release_correlation_bucket
+                    ),
+                    release_opening_plan_id=(
+                        lineage.opening_plan_id
+                    ),
+                    release_block_reason=block_reason,
+                )
+            )
     return tuple(output)
 
 
