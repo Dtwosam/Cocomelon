@@ -46,21 +46,11 @@ def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
     assert "path: continuous-paper-state.tar" in source
     assert "compression-level: 6" in source
     assert "timeout-minutes: 20" in source
-    assert "mkdir -p /tmp/state-artifact" in source
-    assert "unzip -q /tmp/state.zip -d /tmp/state-artifact" in source
-    assert (
-        'if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then'
-        in source
-    )
-    assert (
-        'tar -xf /tmp/state-artifact/continuous-paper-state.tar '
-        '-C "$STATE_ROOT"'
-        in source
-    )
-    assert (
-        'cp -a /tmp/state-artifact/. "$STATE_ROOT"/'
-        in source
-    )
+    assert source.count(
+        "bash scripts/restore_continuous_paper_state.sh"
+    ) == 2
+    assert "SOURCE_HEAD_SHA" in source
+    assert "ARTIFACT_HEAD_SHA" in source
     measure_at = source.index(
         "- name: Measure durable continuous paper state"
     )
@@ -106,6 +96,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert 'git diff --name-only "$GITHUB_SHA" FETCH_HEAD --' in source
     assert "src/cocomelon/continuous_paper.py" in source
     assert "scripts/summarize_continuous_paper_state.py" in source
+    assert "scripts/restore_continuous_paper_state.sh" in source
     assert "src/cocomelon/risk" in source
     assert "src/cocomelon/research/account_lifecycle_bridge.py" in source
     assert "src/cocomelon/research/cadence_shadow.py" in source
@@ -286,6 +277,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/hyperliquid/**"' in source
     assert '"scripts/render_continuous_paper_live_status.py"' in source
     assert '"scripts/summarize_continuous_paper_state.py"' in source
+    assert '"scripts/restore_continuous_paper_state.sh"' in source
 
 
 def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> None:
