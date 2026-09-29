@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Final
 
@@ -21,6 +22,49 @@ FILL_RESULTS: Final = frozenset({"full", "partial"})
 
 class ProspectiveCapacityReflowForwardMarkoutError(RuntimeError):
     pass
+
+
+@dataclass(slots=True)
+class _HorizonAggregate:
+    horizon_ms: int
+    fillable_options: int
+    settled_options: int = 0
+    pending_options: int = 0
+    stale_options: int = 0
+    missing_path_options: int = 0
+    positive_options: int = 0
+    negative_options: int = 0
+    flat_options: int = 0
+    gross_mark_to_market_pnl: Decimal = ZERO
+    entry_fee_adjusted_mark_to_market_pnl: Decimal = ZERO
+    return_sum: Decimal = ZERO
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "horizon_ms": self.horizon_ms,
+            "fillable_options": self.fillable_options,
+            "settled_options": self.settled_options,
+            "pending_options": self.pending_options,
+            "stale_options": self.stale_options,
+            "missing_path_options": self.missing_path_options,
+            "positive_options": self.positive_options,
+            "negative_options": self.negative_options,
+            "flat_options": self.flat_options,
+            "gross_mark_to_market_pnl": str(
+                self.gross_mark_to_market_pnl
+            ),
+            "entry_fee_adjusted_mark_to_market_pnl": str(
+                self.entry_fee_adjusted_mark_to_market_pnl
+            ),
+            "mean_directional_return_fraction": (
+                None
+                if self.settled_options == 0
+                else str(
+                    self.return_sum
+                    / Decimal(self.settled_options)
+                )
+            ),
+        }
 
 
 def _require_text(raw: object, field: str) -> str:
@@ -242,21 +286,11 @@ def prospective_capacity_reflow_forward_markout_summary(
 
     options = _fillable_option_records(fill_feasibility)
     paths_by_id = _path_by_opportunity_id(paths)
-    by_horizon: dict[str, dict[str, object]] = {
-        str(horizon_ms): {
-            "horizon_ms": horizon_ms,
-            "fillable_options": len(options),
-            "settled_options": 0,
-            "pending_options": 0,
-            "stale_options": 0,
-            "missing_path_options": 0,
-            "positive_options": 0,
-            "negative_options": 0,
-            "flat_options": 0,
-            "gross_mark_to_market_pnl": ZERO,
-            "entry_fee_adjusted_mark_to_market_pnl": ZERO,
-            "_return_sum": ZERO,
-        }
+    by_horizon = {
+        str(horizon_ms): _HorizonAggregate(
+            horizon_ms=horizon_ms,
+            fillable_options=len(options),
+        )
         for horizon_ms in horizons
     }
 
@@ -300,9 +334,7 @@ def prospective_capacity_reflow_forward_markout_summary(
                     horizon_ms=horizon_ms,
                     target_at_ms=target_at_ms,
                 )
-                aggregate["missing_path_options"] = (
-                    int(aggregate["missing_path_options"]) + 1
-                )
+                aggregate.missing_path_options += 1
                 markouts[horizon_key] = markout
                 continue
 
@@ -320,9 +352,7 @@ def prospective_capacity_reflow_forward_markout_summary(
                     horizon_ms=horizon_ms,
                     target_at_ms=target_at_ms,
                 )
-                aggregate["pending_options"] = (
-                    int(aggregate["pending_options"]) + 1
-                )
+                aggregate.pending_options += 1
                 markouts[horizon_key] = markout
                 continue
 
@@ -336,9 +366,7 @@ def prospective_capacity_reflow_forward_markout_summary(
                     observation_lag_ms=lag_ms,
                     mark_px=mark.mark_px,
                 )
-                aggregate["stale_options"] = (
-                    int(aggregate["stale_options"]) + 1
-                )
+                aggregate.stale_options += 1
                 markouts[horizon_key] = markout
                 continue
 
@@ -365,41 +393,18 @@ def prospective_capacity_reflow_forward_markout_summary(
                     entry_fee_adjusted_mtm
                 ),
             }
-            aggregate["settled_options"] = (
-                int(aggregate["settled_options"]) + 1
+            aggregate.settled_options += 1
+            aggregate.gross_mark_to_market_pnl += gross_mtm
+            aggregate.entry_fee_adjusted_mark_to_market_pnl += (
+                entry_fee_adjusted_mtm
             )
-            aggregate["gross_mark_to_market_pnl"] = (
-                Decimal(str(aggregate["gross_mark_to_market_pnl"]))
-                + gross_mtm
-            )
-            aggregate[
-                "entry_fee_adjusted_mark_to_market_pnl"
-            ] = (
-                Decimal(
-                    str(
-                        aggregate[
-                            "entry_fee_adjusted_mark_to_market_pnl"
-                        ]
-                    )
-                )
-                + entry_fee_adjusted_mtm
-            )
-            aggregate["_return_sum"] = (
-                Decimal(str(aggregate["_return_sum"]))
-                + directional_return
-            )
+            aggregate.return_sum += directional_return
             if entry_fee_adjusted_mtm > ZERO:
-                aggregate["positive_options"] = (
-                    int(aggregate["positive_options"]) + 1
-                )
+                aggregate.positive_options += 1
             elif entry_fee_adjusted_mtm < ZERO:
-                aggregate["negative_options"] = (
-                    int(aggregate["negative_options"]) + 1
-                )
+                aggregate.negative_options += 1
             else:
-                aggregate["flat_options"] = (
-                    int(aggregate["flat_options"]) + 1
-                )
+                aggregate.flat_options += 1
             markouts[horizon_key] = markout
 
         option_markouts.append(
@@ -424,28 +429,10 @@ def prospective_capacity_reflow_forward_markout_summary(
             }
         )
 
-    rendered_horizons: dict[str, dict[str, object]] = {}
-    for horizon_ms in horizons:
-        key = str(horizon_ms)
-        raw = by_horizon[key]
-        settled = int(raw["settled_options"])
-        return_sum = Decimal(str(raw.pop("_return_sum")))
-        rendered_horizons[key] = {
-            **raw,
-            "gross_mark_to_market_pnl": str(
-                raw["gross_mark_to_market_pnl"]
-            ),
-            "entry_fee_adjusted_mark_to_market_pnl": str(
-                raw[
-                    "entry_fee_adjusted_mark_to_market_pnl"
-                ]
-            ),
-            "mean_directional_return_fraction": (
-                None
-                if settled == 0
-                else str(return_sum / Decimal(settled))
-            ),
-        }
+    rendered_horizons = {
+        str(horizon_ms): by_horizon[str(horizon_ms)].payload()
+        for horizon_ms in horizons
+    }
 
     return {
         "research_only": True,
