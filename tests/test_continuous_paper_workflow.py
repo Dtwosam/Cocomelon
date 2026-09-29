@@ -39,8 +39,8 @@ def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
     assert "- name: Pack durable continuous paper state" in source
     assert 'tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .' in source
     assert "path: continuous-paper-state.tar" in source
-    assert "compression-level: 0" in source
-    assert "timeout-minutes: 10" in source
+    assert "compression-level: 6" in source
+    assert "timeout-minutes: 20" in source
     assert "mkdir -p /tmp/state-artifact" in source
     assert "unzip -q /tmp/state.zip -d /tmp/state-artifact" in source
     assert (
