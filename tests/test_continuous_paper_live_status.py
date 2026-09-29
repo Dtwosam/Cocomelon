@@ -12,6 +12,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
+    _opening_opportunity_evidence_lines,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
@@ -4934,6 +4935,32 @@ def test_combined_matched_overlap_renderer_is_explicitly_descriptive() -> None:
     assert "fresh combined gate credit" in output
     assert "`0 / false`" in output
     assert "cannot advance the fresh combined prospective gate" in output
+
+def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
+    lines = _opening_opportunity_evidence_lines(
+        {
+            "enabled": True,
+            "records": 12,
+            "baseline_approvals": 8,
+            "baseline_rejections": 4,
+            "rank_complete": 11,
+            "rank_missing": 1,
+            "state_digest": "a" * 64,
+            "capture_error": None,
+            "full_l2_book_captured": True,
+            "exact_risk_request_captured": True,
+            "replacement_trades_modeled": False,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Opening opportunity evidence" in output
+    assert "`12 / 8 / 4`" in output
+    assert "`11 / 1`" in output
+    assert "`true / true`" in output
+    assert "replacement trades modeled: `false`" in output
+    assert "observed opportunities instead of inventing trades" in output
+
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
     lines = _prospective_filter_robustness_lines(
