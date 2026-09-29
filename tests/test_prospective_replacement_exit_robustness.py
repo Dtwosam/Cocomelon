@@ -10,7 +10,7 @@ def _policy(
     rows: tuple[tuple[str, str, int, str | None], ...],
 ) -> dict[str, object]:
     option_results = []
-    for index, (suffix, market, timestamp_ms, pnl) in enumerate(rows):
+    for suffix, market, timestamp_ms, pnl in rows:
         option_results.append(
             {
                 "option_id": f"option-{suffix}",
