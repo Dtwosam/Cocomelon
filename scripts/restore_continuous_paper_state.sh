@@ -38,11 +38,10 @@ rm -rf "$state_root"
 mkdir -p "$state_root"
 
 if grep -Fq -- "- name: Pack durable continuous paper state" "$workflow_source"; then
-  command -v funzip >/dev/null
   echo "::notice::streaming packed continuous-paper artifact $artifact_id"
   gh api \
     "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
-    | funzip \
+    | python scripts/stream_zip_member.py continuous-paper-state.tar \
     | tar -xf - -C "$state_root"
 else
   command -v unzip >/dev/null
