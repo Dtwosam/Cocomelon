@@ -575,7 +575,7 @@ class ContinuousPaperOpeningOpportunityExitBookStore:
         horizon_ms: int,
     ) -> str:
         return hashlib.sha256(
-            f"{opportunity_id}:{horizon_ms}".encode("utf-8")
+            f"{opportunity_id}:{horizon_ms}".encode()
         ).hexdigest() + ".json"
 
     def _registration_path(self, opportunity_id: str) -> Path:
