@@ -161,6 +161,34 @@ def test_candle_request_uses_canonical_wire_name_and_weight_budget() -> None:
     assert weights == [21]
 
 
+def test_l2_book_uses_canonical_wire_name_and_weight_two() -> None:
+    payloads: list[dict[str, object]] = []
+    weights: list[int] = []
+
+    class Budget:
+        def acquire(self, weight: int) -> None:
+            weights.append(weight)
+
+    def transport(
+        url: str,
+        payload: dict[str, object],
+        timeout: float,
+    ) -> object:
+        payloads.append(payload)
+        return {"coin": "BTC", "time": 1, "levels": [[], []]}
+
+    client = InfoClient(
+        Settings(),
+        transport=transport,
+        budget=Budget(),
+    )
+    result = client.l2_book(MarketId(dex="", coin="BTC"))
+
+    assert result == {"coin": "BTC", "time": 1, "levels": [[], []]}
+    assert payloads == [{"type": "l2Book", "coin": "BTC"}]
+    assert weights == [2]
+
+
 def test_funding_history_reserves_conservative_page_weight() -> None:
     weights: list[int] = []
 
