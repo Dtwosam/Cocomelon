@@ -2042,6 +2042,10 @@ def _delayed_entry_contribution_decomposition_lines(
                 f"`{overall.get('total_delta_pnl', '0')}`"
             ),
             (
+                "- aggregate Decimal rounding residual: "
+                f"`{overall.get('decimal_rounding_residual_pnl', '0')}`"
+            ),
+            (
                 "- mean price / fee / exposure / total ΔR: "
                 f"`{overall.get('mean_price_effect_r')}` / "
                 f"`{overall.get('mean_entry_fee_effect_r')}` / "
@@ -2142,14 +2146,22 @@ def _delayed_entry_contribution_decomposition_lines(
                         f"{funding_overall.get('corrected_total_delta_pnl', '0')}`"
                     ),
                     (
+                        "- funding summary Decimal residuals "
+                        "components / legacy bridge / candidate bridge: "
+                        f"`{funding_overall.get('component_decimal_rounding_residual_pnl', '0')} / "
+                        f"{funding_overall.get('legacy_bridge_decimal_rounding_residual_pnl', '0')} / "
+                        f"{funding_overall.get('candidate_bridge_decimal_rounding_residual_pnl', '0')}`"
+                    ),
+                    (
                         "- funding-aware missing journal / funding / lineage: "
                         f"`{funding_raw.get('missing_journal_trades', 0)} / "
                         f"{funding_raw.get('missing_funding_events', 0)} / "
                         f"{funding_raw.get('lineage_mismatches', 0)}`"
                     ),
                     (
-                        "_Funding timing is the explicit fourth effect; the four "
-                        "effects reconcile exactly to corrected delayed-entry Δ PnL._"
+                        "_Funding timing is the explicit fourth economic effect; "
+                        "any finite-precision Decimal bridge is reported separately "
+                        "and reconciles the aggregate accounting exactly._"
                     ),
                 ]
             )
