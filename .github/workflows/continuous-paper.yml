@@ -213,9 +213,16 @@ jobs:
           print(matches[0]["id"])
           PY
           )"
-          mkdir -p "$STATE_ROOT"
+          rm -rf /tmp/state-artifact
+          mkdir -p /tmp/state-artifact "$STATE_ROOT"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/state.zip
-          unzip -q /tmp/state.zip -d "$STATE_ROOT"
+          unzip -q /tmp/state.zip -d /tmp/state-artifact
+          if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then
+            tar -tf /tmp/state-artifact/continuous-paper-state.tar >/dev/null
+            tar -xf /tmp/state-artifact/continuous-paper-state.tar -C "$STATE_ROOT"
+          else
+            cp -a /tmp/state-artifact/. "$STATE_ROOT"/
+          fi
 
       - name: Restore latest trusted state for watchdog/manual recovery
         if: ${{ steps.guard.outputs.skip != 'true' && inputs.source_run_id == '' }}
@@ -268,8 +275,16 @@ jobs:
           PY
           )"
           if [ -n "$ARTIFACT_ID" ]; then
+            rm -rf /tmp/state-artifact
+            mkdir -p /tmp/state-artifact
             gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > /tmp/state.zip
-            unzip -q /tmp/state.zip -d "$STATE_ROOT"
+            unzip -q /tmp/state.zip -d /tmp/state-artifact
+            if [ -f /tmp/state-artifact/continuous-paper-state.tar ]; then
+              tar -tf /tmp/state-artifact/continuous-paper-state.tar >/dev/null
+              tar -xf /tmp/state-artifact/continuous-paper-state.tar -C "$STATE_ROOT"
+            else
+              cp -a /tmp/state-artifact/. "$STATE_ROOT"/
+            fi
           else
             echo "No prior trusted continuous-paper state; starting a fresh paper account."
           fi
@@ -377,14 +392,27 @@ jobs:
                 fi
               done | tee continuous-paper-session.json
 
+      - name: Pack durable continuous paper state
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$STATE_ROOT"
+          rm -f continuous-paper-state.tar
+          tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .
+          tar -tf continuous-paper-state.tar >/dev/null
+          test -s continuous-paper-state.tar
+
       - name: Upload durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        timeout-minutes: 10
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}
-          path: continuous-paper-state/
+          path: continuous-paper-state.tar
           if-no-files-found: error
           retention-days: 90
+          compression-level: 0
 
       - name: Render paper runtime summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
