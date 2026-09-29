@@ -93,6 +93,8 @@ from cocomelon.research.continuous_paper_learning import (
 )
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityStore,
+)
+from cocomelon.research.continuous_paper_opening_opportunity import (
     evidence_from_opening_trace as opportunity_evidence_from_trace,
 )
 from cocomelon.research.continuous_paper_opening_rank import (
