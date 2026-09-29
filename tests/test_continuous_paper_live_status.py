@@ -21,6 +21,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_daily_loss_lockout_reflow_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
+    _prospective_replacement_exit_policy_lines,
     _replacement_funding_evidence_lines,
 )
 
@@ -5271,6 +5272,48 @@ def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
     assert "| 1h | 5 | 5 | 4 | 0 | 2 | 2 | 1 | 0.4 | -1.6 |" in output
     assert "`true / true / false / false`" in output
     assert "never estimated or backfilled" in output
+
+def test_prospective_replacement_exit_policy_renderer_exposes_freeze() -> None:
+    lines = _prospective_replacement_exit_policy_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-replacement-5m-real-l2-exit-v1",
+            "started_at_ms": 1_800_000_000_000,
+            "exit_horizon_ms": 300_000,
+            "discovery_options_excluded": 5,
+            "discovery_cohort_reused_for_validation": False,
+            "prospective_options": 3,
+            "exact_realized_pnl_options": 2,
+            "incomplete_options": 1,
+            "wins": 1,
+            "losses": 1,
+            "breakeven": 0,
+            "exact_realized_pnl": "0.5",
+            "mean_exact_realized_pnl": "0.25",
+            "zero_boundary_exact_options": 1,
+            "funded_exact_options": 1,
+            "incomplete_reason_counts": {
+                "funding_evidence_required": 1
+            },
+            "cross_horizon_selection_frozen": True,
+            "strategy_level_pnl_claimed": False,
+            "state_restore_error": None,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective 5m replacement exit candidate" in output
+    assert "prospective-replacement-5m-real-l2-exit-v1" in output
+    assert "`1800000000000 / 300000ms`" in output
+    assert "`5 / false`" in output
+    assert "`3 / 2 / 1`" in output
+    assert "`1 / 1 / 0`" in output
+    assert "`0.5 / 0.25`" in output
+    assert "funding_evidence_required=1" in output
+    assert "`true / false`" in output
+    assert "only opportunities observed after the durable freeze" in output
+
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
     lines = _prospective_capacity_reflow_forward_excursion_lines(
