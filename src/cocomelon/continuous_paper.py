@@ -235,6 +235,10 @@ from cocomelon.research.prospective_combined_entry_filter import (
 from cocomelon.research.prospective_daily_loss_lockout_reflow import (
     evaluate_prospective_daily_loss_lockout_reflow,
 )
+from cocomelon.research.prospective_post_rollover_risk_outcomes import (
+    ProspectivePostRolloverRiskOutcomeState,
+    evaluate_prospective_post_rollover_risk_outcomes,
+)
 from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
@@ -268,6 +272,9 @@ PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
+)
+PROSPECTIVE_POST_ROLLOVER_RISK_OUTCOME_STATE_FILENAME = (
+    "prospective-post-rollover-risk-outcome-state.json"
 )
 ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (
     "adaptive-delay-selector-state.json"
@@ -1775,6 +1782,36 @@ def _restore_prospective_combined_entry_filter(
         )
 
 
+def _restore_prospective_post_rollover_risk_outcomes(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[
+    ProspectivePostRolloverRiskOutcomeState,
+    str | None,
+]:
+    if not path.exists():
+        return (
+            ProspectivePostRolloverRiskOutcomeState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectivePostRolloverRiskOutcomeState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectivePostRolloverRiskOutcomeState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _prospective_combined_entry_filter_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -2007,6 +2044,39 @@ def _prospective_daily_loss_lockout_reflow_payload(
         }
     payload = dict(payload)
     payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_post_rollover_risk_outcome_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    lineage_store: ContinuousPaperOpeningLineageStore,
+    *,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    state: ProspectivePostRolloverRiskOutcomeState,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_post_rollover_risk_outcomes(
+            opportunity_store,
+            lineage_store,
+            plan_loader=plan_loader,
+            state=state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "cohort_id": state.cohort_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
     payload["error"] = None
     return payload
 
@@ -3837,6 +3907,9 @@ def _live_status_payload(
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_post_rollover_risk_outcome_state: (
+        ProspectivePostRolloverRiskOutcomeState
+    ),
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -3850,6 +3923,7 @@ def _live_status_payload(
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_post_rollover_risk_outcome_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -4011,6 +4085,17 @@ def _live_status_payload(
             prospective_combined_entry_filter_state,
             restore_error=(
                 prospective_combined_entry_filter_restore_error
+            ),
+        )
+    )
+    prospective_post_rollover_risk_outcomes = (
+        _prospective_post_rollover_risk_outcome_payload(
+            opening_opportunity_store,
+            opening_lineage_store,
+            plan_loader=execution.store.load_plan,
+            state=prospective_post_rollover_risk_outcome_state,
+            restore_error=(
+                prospective_post_rollover_risk_outcome_restore_error
             ),
         )
     )
@@ -4417,6 +4502,9 @@ def _live_status_payload(
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
         ),
+        "prospective_post_rollover_risk_outcomes": (
+            prospective_post_rollover_risk_outcomes
+        ),
         "prospective_capacity_reflow_opportunities": (
             prospective_capacity_reflow_opportunities
         ),
@@ -4528,6 +4616,9 @@ def _emit_live_status(
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_post_rollover_risk_outcome_state: (
+        ProspectivePostRolloverRiskOutcomeState
+    ),
     adaptive_delay_selector_state: AdaptiveDelaySelectorState,
     fill_aware_delay_selector_state: FillAwareDelaySelectorState,
     delay_selector_comparison_state: DelaySelectorComparisonState,
@@ -4541,6 +4632,7 @@ def _emit_live_status(
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_post_rollover_risk_outcome_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
     delay_selector_comparison_restore_error: str | None,
@@ -4847,6 +4939,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_post_rollover_risk_outcome_state,
+        prospective_post_rollover_risk_outcome_restore_error,
+    ) = _restore_prospective_post_rollover_risk_outcomes(
+        root / PROSPECTIVE_POST_ROLLOVER_RISK_OUTCOME_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         adaptive_delay_selector_state,
         adaptive_delay_selector_restore_error,
     ) = _restore_adaptive_delay_selector(
@@ -5047,6 +5146,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
                 prospective_combined_entry_filter_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_POST_ROLLOVER_RISK_OUTCOME_STATE_FILENAME,
+                prospective_post_rollover_risk_outcome_state.payload(),
             )
             _write_json_atomic(
                 root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
