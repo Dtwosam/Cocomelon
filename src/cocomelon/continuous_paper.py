@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -293,6 +293,22 @@ from cocomelon.research.prospective_top10_rank_filter import (
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
+
+
+def _stop_requested(stop_path: Path | None) -> bool:
+    return stop_path is not None and stop_path.exists()
+
+
+def _iter_until_stop[T](
+    items: Iterable[T],
+    stop_path: Path | None,
+) -> Iterator[T]:
+    for item in items:
+        if _stop_requested(stop_path):
+            return
+        yield item
+
+
 CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
@@ -5288,7 +5304,7 @@ async def run_continuous_paper_session(
     root = Path(state_root)
     root.mkdir(parents=True, exist_ok=True)
     stop_path = None if stop_file is None else Path(stop_file)
-    if stop_path is not None and stop_path.exists():
+    if _stop_requested(stop_path):
         stop_path.unlink()
     started_at_ms = utc_now_ms()
     checkpoint_path = root / CHECKPOINT_FILENAME
@@ -5380,7 +5396,7 @@ async def run_continuous_paper_session(
         if not requests:
             return
         cycle_error: str | None = None
-        for request in requests:
+        for request in _iter_until_stop(requests, stop_path):
             snapshot = snapshots.get(request.market)
             if snapshot is None:
                 if cycle_error is None:
@@ -5438,7 +5454,10 @@ async def run_continuous_paper_session(
         for request in requests:
             by_market.setdefault(request.market, []).append(request)
         cycle_error: str | None = None
-        for market_key, market_requests in sorted(by_market.items()):
+        for market_key, market_requests in _iter_until_stop(
+            sorted(by_market.items()),
+            stop_path,
+        ):
             try:
                 market = _market_from_canonical(market_key)
                 first_boundary = min(
@@ -5492,6 +5511,8 @@ async def run_continuous_paper_session(
 
     async def capture_replacement_funding_oracles() -> None:
         while True:
+            if _stop_requested(stop_path):
+                return
             now_ms = utc_now_ms()
             future_boundaries = tuple(
                 request.boundary_ms
@@ -5521,6 +5542,8 @@ async def run_continuous_paper_session(
                 )
                 continue
             while utc_now_ms() <= boundary_ms:
+                if _stop_requested(stop_path):
+                    return
                 markets = replacement_funding_store.markets_for_boundary(
                     boundary_ms
                 )
@@ -5541,7 +5564,10 @@ async def run_continuous_paper_session(
                         snapshot.meta.market.canonical: snapshot
                         for snapshot in snapshots
                     }
-                    for market_key in markets:
+                    for market_key in _iter_until_stop(
+                        markets,
+                        stop_path,
+                    ):
                         snapshot = by_market.get(market_key)
                         if snapshot is not None:
                             replacement_funding_store.observe_snapshot(
@@ -5787,8 +5813,14 @@ async def run_continuous_paper_session(
 
         async def refresh_funding() -> None:
             now_ms = utc_now_ms()
-            for position in tuple(execution.account.positions):
-                start_ms = max(position.opened_at_ms, now_ms - 8 * 60 * 60 * 1000)
+            for position in _iter_until_stop(
+                tuple(execution.account.positions),
+                stop_path,
+            ):
+                start_ms = max(
+                    position.opened_at_ms,
+                    now_ms - 8 * 60 * 60 * 1000,
+                )
                 raw = await asyncio.to_thread(
                     reader.funding_history,
                     position.market,
@@ -6024,7 +6056,7 @@ async def run_continuous_paper_session(
         exit_reason = "duration_elapsed"
         try:
             while utc_now_ms() < deadline_ms:
-                if stop_path is not None and stop_path.exists():
+                if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
                 now_ms = utc_now_ms()
@@ -6034,7 +6066,7 @@ async def run_continuous_paper_session(
                 )
                 await asyncio.sleep(sleep_seconds)
                 now_ms = utc_now_ms()
-                if stop_path is not None and stop_path.exists():
+                if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
 
@@ -6043,11 +6075,17 @@ async def run_continuous_paper_session(
                     reader,
                     received_at_ms=now_ms,
                 )
+                if _stop_requested(stop_path):
+                    exit_reason = "upgrade_requested"
+                    break
                 opening_opportunity_sink.observe_snapshots(refreshed)
                 await capture_due_exit_books(
                     refreshed,
                     now_ms=now_ms,
                 )
+                if _stop_requested(stop_path):
+                    exit_reason = "upgrade_requested"
+                    break
                 for market in selected:
                     snapshot = refreshed.get(market.canonical)
                     if snapshot is not None:
@@ -6067,6 +6105,9 @@ async def run_continuous_paper_session(
                 await capture_due_replacement_funding(
                     now_ms=utc_now_ms()
                 )
+                if _stop_requested(stop_path):
+                    exit_reason = "upgrade_requested"
+                    break
 
                 if now_ms >= next_selection_refresh_ms:
                     pinned = tuple(
@@ -6114,6 +6155,10 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
+
+                if _stop_requested(stop_path):
+                    exit_reason = "upgrade_requested"
+                    break
 
                 _emit_live_status(
                     execution,
