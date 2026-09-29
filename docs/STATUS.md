@@ -2493,3 +2493,12 @@ The replay preserves the replacement opening plan/risk/strategy lineage, entry f
 Funding remains deliberately unmodeled in this layer, so the reported entry/exit fee-adjusted economics are not yet a complete replacement-trade realized PnL claim. Missing exit books remain missing and are never synthesized or backfilled. This remains research-only and cannot authorize execution or promotion.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Heartbeat-independent paper runtime upgrade watchdog — 2026-09-29
+
+The continuous-paper workflow now has a second graceful-upgrade detector that does not depend on the trader emitting a heartbeat. Once per minute, the running job checks the repository's continuous-paper workflow queue for a newer main-branch push run. Because that workflow is path-filtered to runtime dependencies, a newer waiting push run is treated as an explicit signal that newer paper runtime code needs the concurrency slot.
+
+When such a run exists, the watchdog touches the same durable graceful-stop file already consumed by the paper runtime. It does not cancel the job, kill the trader, bypass state upload, or enable live execution. The existing heartbeat-time source diff remains as a redundant fast path. This closes the handoff deadlock where a stale heartbeat could prevent the old worker from noticing that its replacement was already waiting.
+
+**LIVE TRADING: DISABLED.**
