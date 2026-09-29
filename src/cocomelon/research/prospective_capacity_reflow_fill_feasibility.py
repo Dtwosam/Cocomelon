@@ -391,6 +391,16 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             raise ProspectiveCapacityReflowFillFeasibilityError(
                 "candidate release opportunity evidence is missing"
             )
+        option_id = (
+            f"{evidence.opportunity_id}:"
+            f"{release.release_opening_plan_id}"
+        )
+        if option_id in seen_option_ids:
+            raise ProspectiveCapacityReflowFillFeasibilityError(
+                "duplicate candidate release option id"
+            )
+        seen_option_ids.add(option_id)
+
         _execution_config_compatible(evidence, config)
         history = position_history_loader(
             release.release_opening_plan_id,
@@ -402,15 +412,6 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             history,
             config,
         )
-        option_id = (
-            f"{evidence.opportunity_id}:"
-            f"{release.release_opening_plan_id}"
-        )
-        if option_id in seen_option_ids:
-            raise ProspectiveCapacityReflowFillFeasibilityError(
-                "duplicate candidate release option id"
-            )
-        seen_option_ids.add(option_id)
         option_payload: dict[str, object] = {
             "option_id": option_id,
             "opportunity_id": evidence.opportunity_id,
