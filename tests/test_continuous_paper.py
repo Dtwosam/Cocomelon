@@ -42,6 +42,7 @@ from cocomelon.continuous_paper import (
     _entry_markout_payload,
     _entry_markout_predictiveness_payload,
     _excursion_timing_payload,
+    _iter_until_stop,
     _load_checkpoint,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
@@ -65,6 +66,7 @@ from cocomelon.continuous_paper import (
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
     _restore_prospective_top10_rank_filter,
+    _stop_requested,
 )
 from cocomelon.domain.execution import (
     PaperExecutionConfig,
@@ -2086,6 +2088,23 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
 
 
 
+def test_stop_aware_iterator_stops_before_starting_more_work(
+    tmp_path: Path,
+) -> None:
+    stop_path = tmp_path / "upgrade-requested"
+    observed: list[int] = []
+
+    assert _stop_requested(None) is False
+    assert _stop_requested(stop_path) is False
+
+    for item in _iter_until_stop((1, 2, 3), stop_path):
+        observed.append(item)
+        stop_path.touch()
+
+    assert observed == [1]
+    assert _stop_requested(stop_path) is True
+
+
 def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(encoding="utf-8")
     cli = Path("src/cocomelon/continuous_paper_cli.py").read_text(encoding="utf-8")
@@ -2094,6 +2113,16 @@ def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
     assert '"exit_reason": self.exit_reason' in source
     assert 'parser.add_argument("--stop-file", type=Path)' in cli
     assert "stop_file=args.stop_file" in cli
+    assert "for request in _iter_until_stop(requests, stop_path):" in source
+    assert (
+        "for market_key, market_requests in _iter_until_stop("
+        in source
+    )
+    assert (
+        "for position in _iter_until_stop("
+        in source
+    )
+    assert "if _stop_requested(stop_path):" in source
 
 
 def test_runtime_persists_authenticated_learning_features() -> None:
