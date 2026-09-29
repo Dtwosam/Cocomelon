@@ -198,12 +198,18 @@ def prospective_replacement_exit_robustness(
             }
         )
 
+    def is_full_block(block: dict[str, object]) -> bool:
+        count = block.get("options")
+        return (
+            isinstance(count, int)
+            and not isinstance(count, bool)
+            and count >= MIN_OPTIONS_PER_FULL_BLOCK
+        )
+
     full_blocks = tuple(
         block
         for block in blocks
-        if isinstance(block.get("options"), int)
-        and not isinstance(block.get("options"), bool)
-        and int(block["options"]) >= MIN_OPTIONS_PER_FULL_BLOCK
+        if is_full_block(block)
     )
     positive_full_blocks = sum(
         1
