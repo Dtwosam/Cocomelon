@@ -23,6 +23,13 @@ from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterError,
     ProspectiveCombinedEntryFilterState,
     evaluate_prospective_combined_entry_filter,
+    evaluate_prospective_combined_matched_overlap,
+)
+from cocomelon.research.prospective_entry_filter import (
+    ProspectiveEntryFilterState,
+)
+from cocomelon.research.prospective_top10_rank_filter import (
+    ProspectiveTop10RankFilterState,
 )
 
 MARKET = MarketId("", "SOL")
@@ -256,6 +263,88 @@ def test_combined_filter_requires_both_frozen_conditions(
         == "-7"
     )
 
+
+
+def test_combined_filter_matched_overlap_uses_later_standalone_start(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        entry_only_history = _trade(
+            suffix="entry-only-history",
+            direction=Direction.LONG,
+            opened_at_ms=110_000,
+            pnl="-8",
+        )
+        rank_blocked = _trade(
+            suffix="rank-overlap",
+            direction=Direction.SHORT,
+            opened_at_ms=120_000,
+            pnl="-6",
+        )
+        blocked_by_both = _trade(
+            suffix="both-overlap",
+            direction=Direction.LONG,
+            opened_at_ms=130_000,
+            pnl="-7",
+        )
+        allowed = _trade(
+            suffix="allowed-overlap",
+            direction=Direction.SHORT,
+            opened_at_ms=140_000,
+            pnl="5",
+        )
+        rows = (
+            (entry_only_history, "trend", 5),
+            (rank_blocked, "trend", 15),
+            (blocked_by_both, "trend", 16),
+            (allowed, "breakout", 4),
+        )
+        for trade, strategy, ordinal in rows:
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy=strategy)
+            )
+            ranks.record(_rank(trade, ordinal=ordinal))
+
+        result = evaluate_prospective_combined_matched_overlap(
+            journal,
+            facts,
+            ranks,
+            ProspectiveEntryFilterState(started_at_ms=100_000),
+            ProspectiveTop10RankFilterState(
+                started_at_ms=115_000
+            ),
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    assert result["descriptive_only"] is True
+    assert result["changes_readiness_gate"] is False
+    assert result["fresh_combined_gate_credit"] == 0
+    assert result["entry_filter_started_at_ms"] == 100_000
+    assert result["top10_rank_filter_started_at_ms"] == 115_000
+    assert result["overlap_started_at_ms"] == 115_000
+    assert result["closed_trades_since_overlap_start"] == 3
+    assert result["matched_trades"] == 3
+    assert result["integrity_clean"] is True
+    assert result["allowed_trades"] == 1
+    assert result["blocked_trades"] == 2
+    assert result["actual_net_pnl"] == "-8"
+    assert result["candidate_trade_contribution_pnl"] == "5"
+    assert result["delta_trade_contribution_pnl"] == "13"
+    reasons = result["by_block_reason"]
+    assert isinstance(reasons, dict)
+    assert reasons["rank_above_10"]["net_pnl"] == "-6"
+    assert (
+        reasons["long_trend_and_rank_above_10"]["net_pnl"]
+        == "-7"
+    )
 
 def test_combined_filter_tracks_decision_rank_and_stale_misses(
     tmp_path: Path,
