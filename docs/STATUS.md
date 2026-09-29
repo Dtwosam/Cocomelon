@@ -2603,3 +2603,12 @@ The previous restore path could temporarily hold the roughly 8.84 GB artifact ZI
 The streamed restore is transport-only. It preserves the exact predecessor state, does not prune evidence, and does not change strategy, risk, accounting, execution authority, or live-order behavior.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Interruptible research capture during paper-worker handoff — 2026-09-29
+
+The continuous-paper runtime now honors an upgrade stop request inside the long research-capture loops that can run between top-level 60-second stop checks. Due replacement exit-book requests, replacement-funding market requests, open-position funding refreshes, and replacement-funding oracle observation all stop starting new work as soon as the durable handoff flag exists. The main loop also rechecks that flag after native-market refresh, after exit-book capture, after replacement-funding capture, and before the synchronous live-status research pass.
+
+The change is deliberately non-destructive: an already-started bounded HTTP request is allowed to finish, every evidence record already written remains durable, and no store is pruned or partially rewritten. The goal is to shorten state-preserving worker rotation when a newer main runtime is waiting without changing strategy decisions, paper accounting, risk limits, research claims, or execution authority.
+
+**LIVE TRADING: DISABLED.**
