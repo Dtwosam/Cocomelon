@@ -2548,3 +2548,14 @@ For admitted future opportunities, the policy uses the existing candidate-caused
 Alternative horizons remain descriptive research and cannot be selected after outcomes are observed. This candidate has no strategy-level PnL claim, no promotion authority, and no execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective 5-minute replacement exit robustness — 2026-09-29
+
+The frozen five-minute replacement-exit candidate now publishes a separate post-freeze robustness diagnostic over exact realized outcomes only.
+
+The diagnostic reports exact-evidence coverage, gross profit/loss and profit factor, largest single-option contribution and share, leave-one-option-out PnL, market contribution concentration, leave-one-market-out PnL, and four chronological blocks. Incomplete outcomes remain excluded from economics but stay visible in the coverage count. A sample-size marker remains false until at least 30 exact post-freeze outcomes are available for review.
+
+This module cannot change the fixed five-minute exit horizon, reuse the discovery cohort, grant promotion authority, or execute trades. It exists to prevent a positive aggregate result from being mistaken for durable evidence when that result is concentrated in one option, one market, or one time slice.
+
+**LIVE TRADING: DISABLED.**
