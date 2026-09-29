@@ -381,3 +381,74 @@ def test_summary_reconciles_when_default_decimal_sums_round_differently() -> Non
     assert summary["total_delta_pnl"] == (
         "-85.45838075004633167853922344"
     )
+
+
+
+def test_summary_exposes_exact_decimal_rounding_bridge() -> None:
+    rows = (
+        (
+            "6546.131882438322087185637997883",
+            "-998.965069541265256233925839004",
+            "358.683776161095297083214838065",
+            "5905.850589058152128034926997",
+        ),
+        (
+            "-5105.396381916124971699623327518",
+            "8223.295606901821685022695410174",
+            "-5172.450626155539304175283021600",
+            "-2054.551401169842590852210939",
+        ),
+        (
+            "9260.247016582131768965477724025",
+            "1598.649934084483320017187058794",
+            "6958.048690697777488213580799476",
+            "17816.94564136439257719624558",
+        ),
+        (
+            "-3912.635227758555350688142143444",
+            "-1128.142558372540638443547038428",
+            "365.519992430297546435384502345",
+            "-4675.257793700798442696304680",
+        ),
+    )
+    items = tuple(
+        DelayedEntryContributionDecompositionOutcome(
+            trade_id=f"rounding-trade-{index}",
+            opening_plan_id=f"rounding-plan-{index}",
+            market="SOL",
+            direction="long",
+            source="full_visible_book_ioc",
+            capacity_cause="full_requested_fill",
+            fill_fraction=Decimal("1"),
+            actual_net_pnl=Decimal("0"),
+            scaled_actual_net_pnl=Decimal("0"),
+            candidate_net_pnl_estimate=Decimal(total),
+            price_effect_pnl=Decimal(price),
+            entry_fee_effect_pnl=Decimal(fee),
+            exposure_effect_pnl=Decimal(exposure),
+            total_delta_pnl=Decimal(total),
+            price_effect_r=Decimal("0"),
+            entry_fee_effect_r=Decimal("0"),
+            exposure_effect_r=Decimal("0"),
+            total_delta_r=Decimal("0"),
+        )
+        for index, (price, fee, exposure, total) in enumerate(rows)
+    )
+
+    summary = _decomposition_summary(items)
+
+    assert summary["price_effect_pnl"] == (
+        "6788.347289345773533763350250946"
+    )
+    assert summary["entry_fee_effect_pnl"] == (
+        "7694.837913072499110362409591536"
+    )
+    assert summary["exposure_effect_pnl"] == (
+        "2509.801833133631027556897118286"
+    )
+    assert summary["total_delta_pnl"] == (
+        "16992.987035551903671682656958"
+    )
+    assert summary["decimal_rounding_residual_pnl"] == (
+        "-2.768E-24"
+    )
