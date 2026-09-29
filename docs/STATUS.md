@@ -2570,3 +2570,14 @@ The gate is intentionally fixed before the prospective sample matures. Review re
 Passing this gate means only that the frozen candidate is ready for human review. It cannot alter the five-minute exit rule, cannot promote the candidate, and cannot authorize execution or live orders.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Compressed packed continuous-paper handoffs — 2026-09-29
+
+The durable continuous-paper state still uses the single packed tar artifact introduced for reliable file-count-independent handoffs, but the artifact transport now enables normal compression again.
+
+The uncompressed packed artifact had grown to roughly 8.84 GB on the live worker even though the same underlying state had previously compressed to roughly 969 MB. That made exact predecessor restoration the dominant worker-rotation delay and pushed the artifact close to service size limits. The workflow now uploads the single tar with artifact compression level 6 and a 20-minute upload allowance, preserving the exact state contents and existing restore format while materially reducing network transfer size.
+
+This changes only state transport. It does not prune research evidence, change paper accounting, alter strategy/risk/execution behavior, or enable live orders.
+
+**LIVE TRADING: DISABLED.**
