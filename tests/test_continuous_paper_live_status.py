@@ -9,6 +9,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _prospective_allowed_residual_lines,
     _prospective_combined_entry_filter_lines,
+    _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
 )
@@ -4880,6 +4881,59 @@ def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
     assert "earlier standalone LONG+trend and top-10 studies" in output
 
 
+
+
+def test_combined_matched_overlap_renderer_is_explicitly_descriptive() -> None:
+    lines = _prospective_combined_matched_overlap_lines(
+        {
+            "enabled": True,
+            "entry_filter_started_at_ms": 100,
+            "top10_rank_filter_started_at_ms": 200,
+            "overlap_started_at_ms": 200,
+            "closed_trades_since_overlap_start": 35,
+            "matched_trades": 35,
+            "integrity_clean": True,
+            "allowed_trades": 15,
+            "blocked_trades": 20,
+            "allowed_wins": 6,
+            "allowed_losses": 9,
+            "blocked_wins": 4,
+            "blocked_losses": 16,
+            "actual_net_pnl": "-100",
+            "candidate_trade_contribution_pnl": "-10",
+            "delta_trade_contribution_pnl": "90",
+            "decision_attribution_misses": 0,
+            "missing_rank_evidence": 0,
+            "stale_rank_evidence": 0,
+            "fresh_combined_gate_credit": 0,
+            "changes_readiness_gate": False,
+            "by_block_reason": {
+                "long_trend": {
+                    "trades": 9,
+                    "net_pnl": "-45",
+                },
+                "rank_above_10": {
+                    "trades": 7,
+                    "net_pnl": "-25",
+                },
+                "long_trend_and_rank_above_10": {
+                    "trades": 4,
+                    "net_pnl": "-20",
+                },
+            },
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Matched standalone overlap diagnostic" in output
+    assert "`100 / 200 / 200`" in output
+    assert "`35 / 35 / true`" in output
+    assert "`-100 / -10 / 90`" in output
+    assert "`9 · -45 / 7 · -25 / 4 · -20`" in output
+    assert "fresh combined gate credit" in output
+    assert "`0 / false`" in output
+    assert "cannot advance the fresh combined prospective gate" in output
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
     lines = _prospective_filter_robustness_lines(

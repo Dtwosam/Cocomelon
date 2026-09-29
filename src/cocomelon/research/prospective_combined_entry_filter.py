@@ -17,12 +17,18 @@ from cocomelon.research.prospective_allowed_residual import (
     AllowedResidualItem,
     prospective_allowed_residual_attribution,
 )
+from cocomelon.research.prospective_entry_filter import (
+    ProspectiveEntryFilterState,
+)
 from cocomelon.research.prospective_filter_fixed_schedule import (
     ProspectiveFilterPortfolioItem,
     prospective_filter_fixed_schedule_portfolio,
 )
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
+)
+from cocomelon.research.prospective_top10_rank_filter import (
+    ProspectiveTop10RankFilterState,
 )
 
 COMBINED_FILTER_STATE_SCHEMA_VERSION: Final = 1
@@ -476,3 +482,95 @@ def evaluate_prospective_combined_entry_filter(
         rank_store,
         state,
     )
+
+def prospective_combined_matched_overlap_summary(
+    trades: tuple[TradeJournalEntry, ...],
+    fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    entry_filter_state: ProspectiveEntryFilterState,
+    top10_rank_filter_state: ProspectiveTop10RankFilterState,
+) -> dict[str, object]:
+    overlap_started_at_ms = max(
+        entry_filter_state.started_at_ms,
+        top10_rank_filter_state.started_at_ms,
+    )
+    overlap = prospective_combined_entry_filter_summary(
+        trades,
+        fact_store,
+        rank_store,
+        ProspectiveCombinedEntryFilterState(
+            started_at_ms=overlap_started_at_ms,
+        ),
+    )
+    readiness = overlap.get("readiness", {})
+    if not isinstance(readiness, dict):
+        raise ProspectiveCombinedEntryFilterError(
+            "matched overlap readiness must be an object"
+        )
+
+    return {
+        "research_only": True,
+        "execution_authority": False,
+        "promotion_authority": False,
+        "descriptive_only": True,
+        "changes_readiness_gate": False,
+        "fresh_combined_gate_credit": 0,
+        "claim_scope": (
+            "matched_standalone_overlap_closed_trade_contribution_only"
+        ),
+        "entry_filter_started_at_ms": (
+            entry_filter_state.started_at_ms
+        ),
+        "top10_rank_filter_started_at_ms": (
+            top10_rank_filter_state.started_at_ms
+        ),
+        "overlap_started_at_ms": overlap_started_at_ms,
+        "closed_trades_since_overlap_start": overlap[
+            "prospective_closed_trades"
+        ],
+        "matched_trades": overlap["attributed_trades"],
+        "decision_attribution_misses": overlap[
+            "decision_attribution_misses"
+        ],
+        "missing_rank_evidence": overlap["missing_rank_evidence"],
+        "stale_rank_evidence": overlap["stale_rank_evidence"],
+        "integrity_clean": readiness.get("integrity_clean", False),
+        "allowed_trades": overlap["allowed_trades"],
+        "blocked_trades": overlap["blocked_trades"],
+        "allowed_wins": overlap["allowed_wins"],
+        "allowed_losses": overlap["allowed_losses"],
+        "blocked_wins": overlap["blocked_wins"],
+        "blocked_losses": overlap["blocked_losses"],
+        "allowed_net_pnl": overlap["allowed_net_pnl"],
+        "blocked_net_pnl": overlap["blocked_net_pnl"],
+        "actual_net_pnl": overlap["actual_net_pnl"],
+        "candidate_trade_contribution_pnl": overlap[
+            "candidate_trade_contribution_pnl"
+        ],
+        "delta_trade_contribution_pnl": overlap[
+            "delta_trade_contribution_pnl"
+        ],
+        "by_block_reason": overlap["by_block_reason"],
+        "robustness": overlap["robustness"],
+        "allowed_residual": overlap["allowed_residual"],
+        "fixed_schedule_portfolio": overlap[
+            "fixed_schedule_portfolio"
+        ],
+    }
+
+
+def evaluate_prospective_combined_matched_overlap(
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    entry_filter_state: ProspectiveEntryFilterState,
+    top10_rank_filter_state: ProspectiveTop10RankFilterState,
+) -> dict[str, object]:
+    return prospective_combined_matched_overlap_summary(
+        tuple(journal.iter_trades()),
+        fact_store,
+        rank_store,
+        entry_filter_state,
+        top10_rank_filter_state,
+    )
+
