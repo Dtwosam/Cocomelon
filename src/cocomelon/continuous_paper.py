@@ -242,6 +242,9 @@ from cocomelon.research.prospective_capacity_reflow_forward_markout import (
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     evaluate_prospective_capacity_reflow_opportunities,
 )
+from cocomelon.research.prospective_capacity_reflow_realized_pnl import (
+    evaluate_prospective_capacity_reflow_realized_pnl,
+)
 from cocomelon.research.prospective_capacity_reflow_release_lineage import (
     evaluate_prospective_capacity_reflow_release_lineage,
 )
@@ -2050,6 +2053,32 @@ def _prospective_capacity_reflow_exit_fill_payload(
             fill_feasibility,
             exit_book_store,
             config,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["candidate_id"] = state.candidate_id
+    payload["started_at_ms"] = state.started_at_ms
+    payload["error"] = None
+    return payload
+
+
+def _prospective_capacity_reflow_realized_pnl_payload(
+    exit_fill: dict[str, object],
+    state: ProspectiveCombinedEntryFilterState,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_capacity_reflow_realized_pnl(
+            exit_fill
         )
     except Exception as exc:
         return {
@@ -4250,6 +4279,12 @@ def _live_status_payload(
             paper_execution_config,
         )
     )
+    prospective_capacity_reflow_realized_pnl = (
+        _prospective_capacity_reflow_realized_pnl_payload(
+            prospective_capacity_reflow_exit_fill,
+            prospective_combined_entry_filter_state,
+        )
+    )
     prospective_capacity_reflow_forward_markout = (
         _prospective_capacity_reflow_forward_markout_payload(
             prospective_capacity_reflow_fill_feasibility,
@@ -4661,6 +4696,9 @@ def _live_status_payload(
         ),
         "prospective_capacity_reflow_exit_fill": (
             prospective_capacity_reflow_exit_fill
+        ),
+        "prospective_capacity_reflow_realized_pnl": (
+            prospective_capacity_reflow_realized_pnl
         ),
         "prospective_capacity_reflow_forward_markout": (
             prospective_capacity_reflow_forward_markout

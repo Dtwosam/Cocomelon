@@ -14,6 +14,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_capacity_reflow_forward_excursion_lines,
     _prospective_capacity_reflow_forward_markout_lines,
     _prospective_capacity_reflow_opportunity_lines,
+    _prospective_capacity_reflow_realized_pnl_lines,
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
@@ -5182,6 +5183,51 @@ def test_capacity_reflow_exit_fill_renderer_exposes_real_l2_closes() -> None:
     assert "| 6h | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 |" in output
     assert "`true / true / false / false / false`" in output
     assert "real captured L2 book" in output
+
+
+def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
+    lines = _prospective_capacity_reflow_realized_pnl_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "exact_realized_pnl_option_horizons": 3,
+            "by_horizon": {
+                "300000": {
+                    "options": 5,
+                    "simulated_exits": 5,
+                    "complete_closes": 4,
+                    "zero_funding_boundary_closes": 3,
+                    "funding_evidence_required_closes": 1,
+                    "incomplete_or_missing_exits": 1,
+                    "exact_realized_pnl_options": 3,
+                    "exact_realized_pnl": "9.5",
+                },
+                "3600000": {
+                    "options": 5,
+                    "simulated_exits": 5,
+                    "complete_closes": 4,
+                    "zero_funding_boundary_closes": 0,
+                    "funding_evidence_required_closes": 4,
+                    "incomplete_or_missing_exits": 1,
+                    "exact_realized_pnl_options": 0,
+                    "exact_realized_pnl": "0",
+                },
+            },
+            "funding_evidence_modeled": False,
+            "zero_funding_boundary_is_exact_zero_funding": True,
+            "cross_horizon_economics_aggregated": False,
+            "strategy_level_realized_pnl_claimed": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Exact replacement realized PnL" in output
+    assert "exact option-horizons available: `3`" in output
+    assert "| 5m | 5 | 5 | 4 | 3 | 1 | 1 | 9.5 |" in output
+    assert "| 1h | 5 | 5 | 4 | 0 | 4 | 1 | 0 |" in output
+    assert "`false / true / false / false`" in output
+    assert "close exactly on a funding boundary" in output
 
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:

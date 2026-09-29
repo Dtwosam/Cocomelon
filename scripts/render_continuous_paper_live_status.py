@@ -4463,6 +4463,94 @@ def _prospective_capacity_reflow_exit_fill_lines(
     return lines
 
 
+def _prospective_capacity_reflow_realized_pnl_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Exact replacement realized PnL",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No exact replacement realized-PnL telemetry in this heartbeat._"
+        )
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- exact option-horizons available: "
+                f"`{raw.get('exact_realized_pnl_option_horizons', 0)}`"
+            ),
+            "",
+            (
+                "| Horizon | Options | Simulated | Complete closes | "
+                "Zero-funding closes | Funding needed | Incomplete/missing | "
+                "Exact realized PnL |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+    labels = {
+        "300000": "5m",
+        "900000": "15m",
+        "3600000": "1h",
+        "21600000": "6h",
+    }
+    by_horizon = raw.get("by_horizon")
+    if isinstance(by_horizon, dict):
+        for horizon_key in sorted(
+            by_horizon,
+            key=lambda value: int(str(value)),
+        ):
+            item = by_horizon[horizon_key]
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| "
+                f"{labels.get(str(horizon_key), str(horizon_key) + 'ms')} | "
+                f"{item.get('options', 0)} | "
+                f"{item.get('simulated_exits', 0)} | "
+                f"{item.get('complete_closes', 0)} | "
+                f"{item.get('zero_funding_boundary_closes', 0)} | "
+                f"{item.get('funding_evidence_required_closes', 0)} | "
+                f"{item.get('incomplete_or_missing_exits', 0)} | "
+                f"{item.get('exact_realized_pnl', '0')} |"
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "- funding evidence modeled / zero-boundary funding exact / "
+                "cross-horizon aggregation / strategy PnL claimed: "
+                f"`{str(bool(raw.get('funding_evidence_modeled'))).lower()} / "
+                f"{str(bool(raw.get('zero_funding_boundary_is_exact_zero_funding'))).lower()} / "
+                f"{str(bool(raw.get('cross_horizon_economics_aggregated'))).lower()} / "
+                f"{str(bool(raw.get('strategy_level_realized_pnl_claimed'))).lower()}`"
+            ),
+            (
+                "_An option-horizon receives exact realized-PnL credit only when "
+                "the replacement position is fully closed and its entry→exit "
+                "interval contains no hourly funding boundary. A close exactly "
+                "on a funding boundary still requires funding evidence._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
 ) -> list[str]:
@@ -7511,6 +7599,13 @@ def render_live_status(
         _prospective_capacity_reflow_exit_fill_lines(
             payload.get(
                 "prospective_capacity_reflow_exit_fill"
+            )
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_realized_pnl_lines(
+            payload.get(
+                "prospective_capacity_reflow_realized_pnl"
             )
         )
     )

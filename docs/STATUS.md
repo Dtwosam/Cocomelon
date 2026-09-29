@@ -2502,3 +2502,14 @@ The continuous-paper workflow now has a second graceful-upgrade detector that do
 When such a run exists, the watchdog touches the same durable graceful-stop file already consumed by the paper runtime. It does not cancel the job, kill the trader, bypass state upload, or enable live execution. The existing heartbeat-time source diff remains as a redundant fast path. This closes the handoff deadlock where a stale heartbeat could prevent the old worker from noticing that its replacement was already waiting.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact zero-funding replacement realized PnL — 2026-09-29
+
+The replacement-exit research now has a narrow path to exact realized PnL without inventing funding. For each simulated fixed-horizon exit, the study applies the same hourly funding-boundary convention as the paper execution engine: funding can apply at boundaries in the interval `(entry_attempt_ms, exit_attempt_ms]`.
+
+An option-horizon receives exact realized-PnL credit only when the real-L2 reduce-only exit fully flattens the replacement position and that interval crosses zero funding boundaries. In that case funding is exactly zero by construction, so the existing entry/exit fee-adjusted close PnL is complete for that option-horizon. A partial close, a missing/rejected exit, or a complete close that crosses even one hourly boundary remains incomplete until exact funding evidence is available. A close exactly on an hourly boundary requires funding evidence; an entry exactly on a boundary does not owe that boundary.
+
+Alternative 5-minute, 15-minute, 1-hour, and 6-hour exit policies remain economically separate and are never summed into a synthetic strategy PnL. This layer reports exact option-horizon PnL only; it does not claim a complete portfolio counterfactual, strategy-level realized PnL, promotion authority, or execution authority.
+
+**LIVE TRADING: DISABLED.**
