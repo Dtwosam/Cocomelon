@@ -91,6 +91,12 @@ from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperOpeningLineageStore,
     ContinuousPaperRuntimeIdentity,
 )
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    ContinuousPaperOpeningOpportunityStore,
+)
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    evidence_from_opening_trace as opportunity_evidence_from_trace,
+)
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
     LatestCoarseRankTracker,
@@ -392,6 +398,36 @@ class _ContinuousOpeningFillLiquiditySink:
             evidence = evidence_from_opening_trace(trace)
             if evidence is not None:
                 self._store.record(evidence)
+        except Exception as exc:
+            if self.error is None:
+                self.error = f"{type(exc).__name__}: {exc}"
+
+
+class _ContinuousOpeningOpportunitySink:
+    def __init__(
+        self,
+        store: ContinuousPaperOpeningOpportunityStore,
+        rank_tracker: LatestCoarseRankTracker,
+    ) -> None:
+        self._store = store
+        self._rank_tracker = rank_tracker
+        self.error: str | None = None
+
+    def record_opening_trace(
+        self,
+        trace: BaselineOpeningTrace,
+    ) -> None:
+        try:
+            rank_snapshot = self._rank_tracker.snapshot_for_market(
+                trace.evaluation.decision.market,
+                at_ms=trace.risk_request.timestamp_ms,
+            )
+            self._store.record(
+                opportunity_evidence_from_trace(
+                    trace,
+                    rank_snapshot=rank_snapshot,
+                )
+            )
         except Exception as exc:
             if self.error is None:
                 self.error = f"{type(exc).__name__}: {exc}"
@@ -1043,6 +1079,12 @@ class ContinuousPaperSummary:
     opening_fill_liquidity_count: int
     opening_fill_liquidity_state_digest: str
     opening_fill_liquidity_capture_error: str | None
+    opening_opportunity_count: int
+    opening_opportunity_approved_count: int
+    opening_opportunity_rejected_count: int
+    opening_opportunity_rank_complete_count: int
+    opening_opportunity_state_digest: str
+    opening_opportunity_capture_error: str | None
     trade_path_count: int
     trade_path_open_count: int
     trade_path_state_digest: str
@@ -1077,6 +1119,22 @@ class ContinuousPaperSummary:
             ),
             "opening_fill_liquidity_capture_error": (
                 self.opening_fill_liquidity_capture_error
+            ),
+            "opening_opportunity_count": self.opening_opportunity_count,
+            "opening_opportunity_approved_count": (
+                self.opening_opportunity_approved_count
+            ),
+            "opening_opportunity_rejected_count": (
+                self.opening_opportunity_rejected_count
+            ),
+            "opening_opportunity_rank_complete_count": (
+                self.opening_opportunity_rank_complete_count
+            ),
+            "opening_opportunity_state_digest": (
+                self.opening_opportunity_state_digest
+            ),
+            "opening_opportunity_capture_error": (
+                self.opening_opportunity_capture_error
             ),
             "trade_path_count": self.trade_path_count,
             "trade_path_open_count": self.trade_path_open_count,
@@ -3598,6 +3656,7 @@ def _live_status_payload(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
+    opening_opportunity_store: ContinuousPaperOpeningOpportunityStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -3618,6 +3677,7 @@ def _live_status_payload(
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
+    opening_opportunity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4176,6 +4236,27 @@ def _live_status_payload(
         "execution_healthy": execution.health.healthy_for_new_exposure,
         "execution_reason_codes": list(execution.health.reason_codes),
         "last_observation": last_observation,
+        "opening_opportunity_evidence": {
+            "enabled": opening_opportunity_capture_error is None,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "claim_scope": "prospective_decision_time_opening_opportunity_capture",
+            "records": opening_opportunity_store.record_count,
+            "baseline_approvals": opening_opportunity_store.approved_count,
+            "baseline_rejections": opening_opportunity_store.rejected_count,
+            "rank_complete": opening_opportunity_store.complete_rank_count,
+            "rank_missing": max(
+                0,
+                opening_opportunity_store.record_count
+                - opening_opportunity_store.complete_rank_count,
+            ),
+            "state_digest": opening_opportunity_store.state_digest,
+            "capture_error": opening_opportunity_capture_error,
+            "full_l2_book_captured": True,
+            "exact_risk_request_captured": True,
+            "replacement_trades_modeled": False,
+        },
     }
 
 
@@ -4188,6 +4269,7 @@ def _emit_live_status(
     trade_path_store: ContinuousPaperTradePathStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
     opening_fill_liquidity_store: OpeningFillLiquidityStore,
+    opening_opportunity_store: ContinuousPaperOpeningOpportunityStore,
     original_stop_book_store: OriginalStopBookEvidenceStore,
     original_stop_book_capture: OriginalStopBookCapture,
     profit_lock_execution_shadow: _ContinuousProfitLockExecutionShadowSink,
@@ -4208,6 +4290,7 @@ def _emit_live_status(
     trade_path_capture_error: str | None,
     opening_rank_capture_error: str | None,
     opening_fill_liquidity_capture_error: str | None,
+    opening_opportunity_capture_error: str | None,
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
@@ -4231,6 +4314,7 @@ def _emit_live_status(
         trade_path_store,
         opening_rank_store,
         opening_fill_liquidity_store,
+        opening_opportunity_store,
         original_stop_book_store,
         original_stop_book_capture,
         profit_lock_execution_shadow,
@@ -4249,6 +4333,9 @@ def _emit_live_status(
         opening_rank_capture_error=opening_rank_capture_error,
         opening_fill_liquidity_capture_error=(
             opening_fill_liquidity_capture_error
+        ),
+        opening_opportunity_capture_error=(
+            opening_opportunity_capture_error
         ),
         prospective_entry_filter_restore_error=(
             prospective_entry_filter_restore_error
@@ -4397,11 +4484,18 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store
         )
     )
+    opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
+        root / "opening-opportunities"
+    )
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
     )
     rank_tracker = LatestCoarseRankTracker()
+    opening_opportunity_sink = _ContinuousOpeningOpportunitySink(
+        opening_opportunity_store,
+        rank_tracker,
+    )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
     replay_config = BaselineReplayConfig()
@@ -4570,6 +4664,7 @@ async def run_continuous_paper_session(
             opening_research_observer=(
                 _CompositeOpeningResearchObserver(
                     opening_fill_liquidity_sink,
+                    opening_opportunity_sink,
                     trade_path_sink,
                 )
             ),
@@ -4725,6 +4820,7 @@ async def run_continuous_paper_session(
             trade_path_store,
             opening_rank_store,
             opening_fill_liquidity_store,
+            opening_opportunity_store,
             original_stop_book_store,
             original_stop_book_capture,
             profit_lock_execution_shadow,
@@ -4747,6 +4843,9 @@ async def run_continuous_paper_session(
             ),
             opening_fill_liquidity_capture_error=(
                 opening_fill_liquidity_sink.error
+            ),
+            opening_opportunity_capture_error=(
+                opening_opportunity_sink.error
             ),
             prospective_entry_filter_restore_error=(
                 prospective_entry_filter_restore_error
@@ -4916,6 +5015,7 @@ async def run_continuous_paper_session(
                     trade_path_store,
                     opening_rank_store,
                     opening_fill_liquidity_store,
+                    opening_opportunity_store,
                     original_stop_book_store,
                     original_stop_book_capture,
                     profit_lock_execution_shadow,
@@ -4938,6 +5038,9 @@ async def run_continuous_paper_session(
                     ),
                     opening_fill_liquidity_capture_error=(
                         opening_fill_liquidity_sink.error
+                    ),
+                    opening_opportunity_capture_error=(
+                        opening_opportunity_sink.error
                     ),
                     prospective_entry_filter_restore_error=(
                         prospective_entry_filter_restore_error
@@ -5019,6 +5122,24 @@ async def run_continuous_paper_session(
             ),
             opening_fill_liquidity_capture_error=(
                 opening_fill_liquidity_sink.error
+            ),
+            opening_opportunity_count=(
+                opening_opportunity_store.record_count
+            ),
+            opening_opportunity_approved_count=(
+                opening_opportunity_store.approved_count
+            ),
+            opening_opportunity_rejected_count=(
+                opening_opportunity_store.rejected_count
+            ),
+            opening_opportunity_rank_complete_count=(
+                opening_opportunity_store.complete_rank_count
+            ),
+            opening_opportunity_state_digest=(
+                opening_opportunity_store.state_digest
+            ),
+            opening_opportunity_capture_error=(
+                opening_opportunity_sink.error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,

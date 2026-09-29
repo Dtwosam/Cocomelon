@@ -306,6 +306,22 @@ class LatestCoarseRankTracker:
         }
         self._pool_size = len(resolved)
 
+    def snapshot_for_market(
+        self,
+        market: MarketId,
+        *,
+        at_ms: int,
+    ) -> tuple[int, OpportunityRank, int] | None:
+        if at_ms < 0:
+            raise ValueError("at_ms must be non-negative")
+        observed_at_ms = self._observed_at_ms
+        if observed_at_ms is None or observed_at_ms > at_ms:
+            return None
+        rank = self._ranks.get(market.canonical)
+        if rank is None:
+            return None
+        return observed_at_ms, rank, self._pool_size
+
     def evidence_for_opening(
         self,
         *,

@@ -3978,6 +3978,65 @@ def _opening_fill_liquidity_lines(raw: object) -> list[str]:
     return lines
 
 
+def _opening_opportunity_evidence_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Opening opportunity evidence",
+        "",
+        "- authority: `RESEARCH CAPTURE ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No opening-opportunity capture telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    capture_error = raw.get("capture_error")
+    if capture_error:
+        lines.append(f"- capture warning: `{capture_error}`")
+    lines.extend(
+        [
+            (
+                "- records / baseline approvals / baseline rejections: "
+                f"`{raw.get('records', 0)} / "
+                f"{raw.get('baseline_approvals', 0)} / "
+                f"{raw.get('baseline_rejections', 0)}`"
+            ),
+            (
+                "- scanner rank complete / missing: "
+                f"`{raw.get('rank_complete', 0)} / "
+                f"{raw.get('rank_missing', 0)}`"
+            ),
+            (
+                "- exact risk request / full L2 book captured: "
+                f"`{str(bool(raw.get('exact_risk_request_captured'))).lower()} / "
+                f"{str(bool(raw.get('full_l2_book_captured'))).lower()}`"
+            ),
+            (
+                "- replacement trades modeled: "
+                f"`{str(bool(raw.get('replacement_trades_modeled'))).lower()}`"
+            ),
+            (
+                "- state digest: "
+                f"`{raw.get('state_digest', 'unknown')}`"
+            ),
+            "",
+            (
+                "_Prospective decision-time evidence only. This preserves real "
+                "directional opening opportunities before the risk veto so future "
+                "capacity-reflow research can use observed opportunities instead "
+                "of inventing trades. It does not change execution or readiness._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _entry_markout_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -6636,6 +6695,11 @@ def render_live_status(
     lines.extend(
         _opening_fill_liquidity_lines(
             payload.get("opening_fill_liquidity")
+        )
+    )
+    lines.extend(
+        _opening_opportunity_evidence_lines(
+            payload.get("opening_opportunity_evidence")
         )
     )
     lines.extend(

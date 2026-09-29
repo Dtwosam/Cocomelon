@@ -9,6 +9,7 @@ from cocomelon.domain.execution import ExecutionResult, PaperExecutionConfig
 from cocomelon.domain.features import (
     EligibilityDecision,
     FeatureSnapshot,
+    OpportunityRank,
     TrendRegime,
     VolatilityRegime,
 )
@@ -25,6 +26,12 @@ from cocomelon.evidence.openings import (
     paper_liquidation_surrogate,
 )
 from cocomelon.execution.paper import PaperExecutionAdapter
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    ContinuousPaperOpeningOpportunityStore,
+)
+from cocomelon.research.continuous_paper_opening_opportunity import (
+    evidence_from_opening_trace as opportunity_evidence_from_trace,
+)
 from cocomelon.research.opening_fill_liquidity import (
     evidence_from_opening_trace,
 )
@@ -296,18 +303,57 @@ def test_epoch_candidates_execute_in_canonical_order_and_share_open_risk(
     assert engine.on_book(_book(SOL, receive_ms=eligible_ms), eligible_ms) == ()
     assert engine.on_book(_book(ETH, receive_ms=eligible_ms), eligible_ms) == ()
     outcomes = engine.on_book(_book(BTC, receive_ms=eligible_ms), eligible_ms)
+    traces = engine.take_traces()
 
     assert tuple(outcome.risk_decision.market.canonical for outcome in outcomes) == (
         "BTC",
         "ETH",
         "SOL",
     )
+    assert tuple(
+        trace.risk_request.market.canonical
+        for trace in traces
+    ) == ("BTC", "ETH", "SOL")
     assert outcomes[0].risk_decision.approved is True
     assert outcomes[1].risk_decision.approved is True
     assert outcomes[2].risk_decision.approved is False
     assert outcomes[2].risk_decision.reason_codes == ("correlation_bucket_exhausted",)
     assert outcomes[2].plan is None
     assert outcomes[2].simulation is None
+    rejected_trace = traces[2]
+    assert rejected_trace.risk_request.open_positions
+    assert len(rejected_trace.risk_request.open_positions) == 2
+    rank = OpportunityRank(
+        market=SOL,
+        ordinal=12,
+        score=Decimal("0.42"),
+        components=(),
+        reason_codes=("coarse",),
+    )
+    opportunity = opportunity_evidence_from_trace(
+        rejected_trace,
+        rank_snapshot=(eligible_ms - 50, rank, 20),
+    )
+    store = ContinuousPaperOpeningOpportunityStore(
+        tmp_path / "opening-opportunities"
+    )
+    assert store.record(opportunity) is True
+    restored = store.load(opportunity.opportunity_id)
+    assert restored is not None
+    assert restored.baseline_risk_approved is False
+    assert restored.baseline_risk_reason_codes == (
+        "correlation_bucket_exhausted",
+    )
+    assert restored.rank_ordinal == 12
+    assert restored.rank_pool_size == 20
+    assert restored.risk_request_object == rejected_trace.risk_request
+    assert restored.instrument_object == rejected_trace.instrument
+    assert restored.book_event == rejected_trace.book_event
+    assert store.record_count == 1
+    assert store.approved_count == 0
+    assert store.rejected_count == 1
+    assert store.complete_rank_count == 1
+    assert len(store.state_digest) == 64
     assert tuple(
         position.market.canonical for position in adapter.account.positions
     ) == ("BTC", "ETH")
