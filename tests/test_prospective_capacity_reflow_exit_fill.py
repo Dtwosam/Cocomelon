@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -123,6 +124,7 @@ def test_replacement_exit_uses_reduce_only_ioc_and_real_l2_depth() -> None:
 
     assert result["fillable_options"] == 1
     assert result["exit_book_records"] == 1
+    assert result["cross_horizon_economics_aggregated"] is False
     assert result["replacement_entry_fills_modeled"] is True
     assert result["replacement_exit_fills_modeled"] is True
     assert result["funding_modeled"] is False
@@ -196,3 +198,45 @@ def test_replacement_exit_rejects_book_lineage_mismatch() -> None:
             PaperExecutionConfig(),
             horizons_ms=(300_000,),
         )
+
+
+def test_replacement_exit_full_ioc_can_still_leave_rounding_residual() -> None:
+    fill_feasibility = _fill_feasibility()
+    option_results = fill_feasibility["option_results"]
+    assert isinstance(option_results, list)
+    option = option_results[0]
+    assert isinstance(option, dict)
+    option["requested_quantity"] = "2.5"
+    option["filled_quantity"] = "2.5"
+    option["gross_fill_notional"] = "250.0"
+    option["taker_fee"] = "0.25"
+
+    evidence = _exit_book()
+    deep_book = replace(
+        evidence.book_event,
+        payload={
+            "bids": (
+                {"px": Decimal("104"), "sz": Decimal("10"), "n": 1},
+            ),
+            "asks": (
+                {"px": Decimal("105"), "sz": Decimal("10"), "n": 1},
+            ),
+        },
+    )
+    evidence = replace(evidence, book_event=deep_book)
+
+    result = prospective_capacity_reflow_exit_fill_summary(
+        fill_feasibility,
+        (evidence,),
+        PaperExecutionConfig(),
+        horizons_ms=(300_000,),
+    )
+
+    exit_result = result["option_exits"][0]["exits"]["300000"]
+    assert exit_result["execution_result"] == "full"
+    assert exit_result["requested_quantity"] == "2"
+    assert exit_result["filled_quantity"] == "2"
+    assert exit_result["complete_close"] is False
+    assert result["by_horizon"]["300000"]["full_exit_fills"] == 0
+    assert result["by_horizon"]["300000"]["partial_exit_fills"] == 1
+    assert result["by_horizon"]["300000"]["unclosed_quantity"] == "0.5"
