@@ -23,6 +23,7 @@ from cocomelon.execution.accounting import (
     apply_reduce_only_fills,
     empty_account,
     mark_to_market,
+    roll_account_day as accounting_roll_account_day,
     tighten_position_stop,
 )
 from cocomelon.execution.funding import FundingAccrual
@@ -86,6 +87,28 @@ class PaperExecutionAdapter:
         except Exception:
             self._mark_store_failure("DURABLE_PLAN_WRITE_FAILED")
             raise
+
+    def roll_account_day(
+        self,
+        timestamp_ms: int,
+    ) -> bool:
+        if timestamp_ms < self._account.updated_at_ms:
+            raise ValueError("timestamp_ms must not move backward")
+        candidate = accounting_roll_account_day(
+            self._account,
+            timestamp_ms,
+        )
+        if candidate.day_start_ms == self._account.day_start_ms:
+            return False
+        try:
+            self.store.persist_account(candidate)
+        except Exception:
+            self._mark_store_failure(
+                "DURABLE_ACCOUNT_DAY_ROLL_WRITE_FAILED"
+            )
+            raise
+        self._account = candidate
+        return True
 
     def mark_account_to_market(
         self,
