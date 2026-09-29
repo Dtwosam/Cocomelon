@@ -419,26 +419,53 @@ def candidate_caused_replacement_entry_fill_records(
             config,
         )
         risk = evaluate_risk(request)
-        common = {
-            "opportunity_id": evidence.opportunity_id,
-            "opportunity_timestamp_ms": (
-                evidence.opportunity_timestamp_ms
-            ),
-            "opportunity_market": evidence.market,
-            "direction": evidence.direction,
-            "release_market": release.release_market,
-            "release_opening_plan_id": (
-                release.release_opening_plan_id
-            ),
-            "release_block_reason": release.release_block_reason,
-            "counterfactual_equity_delta": equity_delta,
-            "risk_approved": risk.approved,
-            "risk_reason_codes": risk.reason_codes,
-        }
+
+        def record(
+            *,
+            replacement_plan_id: str | None,
+            planning_rejection_reason: str | None,
+            execution_attempt_id: str | None,
+            execution_result: ExecutionResult | None,
+            execution_reason_codes: tuple[str, ...],
+            requested_quantity: Decimal | None,
+            filled_quantity: Decimal,
+            average_fill_price: Decimal | None,
+            gross_fill_notional: Decimal,
+            taker_fee: Decimal,
+            fill_ids: tuple[str, ...],
+        ) -> CandidateReplacementEntryFill:
+            return CandidateReplacementEntryFill(
+                opportunity_id=evidence.opportunity_id,
+                opportunity_timestamp_ms=(
+                    evidence.opportunity_timestamp_ms
+                ),
+                opportunity_market=evidence.market,
+                direction=evidence.direction,
+                release_market=release.release_market,
+                release_opening_plan_id=(
+                    release.release_opening_plan_id
+                ),
+                release_block_reason=release.release_block_reason,
+                counterfactual_equity_delta=equity_delta,
+                risk_approved=risk.approved,
+                risk_reason_codes=risk.reason_codes,
+                replacement_plan_id=replacement_plan_id,
+                planning_rejection_reason=(
+                    planning_rejection_reason
+                ),
+                execution_attempt_id=execution_attempt_id,
+                execution_result=execution_result,
+                execution_reason_codes=execution_reason_codes,
+                requested_quantity=requested_quantity,
+                filled_quantity=filled_quantity,
+                average_fill_price=average_fill_price,
+                gross_fill_notional=gross_fill_notional,
+                taker_fee=taker_fee,
+                fill_ids=fill_ids,
+            )
         if not risk.approved:
             output.append(
-                CandidateReplacementEntryFill(
-                    **common,
+                record(
                     replacement_plan_id=None,
                     planning_rejection_reason=None,
                     execution_attempt_id=None,
@@ -463,8 +490,7 @@ def candidate_caused_replacement_entry_fill_records(
         )
         if isinstance(plan, PlanningRejection):
             output.append(
-                CandidateReplacementEntryFill(
-                    **common,
+                record(
                     replacement_plan_id=None,
                     planning_rejection_reason=plan.reason,
                     execution_attempt_id=None,
@@ -488,8 +514,7 @@ def candidate_caused_replacement_entry_fill_records(
             attempt_timestamp_ms=request.timestamp_ms,
         )
         output.append(
-            CandidateReplacementEntryFill(
-                **common,
+            record(
                 replacement_plan_id=plan.plan_id,
                 planning_rejection_reason=None,
                 execution_attempt_id=simulation.attempt.attempt_id,
