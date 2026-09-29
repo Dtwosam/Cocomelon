@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ReplacementFundingBoundaryEvidence,
+)
 from cocomelon.research.prospective_capacity_reflow_realized_pnl import (
     prospective_capacity_reflow_realized_pnl_summary,
 )
@@ -15,6 +20,8 @@ def _exit_fill_payload() -> dict[str, object]:
             {
                 "option_id": "option-1",
                 "opportunity_id": "opp-1",
+                "opportunity_market": "BTC",
+                "opportunity_direction": "long",
                 "entry_attempt_timestamp_ms": 10_000,
                 "entry_price": "100",
                 "entry_quantity": "2",
@@ -134,3 +141,82 @@ def test_entry_exactly_on_boundary_does_not_owe_that_boundary() -> None:
     classified = result["option_results"][0]["exits"]["300000"]
     assert classified["funding_boundary_count"] == 0
     assert classified["exact_realized_pnl"] == "3.80"
+
+
+def _funding_evidence(
+    *,
+    market: str = "BTC",
+    boundary_ms: int = 3_600_000,
+    oracle_px: str = "100",
+    funding_rate: str = "0.001",
+) -> ReplacementFundingBoundaryEvidence:
+    return ReplacementFundingBoundaryEvidence(
+        market=market,
+        boundary_ms=boundary_ms,
+        oracle_px=Decimal(oracle_px),
+        oracle_observed_at_ms=boundary_ms - 1_000,
+        oracle_age_ms=1_000,
+        oracle_source="hyperliquid-mainnet-info",
+        oracle_schema_version=1,
+        funding_rate=Decimal(funding_rate),
+        premium=Decimal("0"),
+        funding_time_ms=boundary_ms,
+        funding_received_at_ms=boundary_ms + 2_000,
+        funding_source="hyperliquid-mainnet-info",
+        funding_schema_version=1,
+    )
+
+
+def test_funding_evidence_completes_exact_realized_pnl() -> None:
+    result = prospective_capacity_reflow_realized_pnl_summary(
+        _exit_fill_payload(),
+        (_funding_evidence(),),
+    )
+
+    one_hour = result["by_horizon"]["3600000"]
+    assert one_hour["funding_evidence_required_closes"] == 1
+    assert one_hour["funding_evidence_complete_closes"] == 1
+    assert one_hour["funding_evidence_missing_closes"] == 0
+    assert one_hour["funding_cash_pnl"] == "-0.200"
+    assert one_hour["exact_realized_pnl_options"] == 1
+    assert one_hour["exact_realized_pnl"] == "-2.450"
+
+    classified = result["option_results"][0]["exits"]["3600000"]
+    assert classified["funding_evidence_count"] == 1
+    assert classified["missing_funding_boundaries_ms"] == []
+    assert classified["funding_cash_pnl"] == "-0.200"
+    assert classified["exact_realized_pnl"] == "-2.450"
+    assert classified["incomplete_reason"] is None
+    assert result["funding_evidence_modeled"] is True
+
+
+def test_missing_funding_evidence_keeps_realized_pnl_incomplete() -> None:
+    result = prospective_capacity_reflow_realized_pnl_summary(
+        _exit_fill_payload(),
+        (),
+    )
+
+    one_hour = result["by_horizon"]["3600000"]
+    assert one_hour["funding_evidence_complete_closes"] == 0
+    assert one_hour["funding_evidence_missing_closes"] == 1
+    classified = result["option_results"][0]["exits"]["3600000"]
+    assert classified["missing_funding_boundaries_ms"] == [3_600_000]
+    assert classified["funding_cash_pnl"] is None
+    assert classified["exact_realized_pnl"] is None
+    assert classified["incomplete_reason"] == "funding_evidence_required"
+
+
+def test_short_replacement_receives_funding_when_rate_is_positive() -> None:
+    payload = _exit_fill_payload()
+    option = payload["option_exits"][0]
+    assert isinstance(option, dict)
+    option["opportunity_direction"] = "short"
+
+    result = prospective_capacity_reflow_realized_pnl_summary(
+        payload,
+        (_funding_evidence(),),
+    )
+
+    classified = result["option_results"][0]["exits"]["3600000"]
+    assert classified["funding_cash_pnl"] == "0.200"
+    assert classified["exact_realized_pnl"] == "-2.050"

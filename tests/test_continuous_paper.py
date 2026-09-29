@@ -341,6 +341,13 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_capacity_reflow_realized_pnl": ('
         in source
     )
+    realized_pnl_call = source.index(
+        "evaluate_prospective_capacity_reflow_realized_pnl("
+    )
+    assert source.index(
+        "replacement_funding_store,",
+        realized_pnl_call,
+    ) > realized_pnl_call
     assert (
         "evaluate_prospective_capacity_reflow_forward_markout("
         in source

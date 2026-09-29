@@ -2524,3 +2524,14 @@ Every newly observed opening opportunity is registered prospectively for hourly 
 This layer is evidence capture only. It does not yet add funding cash to replacement PnL, aggregate alternative exit horizons, alter the frozen candidate, change risk decisions, or grant promotion/execution authority. A follow-on evaluator can consume only complete captured boundary evidence and use the same authoritative funding-cash formula as paper execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact funded replacement realized PnL — 2026-09-29
+
+The fixed-horizon replacement-exit study now consumes the prospectively captured hourly funding-boundary evidence instead of stopping whenever an otherwise complete replacement close crosses a funding hour.
+
+For every fully closed replacement option-horizon, the evaluator preserves the exact replacement market, direction, filled entry quantity, entry attempt timestamp, and real-L2 exit result. It enumerates the same hourly funding boundaries used by paper execution, requires a captured oracle/rate pair for every crossed boundary, and applies the production `funding_cash_delta` formula with the preserved signed quantity. The resulting funding cash is added to the already fee-adjusted entry/exit PnL. Zero-boundary intervals remain exact with zero funding by construction.
+
+The evaluator fails closed: missing funding evidence leaves that option-horizon incomplete, duplicate funding evidence is rejected, alternative exit horizons remain economically separate, and no missing hour is estimated or backfilled. This produces exact option-horizon realized PnL only; it is not yet a complete portfolio counterfactual or strategy-level PnL claim and grants no promotion or execution authority.
+
+**LIVE TRADING: DISABLED.**

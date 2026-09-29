@@ -4489,17 +4489,19 @@ def _prospective_capacity_reflow_realized_pnl_lines(
         [
             f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
             (
-                "- exact option-horizons available: "
-                f"`{raw.get('exact_realized_pnl_option_horizons', 0)}`"
+                "- exact option-horizons available / funding evidence records: "
+                f"`{raw.get('exact_realized_pnl_option_horizons', 0)} / "
+                f"{raw.get('funding_evidence_records', 0)}`"
             ),
             "",
             (
                 "| Horizon | Options | Simulated | Complete closes | "
-                "Zero-funding closes | Funding needed | Incomplete/missing | "
-                "Exact realized PnL |"
+                "Zero-boundary exact | Funded exact | Funding missing | "
+                "Incomplete/missing | Funding PnL | Exact realized PnL |"
             ),
             (
-                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: |"
             ),
         ]
     )
@@ -4525,8 +4527,10 @@ def _prospective_capacity_reflow_realized_pnl_lines(
                 f"{item.get('simulated_exits', 0)} | "
                 f"{item.get('complete_closes', 0)} | "
                 f"{item.get('zero_funding_boundary_closes', 0)} | "
-                f"{item.get('funding_evidence_required_closes', 0)} | "
+                f"{item.get('funding_evidence_complete_closes', 0)} | "
+                f"{item.get('funding_evidence_missing_closes', 0)} | "
                 f"{item.get('incomplete_or_missing_exits', 0)} | "
+                f"{item.get('funding_cash_pnl', '0')} | "
                 f"{item.get('exact_realized_pnl', '0')} |"
             )
     lines.extend(
@@ -4542,14 +4546,14 @@ def _prospective_capacity_reflow_realized_pnl_lines(
             ),
             (
                 "_An option-horizon receives exact realized-PnL credit only when "
-                "the replacement position is fully closed and its entry→exit "
-                "interval contains no hourly funding boundary. A close exactly "
-                "on a funding boundary still requires funding evidence._"
+                "the replacement position is fully closed and every crossed hourly "
+                "funding boundary has exact captured oracle/rate evidence. "
+                "Zero-boundary intervals remain exact by construction; missing "
+                "funding evidence is never estimated or backfilled._"
             ),
         ]
     )
     return lines
-
 
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
