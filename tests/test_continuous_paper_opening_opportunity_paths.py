@@ -146,3 +146,31 @@ def test_forward_path_rejects_conflicting_same_timestamp_mark(
             mark_px=Decimal("102"),
             source="metaAndAssetCtxs",
         )
+
+def test_forward_path_does_not_impute_after_completion_deadline(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperOpeningOpportunityPathStore(
+        tmp_path / "paths",
+        max_path_age_ms=1_000,
+        max_completion_lag_ms=200,
+    )
+    store.register(
+        opportunity_id="opp-1",
+        market="BTC",
+        direction="long",
+        opportunity_timestamp_ms=10_000,
+    )
+
+    assert store.observe(
+        market="BTC",
+        observed_at_ms=11_201,
+        mark_px=Decimal("103"),
+        source="metaAndAssetCtxs",
+    ) == 0
+
+    path = store.load("opp-1")
+    assert path is not None
+    assert path.complete is False
+    assert path.marks == ()
+
