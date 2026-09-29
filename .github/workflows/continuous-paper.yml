@@ -409,14 +409,14 @@ jobs:
 
       - name: Upload durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
-        timeout-minutes: 10
+        timeout-minutes: 20
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: continuous-paper-state.tar
           if-no-files-found: error
           retention-days: 90
-          compression-level: 0
+          compression-level: 6
 
       - name: Render paper runtime summary
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/session-summary.json') != '' }}
