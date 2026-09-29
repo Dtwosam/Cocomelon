@@ -17,7 +17,6 @@ from cocomelon.research.continuous_paper_replacement_funding import (
     ContinuousPaperReplacementFundingStore,
 )
 
-
 BOUNDARY = 3_600_000
 
 
