@@ -2312,3 +2312,16 @@ Two live research-only accounting failures are now handled without tolerances:
 These changes affect research accounting and observability only. They do not change any trade, size, stop, fee, funding accrual, risk decision, execution path, readiness threshold, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact same-exit stop-validity accounting — 2026-09-29
+
+The live delayed-entry stop-validity study exposed another research-only Decimal grouping failure after the broader accounting fix restored its upstream cohorts. Whole-cohort same-exit deltas and the stop-crossed/survived partitions were accumulated with ordinary Decimal addition, so high-precision values could differ by an ulp purely from grouping order.
+
+The stop-validity summary now uses the shared exact base-10 accumulator for candidate PnL, actual PnL, deltas, partition totals, and absolute-PnL attribution. The existing per-trade Decimal contract is unchanged. Any aggregate candidate-versus-actual residual created by already-rounded per-trade deltas is surfaced explicitly as `candidate_actual_decimal_rounding_residual_pnl` instead of disabling the study.
+
+The continuous-paper workflow now also watches the research modules in this runtime dependency chain, and a recursive workflow test fails if a future `continuous_paper.py` research dependency is not present in both bootstrap and graceful-handoff restart coverage.
+
+These changes are research accounting, observability, and deployment-safety only. They do not change entries, exits, stops, sizes, funding, risk approval, readiness gates, promotion authority, or live-order behavior.
+
+**LIVE TRADING: DISABLED.**
