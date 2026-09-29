@@ -449,9 +449,11 @@ def prospective_daily_loss_lockout_reflow_summary(
                     blocked_cash.append(trade.net_pnl)
                 else:
                     candidate_blocked_cross_day_trade_instances += 1
-                    cash = cross_day_cash_by_trade.get(trade.trade_id)
-                    if cash is not None:
-                        blocked_cash.append(cash)
+                    blocked_cross_day_cash = (
+                        cross_day_cash_by_trade.get(trade.trade_id)
+                    )
+                    if blocked_cross_day_cash is not None:
+                        blocked_cash.append(blocked_cross_day_cash)
 
         same_day_closed_net_pnl = exact_decimal_sum(
             trade.net_pnl for trade in same_day
