@@ -2471,3 +2471,14 @@ The aggregate view reports how often a replacement reached a positive mark-to-ma
 The study still uses observed periodic marks rather than synthetic exits. It does not infer intraminute extrema, does not create an exit fill or exit fee, and does not claim realized replacement-trade PnL. Its purpose is to determine whether the replacement opportunity is absent, persistently weak, or briefly favorable and later given back before choosing any exit hypothesis.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Replacement exit horizon L2 evidence — 2026-09-29
+
+The continuous-paper runtime now prospectively schedules real Hyperliquid L2 book captures for every newly observed directional opening opportunity at the same 5-minute, 15-minute, 1-hour, and 6-hour horizons used by the replacement forward-markout study.
+
+The capture protocol is durable and explicitly non-retroactive. An opportunity can register only after the protocol start timestamp, so current liquidity can never be substituted for a missed historical exit book. On each 60-second context cycle, only horizons currently due are queried; a book is accepted only from the correct market and only when its receive timestamp is at or after the target and no more than 120 seconds late. Each accepted record preserves the real L2 depth plus the exit-time instrument size/leverage/minimum-notional metadata, with canonical conflict detection and a durable state digest across paper-worker rotations.
+
+This evidence is a prerequisite for executable replacement-exit research. The next replay layer can use the captured book to simulate a reduce-only exit against real spread and visible depth instead of treating a mark price as a fill. Historical horizons that were not captured remain missing. No replacement exit, realized replacement PnL, promotion authority, or live order is created by this capture layer.
+
+**LIVE TRADING: DISABLED.**
