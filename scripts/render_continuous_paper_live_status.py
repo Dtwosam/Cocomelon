@@ -4162,6 +4162,112 @@ def _prospective_capacity_reflow_release_lineage_lines(
     return lines
 
 
+def _prospective_capacity_reflow_fill_feasibility_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-caused replacement entry fill shadow",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement-entry fill telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- causal release options / opportunities: "
+                f"`{raw.get('candidate_caused_release_options', 0)} / "
+                f"{raw.get('candidate_caused_release_opportunities', 0)}`"
+            ),
+            (
+                "- risk approvals / planning approvals / fillable: "
+                f"`{raw.get('conservative_risk_approvals', 0)} / "
+                f"{raw.get('planning_approvals', 0)} / "
+                f"{raw.get('fillable_options', 0)}`"
+            ),
+            (
+                "- full / partial / no-fill / execution-rejected: "
+                f"`{raw.get('full_fill_options', 0)} / "
+                f"{raw.get('partial_fill_options', 0)} / "
+                f"{raw.get('no_fill_options', 0)} / "
+                f"{raw.get('execution_rejected_options', 0)}`"
+            ),
+            (
+                "- gross simulated fill notional / taker fees: "
+                f"`{raw.get('gross_fill_notional', '0')} / "
+                f"{raw.get('taker_fees', '0')}`"
+            ),
+            (
+                "- counterfactual equity delta min / max: "
+                f"`{raw.get('counterfactual_equity_delta_min')} / "
+                f"{raw.get('counterfactual_equity_delta_max')}`"
+            ),
+            (
+                "- opportunity markets: "
+                f"`{counts(raw.get('by_opportunity_market'))}`"
+            ),
+            (
+                "- released markets: "
+                f"`{counts(raw.get('by_release_market'))}`"
+            ),
+            (
+                "- risk rejections: "
+                f"`{counts(raw.get('by_risk_rejection'))}`"
+            ),
+            (
+                "- planning rejections: "
+                f"`{counts(raw.get('by_planning_rejection'))}`"
+            ),
+            (
+                "- execution results: "
+                f"`{counts(raw.get('by_execution_result'))}`"
+            ),
+            (
+                "- counterfactual account scope: "
+                f"`{raw.get('counterfactual_account_scope', 'unknown')}`"
+            ),
+            (
+                "- replacement entry fills / exits / trade PnL modeled: "
+                f"`{str(bool(raw.get('replacement_entry_fills_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_exits_modeled'))).lower()} / "
+                f"{str(bool(raw.get('pnl_modeled'))).lower()}`"
+            ),
+            "",
+            (
+                "_This starts only from release positions the frozen candidate "
+                "itself would have blocked. It reconstructs the persisted same-day "
+                "position accounting, applies a conservative weekly-peak bound, "
+                "reruns the exact risk engine and opening planner, and simulates "
+                "the exact captured decision-time L2 IOC. Exit selection and "
+                "replacement-trade PnL remain unmodeled._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_daily_loss_lockout_reflow_lines(
     raw: object,
 ) -> list[str]:
@@ -7043,6 +7149,13 @@ def render_live_status(
     lines.extend(
         _prospective_capacity_reflow_release_lineage_lines(
             payload.get("prospective_capacity_reflow_release_lineage")
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_fill_feasibility_lines(
+            payload.get(
+                "prospective_capacity_reflow_fill_feasibility"
+            )
         )
     )
     lines.extend(
