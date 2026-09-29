@@ -3509,6 +3509,112 @@ def _prospective_top10_rank_filter_lines(
     return lines
 
 
+def _prospective_combined_matched_overlap_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "#### Matched standalone overlap diagnostic",
+        "",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No matched standalone-overlap telemetry in this heartbeat._"
+        )
+        return lines
+
+    error = raw.get("error")
+    if error:
+        lines.append(f"- diagnostic error: `{error}`")
+        return lines
+
+    reasons = raw.get("by_block_reason", {})
+    if not isinstance(reasons, dict):
+        reasons = {}
+
+    def reason(key: str) -> dict[str, object]:
+        value = reasons.get(key, {})
+        return value if isinstance(value, dict) else {}
+
+    long_trend = reason("long_trend")
+    rank = reason("rank_above_10")
+    both = reason("long_trend_and_rank_above_10")
+
+    lines.extend(
+        [
+            "- authority: `DESCRIPTIVE RESEARCH ONLY / NO EXECUTION`",
+            (
+                "- standalone starts entry / top-10 / matched overlap: "
+                f"`{raw.get('entry_filter_started_at_ms')} / "
+                f"{raw.get('top10_rank_filter_started_at_ms')} / "
+                f"{raw.get('overlap_started_at_ms')}`"
+            ),
+            (
+                "- closed since overlap / matched / integrity clean: "
+                f"`{raw.get('closed_trades_since_overlap_start', 0)} / "
+                f"{raw.get('matched_trades', 0)} / "
+                f"{str(bool(raw.get('integrity_clean'))).lower()}`"
+            ),
+            (
+                "- overlap allowed / blocked trades: "
+                f"`{raw.get('allowed_trades', 0)} / "
+                f"{raw.get('blocked_trades', 0)}`"
+            ),
+            (
+                "- overlap allowed W/L · blocked W/L: "
+                f"`{raw.get('allowed_wins', 0)}/"
+                f"{raw.get('allowed_losses', 0)} · "
+                f"{raw.get('blocked_wins', 0)}/"
+                f"{raw.get('blocked_losses', 0)}`"
+            ),
+            (
+                "- overlap actual / candidate / delta trade contribution: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('candidate_trade_contribution_pnl', '0')} / "
+                f"{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- overlap misses decision / missing rank / stale rank: "
+                f"`{raw.get('decision_attribution_misses', 0)} / "
+                f"{raw.get('missing_rank_evidence', 0)} / "
+                f"{raw.get('stale_rank_evidence', 0)}`"
+            ),
+            (
+                "- overlap blocked reasons LONG+trend / rank>10 / both "
+                "(trades · PnL): "
+                f"`{long_trend.get('trades', 0)} · "
+                f"{long_trend.get('net_pnl', '0')} / "
+                f"{rank.get('trades', 0)} · "
+                f"{rank.get('net_pnl', '0')} / "
+                f"{both.get('trades', 0)} · "
+                f"{both.get('net_pnl', '0')}`"
+            ),
+            (
+                "- fresh combined gate credit / changes readiness gate: "
+                f"`{raw.get('fresh_combined_gate_credit', 0)} / "
+                f"{str(bool(raw.get('changes_readiness_gate'))).lower()}`"
+            ),
+            "",
+            (
+                "_This replays the frozen combined rule only on the time window "
+                "shared by the two standalone studies. It is descriptive evidence "
+                "only and cannot advance the fresh combined prospective gate._"
+            ),
+        ]
+    )
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_filter_fixed_schedule_lines(
+            raw.get("fixed_schedule_portfolio")
+        )
+    )
+    return lines
+
+
 def _prospective_combined_entry_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -3665,6 +3771,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_filter_fixed_schedule_lines(
             raw.get("fixed_schedule_portfolio")
+        )
+    )
+    lines.extend(
+        _prospective_combined_matched_overlap_lines(
+            raw.get("matched_standalone_overlap")
         )
     )
     return lines
