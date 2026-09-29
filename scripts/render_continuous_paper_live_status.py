@@ -4372,6 +4372,97 @@ def _prospective_capacity_reflow_forward_markout_lines(
     return lines
 
 
+def _prospective_capacity_reflow_exit_fill_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-caused replacement exit fills",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement exit-fill telemetry in this heartbeat._"
+        )
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- fillable options / captured exit books: "
+                f"`{raw.get('fillable_options', 0)} / "
+                f"{raw.get('exit_book_records', 0)}`"
+            ),
+            "",
+            (
+                "| Horizon | Books | Missing | Full | Partial | No fill | "
+                "Rejected | Fee-adjusted PnL | Unclosed qty |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: |"
+            ),
+        ]
+    )
+    labels = {
+        "300000": "5m",
+        "900000": "15m",
+        "3600000": "1h",
+        "21600000": "6h",
+    }
+    by_horizon = raw.get("by_horizon")
+    if isinstance(by_horizon, dict):
+        for horizon_key in sorted(
+            by_horizon,
+            key=lambda value: int(str(value)),
+        ):
+            item = by_horizon[horizon_key]
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| "
+                f"{labels.get(str(horizon_key), str(horizon_key) + 'ms')} | "
+                f"{item.get('captured_exit_books', 0)} | "
+                f"{item.get('missing_exit_books', 0)} | "
+                f"{item.get('full_exit_fills', 0)} | "
+                f"{item.get('partial_exit_fills', 0)} | "
+                f"{item.get('no_exit_fills', 0)} | "
+                f"{item.get('rejected_exit_attempts', 0)} | "
+                f"{item.get('entry_exit_fee_adjusted_pnl', '0')} | "
+                f"{item.get('unclosed_quantity', '0')} |"
+            )
+    lines.extend(
+        [
+            "",
+            (
+                "- entry fills / exit fills / funding / complete trade PnL / "
+                "realized PnL claimed: "
+                f"`{str(bool(raw.get('replacement_entry_fills_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_exit_fills_modeled'))).lower()} / "
+                f"{str(bool(raw.get('funding_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_trade_pnl_complete'))).lower()} / "
+                f"{str(bool(raw.get('realized_pnl_claimed'))).lower()}`"
+            ),
+            (
+                "_Each exit uses the real captured L2 book, the normal reduce-only "
+                "planner, normal paper latency, the configured IOC slippage envelope, "
+                "and visible depth. Fee-adjusted close economics exclude funding, so "
+                "they are not yet a complete realized replacement-trade PnL claim._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
 ) -> list[str]:
@@ -7413,6 +7504,13 @@ def render_live_status(
         _prospective_capacity_reflow_fill_feasibility_lines(
             payload.get(
                 "prospective_capacity_reflow_fill_feasibility"
+            )
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_exit_fill_lines(
+            payload.get(
+                "prospective_capacity_reflow_exit_fill"
             )
         )
     )
