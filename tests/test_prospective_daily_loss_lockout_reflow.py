@@ -332,6 +332,10 @@ def test_daily_loss_reflow_exactly_models_cross_day_cash(
         source_event_key="exit-book-cross-day-exact",
         timestamp_ms=cross_day.closed_at_ms,
     )
+    cross_day = replace(
+        cross_day,
+        fill_ids=(cross_day.fill_ids[0], exit_fill.fill_id),
+    )
     opportunity = _opportunity(
         timestamp_ms=opportunity_ms,
         daily_realized_pnl="-120",
