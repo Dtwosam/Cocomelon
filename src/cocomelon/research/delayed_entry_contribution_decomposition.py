@@ -88,18 +88,26 @@ class DelayedEntryContributionDecompositionOutcome:
                     "decomposition economics must be finite"
                 )
         if (
-            self.price_effect_pnl
-            + self.entry_fee_effect_pnl
-            + self.exposure_effect_pnl
+            exact_decimal_sum(
+                (
+                    self.price_effect_pnl,
+                    self.entry_fee_effect_pnl,
+                    self.exposure_effect_pnl,
+                )
+            )
             != self.total_delta_pnl
         ):
             raise ValueError(
                 "decomposition PnL effects must reconcile"
             )
         if (
-            self.price_effect_r
-            + self.entry_fee_effect_r
-            + self.exposure_effect_r
+            exact_decimal_sum(
+                (
+                    self.price_effect_r,
+                    self.entry_fee_effect_r,
+                    self.exposure_effect_r,
+                )
+            )
             != self.total_delta_r
         ):
             raise ValueError(
@@ -162,9 +170,13 @@ def evaluate_delayed_entry_contribution_decomposition(
         - trade.net_pnl
     )
     if (
-        price_effect
-        + entry_fee_effect
-        + exposure_effect
+        exact_decimal_sum(
+            (
+                price_effect,
+                entry_fee_effect,
+                exposure_effect,
+            )
+        )
         != total_delta
     ):
         raise DelayedEntryContributionDecompositionError(
@@ -227,7 +239,12 @@ def _summary(
     total_delta = exact_decimal_sum(
         item.total_delta_pnl for item in items
     )
-    if price_effect + fee_effect + exposure_effect != total_delta:
+    if (
+        exact_decimal_sum(
+            (price_effect, fee_effect, exposure_effect)
+        )
+        != total_delta
+    ):
         raise DelayedEntryContributionDecompositionError(
             "summary decomposition does not reconcile"
         )
