@@ -134,6 +134,34 @@ def test_exit_book_store_never_backfills_old_or_late_horizons(
         )
 
 
+def test_exit_book_store_rejects_book_timestamp_before_horizon(
+    tmp_path: Path,
+) -> None:
+    store = ContinuousPaperOpeningOpportunityExitBookStore(
+        tmp_path / "exit-books",
+        capture_started_at_ms=1_000,
+        horizons_ms=(300,),
+        max_capture_lag_ms=120,
+    )
+    store.register(
+        opportunity_id="opp-1",
+        market="SOL",
+        direction="long",
+        opportunity_timestamp_ms=1_100,
+    )
+    request = store.request("opp-1", 300)
+
+    with pytest.raises(
+        ContinuousPaperOpeningOpportunityExitBookError,
+        match="exchange timestamp is invalid",
+    ):
+        store.capture(
+            request,
+            _book(receive_ms=1_450, exchange_ms=1_399),
+            _instrument(metadata_ms=1_390),
+        )
+
+
 def test_exit_book_store_requires_exact_market_lineage(tmp_path: Path) -> None:
     store = ContinuousPaperOpeningOpportunityExitBookStore(
         tmp_path / "exit-books",
