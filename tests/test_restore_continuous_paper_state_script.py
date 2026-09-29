@@ -141,8 +141,7 @@ def test_stream_zip_member_handles_forced_zip64(
             "continuous-paper-state.tar",
         ],
         input=archive_path.read_bytes(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=True,
     )
 
