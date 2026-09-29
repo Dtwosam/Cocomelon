@@ -287,10 +287,6 @@ def stream_member(
         )
 
     extra = buffered.read_exact(extra_length)
-    zip64_size_placeholders = (
-        compressed_size == UINT32_MAX
-        or uncompressed_size == UINT32_MAX
-    )
     compressed_size, uncompressed_size = _member_sizes(
         compressed_size,
         uncompressed_size,
@@ -302,7 +298,6 @@ def stream_member(
     if (
         method == STORED_METHOD
         and flags & 0x8
-        and zip64_size_placeholders
         and compressed_size == 0
         and uncompressed_size == 0
     ):
