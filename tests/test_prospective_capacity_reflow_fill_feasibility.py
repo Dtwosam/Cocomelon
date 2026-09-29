@@ -21,6 +21,10 @@ from cocomelon.domain.risk import (
 from cocomelon.domain.strategy import Direction, StrategyDecision
 from cocomelon.domain.stream import StreamEvent, StreamKind
 from cocomelon.evidence.openings import conservative_cost_estimate
+from cocomelon.execution.accounting import (
+    PaperPosition,
+    PositionSide,
+)
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
     _book_payload,
@@ -31,8 +35,8 @@ from cocomelon.research.prospective_capacity_reflow_fill_feasibility import (
     ProspectiveCapacityReflowFillFeasibilityError,
     prospective_capacity_reflow_fill_feasibility_summary,
 )
-from cocomelon.research.prospective_capacity_reflow_opportunities import (
-    CapacityReleaseOpportunityOption,
+from cocomelon.research.prospective_capacity_reflow_release_lineage import (
+    CandidateCausedCapacityRelease,
 )
 from cocomelon.risk.engine import evaluate_risk
 
@@ -162,15 +166,44 @@ def _evidence() -> ContinuousPaperOpeningOpportunityEvidence:
     )
 
 
-def _release(evidence: ContinuousPaperOpeningOpportunityEvidence) -> (
-    CapacityReleaseOpportunityOption
-):
-    return CapacityReleaseOpportunityOption(
+def _release(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+) -> CandidateCausedCapacityRelease:
+    return CandidateCausedCapacityRelease(
         opportunity_id=evidence.opportunity_id,
         opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
         opportunity_market=evidence.market,
         release_market="BTC",
         release_correlation_bucket="majors",
+        release_opening_plan_id="release-plan-btc",
+        release_block_reason="long_trend",
+    )
+
+
+def _history(
+    _opening_plan_id: str,
+    _through_ms: int,
+) -> tuple[PaperPosition, ...]:
+    return (
+        PaperPosition(
+            market=_market("BTC"),
+            side=PositionSide.LONG,
+            quantity=Decimal("10"),
+            average_entry_price=Decimal("100"),
+            stop_price=Decimal("90"),
+            opening_plan_id="release-plan-btc",
+            opened_at_ms=9_800,
+            updated_at_ms=10_000,
+            initial_risk_decision_id="risk-btc",
+            correlation_bucket="majors",
+            cost_buffer_fraction=Decimal("0.0034"),
+            planned_risk=Decimal("25"),
+            cumulative_realized_gross_pnl=Decimal("0"),
+            cumulative_fees=Decimal("1"),
+            cumulative_funding=Decimal("0"),
+            venue_max_leverage=Decimal("5"),
+            latest_mark=Decimal("100"),
+        ),
     )
 
 
@@ -180,6 +213,7 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
         (evidence,),
         (_release(evidence),),
         PaperExecutionConfig(),
+        position_history_loader=_history,
     )
 
     assert result["candidate_caused_release_options"] == 1
@@ -197,8 +231,10 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["by_release_market"] == {"BTC": 1}
     assert result["by_execution_result"] == {"full": 1}
     assert result["account_capacity_credit_mode"] == (
-        "remove_open_position_only_no_gross_or_margin_credit"
+        "exact_same_day_release_position"
     )
+    assert result["counterfactual_equity_delta_min"] == "1"
+    assert result["counterfactual_equity_delta_max"] == "1"
     assert result["replacement_entry_fills_modeled"] is True
     assert result["replacement_exits_modeled"] is False
     assert result["replacement_trades_modeled"] is False
@@ -218,4 +254,5 @@ def test_fill_feasibility_refuses_execution_config_drift() -> None:
             (evidence,),
             (_release(evidence),),
             PaperExecutionConfig(max_ioc_slippage_bps=Decimal("20")),
+            position_history_loader=_history,
         )
