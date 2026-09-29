@@ -5316,12 +5316,14 @@ async def run_continuous_paper_session(
                         )
                     by_boundary[boundary_ms] = rate
                 for request in market_requests:
-                    rate = by_boundary.get(request.boundary_ms)
-                    if rate is None:
+                    matched_rate = by_boundary.get(
+                        request.boundary_ms
+                    )
+                    if matched_rate is None:
                         continue
                     replacement_funding_store.capture(
                         request,
-                        rate,
+                        matched_rate,
                     )
             except Exception as exc:
                 if cycle_error is None:
