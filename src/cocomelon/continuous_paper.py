@@ -5139,9 +5139,10 @@ async def run_continuous_paper_session(
     checkpoints, gap_intervals, restored_available_at_ms = _load_checkpoint(checkpoint_path)
 
     reader = InfoClient(settings)
+    replay_config = BaselineReplayConfig()
     execution = PaperExecutionAdapter(
         root / "paper.sqlite3",
-        BaselineReplayConfig().execution,
+        replay_config.execution,
         starting_cash=Decimal("10000"),
         startup_timestamp_ms=started_at_ms,
     )
@@ -5162,7 +5163,6 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store
         )
     )
-    replay_config = BaselineReplayConfig()
     opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
         root / "opening-opportunities"
     )
