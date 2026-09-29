@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Final
 
@@ -34,6 +34,9 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 )
 from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
+)
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
 )
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     candidate_eligible_capacity_release_options,
@@ -345,7 +348,40 @@ def _counterfactual_request(
     )
 
 
-def prospective_capacity_reflow_fill_feasibility_summary(
+@dataclass(frozen=True, slots=True)
+class CandidateReplacementEntryFill:
+    opportunity_id: str
+    opportunity_timestamp_ms: int
+    opportunity_market: str
+    direction: str
+    release_market: str
+    release_opening_plan_id: str
+    release_block_reason: str
+    counterfactual_equity_delta: Decimal
+    risk_approved: bool
+    risk_reason_codes: tuple[str, ...]
+    replacement_plan_id: str | None
+    planning_rejection_reason: str | None
+    execution_attempt_id: str | None
+    execution_result: ExecutionResult | None
+    execution_reason_codes: tuple[str, ...]
+    requested_quantity: Decimal | None
+    filled_quantity: Decimal
+    average_fill_price: Decimal | None
+    gross_fill_notional: Decimal
+    taker_fee: Decimal
+    fill_ids: tuple[str, ...]
+
+    @property
+    def fillable(self) -> bool:
+        return (
+            self.filled_quantity > ZERO
+            and self.average_fill_price is not None
+            and self.gross_fill_notional > ZERO
+        )
+
+
+def candidate_caused_replacement_entry_fill_records(
     opportunities: tuple[
         ContinuousPaperOpeningOpportunityEvidence,
         ...,
@@ -354,7 +390,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
     config: PaperExecutionConfig,
     *,
     position_history_loader: PositionHistoryLoader,
-) -> dict[str, object]:
+) -> tuple[CandidateReplacementEntryFill, ...]:
     by_id = {
         evidence.opportunity_id: evidence
         for evidence in opportunities
@@ -364,23 +400,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             "duplicate opening opportunity ids"
         )
 
-    risk_approvals = 0
-    planning_approvals = 0
-    fillable = 0
-    full_fills = 0
-    partial_fills = 0
-    no_fills = 0
-    execution_rejections = 0
-    gross_fill_notional = ZERO
-    taker_fees = ZERO
-    equity_deltas: list[Decimal] = []
-    opportunity_ids: set[str] = set()
-    by_opportunity_market: Counter[str] = Counter()
-    by_release_market: Counter[str] = Counter()
-    by_risk_rejection: Counter[str] = Counter()
-    by_planning_rejection: Counter[str] = Counter()
-    by_execution_result: Counter[str] = Counter()
-
+    output: list[CandidateReplacementEntryFill] = []
     for release in releases:
         evidence = by_id.get(release.opportunity_id)
         if evidence is None:
@@ -398,21 +418,41 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             history,
             config,
         )
-        equity_deltas.append(equity_delta)
-        opportunity_ids.add(evidence.opportunity_id)
-        by_opportunity_market[evidence.market] += 1
-        by_release_market[release.release_market] += 1
-
         risk = evaluate_risk(request)
+        common = {
+            "opportunity_id": evidence.opportunity_id,
+            "opportunity_timestamp_ms": (
+                evidence.opportunity_timestamp_ms
+            ),
+            "opportunity_market": evidence.market,
+            "direction": evidence.direction,
+            "release_market": release.release_market,
+            "release_opening_plan_id": (
+                release.release_opening_plan_id
+            ),
+            "release_block_reason": release.release_block_reason,
+            "counterfactual_equity_delta": equity_delta,
+            "risk_approved": risk.approved,
+            "risk_reason_codes": risk.reason_codes,
+        }
         if not risk.approved:
-            reason = (
-                risk.reason_codes[0]
-                if risk.reason_codes
-                else "unknown"
+            output.append(
+                CandidateReplacementEntryFill(
+                    **common,
+                    replacement_plan_id=None,
+                    planning_rejection_reason=None,
+                    execution_attempt_id=None,
+                    execution_result=None,
+                    execution_reason_codes=(),
+                    requested_quantity=None,
+                    filled_quantity=ZERO,
+                    average_fill_price=None,
+                    gross_fill_notional=ZERO,
+                    taker_fee=ZERO,
+                    fill_ids=(),
+                )
             )
-            by_risk_rejection[reason] += 1
             continue
-        risk_approvals += 1
 
         plan = plan_opening_order(
             risk,
@@ -422,9 +462,23 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             request.strategy_decision.timestamp_ms,
         )
         if isinstance(plan, PlanningRejection):
-            by_planning_rejection[plan.reason] += 1
+            output.append(
+                CandidateReplacementEntryFill(
+                    **common,
+                    replacement_plan_id=None,
+                    planning_rejection_reason=plan.reason,
+                    execution_attempt_id=None,
+                    execution_result=None,
+                    execution_reason_codes=(),
+                    requested_quantity=None,
+                    filled_quantity=ZERO,
+                    average_fill_price=None,
+                    gross_fill_notional=ZERO,
+                    taker_fee=ZERO,
+                    fill_ids=(),
+                )
+            )
             continue
-        planning_approvals += 1
 
         simulation = simulate_ioc(
             plan,
@@ -433,23 +487,112 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             config,
             attempt_timestamp_ms=request.timestamp_ms,
         )
-        result = simulation.attempt.result
-        by_execution_result[result.value] += 1
-        gross_fill_notional += (
-            simulation.attempt.gross_fill_notional
+        output.append(
+            CandidateReplacementEntryFill(
+                **common,
+                replacement_plan_id=plan.plan_id,
+                planning_rejection_reason=None,
+                execution_attempt_id=simulation.attempt.attempt_id,
+                execution_result=simulation.attempt.result,
+                execution_reason_codes=(
+                    simulation.attempt.reason_codes
+                ),
+                requested_quantity=plan.requested_quantity,
+                filled_quantity=(
+                    simulation.attempt.filled_quantity
+                ),
+                average_fill_price=(
+                    simulation.attempt.average_fill_price
+                ),
+                gross_fill_notional=(
+                    simulation.attempt.gross_fill_notional
+                ),
+                taker_fee=simulation.attempt.fee,
+                fill_ids=tuple(
+                    fill.fill_id for fill in simulation.fills
+                ),
+            )
         )
-        taker_fees += simulation.attempt.fee
-        if simulation.fills:
-            fillable += 1
-        if result is ExecutionResult.FULL:
-            full_fills += 1
-        elif result is ExecutionResult.PARTIAL:
-            partial_fills += 1
-        elif result is ExecutionResult.NO_FILL:
-            no_fills += 1
-        elif result is ExecutionResult.REJECTED:
-            execution_rejections += 1
+    return tuple(output)
 
+
+def prospective_capacity_reflow_fill_feasibility_summary(
+    opportunities: tuple[
+        ContinuousPaperOpeningOpportunityEvidence,
+        ...,
+    ],
+    releases: tuple[CandidateCausedCapacityRelease, ...],
+    config: PaperExecutionConfig,
+    *,
+    position_history_loader: PositionHistoryLoader,
+) -> dict[str, object]:
+    records = candidate_caused_replacement_entry_fill_records(
+        opportunities,
+        releases,
+        config,
+        position_history_loader=position_history_loader,
+    )
+    opportunity_ids = {
+        record.opportunity_id for record in records
+    }
+    risk_approvals = sum(
+        1 for record in records if record.risk_approved
+    )
+    planning_approvals = sum(
+        1
+        for record in records
+        if record.replacement_plan_id is not None
+    )
+    fillable = sum(1 for record in records if record.fillable)
+    full_fills = sum(
+        1
+        for record in records
+        if record.execution_result is ExecutionResult.FULL
+    )
+    partial_fills = sum(
+        1
+        for record in records
+        if record.execution_result is ExecutionResult.PARTIAL
+    )
+    no_fills = sum(
+        1
+        for record in records
+        if record.execution_result is ExecutionResult.NO_FILL
+    )
+    execution_rejections = sum(
+        1
+        for record in records
+        if record.execution_result is ExecutionResult.REJECTED
+    )
+    by_opportunity_market = Counter(
+        record.opportunity_market for record in records
+    )
+    by_release_market = Counter(
+        record.release_market for record in records
+    )
+    by_risk_rejection: Counter[str] = Counter()
+    by_planning_rejection: Counter[str] = Counter()
+    by_execution_result: Counter[str] = Counter()
+    for record in records:
+        if not record.risk_approved:
+            by_risk_rejection[
+                record.risk_reason_codes[0]
+                if record.risk_reason_codes
+                else "unknown"
+            ] += 1
+        if record.planning_rejection_reason is not None:
+            by_planning_rejection[
+                record.planning_rejection_reason
+            ] += 1
+        if record.execution_result is not None:
+            by_execution_result[
+                record.execution_result.value
+            ] += 1
+
+    equity_deltas = tuple(
+        record.counterfactual_equity_delta
+        for record in records
+    )
     return {
         "research_only": True,
         "execution_authority": False,
@@ -468,7 +611,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "execution_config_compatibility": (
             "captured_cost_min_notional_leverage_and_latency"
         ),
-        "candidate_caused_release_options": len(releases),
+        "candidate_caused_release_options": len(records),
         "candidate_caused_release_opportunities": len(
             opportunity_ids
         ),
@@ -479,17 +622,22 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "partial_fill_options": partial_fills,
         "no_fill_options": no_fills,
         "execution_rejected_options": execution_rejections,
-        "gross_fill_notional": str(gross_fill_notional),
-        "taker_fees": str(taker_fees),
+        "gross_fill_notional": str(
+            exact_decimal_sum(
+                record.gross_fill_notional
+                for record in records
+            )
+        ),
+        "taker_fees": str(
+            exact_decimal_sum(
+                record.taker_fee for record in records
+            )
+        ),
         "counterfactual_equity_delta_min": (
-            None
-            if not equity_deltas
-            else str(min(equity_deltas))
+            None if not equity_deltas else str(min(equity_deltas))
         ),
         "counterfactual_equity_delta_max": (
-            None
-            if not equity_deltas
-            else str(max(equity_deltas))
+            None if not equity_deltas else str(max(equity_deltas))
         ),
         "by_opportunity_market": dict(
             sorted(by_opportunity_market.items())
@@ -514,7 +662,6 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "replacement_trades_modeled": False,
         "pnl_modeled": False,
     }
-
 
 def evaluate_prospective_capacity_reflow_fill_feasibility(
     opportunity_store: ContinuousPaperOpeningOpportunityStore,
