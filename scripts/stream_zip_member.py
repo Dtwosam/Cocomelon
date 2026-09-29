@@ -8,6 +8,9 @@ from typing import BinaryIO
 
 LOCAL_FILE_HEADER_SIGNATURE = 0x04034B50
 DATA_DESCRIPTOR_SIGNATURE = 0x08074B50
+ZIP64_EXTRA_ID = 0x0001
+UINT32_MAX = 0xFFFFFFFF
+STORED_METHOD = 0
 DEFLATE_METHOD = 8
 CHUNK_SIZE = 1024 * 1024
 
@@ -54,6 +57,88 @@ class _BufferedSource:
             pass
 
 
+def _member_sizes(
+    compressed_size: int,
+    uncompressed_size: int,
+    extra: bytes,
+) -> tuple[int, int]:
+    if (
+        compressed_size != UINT32_MAX
+        and uncompressed_size != UINT32_MAX
+    ):
+        return compressed_size, uncompressed_size
+
+    offset = 0
+    while offset < len(extra):
+        if len(extra) - offset < 4:
+            raise StreamZipError("ZIP extra field is truncated")
+        field_id, field_size = struct.unpack(
+            "<HH",
+            extra[offset : offset + 4],
+        )
+        offset += 4
+        field_end = offset + field_size
+        if field_end > len(extra):
+            raise StreamZipError("ZIP extra field is truncated")
+        field = extra[offset:field_end]
+        offset = field_end
+        if field_id != ZIP64_EXTRA_ID:
+            continue
+
+        cursor = 0
+        resolved_uncompressed = uncompressed_size
+        resolved_compressed = compressed_size
+        if uncompressed_size == UINT32_MAX:
+            if len(field) - cursor < 8:
+                raise StreamZipError(
+                    "ZIP64 extra field is missing uncompressed size"
+                )
+            resolved_uncompressed = struct.unpack(
+                "<Q",
+                field[cursor : cursor + 8],
+            )[0]
+            cursor += 8
+        if compressed_size == UINT32_MAX:
+            if len(field) - cursor < 8:
+                raise StreamZipError(
+                    "ZIP64 extra field is missing compressed size"
+                )
+            resolved_compressed = struct.unpack(
+                "<Q",
+                field[cursor : cursor + 8],
+            )[0]
+        return resolved_compressed, resolved_uncompressed
+
+    raise StreamZipError("ZIP64 size metadata is missing")
+
+
+def _stream_stored_member(
+    buffered: _BufferedSource,
+    output: BinaryIO,
+    *,
+    compressed_size: int,
+    uncompressed_size: int,
+) -> tuple[int, int]:
+    if compressed_size != uncompressed_size:
+        raise StreamZipError(
+            "stored ZIP member compressed/uncompressed sizes differ"
+        )
+    remaining = compressed_size
+    crc = 0
+    output_size = 0
+    while remaining:
+        chunk = buffered.read(min(CHUNK_SIZE, remaining))
+        if not chunk:
+            raise StreamZipError(
+                "stored ZIP member ended prematurely"
+            )
+        output.write(chunk)
+        crc = binascii.crc32(chunk, crc) & 0xFFFFFFFF
+        output_size += len(chunk)
+        remaining -= len(chunk)
+    return crc, output_size
+
+
 def stream_member(
     expected_name: str,
     source: BinaryIO,
@@ -69,8 +154,8 @@ def stream_member(
         _mod_time,
         _mod_date,
         header_crc,
-        _compressed_size,
-        _uncompressed_size,
+        compressed_size,
+        uncompressed_size,
         name_length,
         extra_length,
     ) = struct.unpack("<IHHHHHIIIHH", header)
@@ -94,35 +179,48 @@ def stream_member(
             f"{member_name!r}; expected {expected_name!r}"
         )
 
-    buffered.read_exact(extra_length)
-    if method != DEFLATE_METHOD:
+    extra = buffered.read_exact(extra_length)
+    compressed_size, uncompressed_size = _member_sizes(
+        compressed_size,
+        uncompressed_size,
+        extra,
+    )
+
+    if method == STORED_METHOD:
+        crc, output_size = _stream_stored_member(
+            buffered,
+            output,
+            compressed_size=compressed_size,
+            uncompressed_size=uncompressed_size,
+        )
+    elif method == DEFLATE_METHOD:
+        inflater = zlib.decompressobj(-zlib.MAX_WBITS)
+        crc = 0
+        output_size = 0
+        while not inflater.eof:
+            chunk = buffered.read(CHUNK_SIZE)
+            if not chunk:
+                raise StreamZipError(
+                    "deflated ZIP member ended prematurely"
+                )
+            decoded = inflater.decompress(chunk)
+            if decoded:
+                output.write(decoded)
+                crc = binascii.crc32(decoded, crc) & 0xFFFFFFFF
+                output_size += len(decoded)
+            if inflater.eof:
+                buffered.prepend(inflater.unused_data)
+                break
+
+        tail = inflater.flush()
+        if tail:
+            output.write(tail)
+            crc = binascii.crc32(tail, crc) & 0xFFFFFFFF
+            output_size += len(tail)
+    else:
         raise StreamZipError(
             f"unsupported ZIP compression method: {method}"
         )
-
-    inflater = zlib.decompressobj(-zlib.MAX_WBITS)
-    crc = 0
-    output_size = 0
-    while not inflater.eof:
-        chunk = buffered.read(CHUNK_SIZE)
-        if not chunk:
-            raise StreamZipError(
-                "deflated ZIP member ended prematurely"
-            )
-        decoded = inflater.decompress(chunk)
-        if decoded:
-            output.write(decoded)
-            crc = binascii.crc32(decoded, crc) & 0xFFFFFFFF
-            output_size += len(decoded)
-        if inflater.eof:
-            buffered.prepend(inflater.unused_data)
-            break
-
-    tail = inflater.flush()
-    if tail:
-        output.write(tail)
-        crc = binascii.crc32(tail, crc) & 0xFFFFFFFF
-        output_size += len(tail)
     output.flush()
 
     if flags & 0x8:
