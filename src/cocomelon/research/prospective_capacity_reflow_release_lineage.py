@@ -109,6 +109,90 @@ def _active_lineage(
     return None if not candidates else candidates[0]
 
 
+def candidate_caused_capacity_release_options(
+    options: tuple[CapacityReleaseOpportunityOption, ...],
+    lineages: tuple[ContinuousPaperOpeningLineage, ...],
+    closed_trades: tuple[TradeJournalEntry, ...],
+    *,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    fact_loader: Callable[
+        [str, str],
+        DecisionEvaluationFact | None,
+    ],
+    rank_loader: Callable[
+        [str],
+        ContinuousPaperOpeningRankEvidence | None,
+    ],
+) -> tuple[CapacityReleaseOpportunityOption, ...]:
+    closed_by_plan = _closed_by_plan(closed_trades)
+    output: list[CapacityReleaseOpportunityOption] = []
+    for option in options:
+        lineage = _active_lineage(
+            option,
+            lineages,
+            closed_by_plan,
+        )
+        if lineage is None:
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "candidate capacity release lineage is missing"
+            )
+        plan = plan_loader(lineage.opening_plan_id)
+        if plan is None:
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "candidate capacity release plan is missing"
+            )
+        if (
+            plan.plan_id != lineage.opening_plan_id
+            or plan.reduce_only
+            or plan.market.canonical != option.release_market
+        ):
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "release opening plan lineage mismatch"
+            )
+        fact = fact_loader(
+            plan.strategy_decision_id,
+            lineage.replay_run_id,
+        )
+        if fact is None or fact.lead_strategy is None:
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "candidate capacity release decision is missing"
+            )
+        expected_side = (
+            OrderSide.BUY
+            if fact.direction is Direction.LONG
+            else OrderSide.SELL
+        )
+        if (
+            fact.feature_snapshot_id
+            != lineage.feature_snapshot_id
+            or fact.market.canonical != option.release_market
+            or fact.direction is Direction.NO_TRADE
+            or plan.side is not expected_side
+        ):
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "release decision lineage mismatch"
+            )
+        rank = rank_loader(lineage.opening_plan_id)
+        if rank is None:
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "candidate capacity release rank is missing"
+            )
+        if (
+            rank.market != option.release_market
+            or rank.opened_at_ms != lineage.opened_at_ms
+        ):
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "release scanner-rank lineage mismatch"
+            )
+        if rank.rank_age_ms > MAX_ACCEPTED_RANK_AGE_MS:
+            raise ProspectiveCapacityReflowReleaseLineageError(
+                "candidate capacity release rank is stale"
+            )
+        if _candidate_block_reason(fact, rank) is not None:
+            output.append(option)
+    return tuple(output)
+
+
 def prospective_capacity_reflow_release_lineage_summary(
     options: tuple[CapacityReleaseOpportunityOption, ...],
     lineages: tuple[ContinuousPaperOpeningLineage, ...],
