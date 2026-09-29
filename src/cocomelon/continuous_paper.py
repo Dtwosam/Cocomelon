@@ -4992,13 +4992,19 @@ async def run_continuous_paper_session(
         *,
         now_ms: int,
     ) -> None:
-        for request in opening_opportunity_exit_book_store.due_requests(
-            now_ms=now_ms
-        ):
+        requests = (
+            opening_opportunity_exit_book_store.due_requests(
+                now_ms=now_ms
+            )
+        )
+        if not requests:
+            return
+        cycle_error: str | None = None
+        for request in requests:
             snapshot = snapshots.get(request.market)
             if snapshot is None:
-                if opening_opportunity_sink.exit_book_error is None:
-                    opening_opportunity_sink.exit_book_error = (
+                if cycle_error is None:
+                    cycle_error = (
                         "RuntimeError: due exit-book market missing "
                         f"from native snapshot: {request.market}"
                     )
@@ -5032,10 +5038,9 @@ async def run_continuous_paper_session(
                     instrument,
                 )
             except Exception as exc:
-                if opening_opportunity_sink.exit_book_error is None:
-                    opening_opportunity_sink.exit_book_error = (
-                        f"{type(exc).__name__}: {exc}"
-                    )
+                if cycle_error is None:
+                    cycle_error = f"{type(exc).__name__}: {exc}"
+        opening_opportunity_sink.exit_book_error = cycle_error
 
     original_stop_book_capture = OriginalStopBookCapture(
         original_stop_book_store,
