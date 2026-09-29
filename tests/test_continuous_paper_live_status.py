@@ -5030,7 +5030,7 @@ def test_replacement_funding_renderer_exposes_boundary_coverage() -> None:
     output = "\n".join(lines)
 
     assert "Replacement funding boundary evidence" in output
-    assert "`4`" in output
+    assert "`1000 / 4`" in output
     assert "`9 / 7 / 6`" in output
     assert "`2 / 1`" in output
     assert "`5000`ms" in output
