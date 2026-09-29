@@ -10,6 +10,7 @@ from scripts.render_continuous_paper_live_status import (
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
     _prospective_capacity_reflow_fill_feasibility_lines,
+    _prospective_capacity_reflow_forward_markout_lines,
     _prospective_capacity_reflow_opportunity_lines,
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
@@ -5027,6 +5028,43 @@ def test_capacity_reflow_fill_renderer_exposes_exact_entry_shadow() -> None:
     assert "full=3" in output
     assert "true / false / false" in output
     assert "exact captured decision-time L2 IOC" in output
+
+
+def test_capacity_reflow_forward_markout_renderer_is_not_trade_pnl() -> None:
+    lines = _prospective_capacity_reflow_forward_markout_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "fillable_options": 5,
+            "matched_paths": 4,
+            "complete_markouts": 2,
+            "pending_paths": 2,
+            "missing_paths": 1,
+            "positive_after_entry_fee_markouts": 1,
+            "negative_after_entry_fee_markouts": 1,
+            "flat_after_entry_fee_markouts": 0,
+            "gross_markout_cash": "12.5",
+            "entry_fees": "0.8",
+            "after_entry_fee_markout_cash": "11.7",
+            "by_opportunity_market": {"SOL": 1, "XRP": 1},
+            "by_release_market": {"CRV": 2},
+            "replacement_entry_fills_modeled": True,
+            "forward_markouts_modeled": True,
+            "replacement_exits_modeled": False,
+            "pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-caused replacement entry 6h markout" in output
+    assert "`5 / 4 / 2`" in output
+    assert "`2 / 1`" in output
+    assert "`1 / 1 / 0`" in output
+    assert "`12.5 / 0.8 / 11.7`" in output
+    assert "CRV=2" in output
+    assert "`true / true / false / false`" in output
+    assert "forward markout, not an exit simulation" in output
 
 
 def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None:
