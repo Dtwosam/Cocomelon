@@ -301,7 +301,10 @@ def prospective_capacity_reflow_forward_excursion_summary(
 
     for option in options:
         opportunity_id = str(option["opportunity_id"])
-        timestamp_ms = int(option["opportunity_timestamp_ms"])
+        timestamp_ms = _integer(
+            option["opportunity_timestamp_ms"],
+            "opportunity_timestamp_ms",
+        )
         market = str(option["opportunity_market"])
         direction = str(option["opportunity_direction"])
         entry_price = Decimal(str(option["entry_price"]))
