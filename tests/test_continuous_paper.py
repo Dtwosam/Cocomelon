@@ -314,6 +314,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"prospective_capacity_reflow_opportunities": (' in source
     assert "evaluate_prospective_capacity_reflow_release_lineage(" in source
     assert '"prospective_capacity_reflow_release_lineage": (' in source
+    assert "evaluate_prospective_daily_loss_lockout_reflow(" in source
+    assert '"prospective_daily_loss_lockout_reflow": (' in source
     assert "opening_lineage_store," in source
     assert 'ContinuousPaperOpeningRankStore(' in source
     assert 'root / "opening-ranks"' in source
