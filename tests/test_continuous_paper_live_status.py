@@ -12,6 +12,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_capacity_reflow_opportunity_lines,
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
+    _prospective_daily_loss_lockout_reflow_lines,
     _prospective_combined_matched_overlap_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
@@ -5054,6 +5055,50 @@ def test_capacity_reflow_release_lineage_renderer_exposes_causal_join() -> None:
     assert "BTC=1" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
     assert "exact historical opening plan" in output
+
+
+def test_daily_loss_lockout_reflow_renderer_exposes_exact_unlocks() -> None:
+    lines = _prospective_daily_loss_lockout_reflow_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "daily_loss_lockout_opportunities": 10,
+            "candidate_eligible_lockout_opportunities": 2,
+            "candidate_blocked_lockout_opportunities": 8,
+            "opportunity_missing_rank_evidence": 0,
+            "opportunity_stale_rank_evidence": 0,
+            "opportunity_integrity_clean": True,
+            "same_day_closed_trade_instances": 8,
+            "cross_day_closed_trade_instances": 0,
+            "open_position_instances": 0,
+            "candidate_blocked_closed_trade_instances": 4,
+            "distinct_candidate_blocked_trade_ids": 2,
+            "trade_decision_attribution_misses": 0,
+            "trade_rank_attribution_misses": 0,
+            "trade_stale_rank_attribution": 0,
+            "closed_trade_adjusted_unlock_opportunities": 2,
+            "exact_cash_scope_opportunities": 2,
+            "exact_candidate_unlock_opportunities": 2,
+            "baseline_daily_realized_pnl_min": "-120",
+            "baseline_daily_realized_pnl_max": "-105",
+            "candidate_daily_realized_pnl_min": "-80",
+            "candidate_daily_realized_pnl_max": "-60",
+            "daily_loss_threshold_min": "-100",
+            "daily_loss_threshold_max": "-100",
+            "removed_blocked_trade_net_pnl_min": "-60",
+            "removed_blocked_trade_net_pnl_max": "-40",
+            "by_removed_trade_block_reason": {"long_trend": 4},
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate daily-loss lockout reflow" in output
+    assert "`10 / 2 / 8`" in output
+    assert "`2 / 2 / 2`" in output
+    assert "long_trend=4" in output
+    assert "authoritative" in output
+    assert "open-position cash effects modeled: `false`" in output
 
 
 def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
