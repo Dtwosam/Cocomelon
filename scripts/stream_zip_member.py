@@ -59,9 +59,8 @@ def stream_member(
     source: BinaryIO,
     output: BinaryIO,
 ) -> None:
-    header = source.read(30)
-    if len(header) != 30:
-        raise StreamZipError("ZIP local header is incomplete")
+    buffered = _BufferedSource(source)
+    header = buffered.read_exact(30)
     (
         signature,
         _version_needed,
@@ -82,9 +81,7 @@ def stream_member(
     if flags & 0x1:
         raise StreamZipError("encrypted ZIP members are unsupported")
 
-    name = source.read(name_length)
-    if len(name) != name_length:
-        raise StreamZipError("ZIP member name is incomplete")
+    name = buffered.read_exact(name_length)
     try:
         member_name = name.decode(
             "utf-8" if flags & 0x800 else "cp437"
@@ -97,15 +94,12 @@ def stream_member(
             f"{member_name!r}; expected {expected_name!r}"
         )
 
-    extra = source.read(extra_length)
-    if len(extra) != extra_length:
-        raise StreamZipError("ZIP extra field is incomplete")
+    buffered.read_exact(extra_length)
     if method != DEFLATE_METHOD:
         raise StreamZipError(
             f"unsupported ZIP compression method: {method}"
         )
 
-    buffered = _BufferedSource(source)
     inflater = zlib.decompressobj(-zlib.MAX_WBITS)
     crc = 0
     output_size = 0
