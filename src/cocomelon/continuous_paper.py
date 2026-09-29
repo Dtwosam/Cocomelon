@@ -213,6 +213,7 @@ from cocomelon.research.profit_lock_readiness import (
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
     evaluate_prospective_combined_entry_filter,
+    evaluate_prospective_combined_matched_overlap,
 )
 from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
@@ -1657,6 +1658,8 @@ def _prospective_combined_entry_filter_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
+    entry_filter_state: ProspectiveEntryFilterState,
+    top10_rank_filter_state: ProspectiveTop10RankFilterState,
     state: ProspectiveCombinedEntryFilterState,
     *,
     restore_error: str | None,
@@ -1679,7 +1682,33 @@ def _prospective_combined_entry_filter_payload(
             "state_restore_error": restore_error,
             "error": f"{type(exc).__name__}: {exc}",
         }
+
+    try:
+        matched_overlap = evaluate_prospective_combined_matched_overlap(
+            journal,
+            fact_store,
+            opening_rank_store,
+            entry_filter_state,
+            top10_rank_filter_state,
+        )
+    except Exception as exc:
+        matched_overlap = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "fresh_combined_gate_credit": 0,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    else:
+        matched_overlap = dict(matched_overlap)
+        matched_overlap["enabled"] = True
+        matched_overlap["error"] = None
+
     payload = dict(payload)
+    payload["matched_standalone_overlap"] = matched_overlap
     payload["enabled"] = True
     payload["state_restore_error"] = restore_error
     payload["error"] = None
@@ -3749,6 +3778,8 @@ def _live_status_payload(
             pump.journal,
             fact_store,
             opening_rank_store,
+            prospective_entry_filter_state,
+            prospective_top10_rank_filter_state,
             prospective_combined_entry_filter_state,
             restore_error=(
                 prospective_combined_entry_filter_restore_error
