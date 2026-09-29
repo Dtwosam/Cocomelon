@@ -152,6 +152,8 @@ def test_daily_loss_reflow_exactly_unlocks_from_blocked_same_day_loss(
     assert result["daily_loss_lockout_opportunities"] == 1
     assert result["candidate_eligible_lockout_opportunities"] == 1
     assert result["exact_cash_scope_opportunities"] == 1
+    assert result["baseline_cash_reconciliation_misses"] == 0
+    assert result["baseline_cash_reconciliation_clean"] is True
     assert result["exact_candidate_unlock_opportunities"] == 1
     assert result["closed_trade_adjusted_unlock_opportunities"] == 1
     assert result["same_day_closed_trade_instances"] == 1
@@ -208,5 +210,33 @@ def test_daily_loss_reflow_marks_cross_day_and_open_cash_scope_incomplete(
         facts.close()
 
     assert result["cross_day_closed_trade_instances"] == 1
+    assert result["exact_cash_scope_opportunities"] == 0
+    assert result["exact_candidate_unlock_opportunities"] == 0
+
+
+def test_daily_loss_reflow_refuses_exact_scope_when_cash_does_not_reconcile(
+    tmp_path,
+) -> None:
+    opportunity = _opportunity(
+        timestamp_ms=DAY_MS + 200_000,
+        daily_realized_pnl="-120",
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    try:
+        result = prospective_daily_loss_lockout_reflow_summary(
+            (opportunity,),
+            (),
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(started_at_ms=0),
+        )
+    finally:
+        facts.close()
+
+    assert result["cross_day_closed_trade_instances"] == 0
+    assert result["open_position_instances"] == 0
+    assert result["baseline_cash_reconciliation_misses"] == 1
+    assert result["baseline_cash_reconciliation_clean"] is False
     assert result["exact_cash_scope_opportunities"] == 0
     assert result["exact_candidate_unlock_opportunities"] == 0
