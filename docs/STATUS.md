@@ -2603,3 +2603,12 @@ The previous restore path could temporarily hold the roughly 8.84 GB artifact ZI
 The streamed restore is transport-only. It preserves the exact predecessor state, does not prune evidence, and does not change strategy, risk, accounting, execution authority, or live-order behavior.
 
 **LIVE TRADING: DISABLED.**
+
+
+### ZIP64-safe streamed paper-state restore — 2026-09-29
+
+The packed continuous-paper artifact now restores through a dedicated single-member streaming ZIP decoder instead of Info-ZIP `funzip`. The live predecessor artifact exceeded 8 GiB and therefore used ZIP64 metadata; `funzip` interpreted the large member with legacy 32-bit length semantics and the downstream tar reader received invalid bytes. The new decoder reads the local member header directly, streams raw DEFLATE data with bounded memory, validates the member CRC, drains the remaining ZIP descriptor/central-directory bytes so the authenticated GitHub download can finish under `pipefail`, and requires the exact member name `continuous-paper-state.tar`.
+
+Regression coverage forces ZIP64 even on a small fixture so the >4 GiB format path is exercised without creating multi-gigabyte test data. Legacy multi-file artifacts continue to use the existing unzip path. No durable evidence is pruned or approximated, and the decoder itself is included in both continuous-paper push-path and graceful-rotation dependency coverage.
+
+**LIVE TRADING: DISABLED.**

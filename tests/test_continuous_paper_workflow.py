@@ -98,6 +98,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/continuous_paper.py" in source
     assert "scripts/summarize_continuous_paper_state.py" in source
     assert "scripts/restore_continuous_paper_state.sh" in source
+    assert "scripts/stream_zip_member.py" in source
     assert "src/cocomelon/risk" in source
     assert "src/cocomelon/research/account_lifecycle_bridge.py" in source
     assert "src/cocomelon/research/cadence_shadow.py" in source
@@ -279,6 +280,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"scripts/render_continuous_paper_live_status.py"' in source
     assert '"scripts/summarize_continuous_paper_state.py"' in source
     assert '"scripts/restore_continuous_paper_state.sh"' in source
+    assert '"scripts/stream_zip_member.py"' in source
 
 
 def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> None:
