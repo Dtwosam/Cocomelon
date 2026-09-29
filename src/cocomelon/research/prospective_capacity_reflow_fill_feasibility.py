@@ -6,15 +6,19 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Final
 
+from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.execution import (
     ExecutionResult,
     PaperExecutionConfig,
+    PaperOrderPlan,
 )
+from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.risk import (
     OpenPositionRisk,
     RiskAccountState,
     RiskRequest,
 )
+from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.execution.accounting import (
     DAY_MS,
@@ -26,6 +30,7 @@ from cocomelon.execution.planner import (
     PlanningRejection,
     plan_opening_order,
 )
+from cocomelon.journal.store import JournalStore
 from cocomelon.research.continuous_paper_learning import (
     ContinuousPaperOpeningLineageStore,
 )
@@ -46,11 +51,6 @@ from cocomelon.research.prospective_capacity_reflow_release_lineage import (
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
 )
-from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.domain.evaluation import DecisionEvaluationFact
-from cocomelon.domain.execution import PaperOrderPlan
-from cocomelon.evaluation.store import EvaluationFactStore
-from cocomelon.journal.store import JournalStore
 from cocomelon.risk.engine import evaluate_risk
 
 ZERO: Final = Decimal("0")
