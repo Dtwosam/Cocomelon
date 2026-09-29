@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
@@ -12,6 +15,7 @@ from cocomelon.domain.market import (
     PerpMarketMeta,
     PerpMarketSnapshot,
 )
+from cocomelon.domain.stream import StreamEvent, StreamKind
 
 SOURCE = "hyperliquid-mainnet-info"
 SCHEMA_VERSION = 1
@@ -165,6 +169,76 @@ def normalize_meta_and_asset_ctxs(
             )
         )
     return tuple(snapshots)
+
+
+def normalize_l2_book_snapshot(
+    market: MarketId,
+    raw: object,
+    *,
+    received_at_ms: int,
+) -> StreamEvent:
+    if received_at_ms < 0:
+        raise ValueError("received_at_ms must be non-negative")
+    data = _as_dict(raw, "l2Book")
+    wire_name = _required_str(data, "coin")
+    if wire_name != market.wire_name:
+        raise ValueError(
+            f"l2Book coin {wire_name!r} does not match requested market "
+            f"{market.wire_name!r}"
+        )
+    time_ms = _required_int(data, "time")
+    if time_ms < 0:
+        raise ValueError("l2Book time must be non-negative")
+    if time_ms > received_at_ms:
+        raise ValueError("l2Book exchange time cannot exceed receive time")
+    raw_levels = _as_list(data.get("levels"), "levels")
+    if len(raw_levels) != 2:
+        raise ValueError("levels must contain bid and ask arrays")
+
+    normalized: list[tuple[dict[str, object], ...]] = []
+    for side_index, raw_side in enumerate(raw_levels):
+        side = _as_list(raw_side, f"levels[{side_index}]")
+        rows: list[dict[str, object]] = []
+        for level_index, raw_level in enumerate(side):
+            level = _as_dict(
+                raw_level,
+                f"levels[{side_index}][{level_index}]",
+            )
+            px = cast(Decimal, _decimal(level, "px"))
+            sz = cast(Decimal, _decimal(level, "sz"))
+            count = _required_int(level, "n")
+            if px <= 0 or sz < 0 or count < 0:
+                raise ValueError("l2Book level values are invalid")
+            rows.append({"px": px, "sz": sz, "n": count})
+        normalized.append(tuple(rows))
+
+    payload = {
+        "bids": normalized[0],
+        "asks": normalized[1],
+    }
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:16]
+    return StreamEvent(
+        kind=StreamKind.L2_BOOK,
+        market=market,
+        exchange_time_ms=time_ms,
+        receive_time=datetime.fromtimestamp(
+            received_at_ms / 1000,
+            tz=UTC,
+        ),
+        schema_version=SCHEMA_VERSION,
+        source=SOURCE,
+        event_key=(
+            f"l2Book:{market.canonical}:{time_ms}:{digest}"
+        ),
+        payload=payload,
+    )
 
 
 def normalize_candles(

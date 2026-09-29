@@ -4651,6 +4651,11 @@ def _opening_opportunity_evidence_lines(
         lines.append(
             f"- forward-mark capture warning: `{forward_mark_error}`"
         )
+    exit_book_error = raw.get("exit_book_capture_error")
+    if exit_book_error:
+        lines.append(
+            f"- exit-book capture warning: `{exit_book_error}`"
+        )
     lines.extend(
         [
             (
@@ -4678,6 +4683,29 @@ def _opening_opportunity_evidence_lines(
                 f"`{raw.get('forward_mark_max_completion_lag_ms')}`ms"
             ),
             (
+                "- exit-book capture start: "
+                f"`{raw.get('exit_book_capture_started_at_ms')}`"
+            ),
+            (
+                "- exit-book registered / captured / pending / missed: "
+                f"`{raw.get('exit_book_registered_opportunities', 0)} / "
+                f"{raw.get('exit_book_captures', 0)} / "
+                f"{raw.get('exit_book_pending', 0)} / "
+                f"{raw.get('exit_book_missed', 0)}`"
+            ),
+            (
+                "- exit-book horizons: "
+                f"`{raw.get('exit_book_horizons_ms', [])}`"
+            ),
+            (
+                "- exit-book maximum capture lag: "
+                f"`{raw.get('exit_book_max_capture_lag_ms')}`ms"
+            ),
+            (
+                "- exit-book capture enabled: "
+                f"`{str(bool(raw.get('exit_book_enabled'))).lower()}`"
+            ),
+            (
                 "- exact risk request / full L2 book captured: "
                 f"`{str(bool(raw.get('exact_risk_request_captured'))).lower()} / "
                 f"{str(bool(raw.get('full_l2_book_captured'))).lower()}`"
@@ -4694,13 +4722,18 @@ def _opening_opportunity_evidence_lines(
                 "- forward mark state digest: "
                 f"`{raw.get('forward_mark_state_digest', 'unknown')}`"
             ),
+            (
+                "- exit-book state digest: "
+                f"`{raw.get('exit_book_state_digest', 'unknown')}`"
+            ),
             "",
             (
-                "_Prospective decision-time evidence plus durable forward mark paths. "
-                "This preserves real directional opportunities and subsequent observed "
-                "market marks for causal capacity-reflow research. Replacement trade "
-                "execution and exits are still not modeled, and this does not change "
-                "execution or readiness._"
+                "_Prospective decision-time evidence plus durable forward marks and "
+                "real horizon L2 exit books. Exit-book capture starts only when the "
+                "protocol is installed and never retroactively substitutes current "
+                "liquidity for missed history. These books enable later executable "
+                "replacement-exit replay; realized replacement PnL and live execution "
+                "remain unmodeled._"
             ),
         ]
     )

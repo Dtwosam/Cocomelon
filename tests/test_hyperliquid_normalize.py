@@ -3,9 +3,11 @@ from decimal import Decimal
 import pytest
 
 from cocomelon.domain.market import MarketId
+from cocomelon.domain.stream import StreamKind
 from cocomelon.hyperliquid.normalize import (
     normalize_candles,
     normalize_funding_history,
+    normalize_l2_book_snapshot,
     normalize_meta_and_asset_ctxs,
     normalize_perp_dexs,
 )
@@ -145,6 +147,44 @@ def test_normalize_hip3_rejects_prefix_mismatch() -> None:
     ]
     with pytest.raises(ValueError, match="prefix"):
         normalize_meta_and_asset_ctxs("xyz", raw, received_at_ms=1)
+
+
+def test_normalize_l2_book_snapshot_preserves_real_depth() -> None:
+    market = MarketId(dex="", coin="BTC")
+    event = normalize_l2_book_snapshot(
+        market,
+        {
+            "coin": "BTC",
+            "time": 1_234,
+            "levels": [
+                [
+                    {"px": "100", "sz": "2.5", "n": 3},
+                    {"px": "99", "sz": "1", "n": 1},
+                ],
+                [{"px": "101", "sz": "4", "n": 2}],
+            ],
+        },
+        received_at_ms=1_250,
+    )
+
+    assert event.kind is StreamKind.L2_BOOK
+    assert event.market == market
+    assert event.exchange_time_ms == 1_234
+    assert int(event.receive_time.timestamp() * 1000) == 1_250
+    assert event.source == "hyperliquid-mainnet-info"
+    assert event.payload["bids"][0]["px"] == Decimal("100")
+    assert event.payload["bids"][0]["sz"] == Decimal("2.5")
+    assert event.payload["asks"][0]["px"] == Decimal("101")
+    assert event.event_key.startswith("l2Book:BTC:1234:")
+
+
+def test_normalize_l2_book_snapshot_rejects_wrong_market() -> None:
+    with pytest.raises(ValueError, match="coin"):
+        normalize_l2_book_snapshot(
+            MarketId(dex="", coin="BTC"),
+            {"coin": "ETH", "time": 1, "levels": [[], []]},
+            received_at_ms=2,
+        )
 
 
 def test_normalize_candles_parses_decimal_ohlcv_and_order() -> None:

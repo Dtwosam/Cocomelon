@@ -365,8 +365,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'root / "opening-opportunities"' in source
     assert "ContinuousPaperOpeningOpportunityPathStore(" in source
     assert 'root / "opening-opportunity-paths"' in source
+    assert "ContinuousPaperOpeningOpportunityExitBookStore(" in source
+    assert 'root / "opening-opportunity-exit-books"' in source
     assert "opening_opportunity_sink.observe_snapshots(" in source
+    assert "capture_due_exit_books(" in source
+    assert "reader.l2_book" in source
+    assert "normalize_l2_book_snapshot(" in source
     assert '"opening_opportunity_evidence": {' in source
+    assert '"exit_book_captures": (' in source
+    assert '"exit_book_state_digest": (' in source
     assert '"forward_mark_paths": (' in source
     assert '"forward_mark_paths_complete": (' in source
     assert '"forward_mark_state_digest": (' in source

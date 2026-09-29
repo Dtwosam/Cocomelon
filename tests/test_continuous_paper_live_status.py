@@ -4964,6 +4964,21 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
             "forward_mark_max_age_ms": 21_600_000,
             "forward_mark_state_digest": "b" * 64,
             "forward_mark_capture_error": None,
+            "exit_book_capture_started_at_ms": 1_000,
+            "exit_book_registered_opportunities": 9,
+            "exit_book_captures": 14,
+            "exit_book_pending": 18,
+            "exit_book_missed": 4,
+            "exit_book_horizons_ms": [
+                300_000,
+                900_000,
+                3_600_000,
+                21_600_000,
+            ],
+            "exit_book_max_capture_lag_ms": 120_000,
+            "exit_book_state_digest": "c" * 64,
+            "exit_book_enabled": True,
+            "exit_book_capture_error": None,
             "full_l2_book_captured": True,
             "exact_risk_request_captured": True,
             "replacement_trades_modeled": False,
@@ -4977,9 +4992,15 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "`true / true`" in output
     assert "`12 / 7`" in output
     assert "`21600000`ms" in output
+    assert "`9 / 14 / 18 / 4`" in output
+    assert "`120000`ms" in output
     assert "`" + "b" * 64 + "`" in output
+    assert "`" + "c" * 64 + "`" in output
+    assert "exit-book capture enabled: `true`" in output
     assert "replacement trades modeled: `false`" in output
     assert "forward mark paths" in output
+    assert "real horizon L2 exit books" in output
+    assert "never retroactively" in output
 
 
 def test_capacity_reflow_fill_renderer_exposes_exact_entry_shadow() -> None:
