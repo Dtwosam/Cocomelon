@@ -6,18 +6,12 @@ from dataclasses import replace
 from decimal import Decimal
 from typing import Final
 
-from cocomelon.domain.evaluation import DecisionEvaluationFact
 from cocomelon.domain.execution import (
     ExecutionResult,
     PaperExecutionConfig,
     PaperOrderPlan,
 )
-from cocomelon.domain.journal import TradeJournalEntry
-from cocomelon.domain.risk import (
-    OpenPositionRisk,
-    RiskAccountState,
-    RiskRequest,
-)
+from cocomelon.domain.risk import OpenPositionRisk, RiskRequest
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.execution.accounting import (
