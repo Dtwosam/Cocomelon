@@ -34,6 +34,7 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 )
 from cocomelon.research.prospective_capacity_reflow_fill_feasibility import (
     ProspectiveCapacityReflowFillFeasibilityError,
+    candidate_caused_replacement_entry_fill_records,
     prospective_capacity_reflow_fill_feasibility_summary,
 )
 from cocomelon.research.prospective_capacity_reflow_release_lineage import (
@@ -245,6 +246,40 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["pnl_modeled"] is False
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
+
+
+def test_replacement_fill_records_preserve_exact_entry_lineage() -> None:
+    evidence = _evidence()
+    records = candidate_caused_replacement_entry_fill_records(
+        (evidence,),
+        (_release(evidence),),
+        PaperExecutionConfig(),
+        position_history_loader=_history,
+    )
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.opportunity_id == evidence.opportunity_id
+    assert record.opportunity_timestamp_ms == 10_000
+    assert record.opportunity_market == "SOL"
+    assert record.direction == "short"
+    assert record.release_market == "BTC"
+    assert record.release_opening_plan_id == "release-plan-btc"
+    assert record.release_block_reason == "long_trend"
+    assert record.counterfactual_equity_delta == Decimal("1")
+    assert record.risk_approved is True
+    assert record.replacement_plan_id is not None
+    assert record.planning_rejection_reason is None
+    assert record.execution_attempt_id is not None
+    assert record.execution_result is not None
+    assert record.execution_result.value == "partial"
+    assert record.requested_quantity is not None
+    assert record.filled_quantity > Decimal("0")
+    assert record.average_fill_price == Decimal("99.95")
+    assert record.gross_fill_notional > Decimal("0")
+    assert record.taker_fee > Decimal("0")
+    assert record.fill_ids
+    assert record.fillable is True
 
 
 def test_fill_feasibility_refuses_execution_config_drift() -> None:
