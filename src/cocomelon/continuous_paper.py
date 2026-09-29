@@ -221,6 +221,9 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
+from cocomelon.research.prospective_capacity_reflow_fill_feasibility import (
+    evaluate_prospective_capacity_reflow_fill_feasibility,
+)
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     evaluate_prospective_capacity_reflow_opportunities,
 )
@@ -1932,6 +1935,53 @@ def _prospective_capacity_reflow_opportunity_payload(
         }
     payload = dict(payload)
     payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_capacity_reflow_fill_feasibility_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    lineage_store: ContinuousPaperOpeningLineageStore,
+    journal: JournalStore,
+    *,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    state: ProspectiveCombinedEntryFilterState,
+    config: PaperExecutionConfig,
+    position_history_loader: Callable[
+        [str, int],
+        tuple[PaperPosition, ...],
+    ],
+) -> dict[str, object]:
+    try:
+        payload = (
+            evaluate_prospective_capacity_reflow_fill_feasibility(
+                opportunity_store,
+                lineage_store,
+                journal,
+                plan_loader=plan_loader,
+                fact_store=fact_store,
+                rank_store=rank_store,
+                state=state,
+                config=config,
+                position_history_loader=position_history_loader,
+            )
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["candidate_id"] = state.candidate_id
+    payload["started_at_ms"] = state.started_at_ms
     payload["error"] = None
     return payload
 
@@ -4031,6 +4081,24 @@ def _live_status_payload(
             state=prospective_combined_entry_filter_state,
         )
     )
+    prospective_capacity_reflow_fill_feasibility = (
+        _prospective_capacity_reflow_fill_feasibility_payload(
+            opening_opportunity_store,
+            opening_lineage_store,
+            pump.journal,
+            plan_loader=execution.store.load_plan,
+            fact_store=fact_store,
+            rank_store=opening_rank_store,
+            state=prospective_combined_entry_filter_state,
+            config=paper_execution_config,
+            position_history_loader=lambda plan_id, through_ms: (
+                execution.store.load_position_history(
+                    plan_id,
+                    through_ms=through_ms,
+                )
+            ),
+        )
+    )
     prospective_daily_loss_lockout_reflow = (
         _prospective_daily_loss_lockout_reflow_payload(
             opening_opportunity_store,
@@ -4422,6 +4490,9 @@ def _live_status_payload(
         ),
         "prospective_capacity_reflow_release_lineage": (
             prospective_capacity_reflow_release_lineage
+        ),
+        "prospective_capacity_reflow_fill_feasibility": (
+            prospective_capacity_reflow_fill_feasibility
         ),
         "prospective_daily_loss_lockout_reflow": (
             prospective_daily_loss_lockout_reflow
