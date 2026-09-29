@@ -2396,3 +2396,12 @@ The daily-loss lockout reflow now reconstructs current-day cash for closed trade
 This removes the main ambiguity in the current live cohort: cross-day trades can now participate in exact baseline daily-cash reconciliation and candidate-blocked cash removal without charging prior-day entry fees or prior-day funding to the current day. Exact unlock credit still requires complete candidate attribution, exact cash reconciliation, and no open-position cash effects at the opportunity timestamp.
 
 Replacement entries, fills, exits, and replacement PnL remain unmodeled. **LIVE TRADING: DISABLED.**
+
+
+### Exact daily-loss unlock lineage — 2026-09-29
+
+The daily-loss reflow now exposes deterministic opportunity-level lineage in addition to aggregate counts. For every candidate-eligible lockout it records the exact opening-opportunity ID, candidate-adjusted daily realized PnL, captured daily-loss threshold, and candidate-blocked cash removed by the reconstruction. Separate ID sets identify closed-trade-adjusted unlocks, exact cash-scope opportunities, and exact candidate unlocks.
+
+This is the handoff contract for later replacement-entry research: downstream execution simulation can consume only opportunity IDs that the exact cash model actually unlocked instead of reconstructing or broadening the cohort independently. It adds no execution authority and does not yet claim that an unlocked opportunity passes every remaining risk veto, would fill, or would be profitable.
+
+**LIVE TRADING: DISABLED.**
