@@ -27,6 +27,7 @@ on:
       - "src/cocomelon/research/closed_trade_utc_hour.py"
       - "src/cocomelon/research/continuous_paper_trade_paths.py"
       - "src/cocomelon/research/continuous_paper_opening_rank.py"
+      - "src/cocomelon/research/continuous_paper_opening_opportunity.py"
       - "src/cocomelon/research/continuous_paper_drawdown.py"
       - "src/cocomelon/research/delayed_entry_execution_shadow.py"
       - "src/cocomelon/research/delayed_entry_contribution_decomposition.py"
@@ -366,6 +367,13 @@ jobs:
           print(
               "- opening fill-liquidity records: "
               f"{payload.get('opening_fill_liquidity_count', 0)}"
+          )
+          print(
+              "- opening opportunity records / approvals / rejections / rank-complete: "
+              f"{payload.get('opening_opportunity_count', 0)} / "
+              f"{payload.get('opening_opportunity_approved_count', 0)} / "
+              f"{payload.get('opening_opportunity_rejected_count', 0)} / "
+              f"{payload.get('opening_opportunity_rank_complete_count', 0)}"
           )
           print(
               "- opening fill-liquidity state digest: "
