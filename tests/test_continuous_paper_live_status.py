@@ -5162,7 +5162,7 @@ def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
     assert "Candidate-caused replacement forward excursion" in output
     assert "`5 / 5 / 0`" in output
     assert "| 5m | 5 | 0 | 0 | 0 | 4 | 3 | 2 | 42 | 22 | 20 | 180000ms |" in output
-    assert "| 6h | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | Nonems |" in output
+    assert "| 6h | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a |" in output
     assert "`true / false / false`" in output
     assert "decay and reversals" in output
 
