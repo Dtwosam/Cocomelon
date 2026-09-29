@@ -232,6 +232,9 @@ from cocomelon.research.prospective_combined_entry_filter import (
     evaluate_prospective_combined_entry_filter,
     evaluate_prospective_combined_matched_overlap,
 )
+from cocomelon.research.prospective_daily_loss_lockout_reflow import (
+    evaluate_prospective_daily_loss_lockout_reflow,
+)
 from cocomelon.research.prospective_delayed_price_confirmation import (
     ProspectiveDelayedPriceConfirmationState,
     prospective_delayed_price_confirmation_summary,
@@ -1952,6 +1955,37 @@ def _prospective_capacity_reflow_release_lineage_payload(
             fact_store=fact_store,
             rank_store=rank_store,
             state=state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_daily_loss_lockout_reflow_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    journal: JournalStore,
+    fact_store: EvaluationFactStore,
+    rank_store: ContinuousPaperOpeningRankStore,
+    state: ProspectiveCombinedEntryFilterState,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_daily_loss_lockout_reflow(
+            opportunity_store,
+            tuple(journal.iter_trades()),
+            fact_store,
+            rank_store,
+            state,
         )
     except Exception as exc:
         return {
@@ -3989,6 +4023,15 @@ def _live_status_payload(
             state=prospective_combined_entry_filter_state,
         )
     )
+    prospective_daily_loss_lockout_reflow = (
+        _prospective_daily_loss_lockout_reflow_payload(
+            opening_opportunity_store,
+            pump.journal,
+            fact_store,
+            opening_rank_store,
+            prospective_combined_entry_filter_state,
+        )
+    )
     delayed_entry_fill_capacity = (
         _delayed_entry_fill_capacity_payload(
             pump.journal,
@@ -4362,6 +4405,9 @@ def _live_status_payload(
         ),
         "prospective_capacity_reflow_release_lineage": (
             prospective_capacity_reflow_release_lineage
+        ),
+        "prospective_daily_loss_lockout_reflow": (
+            prospective_daily_loss_lockout_reflow
         ),
         "opening_scanner_rank": opening_rank,
         "opening_fill_liquidity": opening_fill_liquidity,
