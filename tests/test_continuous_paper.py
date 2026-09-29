@@ -325,7 +325,13 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "ContinuousPaperOpeningOpportunityStore(" in source
     assert 'root / "opening-opportunities"' in source
+    assert "ContinuousPaperOpeningOpportunityPathStore(" in source
+    assert 'root / "opening-opportunity-paths"' in source
+    assert "opening_opportunity_sink.observe_snapshots(" in source
     assert '"opening_opportunity_evidence": {' in source
+    assert '"forward_mark_paths": (' in source
+    assert '"forward_mark_paths_complete": (' in source
+    assert '"forward_mark_state_digest": (' in source
     assert '"opening_opportunity_count": self.opening_opportunity_count' in source
     assert '"opening_opportunity_state_digest": (' in source
     assert "opportunity_evidence_from_trace(" in source
