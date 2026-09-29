@@ -5117,6 +5117,7 @@ async def run_continuous_paper_session(
             opening_fill_liquidity_store
         )
     )
+    replay_config = BaselineReplayConfig()
     opening_opportunity_store = ContinuousPaperOpeningOpportunityStore(
         root / "opening-opportunities"
     )
@@ -5135,6 +5136,21 @@ async def run_continuous_paper_session(
             max_capture_lag_ms=MAX_FORWARD_MARKOUT_LAG_MS,
         )
     )
+    replacement_funding_store = ContinuousPaperReplacementFundingStore(
+        root / "replacement-funding-boundaries",
+        capture_started_at_ms=started_at_ms,
+        max_window_ms=(
+            max(DEFAULT_FORWARD_MARKOUT_HORIZONS_MS)
+            + MAX_FORWARD_MARKOUT_LAG_MS
+            + replay_config.execution.latency_ms
+        ),
+        max_oracle_age_ms=(
+            replay_config.execution.max_asset_ctx_age_ms
+        ),
+        max_funding_capture_lag_ms=(
+            replay_config.execution.funding_reconciliation_grace_ms
+        ),
+    )
     original_stop_book_store = OriginalStopBookEvidenceStore(
         root / "original-stop-books",
         started_at_ms=started_at_ms,
@@ -5144,11 +5160,11 @@ async def run_continuous_paper_session(
         opening_opportunity_store,
         opening_opportunity_path_store,
         opening_opportunity_exit_book_store,
+        replacement_funding_store,
         rank_tracker,
     )
     trade_path_store = ContinuousPaperTradePathStore(root / "trade-paths")
     trade_path_sink = _ContinuousTradePathSink(trade_path_store)
-    replay_config = BaselineReplayConfig()
 
     async def capture_due_exit_books(
         snapshots: dict[str, PerpMarketSnapshot],
@@ -5204,6 +5220,136 @@ async def run_continuous_paper_session(
                 if cycle_error is None:
                     cycle_error = f"{type(exc).__name__}: {exc}"
         opening_opportunity_sink.exit_book_error = cycle_error
+
+    async def capture_due_replacement_funding(
+        *,
+        now_ms: int,
+    ) -> None:
+        requests = replacement_funding_store.due_requests(
+            now_ms=now_ms
+        )
+        if not requests:
+            return
+        by_market: dict[str, list[object]] = {}
+        for request in requests:
+            by_market.setdefault(request.market, []).append(request)
+        cycle_error: str | None = None
+        for market_key, market_requests in sorted(by_market.items()):
+            try:
+                market = _market_from_canonical(market_key)
+                first_boundary = min(
+                    int(request.boundary_ms)
+                    for request in market_requests
+                )
+                raw = await asyncio.to_thread(
+                    reader.funding_history,
+                    market,
+                    start_ms=max(0, first_boundary - 1_000),
+                    end_ms=now_ms,
+                )
+                received_at_ms = utc_now_ms()
+                rates = normalize_funding_history(
+                    market,
+                    raw,
+                    received_at_ms=received_at_ms,
+                )
+                by_boundary: dict[int, object] = {}
+                for rate in rates:
+                    boundary_ms = funding_boundary_for_record_time(
+                        rate.time_ms
+                    )
+                    if boundary_ms is None:
+                        continue
+                    existing = by_boundary.get(boundary_ms)
+                    if existing is not None and existing != rate:
+                        raise RuntimeError(
+                            "conflicting funding rates for boundary "
+                            f"{market_key}:{boundary_ms}"
+                        )
+                    by_boundary[boundary_ms] = rate
+                for request in market_requests:
+                    rate = by_boundary.get(request.boundary_ms)
+                    if rate is None:
+                        continue
+                    replacement_funding_store.capture(
+                        request,
+                        rate,
+                    )
+            except Exception as exc:
+                if cycle_error is None:
+                    cycle_error = f"{type(exc).__name__}: {exc}"
+        opening_opportunity_sink.funding_error = cycle_error
+
+    async def capture_replacement_funding_oracles() -> None:
+        while True:
+            now_ms = utc_now_ms()
+            future_boundaries = tuple(
+                request.boundary_ms
+                for request in replacement_funding_store.required_boundaries()
+                if request.boundary_ms >= now_ms
+                and replacement_funding_store.markets_for_boundary(
+                    request.boundary_ms
+                )
+            )
+            if not future_boundaries:
+                await asyncio.sleep(5.0)
+                continue
+            boundary_ms = min(future_boundaries)
+            capture_window_ms = (
+                boundary_ms
+                - replacement_funding_store.max_oracle_age_ms
+            )
+            if now_ms < capture_window_ms:
+                await asyncio.sleep(
+                    min(
+                        5.0,
+                        max(
+                            0.05,
+                            (capture_window_ms - now_ms) / 1_000,
+                        ),
+                    )
+                )
+                continue
+            while utc_now_ms() <= boundary_ms:
+                markets = replacement_funding_store.markets_for_boundary(
+                    boundary_ms
+                )
+                if not markets:
+                    break
+                try:
+                    raw = await asyncio.to_thread(
+                        reader.meta_and_asset_ctxs,
+                        "",
+                    )
+                    received_at_ms = utc_now_ms()
+                    snapshots = normalize_meta_and_asset_ctxs(
+                        "",
+                        raw,
+                        received_at_ms=received_at_ms,
+                    )
+                    by_market = {
+                        snapshot.meta.market.canonical: snapshot
+                        for snapshot in snapshots
+                    }
+                    for market_key in markets:
+                        snapshot = by_market.get(market_key)
+                        if snapshot is not None:
+                            replacement_funding_store.observe_snapshot(
+                                snapshot
+                            )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    if opening_opportunity_sink.funding_error is None:
+                        opening_opportunity_sink.funding_error = (
+                            f"{type(exc).__name__}: {exc}"
+                        )
+                remaining_ms = boundary_ms - utc_now_ms()
+                if remaining_ms <= 0:
+                    break
+                await asyncio.sleep(
+                    min(1.0, max(0.05, remaining_ms / 1_000))
+                )
 
     original_stop_book_capture = OriginalStopBookCapture(
         original_stop_book_store,
