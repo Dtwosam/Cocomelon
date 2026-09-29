@@ -2148,9 +2148,15 @@ def _delayed_entry_contribution_decomposition_lines(
                     (
                         "- funding summary Decimal residuals "
                         "components / legacy bridge / candidate bridge: "
-                        f"`{funding_overall.get('component_decimal_rounding_residual_pnl', '0')} / "
-                        f"{funding_overall.get('legacy_bridge_decimal_rounding_residual_pnl', '0')} / "
-                        f"{funding_overall.get('candidate_bridge_decimal_rounding_residual_pnl', '0')}`"
+                        f"`{funding_overall.get(
+                            'component_decimal_rounding_residual_pnl', '0'
+                        )} / "
+                        f"{funding_overall.get(
+                            'legacy_bridge_decimal_rounding_residual_pnl', '0'
+                        )} / "
+                        f"{funding_overall.get(
+                            'candidate_bridge_decimal_rounding_residual_pnl', '0'
+                        )}`"
                     ),
                     (
                         "- funding-aware missing journal / funding / lineage: "
