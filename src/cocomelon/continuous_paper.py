@@ -1173,6 +1173,12 @@ class ContinuousPaperSummary:
     opening_opportunity_path_complete_count: int = 0
     opening_opportunity_path_state_digest: str = ""
     opening_opportunity_path_capture_error: str | None = None
+    opening_opportunity_exit_book_registration_count: int = 0
+    opening_opportunity_exit_book_capture_count: int = 0
+    opening_opportunity_exit_book_pending_count: int = 0
+    opening_opportunity_exit_book_missed_count: int = 0
+    opening_opportunity_exit_book_state_digest: str = ""
+    opening_opportunity_exit_book_capture_error: str | None = None
     network_access: bool = True
     live_orders: bool = False
 
@@ -1235,6 +1241,24 @@ class ContinuousPaperSummary:
             ),
             "opening_opportunity_path_capture_error": (
                 self.opening_opportunity_path_capture_error
+            ),
+            "opening_opportunity_exit_book_registration_count": (
+                self.opening_opportunity_exit_book_registration_count
+            ),
+            "opening_opportunity_exit_book_capture_count": (
+                self.opening_opportunity_exit_book_capture_count
+            ),
+            "opening_opportunity_exit_book_pending_count": (
+                self.opening_opportunity_exit_book_pending_count
+            ),
+            "opening_opportunity_exit_book_missed_count": (
+                self.opening_opportunity_exit_book_missed_count
+            ),
+            "opening_opportunity_exit_book_state_digest": (
+                self.opening_opportunity_exit_book_state_digest
+            ),
+            "opening_opportunity_exit_book_capture_error": (
+                self.opening_opportunity_exit_book_capture_error
             ),
             "network_access": self.network_access,
             "live_orders": self.live_orders,
@@ -5723,6 +5747,28 @@ async def run_continuous_paper_session(
             ),
             opening_opportunity_path_capture_error=(
                 opening_opportunity_sink.path_error
+            ),
+            opening_opportunity_exit_book_registration_count=(
+                opening_opportunity_exit_book_store.registration_count
+            ),
+            opening_opportunity_exit_book_capture_count=(
+                opening_opportunity_exit_book_store.capture_count
+            ),
+            opening_opportunity_exit_book_pending_count=(
+                opening_opportunity_exit_book_store.pending_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            opening_opportunity_exit_book_missed_count=(
+                opening_opportunity_exit_book_store.missed_count(
+                    now_ms=ended_at_ms
+                )
+            ),
+            opening_opportunity_exit_book_state_digest=(
+                opening_opportunity_exit_book_store.state_digest
+            ),
+            opening_opportunity_exit_book_capture_error=(
+                opening_opportunity_sink.exit_book_error
             ),
             trade_path_count=trade_path_store.record_count,
             trade_path_open_count=trade_path_store.open_path_count,
