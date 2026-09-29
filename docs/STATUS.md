@@ -2427,3 +2427,14 @@ The daily-loss reflow now exposes deterministic opportunity-level lineage in add
 This is the handoff contract for later replacement-entry research: downstream execution simulation can consume only opportunity IDs that the exact cash model actually unlocked instead of reconstructing or broadening the cohort independently. It adds no execution authority and does not yet claim that an unlocked opportunity passes every remaining risk veto, would fill, or would be profitable.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Replacement-entry fill lineage — 2026-09-29
+
+The candidate-caused capacity-release fill shadow now exposes deterministic option-level execution lineage instead of only aggregate counts. Every simulated release option carries a stable composite option ID, the exact opening-opportunity ID and timestamp, opportunity market/direction, released position market/bucket/opening plan, the frozen candidate block reason for that released position, and the counterfactual equity adjustment used before risk evaluation.
+
+The record then follows the production path explicitly: risk approval plus reason codes, opening-plan approval or planning rejection, and the exact IOC attempt outcome. Filled options retain requested/filled/unfilled quantity, average fill price, gross fill notional, taker fee, and immutable attempt ID. Separate fillable option/opportunity ID sets provide a strict join contract for forward-path markout research. Duplicate opportunity/release pairs fail closed rather than being counted twice.
+
+This still models entry feasibility only. It does not choose replacement exits, calculate replacement PnL, alter the frozen candidate, grant promotion authority, or enable live orders.
+
+**LIVE TRADING: DISABLED.**

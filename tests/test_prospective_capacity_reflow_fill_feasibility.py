@@ -219,6 +219,34 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
 
     assert result["candidate_caused_release_options"] == 1
     assert result["candidate_caused_release_opportunities"] == 1
+    option_results = result["option_results"]
+    assert isinstance(option_results, list)
+    assert len(option_results) == 1
+    option = option_results[0]
+    assert isinstance(option, dict)
+    assert option["opportunity_id"] == evidence.opportunity_id
+    assert option["opportunity_timestamp_ms"] == 10_000
+    assert option["opportunity_market"] == "SOL"
+    assert option["opportunity_direction"] == "short"
+    assert option["release_market"] == "BTC"
+    assert option["release_opening_plan_id"] == "release-plan-btc"
+    assert option["release_block_reason"] == "long_trend"
+    assert option["counterfactual_equity_delta"] == "1"
+    assert option["risk_approved"] is True
+    assert option["planning_approved"] is True
+    assert option["planning_rejection"] is None
+    assert option["execution_result"] == "partial"
+    assert isinstance(option["attempt_id"], str)
+    assert Decimal(str(option["requested_quantity"])) > Decimal("0")
+    assert Decimal(str(option["filled_quantity"])) > Decimal("0")
+    assert Decimal(str(option["average_fill_price"])) > Decimal("0")
+    assert Decimal(str(option["gross_fill_notional"])) > Decimal("0")
+    assert Decimal(str(option["taker_fee"])) > Decimal("0")
+    assert Decimal(str(option["unfilled_quantity"])) > Decimal("0")
+    assert result["fillable_option_ids"] == [option["option_id"]]
+    assert result["fillable_opportunity_ids"] == [
+        evidence.opportunity_id
+    ]
     assert result["conservative_risk_approvals"] == 1
     assert result["planning_approvals"] == 1
     assert result["fillable_options"] == 1
@@ -282,4 +310,20 @@ def test_fill_feasibility_refuses_ambiguous_decision_time_position_state() -> No
             (_release(evidence),),
             PaperExecutionConfig(),
             position_history_loader=lambda _plan_id, _through_ms: ambiguous,
+        )
+
+
+def test_fill_feasibility_rejects_duplicate_release_option() -> None:
+    evidence = _evidence()
+    release = _release(evidence)
+
+    with pytest.raises(
+        ProspectiveCapacityReflowFillFeasibilityError,
+        match="duplicate candidate release option id",
+    ):
+        prospective_capacity_reflow_fill_feasibility_summary(
+            (evidence,),
+            (release, release),
+            PaperExecutionConfig(),
+            position_history_loader=_history,
         )

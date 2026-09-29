@@ -380,6 +380,10 @@ def prospective_capacity_reflow_fill_feasibility_summary(
     by_risk_rejection: Counter[str] = Counter()
     by_planning_rejection: Counter[str] = Counter()
     by_execution_result: Counter[str] = Counter()
+    option_results: list[dict[str, object]] = []
+    fillable_option_ids: set[str] = set()
+    fillable_opportunity_ids: set[str] = set()
+    seen_option_ids: set[str] = set()
 
     for release in releases:
         evidence = by_id.get(release.opportunity_id)
@@ -387,6 +391,16 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             raise ProspectiveCapacityReflowFillFeasibilityError(
                 "candidate release opportunity evidence is missing"
             )
+        option_id = (
+            f"{evidence.opportunity_id}:"
+            f"{release.release_opening_plan_id}"
+        )
+        if option_id in seen_option_ids:
+            raise ProspectiveCapacityReflowFillFeasibilityError(
+                "duplicate candidate release option id"
+            )
+        seen_option_ids.add(option_id)
+
         _execution_config_compatible(evidence, config)
         history = position_history_loader(
             release.release_opening_plan_id,
@@ -398,12 +412,46 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             history,
             config,
         )
+        option_payload: dict[str, object] = {
+            "option_id": option_id,
+            "opportunity_id": evidence.opportunity_id,
+            "opportunity_timestamp_ms": (
+                evidence.opportunity_timestamp_ms
+            ),
+            "opportunity_market": evidence.market,
+            "opportunity_direction": evidence.direction,
+            "release_market": release.release_market,
+            "release_correlation_bucket": (
+                release.release_correlation_bucket
+            ),
+            "release_opening_plan_id": (
+                release.release_opening_plan_id
+            ),
+            "release_block_reason": release.release_block_reason,
+            "counterfactual_equity_delta": str(equity_delta),
+            "risk_approved": False,
+            "risk_reason_codes": [],
+            "planning_approved": False,
+            "planning_rejection": None,
+            "execution_result": None,
+            "attempt_id": None,
+            "requested_quantity": None,
+            "filled_quantity": None,
+            "average_fill_price": None,
+            "gross_fill_notional": None,
+            "taker_fee": None,
+            "unfilled_quantity": None,
+        }
         equity_deltas.append(equity_delta)
         opportunity_ids.add(evidence.opportunity_id)
         by_opportunity_market[evidence.market] += 1
         by_release_market[release.release_market] += 1
 
         risk = evaluate_risk(request)
+        option_payload["risk_approved"] = risk.approved
+        option_payload["risk_reason_codes"] = list(
+            risk.reason_codes
+        )
         if not risk.approved:
             reason = (
                 risk.reason_codes[0]
@@ -411,6 +459,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
                 else "unknown"
             )
             by_risk_rejection[reason] += 1
+            option_results.append(option_payload)
             continue
         risk_approvals += 1
 
@@ -423,8 +472,11 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         )
         if isinstance(plan, PlanningRejection):
             by_planning_rejection[plan.reason] += 1
+            option_payload["planning_rejection"] = plan.reason
+            option_results.append(option_payload)
             continue
         planning_approvals += 1
+        option_payload["planning_approved"] = True
 
         simulation = simulate_ioc(
             plan,
@@ -433,7 +485,33 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             config,
             attempt_timestamp_ms=request.timestamp_ms,
         )
-        result = simulation.attempt.result
+        attempt = simulation.attempt
+        result = attempt.result
+        option_payload.update(
+            {
+                "execution_result": result.value,
+                "attempt_id": attempt.attempt_id,
+                "requested_quantity": str(
+                    attempt.requested_quantity
+                ),
+                "filled_quantity": str(
+                    attempt.filled_quantity
+                ),
+                "average_fill_price": (
+                    None
+                    if attempt.average_fill_price is None
+                    else str(attempt.average_fill_price)
+                ),
+                "gross_fill_notional": str(
+                    attempt.gross_fill_notional
+                ),
+                "taker_fee": str(attempt.fee),
+                "unfilled_quantity": str(
+                    attempt.unfilled_quantity
+                ),
+            }
+        )
+        option_results.append(option_payload)
         by_execution_result[result.value] += 1
         gross_fill_notional += (
             simulation.attempt.gross_fill_notional
@@ -441,6 +519,10 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         taker_fees += simulation.attempt.fee
         if simulation.fills:
             fillable += 1
+            fillable_option_ids.add(option_id)
+            fillable_opportunity_ids.add(
+                evidence.opportunity_id
+            )
         if result is ExecutionResult.FULL:
             full_fills += 1
         elif result is ExecutionResult.PARTIAL:
@@ -471,6 +553,14 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "candidate_caused_release_options": len(releases),
         "candidate_caused_release_opportunities": len(
             opportunity_ids
+        ),
+        "option_results": sorted(
+            option_results,
+            key=lambda item: str(item["option_id"]),
+        ),
+        "fillable_option_ids": sorted(fillable_option_ids),
+        "fillable_opportunity_ids": sorted(
+            fillable_opportunity_ids
         ),
         "conservative_risk_approvals": risk_approvals,
         "planning_approvals": planning_approvals,
