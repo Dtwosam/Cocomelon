@@ -186,7 +186,8 @@ jobs:
         run: |
           set -euo pipefail
           RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
-          printf '%s' "$RUN_JSON" | python -c '
+          SOURCE_HEAD_SHA="$(
+            printf '%s' "$RUN_JSON" | python -c '
           import json, os, sys
           run = json.load(sys.stdin)
           expected_attempt = os.environ.get("SOURCE_RUN_ATTEMPT", "")
@@ -200,16 +201,11 @@ jobs:
               raise SystemExit("predecessor run attempt mismatch")
           if run.get("status") not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
+          head_sha = run.get("head_sha")
+          if not isinstance(head_sha, str) or len(head_sha) != 40:
+              raise SystemExit("predecessor head sha is invalid")
+          print(head_sha)
           '
-          SOURCE_HEAD_SHA="$(
-            printf '%s' "$RUN_JSON" | python -c '
-import json, sys
-run = json.load(sys.stdin)
-head_sha = run.get("head_sha")
-if not isinstance(head_sha, str) or len(head_sha) != 40:
-    raise SystemExit("predecessor head sha is invalid")
-print(head_sha)
-'
           )"
           ARTIFACT_NAME="continuous-paper-state-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/source-artifacts.json
@@ -240,7 +236,7 @@ print(head_sha)
           set -euo pipefail
           mkdir -p "$STATE_ROOT"
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" > /tmp/all-artifacts.json
-          ARTIFACT_ID="$(
+          ARTIFACT_SELECTION="$(
             python - <<'PY'
           import json
           import os
@@ -287,8 +283,8 @@ print(head_sha)
                   break
           PY
           )"
-          if [ -n "$ARTIFACT_ID" ]; then
-            read -r ARTIFACT_ID ARTIFACT_HEAD_SHA <<< "$ARTIFACT_ID"
+          if [ -n "$ARTIFACT_SELECTION" ]; then
+            read -r ARTIFACT_ID ARTIFACT_HEAD_SHA <<< "$ARTIFACT_SELECTION"
             bash scripts/restore_continuous_paper_state.sh \
               "$ARTIFACT_ID" \
               "$ARTIFACT_HEAD_SHA" \
