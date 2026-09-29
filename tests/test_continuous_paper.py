@@ -349,6 +349,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert 'prospective-replacement-5m-exit-state.json' in source
     assert "prospective_replacement_exit_policy_summary(" in source
     assert '"prospective_replacement_exit_policy": (' in source
+    assert "prospective_replacement_exit_robustness(" in source
+    assert '"prospective_replacement_exit_robustness": (' in source
     assert "_restore_prospective_replacement_exit_policy(" in source
     assert "prospective_replacement_exit_policy_state.payload()" in source
     realized_pnl_call = source.index(
