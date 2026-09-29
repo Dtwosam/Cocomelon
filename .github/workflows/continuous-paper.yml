@@ -405,6 +405,22 @@ jobs:
               f"{payload.get('opening_opportunity_path_capture_error')}"
           )
           print(
+              "- opening opportunity exit-book registered / captured / "
+              "pending / missed: "
+              f"{payload.get('opening_opportunity_exit_book_registration_count', 0)} / "
+              f"{payload.get('opening_opportunity_exit_book_capture_count', 0)} / "
+              f"{payload.get('opening_opportunity_exit_book_pending_count', 0)} / "
+              f"{payload.get('opening_opportunity_exit_book_missed_count', 0)}"
+          )
+          print(
+              "- opening opportunity exit-book state digest: "
+              f"{payload.get('opening_opportunity_exit_book_state_digest', 'missing')}"
+          )
+          print(
+              "- opening opportunity exit-book capture error: "
+              f"{payload.get('opening_opportunity_exit_book_capture_error')}"
+          )
+          print(
               "- opening fill-liquidity state digest: "
               f"{payload.get('opening_fill_liquidity_state_digest', 'missing')}"
           )
