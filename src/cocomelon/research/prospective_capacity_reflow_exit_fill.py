@@ -267,12 +267,6 @@ def prospective_capacity_reflow_exit_fill_summary(
 
     option_exits: list[dict[str, object]] = []
     by_result: Counter[str] = Counter()
-    total_gross = ZERO
-    total_entry_fee = ZERO
-    total_exit_fee = ZERO
-    total_net = ZERO
-    total_unclosed = ZERO
-
     for option in options:
         option_id = _text(option.get("option_id"), "option_id")
         opportunity_id = _text(
@@ -377,11 +371,6 @@ def prospective_capacity_reflow_exit_fill_summary(
                 raise ProspectiveCapacityReflowExitFillError(
                     "replacement exit book lineage mismatch"
                 )
-            if evidence.instrument.venue_max_leverage != venue_max_leverage:
-                raise ProspectiveCapacityReflowExitFillError(
-                    "replacement exit instrument leverage drift"
-                )
-
             position = PaperPosition(
                 market=evidence.instrument.market,
                 side=side,
@@ -436,14 +425,6 @@ def prospective_capacity_reflow_exit_fill_summary(
             )
             attempt = simulation.attempt
             by_result[attempt.result.value] += 1
-            if attempt.result is ExecutionResult.FULL:
-                aggregate.full_exit_fills += 1
-            elif attempt.result is ExecutionResult.PARTIAL:
-                aggregate.partial_exit_fills += 1
-            elif attempt.result is ExecutionResult.NO_FILL:
-                aggregate.no_exit_fills += 1
-            else:
-                aggregate.rejected_exit_attempts += 1
 
             gross = sum(
                 (
@@ -467,16 +448,21 @@ def prospective_capacity_reflow_exit_fill_summary(
             net = gross - allocated_entry_fee - attempt.fee
             unclosed = entry_quantity - attempt.filled_quantity
 
+            complete_close = unclosed == ZERO
+            if complete_close:
+                aggregate.full_exit_fills += 1
+            elif attempt.filled_quantity > ZERO:
+                aggregate.partial_exit_fills += 1
+            elif attempt.result is ExecutionResult.NO_FILL:
+                aggregate.no_exit_fills += 1
+            else:
+                aggregate.rejected_exit_attempts += 1
+
             aggregate.gross_realized_pnl += gross
             aggregate.allocated_entry_fee += allocated_entry_fee
             aggregate.exit_fee += attempt.fee
             aggregate.entry_exit_fee_adjusted_pnl += net
             aggregate.unclosed_quantity += unclosed
-            total_gross += gross
-            total_entry_fee += allocated_entry_fee
-            total_exit_fee += attempt.fee
-            total_net += net
-            total_unclosed += unclosed
 
             exits[horizon_key] = {
                 "status": "simulated",
@@ -501,9 +487,13 @@ def prospective_capacity_reflow_exit_fill_summary(
                 "exit_fee": str(attempt.fee),
                 "entry_exit_fee_adjusted_pnl": str(net),
                 "funding_pnl": None,
-                "complete_close": (
-                    attempt.result is ExecutionResult.FULL
+                "entry_venue_max_leverage": str(
+                    venue_max_leverage
                 ),
+                "exit_venue_max_leverage": str(
+                    evidence.instrument.venue_max_leverage
+                ),
+                "complete_close": complete_close,
             }
 
         option_exits.append(
@@ -518,6 +508,7 @@ def prospective_capacity_reflow_exit_fill_summary(
                 "entry_price": str(entry_price),
                 "entry_quantity": str(entry_quantity),
                 "entry_fee": str(entry_fee),
+                "entry_venue_max_leverage": str(venue_max_leverage),
                 "exits": exits,
             }
         )
@@ -540,11 +531,7 @@ def prospective_capacity_reflow_exit_fill_summary(
         "option_exits": option_exits,
         "by_horizon": by_horizon_payload,
         "by_execution_result": dict(sorted(by_result.items())),
-        "gross_realized_pnl": str(total_gross),
-        "allocated_entry_fee": str(total_entry_fee),
-        "exit_fee": str(total_exit_fee),
-        "entry_exit_fee_adjusted_pnl": str(total_net),
-        "unclosed_quantity": str(total_unclosed),
+        "cross_horizon_economics_aggregated": False,
         "replacement_entry_fills_modeled": True,
         "replacement_exit_fills_modeled": True,
         "funding_modeled": False,
