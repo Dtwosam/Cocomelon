@@ -2285,3 +2285,18 @@ For each attributed closed trade, the candidate timeline removes trades rejected
 This is deliberately narrower than a causal portfolio backtest. It does not invent replacement opportunities, resize later trades from changed equity, change exit timing, or reconstruct unrealized-equity paths. It is descriptive only and does not change any prospective readiness gate.
 
 **LIVE TRADING: DISABLED.**
+
+
+
+### Exact research accounting follow-up — 2026-09-29
+
+Two live research-only accounting failures are now handled without tolerances:
+
+- fixed-schedule entry-filter portfolio timelines update running notional, planned risk, realized contribution, and exposure integrals with exact base-10 Decimal accumulation, so a flat cohort cannot end at a tiny negative residue after many high-precision opens/closes;
+- delayed-entry contribution decomposition keeps the existing per-trade Decimal contract unchanged, but aggregate component sums now carry an explicit `decimal_rounding_residual_pnl` bridge instead of disabling the study when independent finite-precision paths differ by an ulp;
+- the funding-corrected decomposition exposes matching component / legacy-bridge / candidate-bridge Decimal residuals;
+- Issue #469 renders those residuals directly so Decimal bookkeeping cannot be mistaken for economic edge.
+
+These changes affect research accounting and observability only. They do not change any trade, size, stop, fee, funding accrual, risk decision, execution path, readiness threshold, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
