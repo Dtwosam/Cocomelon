@@ -240,3 +240,37 @@ def test_daily_loss_reflow_refuses_exact_scope_when_cash_does_not_reconcile(
     assert result["baseline_cash_reconciliation_clean"] is False
     assert result["exact_cash_scope_opportunities"] == 0
     assert result["exact_candidate_unlock_opportunities"] == 0
+
+
+def test_daily_loss_reflow_excludes_same_timestamp_close(
+    tmp_path,
+) -> None:
+    opportunity_ms = DAY_MS + 200_000
+    same_timestamp_close = _trade(
+        suffix="same-timestamp-close",
+        direction=Direction.LONG,
+        opened_at_ms=opportunity_ms - 60_000,
+        pnl="-120",
+    )
+    assert same_timestamp_close.closed_at_ms == opportunity_ms
+    opportunity = _opportunity(
+        timestamp_ms=opportunity_ms,
+        daily_realized_pnl="-120",
+    )
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(tmp_path / "ranks")
+    try:
+        result = prospective_daily_loss_lockout_reflow_summary(
+            (opportunity,),
+            (same_timestamp_close,),
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(started_at_ms=0),
+        )
+    finally:
+        facts.close()
+
+    assert result["same_day_closed_trade_instances"] == 0
+    assert result["baseline_cash_reconciliation_misses"] == 1
+    assert result["exact_cash_scope_opportunities"] == 0
+    assert result["exact_candidate_unlock_opportunities"] == 0
