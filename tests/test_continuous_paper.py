@@ -323,6 +323,13 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert (
         '"opening_fill_liquidity_state_digest": (' in source
     )
+    assert "ContinuousPaperOpeningOpportunityStore(" in source
+    assert 'root / "opening-opportunities"' in source
+    assert '"opening_opportunity_evidence": {' in source
+    assert '"opening_opportunity_count": self.opening_opportunity_count' in source
+    assert '"opening_opportunity_state_digest": (' in source
+    assert "opportunity_evidence_from_trace(" in source
+    assert "trace.risk_request.timestamp_ms" in source
     assert (
         '"account_lifecycle_economics": account_lifecycle_economics'
         in source
