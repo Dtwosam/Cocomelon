@@ -220,6 +220,49 @@ def test_stream_zip_member_handles_stored_zip64_data_descriptor() -> None:
     assert result.stdout == payload
 
 
+def test_stream_zip_member_handles_zero_local_sizes_with_descriptor() -> None:
+    class UnseekableBytesIO(io.BytesIO):
+        def seekable(self) -> bool:
+            return False
+
+        def seek(self, *args: object, **kwargs: object) -> int:
+            raise io.UnsupportedOperation
+
+    payload = b"./\x00\x00" + (
+        b"github-artifact-zero-local-sizes-" * 1024
+    ) + b"done"
+    archive_bytes = UnseekableBytesIO()
+    with zipfile.ZipFile(
+        archive_bytes,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(payload)
+
+    encoded = bytearray(archive_bytes.getvalue())
+    assert encoded[:4] == b"PK\x03\x04"
+    encoded[18:26] = b"\x00" * 8
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STREAM_MEMBER),
+            "continuous-paper-state.tar",
+        ],
+        input=bytes(encoded),
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == payload
+
+
 def test_restore_script_keeps_legacy_multifile_compatibility(
     tmp_path: Path,
 ) -> None:
