@@ -6829,6 +6829,15 @@ def render_live_status(
             f"`{payload.get('total_return_fraction', 'unknown')}`"
         ),
         f"- cash: `{payload['cash']}`",
+        (
+            "- UTC day start / equity: "
+            f"`{payload.get('day_start_ms', 'unknown')} / "
+            f"{payload.get('day_start_equity', 'unknown')}`"
+        ),
+        (
+            "- daily realized PnL: "
+            f"`{payload.get('daily_realized_pnl', 'unknown')}`"
+        ),
         f"- unrealized PnL: `{payload['unrealized_pnl']}`",
         f"- realized gross PnL: `{payload['realized_gross_pnl']}`",
         f"- cumulative fees: `{payload['cumulative_fees']}`",
