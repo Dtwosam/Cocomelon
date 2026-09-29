@@ -2387,3 +2387,12 @@ The captured `RiskRequest.account_state.daily_realized_pnl` remains authoritativ
 An `exact_candidate_unlock_opportunities` count is granted only when the captured daily realized PnL reconciles exactly to the fully same-day closed-trade cash ledger, trade attribution is complete, and the opportunity has neither cross-day closed trades nor open positions whose same-day cash effects would require additional replay. Reconciliation misses, cross-day effects, and open-position effects are reported explicitly rather than estimated. Replacement entries, fills, exits, and replacement PnL remain unmodeled.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Exact cross-day cash for daily-loss reflow — 2026-09-29
+
+The daily-loss lockout reflow now reconstructs current-day cash for closed trades that opened before the UTC accounting day. It does not reuse whole-trade net PnL for those trades. Instead, it loads immutable exit fills for every recorded exit plan, revalidates fill lineage and aggregate realized PnL/fees against the journal, and adds only funding accruals whose verified boundary falls inside the current accounting day before the rejected opportunity.
+
+This removes the main ambiguity in the current live cohort: cross-day trades can now participate in exact baseline daily-cash reconciliation and candidate-blocked cash removal without charging prior-day entry fees or prior-day funding to the current day. Exact unlock credit still requires complete candidate attribution, exact cash reconciliation, and no open-position cash effects at the opportunity timestamp.
+
+Replacement entries, fills, exits, and replacement PnL remain unmodeled. **LIVE TRADING: DISABLED.**
