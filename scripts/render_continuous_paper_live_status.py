@@ -2165,7 +2165,7 @@ def _delayed_entry_contribution_decomposition_lines(
                         f"{funding_raw.get('lineage_mismatches', 0)}`"
                     ),
                     (
-                        "_Funding timing is the explicit fourth economic effect; "
+                        "_Funding timing is the explicit fourth effect; "
                         "any finite-precision Decimal bridge is reported separately "
                         "and reconciles the aggregate accounting exactly._"
                     ),
