@@ -4432,6 +4432,12 @@ def _prospective_capacity_reflow_forward_excursion_lines(
             item = by_horizon[horizon_key]
             if not isinstance(item, dict):
                 continue
+            mean_time_to_best = item.get("mean_time_to_best_ms")
+            mean_time_label = (
+                "n/a"
+                if mean_time_to_best is None
+                else f"{mean_time_to_best}ms"
+            )
             lines.append(
                 "| "
                 f"{labels.get(str(horizon_key), str(horizon_key) + 'ms')} | "
@@ -4445,7 +4451,7 @@ def _prospective_capacity_reflow_forward_excursion_lines(
                 f"{item.get('best_entry_fee_adjusted_mtm_pnl', '0')} | "
                 f"{item.get('ending_entry_fee_adjusted_mtm_pnl', '0')} | "
                 f"{item.get('peak_to_end_giveback_pnl', '0')} | "
-                f"{item.get('mean_time_to_best_ms')}ms |"
+                f"{mean_time_label} |"
             )
 
     lines.extend(
