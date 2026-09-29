@@ -515,6 +515,98 @@ class PaperExecutionStore:
             raise _PlanIdMismatchError("persisted plan payload does not match plan_id")
         return plan
 
+    def load_position_history(
+        self,
+        opening_plan_id: str,
+        *,
+        through_ms: int,
+    ) -> tuple[PaperPosition, ...]:
+        if not opening_plan_id.strip():
+            raise ValueError("opening_plan_id must not be empty")
+        if through_ms < 0:
+            raise ValueError("through_ms must be non-negative")
+
+        rows = self._conn.execute(
+            """
+            SELECT event_id, market, payload_json
+            FROM paper_position_events
+            ORDER BY event_id
+            """
+        ).fetchall()
+        by_position_id: dict[str, PaperPosition] = {}
+        for event_id, market, payload_json in rows:
+            try:
+                payload = json.loads(str(payload_json))
+                if not isinstance(payload, dict):
+                    raise ValueError(
+                        "position event payload is not an object"
+                    )
+                position = _position_from_payload(payload)
+            except (
+                KeyError,
+                TypeError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise ValueError(
+                    "persisted position event is unreadable"
+                ) from exc
+            if (
+                str(market) != position.market.canonical
+                or not str(event_id).endswith(
+                    f":{position.position_id}"
+                )
+                or _canonical_json(_position_payload(position))
+                != str(payload_json)
+            ):
+                raise ValueError(
+                    "persisted position event lineage mismatch"
+                )
+            if position.opening_plan_id != opening_plan_id:
+                continue
+            if position.updated_at_ms > through_ms:
+                continue
+            existing = by_position_id.get(position.position_id)
+            if existing is not None and existing != position:
+                raise ValueError(
+                    "immutable position id has conflicting payload"
+                )
+            by_position_id[position.position_id] = position
+
+        return tuple(
+            sorted(
+                by_position_id.values(),
+                key=lambda position: (
+                    position.updated_at_ms,
+                    position.position_id,
+                ),
+            )
+        )
+
+    def load_position_at(
+        self,
+        opening_plan_id: str,
+        *,
+        as_of_ms: int,
+    ) -> PaperPosition | None:
+        history = self.load_position_history(
+            opening_plan_id,
+            through_ms=as_of_ms,
+        )
+        if not history:
+            return None
+        latest_ms = history[-1].updated_at_ms
+        latest = tuple(
+            position
+            for position in history
+            if position.updated_at_ms == latest_ms
+        )
+        if len(latest) != 1:
+            raise ValueError(
+                "ambiguous persisted position state at timestamp"
+            )
+        return latest[0]
+
     def load_execution_history(
         self,
         plan_id: str,

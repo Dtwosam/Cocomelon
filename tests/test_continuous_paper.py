@@ -317,6 +317,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"prospective_capacity_reflow_opportunities": (' in source
     assert "evaluate_prospective_capacity_reflow_release_lineage(" in source
     assert '"prospective_capacity_reflow_release_lineage": (' in source
+    assert (
+        "evaluate_prospective_capacity_reflow_fill_feasibility("
+        in source
+    )
+    assert (
+        '"prospective_capacity_reflow_fill_feasibility": ('
+        in source
+    )
+    assert "execution.store.load_position_history(" in source
     assert "evaluate_prospective_daily_loss_lockout_reflow(" in source
     assert '"prospective_daily_loss_lockout_reflow": (' in source
     assert "execution.store.load_execution_history(plan_id)[1]" in source

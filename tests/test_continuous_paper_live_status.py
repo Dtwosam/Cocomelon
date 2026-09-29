@@ -9,6 +9,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
+    _prospective_capacity_reflow_fill_feasibility_lines,
     _prospective_capacity_reflow_opportunity_lines,
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
@@ -4977,6 +4978,55 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "`" + "b" * 64 + "`" in output
     assert "replacement trades modeled: `false`" in output
     assert "forward mark paths" in output
+
+
+def test_capacity_reflow_fill_renderer_exposes_exact_entry_shadow() -> None:
+    lines = _prospective_capacity_reflow_fill_feasibility_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "candidate_caused_release_options": 5,
+            "candidate_caused_release_opportunities": 5,
+            "conservative_risk_approvals": 5,
+            "planning_approvals": 5,
+            "fillable_options": 4,
+            "full_fill_options": 3,
+            "partial_fill_options": 1,
+            "no_fill_options": 1,
+            "execution_rejected_options": 0,
+            "gross_fill_notional": "1200",
+            "taker_fees": "0.54",
+            "counterfactual_equity_delta_min": "-2",
+            "counterfactual_equity_delta_max": "4",
+            "by_opportunity_market": {"SOL": 3, "XRP": 2},
+            "by_release_market": {"CRV": 5},
+            "by_risk_rejection": {},
+            "by_planning_rejection": {},
+            "by_execution_result": {
+                "full": 3,
+                "no_fill": 1,
+                "partial": 1,
+            },
+            "counterfactual_account_scope": (
+                "same_utc_day_release_position_exact_cash_"
+                "margin_and_equity_with_conservative_peak_bound"
+            ),
+            "replacement_entry_fills_modeled": True,
+            "replacement_exits_modeled": False,
+            "pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-caused replacement entry fill shadow" in output
+    assert "`5 / 5`" in output
+    assert "`5 / 5 / 4`" in output
+    assert "`3 / 1 / 1 / 0`" in output
+    assert "CRV=5" in output
+    assert "full=3" in output
+    assert "true / false / false" in output
+    assert "exact captured decision-time L2 IOC" in output
 
 
 def test_capacity_reflow_renderer_exposes_observed_release_sensitivity() -> None:

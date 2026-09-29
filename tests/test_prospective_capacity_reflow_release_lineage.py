@@ -19,6 +19,7 @@ from cocomelon.research.prospective_capacity_reflow_opportunities import (
     CapacityReleaseOpportunityOption,
 )
 from cocomelon.research.prospective_capacity_reflow_release_lineage import (
+    candidate_caused_capacity_release_options,
     prospective_capacity_reflow_release_lineage_summary,
 )
 from cocomelon.research.prospective_combined_entry_filter import (
@@ -213,6 +214,22 @@ def test_release_lineage_proves_candidate_filtered_capacity_source() -> None:
         rank_loader=ranks.get,
         state=ProspectiveCombinedEntryFilterState(started_at_ms=0),
     )
+
+    caused = candidate_caused_capacity_release_options(
+        options,
+        lineages,
+        (),
+        plan_loader=plans.get,
+        fact_loader=lambda strategy_id, replay_run_id: facts.get(
+            (strategy_id, replay_run_id)
+        ),
+        rank_loader=ranks.get,
+    )
+    assert len(caused) == 1
+    assert caused[0].opportunity_id == options[0].opportunity_id
+    assert caused[0].release_market == "BTC"
+    assert caused[0].release_opening_plan_id == btc_plan.plan_id
+    assert caused[0].release_block_reason == "long_trend"
 
     assert result["release_options"] == 2
     assert result["resolved_release_options"] == 2
