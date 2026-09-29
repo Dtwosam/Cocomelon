@@ -2612,3 +2612,12 @@ The packed continuous-paper artifact now restores through a dedicated single-mem
 Regression coverage forces ZIP64 even on a small fixture so the >4 GiB format path is exercised without creating multi-gigabyte test data. Legacy multi-file artifacts continue to use the existing unzip path. No durable evidence is pruned or approximated, and the decoder itself is included in both continuous-paper push-path and graceful-rotation dependency coverage.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Interruptible research capture during paper-worker handoff — 2026-09-30
+
+The continuous-paper runtime now honors an upgrade stop request inside the bounded research-capture loops that can otherwise extend a worker rotation after the top-level stop flag has already been raised. Due replacement exit-book requests, replacement-funding market requests, open-position funding refreshes, and replacement-funding oracle observation stop starting new work as soon as the handoff flag exists. The main loop also rechecks that flag after native-market refresh, after exit-book capture, after replacement-funding capture, and before the synchronous live-status research pass.
+
+An already-started bounded HTTP request is allowed to finish and every evidence record already written remains durable. No evidence is pruned or partially rewritten, and this does not change strategy decisions, paper accounting, risk limits, promotion authority, execution authority, or live-order behavior.
+
+**LIVE TRADING: DISABLED.**
