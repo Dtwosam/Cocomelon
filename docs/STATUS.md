@@ -2325,3 +2325,14 @@ The continuous-paper workflow now also watches the research modules in this runt
 These changes are research accounting, observability, and deployment-safety only. They do not change entries, exits, stops, sizes, funding, risk approval, readiness gates, promotion authority, or live-order behavior.
 
 **LIVE TRADING: DISABLED.**
+
+### Matched standalone overlap for the combined entry filter — 2026-09-29
+
+The frozen top-10 + no LONG-trend candidate now publishes a second, explicitly descriptive view over the mature time window shared by its two standalone parent studies.
+
+The overlap starts at the later of the standalone LONG+trend-filter start and top-10-rank-filter start. Every closed trade in that window must have both valid decision attribution and fresh opening-rank evidence before it can enter the matched cohort. The diagnostic then replays the exact frozen combined rule and reports allowed/blocked counts, contribution PnL, block-reason attribution, concentration/chronological robustness, and the same fixed observed-schedule portfolio view used elsewhere.
+
+This overlap is not prospective evidence for the newer combined candidate. It always carries `fresh_combined_gate_credit = 0`, cannot change the combined readiness gate, and does not alter entries, scanner ranking, strategy decisions, risk, sizing, stops, exits, or live-order authority. Its purpose is to answer whether the two already-mature standalone signals reinforce each other on a clean shared cohort while the independent fresh combined gate continues collecting.
+
+**LIVE TRADING: DISABLED.**
+
