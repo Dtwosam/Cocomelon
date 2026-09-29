@@ -104,6 +104,29 @@ def prospective_replacement_exit_readiness(
         robustness.get("profit_factor"),
         "profit_factor",
     )
+    gross_profit = _decimal(
+        robustness.get("gross_profit"),
+        "gross_profit",
+    )
+    gross_loss_abs = _decimal(
+        robustness.get("gross_loss_abs"),
+        "gross_loss_abs",
+    )
+    if gross_profit < ZERO or gross_loss_abs < ZERO:
+        raise ProspectiveReplacementExitReadinessError(
+            "replacement robustness gross PnL values must be non-negative"
+        )
+    profit_factor_above_one = (
+        (
+            profit_factor is not None
+            and profit_factor > ONE
+        )
+        or (
+            profit_factor is None
+            and gross_loss_abs == ZERO
+            and gross_profit > ZERO
+        )
+    )
     option_leave_one_positive = robustness.get(
         "positive_after_any_single_option_removed"
     )
@@ -162,7 +185,7 @@ def prospective_replacement_exit_readiness(
         ),
         (
             "profit_factor_above_one",
-            profit_factor is not None and profit_factor > ONE,
+            profit_factor_above_one,
         ),
         (
             "positive_after_any_single_option_removed",
@@ -216,6 +239,7 @@ def prospective_replacement_exit_readiness(
         "profit_factor": (
             None if profit_factor is None else str(profit_factor)
         ),
+        "profit_factor_above_one": profit_factor_above_one,
         "positive_after_any_single_option_removed": (
             option_leave_one_positive
         ),
