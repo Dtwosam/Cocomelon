@@ -5225,7 +5225,8 @@ def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
         {
             "enabled": True,
             "candidate_id": "prospective-top10-no-long-trend-v1",
-            "exact_realized_pnl_option_horizons": 3,
+            "exact_realized_pnl_option_horizons": 4,
+            "funding_evidence_records": 3,
             "by_horizon": {
                 "300000": {
                     "options": 5,
@@ -5233,9 +5234,12 @@ def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
                     "complete_closes": 4,
                     "zero_funding_boundary_closes": 3,
                     "funding_evidence_required_closes": 1,
+                    "funding_evidence_complete_closes": 1,
+                    "funding_evidence_missing_closes": 0,
                     "incomplete_or_missing_exits": 1,
-                    "exact_realized_pnl_options": 3,
-                    "exact_realized_pnl": "9.5",
+                    "exact_realized_pnl_options": 4,
+                    "funding_cash_pnl": "-0.2",
+                    "exact_realized_pnl": "9.3",
                 },
                 "3600000": {
                     "options": 5,
@@ -5243,12 +5247,15 @@ def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
                     "complete_closes": 4,
                     "zero_funding_boundary_closes": 0,
                     "funding_evidence_required_closes": 4,
+                    "funding_evidence_complete_closes": 2,
+                    "funding_evidence_missing_closes": 2,
                     "incomplete_or_missing_exits": 1,
-                    "exact_realized_pnl_options": 0,
-                    "exact_realized_pnl": "0",
+                    "exact_realized_pnl_options": 2,
+                    "funding_cash_pnl": "0.4",
+                    "exact_realized_pnl": "-1.6",
                 },
             },
-            "funding_evidence_modeled": False,
+            "funding_evidence_modeled": True,
             "zero_funding_boundary_is_exact_zero_funding": True,
             "cross_horizon_economics_aggregated": False,
             "strategy_level_realized_pnl_claimed": False,
@@ -5258,12 +5265,12 @@ def test_capacity_reflow_realized_pnl_renderer_exposes_exact_scope() -> None:
     output = "\n".join(lines)
 
     assert "Exact replacement realized PnL" in output
-    assert "exact option-horizons available: `3`" in output
-    assert "| 5m | 5 | 5 | 4 | 3 | 1 | 1 | 9.5 |" in output
-    assert "| 1h | 5 | 5 | 4 | 0 | 4 | 1 | 0 |" in output
-    assert "`false / true / false / false`" in output
-    assert "close exactly on a funding boundary" in output
-
+    assert "exact option-horizons available / funding evidence records" in output
+    assert "`4 / 3`" in output
+    assert "| 5m | 5 | 5 | 4 | 3 | 1 | 0 | 1 | -0.2 | 9.3 |" in output
+    assert "| 1h | 5 | 5 | 4 | 0 | 2 | 2 | 1 | 0.4 | -1.6 |" in output
+    assert "`true / true / false / false`" in output
+    assert "never estimated or backfilled" in output
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
     lines = _prospective_capacity_reflow_forward_excursion_lines(
