@@ -2418,3 +2418,14 @@ For a same-UTC-day release position, the shadow loads its immutable decision-tim
 The shadow reports risk approvals, planning approvals, full/partial/no-fill outcomes, simulated entry notional, and entry fees. It fails closed on execution-configuration drift, incomplete historical position state, cross-day release positions, or lineage mismatches. It does not choose a replacement exit, does not calculate replacement-trade PnL, does not change the frozen candidate, and grants no promotion or execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate-caused replacement entry 6h forward markout — 2026-09-29
+
+The research-only capacity-reflow chain now carries evidence-backed replacement entry fills into the durable opening-opportunity forward paths. Only replacement entries produced by a candidate-caused single-position capacity release and the exact captured decision-time L2 IOC are eligible. Each eligible fill is joined back to the matching opportunity path by opportunity id, market, direction, and decision timestamp.
+
+A completed observation uses the first real recorded market mark at or after the six-hour opportunity horizon, within the existing bounded completion lag. The diagnostic reports directional gross markout cash and an entry-fee-adjusted markout, plus positive/negative/flat counts and explicit pending or missing path coverage. Missing, incomplete, duplicate, or lineage-mismatched paths are never imputed.
+
+This is **not** replacement-trade PnL. No replacement exit, exit fee, exit slippage, funding path, stop execution, or thesis exit is modeled here. Other baseline positions remain held fixed under the same single-release sensitivity used by the replacement-entry fill shadow. The result has no promotion or execution authority.
+
+**LIVE TRADING: DISABLED.**
