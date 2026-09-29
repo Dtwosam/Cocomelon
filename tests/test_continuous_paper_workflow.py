@@ -102,6 +102,10 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
         "src/cocomelon/research/prospective_capacity_reflow_forward_markout.py"
         in source
     )
+    assert (
+        "src/cocomelon/research/prospective_capacity_reflow_forward_excursion.py"
+        in source
+    )
     assert "src/cocomelon/strategies" in source
     assert "touch /tmp/continuous-paper-upgrade-requested" in source
     assert "new continuous-paper runtime code detected on main" in source
@@ -161,6 +165,10 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/prospective_top10_rank_filter.py"' in source
     assert (
         '"src/cocomelon/research/prospective_capacity_reflow_forward_markout.py"'
+        in source
+    )
+    assert (
+        '"src/cocomelon/research/prospective_capacity_reflow_forward_excursion.py"'
         in source
     )
     assert '"src/cocomelon/strategies/**"' in source
