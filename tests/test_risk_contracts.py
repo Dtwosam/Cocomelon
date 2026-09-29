@@ -132,6 +132,40 @@ def test_account_state_has_deterministic_identity() -> None:
     assert len(first.state_id) == 24
 
 
+def test_account_state_day_start_provenance_is_optional_but_validated() -> None:
+    legacy = _account()
+    verified = RiskAccountState(
+        equity=legacy.equity,
+        day_start_equity=legacy.day_start_equity,
+        daily_realized_pnl=legacy.daily_realized_pnl,
+        rolling_7d_peak_equity=legacy.rolling_7d_peak_equity,
+        available_margin=legacy.available_margin,
+        gross_open_notional=legacy.gross_open_notional,
+        consecutive_losses=legacy.consecutive_losses,
+        last_closed_trade_ms=legacy.last_closed_trade_ms,
+        as_of_ms=legacy.as_of_ms,
+        day_start_ms=0,
+    )
+
+    assert legacy.day_start_ms is None
+    assert verified.day_start_ms == 0
+    assert verified.state_id != legacy.state_id
+
+    with pytest.raises(ValueError, match="day_start_ms"):
+        RiskAccountState(
+            equity=legacy.equity,
+            day_start_equity=legacy.day_start_equity,
+            daily_realized_pnl=legacy.daily_realized_pnl,
+            rolling_7d_peak_equity=legacy.rolling_7d_peak_equity,
+            available_margin=legacy.available_margin,
+            gross_open_notional=legacy.gross_open_notional,
+            consecutive_losses=legacy.consecutive_losses,
+            last_closed_trade_ms=legacy.last_closed_trade_ms,
+            as_of_ms=legacy.as_of_ms,
+            day_start_ms=legacy.as_of_ms + 1,
+        )
+
+
 def test_account_state_rejects_inconsistent_or_non_finite_values() -> None:
     with pytest.raises(ValueError, match="equity"):
         RiskAccountState(
