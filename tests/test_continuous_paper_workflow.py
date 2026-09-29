@@ -34,6 +34,22 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     )
     assert upload_at < dispatch_at
 
+def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+    watchdog_at = source.index("watch_for_newer_runtime_run()")
+    trader_at = source.index("cocomelon-continuous-paper \\")
+    assert watchdog_at < trader_at
+    assert 'sleep 60' in source
+    assert 'run.get("event") == "push"' in source
+    assert 'run.get("head_branch") == "main"' in source
+    assert 'run.get("head_sha") != os.environ["GITHUB_SHA"]' in source
+    assert 'run.get("status") in {"queued", "pending", "in_progress"}' in source
+    assert 'int(run.get("run_number", 0)) > current_number' in source
+    assert "requesting graceful handoff independently of heartbeat" in source
+    assert "upgrade_watch_pid=$!" in source
+    assert "trap 'kill \"$upgrade_watch_pid\"" in source
+
+
 def test_continuous_paper_worker_is_hard_locked_to_paper() -> None:
     source = WORKFLOW.read_text(encoding="utf-8").lower()
     assert "cocomelon_execution_mode: paper" in source
