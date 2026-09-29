@@ -280,6 +280,9 @@ from cocomelon.research.prospective_replacement_exit_policy import (
     ProspectiveReplacementExitPolicyState,
     prospective_replacement_exit_policy_summary,
 )
+from cocomelon.research.prospective_replacement_exit_readiness import (
+    prospective_replacement_exit_readiness,
+)
 from cocomelon.research.prospective_replacement_exit_robustness import (
     prospective_replacement_exit_robustness,
 )
@@ -2235,6 +2238,29 @@ def _prospective_replacement_exit_robustness_payload(
             "execution_authority": False,
             "promotion_authority": False,
             "candidate_id": policy.get("candidate_id"),
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_replacement_exit_readiness_payload(
+    robustness: dict[str, object],
+) -> dict[str, object]:
+    try:
+        payload = prospective_replacement_exit_readiness(
+            robustness
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": robustness.get("candidate_id"),
+            "ready_for_review": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
     payload = dict(payload)
@@ -4451,6 +4477,11 @@ def _live_status_payload(
             prospective_replacement_exit_policy
         )
     )
+    prospective_replacement_exit_readiness = (
+        _prospective_replacement_exit_readiness_payload(
+            prospective_replacement_exit_robustness
+        )
+    )
     prospective_capacity_reflow_forward_markout = (
         _prospective_capacity_reflow_forward_markout_payload(
             prospective_capacity_reflow_fill_feasibility,
@@ -4871,6 +4902,9 @@ def _live_status_payload(
         ),
         "prospective_replacement_exit_robustness": (
             prospective_replacement_exit_robustness
+        ),
+        "prospective_replacement_exit_readiness": (
+            prospective_replacement_exit_readiness
         ),
         "prospective_capacity_reflow_forward_markout": (
             prospective_capacity_reflow_forward_markout

@@ -2559,3 +2559,14 @@ The diagnostic reports exact-evidence coverage, gross profit/loss and profit fac
 This module cannot change the fixed five-minute exit horizon, reuse the discovery cohort, grant promotion authority, or execute trades. It exists to prevent a positive aggregate result from being mistaken for durable evidence when that result is concentrated in one option, one market, or one time slice.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective 5-minute replacement exit review gate — 2026-09-29
+
+The frozen five-minute replacement-exit candidate now has a precommitted review-readiness gate layered on top of its post-freeze exact-PnL robustness evidence.
+
+The gate is intentionally fixed before the prospective sample matures. Review readiness requires at least 30 exact post-freeze replacement outcomes, positive aggregate exact realized PnL, profit factor above one, positive total PnL after removing any single option, positive total PnL after removing any single market, and all four full chronological blocks to remain positive. Unresolved leave-one-out or profit-factor evidence fails closed.
+
+Passing this gate means only that the frozen candidate is ready for human review. It cannot alter the five-minute exit rule, cannot promote the candidate, and cannot authorize execution or live orders.
+
+**LIVE TRADING: DISABLED.**

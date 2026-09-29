@@ -22,6 +22,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
     _prospective_replacement_exit_policy_lines,
+    _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
     _replacement_funding_evidence_lines,
 )
@@ -5361,6 +5362,43 @@ def test_replacement_exit_robustness_renderer_exposes_concentration() -> None:
     assert "`5 / true`" in output
     assert "`2 / 2 / false`" in output
     assert "cannot change the fixed 5-minute rule" in output
+
+
+def test_replacement_exit_readiness_renderer_exposes_frozen_gate() -> None:
+    lines = _prospective_replacement_exit_readiness_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-replacement-5m-real-l2-exit-v1",
+            "ready_for_review": False,
+            "promotion_authority": False,
+            "execution_authority": False,
+            "exact_options": 12,
+            "missing_exact_options": 18,
+            "total_exact_realized_pnl": "8",
+            "profit_factor": "1.4",
+            "positive_after_any_single_option_removed": True,
+            "positive_after_any_single_market_removed": False,
+            "temporal_full_blocks": 2,
+            "temporal_positive_full_blocks": 2,
+            "temporal_all_full_blocks_positive": False,
+            "failed_requirements": [
+                "minimum_exact_options",
+                "positive_after_any_single_market_removed",
+                "all_four_full_chronological_blocks_positive",
+            ],
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective 5m replacement exit review gate" in output
+    assert "`false / false / false`" in output
+    assert "`12 / 18`" in output
+    assert "`8 / 1.4`" in output
+    assert "`true / false`" in output
+    assert "`2 / 2 / false`" in output
+    assert "minimum_exact_options" in output
+    assert "ready for human review" in output
 
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:

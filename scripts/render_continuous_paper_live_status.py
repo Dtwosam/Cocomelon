@@ -4729,6 +4729,76 @@ def _prospective_replacement_exit_robustness_lines(
     return lines
 
 
+def _prospective_replacement_exit_readiness_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective 5m replacement exit review gate",
+        "",
+        "- authority: `RESEARCH REVIEW ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective replacement-exit readiness telemetry in this heartbeat._"
+        )
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    failed = raw.get("failed_requirements")
+    failed_text = (
+        "none"
+        if not isinstance(failed, list) or not failed
+        else ", ".join(str(item) for item in failed)
+    )
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- ready for review / promotion authority / execution authority: "
+                f"`{str(bool(raw.get('ready_for_review'))).lower()} / "
+                f"{str(bool(raw.get('promotion_authority'))).lower()} / "
+                f"{str(bool(raw.get('execution_authority'))).lower()}`"
+            ),
+            (
+                "- exact outcomes / missing to minimum: "
+                f"`{raw.get('exact_options', 0)} / "
+                f"{raw.get('missing_exact_options', 0)}`"
+            ),
+            (
+                "- exact PnL / profit factor: "
+                f"`{raw.get('total_exact_realized_pnl', '0')} / "
+                f"{raw.get('profit_factor')}`"
+            ),
+            (
+                "- leave-one option / market stays positive: "
+                f"`{str(bool(raw.get('positive_after_any_single_option_removed'))).lower()} / "
+                f"{str(bool(raw.get('positive_after_any_single_market_removed'))).lower()}`"
+            ),
+            (
+                "- temporal full / positive / all positive: "
+                f"`{raw.get('temporal_full_blocks', 0)} / "
+                f"{raw.get('temporal_positive_full_blocks', 0)} / "
+                f"{str(bool(raw.get('temporal_all_full_blocks_positive'))).lower()}`"
+            ),
+            f"- failed requirements: `{failed_text}`",
+            "",
+            (
+                "_This gate was frozen before the prospective sample matured. "
+                "Passing it only means the candidate is ready for human review; "
+                "it cannot promote the rule or authorize execution._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
 ) -> list[str]:
@@ -7862,6 +7932,11 @@ def render_live_status(
     lines.extend(
         _prospective_replacement_exit_robustness_lines(
             payload.get("prospective_replacement_exit_robustness")
+        )
+    )
+    lines.extend(
+        _prospective_replacement_exit_readiness_lines(
+            payload.get("prospective_replacement_exit_readiness")
         )
     )
     lines.extend(
