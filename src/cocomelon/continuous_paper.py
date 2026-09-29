@@ -5929,8 +5929,8 @@ async def run_continuous_paper_session(
 
         persist_checkpoint()
         if not _stop_requested(stop_path):
-                _emit_live_status(
-                    execution,
+            _emit_live_status(
+                execution,
                 pump,
                 selected,
                 feature_store,
