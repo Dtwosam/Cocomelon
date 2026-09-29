@@ -10,6 +10,7 @@ from scripts.render_continuous_paper_live_status import (
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
     _prospective_capacity_reflow_fill_feasibility_lines,
+    _prospective_capacity_reflow_forward_excursion_lines,
     _prospective_capacity_reflow_forward_markout_lines,
     _prospective_capacity_reflow_opportunity_lines,
     _prospective_capacity_reflow_release_lineage_lines,
@@ -5112,6 +5113,58 @@ def test_capacity_reflow_release_lineage_renderer_exposes_causal_join() -> None:
     assert "BTC=1" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
     assert "exact historical opening plan" in output
+
+
+def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
+    lines = _prospective_capacity_reflow_forward_excursion_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "fillable_options": 5,
+            "paths_available": 5,
+            "paths_missing": 0,
+            "by_horizon": {
+                "300000": {
+                    "settled_options": 5,
+                    "pending_options": 0,
+                    "stale_options": 0,
+                    "missing_path_options": 0,
+                    "positive_peak_options": 4,
+                    "negative_end_options": 3,
+                    "positive_peak_to_negative_end_options": 2,
+                    "best_entry_fee_adjusted_mtm_pnl": "42",
+                    "ending_entry_fee_adjusted_mtm_pnl": "22",
+                    "peak_to_end_giveback_pnl": "20",
+                    "mean_time_to_best_ms": 180000,
+                },
+                "21600000": {
+                    "settled_options": 0,
+                    "pending_options": 5,
+                    "stale_options": 0,
+                    "missing_path_options": 0,
+                    "positive_peak_options": 0,
+                    "negative_end_options": 0,
+                    "positive_peak_to_negative_end_options": 0,
+                    "best_entry_fee_adjusted_mtm_pnl": "0",
+                    "ending_entry_fee_adjusted_mtm_pnl": "0",
+                    "peak_to_end_giveback_pnl": "0",
+                    "mean_time_to_best_ms": None,
+                },
+            },
+            "replacement_forward_excursions_modeled": True,
+            "replacement_exits_modeled": False,
+            "realized_pnl_modeled": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-caused replacement forward excursion" in output
+    assert "`5 / 5 / 0`" in output
+    assert "| 5m | 5 | 0 | 0 | 0 | 4 | 3 | 2 | 42 | 22 | 20 | 180000ms |" in output
+    assert "| 6h | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a |" in output
+    assert "`true / false / false`" in output
+    assert "decay and reversals" in output
 
 
 def test_capacity_reflow_forward_markout_renderer_exposes_horizons() -> None:

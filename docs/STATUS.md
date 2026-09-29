@@ -2460,3 +2460,14 @@ The daily-loss reflow now separates frozen-rule eligibility from causal eligibil
 This closes the evidence leak exposed by the earlier UTC-day rollover defect: historical lockouts captured with stale day state remain useful as documented historical observations, but they cannot be interpreted as evidence that the candidate would have causally reopened trading. New post-fix opportunities can earn causal credit only from verified day-state snapshots.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Candidate replacement forward excursion and giveback — 2026-09-29
+
+The candidate-caused replacement fill study now measures the observed path inside each settled fixed-horizon markout window, not only the endpoint. For every fillable replacement option it joins the exact simulated entry to the durable opening-opportunity mark path and reports the best and worst entry-fee-adjusted mark-to-market observations, their timestamps, time-to-best/time-to-worst, ending mark-to-market PnL, and peak-to-end giveback.
+
+The aggregate view reports how often a replacement reached a positive mark-to-market peak, how often the horizon ended negative, and how often an observed positive peak reversed to a negative endpoint. This directly tests the decay visible in the current cohort, where short-horizon markouts have been stronger than the one-hour endpoint.
+
+The study still uses observed periodic marks rather than synthetic exits. It does not infer intraminute extrema, does not create an exit fill or exit fee, and does not claim realized replacement-trade PnL. Its purpose is to determine whether the replacement opportunity is absent, persistently weak, or briefly favorable and later given back before choosing any exit hypothesis.
+
+**LIVE TRADING: DISABLED.**

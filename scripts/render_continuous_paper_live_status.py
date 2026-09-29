@@ -4372,6 +4372,108 @@ def _prospective_capacity_reflow_forward_markout_lines(
     return lines
 
 
+def _prospective_capacity_reflow_forward_excursion_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate-caused replacement forward excursion",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No replacement forward-excursion telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- fillable options / paths available / paths missing: "
+                f"`{raw.get('fillable_options', 0)} / "
+                f"{raw.get('paths_available', 0)} / "
+                f"{raw.get('paths_missing', 0)}`"
+            ),
+            "",
+            (
+                "| Horizon | Settled | Pending | Stale | Missing | "
+                "Positive peak | Negative end | Peak→negative | "
+                "Best MTM | End MTM | Giveback | Mean time-to-best |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | ---: | ---: | ---: | ---: |"
+            ),
+        ]
+    )
+
+    by_horizon = raw.get("by_horizon")
+    if isinstance(by_horizon, dict):
+        labels = {
+            "300000": "5m",
+            "900000": "15m",
+            "3600000": "1h",
+            "21600000": "6h",
+        }
+        for horizon_key in sorted(
+            by_horizon,
+            key=lambda value: int(str(value)),
+        ):
+            item = by_horizon[horizon_key]
+            if not isinstance(item, dict):
+                continue
+            mean_time_to_best = item.get("mean_time_to_best_ms")
+            mean_time_label = (
+                "n/a"
+                if mean_time_to_best is None
+                else f"{mean_time_to_best}ms"
+            )
+            lines.append(
+                "| "
+                f"{labels.get(str(horizon_key), str(horizon_key) + 'ms')} | "
+                f"{item.get('settled_options', 0)} | "
+                f"{item.get('pending_options', 0)} | "
+                f"{item.get('stale_options', 0)} | "
+                f"{item.get('missing_path_options', 0)} | "
+                f"{item.get('positive_peak_options', 0)} | "
+                f"{item.get('negative_end_options', 0)} | "
+                f"{item.get('positive_peak_to_negative_end_options', 0)} | "
+                f"{item.get('best_entry_fee_adjusted_mtm_pnl', '0')} | "
+                f"{item.get('ending_entry_fee_adjusted_mtm_pnl', '0')} | "
+                f"{item.get('peak_to_end_giveback_pnl', '0')} | "
+                f"{mean_time_label} |"
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "- forward excursions / exits / realized PnL modeled: "
+                f"`{str(bool(raw.get('replacement_forward_excursions_modeled'))).lower()} / "
+                f"{str(bool(raw.get('replacement_exits_modeled'))).lower()} / "
+                f"{str(bool(raw.get('realized_pnl_modeled'))).lower()}`"
+            ),
+            (
+                "_This measures best/worst observed mark-to-market and peak giveback "
+                "inside the same bounded forward paths used by the fixed-horizon "
+                "markout study. It identifies decay and reversals without selecting "
+                "a synthetic exit or claiming realized replacement-trade PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_daily_loss_lockout_reflow_lines(
     raw: object,
 ) -> list[str]:
@@ -7285,6 +7387,13 @@ def render_live_status(
         _prospective_capacity_reflow_forward_markout_lines(
             payload.get(
                 "prospective_capacity_reflow_forward_markout"
+            )
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_forward_excursion_lines(
+            payload.get(
+                "prospective_capacity_reflow_forward_excursion"
             )
         )
     )
