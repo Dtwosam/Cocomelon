@@ -203,6 +203,12 @@ def test_continuous_paper_worker_binds_openings_to_exact_worker_identity() -> No
     assert "opening_opportunity_path_complete_count" in source
     assert "opening_opportunity_path_state_digest" in source
     assert "opening_opportunity_path_capture_error" in source
+    assert "opening_opportunity_exit_book_registration_count" in source
+    assert "opening_opportunity_exit_book_capture_count" in source
+    assert "opening_opportunity_exit_book_pending_count" in source
+    assert "opening_opportunity_exit_book_missed_count" in source
+    assert "opening_opportunity_exit_book_state_digest" in source
+    assert "opening_opportunity_exit_book_capture_error" in source
     assert "closed trade paths:" in source
     assert "staged open trade paths:" in source
     assert "trade_path_open_count" in source
