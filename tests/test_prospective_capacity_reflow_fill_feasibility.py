@@ -237,6 +237,15 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert option["planning_rejection"] is None
     assert option["execution_result"] == "partial"
     assert isinstance(option["attempt_id"], str)
+    assert option["entry_attempt_timestamp_ms"] == 10_000
+    assert isinstance(option["opening_plan_id"], str)
+    assert isinstance(option["opening_risk_decision_id"], str)
+    assert option["opening_strategy_decision_id"] == (
+        evidence.strategy_decision_id
+    )
+    assert option["opening_stop_price"] == "110"
+    assert option["correlation_bucket"] == "majors"
+    assert option["venue_max_leverage"] == "5"
     assert Decimal(str(option["requested_quantity"])) > Decimal("0")
     assert Decimal(str(option["filled_quantity"])) > Decimal("0")
     assert Decimal(str(option["average_fill_price"])) > Decimal("0")
@@ -265,6 +274,14 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["account_capacity_credit_mode"] == (
         "exact_single_release_accounting_other_positions_fixed"
     )
+    assert result["execution_config"] == {
+        "config_version": "phase7-v1",
+        "latency_ms": 250,
+        "max_book_age_ms": 1000,
+        "max_ioc_slippage_bps": "25",
+        "taker_fee_rate": "0.00045",
+        "fee_schedule_id": "hyperliquid-native-base-2026-08-23",
+    }
     assert result["counterfactual_equity_delta_min"] == "1"
     assert result["counterfactual_equity_delta_max"] == "1"
     assert result["replacement_entry_fills_modeled"] is True

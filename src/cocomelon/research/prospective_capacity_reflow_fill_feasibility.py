@@ -435,6 +435,15 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             "planning_rejection": None,
             "execution_result": None,
             "attempt_id": None,
+            "entry_attempt_timestamp_ms": None,
+            "opening_plan_id": None,
+            "opening_risk_decision_id": None,
+            "opening_strategy_decision_id": None,
+            "opening_stop_price": None,
+            "correlation_bucket": request.correlation_bucket,
+            "venue_max_leverage": str(
+                evidence.instrument_object.venue_max_leverage
+            ),
             "requested_quantity": None,
             "filled_quantity": None,
             "average_fill_price": None,
@@ -477,6 +486,16 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             continue
         planning_approvals += 1
         option_payload["planning_approved"] = True
+        option_payload["opening_plan_id"] = plan.plan_id
+        option_payload["opening_risk_decision_id"] = (
+            plan.risk_decision_id
+        )
+        option_payload["opening_strategy_decision_id"] = (
+            plan.strategy_decision_id
+        )
+        option_payload["opening_stop_price"] = (
+            None if plan.stop_price is None else str(plan.stop_price)
+        )
 
         simulation = simulate_ioc(
             plan,
@@ -491,6 +510,9 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             {
                 "execution_result": result.value,
                 "attempt_id": attempt.attempt_id,
+                "entry_attempt_timestamp_ms": (
+                    attempt.attempt_timestamp_ms
+                ),
                 "requested_quantity": str(
                     attempt.requested_quantity
                 ),
@@ -550,6 +572,16 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "execution_config_compatibility": (
             "captured_cost_min_notional_leverage_and_latency"
         ),
+        "execution_config": {
+            "config_version": config.config_version,
+            "latency_ms": config.latency_ms,
+            "max_book_age_ms": config.max_book_age_ms,
+            "max_ioc_slippage_bps": str(
+                config.max_ioc_slippage_bps
+            ),
+            "taker_fee_rate": str(config.taker_fee_rate),
+            "fee_schedule_id": config.fee_schedule_id,
+        },
         "candidate_caused_release_options": len(releases),
         "candidate_caused_release_opportunities": len(
             opportunity_ids

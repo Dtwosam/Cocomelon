@@ -326,6 +326,14 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         in source
     )
     assert (
+        "evaluate_prospective_capacity_reflow_exit_fill("
+        in source
+    )
+    assert (
+        '"prospective_capacity_reflow_exit_fill": ('
+        in source
+    )
+    assert (
         "evaluate_prospective_capacity_reflow_forward_markout("
         in source
     )
