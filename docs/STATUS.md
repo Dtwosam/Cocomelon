@@ -2367,3 +2367,13 @@ For baseline risk rejections with complete, fresh scanner-rank evidence, the dia
 This is intentionally narrower than a portfolio counterfactual. It does not assert that the released position would itself have been filtered, does not simulate a replacement fill or exit, and does not calculate replacement PnL. Its purpose is to identify real observed opportunities where capacity is demonstrably the binding obstacle so the next causal replay layer can focus on evidence-backed replacements.
 
 **LIVE TRADING: DISABLED.**
+
+### Candidate-filtered capacity release lineage — 2026-09-29
+
+The capacity-reflow diagnostic now traces every one-position release option back to the exact historical opening plan that created the position consuming risk capacity. That plan is joined to its persisted decision fact and opening scanner-rank evidence, then evaluated under the same frozen `prospective-top10-no-long-trend-v1` rule.
+
+A release now earns the stronger `candidate_capacity_release_opportunities` classification only when the observed later opportunity passes the frozen candidate, removing the historical position restores aggregate/bucket risk capacity, and the historical position itself is one the candidate would have blocked. The live diagnostic also reports lineage, plan, decision, rank, and stale-rank misses so unresolved joins cannot silently count as causal evidence.
+
+This still stops before replacement execution. It does not assume the later opportunity would fill, does not reuse baseline portfolio state as a full counterfactual, does not choose a replacement exit, and does not calculate replacement PnL. It narrows the next replay stage to evidence-backed cases where the candidate can be shown to have freed the required capacity.
+
+**LIVE TRADING: DISABLED.**
