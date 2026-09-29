@@ -4644,6 +4644,91 @@ def _prospective_replacement_exit_policy_lines(
     return lines
 
 
+def _prospective_replacement_exit_robustness_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective 5m replacement exit robustness",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective replacement-exit robustness telemetry in this heartbeat._"
+        )
+        return lines
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    temporal = raw.get("temporal")
+    temporal = temporal if isinstance(temporal, dict) else {}
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- prospective / exact / incomplete / exact coverage: "
+                f"`{raw.get('prospective_options', 0)} / "
+                f"{raw.get('exact_options', 0)} / "
+                f"{raw.get('incomplete_options', 0)} / "
+                f"{raw.get('exact_coverage_fraction')}`"
+            ),
+            (
+                "- exact sample / minimum for review / sample ready: "
+                f"`{raw.get('exact_options', 0)} / "
+                f"{raw.get('minimum_exact_options_for_review', 0)} / "
+                f"{str(bool(raw.get('sample_ready_for_review'))).lower()}`"
+            ),
+            (
+                "- exact PnL / gross profit / gross loss / profit factor: "
+                f"`{raw.get('total_exact_realized_pnl', '0')} / "
+                f"{raw.get('gross_profit', '0')} / "
+                f"{raw.get('gross_loss_abs', '0')} / "
+                f"{raw.get('profit_factor')}`"
+            ),
+            (
+                "- largest option PnL / market / absolute-share: "
+                f"`{raw.get('largest_abs_option_pnl')} / "
+                f"{raw.get('largest_abs_option_market')} / "
+                f"{raw.get('largest_abs_option_share')}`"
+            ),
+            (
+                "- leave-one-option min PnL / stays positive: "
+                f"`{raw.get('leave_one_option_out_min_pnl')} / "
+                f"{str(bool(raw.get('positive_after_any_single_option_removed'))).lower()}`"
+            ),
+            (
+                "- largest market / PnL / absolute-share: "
+                f"`{raw.get('largest_abs_market')} / "
+                f"{raw.get('largest_abs_market_pnl')} / "
+                f"{raw.get('largest_abs_market_share')}`"
+            ),
+            (
+                "- leave-one-market min PnL / stays positive: "
+                f"`{raw.get('leave_one_market_out_min_pnl')} / "
+                f"{str(bool(raw.get('positive_after_any_single_market_removed'))).lower()}`"
+            ),
+            (
+                "- chronological full blocks / positive / all positive: "
+                f"`{temporal.get('full_blocks', 0)} / "
+                f"{temporal.get('positive_full_blocks', 0)} / "
+                f"{str(bool(temporal.get('all_full_blocks_positive'))).lower()}`"
+            ),
+            "",
+            (
+                "_This is a post-freeze robustness diagnostic only. It cannot "
+                "change the fixed 5-minute rule, promote it, or execute it._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_capacity_reflow_forward_excursion_lines(
     raw: object,
 ) -> list[str]:
@@ -7772,6 +7857,11 @@ def render_live_status(
     lines.extend(
         _prospective_replacement_exit_policy_lines(
             payload.get("prospective_replacement_exit_policy")
+        )
+    )
+    lines.extend(
+        _prospective_replacement_exit_robustness_lines(
+            payload.get("prospective_replacement_exit_robustness")
         )
     )
     lines.extend(

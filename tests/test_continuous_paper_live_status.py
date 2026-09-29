@@ -22,6 +22,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
     _prospective_replacement_exit_policy_lines,
+    _prospective_replacement_exit_robustness_lines,
     _replacement_funding_evidence_lines,
 )
 
@@ -5313,6 +5314,53 @@ def test_prospective_replacement_exit_policy_renderer_exposes_freeze() -> None:
     assert "funding_evidence_required=1" in output
     assert "`true / false`" in output
     assert "only opportunities observed after the durable freeze" in output
+
+
+def test_replacement_exit_robustness_renderer_exposes_concentration() -> None:
+    lines = _prospective_replacement_exit_robustness_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-replacement-5m-real-l2-exit-v1",
+            "prospective_options": 12,
+            "exact_options": 10,
+            "incomplete_options": 2,
+            "exact_coverage_fraction": "0.8333333333333333333333333333",
+            "minimum_exact_options_for_review": 30,
+            "sample_ready_for_review": False,
+            "total_exact_realized_pnl": "14",
+            "gross_profit": "22",
+            "gross_loss_abs": "8",
+            "profit_factor": "2.75",
+            "largest_abs_option_pnl": "7",
+            "largest_abs_option_market": "SOL",
+            "largest_abs_option_share": "0.2333",
+            "leave_one_option_out_min_pnl": "7",
+            "positive_after_any_single_option_removed": True,
+            "largest_abs_market": "SOL",
+            "largest_abs_market_pnl": "9",
+            "largest_abs_market_share": "0.3",
+            "leave_one_market_out_min_pnl": "5",
+            "positive_after_any_single_market_removed": True,
+            "temporal": {
+                "full_blocks": 2,
+                "positive_full_blocks": 2,
+                "all_full_blocks_positive": False,
+            },
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective 5m replacement exit robustness" in output
+    assert "`12 / 10 / 2 / 0.8333333333333333333333333333`" in output
+    assert "`10 / 30 / false`" in output
+    assert "`14 / 22 / 8 / 2.75`" in output
+    assert "`7 / SOL / 0.2333`" in output
+    assert "`7 / true`" in output
+    assert "`SOL / 9 / 0.3`" in output
+    assert "`5 / true`" in output
+    assert "`2 / 2 / false`" in output
+    assert "cannot change the fixed 5-minute rule" in output
 
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
