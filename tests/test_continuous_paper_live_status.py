@@ -9,6 +9,7 @@ from scripts.render_continuous_paper_live_status import (
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
+    _prospective_capacity_reflow_exit_fill_lines,
     _prospective_capacity_reflow_fill_feasibility_lines,
     _prospective_capacity_reflow_forward_excursion_lines,
     _prospective_capacity_reflow_forward_markout_lines,
@@ -5134,6 +5135,53 @@ def test_capacity_reflow_release_lineage_renderer_exposes_causal_join() -> None:
     assert "BTC=1" in output
     assert "replacement trades / PnL modeled: `false / false`" in output
     assert "exact historical opening plan" in output
+
+
+def test_capacity_reflow_exit_fill_renderer_exposes_real_l2_closes() -> None:
+    lines = _prospective_capacity_reflow_exit_fill_lines(
+        {
+            "enabled": True,
+            "candidate_id": "prospective-top10-no-long-trend-v1",
+            "fillable_options": 5,
+            "exit_book_records": 7,
+            "by_horizon": {
+                "300000": {
+                    "captured_exit_books": 5,
+                    "missing_exit_books": 0,
+                    "full_exit_fills": 3,
+                    "partial_exit_fills": 2,
+                    "no_exit_fills": 0,
+                    "rejected_exit_attempts": 0,
+                    "entry_exit_fee_adjusted_pnl": "12.5",
+                    "unclosed_quantity": "4",
+                },
+                "21600000": {
+                    "captured_exit_books": 0,
+                    "missing_exit_books": 5,
+                    "full_exit_fills": 0,
+                    "partial_exit_fills": 0,
+                    "no_exit_fills": 0,
+                    "rejected_exit_attempts": 0,
+                    "entry_exit_fee_adjusted_pnl": "0",
+                    "unclosed_quantity": "0",
+                },
+            },
+            "replacement_entry_fills_modeled": True,
+            "replacement_exit_fills_modeled": True,
+            "funding_modeled": False,
+            "replacement_trade_pnl_complete": False,
+            "realized_pnl_claimed": False,
+            "error": None,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate-caused replacement exit fills" in output
+    assert "`5 / 7`" in output
+    assert "| 5m | 5 | 0 | 3 | 2 | 0 | 0 | 12.5 | 4 |" in output
+    assert "| 6h | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 |" in output
+    assert "`true / true / false / false / false`" in output
+    assert "real captured L2 book" in output
 
 
 def test_capacity_reflow_forward_excursion_renderer_exposes_giveback() -> None:
