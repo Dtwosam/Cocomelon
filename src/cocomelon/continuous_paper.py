@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from cocomelon.config import ExecutionMode, Settings
 from cocomelon.domain.execution import (
@@ -293,17 +293,16 @@ from cocomelon.research.prospective_top10_rank_filter import (
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
-_T = TypeVar("_T")
 
 
 def _stop_requested(stop_path: Path | None) -> bool:
     return stop_path is not None and stop_path.exists()
 
 
-def _iter_until_stop(
-    items: Iterable[_T],
+def _iter_until_stop[T](
+    items: Iterable[T],
     stop_path: Path | None,
-) -> Iterator[_T]:
+) -> Iterator[T]:
     for item in items:
         if _stop_requested(stop_path):
             return
