@@ -46,7 +46,10 @@ from cocomelon.evidence.recording import (
 )
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
 from cocomelon.execution.accounting import PaperPosition
-from cocomelon.execution.funding import FundingAccrual
+from cocomelon.execution.funding import (
+    FundingAccrual,
+    funding_boundary_for_record_time,
+)
 from cocomelon.execution.paper import PaperExecutionAdapter
 from cocomelon.hyperliquid.client import INTERVAL_MS, InfoClient
 from cocomelon.hyperliquid.normalize import (
@@ -110,6 +113,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankStore,
     LatestCoarseRankTracker,
     opening_rank_attribution,
+)
+from cocomelon.research.continuous_paper_replacement_funding import (
+    ContinuousPaperReplacementFundingStore,
 )
 from cocomelon.research.continuous_paper_trade_paths import (
     ContinuousPaperTradePathStore,
@@ -444,15 +450,18 @@ class _ContinuousOpeningOpportunitySink:
         store: ContinuousPaperOpeningOpportunityStore,
         path_store: ContinuousPaperOpeningOpportunityPathStore,
         exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
+        replacement_funding_store: ContinuousPaperReplacementFundingStore,
         rank_tracker: LatestCoarseRankTracker,
     ) -> None:
         self._store = store
         self._path_store = path_store
         self._exit_book_store = exit_book_store
+        self._replacement_funding_store = replacement_funding_store
         self._rank_tracker = rank_tracker
         self.error: str | None = None
         self.path_error: str | None = None
         self.exit_book_error: str | None = None
+        self.funding_error: str | None = None
 
     def record_opening_trace(
         self,
@@ -495,24 +504,40 @@ class _ContinuousOpeningOpportunitySink:
             if self.exit_book_error is None:
                 self.exit_book_error = f"{type(exc).__name__}: {exc}"
 
+        try:
+            self._replacement_funding_store.register(
+                opportunity_id=evidence.opportunity_id,
+                market=evidence.market,
+                opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
+            )
+        except Exception as exc:
+            if self.funding_error is None:
+                self.funding_error = f"{type(exc).__name__}: {exc}"
+
     def observe_snapshots(
         self,
         snapshots: dict[str, PerpMarketSnapshot],
     ) -> None:
         for snapshot in snapshots.values():
             mark_px = snapshot.context.mark_px
-            if mark_px is None:
-                continue
+            if mark_px is not None:
+                try:
+                    self._path_store.observe(
+                        market=snapshot.meta.market.canonical,
+                        observed_at_ms=snapshot.received_at_ms,
+                        mark_px=mark_px,
+                        source=snapshot.source,
+                    )
+                except Exception as exc:
+                    if self.path_error is None:
+                        self.path_error = f"{type(exc).__name__}: {exc}"
             try:
-                self._path_store.observe(
-                    market=snapshot.meta.market.canonical,
-                    observed_at_ms=snapshot.received_at_ms,
-                    mark_px=mark_px,
-                    source=snapshot.source,
+                self._replacement_funding_store.observe_snapshot(
+                    snapshot
                 )
             except Exception as exc:
-                if self.path_error is None:
-                    self.path_error = f"{type(exc).__name__}: {exc}"
+                if self.funding_error is None:
+                    self.funding_error = f"{type(exc).__name__}: {exc}"
 
 
 class _CompositeOpeningResearchObserver:
@@ -1185,6 +1210,14 @@ class ContinuousPaperSummary:
     opening_opportunity_exit_book_missed_count: int = 0
     opening_opportunity_exit_book_state_digest: str = ""
     opening_opportunity_exit_book_capture_error: str | None = None
+    replacement_funding_registration_count: int = 0
+    replacement_funding_required_boundary_count: int = 0
+    replacement_funding_oracle_candidate_count: int = 0
+    replacement_funding_capture_count: int = 0
+    replacement_funding_pending_count: int = 0
+    replacement_funding_missed_count: int = 0
+    replacement_funding_state_digest: str = ""
+    replacement_funding_capture_error: str | None = None
     network_access: bool = True
     live_orders: bool = False
 
@@ -1265,6 +1298,30 @@ class ContinuousPaperSummary:
             ),
             "opening_opportunity_exit_book_capture_error": (
                 self.opening_opportunity_exit_book_capture_error
+            ),
+            "replacement_funding_registration_count": (
+                self.replacement_funding_registration_count
+            ),
+            "replacement_funding_required_boundary_count": (
+                self.replacement_funding_required_boundary_count
+            ),
+            "replacement_funding_oracle_candidate_count": (
+                self.replacement_funding_oracle_candidate_count
+            ),
+            "replacement_funding_capture_count": (
+                self.replacement_funding_capture_count
+            ),
+            "replacement_funding_pending_count": (
+                self.replacement_funding_pending_count
+            ),
+            "replacement_funding_missed_count": (
+                self.replacement_funding_missed_count
+            ),
+            "replacement_funding_state_digest": (
+                self.replacement_funding_state_digest
+            ),
+            "replacement_funding_capture_error": (
+                self.replacement_funding_capture_error
             ),
             "network_access": self.network_access,
             "live_orders": self.live_orders,
