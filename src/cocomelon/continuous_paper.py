@@ -221,6 +221,9 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
+from cocomelon.research.prospective_capacity_reflow_opportunities import (
+    evaluate_prospective_capacity_reflow_opportunities,
+)
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
     evaluate_prospective_combined_entry_filter,
@@ -1898,6 +1901,31 @@ def _prospective_delayed_price_confirmation_payload(
     payload = dict(payload)
     payload["enabled"] = True
     payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _prospective_capacity_reflow_opportunity_payload(
+    store: ContinuousPaperOpeningOpportunityStore,
+    state: ProspectiveCombinedEntryFilterState,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_capacity_reflow_opportunities(
+            store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
     payload["error"] = None
     return payload
 
@@ -3904,6 +3932,12 @@ def _live_status_payload(
             ),
         )
     )
+    prospective_capacity_reflow_opportunities = (
+        _prospective_capacity_reflow_opportunity_payload(
+            opening_opportunity_store,
+            prospective_combined_entry_filter_state,
+        )
+    )
     delayed_entry_fill_capacity = (
         _delayed_entry_fill_capacity_payload(
             pump.journal,
@@ -4271,6 +4305,9 @@ def _live_status_payload(
         ),
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
+        ),
+        "prospective_capacity_reflow_opportunities": (
+            prospective_capacity_reflow_opportunities
         ),
         "opening_scanner_rank": opening_rank,
         "opening_fill_liquidity": opening_fill_liquidity,
