@@ -184,3 +184,50 @@ def test_fixed_schedule_filter_portfolio_rejects_duplicate_trades() -> None:
                 ),
             )
         )
+
+
+
+def test_fixed_schedule_exactly_flattens_high_precision_overlap() -> None:
+    items = (
+        ProspectiveFilterPortfolioItem(
+            _trade(
+                suffix="precision-a",
+                opened_at_ms=1_000,
+                closed_at_ms=3_000,
+                pnl="0",
+                quantity="77416898026317.92986302563684111",
+            ),
+            admitted=True,
+        ),
+        ProspectiveFilterPortfolioItem(
+            _trade(
+                suffix="precision-b",
+                opened_at_ms=2_000,
+                closed_at_ms=4_000,
+                pnl="0",
+                quantity="75676232014740.16417343828836660",
+            ),
+            admitted=True,
+        ),
+    )
+
+    result = prospective_filter_fixed_schedule_portfolio(items)
+
+    actual = result["actual"]
+    candidate = result["candidate"]
+    assert isinstance(actual, dict)
+    assert isinstance(candidate, dict)
+    assert actual["final_realized_contribution"] == "0"
+    assert candidate["final_realized_contribution"] == "0"
+    assert actual["max_gross_notional"] == (
+        "15309313004105809.403646392521"
+    )
+    assert actual["max_planned_risk"] == (
+        "1530931300410580.9403646392521"
+    )
+    assert candidate["max_gross_notional"] == (
+        actual["max_gross_notional"]
+    )
+    assert candidate["max_planned_risk"] == (
+        actual["max_planned_risk"]
+    )
