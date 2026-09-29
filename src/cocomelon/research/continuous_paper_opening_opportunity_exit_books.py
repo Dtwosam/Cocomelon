@@ -783,6 +783,7 @@ class ContinuousPaperOpeningOpportunityExitBookStore:
             )
         if (
             book.exchange_time_ms is None
+            or book.exchange_time_ms < request.target_at_ms
             or book.exchange_time_ms > observed_at_ms
         ):
             raise ContinuousPaperOpeningOpportunityExitBookError(
@@ -844,13 +845,27 @@ class ContinuousPaperOpeningOpportunityExitBookStore:
             )
         return evidence
 
+    def _record_from_path(
+        self,
+        path: Path,
+    ) -> OpeningOpportunityExitBookEvidence:
+        evidence = OpeningOpportunityExitBookEvidence.from_dict(
+            self._read(path)
+        )
+        if path.name != self._record_name(
+            evidence.opportunity_id,
+            evidence.horizon_ms,
+        ):
+            raise ContinuousPaperOpeningOpportunityExitBookError(
+                "exit book evidence filename mismatch"
+            )
+        return evidence
+
     def iter_records(
         self,
     ) -> tuple[OpeningOpportunityExitBookEvidence, ...]:
         rows = tuple(
-            OpeningOpportunityExitBookEvidence.from_dict(
-                self._read(path)
-            )
+            self._record_from_path(path)
             for path in self.records_root.glob("*.json")
         )
         return tuple(
