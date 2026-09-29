@@ -3978,6 +3978,101 @@ def _opening_fill_liquidity_lines(raw: object) -> list[str]:
     return lines
 
 
+def _prospective_capacity_reflow_opportunity_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Candidate capacity-reflow opportunity diagnostic",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No capacity-reflow opportunity telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    def counts(value: object) -> str:
+        if not isinstance(value, dict) or not value:
+            return "none"
+        return ", ".join(
+            f"{key}={item}"
+            for key, item in sorted(value.items())
+        )
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- opportunities / baseline rejected: "
+                f"`{raw.get('opportunities', 0)} / "
+                f"{raw.get('baseline_rejections', 0)}`"
+            ),
+            (
+                "- candidate-eligible / candidate-blocked rejections: "
+                f"`{raw.get('candidate_eligible_rejections', 0)} / "
+                f"{raw.get('candidate_blocked_rejections', 0)}`"
+            ),
+            (
+                "- missing rank / stale rank / integrity clean: "
+                f"`{raw.get('missing_rank_evidence', 0)} / "
+                f"{raw.get('stale_rank_evidence', 0)} / "
+                f"{str(bool(raw.get('integrity_clean'))).lower()}`"
+            ),
+            (
+                "- candidate-eligible risk-capacity rejections / "
+                "unblocked by one-position release: "
+                f"`{raw.get('candidate_eligible_capacity_rejections', 0)} / "
+                f"{raw.get('single_position_release_unblocked', 0)}`"
+            ),
+            (
+                "- single-position release options: "
+                f"`{raw.get('single_position_release_options', 0)}`"
+            ),
+            (
+                "- baseline rejection reasons: "
+                f"`{counts(raw.get('by_baseline_rejection_reason'))}`"
+            ),
+            (
+                "- candidate block reasons: "
+                f"`{counts(raw.get('by_candidate_block_reason'))}`"
+            ),
+            (
+                "- release markets: "
+                f"`{counts(raw.get('by_release_market'))}`"
+            ),
+            (
+                "- release correlation buckets: "
+                f"`{counts(raw.get('by_release_bucket'))}`"
+            ),
+            (
+                "- replacement trades / PnL modeled: "
+                f"`{str(bool(raw.get('replacement_trades_modeled'))).lower()} / "
+                f"{str(bool(raw.get('pnl_modeled'))).lower()}`"
+            ),
+            "",
+            (
+                "_This uses only opportunities actually observed at decision time. "
+                "The release test asks whether removing one existing position would "
+                "restore aggregate/bucket risk capacity for a candidate-eligible "
+                "rejection. It does not yet claim that the released position would "
+                "have been filtered, that the replacement would fill, or that its "
+                "PnL would be positive._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _opening_opportunity_evidence_lines(
     raw: object,
 ) -> list[str]:
@@ -6708,6 +6803,11 @@ def render_live_status(
     lines.extend(
         _prospective_combined_entry_filter_lines(
             payload.get("prospective_combined_entry_filter")
+        )
+    )
+    lines.extend(
+        _prospective_capacity_reflow_opportunity_lines(
+            payload.get("prospective_capacity_reflow_opportunities")
         )
     )
     lines.extend(
