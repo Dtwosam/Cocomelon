@@ -529,6 +529,20 @@ class BaselineReplayPipeline:
             self._recorded_account_states.add(account.state_id)
         return observation_from_account_state(account, replay_run_id=self._run_id)
 
+    def _roll_account_day(
+        self,
+        now_ms: int,
+    ) -> tuple[JournalObservation, ...]:
+        if not self._execution.roll_account_day(now_ms):
+            return ()
+        if not self._initial_observation_emitted:
+            return ()
+        return (
+            self._account_observation(
+                EquityFactKind.ACCOUNT_UPDATE
+            ),
+        )
+
     def _ensure_initial_account_observation(self) -> tuple[JournalObservation, ...]:
         if self._initial_observation_emitted:
             return ()
@@ -950,7 +964,10 @@ class BaselineReplayPipeline:
     ) -> tuple[JournalObservation, ...]:
         if now_ms < record.available_at_ms:
             raise ReplayInvariantError("baseline replay consumed future evidence")
-        observations = list(self._ensure_initial_account_observation())
+        observations = list(self._roll_account_day(now_ms))
+        observations.extend(
+            self._ensure_initial_account_observation()
+        )
 
         if record.record_kind is SourceRecordKind.DATA_GAP:
             payload = record.payload

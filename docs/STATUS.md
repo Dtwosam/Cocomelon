@@ -2396,3 +2396,14 @@ The daily-loss lockout reflow now reconstructs current-day cash for closed trade
 This removes the main ambiguity in the current live cohort: cross-day trades can now participate in exact baseline daily-cash reconciliation and candidate-blocked cash removal without charging prior-day entry fees or prior-day funding to the current day. Exact unlock credit still requires complete candidate attribution, exact cash reconciliation, and no open-position cash effects at the opportunity timestamp.
 
 Replacement entries, fills, exits, and replacement PnL remain unmodeled. **LIVE TRADING: DISABLED.**
+
+
+### Durable UTC paper-account day rollover — 2026-09-29
+
+Live daily-loss reflow evidence exposed an execution-accounting defect: the paper accounting model implemented `roll_account_day()`, but the replay/runtime path never invoked it. As a result, `daily_realized_pnl` and `day_start_equity` could remain anchored to an earlier UTC day and cause a false `daily_loss_lockout` after losses that should no longer count toward the current-day guard.
+
+The paper execution adapter now performs a durable UTC-day rollover exactly once when the first replay record for a new day arrives. The rollover is persisted before the decision engine sees that record, resets only `daily_realized_pnl`, advances `day_start_ms`, and snapshots the account's current equity as `day_start_equity`; cash, positions, cumulative realized PnL, fees, funding, and loss-streak state are preserved. A persistence failure leaves the prior account untouched and degrades execution health rather than continuing with a partially rolled state. Funding is assigned to the daily risk ledger by its economic funding boundary: a late prior-day accrual still updates cumulative cash/funding but cannot leak into the new day's `daily_realized_pnl`, and a new-day accrual is rejected unless the account day has already rolled.
+
+The live heartbeat now exposes `day_start_ms`, `day_start_equity`, and `daily_realized_pnl` so rollover behavior is directly auditable after worker handoff. This corrects paper risk accounting and can change future paper risk approvals that were previously rejected by a stale daily-loss ledger. It does not enable live orders.
+
+**LIVE TRADING: DISABLED.**

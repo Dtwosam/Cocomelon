@@ -4439,6 +4439,11 @@ def _live_status_payload(
         "starting_cash": str(execution.account.starting_cash),
         "cash": str(execution.account.cash),
         "equity": str(execution.account.equity),
+        "day_start_ms": execution.account.day_start_ms,
+        "day_start_equity": str(execution.account.day_start_equity),
+        "daily_realized_pnl": str(
+            execution.account.daily_realized_pnl
+        ),
         "total_account_pnl": str(total_account_pnl),
         "total_return_fraction": str(total_return_fraction),
         "unrealized_pnl": str(execution.account.unrealized_pnl),

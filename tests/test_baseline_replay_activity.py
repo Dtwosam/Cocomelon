@@ -18,6 +18,7 @@ from cocomelon.evidence.baseline import RecordedStateBook
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.epochs import DecisionEpoch, EpochMarketEvaluation
 from cocomelon.evidence.lifecycle import BaselineReplayPipeline
+from cocomelon.execution.accounting import DAY_MS
 from cocomelon.execution.paper import PaperExecutionAdapter
 
 MARKET = MarketId("", "BTC")
@@ -234,6 +235,95 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
         assert decision_activity.risk_rejections == 0
         assert decision_activity.opening_execution_attempts == 1
         assert decision_activity.opening_fills == 1
+    finally:
+        execution.close()
+        facts.close()
+
+
+class _RolloverAssertingDecisionEngine:
+    def __init__(
+        self,
+        replay_config: BaselineReplayConfig,
+        execution: PaperExecutionAdapter,
+    ) -> None:
+        self._state = RecordedStateBook(
+            microstructure_window_ms=replay_config.microstructure_window_ms
+        )
+        self._execution = execution
+        self.observed = False
+
+    @property
+    def state_book(self) -> RecordedStateBook:
+        return self._state
+
+    def observe(
+        self,
+        record: ReplayRecord,
+        now_ms: int,
+    ) -> tuple[DecisionEpoch, ...]:
+        assert self._execution.account.day_start_ms == DAY_MS
+        assert self._execution.account.daily_realized_pnl == Decimal("0")
+        self._state.apply(record, now_ms)
+        self.observed = True
+        return ()
+
+    def flush(self, _end_ms: int) -> tuple[DecisionEpoch, ...]:
+        return ()
+
+
+def test_pipeline_rolls_account_day_before_decision_engine_observes_record(
+    tmp_path,
+) -> None:
+    config = BaselineReplayConfig(execution=PaperExecutionConfig())
+    execution = PaperExecutionAdapter(
+        tmp_path / "execution-rollover.sqlite3",
+        config.execution,
+        starting_cash=config.starting_cash,
+        startup_timestamp_ms=DAY_MS - 1_000,
+    )
+    facts = EvaluationFactStore(tmp_path / "facts-rollover.sqlite3")
+    decision_engine = _RolloverAssertingDecisionEngine(
+        config,
+        execution,
+    )
+    pipeline = BaselineReplayPipeline(
+        config,
+        execution,
+        facts,
+        selected_markets=(MARKET,),
+        replay_run_id=RUN_ID + "-rollover",
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        decision_engine=decision_engine,
+    )
+    record = _record(
+        kind="market_snapshot",
+        available_at_ms=DAY_MS + 1_000,
+        payload={
+            "meta": {
+                "wire_name": MARKET.wire_name,
+                "sz_decimals": 4,
+                "max_leverage": 20,
+                "margin_table_id": 1,
+                "only_isolated": False,
+                "is_delisted": False,
+                "margin_mode": None,
+            },
+            "context": {
+                "mark_px": "100",
+                "mid_px": "100",
+                "oracle_px": "100",
+                "funding": "0",
+                "open_interest": "1000000",
+                "day_ntl_vlm": "500000000",
+                "premium": "0",
+                "prev_day_px": "99",
+            },
+        },
+    )
+    try:
+        pipeline.on_record(record, record.available_at_ms)
+        assert decision_engine.observed is True
+        assert execution.account.day_start_ms == DAY_MS
     finally:
         execution.close()
         facts.close()

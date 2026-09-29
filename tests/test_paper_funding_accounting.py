@@ -16,10 +16,12 @@ from cocomelon.domain.execution import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.execution.accounting import (
+    DAY_MS,
     apply_funding_accrual,
     apply_opening_fills,
     empty_account,
     mark_to_market,
+    roll_account_day,
 )
 from cocomelon.execution.funding import FundingAccrual, funding_cash_delta
 from cocomelon.execution.paper import PaperExecutionAdapter
@@ -256,3 +258,47 @@ def test_adapter_funding_is_idempotent_before_and_after_restart(tmp_path: Path) 
     assert third.cumulative_funding == first_funding
     assert reopened.store.table_counts()["paper_funding_events"] == 1
     reopened.close()
+
+
+def test_late_prior_day_funding_preserves_new_day_daily_pnl() -> None:
+    prior = _marked_account(OrderSide.BUY)
+    accrual = _accrual(prior)
+    rolled = roll_account_day(prior, DAY_MS)
+
+    updated = apply_funding_accrual(
+        rolled,
+        accrual,
+        DAY_MS + 1_000,
+    )
+
+    assert accrual.boundary_ms < rolled.day_start_ms
+    assert updated.cash == rolled.cash + accrual.cash_delta
+    assert updated.cumulative_funding == (
+        rolled.cumulative_funding + accrual.cash_delta
+    )
+    assert updated.daily_realized_pnl == Decimal("0")
+
+
+def test_funding_requires_account_roll_before_new_day_boundary() -> None:
+    prior = _marked_account(OrderSide.BUY)
+    position = prior.positions[0]
+    future_boundary = DAY_MS
+    accrual = FundingAccrual(
+        market=MARKET,
+        boundary_ms=future_boundary,
+        position_id=position.position_id,
+        signed_quantity=position.quantity,
+        oracle_price=Decimal("100"),
+        funding_rate=Decimal("0.001"),
+        cash_delta=Decimal("-0.200"),
+        oracle_event_key="ctx:SOL:new-day-funding",
+        funding_source="hyperliquid-mainnet-info",
+        funding_received_at_ms=future_boundary + 500,
+    )
+
+    with pytest.raises(ValueError, match="account day must be rolled"):
+        apply_funding_accrual(
+            prior,
+            accrual,
+            future_boundary + 1_000,
+        )

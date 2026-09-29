@@ -310,6 +310,9 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert "evaluate_prospective_combined_entry_filter(" in source
     assert "evaluate_prospective_combined_matched_overlap(" in source
     assert '"matched_standalone_overlap"' in source
+    assert '"day_start_ms": execution.account.day_start_ms' in source
+    assert '"day_start_equity": str(execution.account.day_start_equity)' in source
+    assert '"daily_realized_pnl": str(' in source
     assert "evaluate_prospective_capacity_reflow_opportunities(" in source
     assert '"prospective_capacity_reflow_opportunities": (' in source
     assert "evaluate_prospective_capacity_reflow_release_lineage(" in source

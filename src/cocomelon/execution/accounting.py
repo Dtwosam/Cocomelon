@@ -606,7 +606,13 @@ def apply_funding_accrual(
         )
         cash = account.cash + accrual.cash_delta
         cumulative_funding = account.cumulative_funding + accrual.cash_delta
-        daily_realized_pnl = account.daily_realized_pnl + accrual.cash_delta
+        if accrual.boundary_ms >= account.day_start_ms + DAY_MS:
+            raise ValueError(
+                "account day must be rolled before current-day funding"
+            )
+        daily_realized_pnl = account.daily_realized_pnl
+        if accrual.boundary_ms >= account.day_start_ms:
+            daily_realized_pnl += accrual.cash_delta
 
     unrealized, gross_notional, reserved_margin = _mark_derived_state(positions)
     return _state_with_equity(
