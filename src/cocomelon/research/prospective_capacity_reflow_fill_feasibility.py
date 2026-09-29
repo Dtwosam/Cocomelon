@@ -436,6 +436,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             "execution_result": None,
             "attempt_id": None,
             "entry_attempt_timestamp_ms": None,
+            "opening_plan_id": None,
             "opening_risk_decision_id": None,
             "opening_strategy_decision_id": None,
             "opening_stop_price": None,
@@ -485,6 +486,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             continue
         planning_approvals += 1
         option_payload["planning_approved"] = True
+        option_payload["opening_plan_id"] = plan.plan_id
         option_payload["opening_risk_decision_id"] = (
             plan.risk_decision_id
         )
