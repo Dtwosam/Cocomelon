@@ -28,14 +28,14 @@ from cocomelon.research.delayed_entry_funding import (
     DelayedEntryFundingMissingError,
     FundingLoader,
 )
-from cocomelon.research.exact_decimal_aggregation import (
-    exact_decimal_sum,
-)
 from cocomelon.research.delayed_entry_stop_survivability import (
     DelayedEntryStopPathEvidenceError,
     DelayedEntryStopSurvivabilityError,
     DelayedEntryStopTimingError,
     evaluate_delayed_entry_stop_outcome,
+)
+from cocomelon.research.exact_decimal_aggregation import (
+    exact_decimal_sum,
 )
 
 ZERO: Final = Decimal("0")
