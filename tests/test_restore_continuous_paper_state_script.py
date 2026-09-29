@@ -148,6 +148,38 @@ def test_stream_zip_member_handles_forced_zip64(
     assert result.stdout == payload
 
 
+def test_stream_zip_member_handles_forced_zip64_stored_member(
+    tmp_path: Path,
+) -> None:
+    payload = (b"zip64-stored-stream-member-" * 1024) + b"done"
+    archive_path = tmp_path / "forced-zip64-stored.zip"
+    with zipfile.ZipFile(
+        archive_path,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(payload)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(STREAM_MEMBER),
+            "continuous-paper-state.tar",
+        ],
+        input=archive_path.read_bytes(),
+        capture_output=True,
+        check=True,
+    )
+
+    assert result.stdout == payload
+
+
 def test_restore_script_keeps_legacy_multifile_compatibility(
     tmp_path: Path,
 ) -> None:
