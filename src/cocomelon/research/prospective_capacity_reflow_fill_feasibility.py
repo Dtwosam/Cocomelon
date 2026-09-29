@@ -445,12 +445,15 @@ def prospective_capacity_reflow_fill_feasibility_summary(
         "execution_authority": False,
         "promotion_authority": False,
         "claim_scope": (
-            "candidate_caused_capacity_release_"
-            "decision_time_replacement_entry_fill"
+            "candidate_caused_single_release_"
+            "decision_time_replacement_entry_fill_sensitivity"
         ),
+        "portfolio_counterfactual": False,
+        "other_baseline_positions_held_fixed": True,
+        "other_positions_replayed": False,
         "counterfactual_account_scope": (
-            "same_utc_day_release_position_exact_cash_"
-            "margin_and_equity_with_conservative_peak_bound"
+            "same_utc_day_single_release_exact_accounting_"
+            "other_baseline_positions_fixed_conservative_peak_bound"
         ),
         "execution_config_compatibility": (
             "captured_cost_min_notional_leverage_and_latency"
@@ -494,7 +497,7 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             sorted(by_execution_result.items())
         ),
         "account_capacity_credit_mode": (
-            "exact_same_day_release_position"
+            "exact_single_release_accounting_other_positions_fixed"
         ),
         "replacement_entry_fills_modeled": True,
         "replacement_exits_modeled": False,
