@@ -2123,6 +2123,8 @@ def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
         in source
     )
     assert "if _stop_requested(stop_path):" in source
+    assert "for market in _iter_until_stop(selected, stop_path):" in source
+    assert "if not _stop_requested(stop_path):\n            _emit_live_status(" in source
 
 
 def test_runtime_persists_authenticated_learning_features() -> None:
