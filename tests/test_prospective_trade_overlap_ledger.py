@@ -458,7 +458,6 @@ def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
     assert "robustness" in extended
 
 
-
 def test_overlap_requires_risk_normalized_economic_confirmation() -> None:
     scored_rows = []
     trades = []
