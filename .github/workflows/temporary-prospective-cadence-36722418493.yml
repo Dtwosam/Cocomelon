@@ -1,0 +1,106 @@
+name: Temporary prospective cadence audit 36722418493
+
+on:
+  push:
+    branches:
+      - audit/prospective-cadence-36722418493
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_RUN_ID: "36722418493"
+      SOURCE_RUN_ATTEMPT: "1"
+      FROZEN_CANDIDATE_SHA: "efde8803da35d16529157729c2080a1cd99f9a4a"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: efde8803da35d16529157729c2080a1cd99f9a4a
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e ".[dev,research]"
+
+      - name: Download compact source artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CADENCE_ID: "11102817306"
+          FEATURES_ID: "11102632268"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cadence-artifact /tmp/features-artifact
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$CADENCE_ID/zip"             > /tmp/cadence.zip
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$FEATURES_ID/zip"             > /tmp/features.zip
+          unzip -q /tmp/cadence.zip -d /tmp/cadence-artifact
+          unzip -q /tmp/features.zip -d /tmp/features-artifact
+
+          cadence_path="$(find /tmp/cadence-artifact -type f -name cadence-shadow-state.json -print -quit)"
+          records_dir="$(find /tmp/features-artifact -type d -name records -print -quit)"
+          test -n "$cadence_path"
+          test -n "$records_dir"
+          echo "CADENCE_PATH=$cadence_path" >> "$GITHUB_ENV"
+          echo "FEATURE_ROOT=$(dirname "$records_dir")" >> "$GITHUB_ENV"
+
+      - name: Evaluate pinned prospective challenger
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_microstructure_prospective.py             "$CADENCE_PATH"             "$FEATURE_ROOT"             --json-out prospective.json             > /tmp/prospective.stdout.json
+          cmp prospective.json /tmp/prospective.stdout.json
+
+      - name: Summarize evidence
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path("prospective.json").read_text())
+          print("## Pinned prospective audit of paper run 36722418493")
+          for k in (
+              "status",
+              "prospective_start_ms",
+              "frozen_training_rows",
+              "frozen_training_rows_sha256",
+              "frozen_training_source",
+              "prospective_rows",
+              "required_prospective_rows",
+              "admitted_rows",
+              "skipped_rows",
+              "candidate_net_return_sum",
+              "candidate_mean_net_return",
+              "development_qualified",
+          ):
+              print(f"- {k}: {r.get(k)}")
+          print("### Direction")
+          for direction,item in r.get("by_direction",{}).items():
+              print(
+                  f"- {direction}: rows={item.get('prospective_rows')} "
+                  f"admitted={item.get('admitted_rows')} "
+                  f"sum={item.get('candidate_net_return_sum')} "
+                  f"mean={item.get('candidate_mean_net_return')}"
+              )
+          print("### Stability")
+          for block in r.get("stability_blocks",[]):
+              print(
+                  f"- block {block['block_index']}: "
+                  f"rows={block['prospective_rows']} "
+                  f"admitted={block['admitted_rows']} "
+                  f"sum={block['candidate_net_return_sum']} "
+                  f"passes={block['passes']}"
+              )
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prospective-cadence-audit-36722418493
+          path: prospective.json
+          if-no-files-found: error
+          retention-days: 30
