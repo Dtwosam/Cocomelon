@@ -15,6 +15,11 @@ from cocomelon.research.prospective_prediction_ledger import (
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "cadence-prospective-actual-trade-overlap-ledger-v1"
 ZERO: Final = Decimal("0")
+OVERLAP_MIN_MATCHED_TRADES: Final = 30
+OVERLAP_MIN_ADMITTED_TRADES: Final = 10
+OVERLAP_MIN_BLOCKED_TRADES: Final = 10
+OVERLAP_MIN_MATCHED_PER_DIRECTION: Final = 5
+OVERLAP_MIN_ADMITTED_PER_DIRECTION: Final = 2
 
 
 class ProspectiveTradeOverlapLedgerError(RuntimeError):
@@ -302,6 +307,110 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
     }
 
 
+def _robustness(
+    rows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    contributions = tuple(
+        Decimal(cast(str, row["candidate_minus_actual_net_pnl"]))
+        for row in rows
+    )
+    total = sum(contributions, ZERO)
+    leave_one_trade_out = tuple(
+        total - contribution for contribution in contributions
+    )
+    minimum = min(leave_one_trade_out, default=ZERO)
+    return {
+        "total_candidate_minus_actual_net_pnl": str(total),
+        "leave_one_trade_out_min_delta": str(minimum),
+        "positive_delta_after_removing_any_one_trade": (
+            len(rows) >= 2 and minimum > ZERO
+        ),
+    }
+
+
+def _readiness(
+    summary: dict[str, object],
+    robustness: dict[str, object],
+) -> dict[str, object]:
+    overall = cast(dict[str, object], summary["overall"])
+    by_direction = cast(dict[str, dict[str, object]], summary["by_direction"])
+    long = by_direction["long"]
+    short = by_direction["short"]
+
+    matched = cast(int, overall["matched_closed_trades"])
+    admitted = cast(int, overall["candidate_admitted_trades"])
+    blocked = cast(int, overall["candidate_blocked_trades"])
+    long_matched = cast(int, long["matched_closed_trades"])
+    short_matched = cast(int, short["matched_closed_trades"])
+    long_admitted = cast(int, long["candidate_admitted_trades"])
+    short_admitted = cast(int, short["candidate_admitted_trades"])
+
+    sample_complete = (
+        matched >= OVERLAP_MIN_MATCHED_TRADES
+        and admitted >= OVERLAP_MIN_ADMITTED_TRADES
+        and blocked >= OVERLAP_MIN_BLOCKED_TRADES
+        and long_matched >= OVERLAP_MIN_MATCHED_PER_DIRECTION
+        and short_matched >= OVERLAP_MIN_MATCHED_PER_DIRECTION
+        and long_admitted >= OVERLAP_MIN_ADMITTED_PER_DIRECTION
+        and short_admitted >= OVERLAP_MIN_ADMITTED_PER_DIRECTION
+    )
+    candidate_pnl = Decimal(
+        cast(str, overall["candidate_matched_net_pnl_sum"])
+    )
+    delta = Decimal(
+        cast(str, overall["candidate_minus_actual_net_pnl_sum"])
+    )
+    economics_positive = candidate_pnl > ZERO and delta > ZERO
+    single_trade_robust = cast(
+        bool,
+        robustness["positive_delta_after_removing_any_one_trade"],
+    )
+
+    return {
+        "review_only": True,
+        "changes_frozen_readiness_gate": False,
+        "min_matched_closed_trades": OVERLAP_MIN_MATCHED_TRADES,
+        "min_candidate_admitted_trades": OVERLAP_MIN_ADMITTED_TRADES,
+        "min_candidate_blocked_trades": OVERLAP_MIN_BLOCKED_TRADES,
+        "min_matched_per_direction": OVERLAP_MIN_MATCHED_PER_DIRECTION,
+        "min_admitted_per_direction": OVERLAP_MIN_ADMITTED_PER_DIRECTION,
+        "sample_complete": sample_complete,
+        "economics_positive": economics_positive,
+        "single_trade_robust": single_trade_robust,
+        "ready_for_overlap_review": (
+            sample_complete and economics_positive and single_trade_robust
+        ),
+        "missing_matched_closed_trades": max(
+            0,
+            OVERLAP_MIN_MATCHED_TRADES - matched,
+        ),
+        "missing_candidate_admitted_trades": max(
+            0,
+            OVERLAP_MIN_ADMITTED_TRADES - admitted,
+        ),
+        "missing_candidate_blocked_trades": max(
+            0,
+            OVERLAP_MIN_BLOCKED_TRADES - blocked,
+        ),
+        "missing_long_matched_trades": max(
+            0,
+            OVERLAP_MIN_MATCHED_PER_DIRECTION - long_matched,
+        ),
+        "missing_short_matched_trades": max(
+            0,
+            OVERLAP_MIN_MATCHED_PER_DIRECTION - short_matched,
+        ),
+        "missing_long_admitted_trades": max(
+            0,
+            OVERLAP_MIN_ADMITTED_PER_DIRECTION - long_admitted,
+        ),
+        "missing_short_admitted_trades": max(
+            0,
+            OVERLAP_MIN_ADMITTED_PER_DIRECTION - short_admitted,
+        ),
+    }
+
+
 def _trade_map(
     trades: tuple[TradeJournalEntry, ...],
 ) -> dict[str, TradeJournalEntry]:
@@ -404,9 +513,20 @@ def validate_trade_overlap_ledger(
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap rows digest mismatch"
         )
-    if raw.get("summary") != _summary(rows):
+    summary = _summary(rows)
+    if raw.get("summary") != summary:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap summary does not reconcile"
+        )
+    robustness = _robustness(rows)
+    if "robustness" in raw and raw.get("robustness") != robustness:
+        raise ProspectiveTradeOverlapLedgerError(
+            "trade overlap robustness does not reconcile"
+        )
+    readiness = _readiness(summary, robustness)
+    if "readiness" in raw and raw.get("readiness") != readiness:
+        raise ProspectiveTradeOverlapLedgerError(
+            "trade overlap readiness does not reconcile"
         )
     history = raw.get("source_history")
     if not isinstance(history, list):
@@ -524,6 +644,9 @@ def update_trade_overlap_ledger(
             "new_matched_row_count": len(new_rows),
         }
     )
+    summary = _summary(current_rows)
+    robustness = _robustness(current_rows)
+    readiness = _readiness(summary, robustness)
     payload: dict[str, object] = {
         "schema_version": LEDGER_SCHEMA_VERSION,
         "kind": LEDGER_KIND,
@@ -536,7 +659,9 @@ def update_trade_overlap_ledger(
         "previous_row_count": len(previous_rows),
         "new_row_count": len(new_rows),
         "rows_sha256": _rows_sha256(current_rows),
-        "summary": _summary(current_rows),
+        "summary": summary,
+        "robustness": robustness,
+        "readiness": readiness,
         "source_history": source_history,
         "rows": current_rows,
     }
