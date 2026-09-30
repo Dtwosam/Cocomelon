@@ -17,6 +17,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.profit_lock_counterfactual import (
+    ProfitLockTradeOutcome,
+)
 from cocomelon.research.prospective_combined_entry_filter import (
     COMBINED_FILTER_CANDIDATE_ID,
     MAX_ACCEPTED_RANK_AGE_MS,
@@ -264,7 +267,6 @@ def test_combined_filter_requires_both_frozen_conditions(
     )
 
 
-
 def test_combined_filter_matched_overlap_uses_later_standalone_start(
     tmp_path: Path,
 ) -> None:
@@ -483,3 +485,91 @@ def test_combined_filter_state_round_trip_locks_rule() -> None:
         match="frozen candidate",
     ):
         ProspectiveCombinedEntryFilterState.from_payload(payload)
+
+
+def test_combined_filter_crosses_allowed_losses_with_profit_lock_paths(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        allowed_loss = _trade(
+            suffix="allowed-profit-lock",
+            direction=Direction.SHORT,
+            opened_at_ms=120_000,
+            pnl="-6",
+        )
+        blocked_loss = _trade(
+            suffix="blocked-profit-lock",
+            direction=Direction.LONG,
+            opened_at_ms=130_000,
+            pnl="-8",
+        )
+        for trade, strategy, ordinal in (
+            (allowed_loss, "breakout", 4),
+            (blocked_loss, "trend", 5),
+        ):
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy=strategy)
+            )
+            ranks.record(_rank(trade, ordinal=ordinal))
+
+        candidate = Decimal("-1")
+        outcome = ProfitLockTradeOutcome(
+            trade_id=allowed_loss.trade_id,
+            market=allowed_loss.market.canonical,
+            direction=allowed_loss.direction.value,
+            rule_id="breakeven_after_0_5r",
+            activated=True,
+            activation_timestamp_ms=121_000,
+            triggered=True,
+            trigger_timestamp_ms=122_000,
+            trigger_mark_px=Decimal("100"),
+            actual_net_pnl=allowed_loss.net_pnl,
+            actual_net_r=allowed_loss.net_r,
+            candidate_net_pnl_estimate=candidate,
+            candidate_net_r_estimate=(
+                candidate / allowed_loss.initial_risk_amount
+            ),
+            delta_net_pnl_estimate=(
+                candidate - allowed_loss.net_pnl
+            ),
+            delta_net_r_estimate=(
+                candidate / allowed_loss.initial_risk_amount
+                - allowed_loss.net_r
+            ),
+            used_actual_close=False,
+        )
+
+        result = evaluate_prospective_combined_entry_filter(
+            journal,
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(
+                started_at_ms=100_000
+            ),
+            profit_lock_outcomes=(outcome,),
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    residual = result["residual_profit_lock"]
+    assert isinstance(residual, dict)
+    assert residual["allowed_trades"] == 1
+    assert residual["residual_loss_trades"] == 1
+    by_rule = residual["by_rule"]
+    assert isinstance(by_rule, dict)
+    breakeven = by_rule["breakeven_after_0_5r"]
+    assert breakeven["matched_exact_path_losses"] == 1
+    assert breakeven["missing_exact_path_losses"] == 0
+    assert breakeven["triggered_losses"] == 1
+    assert breakeven["delta_net_pnl_estimate"] == "5"
+    lock = by_rule["lock_0_5r_after_1r"]
+    assert lock["matched_exact_path_losses"] == 0
+    assert lock["missing_exact_path_losses"] == 1
+    assert residual["changes_readiness_gate"] is False
