@@ -146,16 +146,11 @@ jobs:
                       for snapshot in snapshots
                   )
                   values = tuple(
-                      value
+                      Decimal(str(value))
                       for value in raw
                       if value is not None
                   )
-                  finite = tuple(
-                      value
-                      for value in values
-                      if value.is_finite()
-                  )
-                  if len(finite) != len(values):
+                  if any(not value.is_finite() for value in values):
                       raise SystemExit(
                           f"non-finite value in {field}"
                       )
