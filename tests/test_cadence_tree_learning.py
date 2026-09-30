@@ -39,10 +39,7 @@ def _feature(
     direction: Direction,
     good: bool,
 ) -> FeatureSnapshot:
-    sign = Decimal("1") if direction is Direction.LONG else Decimal("-1")
-    momentum = Decimal("0.03") * sign
-    if not good:
-        momentum = -momentum
+    momentum = Decimal("0.03") if good else Decimal("-0.03")
     return FeatureSnapshot(
         market=market,
         as_of_ms=as_of_ms,
