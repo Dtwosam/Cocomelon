@@ -23,6 +23,11 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
         "hashFiles('continuous-paper-state/cadence-shadow-state.json')"
         in source
     )
+    assert (
+        'continuous-paper-learning-features-${{ github.run_id }}-'
+        '${{ github.run_attempt }}'
+    ) in source
+    assert "path: continuous-paper-state/learning-features" in source
     assert "gh workflow run continuous-paper.yml" in source
     assert 'source_run_id' in source
     assert '7,37 * * * *' in source
