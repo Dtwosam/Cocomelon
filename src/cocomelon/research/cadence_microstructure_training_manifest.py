@@ -15,7 +15,7 @@ from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
 
-FROZEN_TRAINING_MANIFEST_SCHEMA_VERSION: Final = 1
+FROZEN_TRAINING_MANIFEST_SCHEMA_VERSION: Final = 2
 
 
 class FrozenCadenceTrainingManifestError(RuntimeError):
@@ -74,88 +74,40 @@ def _sha(value: object, field: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
-class FrozenCadenceTrainingRow:
-    cadence_ms: int
-    decision_id: str
-    horizon_ms: int
-    target_end_ms: int
-    feature_snapshot_id: str
-    outcome_sha256: str
-    feature_record_sha256: str
-
-    @property
-    def identity(self) -> tuple[int, str, int]:
-        return self.cadence_ms, self.decision_id, self.horizon_ms
-
-    def payload(self) -> dict[str, object]:
-        return {
-            "identity": {
-                "cadence_ms": self.cadence_ms,
-                "decision_id": self.decision_id,
-                "horizon_ms": self.horizon_ms,
-            },
-            "target_end_ms": self.target_end_ms,
-            "feature_snapshot_id": self.feature_snapshot_id,
-            "outcome_sha256": self.outcome_sha256,
-            "feature_record_sha256": self.feature_record_sha256,
-        }
-
-
-@dataclass(frozen=True, slots=True)
 class FrozenCadenceTrainingManifest:
     model_family: str
     feature_registry: tuple[str, ...]
     prospective_start_ms: int
+    cadence_ms: int
+    horizon_ms: int
     source: dict[str, object]
     training_rows: int
-    training_first_target_end_ms: int | None
-    training_last_target_end_ms: int | None
+    training_first_target_end_ms: int
+    training_last_target_end_ms: int
     rows_sha256: str
-    rows: tuple[FrozenCadenceTrainingRow, ...]
 
     def __post_init__(self) -> None:
-        if self.training_rows != len(self.rows):
+        if self.training_rows <= 0:
             raise FrozenCadenceTrainingManifestError(
-                "training_rows does not match rows length"
+                "training_rows must be positive"
             )
-        identities = tuple(row.identity for row in self.rows)
-        if len(identities) != len(set(identities)):
+        if self.training_first_target_end_ms < 0:
             raise FrozenCadenceTrainingManifestError(
-                "frozen training row identities must be unique"
+                "training first target must be non-negative"
             )
-        expected = _sha256([row.payload() for row in self.rows])
-        if self.rows_sha256 != expected:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training rows SHA-256 mismatch"
-            )
-        if self.rows:
-            first = self.rows[0].target_end_ms
-            last = self.rows[-1].target_end_ms
-            if self.training_first_target_end_ms != first:
-                raise FrozenCadenceTrainingManifestError(
-                    "training_first_target_end_ms mismatch"
-                )
-            if self.training_last_target_end_ms != last:
-                raise FrozenCadenceTrainingManifestError(
-                    "training_last_target_end_ms mismatch"
-                )
-            if any(
-                left.target_end_ms > right.target_end_ms
-                for left, right in zip(
-                    self.rows,
-                    self.rows[1:],
-                    strict=False,
-                )
-            ):
-                raise FrozenCadenceTrainingManifestError(
-                    "frozen training rows are not chronological"
-                )
-        elif (
-            self.training_first_target_end_ms is not None
-            or self.training_last_target_end_ms is not None
+        if (
+            self.training_last_target_end_ms
+            < self.training_first_target_end_ms
         ):
             raise FrozenCadenceTrainingManifestError(
-                "empty training manifest has target bounds"
+                "training target bounds are invalid"
+            )
+        if (
+            self.training_last_target_end_ms
+            >= self.prospective_start_ms
+        ):
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training reaches prospective boundary"
             )
 
 
@@ -185,53 +137,6 @@ def load_frozen_cadence_training_manifest(
         raise FrozenCadenceTrainingManifestError(
             "feature_registry must be a string array"
         )
-    rows_raw = root.get("rows")
-    if not isinstance(rows_raw, list):
-        raise FrozenCadenceTrainingManifestError(
-            "rows must be an array"
-        )
-    rows: list[FrozenCadenceTrainingRow] = []
-    for index, value in enumerate(rows_raw):
-        row = _mapping(value, f"rows[{index}]")
-        identity = _mapping(
-            row.get("identity"),
-            f"rows[{index}].identity",
-        )
-        rows.append(
-            FrozenCadenceTrainingRow(
-                cadence_ms=_integer(
-                    identity.get("cadence_ms"),
-                    f"rows[{index}].identity.cadence_ms",
-                ),
-                decision_id=_string(
-                    identity.get("decision_id"),
-                    f"rows[{index}].identity.decision_id",
-                ),
-                horizon_ms=_integer(
-                    identity.get("horizon_ms"),
-                    f"rows[{index}].identity.horizon_ms",
-                ),
-                target_end_ms=_integer(
-                    row.get("target_end_ms"),
-                    f"rows[{index}].target_end_ms",
-                ),
-                feature_snapshot_id=_string(
-                    row.get("feature_snapshot_id"),
-                    f"rows[{index}].feature_snapshot_id",
-                ),
-                outcome_sha256=_sha(
-                    row.get("outcome_sha256"),
-                    f"rows[{index}].outcome_sha256",
-                ),
-                feature_record_sha256=_sha(
-                    row.get("feature_record_sha256"),
-                    f"rows[{index}].feature_record_sha256",
-                ),
-            )
-        )
-    source = _mapping(root.get("source"), "source")
-    first_raw = root.get("training_first_target_end_ms")
-    last_raw = root.get("training_last_target_end_ms")
     return FrozenCadenceTrainingManifest(
         model_family=_string(
             root.get("model_family"),
@@ -242,33 +147,91 @@ def load_frozen_cadence_training_manifest(
             root.get("prospective_start_ms"),
             "prospective_start_ms",
         ),
-        source=source,
+        cadence_ms=_integer(
+            root.get("cadence_ms"),
+            "cadence_ms",
+        ),
+        horizon_ms=_integer(
+            root.get("horizon_ms"),
+            "horizon_ms",
+        ),
+        source=_mapping(root.get("source"), "source"),
         training_rows=_integer(
             root.get("training_rows"),
             "training_rows",
         ),
-        training_first_target_end_ms=(
-            None
-            if first_raw is None
-            else _integer(
-                first_raw,
-                "training_first_target_end_ms",
-            )
+        training_first_target_end_ms=_integer(
+            root.get("training_first_target_end_ms"),
+            "training_first_target_end_ms",
         ),
-        training_last_target_end_ms=(
-            None
-            if last_raw is None
-            else _integer(
-                last_raw,
-                "training_last_target_end_ms",
-            )
+        training_last_target_end_ms=_integer(
+            root.get("training_last_target_end_ms"),
+            "training_last_target_end_ms",
         ),
         rows_sha256=_sha(
             root.get("rows_sha256"),
             "rows_sha256",
         ),
-        rows=tuple(rows),
     )
+
+
+def _frozen_row_payload(
+    outcome: ShadowCadenceOutcome,
+    feature_record_sha256: str,
+) -> dict[str, object]:
+    return {
+        "identity": {
+            "cadence_ms": outcome.sample.cadence_ms,
+            "decision_id": outcome.sample.decision_id,
+            "horizon_ms": outcome.sample.horizon_ms,
+        },
+        "target_end_ms": outcome.sample.target_end_ms,
+        "feature_snapshot_id": outcome.sample.feature_snapshot_id,
+        "outcome_sha256": _sha256(_outcome_payload(outcome)),
+        "feature_record_sha256": feature_record_sha256,
+    }
+
+
+def _fingerprint_rows(
+    outcomes: tuple[ShadowCadenceOutcome, ...],
+    feature_store: LearningFeatureSnapshotStore,
+) -> str:
+    payloads: list[dict[str, object]] = []
+    for outcome in outcomes:
+        try:
+            verified = feature_store.load(
+                outcome.sample.feature_snapshot_id
+            )
+        except LearningFeatureSnapshotError as exc:
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature record invalid"
+            ) from exc
+        if verified is None:
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature snapshot missing"
+            )
+        if verified.snapshot.market != outcome.sample.market:
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature market mismatch"
+            )
+        if verified.snapshot.as_of_ms > outcome.sample.evaluated_at_ms:
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature is after decision"
+            )
+        if (
+            verified.snapshot.source_received_at_ms
+            > outcome.sample.evaluated_at_ms
+        ):
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature source is after decision"
+            )
+        payloads.append(
+            _frozen_row_payload(
+                outcome,
+                verified.record_sha256,
+            )
+        )
+    return _sha256(payloads)
 
 
 def build_frozen_cadence_training_manifest(
@@ -299,49 +262,28 @@ def build_frozen_cadence_training_manifest(
             ),
         )
     )
-    rows: list[FrozenCadenceTrainingRow] = []
-    for outcome in selected:
-        verified = feature_store.load(
-            outcome.sample.feature_snapshot_id
+    if not selected:
+        raise FrozenCadenceTrainingManifestError(
+            "freeze source contains no training rows"
         )
-        if verified is None:
-            raise FrozenCadenceTrainingManifestError(
-                "freeze source feature snapshot missing"
-            )
-        if verified.snapshot.market != outcome.sample.market:
-            raise FrozenCadenceTrainingManifestError(
-                "freeze source feature market mismatch"
-            )
-        rows.append(
-            FrozenCadenceTrainingRow(
-                cadence_ms=outcome.sample.cadence_ms,
-                decision_id=outcome.sample.decision_id,
-                horizon_ms=outcome.sample.horizon_ms,
-                target_end_ms=outcome.sample.target_end_ms,
-                feature_snapshot_id=(
-                    outcome.sample.feature_snapshot_id
-                ),
-                outcome_sha256=_sha256(
-                    _outcome_payload(outcome)
-                ),
-                feature_record_sha256=verified.record_sha256,
-            )
-        )
-    row_payloads = [row.payload() for row in rows]
     return FrozenCadenceTrainingManifest(
         model_family=model_family,
         feature_registry=feature_registry,
         prospective_start_ms=prospective_start_ms,
+        cadence_ms=cadence_ms,
+        horizon_ms=horizon_ms,
         source=dict(source),
-        training_rows=len(rows),
+        training_rows=len(selected),
         training_first_target_end_ms=(
-            None if not rows else rows[0].target_end_ms
+            selected[0].sample.target_end_ms
         ),
         training_last_target_end_ms=(
-            None if not rows else rows[-1].target_end_ms
+            selected[-1].sample.target_end_ms
         ),
-        rows_sha256=_sha256(row_payloads),
-        rows=tuple(rows),
+        rows_sha256=_fingerprint_rows(
+            selected,
+            feature_store,
+        ),
     )
 
 
@@ -353,6 +295,8 @@ def frozen_cadence_training_manifest_payload(
         "model_family": manifest.model_family,
         "feature_registry": list(manifest.feature_registry),
         "prospective_start_ms": manifest.prospective_start_ms,
+        "cadence_ms": manifest.cadence_ms,
+        "horizon_ms": manifest.horizon_ms,
         "source": manifest.source,
         "training_rows": manifest.training_rows,
         "training_first_target_end_ms": (
@@ -362,7 +306,6 @@ def frozen_cadence_training_manifest_payload(
             manifest.training_last_target_end_ms
         ),
         "rows_sha256": manifest.rows_sha256,
-        "rows": [row.payload() for row in manifest.rows],
     }
 
 
@@ -389,84 +332,62 @@ def verify_frozen_cadence_training(
         raise FrozenCadenceTrainingManifestError(
             "frozen manifest prospective start mismatch"
         )
-
-    indexed: dict[tuple[int, str, int], ShadowCadenceOutcome] = {}
-    for outcome in outcomes:
-        key = (
-            outcome.sample.cadence_ms,
-            outcome.sample.decision_id,
-            outcome.sample.horizon_ms,
+    if (
+        manifest.cadence_ms != cadence_ms
+        or manifest.horizon_ms != horizon_ms
+    ):
+        raise FrozenCadenceTrainingManifestError(
+            "frozen manifest surface mismatch"
         )
-        if key in indexed:
-            raise FrozenCadenceTrainingManifestError(
-                "duplicate cadence outcome identity"
-            )
-        indexed[key] = outcome
 
-    resolved: list[ShadowCadenceOutcome] = []
-    for frozen in manifest.rows:
-        if (
-            frozen.cadence_ms != cadence_ms
-            or frozen.horizon_ms != horizon_ms
-        ):
-            raise FrozenCadenceTrainingManifestError(
-                "frozen manifest surface mismatch"
-            )
-        if frozen.target_end_ms >= prospective_start_ms:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen manifest includes post-boundary label"
-            )
-        outcome = indexed.get(frozen.identity)
-        if outcome is None:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training outcome missing"
-            )
-        if outcome.sample.target_end_ms != frozen.target_end_ms:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training target changed"
-            )
-        if (
-            outcome.sample.feature_snapshot_id
-            != frozen.feature_snapshot_id
-        ):
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature identity changed"
-            )
-        if _sha256(_outcome_payload(outcome)) != frozen.outcome_sha256:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training outcome content changed"
-            )
-        try:
-            verified = feature_store.load(
-                frozen.feature_snapshot_id
-            )
-        except LearningFeatureSnapshotError as exc:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature record invalid"
-            ) from exc
-        if verified is None:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature snapshot missing"
-            )
-        if verified.record_sha256 != frozen.feature_record_sha256:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature content changed"
-            )
-        if verified.snapshot.market != outcome.sample.market:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature market mismatch"
-            )
-        if verified.snapshot.as_of_ms > outcome.sample.evaluated_at_ms:
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature is after decision"
-            )
-        if (
-            verified.snapshot.source_received_at_ms
-            > outcome.sample.evaluated_at_ms
-        ):
-            raise FrozenCadenceTrainingManifestError(
-                "frozen training feature source is after decision"
-            )
-        resolved.append(outcome)
-
-    return tuple(resolved)
+    selected = tuple(
+        sorted(
+            (
+                outcome
+                for outcome in outcomes
+                if outcome.sample.cadence_ms == cadence_ms
+                and outcome.sample.horizon_ms == horizon_ms
+                and outcome.sample.target_end_ms
+                <= manifest.training_last_target_end_ms
+            ),
+            key=lambda outcome: (
+                outcome.sample.target_end_ms,
+                outcome.sample.market.canonical,
+                outcome.sample.decision_id,
+            ),
+        )
+    )
+    if len(selected) != manifest.training_rows:
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training row count changed"
+        )
+    if not selected:
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training rows disappeared"
+        )
+    if (
+        selected[0].sample.target_end_ms
+        != manifest.training_first_target_end_ms
+    ):
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training first target changed"
+        )
+    if (
+        selected[-1].sample.target_end_ms
+        != manifest.training_last_target_end_ms
+    ):
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training last target changed"
+        )
+    if any(
+        outcome.sample.target_end_ms >= prospective_start_ms
+        for outcome in selected
+    ):
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training includes post-boundary label"
+        )
+    if _fingerprint_rows(selected, feature_store) != manifest.rows_sha256:
+        raise FrozenCadenceTrainingManifestError(
+            "frozen training content changed"
+        )
+    return selected
