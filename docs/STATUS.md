@@ -2861,3 +2861,24 @@ The same side-neutral development gates remain: both LONG and SHORT must have en
 This is touched walk-forward development evidence only. It does not alter active paper strategy, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Disjoint fixed-tree walk-forward diagnostic — 2026-09-30
+
+The fixed shallow cadence tree looked positive on the final 100 touched 15m→1h opportunities but failed one of four chronological blocks and showed poor score calibration. Rather than tune another threshold on that same holdout, the next diagnostic measures the unchanged tree across time.
+
+Frozen diagnostic:
+
+- six disjoint validation folds;
+- 50 settled 15m→1h opportunities per fold;
+- expanding training history before each fold;
+- forward labels overlapping each fold boundary are purged;
+- minimum 300 settled training rows per fold;
+- the tree configuration is unchanged: 7 leaves, 100-row minimum leaf, learning rate 0.05, 100 iterations, L2=1, deterministic seed, no early stopping;
+- admission remains predicted after-cost net return > 0.
+
+The report aggregates candidate versus raw opportunity contribution, positive/negative fold counts, total LONG/SHORT admissions, and per-fold direction economics.
+
+This is a touched-development robustness diagnostic only. It cannot alter paper strategy, orders, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
