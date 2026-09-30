@@ -61,7 +61,6 @@ def test_overlap_status_metadata_is_not_shell_interpreted() -> None:
     assert "os.environ['PAPER_RUN_ID']" in source
 
 
-
 def test_overlap_status_exposes_review_readiness_without_authority() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
