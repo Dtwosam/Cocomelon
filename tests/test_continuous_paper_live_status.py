@@ -27,6 +27,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
     _prospective_residual_profit_lock_lines,
+    _prospective_two_strike_stop_filter_lines,
     _replacement_funding_evidence_lines,
     render_live_status,
 )
