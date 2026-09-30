@@ -4,6 +4,7 @@ import hashlib
 import json
 from collections.abc import Sequence
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 from typing import Final, cast
 
 from cocomelon.domain.journal import TradeJournalEntry
@@ -348,6 +349,18 @@ def validate_two_strike_ledger(
             "two-strike ledger digest mismatch"
         )
     return {**raw, "rows": rows}
+
+
+def load_two_strike_ledger(
+    path: str | Path,
+) -> dict[str, object]:
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ProspectiveTwoStrikeStopFilterLedgerError(
+            "two-strike ledger file is invalid"
+        ) from exc
+    return validate_two_strike_ledger(raw)
 
 
 def update_two_strike_ledger(
