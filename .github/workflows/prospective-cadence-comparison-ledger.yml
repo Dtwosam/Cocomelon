@@ -1,0 +1,475 @@
+name: Prospective Cadence A/B Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-cadence-comparison-ledger.yml"
+      - "scripts/update_cadence_prospective_comparison_ledger.py"
+      - "src/cocomelon/research/prospective_comparison_ledger.py"
+  workflow_run:
+    workflows:
+      - Prospective Cadence Model Comparison
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_comparison_run_id:
+        description: Completed prospective model-comparison run ID
+        required: true
+        type: string
+      source_comparison_run_attempt:
+        description: Completed comparison run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-cadence-comparison-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      COMPARISON_LEDGER_ISSUE: "690"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve source comparison run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          INPUT_RUN_ID: ${{ inputs.source_comparison_run_id }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_comparison_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            comparison_run_id="$INPUT_RUN_ID"
+            comparison_run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            comparison_run_id="$EVENT_RUN_ID"
+            comparison_run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          else
+            latest_success="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-comparison.yml/runs?status=success&per_page=100" |
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null
+                  then ""
+                  else [.id, .run_attempt] | @tsv
+                  end
+              '
+            )"
+            if [[ -n "$latest_success" ]]; then
+              IFS=$'\t' read -r comparison_run_id comparison_run_attempt <<<"$latest_success"
+            else
+              comparison_run_id=""
+              comparison_run_attempt=""
+            fi
+            resolution_mode="latest_success_bootstrap"
+          fi
+          if [[ -z "$comparison_run_id" || -z "$comparison_run_attempt" ]]; then
+            echo "Missing prospective comparison run identity." >&2
+            exit 1
+          fi
+          echo "comparison_run_id=$comparison_run_id" >> "$GITHUB_OUTPUT"
+          echo "comparison_run_attempt=$comparison_run_attempt" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download current paired comparison
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/current-comparison
+          artifacts_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$COMPARISON_RUN_ID/artifacts?per_page=100"
+          )"
+          artifact_line="$(
+            jq -r '
+              .artifacts
+              | map(
+                  select(
+                    (.expired | not)
+                    and (
+                      .name
+                      | startswith("cadence-model-comparison-")
+                    )
+                  )
+                )
+              | if length == 1
+                then [.[0].id, .[0].name] | @tsv
+                else ""
+                end
+            ' <<<"$artifacts_json"
+          )"
+          if [[ -z "$artifact_line" ]]; then
+            echo "Expected exactly one model-comparison artifact." >&2
+            exit 1
+          fi
+          IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > /tmp/current-comparison.zip
+          unzip -q /tmp/current-comparison.zip -d /tmp/current-comparison
+          for name in comparison.json microstructure.json baseline.json; do
+            test -s "/tmp/current-comparison/$name"
+          done
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous paired ledger
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-comparison-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r \
+              --arg current "$CURRENT_RUN_ID" \
+              '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id' \
+              <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith(
+                            "cadence-model-comparison-ledger-"
+                          )
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [[ -z "$artifact_line" ]]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-ledger
+            mkdir -p /tmp/previous-ledger
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+              > /tmp/previous-ledger.zip
+            unzip -q /tmp/previous-ledger.zip -d /tmp/previous-ledger
+            candidate="$(
+              find /tmp/previous-ledger \
+                -type f \
+                -name 'cadence-model-comparison-ledger.json' \
+                -print -quit
+            )"
+            if [[ -n "$candidate" && -s "$candidate" ]]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only paired ledger
+        id: ledger
+        continue-on-error: true
+        env:
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+          COMPARISON_RUN_ATTEMPT: ${{ steps.source.outputs.comparison_run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.current.outputs.artifact_name }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+        shell: bash
+        run: |
+          set +e
+          args=(
+            /tmp/current-comparison/comparison.json
+            /tmp/current-comparison/microstructure.json
+            /tmp/current-comparison/baseline.json
+            --source-comparison-run-id "$COMPARISON_RUN_ID"
+            --source-comparison-run-attempt "$COMPARISON_RUN_ATTEMPT"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --json-out cadence-model-comparison-ledger.json
+          )
+          if [[ -n "$PREVIOUS_LEDGER_PATH" ]]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_cadence_prospective_comparison_ledger.py \
+            "${args[@]}" \
+            > /tmp/paired-ledger.stdout.json \
+            2> /tmp/paired-ledger.error
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            cmp \
+              cadence-model-comparison-ledger.json \
+              /tmp/paired-ledger.stdout.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/paired-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked paired-ledger status
+        if: ${{ steps.ledger.outputs.clean != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+          COMPARISON_RUN_ATTEMPT: ${{ steps.source.outputs.comparison_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          previous = (
+              os.environ["PREVIOUS_WORKFLOW_RUN_ID"]
+              or "none"
+          )
+          error = os.environ["ERROR_TEXT"].strip() or "unknown error"
+          lines = [
+              "## Prospective cadence A/B experiment ledger",
+              "",
+              "**Status:** BLOCKED — append-only invariant failure",
+              "",
+              f"- source comparison run: `{os.environ['COMPARISON_RUN_ID']}`",
+              f"- source comparison attempt: `{os.environ['COMPARISON_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- error: `{error}`",
+              "",
+              "No A/B experiment evidence is published from this run.",
+              "",
+              "**No paper orders are changed by this control plane.**",
+              "",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/paired-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_LEDGER_ISSUE" \
+            -f body="$(cat /tmp/paired-ledger-status.md)"
+
+      - name: Fail closed on paired-ledger drift
+        if: ${{ steps.ledger.outputs.clean != 'true' }}
+        shell: bash
+        run: |
+          echo "Prospective A/B append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean paired-ledger status
+        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+          COMPARISON_RUN_ATTEMPT: ${{ steps.source.outputs.comparison_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from decimal import Decimal
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("cadence-model-comparison-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          rows = ledger["rows"]
+          micro = [r for r in rows if r["microstructure_admitted"]]
+          base = [r for r in rows if r["baseline_admitted"]]
+          both = [
+              r for r in rows
+              if r["microstructure_admitted"] and r["baseline_admitted"]
+          ]
+          micro_only = [
+              r for r in rows
+              if r["microstructure_admitted"] and not r["baseline_admitted"]
+          ]
+          base_only = [
+              r for r in rows
+              if r["baseline_admitted"] and not r["microstructure_admitted"]
+          ]
+          neither = [
+              r for r in rows
+              if not r["microstructure_admitted"] and not r["baseline_admitted"]
+          ]
+
+          def realized_sum(items):
+              return sum(
+                  (Decimal(r["realized_net_return"]) for r in items),
+                  Decimal("0"),
+              )
+
+          def boundary(value):
+              if value is None:
+                  return "none"
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Prospective cadence A/B experiment ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- ledger tool SHA: `{os.environ['GITHUB_SHA']}`",
+              f"- source comparison run: `{os.environ['COMPARISON_RUN_ID']}`",
+              f"- source comparison attempt: `{os.environ['COMPARISON_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- microstructure model: `{ledger['microstructure_model_family']}`",
+              f"- baseline model: `{ledger['baseline_model_family']}`",
+              f"- frozen training digest: `{ledger['frozen_training_rows_sha256']}`",
+              f"- rows / previous / newly appended: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']}`",
+              f"- first / last boundary: `{boundary(ledger['first_boundary_ms'])} / {boundary(ledger['last_boundary_ms'])}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Admission comparison",
+              "",
+              f"- both admit: `{len(both)}` realized sum=`{realized_sum(both)}`",
+              f"- microstructure only: `{len(micro_only)}` realized sum=`{realized_sum(micro_only)}`",
+              f"- baseline only: `{len(base_only)}` realized sum=`{realized_sum(base_only)}`",
+              f"- neither: `{len(neither)}`",
+              f"- microstructure admitted total: `{len(micro)}` realized sum=`{realized_sum(micro)}`",
+              f"- baseline admitted total: `{len(base)}` realized sum=`{realized_sum(base)}`",
+              "",
+              "### Latest immutable paired rows",
+              "",
+              "| Boundary | Market | Side | Micro pred | Micro | Baseline pred | Baseline | Realized net | Decision |",
+              "| --- | --- | --- | ---: | --- | ---: | --- | ---: | --- |",
+          ]
+          for row in rows[-8:]:
+              lines.append(
+                  "| {boundary} | {market} | {side} | {micro_pred} | "
+                  "{micro_admit} | {base_pred} | {base_admit} | "
+                  "{realized} | {decision} |".format(
+                      boundary=boundary(row["boundary_ms"]),
+                      market=row["market"],
+                      side=row["direction"],
+                      micro_pred=row[
+                          "microstructure_prediction_net_return"
+                      ],
+                      micro_admit=str(
+                          bool(row["microstructure_admitted"])
+                      ).lower(),
+                      base_pred=row[
+                          "baseline_prediction_net_return"
+                      ],
+                      base_admit=str(
+                          bool(row["baseline_admitted"])
+                      ).lower(),
+                      realized=row["realized_net_return"],
+                      decision=str(row["decision_id"])[:16],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "Every previously published paired row must remain "
+                      "exactly identical in both model predictions, both "
+                      "admission decisions, and realized return."
+                  ),
+                  "",
+                  "**No paper orders are changed by this control plane.**",
+                  "",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/paired-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_LEDGER_ISSUE" \
+            -f body="$(cat /tmp/paired-ledger-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        with:
+          name: cadence-model-comparison-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cadence-model-comparison-ledger.json
+          if-no-files-found: error
+          retention-days: 90
