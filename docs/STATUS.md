@@ -2741,3 +2741,18 @@ Heavy research analytics remain reproducible from durable state and completed ar
 This changes telemetry scheduling only. It does not change strategy decisions, paper execution, sizing, stops, risk limits, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Direct cadence-shadow research artifact — 2026-09-30
+
+The continuous paper workflow now publishes `cadence-shadow-state.json` as a dedicated research artifact in addition to the full durable paper-state archive.
+
+Artifact name:
+
+`continuous-paper-cadence-shadow-<run_id>-<run_attempt>`
+
+The direct artifact preserves the exact cadence state already present inside the durable checkpoint, but avoids downloading and unpacking the multi-gigabyte paper/journal/facts state when a cadence learner or robustness audit only needs the ~3.6 MB cadence JSON.
+
+The full durable state remains unchanged and authoritative for runtime recovery. The cadence artifact is read-only research convenience data and grants no execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**

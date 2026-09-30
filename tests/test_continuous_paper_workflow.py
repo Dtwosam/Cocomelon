@@ -10,6 +10,19 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'duration-seconds 19800' in source
     assert 'selection-refresh-seconds 300' in source
     assert 'continuous-paper-state-${{ github.run_id }}-${{ github.run_attempt }}' in source
+    assert (
+        'continuous-paper-cadence-shadow-${{ github.run_id }}-'
+        '${{ github.run_attempt }}'
+        in source
+    )
+    assert (
+        "path: continuous-paper-state/cadence-shadow-state.json"
+        in source
+    )
+    assert (
+        "hashFiles('continuous-paper-state/cadence-shadow-state.json')"
+        in source
+    )
     assert "gh workflow run continuous-paper.yml" in source
     assert 'source_run_id' in source
     assert '7,37 * * * *' in source
