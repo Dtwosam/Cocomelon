@@ -74,10 +74,10 @@ from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
-from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.cadence_opportunity_learning import (
     evaluate_cadence_opportunity_learning,
 )
+from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
 )
