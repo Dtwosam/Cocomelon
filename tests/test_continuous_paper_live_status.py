@@ -5623,9 +5623,11 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
                 "complete_excursion_losses": 3,
                 "missing_or_incomplete_excursion_losses": 1,
                 "losses_with_mfe_lt_0_25r": 1,
+                "losses_with_mfe_0_25_to_lt_0_5r": 1,
                 "losses_after_mfe_ge_0_5r": 2,
                 "losses_after_mfe_ge_1r": 1,
                 "loss_pnl_with_mfe_lt_0_25r": "-8",
+                "loss_pnl_with_mfe_0_25_to_lt_0_5r": "-1",
                 "loss_pnl_after_mfe_ge_0_5r": "-7",
                 "loss_pnl_after_mfe_ge_1r": "-4",
             },
@@ -5705,6 +5707,8 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
     assert "`3 / 1`" in output
     assert "never-worked (<0.25R MFE) losses / PnL" in output
     assert "`1 / -8`" in output
+    assert "partial-traction (0.25-<0.5R MFE) losses / PnL" in output
+    assert "`1 / -1`" in output
     assert "giveback (>=0.5R MFE) losses / PnL" in output
     assert "`2 / -7`" in output
     assert "deep giveback (>=1R MFE) losses / PnL" in output
