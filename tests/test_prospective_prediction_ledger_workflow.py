@@ -39,3 +39,10 @@ def test_prediction_ledger_does_not_dispatch_or_trade() -> None:
     assert "continuous-paper.yml" not in source
     assert "gh workflow run" not in source
     assert "execution_authority" not in source
+
+
+def test_prediction_ledger_interpolates_artifact_identity() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'then "\\(.[0].id)\\t\\(.[0].name)"' in source
+    assert 'then "(.[0].id)\t(.[0].name)"' not in source
