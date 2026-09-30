@@ -305,6 +305,12 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         '"prospective_top10_rank_filter": (' in source
     )
     assert "prospective_top10_rank_filter_state.payload()" in source
+    assert (
+        'PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME = (' in source
+    )
+    assert '"prospective_trade_quality": prospective_trade_quality' in source
+    assert "prospective_trade_quality_state.payload()" in source
+    assert "prospective_trade_quality_summary(" in source
     assert "prospective_combined_entry_filter_state.payload()" in source
     assert (
         '"prospective_combined_entry_filter": (' in source
