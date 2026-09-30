@@ -460,7 +460,34 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "realized_net_cash": "59",
                 "unrealized_pnl": "1",
                 "mark_to_market_pnl": "60",
-                "positions": [
+                "cadence_trade_quality_calibration": {
+            "enabled": True,
+            "error": None,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "status": "completed",
+            "paired_decisions": 700,
+            "incomplete_decision_pairs": 4,
+            "selected_group_count": 3,
+            "baseline_validation": {
+                "count": 200,
+                "mean_15m": "-0.001",
+                "mean_1h": "-0.002",
+            },
+            "candidate_validation": {
+                "count": 60,
+                "mean_15m": "0.003",
+                "mean_1h": "0.005",
+            },
+            "candidate_validation_by_direction": {
+                "long": {"count": 31},
+                "short": {"count": 29},
+            },
+            "all_stability_blocks_positive": True,
+            "qualifies_development": True,
+        },
+        "positions": [
                     {
                         "market": "BTC",
                         "side": "long",
@@ -4470,6 +4497,17 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "| 65-<70 | 1 | -0.004 | 0 | 1 | -0.003 | 0 |" in output
     assert "| 80+ | 2 | 0.0005 | 1 | 1 | 0.007 | 1 |" in output
     assert "skipped directional signals missing lead strategy" in output
+    assert "### Cadence trade-quality calibration" in output
+    assert "TOUCHED RESEARCH / NO EXECUTION" in output
+    assert "paired 15m+1h decisions / incomplete pairs" in output
+    assert "`700 / 4`" in output
+    assert "validation baseline count / mean 15m / mean 1h" in output
+    assert "`200 / -0.001 / -0.002`" in output
+    assert "admitted count / mean 15m / mean 1h" in output
+    assert "`60 / 0.003 / 0.005`" in output
+    assert "admitted LONG / SHORT: `31 / 29`" in output
+    assert "all four validation blocks positive: `true`" in output
+    assert "qualifies touched development: `true`" in output
     assert "starting cash" in output
     assert "total account PnL" in output
     assert "2.5" in output
