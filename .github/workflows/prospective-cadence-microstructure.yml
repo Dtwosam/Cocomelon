@@ -66,12 +66,25 @@ jobs:
             jq -r               --arg name "$features_name"               '.artifacts[] | select(.name == $name and .expired == false) | .id'               <<<"$artifacts_json" |
             head -n 1
           )"
-          test -n "$cadence_id"
-          test -n "$features_id"
+          if [[ -z "$cadence_id" || -z "$features_id" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "cadence_id=$cadence_id" >> "$GITHUB_OUTPUT"
+            echo "features_id=$features_id" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "cadence_id=$cadence_id" >> "$GITHUB_OUTPUT"
           echo "features_id=$features_id" >> "$GITHUB_OUTPUT"
 
+      - name: Record unavailable compact research state
+        if: ${{ steps.artifacts.outputs.ready != 'true' }}
+        run: |
+          echo "## Frozen prospective cadence microstructure challenger" >> "$GITHUB_STEP_SUMMARY"
+          echo "- source paper run: $SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "- status: compact research artifacts unavailable; evaluation skipped" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Download compact research state
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CADENCE_ID: ${{ steps.artifacts.outputs.cadence_id }}
@@ -98,6 +111,7 @@ jobs:
           echo "FEATURE_ROOT=$feature_root" >> "$GITHUB_ENV"
 
       - name: Evaluate frozen prospective challenger
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -105,6 +119,7 @@ jobs:
           cmp             cadence-microstructure-prospective.json             /tmp/cadence-microstructure-prospective.stdout.json
 
       - name: Summarize prospective evidence
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
         shell: bash
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
@@ -153,6 +168,7 @@ jobs:
           PY
 
       - uses: actions/upload-artifact@v7
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
         with:
           name: cadence-microstructure-prospective-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
           path: cadence-microstructure-prospective.json
