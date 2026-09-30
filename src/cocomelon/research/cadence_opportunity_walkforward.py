@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_opportunity_learning import (
@@ -232,6 +232,28 @@ def _evaluate_fold(
     }
 
 
+def _fold_direction_admitted(
+    fold: dict[str, object],
+    direction: str,
+) -> int:
+    raw_direction = fold.get("by_direction")
+    if not isinstance(raw_direction, dict):
+        raise CadenceOpportunityWalkforwardError(
+            "completed fold direction summary is invalid"
+        )
+    raw_row = raw_direction.get(direction)
+    if not isinstance(raw_row, dict):
+        raise CadenceOpportunityWalkforwardError(
+            "completed fold direction row is invalid"
+        )
+    value = raw_row.get("admitted_rows")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CadenceOpportunityWalkforwardError(
+            "completed fold admitted row count is invalid"
+        )
+    return value
+
+
 def evaluate_cadence_opportunity_walkforward(
     outcomes: tuple[ShadowCadenceOutcome, ...],
     *,
@@ -299,27 +321,15 @@ def evaluate_cadence_opportunity_walkforward(
         for fold in completed
     )
     admitted_rows = sum(
-        int(fold["admitted_rows"])
+        cast(int, fold["admitted_rows"])
         for fold in completed
     )
     long_admitted = sum(
-        int(
-            (
-                fold["by_direction"]
-                if isinstance(fold["by_direction"], dict)
-                else {}
-            ).get("long", {}).get("admitted_rows", 0)
-        )
+        _fold_direction_admitted(fold, "long")
         for fold in completed
     )
     short_admitted = sum(
-        int(
-            (
-                fold["by_direction"]
-                if isinstance(fold["by_direction"], dict)
-                else {}
-            ).get("short", {}).get("admitted_rows", 0)
-        )
+        _fold_direction_admitted(fold, "short")
         for fold in completed
     )
 
@@ -352,10 +362,11 @@ def evaluate_cadence_opportunity_walkforward(
                 },
             )
             aggregate["folds_present"] = (
-                int(aggregate["folds_present"]) + 1
+                cast(int, aggregate["folds_present"]) + 1
             )
             aggregate["rows"] = (
-                int(aggregate["rows"]) + int(cohort["rows"])
+                cast(int, aggregate["rows"])
+                + cast(int, cohort["rows"])
             )
             fold_sum = Decimal(str(cohort["net_return_sum"]))
             aggregate["net_return_sum"] = (
@@ -363,13 +374,13 @@ def evaluate_cadence_opportunity_walkforward(
             )
             if fold_sum > ZERO:
                 aggregate["positive_folds"] = (
-                    int(aggregate["positive_folds"]) + 1
+                    cast(int, aggregate["positive_folds"]) + 1
                 )
 
     cohort_persistence: list[dict[str, object]] = []
     for aggregate in cohort_by_key.values():
         net_sum = Decimal(str(aggregate["net_return_sum"]))
-        rows = int(aggregate["rows"])
+        rows = cast(int, aggregate["rows"])
         cohort_persistence.append(
             {
                 **aggregate,
@@ -383,7 +394,7 @@ def evaluate_cadence_opportunity_walkforward(
         )
     cohort_persistence.sort(
         key=lambda item: (
-            -int(item["folds_present"]),
+            -cast(int, item["folds_present"]),
             -Decimal(str(item["net_return_sum"])),
             str(item["direction"]),
             str(item["lead_strategy"]),
