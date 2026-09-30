@@ -1,0 +1,416 @@
+name: Prospective Cadence Prediction Ledger
+
+on:
+  workflow_run:
+    workflows:
+      - Prospective Cadence Microstructure Audit
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_audit_run_id:
+        description: Completed prospective cadence audit run ID
+        required: true
+        type: string
+      source_audit_run_attempt:
+        description: Completed prospective cadence audit run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-cadence-prediction-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PREDICTION_LEDGER_ISSUE: "687"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve source audit run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          INPUT_RUN_ID: ${{ inputs.source_audit_run_id }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_audit_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            audit_run_id="$INPUT_RUN_ID"
+            audit_run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          else
+            audit_run_id="$EVENT_RUN_ID"
+            audit_run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          fi
+          if [[ -z "$audit_run_id" || -z "$audit_run_attempt" ]]; then
+            echo "Missing prospective audit run identity." >&2
+            exit 1
+          fi
+          echo "audit_run_id=$audit_run_id" >> "$GITHUB_OUTPUT"
+          echo "audit_run_attempt=$audit_run_attempt" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download current prospective report
+        id: report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AUDIT_RUN_ID: ${{ steps.source.outputs.audit_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/current-report
+          artifacts_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/runs/$AUDIT_RUN_ID/artifacts?per_page=100"
+          )"
+          artifact_line="$(
+            jq -r '
+              .artifacts
+              | map(
+                  select(
+                    (.expired | not)
+                    and (.name | startswith("cadence-microstructure-prospective-"))
+                  )
+                )
+              | if length == 1
+                then "(.[0].id)	(.[0].name)"
+                else ""
+                end
+            ' <<<"$artifacts_json"
+          )"
+          if [[ -z "$artifact_line" ]]; then
+            echo "Expected exactly one prospective report artifact." >&2
+            exit 1
+          fi
+          IFS=$'	' read -r artifact_id artifact_name <<<"$artifact_line"
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/current-report.zip
+          unzip -q /tmp/current-report.zip -d /tmp/current-report
+          report_path="$(
+            find /tmp/current-report -type f               -name 'cadence-microstructure-prospective.json'               -print -quit
+          )"
+          if [[ -z "$report_path" || ! -s "$report_path" ]]; then
+            echo "Prospective report JSON is missing." >&2
+            exit 1
+          fi
+          cp "$report_path" /tmp/current-report.json
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous prediction ledger
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-prediction-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_id="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith(
+                            "cadence-microstructure-prediction-ledger-"
+                          )
+                      )
+                    )
+                  )
+                | if length > 0 then .[0].id else "" end
+              ' <<<"$artifacts_json"
+            )"
+            if [[ -z "$artifact_id" ]]; then
+              continue
+            fi
+            rm -rf /tmp/previous-ledger /tmp/previous-ledger.zip
+            mkdir -p /tmp/previous-ledger
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-ledger.zip
+            unzip -q /tmp/previous-ledger.zip -d /tmp/previous-ledger
+            candidate="$(
+              find /tmp/previous-ledger -type f                 -name 'cadence-microstructure-prediction-ledger.json'                 -print -quit
+            )"
+            if [[ -n "$candidate" && -s "$candidate" ]]; then
+              cp "$candidate" /tmp/previous-ledger.json
+              previous_path="/tmp/previous-ledger.json"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only prediction ledger
+        id: ledger
+        env:
+          AUDIT_RUN_ID: ${{ steps.source.outputs.audit_run_id }}
+          AUDIT_RUN_ATTEMPT: ${{ steps.source.outputs.audit_run_attempt }}
+          REPORT_ARTIFACT_NAME: ${{ steps.report.outputs.artifact_name }}
+          PREVIOUS_PATH: ${{ steps.previous.outputs.path }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          args=(
+            /tmp/current-report.json
+            --source-audit-run-id "$AUDIT_RUN_ID"
+            --source-audit-run-attempt "$AUDIT_RUN_ATTEMPT"
+            --source-report-artifact-name "$REPORT_ARTIFACT_NAME"
+            --json-out cadence-microstructure-prediction-ledger.json
+          )
+          if [[ -n "$PREVIOUS_PATH" ]]; then
+            args+=(--previous "$PREVIOUS_PATH")
+          fi
+          set +e
+          python scripts/update_cadence_prospective_prediction_ledger.py             "${args[@]}"             > /tmp/ledger.stdout             2> /tmp/ledger.error
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" -ne 0 ]]; then
+            cat /tmp/ledger.error >&2
+          fi
+
+      - name: Publish blocked ledger status
+        if: ${{ steps.ledger.outputs.exit_code != '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.PREDICTION_LEDGER_ISSUE }}
+          AUDIT_RUN_ID: ${{ steps.source.outputs.audit_run_id }}
+          AUDIT_RUN_ATTEMPT: ${{ steps.source.outputs.audit_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_LEDGER_RUN_ID: ${{ steps.previous.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = Path("/tmp/ledger.error").read_text(
+              encoding="utf-8",
+              errors="replace",
+          ).strip()
+          if not error:
+              error = "unknown append-only ledger validation failure"
+          lines = [
+              "## Prospective cadence prediction ledger",
+              "",
+              "**Status:** BLOCKED",
+              "",
+              f"- source audit run: `{os.environ['AUDIT_RUN_ID']}`",
+              f"- source audit attempt: `{os.environ['AUDIT_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              (
+                  "- previous ledger workflow run: "
+                  f"`{os.environ.get('PREVIOUS_LEDGER_RUN_ID') or 'none'}`"
+              ),
+              "",
+              "### Failure",
+              "",
+              f"`{error}`",
+              "",
+              (
+                  "No new prediction ledger was accepted. Prior canonical "
+                  "evidence remains authoritative."
+              ),
+              "",
+              "**No paper orders are changed by this control plane.**",
+              "",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/ledger-status.md)"
+
+      - name: Fail closed on ledger drift
+        if: ${{ steps.ledger.outputs.exit_code != '0' }}
+        shell: bash
+        run: |
+          echo "Prospective prediction ledger validation failed." >&2
+          exit 1
+
+      - name: Publish clean ledger status
+        if: ${{ steps.ledger.outputs.exit_code == '0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.PREDICTION_LEDGER_ISSUE }}
+          AUDIT_RUN_ID: ${{ steps.source.outputs.audit_run_id }}
+          AUDIT_RUN_ATTEMPT: ${{ steps.source.outputs.audit_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_LEDGER_RUN_ID: ${{ steps.previous.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path(
+                  "cadence-microstructure-prediction-ledger.json"
+              ).read_text(encoding="utf-8")
+          )
+          rows = ledger.get("rows", [])
+          direction = {
+              "long": {"rows": 0, "admitted": 0},
+              "short": {"rows": 0, "admitted": 0},
+          }
+          for row in rows:
+              item = direction[row["direction"]]
+              item["rows"] += 1
+              if row["admitted"]:
+                  item["admitted"] += 1
+
+          def iso_ms(value):
+              if value is None:
+                  return "none"
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          lines = [
+              "## Prospective cadence prediction ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- ledger tool SHA: `{os.environ['GITHUB_SHA']}`",
+              f"- source audit run: `{os.environ['AUDIT_RUN_ID']}`",
+              f"- source audit attempt: `{os.environ['AUDIT_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              (
+                  "- previous ledger workflow run: "
+                  f"`{os.environ.get('PREVIOUS_LEDGER_RUN_ID') or 'none'}`"
+              ),
+              f"- model family: `{ledger['model_family']}`",
+              (
+                  "- frozen training digest: "
+                  f"`{ledger['frozen_training_rows_sha256']}`"
+              ),
+              (
+                  "- prospective start: "
+                  f"`{iso_ms(ledger['prospective_start_ms'])}`"
+              ),
+              (
+                  "- rows / previous / newly appended: "
+                  f"`{ledger['row_count']} / "
+                  f"{ledger['previous_row_count']} / "
+                  f"{ledger['new_row_count']}`"
+              ),
+              (
+                  "- first / last boundary: "
+                  f"`{iso_ms(ledger['first_boundary_ms'])} / "
+                  f"{iso_ms(ledger['last_boundary_ms'])}`"
+              ),
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Direction",
+              "",
+              (
+                  "- LONG rows / admitted: "
+                  f"`{direction['long']['rows']} / "
+                  f"{direction['long']['admitted']}`"
+              ),
+              (
+                  "- SHORT rows / admitted: "
+                  f"`{direction['short']['rows']} / "
+                  f"{direction['short']['admitted']}`"
+              ),
+              "",
+              "### Latest immutable rows",
+              "",
+              (
+                  "| Boundary | Market | Side | Prediction | "
+                  "Admitted | Realized net | Decision |"
+              ),
+              "| --- | --- | --- | ---: | --- | ---: | --- |",
+          ]
+          for row in rows[-10:]:
+              lines.append(
+                  "| {boundary} | {market} | {direction} | {prediction} | "
+                  "{admitted} | {realized} | {decision} |".format(
+                      boundary=iso_ms(row["boundary_ms"]),
+                      market=row["market"],
+                      direction=row["direction"],
+                      prediction=row["prediction_net_return"],
+                      admitted=str(row["admitted"]).lower(),
+                      realized=row["realized_net_return"],
+                      decision=row["decision_id"][:16],
+                  )
+              )
+          if not rows:
+              lines.append(
+                  "| _none yet_ | - | - | - | - | - | - |"
+              )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "Every previously published row must remain exactly "
+                      "identical in all later audits. Missing, changed, or "
+                      "retroactively inserted rows fail closed."
+                  ),
+                  "",
+                  "**No paper orders are changed by this control plane.**",
+                  "",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/ledger-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.ledger.outputs.exit_code == '0' }}
+        with:
+          name: cadence-microstructure-prediction-ledger-${{ steps.source.outputs.audit_run_id }}-${{ steps.source.outputs.audit_run_attempt }}
+          path: cadence-microstructure-prediction-ledger.json
+          if-no-files-found: error
+          retention-days: 90
