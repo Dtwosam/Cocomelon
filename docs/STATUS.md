@@ -2861,3 +2861,42 @@ The same side-neutral development gates remain: both LONG and SHORT must have en
 This is touched walk-forward development evidence only. It does not alter active paper strategy, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed-capacity cadence microstructure challenger — 2026-09-30
+
+The next touched-development challenger tests whether decision-time tradeability and microstructure can improve **which** LONG and SHORT setups are admitted without changing direction policy or model capacity.
+
+A label-blind exact-state coverage audit on the same purged 15m→1h dataset found:
+
+- 541 / 541 training rows and 100 / 100 validation rows contain realized volatility, range expansion, relative volume, spread, book imbalance, book age, and mark/oracle dislocation;
+- OI change and funding change are present on 529 / 541 training rows and 99 / 100 validation rows;
+- raw bid/ask depth is also complete, but is intentionally excluded because its dollar scale can behave like a hidden market-identity proxy.
+
+The challenger keeps the existing fixed shallow tree capacity unchanged:
+
+- max leaf nodes: 7;
+- minimum samples per leaf: 100;
+- learning rate: 0.05;
+- max iterations: 100;
+- L2 regularization: 1;
+- early stopping disabled;
+- deterministic random state 0.
+
+It appends only these pre-decision features to the existing tree registry:
+
+- realized 15m volatility;
+- 15m range expansion;
+- 15m relative volume;
+- spread in basis points;
+- book imbalance;
+- book age;
+- mark/oracle dislocation in basis points;
+- OI change fraction;
+- funding change.
+
+Training remains purged chronological history and the final 100 settled 15m→1h opportunities remain the same touched outer validation set. The existing LONG/SHORT admission minimums and four chronological stability blocks remain mandatory.
+
+This is research-only development evidence. It cannot alter paper execution, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
