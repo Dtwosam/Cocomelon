@@ -1,6 +1,13 @@
 name: Prospective Cadence Prediction Ledger
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-cadence-prediction-ledger.yml"
+      - "scripts/update_cadence_prospective_prediction_ledger.py"
+      - "src/cocomelon/research/prospective_prediction_ledger.py"
   workflow_run:
     workflows:
       - Prospective Cadence Microstructure Audit
@@ -61,10 +68,33 @@ jobs:
             audit_run_id="$INPUT_RUN_ID"
             audit_run_attempt="$INPUT_RUN_ATTEMPT"
             resolution_mode="manual_exact"
-          else
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
             audit_run_id="$EVENT_RUN_ID"
             audit_run_attempt="$EVENT_RUN_ATTEMPT"
             resolution_mode="successful_event"
+          else
+            latest_success="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-microstructure.yml/runs?status=success&per_page=100" |
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null
+                  then ""
+                  else "\(.id) \(.run_attempt)"
+                  end
+              '
+            )"
+            if [[ -n "$latest_success" ]]; then
+              read -r audit_run_id audit_run_attempt <<<"$latest_success"
+            else
+              audit_run_id=""
+              audit_run_attempt=""
+            fi
+            resolution_mode="latest_success_bootstrap"
           fi
           if [[ -z "$audit_run_id" || -z "$audit_run_attempt" ]]; then
             echo "Missing prospective audit run identity." >&2
