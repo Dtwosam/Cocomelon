@@ -444,6 +444,15 @@ jobs:
                   f"`{overall['blocked_loss_minus_sacrificed_win']}`"
               ),
               (
+                  "- loss avoidance rate / winner retention rate: "
+                  f"`{overall['loss_avoidance_rate']} / "
+                  f"{overall['winner_retention_rate']}`"
+              ),
+              (
+                  "- trade block rate: "
+                  f"`{overall['trade_block_rate']}`"
+              ),
+              (
                   "- actual / candidate matched PnL / delta: "
                   f"`{overall['actual_net_pnl_sum']} / "
                   f"{overall['candidate_matched_net_pnl_sum']} / "
@@ -459,7 +468,8 @@ jobs:
               lines.append(
                   "- {direction}: matched={matched} admitted={admitted} "
                   "blocked_losers={blocked_losers} blocked_winners={blocked_winners} "
-                  "actual={actual} candidate={candidate} delta={delta}".format(
+                  "actual={actual} candidate={candidate} delta={delta} "
+                  "loss_avoid={loss_avoid} winner_retain={winner_retain}".format(
                       direction=direction.upper(),
                       matched=item["matched_closed_trades"],
                       admitted=item["candidate_admitted_trades"],
@@ -468,6 +478,8 @@ jobs:
                       actual=item["actual_net_pnl_sum"],
                       candidate=item["candidate_matched_net_pnl_sum"],
                       delta=item["candidate_minus_actual_net_pnl_sum"],
+                      loss_avoid=item["loss_avoidance_rate"],
+                      winner_retain=item["winner_retention_rate"],
                   )
               )
           lines.extend(
