@@ -2774,3 +2774,23 @@ The same side-neutral development gates remain in force: enough LONG and SHORT v
 This is designed to answer **when a setup should be taken**, rather than banning a direction. It remains touched development evidence and cannot alter paper orders, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Confidence-aware cadence context learner — 2026-09-30
+
+The regime-aware cadence learner exposed two specific development failure modes in the exact handoff-state audit:
+
+- a LONG / trend / 80+ / up / low-volatility cell had 9 training rows with mean net return about -0.548%, but the older hard-fallback hierarchy ignored that local evidence because the cell had fewer than 25 rows and admitted it from a broader positive parent;
+- a SHORT / trend / 70-<75 / down / low-volatility cell had 25 training rows with only a tiny positive mean (about +0.007%) and then lost in validation.
+
+A new research-only challenger replaces hard positive-mean fallback with a **first-supported local confidence hurdle**:
+
+- exact/contextual groups can become decision-bearing from 5 training observations;
+- broader fallback groups still require 25 observations;
+- once a supported local group exists, broader parents cannot override its sign;
+- admission requires the training mean minus 1.28 standard errors to remain above zero;
+- chronological purging, immutable decision-time feature lineage, and the same LONG/SHORT development gates remain unchanged.
+
+This is still touched development evidence. The confidence hurdle is a model-selection experiment, not a calibrated probability statement, and it cannot alter paper orders, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
