@@ -6064,6 +6064,83 @@ def test_stop_reentry_renderer_exposes_fixed_windows_and_sides() -> None:
                     "mean_net_r": "-0.6",
                 },
             },
+            "by_prior_losing_stop_streak": {
+                "0": {
+                    "trades": 7,
+                    "wins": 4,
+                    "losses": 3,
+                    "net_pnl": "9",
+                    "mean_net_r": "0.12",
+                },
+                "1": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "net_pnl": "2",
+                    "mean_net_r": "0.1",
+                },
+                "2": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "net_pnl": "-14",
+                    "mean_net_r": "-0.7",
+                },
+                "3+": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.6",
+                },
+            },
+            "skip_after_prior_losing_stops": {
+                "after_1": {
+                    "blocked_trades": 5,
+                    "blocked_winners": 1,
+                    "blocked_losses": 4,
+                    "blocked_net_pnl": "-18",
+                    "delta_trade_contribution_pnl": "18",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "7",
+                        "positive_after_removing_any_one_trade": True,
+                    },
+                    "market_robustness": {
+                        "leave_one_market_out_min_delta_pnl": "4",
+                        "positive_after_removing_any_one_market": True,
+                    },
+                },
+                "after_2": {
+                    "blocked_trades": 3,
+                    "blocked_winners": 0,
+                    "blocked_losses": 3,
+                    "blocked_net_pnl": "-20",
+                    "delta_trade_contribution_pnl": "20",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "8",
+                        "positive_after_removing_any_one_trade": True,
+                    },
+                    "market_robustness": {
+                        "leave_one_market_out_min_delta_pnl": "6",
+                        "positive_after_removing_any_one_market": True,
+                    },
+                },
+                "after_3": {
+                    "blocked_trades": 1,
+                    "blocked_winners": 0,
+                    "blocked_losses": 1,
+                    "blocked_net_pnl": "-6",
+                    "delta_trade_contribution_pnl": "6",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "0",
+                        "positive_after_removing_any_one_trade": False,
+                    },
+                    "market_robustness": {
+                        "leave_one_market_out_min_delta_pnl": "0",
+                        "positive_after_removing_any_one_market": False,
+                    },
+                },
+            },
             "skip_windows": {
                 "within_5m": {
                     "blocked_trades": 2,
@@ -6123,6 +6200,11 @@ def test_stop_reentry_renderer_exposes_fixed_windows_and_sides() -> None:
     assert "closed / re-entry / fresh-or-reset trades" in output
     assert "`12 / 5 / 7`" in output
     assert "| 0-5m | 2 | 0 | 2 | -11 | -0.55 |" in output
+    assert "| 2 | 2 | 0 | 2 | -14 | -0.7 |" in output
+    assert (
+        "| >=2 prior stops | 3 | 0 | 3 | -20 | 20 | 8 | 6 | "
+        "True | True |" in output
+    )
     assert "| <=5m | 2 | 0 | 2 | -11 | 11 | 5 | True |" in output
     assert "| <=30m | 3 | 1 | 2 | -7 | 7 | -4 | False |" in output
     assert "| LONG | 3 | 1 | 2 | -6 | -0.2 |" in output
