@@ -2820,3 +2820,29 @@ Training remains purged chronological history and validation remains the final 1
 This is research-only touched development evidence. It cannot alter paper execution, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Active cross-section cadence context — 2026-09-30
+
+The exact cadence artifact does **not** contain contemporaneous BTC/ETH/HYPE/SOL snapshots at cadence decision timestamps, so the frozen four-market basket is not reconstructed or approximated.
+
+It does contain a complete contemporaneous active decision cross-section for every audited row:
+
+- all 541 purged training opportunities have 20–23 same-timestamp markets with complete 1h returns;
+- all 100 outer validation opportunities have 20–21 same-timestamp markets with complete 1h returns;
+- every target market is present in its same-timestamp cross-section.
+
+A new touched-development challenger therefore derives only decision-time active-universe context:
+
+- median 1h return;
+- positive-return breadth;
+- 1h return dispersion;
+- target relative 1h return;
+- target relative 1h z-score;
+- established direction/breadth/relative-strength buckets.
+
+The active membership itself is **not** used as a categorical feature, so the model cannot memorize a particular shortlist composition. A minimum of 10 contemporaneous markets is frozen even though observed coverage is at least 20.
+
+These features are appended to the unchanged fixed 7-leaf shallow tree. Market identity remains excluded, the outer final-100 holdout and side-neutral LONG/SHORT gates remain unchanged, and the work remains research-only with no execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**
