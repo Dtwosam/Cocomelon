@@ -1,0 +1,252 @@
+name: Temporary cadence microstructure coverage audit 36694359628
+
+on:
+  push:
+    branches:
+      - audit/cadence-microstructure-coverage-36694359628
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact predecessor paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11089237194"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/state.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/state.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+          test -s /tmp/state/cadence-shadow-state.json
+          test -d /tmp/state/learning-features/records
+      - name: Audit decision-time feature coverage
+        run: |
+          python - <<'PY' | tee cadence-microstructure-coverage.json
+          from __future__ import annotations
+
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+
+          from cocomelon.features.math import quantile
+          from cocomelon.research.cadence_opportunity_audit import (
+              load_cadence_outcomes,
+          )
+          from cocomelon.research.cadence_shadow import (
+              FIFTEEN_MINUTES_MS,
+              ONE_HOUR_MS,
+          )
+          from cocomelon.research.learning_feature_snapshots import (
+              LearningFeatureSnapshotStore,
+          )
+
+          fields = (
+              "return_5m",
+              "return_15m",
+              "return_1h",
+              "funding",
+              "open_interest",
+              "oi_change_fraction",
+              "funding_change",
+              "mark_oracle_dislocation_bps",
+              "realized_vol_15m",
+              "range_expansion_15m",
+              "relative_volume_15m",
+              "spread_bps",
+              "bid_depth_25bps",
+              "ask_depth_25bps",
+              "book_imbalance",
+              "book_age_ms",
+          )
+
+          outcomes = load_cadence_outcomes(
+              Path("/tmp/state/cadence-shadow-state.json")
+          )
+          surface = tuple(
+              sorted(
+                  (
+                      outcome
+                      for outcome in outcomes
+                      if outcome.sample.cadence_ms == FIFTEEN_MINUTES_MS
+                      and outcome.sample.horizon_ms == ONE_HOUR_MS
+                  ),
+                  key=lambda item: (
+                      item.sample.boundary_ms,
+                      item.sample.market.canonical,
+                      item.sample.decision_id,
+                  ),
+              )
+          )
+          validation = surface[-100:]
+          validation_start_ms = validation[0].sample.boundary_ms
+          prefix = surface[:-100]
+          training = tuple(
+              row
+              for row in prefix
+              if row.sample.target_end_ms < validation_start_ms
+          )
+          store = LearningFeatureSnapshotStore(
+              Path("/tmp/state/learning-features")
+          )
+
+          def resolve(rows):
+              result = []
+              missing = []
+              for outcome in rows:
+                  verified = store.load(outcome.sample.feature_snapshot_id)
+                  if verified is None:
+                      missing.append(outcome.sample.feature_snapshot_id)
+                      continue
+                  snapshot = verified.snapshot
+                  if snapshot.market != outcome.sample.market:
+                      raise SystemExit("feature market lineage mismatch")
+                  if snapshot.as_of_ms > outcome.sample.evaluated_at_ms:
+                      raise SystemExit("feature as_of after decision")
+                  if (
+                      snapshot.source_received_at_ms
+                      > outcome.sample.evaluated_at_ms
+                  ):
+                      raise SystemExit("feature received after decision")
+                  result.append(snapshot)
+              return tuple(result), tuple(missing)
+
+          train_snapshots, missing_train = resolve(training)
+          val_snapshots, missing_val = resolve(validation)
+          if missing_train or missing_val:
+              raise SystemExit(
+                  f"missing snapshots train={len(missing_train)} "
+                  f"validation={len(missing_val)}"
+              )
+
+          def summarize(snapshots):
+              output = {}
+              n = len(snapshots)
+              for field in fields:
+                  raw = tuple(
+                      getattr(snapshot, field)
+                      for snapshot in snapshots
+                  )
+                  values = tuple(
+                      value
+                      for value in raw
+                      if value is not None
+                  )
+                  finite = tuple(
+                      value
+                      for value in values
+                      if value.is_finite()
+                  )
+                  if len(finite) != len(values):
+                      raise SystemExit(
+                          f"non-finite value in {field}"
+                      )
+                  stats = {
+                      "rows": n,
+                      "present_rows": len(values),
+                      "missing_rows": n - len(values),
+                      "coverage_fraction": str(
+                          Decimal(len(values)) / Decimal(n)
+                      ),
+                      "distinct_values": len(set(values)),
+                  }
+                  if values:
+                      ordered = tuple(sorted(values))
+                      stats.update(
+                          {
+                              "min": str(ordered[0]),
+                              "p10": str(
+                                  quantile(
+                                      ordered,
+                                      Decimal("0.10"),
+                                  )
+                              ),
+                              "median": str(
+                                  quantile(
+                                      ordered,
+                                      Decimal("0.50"),
+                                  )
+                              ),
+                              "p90": str(
+                                  quantile(
+                                      ordered,
+                                      Decimal("0.90"),
+                                  )
+                              ),
+                              "max": str(ordered[-1]),
+                          }
+                      )
+                  output[field] = stats
+              return output
+
+          report = {
+              "research_only": True,
+              "execution_authority": False,
+              "promotion_authority": False,
+              "claim_scope": "decision_time_feature_coverage_only",
+              "surface": "15m_to_1h",
+              "training_rows": len(training),
+              "validation_rows": len(validation),
+              "purged_overlap_rows": len(prefix) - len(training),
+              "training": summarize(train_snapshots),
+              "validation": summarize(val_snapshots),
+          }
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - name: Summarize coverage
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+
+          r=json.loads(
+              Path("cadence-microstructure-coverage.json").read_text()
+          )
+          print("## Cadence decision-time feature coverage")
+          print(
+              f"- training / validation: "
+              f"{r['training_rows']} / {r['validation_rows']}"
+          )
+          print("| Feature | Train coverage | Val coverage | Train distinct | Val distinct |")
+          print("| --- | ---: | ---: | ---: | ---: |")
+          for feature, train in r["training"].items():
+              val=r["validation"][feature]
+              print(
+                  f"| {feature} | {train['coverage_fraction']} | "
+                  f"{val['coverage_fraction']} | "
+                  f"{train['distinct_values']} | {val['distinct_values']} |"
+              )
+          print("### >=95% coverage in both splits")
+          for feature, train in r["training"].items():
+              val=r["validation"][feature]
+              if (
+                  Decimal(train["coverage_fraction"]) >= Decimal("0.95")
+                  and Decimal(val["coverage_fraction"]) >= Decimal("0.95")
+              ):
+                  print(f"- {feature}")
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-microstructure-coverage-36694359628
+          path: cadence-microstructure-coverage.json
+          if-no-files-found: error
+          retention-days: 30
