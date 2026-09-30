@@ -279,6 +279,9 @@ def evaluate_cadence_tree_prospective_baseline(
         "frozen_training_rows": len(training_rows),
         "frozen_training_rows_sha256": manifest.rows_sha256,
         "frozen_training_source": manifest.source,
+        "frozen_training_last_target_end_ms": (
+            manifest.training_last_target_end_ms
+        ),
         "prospective_rows": len(prospective_rows),
         "required_prospective_rows": validation_config.validation_rows,
         "admitted_rows": len(admitted),
