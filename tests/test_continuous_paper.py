@@ -155,6 +155,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"net_r": str(trade.net_r)' in source
     assert '"exit_reason": trade.exit_reason' in source
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
+    assert (
+        'CADENCE_TRADE_QUALITY_FILENAME = '
+        '"cadence-trade-quality-calibration.json"' in source
+    )
+    assert "root / CADENCE_TRADE_QUALITY_FILENAME" in source
     assert "pump.cadence_shadow.state_payload()" in source
     assert "cadence_trade_quality_calibration(" in source
     assert '"cadence_trade_quality_calibration": (' in source
