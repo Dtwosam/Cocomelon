@@ -281,6 +281,11 @@ jobs:
                   f"`{str(cadence['complexity_justified']).lower()}`"
               ),
               (
+                  "- current gate path open / closed blocks failed: "
+                  f"`{str(cadence['gate_path_open']).lower()} / "
+                  f"{cadence['failed_closed_stability_blocks']}`"
+              ),
+              (
                   "- prospective rows / required: "
                   f"`{cadence['prospective_rows']} / "
                   f"{cadence['required_prospective_rows']}`"
@@ -319,10 +324,15 @@ jobs:
           ]
           for block in cadence["stability_blocks"]:
               lines.append(
-                  "- block {block}: rows=`{rows}` admitted=`{admitted}` "
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` admitted=`{admitted}` "
                   "sum=`{total}` passes=`{passes}`".format(
                       block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
                       rows=block["prospective_rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
                       admitted=block["admitted_rows"],
                       total=block["candidate_net_return_sum"],
                       passes=str(block["passes"]).lower(),
@@ -349,6 +359,11 @@ jobs:
                       f"{comparison['required_positive_incremental_blocks']}`"
                   ),
                   (
+                      "- incremental gate path open / closed blocks failed: "
+                      f"`{str(comparison['incremental_gate_path_open']).lower()} / "
+                      f"{comparison['failed_closed_incremental_blocks']}`"
+                  ),
+                  (
                       "- both / micro-only / baseline-only / neither: "
                       f"`{comparison['both_admit']} / "
                       f"{comparison['microstructure_only']} / "
@@ -362,11 +377,16 @@ jobs:
           )
           for block in comparison["incremental_stability_blocks"]:
               lines.append(
-                  "- block {block}: rows=`{rows}` micro-only=`{micro}` "
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` micro-only=`{micro}` "
                   "baseline-only=`{baseline}` delta=`{delta}` "
                   "passes=`{passes}`".format(
                       block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
                       rows=block["paired_rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
                       micro=block["microstructure_only_rows"],
                       baseline=block["baseline_only_rows"],
                       delta=block["microstructure_minus_baseline_sum"],
@@ -386,6 +406,11 @@ jobs:
                       "- sample complete / economics pass: "
                       f"`{str(timing['sample_complete']).lower()} / "
                       f"{str(timing['economics_pass']).lower()}`"
+                  ),
+                  (
+                      "- current gate path open / closed blocks failed: "
+                      f"`{str(timing['gate_path_open']).lower()} / "
+                      f"{timing['failed_closed_temporal_blocks']}`"
                   ),
                   (
                       "- integrity clean: "
@@ -443,10 +468,15 @@ jobs:
           )
           for block in timing["temporal_blocks"]:
               lines.append(
-                  "- block {block}: rows=`{rows}` selected=`{selected}` "
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` selected=`{selected}` "
                   "vs_actual=`{actual}` vs_60s=`{base}` passes=`{passes}`".format(
                       block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
                       rows=block["rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
                       selected=block["selected_net_pnl"],
                       actual=block["selected_minus_actual_pnl"],
                       base=block["selected_minus_60s_pnl"],
