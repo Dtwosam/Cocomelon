@@ -312,7 +312,7 @@ def consecutive_loss_cooldown_markout_summary(
                 }
                 continue
             if horizon_ms > path.max_path_age_ms:
-                raise ConsecutLossCooldownMarkoutError(
+                raise ConsecutiveLossCooldownMarkoutError(
                     "cooldown horizon exceeds captured path"
                 )
 
