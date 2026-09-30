@@ -2194,3 +2194,13 @@ def test_runtime_exposes_cadence_opportunity_learning() -> None:
     assert "cadence_opportunity_learning_payload(" in source
     assert '"cadence_opportunity_learning": (' in source
     assert "self.cadence_shadow.outcomes" in source
+
+
+def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"heartbeat_scope": "operational"' in source
+    assert source.count("_emit_operational_live_status(") == 3
+    assert source.count("_emit_live_status(") == 1
