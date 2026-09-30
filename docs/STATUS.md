@@ -3079,8 +3079,8 @@ Issue #687 is the canonical prediction-ledger surface. After each successful Pro
 - restores the most recent successful prediction ledger;
 - requires every previously published row to remain exactly identical in decision ID, boundary, market, side, prediction, admission decision, and realized net return;
 - rejects a prior row that disappears or changes;
-- rejects a newly appearing row whose boundary predates the existing ledger frontier;
-- permits only append-only future rows;
+- permits newly settled rows to appear later even when their decision boundary is older than the newest already-settled row;
+- permits only set-append-only future evidence: prior rows may never disappear or change;
 - publishes canonical row and ledger SHA-256 digests;
 - fails closed and marks Issue #687 BLOCKED before returning a failed workflow if any invariant is violated.
 
