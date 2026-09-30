@@ -3205,3 +3205,20 @@ This only tightens evidence interpretation. It does not alter the frozen timing 
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed prospective stability windows — 2026-09-30
+
+The aggregate prospective readiness layer now uses the **final frozen review windows from the first row onward**, rather than repartitioning whatever partial sample happens to exist.
+
+- cadence quality blocks are permanently prospective rows 1–25, 26–50, 51–75, and 76–100;
+- cadence microstructure-vs-baseline incremental blocks use those identical row windows;
+- timing robustness blocks are permanently paired timing rows 1–5, 6–10, 11–15, and 16–20.
+
+Partial blocks are reported as open/provisional. A block becomes closed only when its full frozen row range exists. Because final review requires every cadence/timing block to pass, a failed **closed** block cannot be repaired by later rows; the readiness manifest therefore exposes `gate_path_open=false` as soon as that happens.
+
+This does not loosen or alter the final sample/economic gates and does not change either frozen candidate or paper execution. It makes interim evidence interpretable and allows an irrecoverably failed candidate to be retired without wasting the rest of its prospective sample.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
