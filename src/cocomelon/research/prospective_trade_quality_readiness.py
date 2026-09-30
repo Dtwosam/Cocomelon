@@ -18,12 +18,15 @@ from cocomelon.research.prospective_side_conditioned_delay import (
     MIN_PAIRED_EVALUABLE_TRADES,
     MIN_PROSPECTIVE_CLOSED_TRADES,
     MIN_SHORT_TRADES,
+    MIN_TEMPORAL_TRADES_PER_BLOCK,
+    TEMPORAL_BLOCKS,
 )
 from cocomelon.research.prospective_timing_ledger import (
     validate_timing_ledger,
 )
 
 ZERO = Decimal("0")
+MIN_POSITIVE_INCREMENTAL_BLOCKS = 3
 
 
 class ProspectiveTradeQualityReadinessError(RuntimeError):
@@ -295,6 +298,63 @@ def _cadence_readiness(
     }
 
 
+def _comparison_blocks(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    blocks: list[dict[str, object]] = []
+    for index in range(DEFAULT_CONFIG.stability_blocks):
+        start = index * len(rows) // DEFAULT_CONFIG.stability_blocks
+        end = (index + 1) * len(rows) // DEFAULT_CONFIG.stability_blocks
+        block = rows[start:end]
+        micro_only = tuple(
+            row
+            for row in block
+            if row["microstructure_admitted"] is True
+            and row["baseline_admitted"] is False
+        )
+        baseline_only = tuple(
+            row
+            for row in block
+            if row["microstructure_admitted"] is False
+            and row["baseline_admitted"] is True
+        )
+
+        def realized_sum(
+            items: tuple[dict[str, object], ...],
+        ) -> Decimal:
+            return sum(
+                (
+                    _decimal(
+                        row["realized_net_return"],
+                        field="realized_net_return",
+                    )
+                    for row in items
+                ),
+                ZERO,
+            )
+
+        micro_only_sum = realized_sum(micro_only)
+        baseline_only_sum = realized_sum(baseline_only)
+        delta = micro_only_sum - baseline_only_sum
+        blocks.append(
+            {
+                "block_index": index,
+                "paired_rows": len(block),
+                "microstructure_only_rows": len(micro_only),
+                "baseline_only_rows": len(baseline_only),
+                "microstructure_only_realized_sum": str(
+                    micro_only_sum
+                ),
+                "baseline_only_realized_sum": str(
+                    baseline_only_sum
+                ),
+                "microstructure_minus_baseline_sum": str(delta),
+                "passes": delta > ZERO,
+            }
+        )
+    return tuple(blocks)
+
+
 def _comparison_summary(
     comparison: dict[str, object],
 ) -> dict[str, object]:
@@ -342,27 +402,40 @@ def _comparison_summary(
     )
     micro_sum = realized_sum(micro)
     baseline_sum = realized_sum(baseline)
+    incremental_sum = micro_sum - baseline_sum
+    blocks = _comparison_blocks(rows)
+    positive_blocks = sum(
+        1 for block in blocks if block["passes"] is True
+    )
+    sample_complete = len(rows) >= DEFAULT_CONFIG.validation_rows
+    complexity_justified = (
+        sample_complete
+        and incremental_sum > ZERO
+        and positive_blocks >= MIN_POSITIVE_INCREMENTAL_BLOCKS
+    )
     return {
         "paired_rows": len(rows),
         "required_paired_rows": DEFAULT_CONFIG.validation_rows,
-        "paired_sample_complete": (
-            len(rows) >= DEFAULT_CONFIG.validation_rows
-        ),
+        "paired_sample_complete": sample_complete,
         "both_admit": len(both),
         "microstructure_only": len(micro_only),
         "baseline_only": len(baseline_only),
         "neither": neither,
         "microstructure_admitted_sum": str(micro_sum),
         "baseline_admitted_sum": str(baseline_sum),
-        "microstructure_minus_baseline_sum": str(
-            micro_sum - baseline_sum
-        ),
+        "microstructure_minus_baseline_sum": str(incremental_sum),
         "microstructure_only_realized_sum": str(
             realized_sum(micro_only)
         ),
         "baseline_only_realized_sum": str(
             realized_sum(baseline_only)
         ),
+        "incremental_stability_blocks": blocks,
+        "positive_incremental_blocks": positive_blocks,
+        "required_positive_incremental_blocks": (
+            MIN_POSITIVE_INCREMENTAL_BLOCKS
+        ),
+        "complexity_justified": complexity_justified,
         "missing_paired_rows": max(
             0,
             DEFAULT_CONFIG.validation_rows - len(rows),
@@ -402,31 +475,10 @@ def _timing_diagnostics(
     return result
 
 
-def _timing_readiness(timing: dict[str, object]) -> dict[str, object]:
-    if _required_string(timing, "candidate_id") != TIMING_CANDIDATE_ID:
-        raise ProspectiveTradeQualityReadinessError(
-            "timing candidate ID drifted"
-        )
-    if timing.get("direction_policy") != "both_directions_remain_eligible":
-        raise ProspectiveTradeQualityReadinessError(
-            "timing direction policy drifted"
-        )
-    diagnostics = _timing_diagnostics(timing)
-    rows = cast(tuple[dict[str, object], ...], timing["rows"])
-    if _required_int(timing, "row_count") != len(rows):
-        raise ProspectiveTradeQualityReadinessError(
-            "timing row_count does not match rows"
-        )
-    if diagnostics["paired_evaluable_trades"] != len(rows):
-        raise ProspectiveTradeQualityReadinessError(
-            "timing paired-evaluable count does not match ledger rows"
-        )
-
-    long_rows = tuple(row for row in rows if row["direction"] == "long")
-    short_rows = tuple(
-        row for row in rows if row["direction"] == "short"
-    )
-    selected_sum = sum(
+def _timing_row_summary(
+    rows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    selected = sum(
         (
             _decimal(row["selected_net_pnl"], field="selected_net_pnl")
             for row in rows
@@ -453,21 +505,154 @@ def _timing_readiness(timing: dict[str, object]) -> dict[str, object]:
         ),
         ZERO,
     )
+    return {
+        "rows": len(rows),
+        "selected_net_pnl": str(selected),
+        "selected_minus_actual_pnl": str(delta_actual),
+        "selected_minus_60s_pnl": str(delta_60s),
+        "selected_net_positive": selected > ZERO,
+        "positive_vs_actual": delta_actual > ZERO,
+        "positive_vs_60s": delta_60s > ZERO,
+    }
+
+
+def _timing_temporal_blocks(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    ordered = tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                cast(int, row["closed_at_ms"]),
+                cast(str, row["trade_id"]),
+            ),
+        )
+    )
+    blocks: list[dict[str, object]] = []
+    for index in range(TEMPORAL_BLOCKS):
+        start = index * len(ordered) // TEMPORAL_BLOCKS
+        end = (index + 1) * len(ordered) // TEMPORAL_BLOCKS
+        block = ordered[start:end]
+        summary = _timing_row_summary(block)
+        full = len(block) >= MIN_TEMPORAL_TRADES_PER_BLOCK
+        blocks.append(
+            {
+                "block_index": index,
+                "full_block": full,
+                **summary,
+                "passes": (
+                    full
+                    and summary["positive_vs_actual"] is True
+                    and summary["positive_vs_60s"] is True
+                ),
+            }
+        )
+    return tuple(blocks)
+
+
+def _timing_market_robustness(
+    rows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    markets = tuple(
+        sorted({cast(str, row["market"]) for row in rows})
+    )
+    total_delta = sum(
+        (
+            _decimal(
+                row["selected_minus_60s_pnl"],
+                field="selected_minus_60s_pnl",
+            )
+            for row in rows
+        ),
+        ZERO,
+    )
+    leave_one_out: dict[str, str] = {}
+    for market in markets:
+        market_delta = sum(
+            (
+                _decimal(
+                    row["selected_minus_60s_pnl"],
+                    field="selected_minus_60s_pnl",
+                )
+                for row in rows
+                if row["market"] == market
+            ),
+            ZERO,
+        )
+        leave_one_out[market] = str(total_delta - market_delta)
+    values = tuple(Decimal(value) for value in leave_one_out.values())
+    return {
+        "market_count": len(markets),
+        "leave_one_market_out_delta_vs_60s": leave_one_out,
+        "leave_one_market_out_min_delta_vs_60s": (
+            None if not values else str(min(values))
+        ),
+        "positive_vs_60s_after_any_single_market_removed": (
+            bool(values) and all(value > ZERO for value in values)
+        ),
+    }
+
+
+def _timing_readiness(timing: dict[str, object]) -> dict[str, object]:
+    if _required_string(timing, "candidate_id") != TIMING_CANDIDATE_ID:
+        raise ProspectiveTradeQualityReadinessError(
+            "timing candidate ID drifted"
+        )
+    if timing.get("direction_policy") != "both_directions_remain_eligible":
+        raise ProspectiveTradeQualityReadinessError(
+            "timing direction policy drifted"
+        )
+    diagnostics = _timing_diagnostics(timing)
+    rows = cast(tuple[dict[str, object], ...], timing["rows"])
+    if _required_int(timing, "row_count") != len(rows):
+        raise ProspectiveTradeQualityReadinessError(
+            "timing row_count does not match rows"
+        )
+    if diagnostics["paired_evaluable_trades"] != len(rows):
+        raise ProspectiveTradeQualityReadinessError(
+            "timing paired-evaluable count does not match ledger rows"
+        )
+
+    long_rows = tuple(row for row in rows if row["direction"] == "long")
+    short_rows = tuple(
+        row for row in rows if row["direction"] == "short"
+    )
+    overall = _timing_row_summary(rows)
+    long_summary = _timing_row_summary(long_rows)
+    short_summary = _timing_row_summary(short_rows)
+    blocks = _timing_temporal_blocks(rows)
+    market_robustness = _timing_market_robustness(rows)
     integrity_clean = (
         diagnostics["missing_60s_outcomes"] == 0
         and diagnostics["missing_120s_outcomes"] == 0
         and diagnostics["lineage_mismatches"] == 0
     )
-    ready = (
+    sample_complete = (
         diagnostics["prospective_closed_trades"]
         >= MIN_PROSPECTIVE_CLOSED_TRADES
         and len(rows) >= MIN_PAIRED_EVALUABLE_TRADES
         and len(long_rows) >= MIN_LONG_TRADES
         and len(short_rows) >= MIN_SHORT_TRADES
-        and integrity_clean
     )
+    economics_pass = (
+        overall["selected_net_positive"] is True
+        and overall["positive_vs_actual"] is True
+        and overall["positive_vs_60s"] is True
+        and long_summary["selected_net_positive"] is True
+        and short_summary["selected_net_positive"] is True
+        and long_summary["positive_vs_actual"] is True
+        and short_summary["positive_vs_actual"] is True
+        and all(block["passes"] is True for block in blocks)
+        and market_robustness[
+            "positive_vs_60s_after_any_single_market_removed"
+        ]
+        is True
+    )
+    ready = sample_complete and integrity_clean and economics_pass
     return {
         "ready_for_review": ready,
+        "sample_complete": sample_complete,
+        "economics_pass": economics_pass,
         "integrity_clean": integrity_clean,
         "prospective_closed_trades": diagnostics[
             "prospective_closed_trades"
@@ -475,15 +660,25 @@ def _timing_readiness(timing: dict[str, object]) -> dict[str, object]:
         "paired_evaluable_trades": len(rows),
         "long_rows": len(long_rows),
         "short_rows": len(short_rows),
-        "selected_net_pnl": str(selected_sum),
-        "selected_minus_actual_pnl": str(delta_actual),
-        "selected_minus_60s_pnl": str(delta_60s),
+        "selected_net_pnl": overall["selected_net_pnl"],
+        "selected_minus_actual_pnl": overall[
+            "selected_minus_actual_pnl"
+        ],
+        "selected_minus_60s_pnl": overall["selected_minus_60s_pnl"],
+        "by_direction": {
+            "long": long_summary,
+            "short": short_summary,
+        },
+        "temporal_blocks": blocks,
+        "market_robustness": market_robustness,
         "diagnostics": diagnostics,
         "required": {
             "prospective_closed_trades": MIN_PROSPECTIVE_CLOSED_TRADES,
             "paired_evaluable_trades": MIN_PAIRED_EVALUABLE_TRADES,
             "long_rows": MIN_LONG_TRADES,
             "short_rows": MIN_SHORT_TRADES,
+            "temporal_blocks": TEMPORAL_BLOCKS,
+            "trades_per_temporal_block": MIN_TEMPORAL_TRADES_PER_BLOCK,
         },
         "missing": {
             "prospective_closed_trades": max(
@@ -519,6 +714,15 @@ def prospective_trade_quality_readiness(
     )
     cadence = _cadence_readiness(cadence_rows)
     comparison_summary = _comparison_summary(comparison)
+    standalone_cadence_ready = cadence["ready_for_review"] is True
+    complexity_justified = (
+        comparison_summary["complexity_justified"] is True
+    )
+    cadence["standalone_ready_for_review"] = standalone_cadence_ready
+    cadence["complexity_justified"] = complexity_justified
+    cadence["ready_for_review"] = (
+        standalone_cadence_ready and complexity_justified
+    )
     timing_summary = _timing_readiness(timing)
     any_ready = (
         cadence["ready_for_review"] is True

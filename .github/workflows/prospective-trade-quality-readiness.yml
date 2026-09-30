@@ -273,6 +273,14 @@ jobs:
                   f"`{str(cadence['ready_for_review']).lower()}`"
               ),
               (
+                  "- standalone quality gate: "
+                  f"`{str(cadence['standalone_ready_for_review']).lower()}`"
+              ),
+              (
+                  "- complexity justified vs baseline: "
+                  f"`{str(cadence['complexity_justified']).lower()}`"
+              ),
+              (
                   "- prospective rows / required: "
                   f"`{cadence['prospective_rows']} / "
                   f"{cadence['required_prospective_rows']}`"
@@ -335,6 +343,12 @@ jobs:
                       f"`{comparison['microstructure_minus_baseline_sum']}`"
                   ),
                   (
+                      "- complexity justified / positive incremental blocks: "
+                      f"`{str(comparison['complexity_justified']).lower()} / "
+                      f"{comparison['positive_incremental_blocks']} / "
+                      f"{comparison['required_positive_incremental_blocks']}`"
+                  ),
+                  (
                       "- both / micro-only / baseline-only / neither: "
                       f"`{comparison['both_admit']} / "
                       f"{comparison['microstructure_only']} / "
@@ -342,11 +356,36 @@ jobs:
                       f"{comparison['neither']}`"
                   ),
                   "",
+                  "#### Incremental chronological stability",
+                  "",
+              ]
+          )
+          for block in comparison["incremental_stability_blocks"]:
+              lines.append(
+                  "- block {block}: rows=`{rows}` micro-only=`{micro}` "
+                  "baseline-only=`{baseline}` delta=`{delta}` "
+                  "passes=`{passes}`".format(
+                      block=block["block_index"],
+                      rows=block["paired_rows"],
+                      micro=block["microstructure_only_rows"],
+                      baseline=block["baseline_only_rows"],
+                      delta=block["microstructure_minus_baseline_sum"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
+                  "",
                   "### Side-conditioned timing challenger",
                   "",
                   (
                       "- ready for review: "
                       f"`{str(timing['ready_for_review']).lower()}`"
+                  ),
+                  (
+                      "- sample complete / economics pass: "
+                      f"`{str(timing['sample_complete']).lower()} / "
+                      f"{str(timing['economics_pass']).lower()}`"
                   ),
                   (
                       "- integrity clean: "
@@ -373,12 +412,49 @@ jobs:
                       f"{timing['selected_minus_60s_pnl']}`"
                   ),
                   (
+                      "- LONG selected / vs actual: "
+                      f"`{timing['by_direction']['long']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['long']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- SHORT selected / vs actual: "
+                      f"`{timing['by_direction']['short']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['short']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- positive vs 60s after removing any one market: "
+                      f"`{str(timing['market_robustness']['positive_vs_60s_after_any_single_market_removed']).lower()}`"
+                  ),
+                  (
                       "- missing closed / paired / LONG / SHORT: "
                       f"`{timing['missing']['prospective_closed_trades']} / "
                       f"{timing['missing']['paired_evaluable_trades']} / "
                       f"{timing['missing']['long_rows']} / "
                       f"{timing['missing']['short_rows']}`"
                   ),
+              ]
+          )
+          lines.extend(
+              [
+                  "",
+                  "#### Timing chronological robustness",
+                  "",
+              ]
+          )
+          for block in timing["temporal_blocks"]:
+              lines.append(
+                  "- block {block}: rows=`{rows}` selected=`{selected}` "
+                  "vs_actual=`{actual}` vs_60s=`{base}` passes=`{passes}`".format(
+                      block=block["block_index"],
+                      rows=block["rows"],
+                      selected=block["selected_net_pnl"],
+                      actual=block["selected_minus_actual_pnl"],
+                      base=block["selected_minus_60s_pnl"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
                   "",
                   "### Authority",
                   "",
