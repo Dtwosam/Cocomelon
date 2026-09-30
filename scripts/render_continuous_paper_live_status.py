@@ -7941,6 +7941,256 @@ def _delayed_entry_stop_l2_lines(
     return lines
 
 
+
+def _render_operational_live_status(
+    payload: Mapping[str, Any],
+    *,
+    run_id: str,
+    head_sha: str,
+    predecessor_run_id: str,
+) -> str:
+    timestamp_ms = int(payload["timestamp_ms"])
+    timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+    positions_raw = payload.get("positions", [])
+    if not isinstance(positions_raw, list):
+        raise ValueError("positions must be a list")
+    recent_closed = payload.get("recent_closed_trades", [])
+    if not isinstance(recent_closed, list):
+        raise ValueError("recent_closed_trades must be a list")
+    decisions = payload.get("session_decisions", {})
+    if not isinstance(decisions, dict):
+        decisions = {}
+    risk = payload.get("session_risk", {})
+    if not isinstance(risk, dict):
+        risk = {}
+
+    lines = [
+        "## Continuous paper runtime live status",
+        "",
+        f"Updated: {timestamp.isoformat()}",
+        f"Worker run: {run_id}",
+        f"Worker head SHA: {head_sha}",
+        (
+            "Predecessor run: "
+            + (
+                predecessor_run_id
+                if predecessor_run_id
+                else "fresh/watchdog restore"
+            )
+        ),
+        "Execution: PAPER ONLY · Live orders: false",
+        "",
+        (
+            "> Operational heartbeat only. Heavy research analytics are "
+            "deferred to durable state/artifact audits so they cannot block "
+            "market streaming or graceful handoff."
+        ),
+        "",
+        "### Account",
+        "",
+        f"- starting cash: {payload.get('starting_cash', 'unknown')}",
+        f"- equity: {payload['equity']}",
+        (
+            "- total account PnL / return: "
+            f"{payload.get('total_account_pnl', 'unknown')} / "
+            f"{payload.get('total_return_fraction', 'unknown')}"
+        ),
+        f"- cash: {payload['cash']}",
+        (
+            "- daily realized / unrealized PnL: "
+            f"{payload.get('daily_realized_pnl', 'unknown')} / "
+            f"{payload['unrealized_pnl']}"
+        ),
+        (
+            "- realized gross / fees / funding: "
+            f"{payload['realized_gross_pnl']} / "
+            f"{payload['cumulative_fees']} / "
+            f"{payload['cumulative_funding']}"
+        ),
+        (
+            "- cumulative / session closed trades: "
+            f"{payload['closed_trades']} / "
+            f"{payload.get('session_closed_trades', 0)}"
+        ),
+        (
+            "- open planned risk / equity: "
+            f"{payload.get('open_planned_risk', '0')} / "
+            f"{payload.get('open_planned_risk_fraction_of_equity', '0')}"
+        ),
+        (
+            "- stop-trigger gross PnL / R: "
+            f"{payload.get('open_stop_trigger_gross_pnl', '0')} / "
+            f"{payload.get('open_stop_trigger_gross_r')}"
+        ),
+        (
+            "- protected-stop positions: "
+            f"{payload.get('open_positions_with_profit_protected_stop', 0)} / "
+            f"{payload.get('open_position_count', len(positions_raw))}"
+        ),
+        (
+            "- gross open notional / equity: "
+            f"{payload.get('gross_open_notional', '0')} / "
+            f"{payload.get('gross_open_notional_fraction_of_equity', '0')}"
+        ),
+        f"- available margin: {payload.get('available_margin', '0')}",
+        (
+            "- execution healthy: "
+            f"{str(payload['execution_healthy']).lower()}"
+        ),
+        (
+            "- execution reasons: "
+            + (
+                ", ".join(
+                    map(
+                        str,
+                        payload.get("execution_reason_codes", []),
+                    )
+                )
+                or "none"
+            )
+        ),
+        "",
+        "### Open positions",
+        "",
+    ]
+    if positions_raw:
+        lines.extend(
+            [
+                (
+                    "| Market | Side | Qty | Entry | Stop | Mark | "
+                    "Unrealized gross PnL | Current R | Stop-lock PnL | "
+                    "Stop-lock R | Protected? | Planned risk |"
+                ),
+                (
+                    "| --- | --- | ---: | ---: | ---: | ---: | ---: | "
+                    "---: | ---: | ---: | --- | ---: |"
+                ),
+            ]
+        )
+        for raw in positions_raw:
+            if not isinstance(raw, dict):
+                raise ValueError("position must be an object")
+            lines.append(
+                "| {market} | {side} | {quantity} | {entry} | {stop} | "
+                "{mark} | {pnl} | {current_r} | {stop_pnl} | {stop_r} | "
+                "{protected} | {risk} |".format(
+                    market=raw["market"],
+                    side=raw["side"],
+                    quantity=raw["quantity"],
+                    entry=raw["average_entry_price"],
+                    stop=raw["stop_price"],
+                    mark=raw["latest_mark"],
+                    pnl=raw["unrealized_gross_pnl"],
+                    current_r=raw.get("current_gross_r") or "n/a",
+                    stop_pnl=raw.get(
+                        "stop_trigger_gross_pnl",
+                        "n/a",
+                    ),
+                    stop_r=raw.get("stop_trigger_gross_r", "n/a"),
+                    protected=(
+                        "yes"
+                        if raw.get("stop_protects_profit") is True
+                        else "no"
+                    ),
+                    risk=raw["planned_risk"],
+                )
+            )
+    else:
+        lines.append("_No open paper positions in this heartbeat._")
+
+    lines.extend(["", "### Recent closed trades", ""])
+    if recent_closed:
+        lines.extend(
+            [
+                "| Market | Side | Net PnL | Net R | Hold | Exit reason |",
+                "| --- | --- | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for raw in recent_closed:
+            if not isinstance(raw, dict):
+                raise ValueError(
+                    "recent closed trade must be an object"
+                )
+            lines.append(
+                "| {market} | {side} | {net_pnl} | {net_r} | "
+                "{hold}ms | {reason} |".format(
+                    market=raw["market"],
+                    side=raw["direction"],
+                    net_pnl=raw["net_pnl"],
+                    net_r=raw["net_r"],
+                    hold=raw["holding_duration_ms"],
+                    reason=raw["exit_reason"],
+                )
+            )
+    else:
+        lines.append("_No closed paper trades in durable state yet._")
+
+    lines.extend(
+        [
+            "",
+            "### Latest observation",
+            "",
+            json.dumps(
+                payload.get("last_observation"),
+                sort_keys=True,
+            ),
+            "",
+            "### Decision path",
+            "",
+            (
+                "- session decision epochs: "
+                f"{payload.get('session_decision_epochs', 0)}"
+            ),
+            (
+                "- last decision boundary / evaluated ms: "
+                f"{payload.get('last_decision_boundary_ms')} / "
+                f"{payload.get('last_decision_evaluated_at_ms')}"
+            ),
+            (
+                "- LONG / SHORT / NO_TRADE: "
+                f"{decisions.get('long', 0)} / "
+                f"{decisions.get('short', 0)} / "
+                f"{decisions.get('no_trade', 0)}"
+            ),
+            (
+                "- risk evaluations / approvals / rejections: "
+                f"{risk.get('evaluations', 0)} / "
+                f"{risk.get('approvals', 0)} / "
+                f"{risk.get('rejections', 0)}"
+            ),
+            (
+                "- opening execution attempts / fills: "
+                f"{payload.get('session_opening_execution_attempts', 0)} / "
+                f"{payload.get('session_opening_fills', 0)}"
+            ),
+            (
+                "- strategy reasons: "
+                f"{_reason_summary(payload.get('session_decision_reason_counts', {}))}"
+            ),
+            (
+                "- risk reasons: "
+                f"{_reason_summary(risk.get('reason_counts', {}))}"
+            ),
+            "",
+            "### Runtime",
+            "",
+            f"- selected markets: {payload['selected_market_count']}",
+            f"- processed records: {payload['processed_records']}",
+            (
+                "- journal observations: "
+                f"{payload['journal_observations']}"
+            ),
+            "- research telemetry deferred: true",
+            "",
+            (
+                "> Completed durable artifacts and exact-state research audits "
+                "remain the historical/research authority."
+            ),
+        ]
+    )
+    return _bounded_issue_body("\n".join(lines) + "\n")
+
+
 def render_live_status(
     payload: Mapping[str, Any],
     *,
@@ -7948,6 +8198,13 @@ def render_live_status(
     head_sha: str,
     predecessor_run_id: str,
 ) -> str:
+    if payload.get("heartbeat_scope") == "operational":
+        return _render_operational_live_status(
+            payload,
+            run_id=run_id,
+            head_sha=head_sha,
+            predecessor_run_id=predecessor_run_id,
+        )
     timestamp_ms = int(payload["timestamp_ms"])
     timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
     positions_raw = payload.get("positions", [])
