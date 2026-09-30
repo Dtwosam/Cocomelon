@@ -115,6 +115,7 @@ def test_first_cadence_failure_is_preserved() -> None:
     )
     entry = first["entries"][0]
     assert entry["candidate_key"] == "cadence_microstructure"
+    assert len(entry["candidate_instance_id"]) == 64
     assert entry["source_readiness_run_id"] == 20
     assert entry["failed_closed_blocks"][0]["block_index"] == 0
 
@@ -277,3 +278,50 @@ def test_pre_lifecycle_readiness_manifest_is_rejected() -> None:
             source_readiness_run_id=10,
             source_readiness_run_attempt=1,
         )
+
+
+def test_new_candidate_generation_does_not_rewrite_old_failure() -> None:
+    failed = _report()
+    cadence = failed["cadence"]
+    assert isinstance(cadence, dict)
+    cadence["lifecycle_state"] = "failed_closed_block"
+    cadence["irrecoverable_failure_components"] = (
+        "standalone_stability",
+    )
+    cadence["stability_blocks"] = (
+        {
+            "block_index": 0,
+            "start_row": 1,
+            "end_row": 25,
+            "required_rows": 25,
+            "prospective_rows": 25,
+            "closed": True,
+            "passes": False,
+            "candidate_net_return_sum": "-0.2",
+        },
+    )
+    first = update_candidate_failure_receipts(
+        failed,
+        source_readiness_run_id=20,
+        source_readiness_run_attempt=1,
+    )
+
+    replacement = _report()
+    replacement_cadence = replacement["cadence"]
+    assert isinstance(replacement_cadence, dict)
+    replacement_cadence["model_family"] = "micro-v2"
+    replacement_cadence["prospective_start_ms"] = 999
+    replacement_cadence["frozen_training_rows_sha256"] = "e" * 64
+    replacement_cadence["prediction_ledger_sha256"] = "f" * 64
+    replacement_cadence["comparison_ledger_sha256"] = "1" * 64
+
+    second = update_candidate_failure_receipts(
+        replacement,
+        source_readiness_run_id=30,
+        source_readiness_run_attempt=1,
+        previous=first,
+    )
+
+    assert second["entry_count"] == 1
+    assert second["entries"] == first["entries"]
+    assert second["ledger_sha256"] == first["ledger_sha256"]
