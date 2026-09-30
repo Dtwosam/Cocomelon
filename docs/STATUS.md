@@ -2774,3 +2774,21 @@ The same side-neutral development gates remain in force: enough LONG and SHORT v
 This is designed to answer **when a setup should be taken**, rather than banning a direction. It remains touched development evidence and cannot alter paper orders, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Reliability-aware regime learner — 2026-09-30
+
+A third research-only cadence meta-labeler now tests whether sparse but strongly separated regime cells can improve trade selection without banning a direction.
+
+The frozen development policy is:
+
+- use the exact direction + strategy + score-band + trend-regime + volatility-regime cell once it has at least 8 training observations;
+- otherwise fall back to the broader regime-aware hierarchy that requires 25 observations per selected group;
+- require the selected training estimate to exceed a 1 basis-point after-cost margin before admitting the validation opportunity;
+- preserve the same purged chronological split, LONG/SHORT representation gates, minimum admissions, and chronological stability blocks.
+
+The thresholds were chosen only after the touched development audit showed that LONG/trend/80+/up/high-vol and LONG/trend/80+/up/low-vol had strongly opposite training and validation outcomes despite having 10 and 9 training observations respectively, while one SHORT cohort had only a sub-1 bp training edge.
+
+This remains **touched development evidence**. It is not a prospective trading rule and cannot modify paper orders, sizing, stops, risk limits, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
