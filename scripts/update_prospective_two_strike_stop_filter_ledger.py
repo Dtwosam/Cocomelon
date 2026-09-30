@@ -7,6 +7,7 @@ from pathlib import Path
 
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.prospective_two_strike_stop_filter import (
+    ProspectiveTwoStrikeStopFilterError,
     ProspectiveTwoStrikeStopFilterState,
 )
 from cocomelon.research.prospective_two_strike_stop_filter_ledger import (
@@ -84,6 +85,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         OSError,
         json.JSONDecodeError,
         ValueError,
+        ProspectiveTwoStrikeStopFilterError,
         ProspectiveTwoStrikeStopFilterLedgerError,
     ) as exc:
         raise SystemExit(str(exc)) from exc
