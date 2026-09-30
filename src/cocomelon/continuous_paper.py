@@ -275,10 +275,6 @@ from cocomelon.research.prospective_combined_entry_filter import (
     evaluate_prospective_combined_entry_filter,
     evaluate_prospective_combined_matched_overlap,
 )
-from cocomelon.research.prospective_two_strike_stop_filter import (
-    ProspectiveTwoStrikeStopFilterState,
-    evaluate_prospective_two_strike_stop_filter,
-)
 from cocomelon.research.prospective_daily_loss_lockout_reflow import (
     evaluate_prospective_daily_loss_lockout_reflow,
 )
@@ -310,6 +306,10 @@ from cocomelon.research.prospective_top10_rank_filter import (
 from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
+)
+from cocomelon.research.prospective_two_strike_stop_filter import (
+    ProspectiveTwoStrikeStopFilterState,
+    evaluate_prospective_two_strike_stop_filter,
 )
 from cocomelon.util.time import utc_now_ms
 
