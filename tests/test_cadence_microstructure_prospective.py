@@ -16,13 +16,16 @@ from cocomelon.domain.features import (
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_microstructure_prospective import (
+    DEFAULT_FROZEN_TRAINING_MANIFEST_PATH,
     FEATURE_REGISTRY,
     MODEL_FAMILY,
+    PROSPECTIVE_START_MS,
     evaluate_cadence_microstructure_prospective,
 )
 from cocomelon.research.cadence_microstructure_training_manifest import (
     build_frozen_cadence_training_manifest,
     frozen_cadence_training_manifest_payload,
+    load_frozen_cadence_training_manifest,
 )
 from cocomelon.research.cadence_opportunity_learning import (
     CadenceOpportunityLearningConfig,
@@ -502,3 +505,25 @@ def test_changed_frozen_feature_record_fails_closed(
     assert report["status"] == "not_ready"
     assert report["reason"] == "frozen_training_manifest_mismatch"
     assert "feature record invalid" in report["frozen_training_error"]
+
+
+def test_committed_frozen_training_manifest_matches_freeze() -> None:
+    manifest = load_frozen_cadence_training_manifest(
+        DEFAULT_FROZEN_TRAINING_MANIFEST_PATH
+    )
+
+    assert manifest.model_family == MODEL_FAMILY
+    assert manifest.feature_registry == FEATURE_REGISTRY
+    assert manifest.prospective_start_ms == PROSPECTIVE_START_MS
+    assert manifest.cadence_ms == FIFTEEN_MINUTES_MS
+    assert manifest.horizon_ms == ONE_HOUR_MS
+    assert manifest.training_rows == 652
+    assert manifest.training_first_target_end_ms == 1_790_458_200_000
+    assert manifest.training_last_target_end_ms == 1_790_698_500_000
+    assert (
+        manifest.rows_sha256
+        == "c1baa8a730980402d02b80f960afa249"
+        "e6cb653392c64b887074cd9efb2034e4"
+    )
+    assert manifest.source["paper_run_id"] == 36_705_233_182
+    assert manifest.source["artifact_id"] == 11_092_470_461
