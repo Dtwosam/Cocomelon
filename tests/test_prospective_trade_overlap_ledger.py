@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from decimal import Decimal
 
 import pytest
@@ -378,3 +380,56 @@ def test_overlap_review_requires_broad_profitable_robust_sample() -> None:
     assert robustness["total_candidate_minus_actual_net_pnl"] == "20"
     assert robustness["leave_one_trade_out_min_delta"] == "19"
     assert robustness["positive_delta_after_removing_any_one_trade"] is True
+
+
+
+def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
+    prediction = _prediction_ledger()
+    first_trade = _trade(
+        "legacy",
+        decision_id="decision-blocked-loser",
+        direction=Direction.LONG,
+        net_pnl="-12",
+        opened_at_ms=2_100,
+    )
+    current = update_trade_overlap_ledger(
+        prediction,
+        (first_trade,),
+        previous=None,
+        source_paper_run_id=20,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning-20",
+        source_learning_artifact_digest="sha256:" + "b" * 64,
+    )
+    legacy = dict(current)
+    legacy.pop("readiness")
+    legacy.pop("robustness")
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validated = validate_trade_overlap_ledger(legacy)
+    assert validated["row_count"] == 1
+    extended = update_trade_overlap_ledger(
+        prediction,
+        (first_trade,),
+        previous=legacy,
+        source_paper_run_id=21,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning-21",
+        source_learning_artifact_digest="sha256:" + "c" * 64,
+    )
+    assert extended["prior_ledger_sha256"] == legacy["ledger_sha256"]
+    assert "readiness" in extended
+    assert "robustness" in extended
