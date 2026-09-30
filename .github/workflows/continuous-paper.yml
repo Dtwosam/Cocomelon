@@ -413,6 +413,16 @@ jobs:
             --markdown-out /tmp/continuous-paper-state-size.md
           cat /tmp/continuous-paper-state-size.md | tee -a "$GITHUB_STEP_SUMMARY"
 
+      - name: Upload cadence shadow research state
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cadence-shadow-state.json') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-cadence-shadow-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-state/cadence-shadow-state.json
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 6
+
       - name: Pack durable continuous paper state
         if: ${{ always() && steps.guard.outputs.skip != 'true' }}
         shell: bash
