@@ -36,8 +36,11 @@ jobs:
     env:
       SOURCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
       SOURCE_RUN_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+      FROZEN_CANDIDATE_SHA: efde8803da35d16529157729c2080a1cd99f9a4a
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: efde8803da35d16529157729c2080a1cd99f9a4a
 
       - uses: actions/setup-python@v7
         with:
@@ -134,10 +137,16 @@ jobs:
           )
           print("## Frozen prospective cadence microstructure challenger")
           print(f"- source paper run: {os.environ['SOURCE_RUN_ID']}")
+          print(
+              "- frozen candidate SHA: "
+              f"{os.environ['FROZEN_CANDIDATE_SHA']}"
+          )
           for field in (
               "status",
               "prospective_start_ms",
               "frozen_training_rows",
+              "frozen_training_rows_sha256",
+              "frozen_training_source",
               "prospective_rows",
               "required_prospective_rows",
               "admitted_rows",

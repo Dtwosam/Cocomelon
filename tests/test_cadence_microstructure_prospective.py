@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 from pathlib import Path
 
@@ -15,7 +16,16 @@ from cocomelon.domain.features import (
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_microstructure_prospective import (
+    DEFAULT_FROZEN_TRAINING_MANIFEST_PATH,
+    FEATURE_REGISTRY,
+    MODEL_FAMILY,
+    PROSPECTIVE_START_MS,
     evaluate_cadence_microstructure_prospective,
+)
+from cocomelon.research.cadence_microstructure_training_manifest import (
+    build_frozen_cadence_training_manifest,
+    frozen_cadence_training_manifest_payload,
+    load_frozen_cadence_training_manifest,
 )
 from cocomelon.research.cadence_opportunity_learning import (
     CadenceOpportunityLearningConfig,
@@ -212,15 +222,47 @@ def _dataset(
     return tuple(training + future), store, prospective_start_ms
 
 
+def _manifest_path(
+    root: Path,
+    rows: tuple[ShadowCadenceOutcome, ...],
+    store: LearningFeatureSnapshotStore,
+    start_ms: int,
+) -> Path:
+    manifest = build_frozen_cadence_training_manifest(
+        rows,
+        store,
+        model_family=MODEL_FAMILY,
+        feature_registry=FEATURE_REGISTRY,
+        prospective_start_ms=start_ms,
+        cadence_ms=FIFTEEN_MINUTES_MS,
+        horizon_ms=ONE_HOUR_MS,
+        source={"kind": "test"},
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "frozen-training.json"
+    path.write_text(
+        json.dumps(
+            frozen_cadence_training_manifest_payload(manifest),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_prospective_tree_can_admit_good_long_and_short(
     tmp_path: Path,
 ) -> None:
     rows, store, start = _dataset(tmp_path / "features")
+    manifest = _manifest_path(tmp_path, rows, store, start)
 
     report = evaluate_cadence_microstructure_prospective(
         rows,
         store,
         prospective_start_ms=start,
+        frozen_training_manifest_path=manifest,
         validation_config=_validation_config(),
         tree_config=_tree_config(),
     )
@@ -245,10 +287,26 @@ def test_post_freeze_labels_cannot_change_predictions(
         future_flip=True,
     )
 
+    manifest_a = _manifest_path(
+        tmp_path / "a-manifest",
+        rows_a,
+        store_a,
+        start_a,
+    )
+    manifest_b_root = tmp_path / "b-manifest"
+    manifest_b_root.mkdir(parents=True, exist_ok=True)
+    manifest_b = _manifest_path(
+        manifest_b_root,
+        rows_b,
+        store_b,
+        start_b,
+    )
+
     report_a = evaluate_cadence_microstructure_prospective(
         rows_a,
         store_a,
         prospective_start_ms=start_a,
+        frozen_training_manifest_path=manifest_a,
         validation_config=_validation_config(),
         tree_config=_tree_config(),
     )
@@ -256,6 +314,7 @@ def test_post_freeze_labels_cannot_change_predictions(
         rows_b,
         store_b,
         prospective_start_ms=start_b,
+        frozen_training_manifest_path=manifest_b,
         validation_config=_validation_config(),
         tree_config=_tree_config(),
     )
@@ -291,6 +350,7 @@ def test_pre_freeze_rows_never_count_as_prospective(
     tmp_path: Path,
 ) -> None:
     rows, store, start = _dataset(tmp_path / "features")
+    manifest = _manifest_path(tmp_path, rows, store, start)
 
     report = evaluate_cadence_microstructure_prospective(
         rows,
@@ -298,6 +358,7 @@ def test_pre_freeze_rows_never_count_as_prospective(
         prospective_start_ms=start,
         validation_config=_validation_config(),
         tree_config=_tree_config(),
+        frozen_training_manifest_path=manifest,
     )
 
     assert report["prospective_rows"] == 8
@@ -315,11 +376,18 @@ def test_zero_post_freeze_rows_is_collecting_not_error(
 ) -> None:
     rows, store, start = _dataset(tmp_path / "features")
     after_all_rows = start + 20 * FIFTEEN_MINUTES_MS
+    manifest = _manifest_path(
+        tmp_path,
+        rows,
+        store,
+        after_all_rows,
+    )
 
     report = evaluate_cadence_microstructure_prospective(
         rows,
         store,
         prospective_start_ms=after_all_rows,
+        frozen_training_manifest_path=manifest,
         validation_config=_validation_config(),
         tree_config=_tree_config(),
     )
@@ -333,3 +401,129 @@ def test_zero_post_freeze_rows_is_collecting_not_error(
         report["frozen_training_last_target_end_ms"]
         < after_all_rows
     )
+
+
+def test_extra_pre_freeze_rows_do_not_change_frozen_predictions(
+    tmp_path: Path,
+) -> None:
+    rows, store, start = _dataset(tmp_path / "features")
+    manifest = _manifest_path(tmp_path, rows, store, start)
+
+    baseline = evaluate_cadence_microstructure_prospective(
+        rows,
+        store,
+        prospective_start_ms=start,
+        validation_config=_validation_config(),
+        tree_config=_tree_config(),
+        frozen_training_manifest_path=manifest,
+    )
+    extra = _outcome(
+        store,
+        index=999,
+        direction=Direction.LONG,
+        good=True,
+        boundary_index=33,
+        net="0.50",
+    )
+    with_extra = evaluate_cadence_microstructure_prospective(
+        rows + (extra,),
+        store,
+        prospective_start_ms=start,
+        validation_config=_validation_config(),
+        tree_config=_tree_config(),
+        frozen_training_manifest_path=manifest,
+    )
+
+    baseline_predictions = tuple(
+        (
+            row["decision_id"],
+            row["prediction_net_return"],
+            row["admitted"],
+        )
+        for row in baseline["scored_rows"]
+    )
+    extra_predictions = tuple(
+        (
+            row["decision_id"],
+            row["prediction_net_return"],
+            row["admitted"],
+        )
+        for row in with_extra["scored_rows"]
+    )
+    assert baseline_predictions == extra_predictions
+    assert (
+        baseline["frozen_training_rows_sha256"]
+        == with_extra["frozen_training_rows_sha256"]
+    )
+
+
+def test_changed_frozen_outcome_fails_closed(
+    tmp_path: Path,
+) -> None:
+    rows, store, start = _dataset(tmp_path / "features")
+    manifest = _manifest_path(tmp_path, rows, store, start)
+    original = rows[0]
+    changed = ShadowCadenceOutcome(
+        sample=original.sample,
+        exit_px=original.exit_px,
+        gross_return=original.gross_return + Decimal("0.01"),
+        net_return=original.net_return + Decimal("0.01"),
+    )
+
+    report = evaluate_cadence_microstructure_prospective(
+        (changed,) + rows[1:],
+        store,
+        prospective_start_ms=start,
+        validation_config=_validation_config(),
+        tree_config=_tree_config(),
+        frozen_training_manifest_path=manifest,
+    )
+
+    assert report["status"] == "not_ready"
+    assert report["reason"] == "frozen_training_manifest_mismatch"
+    assert "frozen training content changed" in report["frozen_training_error"]
+
+
+def test_changed_frozen_feature_record_fails_closed(
+    tmp_path: Path,
+) -> None:
+    rows, store, start = _dataset(tmp_path / "features")
+    manifest = _manifest_path(tmp_path, rows, store, start)
+    snapshot_id = rows[0].sample.feature_snapshot_id
+    record_path = store.records_root / f"{snapshot_id}.json"
+    record_path.write_bytes(record_path.read_bytes() + b" ")
+
+    report = evaluate_cadence_microstructure_prospective(
+        rows,
+        store,
+        prospective_start_ms=start,
+        validation_config=_validation_config(),
+        tree_config=_tree_config(),
+        frozen_training_manifest_path=manifest,
+    )
+
+    assert report["status"] == "not_ready"
+    assert report["reason"] == "frozen_training_manifest_mismatch"
+    assert "feature record invalid" in report["frozen_training_error"]
+
+
+def test_committed_frozen_training_manifest_matches_freeze() -> None:
+    manifest = load_frozen_cadence_training_manifest(
+        DEFAULT_FROZEN_TRAINING_MANIFEST_PATH
+    )
+
+    assert manifest.model_family == MODEL_FAMILY
+    assert manifest.feature_registry == FEATURE_REGISTRY
+    assert manifest.prospective_start_ms == PROSPECTIVE_START_MS
+    assert manifest.cadence_ms == FIFTEEN_MINUTES_MS
+    assert manifest.horizon_ms == ONE_HOUR_MS
+    assert manifest.training_rows == 652
+    assert manifest.training_first_target_end_ms == 1_790_458_200_000
+    assert manifest.training_last_target_end_ms == 1_790_698_500_000
+    assert (
+        manifest.rows_sha256
+        == "c1baa8a730980402d02b80f960afa249"
+        "e6cb653392c64b887074cd9efb2034e4"
+    )
+    assert manifest.source["paper_run_id"] == 36_705_233_182
+    assert manifest.source["artifact_id"] == 11_092_470_461

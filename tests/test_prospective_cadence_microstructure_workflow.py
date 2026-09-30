@@ -30,6 +30,15 @@ def test_prospective_microstructure_audit_preserves_freeze() -> None:
 
     assert "--prospective-start-ms" not in source
     assert (
+        "ref: efde8803da35d16529157729c2080a1cd99f9a4a"
+        in source
+    )
+    assert (
+        "FROZEN_CANDIDATE_SHA: "
+        "efde8803da35d16529157729c2080a1cd99f9a4a"
+        in source
+    )
+    assert (
         "cadence-microstructure-prospective.json"
         in source
     )
