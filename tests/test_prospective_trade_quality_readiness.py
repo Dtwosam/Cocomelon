@@ -190,6 +190,57 @@ def test_current_small_sample_is_collecting() -> None:
     assert result["promotion_authority"] is False
 
 
+def test_partial_cadence_sample_keeps_fixed_first_block() -> None:
+    rows = _scored_rows(3)
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(rows),
+        _comparison_ledger(rows),
+        _timing_ledger(0),
+    )
+
+    blocks = result["cadence"]["stability_blocks"]
+    assert blocks[0]["start_row"] == 1
+    assert blocks[0]["end_row"] == 25
+    assert blocks[0]["prospective_rows"] == 3
+    assert blocks[0]["closed"] is False
+    assert all(block["prospective_rows"] == 0 for block in blocks[1:])
+    assert result["cadence"]["gate_path_open"] is True
+
+
+def test_closed_bad_cadence_block_cannot_recover_later() -> None:
+    rows = _scored_rows(
+        25,
+        prediction="0.01",
+        realized="-0.01",
+    )
+    baseline = _scored_rows(
+        25,
+        prediction="-0.01",
+        realized="-0.01",
+    )
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(rows),
+        _comparison_ledger(rows, baseline_rows=baseline),
+        _timing_ledger(0),
+    )
+
+    cadence = result["cadence"]
+    block = cadence["stability_blocks"][0]
+    assert block["prospective_rows"] == 25
+    assert block["closed"] is True
+    assert block["passes"] is False
+    assert cadence["closed_stability_blocks"] == 1
+    assert cadence["failed_closed_stability_blocks"] == 1
+    assert cadence["gate_path_open"] is False
+
+    comparison = result["comparison"]
+    increment = comparison["incremental_stability_blocks"][0]
+    assert increment["paired_rows"] == 25
+    assert increment["closed"] is True
+    assert increment["passes"] is False
+    assert comparison["incremental_gate_path_open"] is False
+
+
 def test_cadence_candidate_can_become_review_ready() -> None:
     rows = _scored_rows(100, prediction="0.01", realized="0.02")
     baseline_rows = _scored_rows(
@@ -287,6 +338,53 @@ def test_positive_total_increment_needs_chronological_stability() -> None:
     assert comparison["positive_incremental_blocks"] == 2
     assert comparison["complexity_justified"] is False
     assert cadence["ready_for_review"] is False
+
+
+def test_closed_bad_timing_block_cannot_recover_later() -> None:
+    rows = list(_timing_rows(5))
+    for index, row in enumerate(rows):
+        selected = Decimal(str(row["selected_net_pnl"]))
+        actual = selected + Decimal("1")
+        rows[index] = {
+            **row,
+            "actual_net_pnl": str(actual),
+            "selected_minus_actual_pnl": "-1",
+        }
+    diagnostics = {
+        "prospective_closed_trades": 5,
+        "paired_evaluable_trades": 5,
+        "missing_60s_outcomes": 0,
+        "missing_120s_outcomes": 0,
+        "non_evaluable_60s": 0,
+        "non_evaluable_120s": 0,
+        "lineage_mismatches": 0,
+    }
+    ledger = update_timing_ledger(
+        tuple(rows),
+        diagnostics,
+        ProspectiveSideConditionedDelayState(started_at_ms=START_MS),
+        previous=None,
+        source_paper_run_id=41,
+        source_paper_run_attempt=1,
+        source_timing_artifact_name="timing-first-block-bad",
+    )
+    cadence_rows = _scored_rows(3, prediction="-0.01", realized="0.01")
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(cadence_rows),
+        _comparison_ledger(cadence_rows),
+        ledger,
+    )
+
+    timing = result["timing"]
+    block = timing["temporal_blocks"][0]
+    assert block["start_row"] == 1
+    assert block["end_row"] == 5
+    assert block["rows"] == 5
+    assert block["closed"] is True
+    assert block["passes"] is False
+    assert timing["closed_temporal_blocks"] == 1
+    assert timing["failed_closed_temporal_blocks"] == 1
+    assert timing["gate_path_open"] is False
 
 
 def test_timing_candidate_can_become_review_ready_independently() -> None:
