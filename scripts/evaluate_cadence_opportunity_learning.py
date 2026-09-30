@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
 from cocomelon.research.cadence_opportunity_audit import (
     CadenceOpportunityAuditError,
