@@ -13,6 +13,7 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
+from cocomelon.research.profit_lock_counterfactual import ProfitLockTradeOutcome
 from cocomelon.research.prospective_allowed_residual import (
     AllowedResidualItem,
     prospective_allowed_residual_attribution,
@@ -26,6 +27,9 @@ from cocomelon.research.prospective_filter_fixed_schedule import (
 )
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
+)
+from cocomelon.research.prospective_residual_profit_lock import (
+    prospective_residual_profit_lock_summary,
 )
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
@@ -200,6 +204,8 @@ def prospective_combined_entry_filter_summary(
     fact_store: EvaluationFactStore,
     rank_store: ContinuousPaperOpeningRankStore,
     state: ProspectiveCombinedEntryFilterState,
+    *,
+    profit_lock_outcomes: tuple[ProfitLockTradeOutcome, ...] = (),
 ) -> dict[str, object]:
     prospective = tuple(
         trade
@@ -276,15 +282,20 @@ def prospective_combined_entry_filter_summary(
             for trade, _rank, _lead_strategy, reason in attributed
         )
     )
-    allowed_residual = prospective_allowed_residual_attribution(
-        tuple(
-            AllowedResidualItem(
-                trade,
-                lead_strategy=lead_strategy,
-                ordinal=rank.ordinal,
-            )
-            for trade, rank, lead_strategy in allowed
+    allowed_residual_items = tuple(
+        AllowedResidualItem(
+            trade,
+            lead_strategy=lead_strategy,
+            ordinal=rank.ordinal,
         )
+        for trade, rank, lead_strategy in allowed
+    )
+    allowed_residual = prospective_allowed_residual_attribution(
+        allowed_residual_items
+    )
+    residual_profit_lock = prospective_residual_profit_lock_summary(
+        allowed_residual_items,
+        profit_lock_outcomes,
     )
     fixed_schedule_portfolio = (
         prospective_filter_fixed_schedule_portfolio(
@@ -402,6 +413,7 @@ def prospective_combined_entry_filter_summary(
         "blocked_net_pnl": str(blocked_net_pnl),
         "robustness": robustness,
         "allowed_residual": allowed_residual,
+        "residual_profit_lock": residual_profit_lock,
         "fixed_schedule_portfolio": fixed_schedule_portfolio,
         "actual_net_pnl": str(actual_net_pnl),
         "candidate_trade_contribution_pnl": str(
@@ -475,13 +487,17 @@ def evaluate_prospective_combined_entry_filter(
     fact_store: EvaluationFactStore,
     rank_store: ContinuousPaperOpeningRankStore,
     state: ProspectiveCombinedEntryFilterState,
+    *,
+    profit_lock_outcomes: tuple[ProfitLockTradeOutcome, ...] = (),
 ) -> dict[str, object]:
     return prospective_combined_entry_filter_summary(
         tuple(journal.iter_trades()),
         fact_store,
         rank_store,
         state,
+        profit_lock_outcomes=profit_lock_outcomes,
     )
+
 
 def prospective_combined_matched_overlap_summary(
     trades: tuple[TradeJournalEntry, ...],
