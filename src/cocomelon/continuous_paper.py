@@ -74,6 +74,9 @@ from cocomelon.research.adaptive_delay_selector import (
     AdaptiveDelaySelectorState,
     adaptive_delay_selector_summary,
 )
+from cocomelon.research.cadence_opportunity_learning import (
+    evaluate_cadence_opportunity_learning,
+)
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
@@ -2719,6 +2722,41 @@ class _RecordPump:
         payload["error"] = None
         return payload
 
+
+    def cadence_opportunity_learning_payload(self) -> dict[str, object]:
+        if self.cadence_shadow_error is not None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "error": self.cadence_shadow_error,
+            }
+        if self.cadence_shadow is None:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "error": None,
+            }
+        try:
+            payload = evaluate_cadence_opportunity_learning(
+                self.cadence_shadow.outcomes,
+            )
+        except Exception as exc:
+            return {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        payload = dict(payload)
+        payload["enabled"] = True
+        payload["error"] = None
+        return payload
+
     def reconcile_cadence_shadow(
         self,
         selected_markets: tuple[MarketId, ...],
@@ -4903,6 +4941,9 @@ def _live_status_payload(
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
+        "cadence_opportunity_learning": (
+            pump.cadence_opportunity_learning_payload()
+        ),
         "trade_path_evidence": {
             "research_only": True,
             "durable_across_workers": True,

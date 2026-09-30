@@ -201,6 +201,122 @@ def _cadence_shadow_lines(raw: object) -> list[str]:
     return lines
 
 
+def _cadence_opportunity_learning_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Cadence opportunity learning",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No cadence opportunity-learning telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- settled directional outcomes: "
+                f"`{raw.get('settled_outcomes', 0)}`"
+            ),
+            (
+                "- model: "
+                f"`{raw.get('model_family', 'unknown')}`"
+            ),
+            (
+                "- primary surfaces ready / development-qualified: "
+                f"`{str(bool(raw.get('primary_ready_for_review'))).lower()} / "
+                f"{str(bool(raw.get('development_qualified'))).lower()}`"
+            ),
+        ]
+    )
+
+    surfaces = raw.get("surfaces", {})
+    if not isinstance(surfaces, dict):
+        surfaces = {}
+    lines.extend(
+        [
+            "",
+            "| Primary surface | Status | Train | Val | Purged | "
+            "Admit/skip | Actual Σnet | Candidate Σnet | ΔΣnet | "
+            "LONG admit | SHORT admit | Stable blocks |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+            "---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("900000:900000", "15m → 15m"),
+        ("900000:3600000", "15m → 1h"),
+    ):
+        surface = surfaces.get(key, {})
+        if not isinstance(surface, dict):
+            surface = {}
+        direction = surface.get("by_direction", {})
+        if not isinstance(direction, dict):
+            direction = {}
+        long_row = direction.get("long", {})
+        short_row = direction.get("short", {})
+        if not isinstance(long_row, dict):
+            long_row = {}
+        if not isinstance(short_row, dict):
+            short_row = {}
+        blocks = surface.get("stability_blocks", ())
+        if not isinstance(blocks, (list, tuple)):
+            blocks = ()
+        stable = sum(
+            1
+            for block in blocks
+            if isinstance(block, dict) and block.get("passes") is True
+        )
+        lines.append(
+            (
+                "| {label} | {status} | {train} | {val} | {purged} | "
+                "{admit}/{skip} | {actual} | {candidate} | {delta} | "
+                "{long_admit} | {short_admit} | {stable}/{blocks} |"
+            ).format(
+                label=label,
+                status=surface.get("status", "missing"),
+                train=surface.get("training_rows", 0),
+                val=surface.get("validation_rows", 0),
+                purged=surface.get("purged_overlap_rows", 0),
+                admit=surface.get("admitted_rows", 0),
+                skip=surface.get("skipped_rows", 0),
+                actual=surface.get("actual_net_return_sum", "0"),
+                candidate=surface.get("candidate_net_return_sum", "0"),
+                delta=surface.get("delta_net_return_sum", "0"),
+                long_admit=long_row.get("admitted_rows", 0),
+                short_admit=short_row.get("admitted_rows", 0),
+                stable=stable,
+                blocks=len(blocks),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Purged chronological holdout: training labels whose forward "
+                "window overlaps validation start are removed. Predictions use "
+                "direction + lead strategy + score-band grouped means with "
+                "deterministic fallback, and must retain both LONG and SHORT "
+                "validation admissions. This is not paper-fill or promotion evidence._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _profit_lock_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -8476,6 +8592,11 @@ def render_live_status(
         ]
     )
     lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
+    lines.extend(
+        _cadence_opportunity_learning_lines(
+            payload.get("cadence_opportunity_learning")
+        )
+    )
     lines.extend(
         [
             "",

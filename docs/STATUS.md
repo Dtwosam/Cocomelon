@@ -2655,3 +2655,28 @@ The review gate requires 30 prospectively evaluated trades, at least 10 admitted
 This is deliberately a quality gate rather than a direction ban. It does not change the active paper strategy, risk limits, actual order timing, actual paper fills, promotion authority, or live-order authority. A future review-ready result remains research evidence only.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Purged cadence opportunity learning — 2026-09-30
+
+Cocomelon now has a side-neutral opportunity learner over the durable cadence shadow, so research can learn from thousands of directional opportunities rather than waiting only for executed paper trades.
+
+Model family: `hierarchical_grouped_mean_v1`.
+
+For each cadence/horizon surface independently, the learner:
+
+- keeps the final 100 chronological settled opportunities as validation;
+- removes any training label whose forward-return window overlaps the first validation decision boundary;
+- requires at least 300 remaining purged training rows;
+- estimates after-cost mean forward return from direction, lead strategy, and frozen decision-score band;
+- deterministically falls back to broader direction-aware groups when a specific group has fewer than 25 training observations;
+- admits a validation opportunity only when its training-only estimated mean net return is positive;
+- evaluates candidate contribution against taking every directional opportunity;
+- requires both LONG and SHORT representation and admissions before a surface can development-qualify;
+- requires positive admitted mean return across four chronological stability blocks.
+
+The primary research surfaces are the unchanged 15-minute execution cadence evaluated at 15-minute and 1-hour forward horizons. The 5-minute surfaces remain diagnostic and do not change execution cadence.
+
+This analysis is **touched development evidence** because the cadence archive already existed when the model was introduced. It may generate hypotheses and frozen future challengers, but it is not clean prospective promotion evidence. It never rewrites the active strategy, changes paper orders, changes risk limits, promotes a candidate, or grants live execution authority.
+
+**LIVE TRADING: DISABLED.**

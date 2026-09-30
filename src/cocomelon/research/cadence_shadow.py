@@ -645,6 +645,21 @@ class CadenceShadowComparator:
             for label in labels
         }
 
+    @property
+    def outcomes(self) -> tuple[ShadowCadenceOutcome, ...]:
+        return tuple(
+            sorted(
+                self._outcomes,
+                key=lambda item: (
+                    item.sample.target_end_ms,
+                    item.sample.market.canonical,
+                    item.sample.cadence_ms,
+                    item.sample.decision_id,
+                    item.sample.horizon_ms,
+                ),
+            )
+        )
+
     def state_payload(self) -> dict[str, object]:
         pending = sorted(
             (
