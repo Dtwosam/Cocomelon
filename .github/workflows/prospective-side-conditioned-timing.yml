@@ -140,23 +140,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/timing-status.md <<EOF
-          ## Frozen prospective side-conditioned entry-timing challenger
+          python - <<'PY' > /tmp/timing-status.md
+          import os
 
-          **Status:** blocked — compact timing artifact unavailable
-
-          - source paper run: `$SOURCE_RUN_ID`
-          - source run attempt: `$SOURCE_RUN_ATTEMPT`
-          - source resolution: `$SOURCE_RESOLUTION_MODE`
-          - frozen evaluator SHA: `$TIMING_SHA`
-          - candidate: `long-120s-short-60s-v1`
-          - execution authority: `false`
-          - promotion authority: `false`
-
-          No prospective timing claim is made until the compact journal / 60s / 120s / candidate-state artifact is available.
-
-          **LIVE TRADING: DISABLED.**
-          EOF
+          print("## Frozen prospective side-conditioned entry-timing challenger")
+          print()
+          print("**Status:** blocked — compact timing artifact unavailable")
+          print()
+          print(f"- source paper run: `{os.environ['SOURCE_RUN_ID']}`")
+          print(
+              f"- source run attempt: "
+              f"`{os.environ['SOURCE_RUN_ATTEMPT']}`"
+          )
+          print(
+              f"- source resolution: "
+              f"`{os.environ['SOURCE_RESOLUTION_MODE']}`"
+          )
+          print(f"- frozen evaluator SHA: `{os.environ['TIMING_SHA']}`")
+          print("- candidate: `long-120s-short-60s-v1`")
+          print("- execution authority: `false`")
+          print("- promotion authority: `false`")
+          print()
+          print(
+              "No prospective timing claim is made until the compact "
+              "journal / 60s / 120s / candidate-state artifact is available."
+          )
+          print()
+          print("**LIVE TRADING: DISABLED.**")
+          PY
           gh api \
             --method PATCH \
             -H "Accept: application/vnd.github+json" \
