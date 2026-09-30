@@ -302,6 +302,74 @@ def _cadence_opportunity_learning_lines(
             )
         )
 
+    def cohort_table(
+        field: str,
+        title: str,
+        *,
+        limit_per_surface: int = 4,
+    ) -> None:
+        rows: list[tuple[str, dict[str, object]]] = []
+        for key, label in (
+            ("900000:900000", "15m→15m"),
+            ("900000:3600000", "15m→1h"),
+        ):
+            surface = surfaces.get(key, {})
+            if not isinstance(surface, dict):
+                continue
+            cohorts = surface.get(field, ())
+            if not isinstance(cohorts, (list, tuple)):
+                continue
+            for cohort in cohorts[:limit_per_surface]:
+                if isinstance(cohort, dict):
+                    rows.append((label, cohort))
+        if not rows:
+            return
+        lines.extend(
+            [
+                "",
+                f"#### {title}",
+                "",
+                (
+                    "| Surface | Side | Strategy | Score | Train estimate | "
+                    "Train N | Estimator | Val N | Val mean | Val Σnet |"
+                ),
+                "| --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: |",
+            ]
+        )
+        for label, cohort in rows:
+            lines.append(
+                (
+                    "| {surface} | {side} | {strategy} | {score} | "
+                    "{estimate} | {train_n} | {specificity} | "
+                    "{val_n} | {val_mean} | {val_sum} |"
+                ).format(
+                    surface=label,
+                    side=cohort.get("direction", "unknown"),
+                    strategy=cohort.get("lead_strategy", "unknown"),
+                    score=cohort.get("score_band", "unknown"),
+                    estimate=cohort.get(
+                        "training_estimate_mean_net_return"
+                    ),
+                    train_n=cohort.get("training_estimate_rows", 0),
+                    specificity=cohort.get(
+                        "training_estimate_specificity",
+                        "unknown",
+                    ),
+                    val_n=cohort.get("validation_rows", 0),
+                    val_mean=cohort.get("validation_mean_net_return"),
+                    val_sum=cohort.get("validation_net_return_sum"),
+                )
+            )
+
+    cohort_table(
+        "admitted_cohorts",
+        "Top admitted validation cohorts",
+    )
+    cohort_table(
+        "skipped_cohorts",
+        "Most negative skipped validation cohorts",
+    )
+
     lines.extend(
         [
             "",
