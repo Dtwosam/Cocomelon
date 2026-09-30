@@ -95,7 +95,7 @@ def _outcome(
         good=good,
     )
     store.record(feature)
-    net = Decimal("0.02") if good else Decimal("-0.02")
+    net = Decimal("0.05") if good else Decimal("-0.05")
     sample = ShadowCadenceDecision(
         cadence_ms=FIFTEEN_MINUTES_MS,
         boundary_ms=boundary,
@@ -135,11 +135,11 @@ def _validation_config() -> CadenceOpportunityLearningConfig:
 
 def _tree_config() -> CadenceTreeConfig:
     return CadenceTreeConfig(
-        max_leaf_nodes=4,
-        min_samples_leaf=4,
+        max_leaf_nodes=7,
+        min_samples_leaf=2,
         learning_rate=Decimal("0.1"),
-        max_iter=80,
-        l2_regularization=Decimal("1"),
+        max_iter=150,
+        l2_regularization=Decimal("0"),
     )
 
 
