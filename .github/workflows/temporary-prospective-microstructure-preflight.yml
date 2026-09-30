@@ -1,0 +1,58 @@
+name: Temporary prospective microstructure preflight
+
+on:
+  push:
+    branches:
+      - audit/cadence-microstructure-prospective-preflight-v2
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev,research]"
+      - name: Download completed paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11092470461"
+        run: |
+          set -euo pipefail
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/paper.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/paper.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar             -C /tmp/state             ./cadence-shadow-state.json             ./learning-features
+      - name: Run frozen preflight
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_microstructure_prospective.py             /tmp/state/cadence-shadow-state.json             /tmp/state/learning-features             --json-out prospective-preflight.json             > /tmp/prospective-preflight.stdout.json
+          cmp prospective-preflight.json /tmp/prospective-preflight.stdout.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("prospective-preflight.json").read_text())
+          assert r["status"] == "collecting", r
+          assert r["prospective_rows"] == 0, r
+          assert r["development_qualified"] is False, r
+          assert r["frozen_training_last_target_end_ms"] < r["prospective_start_ms"], r
+          print(json.dumps({
+              "status": r["status"],
+              "frozen_training_rows": r["frozen_training_rows"],
+              "prospective_rows": r["prospective_rows"],
+              "prospective_start_ms": r["prospective_start_ms"],
+          }, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prospective-microstructure-preflight
+          path: prospective-preflight.json
+          if-no-files-found: error
+          retention-days: 30
