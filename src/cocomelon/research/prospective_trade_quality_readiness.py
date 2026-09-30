@@ -29,6 +29,14 @@ ZERO = Decimal("0")
 MIN_POSITIVE_INCREMENTAL_BLOCKS = 3
 
 
+def _fixed_block_size(*, total_rows: int, blocks: int) -> int:
+    if total_rows <= 0 or blocks <= 0 or total_rows % blocks != 0:
+        raise ProspectiveTradeQualityReadinessError(
+            "fixed stability window must divide evenly"
+        )
+    return total_rows // blocks
+
+
 class ProspectiveTradeQualityReadinessError(RuntimeError):
     pass
 
@@ -163,10 +171,14 @@ def _cadence_blocks(
 ) -> tuple[dict[str, object], ...]:
     blocks: list[dict[str, object]] = []
     config = DEFAULT_CONFIG
+    block_size = _fixed_block_size(
+        total_rows=config.validation_rows,
+        blocks=config.stability_blocks,
+    )
     for index in range(config.stability_blocks):
-        start = index * len(rows) // config.stability_blocks
-        end = (index + 1) * len(rows) // config.stability_blocks
-        block = rows[start:end]
+        start = index * block_size
+        end = start + block_size
+        block = rows[start:min(end, len(rows))]
         admitted = tuple(
             row for row in block if row["admitted"] is True
         )
@@ -181,15 +193,21 @@ def _cadence_blocks(
             ZERO,
         )
         mean = None if not admitted else total / Decimal(len(admitted))
+        closed = len(rows) >= end
         passes = (
-            len(admitted) >= config.min_block_admitted
+            closed
+            and len(admitted) >= config.min_block_admitted
             and mean is not None
             and mean > ZERO
         )
         blocks.append(
             {
                 "block_index": index,
+                "start_row": start + 1,
+                "end_row": end,
                 "prospective_rows": len(block),
+                "required_rows": block_size,
+                "closed": closed,
                 "admitted_rows": len(admitted),
                 "candidate_net_return_sum": str(total),
                 "candidate_mean_net_return": (
@@ -264,6 +282,18 @@ def _cadence_readiness(
             config.min_admitted_per_direction
         ),
         "stability_blocks": blocks,
+        "closed_stability_blocks": sum(
+            1 for block in blocks if block["closed"] is True
+        ),
+        "failed_closed_stability_blocks": sum(
+            1
+            for block in blocks
+            if block["closed"] is True and block["passes"] is not True
+        ),
+        "gate_path_open": not any(
+            block["closed"] is True and block["passes"] is not True
+            for block in blocks
+        ),
         "missing": {
             "prospective_rows": max(
                 0,
@@ -302,10 +332,14 @@ def _comparison_blocks(
     rows: tuple[dict[str, object], ...],
 ) -> tuple[dict[str, object], ...]:
     blocks: list[dict[str, object]] = []
+    block_size = _fixed_block_size(
+        total_rows=DEFAULT_CONFIG.validation_rows,
+        blocks=DEFAULT_CONFIG.stability_blocks,
+    )
     for index in range(DEFAULT_CONFIG.stability_blocks):
-        start = index * len(rows) // DEFAULT_CONFIG.stability_blocks
-        end = (index + 1) * len(rows) // DEFAULT_CONFIG.stability_blocks
-        block = rows[start:end]
+        start = index * block_size
+        end = start + block_size
+        block = rows[start:min(end, len(rows))]
         micro_only = tuple(
             row
             for row in block
@@ -336,10 +370,15 @@ def _comparison_blocks(
         micro_only_sum = realized_sum(micro_only)
         baseline_only_sum = realized_sum(baseline_only)
         delta = micro_only_sum - baseline_only_sum
+        closed = len(rows) >= end
         blocks.append(
             {
                 "block_index": index,
+                "start_row": start + 1,
+                "end_row": end,
                 "paired_rows": len(block),
+                "required_rows": block_size,
+                "closed": closed,
                 "microstructure_only_rows": len(micro_only),
                 "baseline_only_rows": len(baseline_only),
                 "microstructure_only_realized_sum": str(
@@ -349,7 +388,7 @@ def _comparison_blocks(
                     baseline_only_sum
                 ),
                 "microstructure_minus_baseline_sum": str(delta),
-                "passes": delta > ZERO,
+                "passes": closed and delta > ZERO,
             }
         )
     return tuple(blocks)
@@ -431,6 +470,18 @@ def _comparison_summary(
             realized_sum(baseline_only)
         ),
         "incremental_stability_blocks": blocks,
+        "closed_incremental_blocks": sum(
+            1 for block in blocks if block["closed"] is True
+        ),
+        "failed_closed_incremental_blocks": sum(
+            1
+            for block in blocks
+            if block["closed"] is True and block["passes"] is not True
+        ),
+        "incremental_gate_path_open": not any(
+            block["closed"] is True and block["passes"] is not True
+            for block in blocks
+        ),
         "positive_incremental_blocks": positive_blocks,
         "required_positive_incremental_blocks": (
             MIN_POSITIVE_INCREMENTAL_BLOCKS
@@ -528,20 +579,31 @@ def _timing_temporal_blocks(
             ),
         )
     )
+    block_size = _fixed_block_size(
+        total_rows=MIN_PAIRED_EVALUABLE_TRADES,
+        blocks=TEMPORAL_BLOCKS,
+    )
+    if block_size != MIN_TEMPORAL_TRADES_PER_BLOCK:
+        raise ProspectiveTradeQualityReadinessError(
+            "timing block size drifted from frozen contract"
+        )
     blocks: list[dict[str, object]] = []
     for index in range(TEMPORAL_BLOCKS):
-        start = index * len(ordered) // TEMPORAL_BLOCKS
-        end = (index + 1) * len(ordered) // TEMPORAL_BLOCKS
-        block = ordered[start:end]
+        start = index * block_size
+        end = start + block_size
+        block = ordered[start:min(end, len(ordered))]
         summary = _timing_row_summary(block)
-        full = len(block) >= MIN_TEMPORAL_TRADES_PER_BLOCK
+        closed = len(ordered) >= end
         blocks.append(
             {
                 "block_index": index,
-                "full_block": full,
+                "start_row": start + 1,
+                "end_row": end,
+                "required_rows": block_size,
+                "closed": closed,
                 **summary,
                 "passes": (
-                    full
+                    closed
                     and summary["positive_vs_actual"] is True
                     and summary["positive_vs_60s"] is True
                 ),
@@ -670,6 +732,18 @@ def _timing_readiness(timing: dict[str, object]) -> dict[str, object]:
             "short": short_summary,
         },
         "temporal_blocks": blocks,
+        "closed_temporal_blocks": sum(
+            1 for block in blocks if block["closed"] is True
+        ),
+        "failed_closed_temporal_blocks": sum(
+            1
+            for block in blocks
+            if block["closed"] is True and block["passes"] is not True
+        ),
+        "gate_path_open": not any(
+            block["closed"] is True and block["passes"] is not True
+            for block in blocks
+        ),
         "market_robustness": market_robustness,
         "diagnostics": diagnostics,
         "required": {
