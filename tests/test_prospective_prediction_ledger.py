@@ -231,7 +231,7 @@ def test_disappeared_prior_row_fails_closed() -> None:
         _update(_report([]), first, run_id=101)
 
 
-def test_backfilled_row_before_frontier_fails_closed() -> None:
+def test_late_settled_older_boundary_can_append() -> None:
     first = _update(
         _report(
             [
@@ -261,11 +261,11 @@ def test_backfilled_row_before_frontier_fails_closed() -> None:
         ]
     )
 
-    with pytest.raises(
-        ProspectivePredictionLedgerError,
-        match="predates ledger frontier",
-    ):
-        _update(second, first, run_id=101)
+    updated = _update(second, first, run_id=101)
+
+    assert updated["new_row_count"] == 1
+    assert updated["row_count"] == 2
+    assert updated["first_boundary_ms"] == 2_000
 
 
 def test_metadata_drift_fails_closed() -> None:
