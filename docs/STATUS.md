@@ -2861,3 +2861,39 @@ The same side-neutral development gates remain: both LONG and SHORT must have en
 This is touched walk-forward development evidence only. It does not alter active paper strategy, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen prospective cadence microstructure challenger — 2026-09-30
+
+Decision-time coverage on the exact run-36694359628 cadence state is strong enough to support a richer **future-only** challenger without imputing sparse inputs:
+
+- 541/541 purged development rows and 100/100 touched validation rows contain spread, bid depth, ask depth, book imbalance, book age, realized 15m volatility, 15m range expansion, 15m relative volume, mark/oracle dislocation, 5m/15m/1h returns, funding, and open interest;
+- OI change and funding change are present on 529/541 development rows and 99/100 touched validation rows;
+- coverage selection used feature availability only, not outcome labels.
+
+The candidate `cadence_microstructure_tree_prospective_v1` keeps the already-frozen shallow-tree capacity (7 leaves, 100-row minimum leaves, learning rate 0.05, 100 iterations, L2=1, no early stopping, seed 0) and adds only established decision-time Cocomelon features. Market identity remains excluded.
+
+To stop repeatedly tuning on the same touched final-100 outcomes, the evaluation contract is now prospective:
+
+- prospective start: `2026-09-30T14:00:00Z` (`1790776800000` ms);
+- frozen training may use only outcomes with `target_end_ms < prospective_start_ms`;
+- only decisions with `boundary_ms >= prospective_start_ms` can count as prospective evidence;
+- post-freeze labels cannot affect fitted predictions or admissions;
+- at least 100 prospective settled opportunities, LONG and SHORT admissions, positive after-cost admitted mean return, and all chronological stability blocks are required before development qualification.
+
+This remains research-only. It does not change active paper entries, exits, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
+
+
+### Small prospective research artifacts — 2026-09-30
+
+The continuous paper workflow now publishes the immutable decision-time `learning-features` store as a dedicated research artifact alongside the cadence shadow JSON.
+
+Observed state size before this change was about 6.7 MB logical for `learning-features` and about 3.6 MB for `cadence-shadow-state.json`, versus roughly 9 GB of total durable state. Future prospective trade-quality audits can therefore consume the two small research artifacts instead of unpacking the full recovery archive.
+
+Artifact pattern:
+
+`continuous-paper-learning-features-<run_id>-<run_attempt>`
+
+This is artifact packaging only. It does not change feature capture, paper decisions, orders, risk, or live authority.
