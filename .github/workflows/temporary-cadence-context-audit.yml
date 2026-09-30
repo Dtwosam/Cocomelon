@@ -1,0 +1,131 @@
+name: Temporary cadence context audit 36694359628
+
+on:
+  push:
+    branches:
+      - audit/cadence-context-36694359628
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact predecessor paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11089237194"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/continuous-paper-state.zip
+          mkdir -p /tmp/artifact
+          unzip -q /tmp/continuous-paper-state.zip -d /tmp/artifact
+          test -s /tmp/artifact/continuous-paper-state.tar
+      - name: Extract cadence state and feature snapshots
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/state
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+          test -s /tmp/state/cadence-shadow-state.json
+          test -d /tmp/state/learning-features/records
+      - name: Evaluate regime-aware cadence learner
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_context_learning.py \
+            /tmp/state/cadence-shadow-state.json \
+            /tmp/state/learning-features \
+            --cadence-ms 900000 \
+            --horizon-ms 3600000 \
+            --json-out cadence-context-report.json \
+            > /tmp/cadence-context-report.stdout.json
+          cmp cadence-context-report.json /tmp/cadence-context-report.stdout.json
+      - name: Summarize contextual validation
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("cadence-context-report.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## 15m -> 1h regime-aware cadence learner")
+          for field in (
+              "status",
+              "training_rows",
+              "validation_rows",
+              "purged_overlap_rows",
+              "admitted_rows",
+              "skipped_rows",
+              "actual_net_return_sum",
+              "candidate_net_return_sum",
+              "delta_net_return_sum",
+              "candidate_mean_net_return",
+              "positive_admitted_rows",
+              "negative_admitted_rows",
+              "structural_ready",
+              "development_qualified",
+          ):
+              print(f"- {field}: {report.get(field)}")
+          print("### Specificity")
+          for key, value in report.get(
+              "prediction_specificity_counts",
+              {},
+          ).items():
+              print(f"- {key}: {value}")
+          print("### Direction")
+          for direction, item in report.get("by_direction", {}).items():
+              print(
+                  f"- {direction}: validation={item.get('validation_rows')} "
+                  f"admitted={item.get('admitted_rows')} "
+                  f"sum={item.get('candidate_net_return_sum')} "
+                  f"mean={item.get('candidate_mean_net_return')}"
+              )
+          print("### Stability blocks")
+          for block in report.get("stability_blocks", []):
+              print(
+                  f"- block {block['block_index']}: "
+                  f"n={block['admitted_rows']} "
+                  f"sum={block['candidate_net_return_sum']} "
+                  f"mean={block['candidate_mean_net_return']} "
+                  f"passes={block['passes']}"
+              )
+          print("### Admitted contextual cohorts")
+          for cohort in report.get("admitted_cohorts", []):
+              print(
+                  "- "
+                  f"{cohort['direction']} / "
+                  f"{cohort['lead_strategy']} / "
+                  f"{cohort['score_band']} / "
+                  f"{cohort['trend_regime']} / "
+                  f"{cohort['volatility_regime']}: "
+                  f"train={cohort['training_estimate_mean_net_return']} "
+                  f"(n={cohort['training_estimate_rows']}, "
+                  f"{cohort['training_estimate_specificity']}), "
+                  f"val_sum={cohort['validation_net_return_sum']} "
+                  f"val_mean={cohort['validation_mean_net_return']} "
+                  f"(n={cohort['validation_rows']})"
+              )
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-context-audit-36694359628
+          path: cadence-context-report.json
+          if-no-files-found: error
+          retention-days: 30
