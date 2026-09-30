@@ -206,10 +206,14 @@ def evaluate_cadence_tree_prospective_baseline(
         encoder=encoder,
         config=tree_config,
     )
-    predictions = _predict(
-        estimator,
-        encoder,
-        prospective_rows,
+    predictions = (
+        ()
+        if not prospective_rows
+        else _predict(
+            estimator,
+            encoder,
+            prospective_rows,
+        )
     )
     scored = tuple(
         zip(prospective_rows, predictions, strict=True)
