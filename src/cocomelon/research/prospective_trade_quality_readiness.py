@@ -812,14 +812,71 @@ def prospective_trade_quality_readiness(
         cadence["ready_for_review"] is True
         or timing_summary["ready_for_review"] is True
     )
+
+    cadence_failed_components: list[str] = []
+    if cadence["gate_path_open"] is not True:
+        cadence_failed_components.append("standalone_stability")
+    if comparison_summary["incremental_gate_path_open"] is not True:
+        cadence_failed_components.append(
+            "incremental_parsimony_stability"
+        )
+    cadence_lifecycle_state = (
+        "review_ready"
+        if cadence["ready_for_review"] is True
+        else (
+            "failed_closed_block"
+            if cadence_failed_components
+            else "collecting"
+        )
+    )
+    timing_lifecycle_state = (
+        "review_ready"
+        if timing_summary["ready_for_review"] is True
+        else (
+            "failed_closed_block"
+            if timing_summary["gate_path_open"] is not True
+            else "collecting"
+        )
+    )
+    lifecycle_states = (
+        cadence_lifecycle_state,
+        timing_lifecycle_state,
+    )
+    failed_candidate_count = sum(
+        state == "failed_closed_block"
+        for state in lifecycle_states
+    )
+    review_ready_candidate_count = sum(
+        state == "review_ready"
+        for state in lifecycle_states
+    )
+    collecting_candidate_count = sum(
+        state == "collecting"
+        for state in lifecycle_states
+    )
+    overall_status = (
+        "review_ready"
+        if any_ready
+        else (
+            "all_candidates_failed"
+            if failed_candidate_count == len(lifecycle_states)
+            else "collecting"
+        )
+    )
+
     return {
         "schema_version": 1,
         "kind": "prospective-trade-quality-readiness-v1",
         "research_only": True,
         "execution_authority": False,
         "promotion_authority": False,
-        "status": "review_ready" if any_ready else "collecting",
+        "status": overall_status,
         "any_candidate_ready_for_review": any_ready,
+        "candidate_lifecycle": {
+            "collecting": collecting_candidate_count,
+            "review_ready": review_ready_candidate_count,
+            "failed_closed_block": failed_candidate_count,
+        },
         "cadence": {
             "model_family": prediction["model_family"],
             "prospective_start_ms": prediction["prospective_start_ms"],
@@ -830,6 +887,10 @@ def prospective_trade_quality_readiness(
             "prediction_ledger_sha256": prediction["ledger_sha256"],
             "comparison_ledger_sha256": comparison["ledger_sha256"],
             "ledger_alignment_clean": True,
+            "lifecycle_state": cadence_lifecycle_state,
+            "irrecoverable_failure_components": tuple(
+                cadence_failed_components
+            ),
             **cadence,
         },
         "comparison": comparison_summary,
@@ -837,6 +898,13 @@ def prospective_trade_quality_readiness(
             "candidate_id": timing["candidate_id"],
             "started_at_ms": timing["started_at_ms"],
             "timing_ledger_sha256": timing["ledger_sha256"],
+            "lifecycle_state": timing_lifecycle_state,
+            "irrecoverable_failure_components": (
+                ()
+                if timing_lifecycle_state
+                != "failed_closed_block"
+                else ("temporal_stability",)
+            ),
             **timing_summary,
         },
         "authority": {
