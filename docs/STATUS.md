@@ -3239,3 +3239,19 @@ The A/B parsimony rule requires positive microstructure-minus-baseline contribut
 The readiness manifest now publishes the failed incremental-block count and the maximum allowed count explicitly. This is control-plane interpretation only; neither frozen model, prediction, paper trade, nor execution authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective candidate lifecycle states — 2026-09-30
+
+The aggregate future-evidence gate now distinguishes **collecting**, **review_ready**, and **failed_closed_block** for each frozen challenger.
+
+A candidate becomes `failed_closed_block` only when its precommitted fixed-window requirements make recovery mathematically impossible:
+
+- cadence microstructure: any failed closed standalone stability block, or more closed A/B failures than the 3-of-4 parsimony rule can tolerate;
+- side-conditioned timing: any failed closed 5-trade timing block.
+
+Weak interim totals, sparse side counts, or incomplete samples remain `collecting` because later prospective rows may still improve them.
+
+The aggregate manifest reports lifecycle counts and uses `all_candidates_failed` only when every frozen candidate is irrecoverably failed. This is a research-state label only. It does not retire or replace a strategy automatically and carries no paper execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**
