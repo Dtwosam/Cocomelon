@@ -3615,6 +3615,127 @@ def _prospective_combined_matched_overlap_lines(
     return lines
 
 
+def _prospective_trade_quality_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective side-neutral trade-quality gate",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective trade-quality telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(f"- state restore warning: `{restore_error}`")
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    readiness = raw.get("readiness", {})
+    if not isinstance(readiness, dict):
+        readiness = {}
+    by_direction = raw.get("by_direction", {})
+    if not isinstance(by_direction, dict):
+        by_direction = {}
+    long_summary = by_direction.get("long", {})
+    short_summary = by_direction.get("short", {})
+    if not isinstance(long_summary, dict):
+        long_summary = {}
+    if not isinstance(short_summary, dict):
+        short_summary = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- frozen rule: apply the same rule to LONG and SHORT; "
+                "require scanner rank 1-10, wait 60s, then admit only a "
+                "non-worse visible-book IOC fill"
+            ),
+            (
+                "- prospective closed / evaluated / admitted / skipped: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('evaluated_trades', 0)} / "
+                f"{raw.get('admitted_trades', 0)} / "
+                f"{raw.get('skipped_trades', 0)}`"
+            ),
+            (
+                "- skip reasons rank / worse-price / no-fill: "
+                f"`{raw.get('rank_skips', 0)} / "
+                f"{raw.get('worse_price_skips', 0)} / "
+                f"{raw.get('no_fill_skips', 0)}`"
+            ),
+            (
+                "- missing rank / stale rank / delayed / plans / lineage: "
+                f"`{raw.get('missing_rank_evidence', 0)} / "
+                f"{raw.get('stale_rank_evidence', 0)} / "
+                f"{raw.get('missing_delayed_outcomes', 0)} / "
+                f"{raw.get('missing_opening_plans', 0)} / "
+                f"{raw.get('lineage_mismatches', 0)}`"
+            ),
+            (
+                "- actual / candidate / delta trade-contribution PnL: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('candidate_trade_contribution_pnl', '0')} / "
+                f"{raw.get('delta_trade_contribution_pnl', '0')}`"
+            ),
+            (
+                "- LONG evaluated/admitted/skipped · candidate PnL: "
+                f"`{long_summary.get('evaluated', 0)}/"
+                f"{long_summary.get('admitted', 0)}/"
+                f"{long_summary.get('skipped', 0)} · "
+                f"{long_summary.get('candidate_net_pnl', '0')}`"
+            ),
+            (
+                "- SHORT evaluated/admitted/skipped · candidate PnL: "
+                f"`{short_summary.get('evaluated', 0)}/"
+                f"{short_summary.get('admitted', 0)}/"
+                f"{short_summary.get('skipped', 0)} · "
+                f"{short_summary.get('candidate_net_pnl', '0')}`"
+            ),
+            (
+                "- evidence gate evaluated/admitted/skipped/LONG/SHORT: "
+                f"`{readiness.get('min_prospective_evaluated_trades', 0)} / "
+                f"{readiness.get('min_admitted_trades', 0)} / "
+                f"{readiness.get('min_skipped_trades', 0)} / "
+                f"{readiness.get('min_long_trades', 0)} / "
+                f"{readiness.get('min_short_trades', 0)}`"
+            ),
+            (
+                "- still needed E/A/S/L/S: "
+                f"`{readiness.get('missing_prospective_evaluated_trades', 0)} / "
+                f"{readiness.get('missing_admitted_trades', 0)} / "
+                f"{readiness.get('missing_skipped_trades', 0)} / "
+                f"{readiness.get('missing_long_trades', 0)} / "
+                f"{readiness.get('missing_short_trades', 0)}`"
+            ),
+            (
+                "- integrity clean / ready for review: "
+                f"`{str(bool(readiness.get('integrity_clean'))).lower()} / "
+                f"{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_This is a prospective closed-trade contribution shadow. "
+                "It does not disable either direction, change actual paper "
+                "orders, invent replacement trades, or claim portfolio PnL._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_combined_entry_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -7886,6 +8007,11 @@ def render_live_status(
     lines.extend(
         _prospective_top10_rank_filter_lines(
             payload.get("prospective_top10_rank_filter")
+        )
+    )
+    lines.extend(
+        _prospective_trade_quality_lines(
+            payload.get("prospective_trade_quality")
         )
     )
     lines.extend(
