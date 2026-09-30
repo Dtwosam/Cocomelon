@@ -280,9 +280,12 @@ def update_prediction_ledger(
 
     metadata = _report_metadata(report)
     rows = _canonical_rows(report.get("scored_rows"))
-    prospective_start_ms = int(metadata["prospective_start_ms"])
+    prospective_start_ms = cast(
+        int,
+        metadata["prospective_start_ms"],
+    )
     if any(
-        int(row["boundary_ms"]) < prospective_start_ms
+        cast(int, row["boundary_ms"]) < prospective_start_ms
         for row in rows
     ):
         raise ProspectivePredictionLedgerError(
@@ -358,12 +361,12 @@ def update_prediction_ledger(
         "first_boundary_ms": (
             None
             if not rows
-            else min(int(row["boundary_ms"]) for row in rows)
+            else min(cast(int, row["boundary_ms"]) for row in rows)
         ),
         "last_boundary_ms": (
             None
             if not rows
-            else max(int(row["boundary_ms"]) for row in rows)
+            else max(cast(int, row["boundary_ms"]) for row in rows)
         ),
         "rows_sha256": _rows_sha256(rows),
         "source_history": source_history,
