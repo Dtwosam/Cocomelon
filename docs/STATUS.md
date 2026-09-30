@@ -2839,3 +2839,25 @@ A research-only nested calibrator now separates model fitting from admission cal
 This is touched development evidence. The calibration window selects rank bands, but the outer final 100 opportunities never participate in band selection. The same LONG/SHORT admission and chronological stability gates remain required. No paper execution, sizing, stops, risk, promotion, or live authority changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Walk-forward cadence confidence learner — 2026-09-30
+
+Static grouped, regime, confidence, and shallow-tree challengers all showed some signal but failed full chronological stability. The common failure pattern is non-stationarity: contexts that were weak over the full training history can become useful later, and vice versa.
+
+A new research-only walk-forward challenger therefore evaluates the final 100 settled 15m→1h opportunities sequentially.
+
+For each evaluation decision:
+
+- only outcomes with `target_end_ms < decision_boundary_ms` may enter history;
+- the learner keeps at most the most recent 300 settled opportunities;
+- it reuses the confidence-aware contextual hierarchy over direction, lead strategy, score band, trend regime, and volatility regime;
+- a context is admitted only when its current settled-history lower bound remains positive;
+- no future or overlapping forward label is available to the estimate;
+- insufficiently supported contexts are skipped rather than rescued by future information.
+
+The same side-neutral development gates remain: both LONG and SHORT must have enough evaluation observations and admissions, candidate after-cost mean must be positive, and every chronological stability block must pass.
+
+This is touched walk-forward development evidence only. It does not alter active paper strategy, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
