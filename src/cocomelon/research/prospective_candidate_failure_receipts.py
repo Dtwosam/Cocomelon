@@ -7,6 +7,11 @@ from typing import Final, cast
 KIND: Final = "prospective-candidate-first-failure-receipts-v1"
 SCHEMA_VERSION: Final = 1
 _FAILED_STATE: Final = "failed_closed_block"
+_LIFECYCLE_STATES: Final = {
+    "collecting",
+    "review_ready",
+    _FAILED_STATE,
+}
 _CANDIDATES: Final = (
     "cadence_microstructure",
     "side_conditioned_timing",
@@ -306,6 +311,13 @@ def update_candidate_failure_receipts(
         "cadence_microstructure": cadence.get("lifecycle_state"),
         "side_conditioned_timing": timing.get("lifecycle_state"),
     }
+    if any(
+        state not in _LIFECYCLE_STATES
+        for state in current_states.values()
+    ):
+        raise ProspectiveCandidateFailureReceiptError(
+            "READINESS_LIFECYCLE_STATE_INVALID"
+        )
 
     previous_entries = _validate_previous(previous)
     entries = {
