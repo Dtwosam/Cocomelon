@@ -2794,3 +2794,29 @@ A new research-only challenger replaces hard positive-mean fallback with a **fir
 This is still touched development evidence. The confidence hurdle is a model-selection experiment, not a calibrated probability statement, and it cannot alter paper orders, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fixed shallow cadence tree challenger — 2026-09-30
+
+The next touched-development challenger reuses Cocomelon's existing frozen shallow-tree capacity rather than hand-picking thresholds from the nine confidence-model validation admissions.
+
+Model family: `cadence_fixed_shallow_tree_v1`.
+
+Frozen capacity matches the existing learning cycle:
+
+- max leaf nodes: 7;
+- minimum samples per leaf: 100;
+- learning rate: 0.05;
+- max iterations: 100;
+- L2 regularization: 1;
+- early stopping disabled;
+- deterministic random state 0;
+- admit only when predicted **after-cost net return > 0**.
+
+The feature registry is intentionally compact and pre-existing: direction, lead strategy, decision score, 5m/15m/1h returns, funding, open interest, trend regime, and volatility regime. Market identity is excluded to avoid coin memorization.
+
+Training remains purged chronological history and validation remains the final 100 settled 15m→1h opportunities. The same LONG/SHORT admission minimums and chronological stability blocks remain required.
+
+This is research-only touched development evidence. It cannot alter paper execution, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
