@@ -238,6 +238,35 @@ def test_closed_bad_cadence_block_cannot_recover_later() -> None:
     assert increment["paired_rows"] == 25
     assert increment["closed"] is True
     assert increment["passes"] is False
+    assert comparison["failed_closed_incremental_blocks"] == 1
+    assert comparison["maximum_allowed_failed_incremental_blocks"] == 1
+    assert comparison["incremental_gate_path_open"] is True
+
+
+def test_two_closed_bad_incremental_blocks_are_irrecoverable() -> None:
+    micro_rows = _scored_rows(
+        50,
+        prediction="0.01",
+        realized="-0.01",
+    )
+    baseline_rows = _scored_rows(
+        50,
+        prediction="-0.01",
+        realized="-0.01",
+    )
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(micro_rows),
+        _comparison_ledger(
+            micro_rows,
+            baseline_rows=baseline_rows,
+        ),
+        _timing_ledger(0),
+    )
+
+    comparison = result["comparison"]
+    assert comparison["closed_incremental_blocks"] == 2
+    assert comparison["failed_closed_incremental_blocks"] == 2
+    assert comparison["maximum_allowed_failed_incremental_blocks"] == 1
     assert comparison["incremental_gate_path_open"] is False
 
 
