@@ -2884,3 +2884,16 @@ To stop repeatedly tuning on the same touched final-100 outcomes, the evaluation
 This remains research-only. It does not change active paper entries, exits, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Small prospective research artifacts — 2026-09-30
+
+The continuous paper workflow now publishes the immutable decision-time `learning-features` store as a dedicated research artifact alongside the cadence shadow JSON.
+
+Observed state size before this change was about 6.7 MB logical for `learning-features` and about 3.6 MB for `cadence-shadow-state.json`, versus roughly 9 GB of total durable state. Future prospective trade-quality audits can therefore consume the two small research artifacts instead of unpacking the full recovery archive.
+
+Artifact pattern:
+
+`continuous-paper-learning-features-<run_id>-<run_attempt>`
+
+This is artifact packaging only. It does not change feature capture, paper decisions, orders, risk, or live authority.
