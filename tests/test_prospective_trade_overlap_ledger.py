@@ -172,6 +172,17 @@ def test_overlap_separates_avoided_losses_from_sacrificed_wins() -> None:
     assert overall["actual_net_pnl_sum"] == "0"
     assert overall["candidate_matched_net_pnl_sum"] == "5"
     assert overall["candidate_minus_actual_net_pnl_sum"] == "5"
+    assert overall["actual_winner_pnl_sum"] == "12"
+    assert overall["actual_loser_pnl_abs_sum"] == "12"
+    assert overall["admitted_winner_pnl_retained"] == "5"
+    assert overall["admitted_loser_pnl_abs_incurred"] == "0"
+    assert Decimal(overall["loss_avoidance_rate"]) == Decimal("1")
+    assert Decimal(overall["winner_retention_rate"]) == (
+        Decimal("5") / Decimal("12")
+    )
+    assert Decimal(overall["trade_block_rate"]) == (
+        Decimal("2") / Decimal("3")
+    )
 
 
 def test_overlap_is_append_only_when_new_trade_closes() -> None:
@@ -293,3 +304,29 @@ def test_overlap_rejects_duplicate_trade_decision_ids() -> None:
             source_learning_artifact_name="learning",
             source_learning_artifact_digest="sha256:" + "b" * 64,
         )
+
+
+def test_overlap_efficiency_rates_are_none_without_denominators() -> None:
+    prediction = _prediction_ledger()
+    trade = _trade(
+        "c",
+        decision_id="decision-admitted-winner",
+        direction=Direction.LONG,
+        net_pnl="5",
+        opened_at_ms=4_100,
+    )
+
+    ledger = update_trade_overlap_ledger(
+        prediction,
+        (trade,),
+        previous=None,
+        source_paper_run_id=20,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning",
+        source_learning_artifact_digest="sha256:" + "b" * 64,
+    )
+
+    overall = ledger["summary"]["overall"]
+    assert overall["loss_avoidance_rate"] is None
+    assert overall["winner_retention_rate"] == "1"
+    assert overall["trade_block_rate"] == "0"
