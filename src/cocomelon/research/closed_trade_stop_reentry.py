@@ -70,14 +70,14 @@ def _robustness(
 
 def _window_summary(
     reentries: tuple[
-        tuple[TradeJournalEntry, int, TradeJournalEntry], ...
+        tuple[TradeJournalEntry, int, TradeJournalEntry, int], ...
     ],
     *,
     max_gap_ms: int,
 ) -> dict[str, object]:
     blocked = tuple(
         trade
-        for trade, gap_ms, _prior in reentries
+        for trade, gap_ms, _prior, _streak in reentries
         if gap_ms <= max_gap_ms
     )
     blocked_net_pnl = sum(
@@ -110,6 +110,65 @@ def _window_summary(
     }
 
 
+def _market_robustness(
+    trades: tuple[TradeJournalEntry, ...],
+) -> dict[str, object]:
+    by_market: dict[str, Decimal] = {}
+    for trade in trades:
+        market = trade.market.canonical
+        by_market[market] = (
+            by_market.get(market, ZERO) - trade.net_pnl
+        )
+    total = sum(by_market.values(), ZERO)
+    leave_one_out = tuple(
+        total - delta for delta in by_market.values()
+    )
+    minimum = min(leave_one_out, default=ZERO)
+    return {
+        "market_count": len(by_market),
+        "leave_one_market_out_min_delta_pnl": str(minimum),
+        "positive_after_removing_any_one_market": (
+            len(by_market) >= 2 and minimum > ZERO
+        ),
+    }
+
+
+def _streak_threshold_summary(
+    values: tuple[tuple[TradeJournalEntry, int], ...],
+    *,
+    min_prior_losing_stops: int,
+) -> dict[str, object]:
+    blocked = tuple(
+        trade
+        for trade, streak in values
+        if streak >= min_prior_losing_stops
+    )
+    blocked_net_pnl = sum(
+        (trade.net_pnl for trade in blocked),
+        ZERO,
+    )
+    return {
+        "min_prior_losing_stops": min_prior_losing_stops,
+        "blocked_trades": len(blocked),
+        "blocked_winners": sum(
+            1 for trade in blocked if trade.net_pnl > ZERO
+        ),
+        "blocked_losses": sum(
+            1 for trade in blocked if trade.net_pnl < ZERO
+        ),
+        "blocked_breakeven": sum(
+            1 for trade in blocked if trade.net_pnl == ZERO
+        ),
+        "blocked_net_pnl": str(blocked_net_pnl),
+        "blocked_net_r": str(
+            sum((trade.net_r for trade in blocked), ZERO)
+        ),
+        "delta_trade_contribution_pnl": str(-blocked_net_pnl),
+        "robustness": _robustness(blocked),
+        "market_robustness": _market_robustness(blocked),
+    }
+
+
 def closed_trade_stop_reentry_summary(
     trades: Sequence[TradeJournalEntry],
 ) -> dict[str, object]:
@@ -128,8 +187,9 @@ def closed_trade_stop_reentry_summary(
         list[TradeJournalEntry],
     ] = {}
     reentries: list[
-        tuple[TradeJournalEntry, int, TradeJournalEntry]
+        tuple[TradeJournalEntry, int, TradeJournalEntry, int]
     ] = []
+    streak_values: list[tuple[TradeJournalEntry, int]] = []
     fresh_or_reset: list[TradeJournalEntry] = []
 
     for trade in ordered:
@@ -152,6 +212,28 @@ def closed_trade_stop_reentry_summary(
                 ),
             )
         )
+        completed_ordered = tuple(
+            sorted(
+                completed,
+                key=lambda prior: (
+                    prior.closed_at_ms,
+                    prior.opened_at_ms,
+                    prior.trade_id,
+                ),
+            )
+        )
+        prior_losing_stop_streak = 0
+        for prior in reversed(completed_ordered):
+            if (
+                prior.exit_reason == STOP_EXIT_REASON
+                and prior.net_pnl < ZERO
+            ):
+                prior_losing_stop_streak += 1
+                continue
+            break
+        streak_values.append(
+            (trade, prior_losing_stop_streak)
+        )
         if (
             previous is not None
             and previous.exit_reason == STOP_EXIT_REASON
@@ -162,6 +244,7 @@ def closed_trade_stop_reentry_summary(
                     trade,
                     trade.opened_at_ms - previous.closed_at_ms,
                     previous,
+                    prior_losing_stop_streak,
                 )
             )
         else:
@@ -170,7 +253,8 @@ def closed_trade_stop_reentry_summary(
 
     reentry_values = tuple(reentries)
     reentry_trades = tuple(
-        trade for trade, _gap_ms, _previous in reentry_values
+        trade
+        for trade, _gap_ms, _previous, _streak in reentry_values
     )
     fresh_values = tuple(fresh_or_reset)
 
@@ -178,7 +262,7 @@ def closed_trade_stop_reentry_summary(
     for bucket in ("0-5m", "5-30m", "30-120m", "120m+"):
         cohort = tuple(
             trade
-            for trade, gap_ms, _previous in reentry_values
+            for trade, gap_ms, _previous, _streak in reentry_values
             if _gap_bucket(gap_ms) == bucket
         )
         by_gap_bucket[bucket] = _summary(cohort)
@@ -187,7 +271,7 @@ def closed_trade_stop_reentry_summary(
         direction.value: _summary(
             tuple(
                 trade
-                for trade, _gap_ms, _previous in reentry_values
+                for trade, _gap_ms, _previous, _streak in reentry_values
                 if trade.direction is direction
             )
         )
@@ -209,6 +293,37 @@ def closed_trade_stop_reentry_summary(
 
     reentry_summary = _summary(reentry_trades)
     fresh_summary = _summary(fresh_values)
+    resolved_streak_values = tuple(streak_values)
+    by_prior_losing_stop_streak = {
+        "0": _summary(
+            tuple(
+                trade
+                for trade, streak in resolved_streak_values
+                if streak == 0
+            )
+        ),
+        "1": _summary(
+            tuple(
+                trade
+                for trade, streak in resolved_streak_values
+                if streak == 1
+            )
+        ),
+        "2": _summary(
+            tuple(
+                trade
+                for trade, streak in resolved_streak_values
+                if streak == 2
+            )
+        ),
+        "3+": _summary(
+            tuple(
+                trade
+                for trade, streak in resolved_streak_values
+                if streak >= 3
+            )
+        ),
+    }
     return {
         "research_only": True,
         "execution_authority": False,
@@ -232,6 +347,23 @@ def closed_trade_stop_reentry_summary(
         "by_gap_bucket": by_gap_bucket,
         "reentry_by_direction": reentry_by_direction,
         "reentry_by_market": reentry_by_market,
+        "by_prior_losing_stop_streak": (
+            by_prior_losing_stop_streak
+        ),
+        "skip_after_prior_losing_stops": {
+            "after_1": _streak_threshold_summary(
+                resolved_streak_values,
+                min_prior_losing_stops=1,
+            ),
+            "after_2": _streak_threshold_summary(
+                resolved_streak_values,
+                min_prior_losing_stops=2,
+            ),
+            "after_3": _streak_threshold_summary(
+                resolved_streak_values,
+                min_prior_losing_stops=3,
+            ),
+        },
         "skip_windows": {
             "within_5m": _window_summary(
                 reentry_values,
