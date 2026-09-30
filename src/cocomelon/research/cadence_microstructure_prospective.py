@@ -106,7 +106,7 @@ class _Encoder:
         )
 
     @staticmethod
-    def _numeric(value: object | None) -> float:
+    def _numeric(value: Decimal | int | None) -> float:
         if value is None:
             return float("nan")
         resolved = float(value)
