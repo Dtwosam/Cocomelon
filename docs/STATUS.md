@@ -2945,3 +2945,32 @@ If the source campaign does not expose both compact cadence and feature artifact
 This publication path is research-only. It does not write Issue #469, does not dispatch trading workflows, and does not modify paper execution, strategy, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+### Prospective side-conditioned 60s/120s delay — 2026-09-30
+
+The exact handoff-state delayed-entry audit found a simpler, more robust timing signal than the setup classifiers tested so far.
+
+Touched development evidence over 26 paired evaluable trades showed:
+
+- always-60s fill-weighted same-exit contribution improved the same trades by about +8.39 PnL versus actual entry timing;
+- always-120s improved them by about +16.00 PnL versus actual;
+- 120s was better than 60s for LONGs by about +10.28 PnL, while 60s was better than 120s for SHORTs by about +3.84 PnL;
+- the fixed rule **LONG → 120s, SHORT → 60s** improved the paired sample by about +19.84 PnL versus actual and +10.28 versus always-60s;
+- its edge versus always-60s was positive in all four chronological blocks and remained positive after removing any one market;
+- one chronological block was slightly worse than actual entry timing, so the touched sample is not promotion evidence and the candidate still had negative absolute contribution.
+
+A new candidate, `long-120s-short-60s-v1`, is therefore frozen **prospectively** after these observations. Earlier delayed-entry outcomes receive zero validation credit.
+
+Frozen rule:
+
+- every LONG remains eligible, but its shadow entry uses the existing +120s visible-book IOC outcome;
+- every SHORT remains eligible, but its shadow entry uses the existing +60s visible-book IOC outcome;
+- full, partial, and genuine no-fill outcomes use the existing fill-weighted same-exit accounting;
+- unfilled quantity contributes zero and is not replaced;
+- both 60s and 120s outcomes must be causally evaluable for paired comparison;
+- no market exception, score exception, side ban, delay sweep, or optimizer is permitted.
+
+The durable candidate start timestamp is created by the first continuous-paper worker containing this rule and survives worker handoffs. Review readiness requires at least 30 prospective closed trades, 20 paired evaluable trades, at least 5 LONGs, at least 5 SHORTs, and clean state/journal/outcome lineage. Temporal and market robustness are descriptive and do not bypass that gate.
+
+This candidate is research-only. It does not delay actual paper entries, alter quantity, stops, risk, strategy decisions, or grant promotion/live execution authority.
+
+**LIVE TRADING: DISABLED.**
