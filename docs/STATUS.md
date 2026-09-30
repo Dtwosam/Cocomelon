@@ -2820,3 +2820,22 @@ Training remains purged chronological history and validation remains the final 1
 This is research-only touched development evidence. It cannot alter paper execution, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Nested cadence-tree rank calibration — 2026-09-30
+
+The fixed shallow cadence tree showed useful but miscalibrated ranking on the exact 15m→1h handoff dataset: three of four chronological validation blocks were positive, yet the highest predicted-return quintile lost money while the next quintile was positive.
+
+A research-only nested calibrator now separates model fitting from admission calibration:
+
+- the final 100 settled opportunities remain untouched outer validation;
+- the purged outer training set reserves its final 120 opportunities as an inner chronological calibration window;
+- labels whose forward horizon overlaps that inner calibration boundary are purged again;
+- the fixed shallow tree is fit only on the remaining inner training rows;
+- inner calibration predictions are converted to five rank bands relative to inner-training prediction ranks;
+- a band is eligible only with at least 15 calibration rows and calibration mean minus 1 standard error above zero;
+- the tree is then refit on all outer training rows, and outer-validation predictions are admitted only when their rank falls into an inner-selected band.
+
+This is touched development evidence. The calibration window selects rank bands, but the outer final 100 opportunities never participate in band selection. The same LONG/SHORT admission and chronological stability gates remain required. No paper execution, sizing, stops, risk, promotion, or live authority changes.
+
+**LIVE TRADING: DISABLED.**
