@@ -3087,3 +3087,24 @@ Issue #687 is the canonical prediction-ledger surface. After each successful Pro
 The ledger is deliberately separate from the frozen model evaluator, so this integrity layer cannot alter model features, training, predictions, qualification rules, or the prospective boundary. It has no execution or promotion authority and cannot dispatch the paper trader.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only prospective cadence A/B ledger — 2026-09-30
+
+Issue #690 is the canonical row-level integrity surface for the future-only comparison between:
+
+- `cadence_microstructure_tree_prospective_v1`;
+- `cadence_fixed_shallow_tree_v1`.
+
+After each successful Prospective Cadence Model Comparison, the A/B ledger records the exact paired future row:
+
+- decision ID, boundary, market, and direction;
+- realized after-cost 1h net return;
+- frozen microstructure prediction and admission decision;
+- frozen baseline prediction and admission decision.
+
+The workflow restores the last successful ledger and requires every previously published paired row to remain exactly identical. A prior row that disappears, changes either model prediction/admission, changes realized return, or drifts in frozen-training identity fails closed and marks Issue #690 BLOCKED before the workflow fails. Late-settling older future boundaries may append, matching the single-model prediction-ledger semantics.
+
+This ledger is deliberately separate from both frozen evaluators. It cannot change either model, cannot choose a winner, and has no paper-execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**
