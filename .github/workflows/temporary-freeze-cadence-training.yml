@@ -1,0 +1,184 @@
+name: Freeze cadence microstructure training manifest
+
+on:
+  push:
+    branches:
+      - audit/freeze-cadence-training-36705233182
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev,research]"
+      - name: Download immutable pre-freeze state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11092470461"
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/source.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/source.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+          test -s /tmp/state/cadence-shadow-state.json
+          test -d /tmp/state/learning-features/records
+      - name: Build immutable training fingerprint
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          from pathlib import Path
+
+          from cocomelon.research.cadence_microstructure_prospective import (
+              FEATURE_REGISTRY,
+              MODEL_FAMILY,
+              PROSPECTIVE_START_MS,
+          )
+          from cocomelon.research.cadence_opportunity_audit import (
+              load_cadence_outcomes,
+          )
+          from cocomelon.research.cadence_shadow import (
+              FIFTEEN_MINUTES_MS,
+              ONE_HOUR_MS,
+              _outcome_payload,
+          )
+          from cocomelon.research.learning_feature_snapshots import (
+              LearningFeatureSnapshotStore,
+          )
+
+          def canonical(value: object) -> str:
+              return json.dumps(
+                  value,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              )
+
+          def digest(value: object) -> str:
+              return hashlib.sha256(
+                  canonical(value).encode("utf-8")
+              ).hexdigest()
+
+          outcomes = load_cadence_outcomes(
+              Path("/tmp/state/cadence-shadow-state.json")
+          )
+          training = tuple(
+              sorted(
+                  (
+                      outcome
+                      for outcome in outcomes
+                      if outcome.sample.cadence_ms == FIFTEEN_MINUTES_MS
+                      and outcome.sample.horizon_ms == ONE_HOUR_MS
+                      and outcome.sample.target_end_ms
+                      < PROSPECTIVE_START_MS
+                  ),
+                  key=lambda outcome: (
+                      outcome.sample.target_end_ms,
+                      outcome.sample.market.canonical,
+                      outcome.sample.decision_id,
+                  ),
+              )
+          )
+          store = LearningFeatureSnapshotStore(
+              Path("/tmp/state/learning-features")
+          )
+          rows = []
+          for outcome in training:
+              verified = store.load(
+                  outcome.sample.feature_snapshot_id
+              )
+              if verified is None:
+                  raise SystemExit(
+                      "missing frozen feature snapshot "
+                      + outcome.sample.feature_snapshot_id
+                  )
+              if verified.snapshot.market != outcome.sample.market:
+                  raise SystemExit("frozen feature market mismatch")
+              outcome_payload = _outcome_payload(outcome)
+              rows.append(
+                  {
+                      "identity": {
+                          "cadence_ms": outcome.sample.cadence_ms,
+                          "decision_id": outcome.sample.decision_id,
+                          "horizon_ms": outcome.sample.horizon_ms,
+                      },
+                      "target_end_ms": outcome.sample.target_end_ms,
+                      "feature_snapshot_id": (
+                          outcome.sample.feature_snapshot_id
+                      ),
+                      "outcome_sha256": digest(outcome_payload),
+                      "feature_record_sha256": (
+                          verified.record_sha256
+                      ),
+                  }
+              )
+
+          manifest = {
+              "schema_version": 1,
+              "model_family": MODEL_FAMILY,
+              "feature_registry": list(FEATURE_REGISTRY),
+              "prospective_start_ms": PROSPECTIVE_START_MS,
+              "source": {
+                  "paper_run_id": 36705233182,
+                  "paper_run_head_sha": (
+                      "d1f73e7d6abacc446bfcf09fa0f93ab2cecb3a81"
+                  ),
+                  "artifact_id": 11092470461,
+                  "artifact_digest": (
+                      "sha256:c66a9f1c35ec5c1c996e413d0639b202"
+                      "e25469b9f4a99cf18af4ab053f5e5eb9"
+                  ),
+              },
+              "training_rows": len(rows),
+              "training_first_target_end_ms": (
+                  None if not rows else rows[0]["target_end_ms"]
+              ),
+              "training_last_target_end_ms": (
+                  None if not rows else rows[-1]["target_end_ms"]
+              ),
+              "rows_sha256": digest(rows),
+              "rows": rows,
+          }
+          encoded = canonical(manifest) + "\n"
+          Path(
+              "cadence-microstructure-frozen-training-manifest.json"
+          ).write_text(encoded, encoding="utf-8")
+          print(
+              json.dumps(
+                  {
+                      "training_rows": manifest["training_rows"],
+                      "training_last_target_end_ms": manifest[
+                          "training_last_target_end_ms"
+                      ],
+                      "rows_sha256": manifest["rows_sha256"],
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-microstructure-frozen-training-manifest
+          path: cadence-microstructure-frozen-training-manifest.json
+          if-no-files-found: error
+          retention-days: 90
