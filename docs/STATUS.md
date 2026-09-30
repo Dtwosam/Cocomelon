@@ -2774,3 +2774,23 @@ The same side-neutral development gates remain in force: enough LONG and SHORT v
 This is designed to answer **when a setup should be taken**, rather than banning a direction. It remains touched development evidence and cannot alter paper orders, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Rolling walk-forward cadence context learner — 2026-09-30
+
+A new research-only cadence challenger tests whether the trade-quality drift seen in static validation is better handled by **causal recency** rather than by adding more feature dimensions.
+
+For each opportunity in the final chronological validation window, the learner:
+
+- uses only outcomes whose forward horizon ended strictly before the current decision boundary;
+- takes the most recent 300 fully settled eligible outcomes;
+- refits the existing direction + strategy + score-band + trend-regime + volatility-regime grouped-mean hierarchy;
+- admits only when the current training-only estimated after-cost mean is positive;
+- allows earlier validation outcomes to enter later training only after those outcomes have fully settled;
+- preserves the same LONG/SHORT representation, minimum-admission, and chronological stability gates.
+
+The 300-row window is frozen from the existing minimum training requirement rather than tuned over multiple candidate windows.
+
+This is a touched **prequential development** evaluation. It may identify a future prospective challenger, but it does not modify paper orders, sizing, stops, risk limits, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
