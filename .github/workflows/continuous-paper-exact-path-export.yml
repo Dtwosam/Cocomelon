@@ -32,9 +32,6 @@ concurrency:
 
 jobs:
   export:
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -47,6 +44,7 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
           DISPATCH_RUN_ID: ${{ inputs.source_run_id || '' }}
           DISPATCH_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
@@ -55,6 +53,12 @@ jobs:
           set -euo pipefail
           source_run_id=""
           source_attempt=""
+
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" != "success" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
 
           if [ "$EVENT_NAME" = "workflow_run" ]; then
             source_run_id="$EVENT_RUN_ID"
@@ -158,6 +162,7 @@ jobs:
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
       - name: Stream exact trade-path evidence
+        if: ${{ steps.source.outputs.eligible == 'true' }}
         shell: bash
         env:
           ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
@@ -175,6 +180,7 @@ jobs:
           )"
 
       - name: Attest exact-path export
+        if: ${{ steps.source.outputs.eligible == 'true' }}
         shell: bash
         env:
           SOURCE_RUN_ID: ${{ steps.source.outputs.source_run_id }}
@@ -231,6 +237,7 @@ jobs:
           PY
 
       - name: Upload exact trade-path evidence
+        if: ${{ steps.source.outputs.eligible == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: continuous-paper-exact-paths-${{ steps.source.outputs.source_run_id }}-${{ steps.source.outputs.source_attempt }}
