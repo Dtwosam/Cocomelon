@@ -12,6 +12,8 @@ from cocomelon.research.prospective_prediction_ledger import (
 )
 from cocomelon.research.prospective_side_conditioned_delay import (
     CANDIDATE_ID as TIMING_CANDIDATE_ID,
+)
+from cocomelon.research.prospective_side_conditioned_delay import (
     MIN_LONG_TRADES,
     MIN_PAIRED_EVALUABLE_TRADES,
     MIN_PROSPECTIVE_CLOSED_TRADES,
