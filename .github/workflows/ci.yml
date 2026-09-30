@@ -191,6 +191,9 @@ jobs:
           tests/test_cadence_microstructure_prospective.py
           tests/test_cadence_tree_prospective_baseline.py
           tests/test_prospective_cadence_microstructure_workflow.py
+          tests/test_prospective_allowed_residual.py
+          tests/test_prospective_combined_entry_filter.py
+          tests/test_prospective_residual_profit_lock.py
           tests/test_prospective_comparison_ledger.py
           tests/test_prospective_comparison_ledger_workflow.py
           tests/test_prospective_trade_overlap_ledger.py
