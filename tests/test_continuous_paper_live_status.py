@@ -6,7 +6,6 @@ import subprocess
 import sys
 
 from scripts.render_continuous_paper_live_status import (
-    render_live_status,
     _cadence_opportunity_learning_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
@@ -27,6 +26,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
     _replacement_funding_evidence_lines,
+    render_live_status,
 )
 
 SCRIPT = "scripts/render_continuous_paper_live_status.py"
