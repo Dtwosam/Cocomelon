@@ -138,6 +138,8 @@ jobs:
               "status",
               "prospective_start_ms",
               "frozen_training_rows",
+              "frozen_training_rows_sha256",
+              "frozen_training_source",
               "prospective_rows",
               "required_prospective_rows",
               "admitted_rows",
