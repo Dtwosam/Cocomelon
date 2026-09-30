@@ -1,0 +1,268 @@
+name: Temporary side-conditioned delay audit 36694359628
+
+on:
+  push:
+    branches:
+      - audit/side-conditioned-delay-36694359628
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact predecessor paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11089237194"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/state.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/state.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./journal.sqlite3 \
+            ./delayed-entry-execution-shadow-state.json \
+            ./delayed-entry-120s-execution-shadow-state.json
+      - name: Stress side-conditioned timing
+        run: |
+          python - <<'PY' > side-conditioned-delay.json
+          import json
+          from collections import defaultdict
+          from decimal import Decimal
+          from pathlib import Path
+
+          from cocomelon.journal.store import JournalStore
+          from cocomelon.research.delayed_entry_execution_shadow import (
+              DelayedEntryOutcome,
+          )
+          from cocomelon.research.delayed_entry_fill_weighted import (
+              EVALUABLE_SOURCES,
+          )
+          from cocomelon.research.delayed_entry_pair_fill_weighted import (
+              _evaluate_pair,
+          )
+
+          ZERO=Decimal("0")
+          root=Path("/tmp/state")
+          raw60=json.loads(
+              (root/"delayed-entry-execution-shadow-state.json").read_text()
+          )
+          raw120=json.loads(
+              (root/"delayed-entry-120s-execution-shadow-state.json").read_text()
+          )
+          start=max(int(raw60["started_at_ms"]),int(raw120["started_at_ms"]))
+          o60={x.trade_id:x for x in (
+              DelayedEntryOutcome.from_payload(v) for v in raw60["outcomes"]
+          )}
+          o120={x.trade_id:x for x in (
+              DelayedEntryOutcome.from_payload(v) for v in raw120["outcomes"]
+          )}
+          journal=JournalStore(root/"journal.sqlite3")
+          try:
+              trades=tuple(
+                  t for t in journal.iter_trades()
+                  if t.opened_at_ms >= start
+              )
+              items=[]
+              missing60=missing120=non60=non120=lineage=0
+              for trade in trades:
+                  a=o60.get(trade.trade_id)
+                  b=o120.get(trade.trade_id)
+                  if a is None:
+                      missing60+=1; continue
+                  if b is None:
+                      missing120+=1; continue
+                  if a.source not in EVALUABLE_SOURCES:
+                      non60+=1; continue
+                  if b.source not in EVALUABLE_SOURCES:
+                      non120+=1; continue
+                  try:
+                      pair=_evaluate_pair(trade,a,b)
+                  except Exception:
+                      lineage+=1; continue
+                  selected=(
+                      pair.challenger_candidate_net_pnl
+                      if trade.direction.value=="long"
+                      else pair.base_candidate_net_pnl
+                  )
+                  items.append({
+                      "trade_id":trade.trade_id,
+                      "market":trade.market.canonical,
+                      "direction":trade.direction.value,
+                      "closed_at_ms":trade.closed_at_ms,
+                      "actual":trade.net_pnl,
+                      "delay60":pair.base_candidate_net_pnl,
+                      "delay120":pair.challenger_candidate_net_pnl,
+                      "selected":selected,
+                  })
+          finally:
+              journal.close()
+
+          items.sort(key=lambda x:(x["closed_at_ms"],x["trade_id"]))
+
+          def aggregate(rows):
+              n=len(rows)
+              actual=sum((x["actual"] for x in rows),ZERO)
+              d60=sum((x["delay60"] for x in rows),ZERO)
+              d120=sum((x["delay120"] for x in rows),ZERO)
+              selected=sum((x["selected"] for x in rows),ZERO)
+              return {
+                  "trades":n,
+                  "actual":str(actual),
+                  "delay60":str(d60),
+                  "delay120":str(d120),
+                  "selected":str(selected),
+                  "selected_minus_actual":str(selected-actual),
+                  "selected_minus_60":str(selected-d60),
+                  "selected_minus_120":str(selected-d120),
+                  "selected_mean":None if n==0 else str(selected/Decimal(n)),
+                  "selected_positive":sum(x["selected"]>ZERO for x in rows),
+                  "selected_negative":sum(x["selected"]<ZERO for x in rows),
+              }
+
+          blocks=[]
+          for i in range(4):
+              a=i*len(items)//4
+              b=(i+1)*len(items)//4
+              block=items[a:b]
+              row=aggregate(block)
+              row["block_index"]=i
+              row["passes_vs_actual"]=Decimal(row["selected_minus_actual"])>ZERO
+              row["passes_vs_60"]=Decimal(row["selected_minus_60"])>=ZERO
+              blocks.append(row)
+
+          by_side={
+              side:aggregate([x for x in items if x["direction"]==side])
+              for side in ("long","short")
+          }
+
+          markets=[]
+          grouped=defaultdict(list)
+          for x in items:
+              grouped[x["market"]].append(x)
+          for market,rows in grouped.items():
+              row=aggregate(rows)
+              row["market"]=market
+              markets.append(row)
+          markets.sort(
+              key=lambda x:(-abs(Decimal(x["selected_minus_60"])),x["market"])
+          )
+
+          overall=aggregate(items)
+          market_deltas=[
+              Decimal(x["selected_minus_60"]) for x in markets
+          ]
+          total_delta=Decimal(overall["selected_minus_60"])
+          loo=[
+              {
+                  "market":x["market"],
+                  "selected_minus_60_without_market":str(
+                      total_delta-Decimal(x["selected_minus_60"])
+                  ),
+              }
+              for x in markets
+          ]
+          output={
+              "research_only":True,
+              "execution_authority":False,
+              "promotion_authority":False,
+              "claim_scope":"touched_side_conditioned_60s_120s_same_exit",
+              "rule":{
+                  "long_delay_ms":120000,
+                  "short_delay_ms":60000,
+              },
+              "started_at_ms":start,
+              "prospective_closed_trades":len(trades),
+              "paired_evaluable_attempts":len(items),
+              "missing_60s":missing60,
+              "missing_120s":missing120,
+              "non_evaluable_60s":non60,
+              "non_evaluable_120s":non120,
+              "lineage_mismatches":lineage,
+              "overall":overall,
+              "by_side":by_side,
+              "blocks":blocks,
+              "markets":markets,
+              "leave_one_market_out":loo,
+              "leave_one_market_out_min_delta_vs_60":(
+                  None if not loo else str(min(
+                      Decimal(x["selected_minus_60_without_market"])
+                      for x in loo
+                  ))
+              ),
+              "checks":{
+                  "positive_vs_actual":Decimal(overall["selected_minus_actual"])>ZERO,
+                  "positive_vs_60":Decimal(overall["selected_minus_60"])>ZERO,
+                  "all_blocks_positive_vs_actual":all(
+                      x["passes_vs_actual"] for x in blocks
+                  ),
+                  "all_blocks_nonnegative_vs_60":all(
+                      x["passes_vs_60"] for x in blocks
+                  ),
+                  "positive_vs_60_after_any_market_removal":(
+                      bool(loo)
+                      and all(
+                          Decimal(x["selected_minus_60_without_market"])>ZERO
+                          for x in loo
+                      )
+                  ),
+              },
+          }
+          print(json.dumps(output,sort_keys=True))
+          PY
+      - name: Summarize side-conditioned timing
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+          r=json.loads(Path("side-conditioned-delay.json").read_text())
+          print("## LONG 120s / SHORT 60s timing audit")
+          print(f"- paired evaluable: {r['paired_evaluable_attempts']}")
+          for k,v in r["overall"].items():
+              print(f"- overall {k}: {v}")
+          print("### By side")
+          for side,item in r["by_side"].items():
+              print(
+                  f"- {side}: n={item['trades']} actual={item['actual']} "
+                  f"60={item['delay60']} 120={item['delay120']} "
+                  f"selected={item['selected']} "
+                  f"selected-60={item['selected_minus_60']}"
+              )
+          print("### Chronological blocks")
+          for block in r["blocks"]:
+              print(
+                  f"- block {block['block_index']}: n={block['trades']} "
+                  f"selected={block['selected']} "
+                  f"delta_actual={block['selected_minus_actual']} "
+                  f"delta_60={block['selected_minus_60']} "
+                  f"pass_actual={block['passes_vs_actual']} "
+                  f"pass_60={block['passes_vs_60']}"
+              )
+          print("### Checks")
+          for k,v in r["checks"].items():
+              print(f"- {k}: {v}")
+          print(
+              "- leave-one-market-out min delta vs 60: "
+              f"{r['leave_one_market_out_min_delta_vs_60']}"
+          )
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: side-conditioned-delay-36694359628
+          path: side-conditioned-delay.json
+          if-no-files-found: error
+          retention-days: 30
