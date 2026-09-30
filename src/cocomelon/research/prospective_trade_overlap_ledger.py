@@ -269,6 +269,36 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
             ),
             ZERO,
         )
+        total_winner_pnl = sum(
+            (
+                Decimal(cast(str, row["actual_net_pnl"]))
+                for row in items
+                if Decimal(cast(str, row["actual_net_pnl"])) > ZERO
+            ),
+            ZERO,
+        )
+        total_loser_pnl_abs = -sum(
+            (
+                Decimal(cast(str, row["actual_net_pnl"]))
+                for row in items
+                if Decimal(cast(str, row["actual_net_pnl"])) < ZERO
+            ),
+            ZERO,
+        )
+        admitted_winner_pnl = sum(
+            (
+                Decimal(cast(str, row["actual_net_pnl"]))
+                for row in admitted_winners
+            ),
+            ZERO,
+        )
+        admitted_loser_pnl_abs = -sum(
+            (
+                Decimal(cast(str, row["actual_net_pnl"]))
+                for row in admitted_losers
+            ),
+            ZERO,
+        )
         return {
             "matched_closed_trades": len(items),
             "candidate_admitted_trades": sum(
@@ -290,6 +320,30 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
             "blocked_winner_pnl_sacrificed": str(sacrificed),
             "blocked_loss_minus_sacrificed_win": str(
                 avoided - sacrificed
+            ),
+            "actual_winner_pnl_sum": str(total_winner_pnl),
+            "actual_loser_pnl_abs_sum": str(total_loser_pnl_abs),
+            "admitted_winner_pnl_retained": str(admitted_winner_pnl),
+            "admitted_loser_pnl_abs_incurred": str(
+                admitted_loser_pnl_abs
+            ),
+            "loss_avoidance_rate": (
+                None
+                if total_loser_pnl_abs == ZERO
+                else str(avoided / total_loser_pnl_abs)
+            ),
+            "winner_retention_rate": (
+                None
+                if total_winner_pnl == ZERO
+                else str(admitted_winner_pnl / total_winner_pnl)
+            ),
+            "trade_block_rate": (
+                None
+                if not items
+                else str(
+                    Decimal(len(blocked_losers) + len(blocked_winners))
+                    / Decimal(len(items))
+                )
             ),
         }
 
