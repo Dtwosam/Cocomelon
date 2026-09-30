@@ -341,15 +341,26 @@ def _surface_report(
     )
 
     by_direction = _direction_summary(realized)
-    long_summary = by_direction[Direction.LONG.value]
-    short_summary = by_direction[Direction.SHORT.value]
-    if not isinstance(long_summary, dict) or not isinstance(
-        short_summary,
-        dict,
-    ):
-        raise CadenceOpportunityLearningError(
-            "direction summary is invalid"
-        )
+    long_validation_rows = sum(
+        1
+        for row, _ in realized
+        if row.sample.direction is Direction.LONG
+    )
+    short_validation_rows = sum(
+        1
+        for row, _ in realized
+        if row.sample.direction is Direction.SHORT
+    )
+    long_admitted_rows = sum(
+        1
+        for row, take in realized
+        if take and row.sample.direction is Direction.LONG
+    )
+    short_admitted_rows = sum(
+        1
+        for row, take in realized
+        if take and row.sample.direction is Direction.SHORT
+    )
     blocks = _stability_blocks(
         realized,
         blocks=config.stability_blocks,
@@ -359,18 +370,14 @@ def _surface_report(
 
     structural_ready = (
         len(realized) == config.validation_rows
-        and int(long_summary["validation_rows"])
-        >= config.min_validation_per_direction
-        and int(short_summary["validation_rows"])
-        >= config.min_validation_per_direction
+        and long_validation_rows >= config.min_validation_per_direction
+        and short_validation_rows >= config.min_validation_per_direction
     )
     development_qualified = (
         structural_ready
         and len(admitted) >= config.min_validation_admitted
-        and int(long_summary["admitted_rows"])
-        >= config.min_admitted_per_direction
-        and int(short_summary["admitted_rows"])
-        >= config.min_admitted_per_direction
+        and long_admitted_rows >= config.min_admitted_per_direction
+        and short_admitted_rows >= config.min_admitted_per_direction
         and candidate_mean is not None
         and candidate_mean > ZERO
         and stable
