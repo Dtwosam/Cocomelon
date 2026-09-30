@@ -28,7 +28,8 @@ def test_overlap_workflow_fails_closed_on_mutation() -> None:
     assert "Publish blocked overlap status" in source
     assert "Fail closed on overlap drift" in source
     assert "**Status:** BLOCKED" in source
-    assert "Prior immutable evidence remains authoritative" in source
+    assert "Prior immutable " in source
+    assert "evidence remains authoritative." in source
     assert "exit 1" in source
 
 
