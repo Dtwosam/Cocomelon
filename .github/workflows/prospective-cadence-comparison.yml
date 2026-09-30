@@ -1,0 +1,413 @@
+name: Prospective Cadence Model Comparison
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Mainnet Paper Trader
+    types:
+      - completed
+  schedule:
+    - cron: "31 * * * *"
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed continuous-paper run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Completed continuous-paper run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-cadence-model-comparison
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MICROSTRUCTURE_SHA: efde8803da35d16529157729c2080a1cd99f9a4a
+      BASELINE_SHA: 34acb37c2f06c53eb81fe298db63ce4093c8de7b
+      COMPARISON_ISSUE: "679"
+    steps:
+      - name: Resolve source paper run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_run_id=""
+          source_run_attempt=""
+          resolution_mode=""
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            source_run_id="$INPUT_SOURCE_RUN_ID"
+            source_run_attempt="$INPUT_SOURCE_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          elif [[ "$EVENT_NAME" == "workflow_run" && "$EVENT_SOURCE_CONCLUSION" == "success" ]]; then
+            source_run_id="$EVENT_SOURCE_RUN_ID"
+            source_run_attempt="$EVENT_SOURCE_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          else
+            latest_success="$(
+              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs?status=success&per_page=100" |
+              jq -r '
+                .workflow_runs
+                | map(
+                    select(
+                      .path == ".github/workflows/continuous-paper.yml"
+                      and .conclusion == "success"
+                    )
+                  )
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null then "" else "\(.id) \(.run_attempt)" end
+              '
+            )"
+            if [[ -n "$latest_success" ]]; then
+              read -r source_run_id source_run_attempt <<<"$latest_success"
+            fi
+            resolution_mode="latest_success_catchup"
+          fi
+
+          if [[ -z "$source_run_id" || -z "$source_run_attempt" ]]; then
+            echo "No successful continuous-paper source run is available." >&2
+            exit 1
+          fi
+
+          echo "SOURCE_RUN_ID=$source_run_id" >> "$GITHUB_ENV"
+          echo "SOURCE_RUN_ATTEMPT=$source_run_attempt" >> "$GITHUB_ENV"
+          echo "SOURCE_RESOLUTION_MODE=$resolution_mode" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: efde8803da35d16529157729c2080a1cd99f9a4a
+          path: micro
+
+      - uses: actions/checkout@v7
+        with:
+          ref: 34acb37c2f06c53eb81fe298db63ce4093c8de7b
+          path: baseline
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install frozen evaluators
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/venv-micro
+          python -m venv /tmp/venv-baseline
+          /tmp/venv-micro/bin/python -m pip install -q --upgrade pip
+          /tmp/venv-baseline/bin/python -m pip install -q --upgrade pip
+          /tmp/venv-micro/bin/python -m pip install -q -e "$GITHUB_WORKSPACE/micro[research]"
+          /tmp/venv-baseline/bin/python -m pip install -q -e "$GITHUB_WORKSPACE/baseline[research]"
+
+      - name: Resolve compact research artifacts
+        id: artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100"
+          )"
+          cadence_name="continuous-paper-cadence-shadow-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          features_name="continuous-paper-learning-features-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          cadence_id="$(
+            jq -r               --arg name "$cadence_name"               '.artifacts[] | select(.name == $name and .expired == false) | .id'               <<<"$artifacts_json" | head -n 1
+          )"
+          features_id="$(
+            jq -r               --arg name "$features_name"               '.artifacts[] | select(.name == $name and .expired == false) | .id'               <<<"$artifacts_json" | head -n 1
+          )"
+          if [[ -z "$cadence_id" || -z "$features_id" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "cadence_id=$cadence_id" >> "$GITHUB_OUTPUT"
+          echo "features_id=$features_id" >> "$GITHUB_OUTPUT"
+
+      - name: Publish blocked comparison status
+        if: ${{ steps.artifacts.outputs.ready != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/comparison-status.md <<EOF
+          ## Frozen prospective cadence model comparison
+
+          **Status:** blocked — compact research artifacts unavailable
+
+          - source paper run: `$SOURCE_RUN_ID`
+          - source run attempt: `$SOURCE_RUN_ATTEMPT`
+          - source resolution: `$SOURCE_RESOLUTION_MODE`
+          - microstructure SHA: `$MICROSTRUCTURE_SHA`
+          - baseline SHA: `$BASELINE_SHA`
+          - execution authority: `false`
+          - promotion authority: `false`
+
+          No future-model comparison claim is made until both compact artifacts are available.
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_ISSUE"             -f body="$(cat /tmp/comparison-status.md)"
+
+      - name: Download compact research state
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CADENCE_ID: ${{ steps.artifacts.outputs.cadence_id }}
+          FEATURES_ID: ${{ steps.artifacts.outputs.features_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cadence-artifact /tmp/features-artifact
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$CADENCE_ID/zip"             > /tmp/cadence.zip
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$FEATURES_ID/zip"             > /tmp/features.zip
+          unzip -q /tmp/cadence.zip -d /tmp/cadence-artifact
+          unzip -q /tmp/features.zip -d /tmp/features-artifact
+
+          cadence_path="$(
+            find /tmp/cadence-artifact               -type f               -name cadence-shadow-state.json               -print -quit
+          )"
+          records_dir="$(
+            find /tmp/features-artifact               -type d               -name records               -print -quit
+          )"
+          test -n "$cadence_path"
+          test -n "$records_dir"
+          echo "CADENCE_PATH=$cadence_path" >> "$GITHUB_ENV"
+          echo "FEATURE_ROOT=$(dirname "$records_dir")" >> "$GITHUB_ENV"
+
+      - name: Evaluate both frozen models
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/venv-micro/bin/python             micro/scripts/evaluate_cadence_microstructure_prospective.py             "$CADENCE_PATH"             "$FEATURE_ROOT"             --json-out microstructure.json             > /tmp/microstructure.stdout.json
+          cmp microstructure.json /tmp/microstructure.stdout.json
+
+          /tmp/venv-baseline/bin/python             baseline/scripts/evaluate_cadence_tree_prospective_baseline.py             "$CADENCE_PATH"             "$FEATURE_ROOT"             --json-out baseline.json             > /tmp/baseline.stdout.json
+          cmp baseline.json /tmp/baseline.stdout.json
+
+      - name: Build paired comparison
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from decimal import Decimal
+          from pathlib import Path
+
+          micro=json.loads(Path("microstructure.json").read_text())
+          base=json.loads(Path("baseline.json").read_text())
+
+          for field in (
+              "prospective_start_ms",
+              "frozen_training_rows",
+              "frozen_training_rows_sha256",
+              "prospective_rows",
+              "required_prospective_rows",
+          ):
+              if micro.get(field) != base.get(field):
+                  raise SystemExit(
+                      f"paired comparison mismatch for {field}: "
+                      f"{micro.get(field)!r} != {base.get(field)!r}"
+                  )
+
+          def index(report):
+              rows={}
+              for row in report.get("scored_rows", []):
+                  key=row["decision_id"]
+                  if key in rows:
+                      raise SystemExit(f"duplicate decision id: {key}")
+                  rows[key]=row
+              return rows
+
+          mrows=index(micro)
+          brows=index(base)
+          if set(mrows) != set(brows):
+              raise SystemExit("paired comparison decision-id sets differ")
+
+          micro_only=[]
+          baseline_only=[]
+          both=[]
+          neither=[]
+          for key in sorted(mrows):
+              m=mrows[key]
+              b=brows[key]
+              for field in ("boundary_ms","market","direction","realized_net_return"):
+                  if m[field] != b[field]:
+                      raise SystemExit(
+                          f"paired row mismatch {key} {field}"
+                      )
+              if m["admitted"] and b["admitted"]:
+                  both.append(m)
+              elif m["admitted"]:
+                  micro_only.append(m)
+              elif b["admitted"]:
+                  baseline_only.append(b)
+              else:
+                  neither.append(m)
+
+          def realized_sum(rows):
+              return sum(
+                  (Decimal(row["realized_net_return"]) for row in rows),
+                  Decimal("0"),
+              )
+
+          micro_sum=Decimal(micro["candidate_net_return_sum"])
+          baseline_sum=Decimal(base["candidate_net_return_sum"])
+          comparison={
+              "research_only": True,
+              "execution_authority": False,
+              "promotion_authority": False,
+              "source_run_id": int(__import__("os").environ["SOURCE_RUN_ID"]),
+              "source_run_attempt": int(__import__("os").environ["SOURCE_RUN_ATTEMPT"]),
+              "prospective_start_ms": micro["prospective_start_ms"],
+              "frozen_training_rows": micro["frozen_training_rows"],
+              "frozen_training_rows_sha256": micro["frozen_training_rows_sha256"],
+              "prospective_rows": micro["prospective_rows"],
+              "required_prospective_rows": micro["required_prospective_rows"],
+              "microstructure": {
+                  "model_family": micro["model_family"],
+                  "admitted_rows": micro["admitted_rows"],
+                  "candidate_net_return_sum": micro["candidate_net_return_sum"],
+                  "candidate_mean_net_return": micro["candidate_mean_net_return"],
+                  "development_qualified": micro["development_qualified"],
+                  "by_direction": micro["by_direction"],
+              },
+              "baseline": {
+                  "model_family": base["model_family"],
+                  "admitted_rows": base["admitted_rows"],
+                  "candidate_net_return_sum": base["candidate_net_return_sum"],
+                  "candidate_mean_net_return": base["candidate_mean_net_return"],
+                  "development_qualified": base["development_qualified"],
+                  "by_direction": base["by_direction"],
+              },
+              "microstructure_minus_baseline_net_return_sum": str(
+                  micro_sum - baseline_sum
+              ),
+              "admission_agreement": {
+                  "both_admit": len(both),
+                  "microstructure_only": len(micro_only),
+                  "baseline_only": len(baseline_only),
+                  "neither": len(neither),
+                  "microstructure_only_realized_net_return_sum": str(
+                      realized_sum(micro_only)
+                  ),
+                  "baseline_only_realized_net_return_sum": str(
+                      realized_sum(baseline_only)
+                  ),
+              },
+          }
+          Path("comparison.json").write_text(
+              json.dumps(
+                  comparison,
+                  sort_keys=True,
+                  separators=(",", ":"),
+                  ensure_ascii=False,
+                  allow_nan=False,
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish canonical comparison status
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          r=json.loads(Path("comparison.json").read_text())
+          micro=r["microstructure"]
+          base=r["baseline"]
+          agreement=r["admission_agreement"]
+          lines=[
+              "## Frozen prospective cadence model comparison",
+              "",
+              "**Status:** collecting future-only paired evidence",
+              "",
+              f"- source paper run: `{r['source_run_id']}`",
+              f"- source run attempt: `{r['source_run_attempt']}`",
+              f"- source resolution: `{os.environ['SOURCE_RESOLUTION_MODE']}`",
+              f"- microstructure SHA: `{os.environ['MICROSTRUCTURE_SHA']}`",
+              f"- baseline SHA: `{os.environ['BASELINE_SHA']}`",
+              f"- frozen training rows: `{r['frozen_training_rows']}`",
+              f"- frozen training digest: `{r['frozen_training_rows_sha256']}`",
+              f"- prospective rows: `{r['prospective_rows']} / {r['required_prospective_rows']}`",
+              "",
+              "### Candidate economics",
+              "",
+              (
+                  "- microstructure: admitted="
+                  f"`{micro['admitted_rows']}` sum="
+                  f"`{micro['candidate_net_return_sum']}` mean="
+                  f"`{micro['candidate_mean_net_return']}` qualified="
+                  f"`{str(bool(micro['development_qualified'])).lower()}`"
+              ),
+              (
+                  "- baseline: admitted="
+                  f"`{base['admitted_rows']}` sum="
+                  f"`{base['candidate_net_return_sum']}` mean="
+                  f"`{base['candidate_mean_net_return']}` qualified="
+                  f"`{str(bool(base['development_qualified'])).lower()}`"
+              ),
+              (
+                  "- microstructure minus baseline net-return sum: "
+                  f"`{r['microstructure_minus_baseline_net_return_sum']}`"
+              ),
+              "",
+              "### Admission disagreement",
+              "",
+              f"- both admit: `{agreement['both_admit']}`",
+              f"- microstructure only: `{agreement['microstructure_only']}` "
+              f"realized sum=`{agreement['microstructure_only_realized_net_return_sum']}`",
+              f"- baseline only: `{agreement['baseline_only']}` "
+              f"realized sum=`{agreement['baseline_only_realized_net_return_sum']}`",
+              f"- neither: `{agreement['neither']}`",
+              "",
+              "This comparison is research-only and has no execution or promotion authority.",
+              "",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/comparison-status.md").write_text(
+              "\n".join(lines)+"\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_ISSUE"             -f body="$(cat /tmp/comparison-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        with:
+          name: cadence-model-comparison-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
+          path: |
+            microstructure.json
+            baseline.json
+            comparison.json
+          if-no-files-found: error
+          retention-days: 90
