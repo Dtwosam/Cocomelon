@@ -4901,7 +4901,6 @@ def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
     assert "earlier standalone LONG+trend and top-10 studies" in output
 
 
-
 def test_combined_matched_overlap_renderer_is_explicitly_descriptive() -> None:
     lines = _prospective_combined_matched_overlap_lines(
         {
@@ -5007,7 +5006,6 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "forward mark paths" in output
     assert "real horizon L2 exit books" in output
     assert "never retroactively" in output
-
 
 
 def test_replacement_funding_renderer_exposes_boundary_coverage() -> None:
@@ -6017,3 +6015,130 @@ def test_residual_profit_lock_renderer_exposes_source_failure() -> None:
 
     assert "source unavailable" in output
     assert "RuntimeError: path boom" in output
+
+
+def test_stop_reentry_renderer_exposes_fixed_windows_and_sides() -> None:
+    lines = _closed_trade_stop_reentry_lines(
+        {
+            "enabled": True,
+            "error": None,
+            "closed_trades": 12,
+            "reentry_trades": 5,
+            "fresh_or_reset_trades": 7,
+            "reentry_wins": 1,
+            "reentry_losses": 4,
+            "reentry_net_pnl": "-18",
+            "reentry_mean_net_r": "-0.36",
+            "fresh_or_reset_wins": 4,
+            "fresh_or_reset_losses": 3,
+            "fresh_or_reset_net_pnl": "9",
+            "fresh_or_reset_mean_net_r": "0.12",
+            "by_gap_bucket": {
+                "0-5m": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "net_pnl": "-11",
+                    "mean_net_r": "-0.55",
+                },
+                "5-30m": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "net_pnl": "4",
+                    "mean_net_r": "0.4",
+                },
+                "30-120m": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-5",
+                    "mean_net_r": "-0.5",
+                },
+                "120m+": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.6",
+                },
+            },
+            "skip_windows": {
+                "within_5m": {
+                    "blocked_trades": 2,
+                    "blocked_winners": 0,
+                    "blocked_losses": 2,
+                    "blocked_net_pnl": "-11",
+                    "delta_trade_contribution_pnl": "11",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "5",
+                        "positive_after_removing_any_one_trade": True,
+                    },
+                },
+                "within_30m": {
+                    "blocked_trades": 3,
+                    "blocked_winners": 1,
+                    "blocked_losses": 2,
+                    "blocked_net_pnl": "-7",
+                    "delta_trade_contribution_pnl": "7",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "-4",
+                        "positive_after_removing_any_one_trade": False,
+                    },
+                },
+                "within_120m": {
+                    "blocked_trades": 4,
+                    "blocked_winners": 1,
+                    "blocked_losses": 3,
+                    "blocked_net_pnl": "-12",
+                    "delta_trade_contribution_pnl": "12",
+                    "robustness": {
+                        "leave_one_trade_out_min_delta_pnl": "1",
+                        "positive_after_removing_any_one_trade": True,
+                    },
+                },
+            },
+            "reentry_by_direction": {
+                "long": {
+                    "trades": 3,
+                    "wins": 1,
+                    "losses": 2,
+                    "net_pnl": "-6",
+                    "mean_net_r": "-0.2",
+                },
+                "short": {
+                    "trades": 2,
+                    "wins": 0,
+                    "losses": 2,
+                    "net_pnl": "-12",
+                    "mean_net_r": "-0.6",
+                },
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Same-side stop re-entry attribution" in output
+    assert "closed / re-entry / fresh-or-reset trades" in output
+    assert "`12 / 5 / 7`" in output
+    assert "| 0-5m | 2 | 0 | 2 | -11 | -0.55 |" in output
+    assert "| <=5m | 2 | 0 | 2 | -11 | 11 | 5 | True |" in output
+    assert "| <=30m | 3 | 1 | 2 | -7 | 7 | -4 | False |" in output
+    assert "| LONG | 3 | 1 | 2 | -6 | -0.2 |" in output
+    assert "| SHORT | 2 | 0 | 2 | -12 | -0.6 |" in output
+    assert "most recent completed trade in the same market and same direction" in output
+    assert "descriptive only" in output
+
+
+def test_stop_reentry_renderer_exposes_failure() -> None:
+    output = "\n".join(
+        _closed_trade_stop_reentry_lines(
+            {
+                "enabled": False,
+                "error": "RuntimeError: reentry boom",
+            }
+        )
+    )
+
+    assert "research error" in output
+    assert "RuntimeError: reentry boom" in output
