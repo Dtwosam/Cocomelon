@@ -21,13 +21,12 @@ def test_continuous_paper_learning_catchup_is_scheduled_and_reactive() -> None:
     assert "actions: write" in source
 
 
-def test_continuous_paper_learning_catchup_requires_lineage_capable_artifact() -> None:
+def test_continuous_paper_learning_catchup_requires_compact_lineage_source() -> None:
     source = _workflow()
-    assert "continuous-paper-state-{run_id}-{attempt}" in source
-    assert 'name.startswith("learning-features/records/")' in source
-    assert 'name.startswith("opening-lineage/records/")' in source
+    assert "continuous-paper-learning-source-{run_id}-{attempt}" in source
     assert 'digest.startswith("sha256:")' in source
     assert 'run.get("conclusion") != "success"' in source
+    assert 'continuous-paper-state-{run_id}-{attempt}' not in source
 
 
 def test_continuous_paper_learning_catchup_compares_trusted_receipt() -> None:
@@ -49,3 +48,19 @@ def test_continuous_paper_learning_catchup_dispatches_only_missing_sync() -> Non
     assert "private_key" not in source.lower()
     assert "withdraw" not in source.lower()
     assert "transfer" not in source.lower()
+
+
+def test_continuous_paper_learning_catchup_uses_run_time_not_numeric_id_order() -> None:
+    source = _workflow()
+
+    assert "WORKER_CREATED_AT" in source
+    assert "STATE_CREATED_AT" in source
+    assert (
+        "trusted learning state already covers same or newer paper worker"
+        in source
+    )
+    assert '"-gt" "$LATEST_WORKER_RUN_ID"' not in source
+    assert (
+        '[ "$LATEST_STATE_UPSTREAM_RUN_ID" -gt "$LATEST_WORKER_RUN_ID" ]'
+        not in source
+    )

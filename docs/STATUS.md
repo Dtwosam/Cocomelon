@@ -3043,3 +3043,27 @@ If the compact artifact is unavailable, Issue #682 is explicitly marked blocked 
 This publication path is research-only. It does not change actual paper entry timing, strategy, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Continuous-paper learning-source recovery fix — 2026-09-30
+
+A control-plane defect was found in the continuous-paper learning follower/catch-up path.
+
+The paper workflow now uploads the durable state as `continuous-paper-state.tar` inside the GitHub artifact zip, but the learning follower and catch-up detector still expected raw `learning-features/` and `opening-lineage/` directories at the artifact-zip root. As a result, recent successful paper workers could be skipped as "not lineage capable" and catch-up could fall back to an old worker. The stale-worker path then compared numeric GitHub run IDs and could fail with `trusted learning state is ahead of newest lineage-capable paper worker`.
+
+The recovery path now uses a dedicated compact authenticated source artifact:
+
+`continuous-paper-learning-source-<run_id>-<run_attempt>`
+
+It contains only:
+
+- `session-summary.json`;
+- `journal.sqlite3`;
+- `learning-features/`;
+- `opening-lineage/`.
+
+The normal evidence follower consumes this compact source directly. Catch-up discovers the newest successful main-branch paper run that actually published the compact source, rather than downloading and introspecting the multi-GB recovery artifact. If trusted learning state already references a different source, relative ordering is determined from the source runs' `created_at` timestamps instead of numeric run-ID comparison.
+
+This repair is research/control-plane only. It does not change scanner decisions, entries, exits, sizing, stops, risk, paper execution, promotion authority, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

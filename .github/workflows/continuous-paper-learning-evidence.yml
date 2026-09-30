@@ -105,7 +105,7 @@ jobs:
 
           RUN_ATTEMPT="$(jq -r '.run_attempt' /tmp/upstream-run.json)"
           HEAD_SHA="$(jq -r '.head_sha' /tmp/upstream-run.json)"
-          ARTIFACT_NAME="continuous-paper-state-${RUN_ID}-${RUN_ATTEMPT}"
+          ARTIFACT_NAME="continuous-paper-learning-source-${RUN_ID}-${RUN_ATTEMPT}"
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100"             > /tmp/upstream-artifacts.json
           ARTIFACT_ROW="$(
             python - "$ARTIFACT_NAME" <<'PY'
@@ -126,17 +126,17 @@ jobs:
               print("SKIP")
               raise SystemExit(0)
           if len(matches) != 1:
-              raise SystemExit("expected at most one continuous-paper state artifact")
+              raise SystemExit("expected at most one continuous-paper learning-source artifact")
           artifact = matches[0]
           digest = artifact.get("digest")
           if not isinstance(digest, str) or not digest.startswith("sha256:"):
-              raise SystemExit("continuous-paper artifact digest is missing")
+              raise SystemExit("continuous-paper learning-source artifact digest is missing")
           print(str(artifact["id"]) + "\t" + digest)
           PY
           )"
           if [ "$ARTIFACT_ROW" = "SKIP" ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
-            echo "No durable worker artifact; this was a watchdog/bootstrap skip."
+            echo "No compact lineage-capable learning-source artifact is available."
             exit 0
           fi
 
@@ -144,6 +144,8 @@ jobs:
           mkdir -p incoming/continuous
           /usr/bin/gh api             "/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/continuous-paper.zip
           unzip -q /tmp/continuous-paper.zip -d incoming/continuous
+          test -s incoming/continuous/session-summary.json
+          test -s incoming/continuous/journal.sqlite3
 
           if [ ! -d incoming/continuous/learning-features/records ]; then
             echo "eligible=false" >> "$GITHUB_OUTPUT"
