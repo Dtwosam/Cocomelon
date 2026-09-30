@@ -390,7 +390,7 @@ def evaluate_cadence_opportunity_robustness(
         blocks=config.stability_blocks,
     )
     nonempty_blocks = tuple(
-        block for block in blocks if int(block["rows"]) > 0
+        block for block in blocks if cast(int, block["rows"]) > 0
     )
     return {
         "status": "completed",
