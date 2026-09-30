@@ -92,15 +92,27 @@ class ProspectiveTwoStrikeStopFilterState:
         frozen_at_ms = raw.get("frozen_at_ms")
         started_at_ms = raw.get("started_at_ms")
         candidate_id = raw.get("candidate_id")
-        for value, field in (
-            (schema_version, "schema_version"),
-            (frozen_at_ms, "frozen_at_ms"),
-            (started_at_ms, "started_at_ms"),
+        if isinstance(schema_version, bool) or not isinstance(
+            schema_version,
+            int,
         ):
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ProspectiveTwoStrikeStopFilterError(
-                    f"{field} must be an integer"
-                )
+            raise ProspectiveTwoStrikeStopFilterError(
+                "schema_version must be an integer"
+            )
+        if isinstance(frozen_at_ms, bool) or not isinstance(
+            frozen_at_ms,
+            int,
+        ):
+            raise ProspectiveTwoStrikeStopFilterError(
+                "frozen_at_ms must be an integer"
+            )
+        if isinstance(started_at_ms, bool) or not isinstance(
+            started_at_ms,
+            int,
+        ):
+            raise ProspectiveTwoStrikeStopFilterError(
+                "started_at_ms must be an integer"
+            )
         if not isinstance(candidate_id, str):
             raise ProspectiveTwoStrikeStopFilterError(
                 "candidate_id must be a string"
