@@ -276,6 +276,14 @@ jobs:
                   f"`{str(cadence['ready_for_review']).lower()}`"
               ),
               (
+                  "- standalone quality gate: "
+                  f"`{str(cadence['standalone_ready_for_review']).lower()}`"
+              ),
+              (
+                  "- complexity justified vs baseline: "
+                  f"`{str(cadence['complexity_justified']).lower()}`"
+              ),
+              (
                   "- prospective rows / required: "
                   f"`{cadence['prospective_rows']} / "
                   f"{cadence['required_prospective_rows']}`"
@@ -338,12 +346,38 @@ jobs:
                       f"`{comparison['microstructure_minus_baseline_sum']}`"
                   ),
                   (
+                      "- complexity justified / positive incremental blocks: "
+                      f"`{str(comparison['complexity_justified']).lower()} / "
+                      f"{comparison['positive_incremental_blocks']} / "
+                      f"{comparison['required_positive_incremental_blocks']}`"
+                  ),
+                  (
                       "- both / micro-only / baseline-only / neither: "
                       f"`{comparison['both_admit']} / "
                       f"{comparison['microstructure_only']} / "
                       f"{comparison['baseline_only']} / "
                       f"{comparison['neither']}`"
                   ),
+                  "",
+                  "#### Incremental chronological stability",
+                  "",
+              ]
+          )
+          for block in comparison["incremental_stability_blocks"]:
+              lines.append(
+                  "- block {block}: rows=`{rows}` micro-only=`{micro}` "
+                  "baseline-only=`{baseline}` delta=`{delta}` "
+                  "passes=`{passes}`".format(
+                      block=block["block_index"],
+                      rows=block["paired_rows"],
+                      micro=block["microstructure_only_rows"],
+                      baseline=block["baseline_only_rows"],
+                      delta=block["microstructure_minus_baseline_sum"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
                   "",
                   "### Side-conditioned timing challenger",
                   "",
