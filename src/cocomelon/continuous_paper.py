@@ -289,6 +289,9 @@ from cocomelon.research.prospective_replacement_exit_readiness import (
 from cocomelon.research.prospective_replacement_exit_robustness import (
     prospective_replacement_exit_robustness,
 )
+from cocomelon.research.prospective_side_conditioned_delay import (
+    ProspectiveSideConditionedDelayState,
+)
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
@@ -296,9 +299,6 @@ from cocomelon.research.prospective_top10_rank_filter import (
 from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
-)
-from cocomelon.research.prospective_side_conditioned_delay import (
-    ProspectiveSideConditionedDelayState,
 )
 from cocomelon.util.time import utc_now_ms
 
