@@ -3412,3 +3412,24 @@ The precommitted review gate requires at least 30 prospective closed trades, 5 b
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Compact exact trade-path export — 2026-09-30
+
+Completed Continuous Mainnet Paper Trader runs now have a separate research export path for exact observed mark-path evidence.
+
+The exporter:
+
+- binds to one completed successful main-branch continuous-paper run and exact run attempt;
+- resolves the exact durable `continuous-paper-state-<run>-<attempt>` artifact;
+- streams `continuous-paper-state.tar` and extracts only `trade-paths` plus `session-summary.json`, avoiding a full multi-gigabyte state restore;
+- verifies exported trade-path record count against the source session summary;
+- emits a deterministic SHA-256 tree digest over the exported path records;
+- publishes a compact `continuous-paper-exact-paths-<run>-<attempt>` artifact for exit/profit-protection research;
+- runs independently of the live paper worker and has no execution or promotion authority.
+
+The workflow bootstraps once when introduced and then follows successful Continuous Mainnet Paper Trader completions, so exact-path exit research no longer depends on downloading the full durable paper-state artifact.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
