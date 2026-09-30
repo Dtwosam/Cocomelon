@@ -3302,3 +3302,21 @@ The ledger consumes the small `continuous-paper-learning-source-<run>-<attempt>`
 Issue #704 is the canonical status surface. This overlap stream is descriptive future evidence only and **does not change the frozen prospective readiness gate**, paper execution, strategy, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective actual-trade selectivity efficiency — 2026-09-30
+
+The actual-trade overlap ledger now normalizes its future matched-paper diagnostics so raw dollar totals cannot reward an indiscriminate blocker.
+
+For the overall matched set and separately for LONG and SHORT, it reports:
+
+- total winning paper PnL and absolute losing paper PnL;
+- admitted winning PnL retained;
+- admitted losing PnL still incurred;
+- **loss-avoidance rate** = blocked losing PnL avoided / total absolute losing PnL;
+- **winner-retention rate** = admitted winning PnL / total winning PnL;
+- trade block rate.
+
+Undefined denominators report `null` rather than fabricated zeroes. These rates remain descriptive/non-gating and cannot modify the frozen prospective readiness contract or paper execution.
+
+**LIVE TRADING: DISABLED.**
