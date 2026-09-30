@@ -459,6 +459,7 @@ jobs:
           path: |
             continuous-paper-state/session-summary.json
             continuous-paper-state/journal.sqlite3
+            continuous-paper-state/prospective-two-strike-stop-filter-state.json
             continuous-paper-state/learning-features
             continuous-paper-state/opening-lineage
           if-no-files-found: error
