@@ -40,7 +40,12 @@ jobs:
           gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/timing.zip
           mkdir -p /tmp/timing
           unzip -q /tmp/timing.zip -d /tmp/timing
-          test -s /tmp/timing/continuous-paper-state/journal.sqlite3
+          journal_path="$(
+            find /tmp/timing -type f -name journal.sqlite3 -print -quit
+          )"
+          test -n "$journal_path"
+          test -s "$journal_path"
+          cp "$journal_path" /tmp/journal.sqlite3
 
       - name: Join frozen predictions to actual paper trades
         run: |
@@ -76,7 +81,7 @@ jobs:
               by_decision[decision_id] = row
 
           journal = JournalStore(
-              Path("/tmp/timing/continuous-paper-state/journal.sqlite3")
+              Path("/tmp/journal.sqlite3")
           )
           try:
               trades = tuple(journal.iter_trades())
