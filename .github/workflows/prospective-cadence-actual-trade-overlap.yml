@@ -409,6 +409,8 @@ jobs:
           )
           overall = ledger["summary"]["overall"]
           by_direction = ledger["summary"]["by_direction"]
+          readiness = ledger["readiness"]
+          robustness = ledger["robustness"]
           lines = [
               "## Prospective cadence actual-trade overlap",
               "",
@@ -448,6 +450,31 @@ jobs:
                   f"`{overall['actual_net_pnl_sum']} / "
                   f"{overall['candidate_matched_net_pnl_sum']} / "
                   f"{overall['candidate_minus_actual_net_pnl_sum']}`"
+              ),
+              (
+                  "- overlap review ready / sample complete / economics positive / "
+                  "single-trade robust: "
+                  f"`{readiness['ready_for_overlap_review']} / "
+                  f"{readiness['sample_complete']} / "
+                  f"{readiness['economics_positive']} / "
+                  f"{readiness['single_trade_robust']}`"
+              ),
+              (
+                  "- still needed matched / admitted / blocked: "
+                  f"`{readiness['missing_matched_closed_trades']} / "
+                  f"{readiness['missing_candidate_admitted_trades']} / "
+                  f"{readiness['missing_candidate_blocked_trades']}`"
+              ),
+              (
+                  "- still needed LONG matched/admitted / SHORT matched/admitted: "
+                  f"`{readiness['missing_long_matched_trades']} / "
+                  f"{readiness['missing_long_admitted_trades']} / "
+                  f"{readiness['missing_short_matched_trades']} / "
+                  f"{readiness['missing_short_admitted_trades']}`"
+              ),
+              (
+                  "- leave-one-trade-out minimum delta: "
+                  f"`{robustness['leave_one_trade_out_min_delta']}`"
               ),
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
@@ -504,7 +531,8 @@ jobs:
                   "",
                   (
                       "This is descriptive future overlap evidence only. "
-                      "It does not change the frozen readiness gate."
+                      "Overlap review readiness is precommitted and review-only; "
+                      "it does not change the frozen readiness gate."
                   ),
                   "",
                   "**Execution authority:** `false`  ",
