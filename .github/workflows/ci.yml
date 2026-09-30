@@ -193,4 +193,5 @@ jobs:
           tests/test_prospective_cadence_microstructure_workflow.py
           tests/test_prospective_comparison_ledger.py
           tests/test_prospective_comparison_ledger_workflow.py
+          tests/test_prospective_timing_ledger.py
           -q
