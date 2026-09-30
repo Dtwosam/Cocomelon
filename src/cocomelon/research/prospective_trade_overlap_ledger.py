@@ -135,6 +135,9 @@ def _canonical_row(raw: object) -> dict[str, object]:
         raise ProspectiveTradeOverlapLedgerError(
             "candidate-minus-actual PnL does not reconcile"
         )
+    actual_net_r = Decimal(
+        _decimal_string(raw.get("actual_net_r"), field="actual_net_r")
+    )
     outcome = _required_string(raw, "actual_outcome")
     expected_outcome = (
         "winner"
@@ -144,6 +147,14 @@ def _canonical_row(raw: object) -> dict[str, object]:
     if outcome != expected_outcome:
         raise ProspectiveTradeOverlapLedgerError(
             "actual_outcome does not match actual_net_pnl"
+        )
+    if (
+        (actual_net_pnl > ZERO and actual_net_r <= ZERO)
+        or (actual_net_pnl < ZERO and actual_net_r >= ZERO)
+        or (actual_net_pnl == ZERO and actual_net_r != ZERO)
+    ):
+        raise ProspectiveTradeOverlapLedgerError(
+            "actual_net_r sign does not match actual_net_pnl"
         )
     return {
         "decision_id": decision_id,
@@ -163,10 +174,7 @@ def _canonical_row(raw: object) -> dict[str, object]:
         "opened_at_ms": opened_at_ms,
         "closed_at_ms": closed_at_ms,
         "actual_net_pnl": str(actual_net_pnl),
-        "actual_net_r": _decimal_string(
-            raw.get("actual_net_r"),
-            field="actual_net_r",
-        ),
+        "actual_net_r": str(actual_net_r),
         "actual_exit_reason": _required_string(
             raw,
             "actual_exit_reason",
@@ -525,6 +533,7 @@ def _readiness(
         )
     return result
 
+
 def _trade_map(
     trades: tuple[TradeJournalEntry, ...],
 ) -> dict[str, TradeJournalEntry]:
@@ -628,16 +637,29 @@ def validate_trade_overlap_ledger(
             "trade overlap rows digest mismatch"
         )
     summary = _summary(rows)
-    if raw.get("summary") != summary:
+    legacy_summary = _summary(rows, include_net_r=False)
+    raw_summary = raw.get("summary")
+    if raw_summary == summary:
+        legacy_format = False
+    elif raw_summary == legacy_summary:
+        legacy_format = True
+    else:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap summary does not reconcile"
         )
-    robustness = _robustness(rows)
+    robustness = _robustness(
+        rows,
+        include_net_r=not legacy_format,
+    )
     if "robustness" in raw and raw.get("robustness") != robustness:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap robustness does not reconcile"
         )
-    readiness = _readiness(summary, robustness)
+    readiness = _readiness(
+        summary if not legacy_format else legacy_summary,
+        robustness,
+        include_net_r=not legacy_format,
+    )
     if "readiness" in raw and raw.get("readiness") != readiness:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap readiness does not reconcile"
