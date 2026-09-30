@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from scripts.render_continuous_paper_live_status import (
+    render_live_status,
     _cadence_opportunity_learning_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
@@ -5813,3 +5814,92 @@ def test_cadence_opportunity_learning_renderer_shows_primary_surfaces() -> None:
     assert "mean_reversion" in rendered
     assert "Most negative skipped validation cohorts" in rendered
     assert "breakout" in rendered
+
+
+def test_operational_heartbeat_renders_without_research_sections() -> None:
+    payload = {
+        "heartbeat_scope": "operational",
+        "timestamp_ms": 1_700_000_000_000,
+        "starting_cash": "10000",
+        "equity": "10005",
+        "total_account_pnl": "5",
+        "total_return_fraction": "0.0005",
+        "cash": "9990",
+        "daily_realized_pnl": "1",
+        "unrealized_pnl": "4",
+        "realized_gross_pnl": "2",
+        "cumulative_fees": "1",
+        "cumulative_funding": "0",
+        "closed_trades": 3,
+        "session_closed_trades": 1,
+        "open_planned_risk": "10",
+        "open_planned_risk_fraction_of_equity": "0.001",
+        "open_stop_trigger_gross_pnl": "2",
+        "open_stop_trigger_gross_r": "0.2",
+        "open_positions_with_profit_protected_stop": 1,
+        "gross_open_notional": "500",
+        "gross_open_notional_fraction_of_equity": "0.05",
+        "available_margin": "9500",
+        "execution_healthy": True,
+        "execution_reason_codes": [],
+        "selected_market_count": 20,
+        "processed_records": 99,
+        "journal_observations": 12,
+        "session_decision_epochs": 2,
+        "last_decision_boundary_ms": 1_699_999_900_000,
+        "last_decision_evaluated_at_ms": 1_700_000_000_000,
+        "session_decisions": {
+            "long": 1,
+            "short": 1,
+            "no_trade": 38,
+        },
+        "session_decision_reason_counts": {
+            "trend": 1,
+            "mean_reversion": 1,
+            "NO_SIGNAL": 38,
+        },
+        "session_risk": {
+            "evaluations": 2,
+            "approvals": 2,
+            "rejections": 0,
+            "reason_counts": {"APPROVED": 2},
+        },
+        "session_opening_execution_attempts": 2,
+        "session_opening_fills": 2,
+        "positions": [
+            {
+                "market": "BTC",
+                "side": "long",
+                "quantity": "0.01",
+                "average_entry_price": "100000",
+                "stop_price": "99000",
+                "latest_mark": "101000",
+                "unrealized_gross_pnl": "10",
+                "current_gross_r": "1",
+                "stop_trigger_gross_pnl": "-10",
+                "stop_trigger_gross_r": "-1",
+                "stop_protects_profit": False,
+                "planned_risk": "10",
+            }
+        ],
+        "recent_closed_trades": [],
+        "last_observation": {
+            "kind": "execution",
+            "market": "BTC",
+            "reason_codes": ["OPEN_FILLED"],
+        },
+    }
+
+    rendered = render_live_status(
+        payload,
+        run_id="123",
+        head_sha="a" * 40,
+        predecessor_run_id="122",
+    )
+
+    assert "Operational heartbeat only" in rendered
+    assert "Worker run: 123" in rendered
+    assert "BTC" in rendered
+    assert "research telemetry deferred: true" in rendered
+    assert "Cadence opportunity learning" not in rendered
+    assert "Fixed profit-lock counterfactual" not in rendered
