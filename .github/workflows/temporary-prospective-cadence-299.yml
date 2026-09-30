@@ -1,0 +1,85 @@
+name: Temporary prospective cadence audit 299
+
+on:
+  push:
+    branches:
+      - audit/prospective-cadence-299
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: efde8803da35d16529157729c2080a1cd99f9a4a
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev,research]"
+      - name: Download compact run 299 state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CADENCE_ID: "11102817306"
+          FEATURES_ID: "11102632268"
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cadence /tmp/features
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$CADENCE_ID/zip" \
+            > /tmp/cadence.zip
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$FEATURES_ID/zip" \
+            > /tmp/features.zip
+          unzip -q /tmp/cadence.zip -d /tmp/cadence
+          unzip -q /tmp/features.zip -d /tmp/features
+          cadence_path="$(find /tmp/cadence -type f -name cadence-shadow-state.json -print -quit)"
+          records_dir="$(find /tmp/features -type d -name records -print -quit)"
+          test -n "$cadence_path"
+          test -n "$records_dir"
+          echo "CADENCE_PATH=$cadence_path" >> "$GITHUB_ENV"
+          echo "FEATURE_ROOT=$(dirname "$records_dir")" >> "$GITHUB_ENV"
+      - name: Evaluate immutable prospective candidate
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_microstructure_prospective.py \
+            "$CADENCE_PATH" \
+            "$FEATURE_ROOT" \
+            --json-out prospective-299.json \
+            > /tmp/prospective-299.stdout.json
+          cmp prospective-299.json /tmp/prospective-299.stdout.json
+      - name: Assert no early 1h prospective labels
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report=json.loads(Path("prospective-299.json").read_text())
+          if report.get("prospective_rows") != 0:
+              raise SystemExit(
+                  "run 299 unexpectedly contains settled post-freeze 1h rows: "
+                  + str(report.get("prospective_rows"))
+              )
+          if report.get("frozen_training_rows") != 652:
+              raise SystemExit(
+                  "frozen training row count changed: "
+                  + str(report.get("frozen_training_rows"))
+              )
+          expected="c1baa8a730980402d02b80f960afa249e6cb653392c64b887074cd9efb2034e4"
+          if report.get("frozen_training_rows_sha256") != expected:
+              raise SystemExit("frozen training digest changed")
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prospective-cadence-run-299
+          path: prospective-299.json
+          if-no-files-found: error
+          retention-days: 30
