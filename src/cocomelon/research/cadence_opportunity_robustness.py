@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_opportunity_learning import (
     DEFAULT_CONFIG,
     CadenceOpportunityLearningConfig,
+    _MeanEstimate,
     _estimate,
     _fit_group_means,
     _score_band,
@@ -136,7 +137,7 @@ def _market_payload(
 
 def _cohort_payload(
     admitted: tuple[
-        tuple[int, ShadowCadenceOutcome, object],
+        tuple[int, ShadowCadenceOutcome, _MeanEstimate],
         ...,
     ],
     *,
@@ -145,7 +146,7 @@ def _cohort_payload(
 ) -> tuple[dict[str, object], ...]:
     grouped: dict[
         tuple[str, str, str],
-        list[tuple[int, ShadowCadenceOutcome, object]],
+        list[tuple[int, ShadowCadenceOutcome, _MeanEstimate]],
     ] = defaultdict(list)
     for index, row, estimate in admitted:
         grouped[
@@ -254,7 +255,9 @@ def evaluate_cadence_opportunity_robustness(
         }
 
     sums, counts = _fit_group_means(training)
-    scored: list[tuple[int, ShadowCadenceOutcome, bool, object]] = []
+    scored: list[
+        tuple[int, ShadowCadenceOutcome, bool, _MeanEstimate]
+    ] = []
     missing_estimates = 0
     for index, row in enumerate(validation):
         estimate = _estimate(
@@ -460,7 +463,8 @@ def evaluate_cadence_opportunity_robustness(
                 and largest_abs_share <= HALF
             ),
             "all_blocks_have_min_admissions": all(
-                int(block["rows"]) >= config.min_block_admitted
+                cast(int, block["rows"])
+                >= config.min_block_admitted
                 for block in blocks
             ),
             "all_nonempty_blocks_positive": (
