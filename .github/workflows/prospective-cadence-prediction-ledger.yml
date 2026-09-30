@@ -126,7 +126,7 @@ jobs:
                   )
                 )
               | if length == 1
-                then "(.[0].id)	(.[0].name)"
+                then "\(.[0].id)\t\(.[0].name)"
                 else ""
                 end
             ' <<<"$artifacts_json"
