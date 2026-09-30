@@ -1,0 +1,210 @@
+name: Temporary cadence confidence block feature audit 36694359628
+
+on:
+  push:
+    branches:
+      - audit/cadence-confidence-block-features-36694359628
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact predecessor paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11089237194"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/state.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/state.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+      - name: Decompose admitted rows by block and features
+        run: |
+          python - <<'PY' | tee cadence-confidence-block-features.json
+          import json
+          from collections import defaultdict
+          from decimal import Decimal
+          from pathlib import Path
+
+          from cocomelon.research.cadence_context_confidence import (
+              DEFAULT_CONFIDENCE_CONFIG,
+              _estimate,
+              _fit_stats,
+          )
+          from cocomelon.research.cadence_context_learning import (
+              _resolve_rows,
+          )
+          from cocomelon.research.cadence_opportunity_audit import (
+              load_cadence_outcomes,
+          )
+          from cocomelon.research.cadence_shadow import (
+              FIFTEEN_MINUTES_MS,
+              ONE_HOUR_MS,
+          )
+          from cocomelon.research.learning_feature_snapshots import (
+              LearningFeatureSnapshotStore,
+          )
+
+          ZERO = Decimal("0")
+          outcomes = load_cadence_outcomes(
+              Path("/tmp/state/cadence-shadow-state.json")
+          )
+          surface = tuple(
+              sorted(
+                  (
+                      row
+                      for row in outcomes
+                      if row.sample.cadence_ms == FIFTEEN_MINUTES_MS
+                      and row.sample.horizon_ms == ONE_HOUR_MS
+                  ),
+                  key=lambda row: (
+                      row.sample.boundary_ms,
+                      row.sample.market.canonical,
+                      row.sample.decision_id,
+                  ),
+              )
+          )
+          validation = surface[-100:]
+          validation_start = validation[0].sample.boundary_ms
+          training = tuple(
+              row
+              for row in surface[:-100]
+              if row.sample.target_end_ms < validation_start
+          )
+          store = LearningFeatureSnapshotStore(
+              Path("/tmp/state/learning-features")
+          )
+          training_rows, missing_train = _resolve_rows(training, store)
+          validation_rows, missing_val = _resolve_rows(validation, store)
+          if missing_train or missing_val:
+              raise SystemExit(
+                  f"missing train={len(missing_train)} val={len(missing_val)}"
+              )
+          stats = _fit_stats(training_rows)
+
+          admitted = []
+          for index, row in enumerate(validation_rows):
+              estimate = _estimate(
+                  row,
+                  stats,
+                  config=DEFAULT_CONFIDENCE_CONFIG,
+              )
+              if estimate is None or estimate.lower_bound <= ZERO:
+                  continue
+              f = row.feature
+              admitted.append(
+                  {
+                      "index": index,
+                      "block": index * 4 // len(validation_rows),
+                      "boundary_ms": row.outcome.sample.boundary_ms,
+                      "market": row.outcome.sample.market.canonical,
+                      "direction": row.outcome.sample.direction.value,
+                      "score": str(row.outcome.sample.score),
+                      "strategy": row.outcome.sample.lead_strategy,
+                      "net_return": str(row.outcome.net_return),
+                      "trend_regime": f.trend_regime.value,
+                      "volatility_regime": f.volatility_regime.value,
+                      "day_return": None if f.day_return is None else str(f.day_return),
+                      "return_5m": None if f.return_5m is None else str(f.return_5m),
+                      "return_15m": None if f.return_15m is None else str(f.return_15m),
+                      "return_1h": None if f.return_1h is None else str(f.return_1h),
+                      "return_4h": None if f.return_4h is None else str(f.return_4h),
+                      "realized_vol_15m": None if f.realized_vol_15m is None else str(f.realized_vol_15m),
+                      "range_expansion_15m": None if f.range_expansion_15m is None else str(f.range_expansion_15m),
+                      "relative_volume_15m": None if f.relative_volume_15m is None else str(f.relative_volume_15m),
+                      "spread_bps": None if f.spread_bps is None else str(f.spread_bps),
+                      "book_imbalance": None if f.book_imbalance is None else str(f.book_imbalance),
+                      "funding": str(f.funding),
+                      "oi_change_fraction": None if f.oi_change_fraction is None else str(f.oi_change_fraction),
+                      "estimate_mean": str(estimate.mean),
+                      "estimate_se": str(estimate.standard_error),
+                      "estimate_lower_bound": str(estimate.lower_bound),
+                      "estimate_rows": estimate.count,
+                      "estimate_specificity": estimate.specificity,
+                  }
+              )
+
+          numeric_fields = (
+              "net_return",
+              "day_return",
+              "return_5m",
+              "return_15m",
+              "return_1h",
+              "return_4h",
+              "realized_vol_15m",
+              "range_expansion_15m",
+              "relative_volume_15m",
+              "spread_bps",
+              "book_imbalance",
+              "funding",
+              "oi_change_fraction",
+          )
+
+          def summary(rows):
+              out = {"rows": len(rows)}
+              for field in numeric_fields:
+                  values = [
+                      Decimal(row[field])
+                      for row in rows
+                      if row[field] is not None
+                  ]
+                  if not values:
+                      out[field] = None
+                      continue
+                  ordered = sorted(values)
+                  n = len(ordered)
+                  median = (
+                      ordered[n // 2]
+                      if n % 2
+                      else (
+                          ordered[n // 2 - 1] + ordered[n // 2]
+                      ) / Decimal(2)
+                  )
+                  out[field] = {
+                      "n": n,
+                      "mean": str(sum(values, ZERO) / Decimal(n)),
+                      "median": str(median),
+                      "min": str(ordered[0]),
+                      "max": str(ordered[-1]),
+                  }
+              return out
+
+          blocks = {}
+          for block in range(4):
+              rows = [row for row in admitted if row["block"] == block]
+              blocks[str(block)] = summary(rows)
+
+          positive = [row for row in admitted if Decimal(row["net_return"]) > 0]
+          negative = [row for row in admitted if Decimal(row["net_return"]) <= 0]
+          report = {
+              "admitted_rows": admitted,
+              "blocks": blocks,
+              "positive_admissions": summary(positive),
+              "nonpositive_admissions": summary(negative),
+          }
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-confidence-block-features-36694359628
+          path: cadence-confidence-block-features.json
+          if-no-files-found: error
+          retention-days: 30
