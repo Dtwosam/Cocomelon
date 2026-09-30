@@ -3067,3 +3067,23 @@ The normal evidence follower consumes this compact source directly. Catch-up dis
 This repair is research/control-plane only. It does not change scanner decisions, entries, exits, sizing, stops, risk, paper execution, promotion authority, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only prospective prediction ledger — 2026-09-30
+
+The frozen cadence microstructure challenger now has a separate control-plane integrity layer for its future-only predictions.
+
+Issue #687 is the canonical prediction-ledger surface. After each successful Prospective Cadence Microstructure Audit, the ledger workflow:
+
+- consumes the immutable prospective report artifact;
+- restores the most recent successful prediction ledger;
+- requires every previously published row to remain exactly identical in decision ID, boundary, market, side, prediction, admission decision, and realized net return;
+- rejects a prior row that disappears or changes;
+- permits newly settled rows to appear later even when their decision boundary is older than the newest already-settled row;
+- permits only set-append-only future evidence: prior rows may never disappear or change;
+- publishes canonical row and ledger SHA-256 digests;
+- fails closed and marks Issue #687 BLOCKED before returning a failed workflow if any invariant is violated.
+
+The ledger is deliberately separate from the frozen model evaluator, so this integrity layer cannot alter model features, training, predictions, qualification rules, or the prospective boundary. It has no execution or promotion authority and cannot dispatch the paper trader.
+
+**LIVE TRADING: DISABLED.**
