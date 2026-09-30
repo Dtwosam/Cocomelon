@@ -3445,7 +3445,6 @@ def _profit_lock_counterfactual_study_payload(
     }
 
 
-
 def _profit_lock_counterfactual_payload(
     journal: JournalStore,
     trade_path_store: ContinuousPaperTradePathStore,
