@@ -2987,3 +2987,24 @@ The durable candidate start timestamp is created by the first continuous-paper w
 This candidate is research-only. It does not delay actual paper entries, alter quantity, stops, risk, strategy decisions, or grant promotion/live execution authority.
 
 **LIVE TRADING: DISABLED.**
+### Prospective cadence model A/B comparison — 2026-09-30
+
+Issue #679 is the canonical future-only comparison surface for the frozen cadence microstructure challenger and the frozen shallow-tree baseline comparator.
+
+The comparison workflow evaluates both models against the exact same compact cadence/feature artifacts from a completed continuous-paper campaign. Each model runs from its own immutable code SHA:
+
+- microstructure challenger: `efde8803da35d16529157729c2080a1cd99f9a4a`;
+- baseline comparator: `34acb37c2f06c53eb81fe298db63ce4093c8de7b`.
+
+Before publishing any delta, the workflow requires the models to agree on prospective start, frozen training row count/digest, prospective row count, and exact decision IDs. It also verifies boundary, market, direction, and realized net return for every paired future row.
+
+Published evidence includes:
+
+- candidate after-cost contribution for each frozen model;
+- microstructure-minus-baseline contribution;
+- both-admit / microstructure-only / baseline-only / neither counts;
+- realized contribution of each model's unique admissions.
+
+This is a comparator only. Neither model gains execution or promotion authority from Issue #679, and no paper orders are changed by the comparison workflow.
+
+**LIVE TRADING: DISABLED.**
