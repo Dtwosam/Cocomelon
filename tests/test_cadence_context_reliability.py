@@ -190,14 +190,14 @@ def test_reliability_policy_uses_sparse_exact_context_and_edge_margin(
     assert {
         (
             item["direction"],
-            item["score"],
+            item["score_band"],
             item["trend_regime"],
             item["volatility_regime"],
         )
         for item in admitted
     } == {
-        ("long", "82", "up", "high"),
-        ("short", "82", "down", "low"),
+        ("long", "80+", "up", "high"),
+        ("short", "80+", "down", "low"),
     }
 
     skipped = result["skipped_cohorts"]
@@ -210,8 +210,8 @@ def test_reliability_policy_uses_sparse_exact_context_and_edge_margin(
         )
         for item in skipped
     } == {
-        ("long", "82", "up", "low"),
-        ("short", "72", "down", "low"),
+        ("long", "80+", "up", "low"),
+        ("short", "70-<75", "down", "low"),
     }
 
 
