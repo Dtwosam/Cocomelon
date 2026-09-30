@@ -220,6 +220,7 @@ from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookEvidenceStore,
 )
 from cocomelon.research.profit_lock_counterfactual import (
+    ProfitLockStudy,
     ProfitLockTradeOutcome,
     evaluate_profit_lock_state,
 )
@@ -3362,21 +3363,9 @@ def _closed_trade_friction_payload(
     return payload
 
 
-def _profit_lock_counterfactual_payload(
-    journal: JournalStore,
-    trade_path_store: ContinuousPaperTradePathStore,
+def _profit_lock_counterfactual_study_payload(
+    study: ProfitLockStudy,
 ) -> dict[str, object]:
-    try:
-        study = evaluate_profit_lock_state(journal, trade_path_store)
-    except Exception as exc:
-        return {
-            "enabled": False,
-            "research_only": True,
-            "execution_authority": False,
-            "promotion_authority": False,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
-
     readiness = profit_lock_readiness(study)
     readiness_by_rule = {
         rule.rule_id: rule
@@ -3454,6 +3443,24 @@ def _profit_lock_counterfactual_payload(
             for rule in study.rules
         ],
     }
+
+
+
+def _profit_lock_counterfactual_payload(
+    journal: JournalStore,
+    trade_path_store: ContinuousPaperTradePathStore,
+) -> dict[str, object]:
+    try:
+        study = evaluate_profit_lock_state(journal, trade_path_store)
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    return _profit_lock_counterfactual_study_payload(study)
 
 
 def _delayed_entry_fill_capacity_payload(
@@ -4546,20 +4553,28 @@ def _live_status_payload(
     activity = pump.pipeline.session_decision_activity
     decision_reason_counts = dict(activity.decision_reason_counts)
     risk_reason_counts = dict(activity.risk_reason_counts)
-    profit_lock_counterfactual = _profit_lock_counterfactual_payload(
-        pump.journal,
-        trade_path_store,
-    )
     try:
         profit_lock_study = evaluate_profit_lock_state(
             pump.journal,
             trade_path_store,
         )
+        profit_lock_counterfactual = (
+            _profit_lock_counterfactual_study_payload(
+                profit_lock_study
+            )
+        )
         profit_lock_outcomes = profit_lock_study.outcomes
         profit_lock_error = None
     except Exception as exc:
-        profit_lock_outcomes = ()
         profit_lock_error = f"{type(exc).__name__}: {exc}"
+        profit_lock_outcomes = ()
+        profit_lock_counterfactual = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": profit_lock_error,
+        }
     prospective_entry_filter = _prospective_entry_filter_payload(
         pump.journal,
         fact_store,
