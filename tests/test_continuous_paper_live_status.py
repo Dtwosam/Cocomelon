@@ -7,6 +7,7 @@ import sys
 
 from scripts.render_continuous_paper_live_status import (
     _cadence_opportunity_learning_lines,
+    _closed_trade_stop_reentry_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
