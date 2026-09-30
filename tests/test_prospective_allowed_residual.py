@@ -197,7 +197,6 @@ def test_allowed_residual_rejects_duplicate_trade_ids() -> None:
         )
 
 
-
 def test_allowed_residual_classifies_bad_entries_vs_profit_giveback() -> None:
     items = (
         AllowedResidualItem(
