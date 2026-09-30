@@ -59,3 +59,15 @@ def test_overlap_status_metadata_is_not_shell_interpreted() -> None:
     assert source.count("Path(\"/tmp/status.md\").write_text(") == 3
     assert "os.environ['PREDICTION_RUN_ID']" in source
     assert "os.environ['PAPER_RUN_ID']" in source
+
+
+
+def test_overlap_status_exposes_review_readiness_without_authority() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "overlap review ready / sample complete / economics positive" in source
+    assert "still needed matched / admitted / blocked" in source
+    assert "still needed LONG matched/admitted / SHORT matched/admitted" in source
+    assert "leave-one-trade-out minimum delta" in source
+    assert "review-only" in source
+    assert "does not change the frozen readiness gate" in source
