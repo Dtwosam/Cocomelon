@@ -452,12 +452,28 @@ jobs:
                   f"{overall['candidate_minus_actual_net_pnl_sum']}`"
               ),
               (
+                  "- actual / candidate matched net R / delta: "
+                  f"`{overall['actual_net_r_sum']} / "
+                  f"{overall['candidate_matched_net_r_sum']} / "
+                  f"{overall['candidate_minus_actual_net_r_sum']}`"
+              ),
+              (
                   "- overlap review ready / sample complete / economics positive / "
                   "single-trade robust: "
                   f"`{readiness['ready_for_overlap_review']} / "
                   f"{readiness['sample_complete']} / "
                   f"{readiness['economics_positive']} / "
                   f"{readiness['single_trade_robust']}`"
+              ),
+              (
+                  "- economic confirmation PnL / net R: "
+                  f"`{readiness['pnl_economics_positive']} / "
+                  f"{readiness['net_r_economics_positive']}`"
+              ),
+              (
+                  "- single-trade robustness PnL / net R: "
+                  f"`{readiness['pnl_single_trade_robust']} / "
+                  f"{readiness['net_r_single_trade_robust']}`"
               ),
               (
                   "- still needed matched / admitted / blocked: "
@@ -473,8 +489,9 @@ jobs:
                   f"{readiness['missing_short_admitted_trades']}`"
               ),
               (
-                  "- leave-one-trade-out minimum delta: "
-                  f"`{robustness['leave_one_trade_out_min_delta']}`"
+                  "- leave-one-trade-out minimum delta PnL / net R: "
+                  f"`{robustness['leave_one_trade_out_min_delta']} / "
+                  f"{robustness['leave_one_trade_out_min_delta_net_r']}`"
               ),
               f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
               "",
@@ -486,7 +503,9 @@ jobs:
               lines.append(
                   "- {direction}: matched={matched} admitted={admitted} "
                   "blocked_losers={blocked_losers} blocked_winners={blocked_winners} "
-                  "actual={actual} candidate={candidate} delta={delta}".format(
+                  "actual={actual} candidate={candidate} delta={delta} "
+                  "actual_r={actual_r} candidate_r={candidate_r} "
+                  "delta_r={delta_r}".format(
                       direction=direction.upper(),
                       matched=item["matched_closed_trades"],
                       admitted=item["candidate_admitted_trades"],
@@ -495,6 +514,9 @@ jobs:
                       actual=item["actual_net_pnl_sum"],
                       candidate=item["candidate_matched_net_pnl_sum"],
                       delta=item["candidate_minus_actual_net_pnl_sum"],
+                      actual_r=item["actual_net_r_sum"],
+                      candidate_r=item["candidate_matched_net_r_sum"],
+                      delta_r=item["candidate_minus_actual_net_r_sum"],
                   )
               )
           lines.extend(
