@@ -270,6 +270,97 @@ def test_two_closed_bad_incremental_blocks_are_irrecoverable() -> None:
     assert comparison["incremental_gate_path_open"] is False
 
 
+def test_failed_cadence_candidate_does_not_fail_collecting_timing() -> None:
+    rows = _scored_rows(
+        25,
+        prediction="0.01",
+        realized="-0.01",
+    )
+    baseline = _scored_rows(
+        25,
+        prediction="-0.01",
+        realized="-0.01",
+    )
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(rows),
+        _comparison_ledger(rows, baseline_rows=baseline),
+        _timing_ledger(0),
+    )
+
+    assert result["cadence"]["lifecycle_state"] == "failed_closed_block"
+    assert result["timing"]["lifecycle_state"] == "collecting"
+    assert result["status"] == "collecting"
+    assert result["candidate_lifecycle"] == {
+        "collecting": 1,
+        "review_ready": 0,
+        "failed_closed_block": 1,
+    }
+    assert (
+        "standalone_stability"
+        in result["cadence"]["irrecoverable_failure_components"]
+    )
+
+
+def test_all_candidates_failed_is_explicit() -> None:
+    cadence_rows = _scored_rows(
+        25,
+        prediction="0.01",
+        realized="-0.01",
+    )
+    baseline_rows = _scored_rows(
+        25,
+        prediction="-0.01",
+        realized="-0.01",
+    )
+    timing_rows = list(_timing_rows(5))
+    for index, row in enumerate(timing_rows):
+        selected = Decimal(str(row["selected_net_pnl"]))
+        actual = selected + Decimal("1")
+        timing_rows[index] = {
+            **row,
+            "actual_net_pnl": str(actual),
+            "selected_minus_actual_pnl": "-1",
+        }
+    timing = update_timing_ledger(
+        tuple(timing_rows),
+        {
+            "prospective_closed_trades": 5,
+            "paired_evaluable_trades": 5,
+            "missing_60s_outcomes": 0,
+            "missing_120s_outcomes": 0,
+            "non_evaluable_60s": 0,
+            "non_evaluable_120s": 0,
+            "lineage_mismatches": 0,
+        },
+        ProspectiveSideConditionedDelayState(started_at_ms=START_MS),
+        previous=None,
+        source_paper_run_id=42,
+        source_paper_run_attempt=1,
+        source_timing_artifact_name="timing-failed-first-block",
+    )
+
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(cadence_rows),
+        _comparison_ledger(
+            cadence_rows,
+            baseline_rows=baseline_rows,
+        ),
+        timing,
+    )
+
+    assert result["status"] == "all_candidates_failed"
+    assert result["candidate_lifecycle"] == {
+        "collecting": 0,
+        "review_ready": 0,
+        "failed_closed_block": 2,
+    }
+    assert result["cadence"]["lifecycle_state"] == "failed_closed_block"
+    assert result["timing"]["lifecycle_state"] == "failed_closed_block"
+    assert result["timing"]["irrecoverable_failure_components"] == (
+        "temporal_stability",
+    )
+
+
 def test_cadence_candidate_can_become_review_ready() -> None:
     rows = _scored_rows(100, prediction="0.01", realized="0.02")
     baseline_rows = _scored_rows(
