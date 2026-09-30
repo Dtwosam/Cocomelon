@@ -1,0 +1,32 @@
+{
+  "schema_version": 2,
+  "model_family": "cadence_fixed_shallow_tree_v1",
+  "feature_registry": [
+    "direction",
+    "lead_strategy",
+    "score",
+    "return_5m",
+    "return_15m",
+    "return_1h",
+    "funding",
+    "open_interest",
+    "trend_regime",
+    "volatility_regime"
+  ],
+  "prospective_start_ms": 1790776800000,
+  "cadence_ms": 900000,
+  "horizon_ms": 3600000,
+  "source": {
+    "paper_run_id": 36705233182,
+    "paper_run_head_sha": "d1f73e7d6abacc446bfcf09fa0f93ab2cecb3a81",
+    "artifact_id": 11092470461,
+    "artifact_digest": "sha256:c66a9f1c35ec5c1c996e413d0639b202e25469b9f4a99cf18af4ab053f5e5eb9",
+    "freeze_workflow_run_id": 36724607840,
+    "freeze_artifact_id": 11101439177,
+    "freeze_artifact_digest": "sha256:f1b262c2c0904eb1bbe0aab6dd4f88734d9635fe28cd68747b343595495e4a89"
+  },
+  "training_rows": 652,
+  "training_first_target_end_ms": 1790458200000,
+  "training_last_target_end_ms": 1790698500000,
+  "rows_sha256": "c1baa8a730980402d02b80f960afa249e6cb653392c64b887074cd9efb2034e4"
+}
