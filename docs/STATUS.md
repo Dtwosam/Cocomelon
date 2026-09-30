@@ -2922,3 +2922,26 @@ Future prospective audits select the exact historical prefix ending at the froze
 This strengthens research integrity only. It does not change active paper decisions, entries, exits, sizing, stops, risk, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Canonical prospective evidence status — 2026-09-30
+
+Issue #674 is the dedicated status surface for the frozen prospective cadence microstructure challenger.
+
+After every successfully completed continuous-paper campaign, the automatic prospective audit updates #674 with:
+
+- exact source paper run and attempt;
+- pinned evaluator SHA;
+- immutable frozen-training digest;
+- prospective settled row count versus the 100-row requirement;
+- admitted/skipped counts;
+- candidate after-cost net-return sum and mean;
+- LONG and SHORT prospective/admitted counts and contribution;
+- chronological stability-block results;
+- development-qualification state.
+
+If the source campaign does not expose both compact cadence and feature artifacts, the issue is updated to a blocked state rather than silently retaining stale evidence.
+
+This publication path is research-only. It does not write Issue #469, does not dispatch trading workflows, and does not modify paper execution, strategy, sizing, stops, risk, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
