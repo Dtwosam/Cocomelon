@@ -169,6 +169,7 @@ def test_continuous_paper_worker_gracefully_rotates_on_runtime_changes() -> None
     assert "src/cocomelon/research/prospective_entry_filter.py" in source
     assert "src/cocomelon/research/prospective_top10_rank_filter.py" in source
     assert "src/cocomelon/research/prospective_trade_quality.py" in source
+    assert "src/cocomelon/research/prospective_side_conditioned_delay.py" in source
     assert (
         "src/cocomelon/research/prospective_capacity_reflow_forward_markout.py"
         in source
@@ -264,6 +265,7 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
     assert '"src/cocomelon/research/prospective_entry_filter.py"' in source
     assert '"src/cocomelon/research/prospective_top10_rank_filter.py"' in source
     assert '"src/cocomelon/research/prospective_trade_quality.py"' in source
+    assert '"src/cocomelon/research/prospective_side_conditioned_delay.py"' in source
     assert '\\n      - "src/cocomelon/research/prospective_trade_quality.py"' not in source
     assert (
         '"src/cocomelon/research/prospective_capacity_reflow_forward_markout.py"'
