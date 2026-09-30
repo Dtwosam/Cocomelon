@@ -3323,6 +3323,7 @@ For every residual cohort and every existing side/strategy/rank/market grouping,
 
 - losses with complete versus missing/incomplete MFE evidence;
 - losses that never reached +0.25R MFE;
+- losses that reached +0.25R but stayed below +0.5R MFE;
 - losses that reached at least +0.5R MFE before closing negative;
 - losses that reached at least +1R MFE before closing negative;
 - the PnL attached to each loss shape;
