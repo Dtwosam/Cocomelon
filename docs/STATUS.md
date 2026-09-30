@@ -2820,3 +2820,23 @@ Training remains purged chronological history and validation remains the final 1
 This is research-only touched development evidence. It cannot alter paper execution, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Nested temporal cadence-tree threshold calibration — 2026-09-30
+
+The fixed shallow tree improves chronological stability versus grouped-mean challengers, but a zero prediction threshold is miscalibrated: three of four outer blocks are positive while admitted SHORT contribution remains negative and the highest prediction band is not the best realized band.
+
+A dependent research challenger therefore calibrates the admission threshold **inside the training period**:
+
+1. reserve the final 100 rows of the outer training set as an inner calibration window;
+2. purge forward labels that overlap the inner calibration start;
+3. fit the unchanged fixed shallow tree only on the earlier inner-training rows;
+4. choose from the frozen threshold grid `0, 0.0005, 0.001, 0.0015, 0.002, 0.003, 0.005`;
+5. require the same minimum total trades, LONG admissions, SHORT admissions, positive mean, and chronological stability on the inner calibration window;
+6. evaluate the selected model/threshold exactly once on the untouched outer 100-row holdout.
+
+The model is deliberately **not refit after threshold selection**, so both model parameters and threshold are fixed before any outer-holdout outcomes are observed. Regression coverage verifies that changing outer outcomes cannot change the selected threshold or inner calibration results.
+
+This remains touched development research only and cannot alter paper or live execution.
+
+**LIVE TRADING: DISABLED.**
