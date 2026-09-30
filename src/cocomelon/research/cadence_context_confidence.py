@@ -15,6 +15,7 @@ from cocomelon.research.cadence_context_learning import (
 from cocomelon.research.cadence_opportunity_learning import (
     DEFAULT_CONFIG,
     CadenceOpportunityLearningConfig,
+    _score_band,
 )
 from cocomelon.research.cadence_shadow import (
     FIFTEEN_MINUTES_MS,
@@ -262,7 +263,7 @@ def _cohort_attribution(
             (
                 row.outcome.sample.direction.value,
                 row.outcome.sample.lead_strategy,
-                str(row.outcome.sample.score),
+                _score_band(row.outcome.sample.score),
                 row.feature.trend_regime.value,
                 row.feature.volatility_regime.value,
                 estimate.specificity,
@@ -285,7 +286,7 @@ def _cohort_attribution(
                 {
                     "direction": key[0],
                     "lead_strategy": key[1],
-                    "score": key[2],
+                    "score_band": key[2],
                     "trend_regime": key[3],
                     "volatility_regime": key[4],
                     "training_estimate_specificity": key[5],
