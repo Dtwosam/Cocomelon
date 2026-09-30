@@ -2655,3 +2655,28 @@ The review gate requires 30 prospectively evaluated trades, at least 10 admitted
 This is deliberately a quality gate rather than a direction ban. It does not change the active paper strategy, risk limits, actual order timing, actual paper fills, promotion authority, or live-order authority. A future review-ready result remains research evidence only.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Cadence-shadow trade-quality calibration — 2026-09-30
+
+A broader side-neutral quality study now uses the durable 15-minute cadence-shadow opportunity stream rather than waiting only for executed paper trades.
+
+The calibration remains **TOUCHED / DEVELOPMENT-ONLY** and has no execution or promotion authority. It pairs exact 15m and 1h after-cost outcomes for the same 15-minute directional decision and learns only from three broad pre-entry attributes:
+
+- direction;
+- lead strategy;
+- score band.
+
+The protocol is chronological and fixed:
+
+- minimum 600 exact paired decisions before fitting;
+- trailing 200 decisions reserved for validation;
+- group selection uses training data only;
+- a train group needs at least 20 observations and positive mean net return at both 15m and 1h;
+- the validation candidate needs at least 40 admitted decisions;
+- at least 10 admitted LONG and 10 admitted SHORT decisions are required;
+- validation is divided into four chronological blocks, each requiring at least 5 admitted decisions and positive mean net return at both horizons.
+
+This is deliberately not a new trading rule. It is a larger-sample discovery layer that can justify freezing a later prospective challenger only if the same broad quality pattern survives chronology, both horizons, and both directions. It does not mutate strategy output, risk, order timing, fills, exits, or live authority.
+
+**LIVE TRADING: DISABLED.**
