@@ -281,3 +281,18 @@ def test_shadow_state_rejects_runtime_cost_mismatch() -> None:
     restored = CadenceShadowComparator((MARKET,))
     with pytest.raises(ValueError, match="costs do not match"):
         restored.restore_state(state)
+
+
+def test_settled_outcomes_exposes_immutable_snapshot() -> None:
+    comparator = CadenceShadowComparator((MARKET,))
+    outcome = settle_shadow_decision(
+        _sample(Direction.LONG),
+        exit_px=Decimal("101"),
+    )
+    comparator._outcomes.append(outcome)
+
+    first = comparator.settled_outcomes
+    comparator._outcomes.clear()
+
+    assert first == (outcome,)
+    assert comparator.settled_outcomes == ()
