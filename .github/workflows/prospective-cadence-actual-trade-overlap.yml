@@ -362,8 +362,8 @@ jobs:
               f"`{error}`",
               "",
               (
-                  "No new overlap ledger was accepted. Prior immutable "
-                  "evidence remains authoritative."
+                  "No new overlap ledger was accepted. Prior immutable evidence "
+                  "remains authoritative."
               ),
               "",
               "**Execution authority:** `false`  ",
