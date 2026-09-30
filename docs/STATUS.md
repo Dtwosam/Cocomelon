@@ -2756,3 +2756,21 @@ The direct artifact preserves the exact cadence state already present inside the
 The full durable state remains unchanged and authoritative for runtime recovery. The cadence artifact is read-only research convenience data and grants no execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Regime-aware cadence opportunity learner — 2026-09-30
+
+A second research-only cadence meta-labeler now joins each 15-minute directional shadow outcome to its immutable decision-time `LearningFeatureSnapshot`.
+
+The first contextual model is intentionally low-dimensional. It adds only:
+
+- trend regime (`up/down/mixed/unknown`);
+- volatility regime (`low/normal/high/unknown`).
+
+Its deterministic hierarchy starts with direction + lead strategy + score band + trend regime + volatility regime, then falls back through broader direction-aware groups when a cell has fewer than the frozen minimum support. Training/validation remain chronological, forward-label overlap is purged, and missing/mismatched/late feature snapshots fail closed.
+
+The same side-neutral development gates remain in force: enough LONG and SHORT validation observations, enough LONG and SHORT admitted opportunities, positive after-cost admitted mean return, and positive chronological stability blocks.
+
+This is designed to answer **when a setup should be taken**, rather than banning a direction. It remains touched development evidence and cannot alter paper orders, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
