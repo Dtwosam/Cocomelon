@@ -320,6 +320,7 @@ CHECKPOINT_FILENAME = "runtime-state.json"
 SUMMARY_FILENAME = "session-summary.json"
 CADENCE_SHADOW_FILENAME = "cadence-shadow-summary.json"
 CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"
+CADENCE_TRADE_QUALITY_FILENAME = "cadence-trade-quality-calibration.json"
 PROFIT_LOCK_EXECUTION_SHADOW_STATE_FILENAME = (
     "profit-lock-execution-shadow-state.json"
 )
@@ -6008,6 +6009,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / CADENCE_SHADOW_FILENAME,
                 pump.cadence_shadow_payload(),
+            )
+            _write_json_atomic(
+                root / CADENCE_TRADE_QUALITY_FILENAME,
+                _cadence_trade_quality_calibration_payload(pump),
             )
             if pump.cadence_shadow is not None:
                 _write_json_atomic(
