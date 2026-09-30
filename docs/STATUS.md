@@ -2700,3 +2700,16 @@ Admitted cohorts are ordered by validation contribution; skipped cohorts are ord
 These tables remain touched retrospective/development diagnostics. They may inform a newly frozen prospective candidate, but no cohort is promoted or applied to paper execution from this report alone.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Cadence opportunity artifact audit — 2026-09-30
+
+A standalone research audit path can now evaluate the cadence opportunity learner directly from an exact durable `cadence-shadow-state.json` snapshot:
+
+`python scripts/evaluate_cadence_opportunity_learning.py <cadence-shadow-state.json>`
+
+The loader verifies the cadence-state schema, reconstructs typed settled outcomes, rejects duplicate outcome identities, and then runs the same purged chronological learner used by continuous paper live status. It has no dependency on a running paper worker and grants no execution or promotion authority.
+
+This is intended for reproducible handoff-artifact review and incident analysis when live-status publication is delayed. It does not mutate the durable state.
+
+**LIVE TRADING: DISABLED.**
