@@ -44,7 +44,8 @@ def test_exact_path_export_streams_only_small_research_slice() -> None:
         "python scripts/stream_zip_member.py "
         "continuous-paper-state.tar"
     ) in source
-    assert "./trade-paths" in source
+    assert "./trade-paths/records" in source
+    assert "./trade-paths \\" not in source
     assert "./session-summary.json" in source
     assert "paper.sqlite3" not in source
     assert "facts.sqlite3" not in source
