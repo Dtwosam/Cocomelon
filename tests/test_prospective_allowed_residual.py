@@ -212,6 +212,17 @@ def test_allowed_residual_classifies_bad_entries_vs_profit_giveback() -> None:
         ),
         AllowedResidualItem(
             _trade(
+                suffix="partial-traction",
+                market="XRP",
+                direction=Direction.SHORT,
+                pnl="-3",
+                mfe_r="0.35",
+            ),
+            lead_strategy="breakout",
+            ordinal=3,
+        ),
+        AllowedResidualItem(
+            _trade(
                 suffix="giveback-sol",
                 market="SOL",
                 direction=Direction.SHORT,
@@ -259,13 +270,15 @@ def test_allowed_residual_classifies_bad_entries_vs_profit_giveback() -> None:
 
     overall = result["overall"]
     assert isinstance(overall, dict)
-    assert overall["losses"] == 4
-    assert overall["complete_excursion_losses"] == 3
+    assert overall["losses"] == 5
+    assert overall["complete_excursion_losses"] == 4
     assert overall["missing_or_incomplete_excursion_losses"] == 1
     assert overall["losses_with_mfe_lt_0_25r"] == 1
+    assert overall["losses_with_mfe_0_25_to_lt_0_5r"] == 1
     assert overall["losses_after_mfe_ge_0_5r"] == 2
     assert overall["losses_after_mfe_ge_1r"] == 1
     assert overall["loss_pnl_with_mfe_lt_0_25r"] == "-8"
+    assert overall["loss_pnl_with_mfe_0_25_to_lt_0_5r"] == "-3"
     assert overall["loss_pnl_after_mfe_ge_0_5r"] == "-6"
     assert overall["loss_pnl_after_mfe_ge_1r"] == "-4"
 
