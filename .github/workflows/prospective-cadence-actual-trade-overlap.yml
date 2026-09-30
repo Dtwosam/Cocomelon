@@ -192,22 +192,44 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/status.md <<EOF
-          ## Prospective cadence actual-trade overlap
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** collecting — waiting for first compact paper learning source
-
-          - latest prediction ledger workflow run: `$PREDICTION_RUN_ID`
-          - exact join key: `strategy_decision_id == prediction decision_id`
-          - readiness authority: `none`
-          - execution authority: `false`
-          - promotion authority: `false`
-
-          No fuzzy or historical backfill match is attempted. Overlap evidence begins only after a successful paper worker publishes the compact journal source.
-
-          **LIVE TRADING: DISABLED.**
-          EOF
-          gh api --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE"             -f body="$(cat /tmp/status.md)"
+          lines = [
+              "## Prospective cadence actual-trade overlap",
+              "",
+              "**Status:** collecting — waiting for first compact paper learning source",
+              "",
+              (
+                  "- latest prediction ledger workflow run: "
+                  f"`{os.environ['PREDICTION_RUN_ID']}`"
+              ),
+              (
+                  "- exact join key: "
+                  "`strategy_decision_id == prediction decision_id`"
+              ),
+              "- readiness authority: `none`",
+              "- execution authority: `false`",
+              "- promotion authority: `false`",
+              "",
+              (
+                  "No fuzzy or historical backfill match is attempted. "
+                  "Overlap evidence begins only after a successful paper "
+                  "worker publishes the compact journal source."
+              ),
+              "",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE" \
+            -f body="$(cat /tmp/status.md)"
 
       - name: Restore previous overlap ledger
         id: previous
@@ -310,30 +332,53 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          error="$(cat /tmp/overlap.error 2>/dev/null || true)"
-          if [[ -z "$error" ]]; then
-            error="unknown append-only overlap validation failure"
-          fi
-          cat > /tmp/status.md <<EOF
-          ## Prospective cadence actual-trade overlap
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED
-
-          - source paper run: `$PAPER_RUN_ID`
-          - prediction ledger workflow run: `$PREDICTION_RUN_ID`
-          - exact join key: `strategy_decision_id == prediction decision_id`
-
-          ### Failure
-
-          `$error`
-
-          No new overlap ledger was accepted. Prior immutable evidence remains authoritative.
-
-          **Execution authority:** `false`  
-          **Promotion authority:** `false`  
-          **LIVE TRADING: DISABLED.**
-          EOF
-          gh api --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE"             -f body="$(cat /tmp/status.md)"
+          error = Path("/tmp/overlap.error").read_text(
+              encoding="utf-8",
+              errors="replace",
+          ).strip()
+          if not error:
+              error = "unknown append-only overlap validation failure"
+          lines = [
+              "## Prospective cadence actual-trade overlap",
+              "",
+              "**Status:** BLOCKED",
+              "",
+              f"- source paper run: `{os.environ['PAPER_RUN_ID']}`",
+              (
+                  "- prediction ledger workflow run: "
+                  f"`{os.environ['PREDICTION_RUN_ID']}`"
+              ),
+              (
+                  "- exact join key: "
+                  "`strategy_decision_id == prediction decision_id`"
+              ),
+              "",
+              "### Failure",
+              "",
+              f"`{error}`",
+              "",
+              (
+                  "No new overlap ledger was accepted. Prior immutable evidence "
+                  "remains authoritative."
+              ),
+              "",
+              "**Execution authority:** `false`  ",
+              "**Promotion authority:** `false`  ",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE" \
+            -f body="$(cat /tmp/status.md)"
 
       - name: Fail closed on overlap drift
         if: steps.paper.outputs.available == 'true' && steps.ledger.outputs.exit_code != '0'

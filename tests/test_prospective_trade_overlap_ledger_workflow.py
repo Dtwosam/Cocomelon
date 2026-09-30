@@ -28,7 +28,8 @@ def test_overlap_workflow_fails_closed_on_mutation() -> None:
     assert "Publish blocked overlap status" in source
     assert "Fail closed on overlap drift" in source
     assert "**Status:** BLOCKED" in source
-    assert "Prior immutable evidence remains authoritative" in source
+    assert "Prior immutable " in source
+    assert "remains authoritative." in source
     assert "exit 1" in source
 
 
@@ -49,3 +50,12 @@ def test_overlap_workflow_keeps_one_append_only_artifact() -> None:
     assert "cadence-prospective-actual-trade-overlap.json" in source
     assert "name: cadence-prospective-actual-trade-overlap" in source
     assert "retention-days: 90" in source
+
+
+def test_overlap_status_metadata_is_not_shell_interpreted() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cat > /tmp/status.md <<EOF" not in source
+    assert source.count("Path(\"/tmp/status.md\").write_text(") == 3
+    assert "os.environ['PREDICTION_RUN_ID']" in source
+    assert "os.environ['PAPER_RUN_ID']" in source
