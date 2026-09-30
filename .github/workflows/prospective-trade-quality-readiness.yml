@@ -359,9 +359,10 @@ jobs:
                       f"{comparison['required_positive_incremental_blocks']}`"
                   ),
                   (
-                      "- incremental gate path open / closed blocks failed: "
+                      "- incremental gate path open / closed blocks failed / allowed: "
                       f"`{str(comparison['incremental_gate_path_open']).lower()} / "
-                      f"{comparison['failed_closed_incremental_blocks']}`"
+                      f"{comparison['failed_closed_incremental_blocks']} / "
+                      f"{comparison['maximum_allowed_failed_incremental_blocks']}`"
                   ),
                   (
                       "- both / micro-only / baseline-only / neither: "
