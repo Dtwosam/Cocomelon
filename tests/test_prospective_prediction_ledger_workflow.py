@@ -45,4 +45,5 @@ def test_prediction_ledger_interpolates_artifact_identity() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
 
     assert 'then "\\(.[0].id)\\t\\(.[0].name)"' in source
+    assert 'then "\\\\(.[0].id)\\t\\\\(.[0].name)"' not in source
     assert 'then "(.[0].id)\t(.[0].name)"' not in source
