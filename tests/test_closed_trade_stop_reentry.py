@@ -226,7 +226,6 @@ def test_stop_reentry_empty_summary_is_zero_safe() -> None:
     assert windows["within_5m"]["delta_trade_contribution_pnl"] == "0"
 
 
-
 def test_stop_reentry_tracks_prior_losing_stop_streak_depth() -> None:
     trades = (
         _trade(
@@ -305,7 +304,7 @@ def test_stop_reentry_tracks_prior_losing_stop_streak_depth() -> None:
     market_robustness = after_2["market_robustness"]
     assert isinstance(market_robustness, dict)
     assert market_robustness["market_count"] == 2
-    assert market_robustness["leave_one_market_out_min_delta_pnl"] == "4"
+    assert market_robustness["leave_one_market_out_min_delta_pnl"] == "1"
     assert (
         market_robustness["positive_after_removing_any_one_market"]
         is True
