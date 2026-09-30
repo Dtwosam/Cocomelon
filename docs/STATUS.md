@@ -2630,3 +2630,28 @@ The continuous-paper startup path now honors an already-requested runtime handof
 This complements the stop-aware steady-state capture loops. In-flight bounded calls are not interrupted mid-write, and durable evidence already restored or recorded remains intact. No strategy, risk, paper-accounting, promotion, execution-authority, or live-order behavior changes.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Side-neutral prospective trade-quality gate — 2026-09-30
+
+The next paper-research slice improves trade selection without disabling LONG or SHORT.
+
+Candidate: `prospective-top10-price-confirm-v1`.
+
+Frozen prospective rule:
+
+- apply the **same rule** to LONG and SHORT;
+- require fresh opening scanner rank in the top 10;
+- wait exactly 60 seconds and reuse the existing visible-book IOC shadow;
+- admit only a full or partial delayed fill whose simulated average price is no worse than the immutable opening-plan reference;
+- rank-above-10, worse-price, and genuine no-fill outcomes contribute zero;
+- partial fills keep only the actually simulated filled quantity; no replacement trade is invented;
+- exact rank, delayed-outcome, opening-plan, market, side, and trade lineage must reconcile.
+
+The state start timestamp is created on the first continuous-paper worker that contains this candidate and is then durably restored across worker handoffs. Historical trades before that timestamp receive no validation credit.
+
+The review gate requires 30 prospectively evaluated trades, at least 10 admitted and 10 skipped outcomes, at least 5 evaluated LONGs and 5 evaluated SHORTs, and zero missing/stale/lineage integrity defects. The heartbeat reports actual versus candidate closed-trade contribution and splits the same rule by direction for diagnosis only.
+
+This is deliberately a quality gate rather than a direction ban. It does not change the active paper strategy, risk limits, actual order timing, actual paper fills, promotion authority, or live-order authority. A future review-ready result remains research evidence only.
+
+**LIVE TRADING: DISABLED.**
