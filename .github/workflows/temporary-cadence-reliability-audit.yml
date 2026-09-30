@@ -1,0 +1,115 @@
+name: Temporary cadence reliability audit 36705233182
+
+on:
+  push:
+    branches:
+      - audit/cadence-context-reliability-36705233182
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact completed paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11092470461"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/state.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/state.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+          test -s /tmp/state/cadence-shadow-state.json
+          test -d /tmp/state/learning-features/records
+      - name: Evaluate reliability-aware cadence learner
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_context_reliability.py \
+            /tmp/state/cadence-shadow-state.json \
+            /tmp/state/learning-features \
+            --json-out cadence-context-reliability.json \
+            > /tmp/report.stdout.json
+          cmp cadence-context-reliability.json /tmp/report.stdout.json
+      - name: Summarize reliability validation
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("cadence-context-reliability.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          print("## Reliability-aware 15m -> 1h cadence learner")
+          for field in (
+              "status",
+              "training_rows",
+              "validation_rows",
+              "purged_overlap_rows",
+              "admitted_rows",
+              "candidate_net_return_sum",
+              "candidate_mean_net_return",
+              "positive_admitted_rows",
+              "negative_admitted_rows",
+              "reliability_minus_baseline_net_return_sum",
+              "reliability_minus_baseline_admitted_rows",
+              "structural_ready",
+              "development_qualified",
+          ):
+              print(f"- {field}: {report.get(field)}")
+          print("### Direction")
+          for direction, item in report.get("by_direction", {}).items():
+              print(
+                  f"- {direction}: admitted={item.get('admitted_rows')} "
+                  f"sum={item.get('candidate_net_return_sum')} "
+                  f"mean={item.get('candidate_mean_net_return')}"
+              )
+          print("### Stability")
+          for block in report.get("stability_blocks", []):
+              print(
+                  f"- block {block['block_index']}: "
+                  f"n={block['admitted_rows']} "
+                  f"sum={block['candidate_net_return_sum']} "
+                  f"mean={block['candidate_mean_net_return']} "
+                  f"passes={block['passes']}"
+              )
+          print("### Admitted cohorts")
+          for cohort in report.get("admitted_cohorts", []):
+              print(
+                  "- "
+                  f"{cohort['direction']} / "
+                  f"{cohort['lead_strategy']} / "
+                  f"{cohort['score_band']} / "
+                  f"{cohort['trend_regime']} / "
+                  f"{cohort['volatility_regime']}: "
+                  f"train={cohort['training_estimate_mean_net_return']} "
+                  f"(n={cohort['training_estimate_rows']}, "
+                  f"{cohort['training_estimate_specificity']}), "
+                  f"val_sum={cohort['validation_net_return_sum']} "
+                  f"(n={cohort['validation_rows']})"
+              )
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-context-reliability-36705233182
+          path: cadence-context-reliability.json
+          if-no-files-found: error
+          retention-days: 30
