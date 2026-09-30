@@ -50,6 +50,7 @@ from cocomelon.continuous_paper import (
     _position_action_payload,
     _position_protection_metrics,
     _profit_lock_counterfactual_payload,
+    _prospective_combined_entry_filter_payload,
     _record_from_gap,
     _record_from_payload,
     _record_from_stream,
@@ -134,7 +135,6 @@ def test_stream_record_round_trip_is_canonical() -> None:
     restored = _record_from_payload(_record_payload(record))
     assert restored == record
     assert RUN_ID == "continuous-paper-mainnet-v1"
-
 
 
 def test_runtime_source_exposes_structured_live_heartbeat() -> None:
@@ -849,6 +849,60 @@ def test_profit_lock_counterfactual_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: counterfactual boom"
+
+
+def test_combined_filter_profit_lock_overlap_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_profit_lock(*_args: object) -> object:
+        raise RuntimeError("path boom")
+
+    def combined(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "residual_profit_lock": {
+                "research_only": True,
+                "changes_readiness_gate": False,
+            }
+        }
+
+    def overlap(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+        }
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.evaluate_profit_lock_state",
+        fail_profit_lock,
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_combined_entry_filter",
+        combined,
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_combined_matched_overlap",
+        overlap,
+    )
+
+    payload = _prospective_combined_entry_filter_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        restore_error=None,
+    )
+
+    residual = payload["residual_profit_lock"]
+    assert isinstance(residual, dict)
+    assert residual["enabled"] is False
+    assert residual["source_error"] == "RuntimeError: path boom"
+    assert payload["enabled"] is True
+    assert payload["error"] is None
 
 
 def test_entry_mid_markout_shadow_sink_fails_open() -> None:
@@ -1718,7 +1772,6 @@ def test_fill_aware_delay_selector_restore_failure_is_fail_open(
     assert "JSONDecodeError" in error
 
 
-
 def test_delay_selector_comparison_restore_failure_is_fail_open(
     tmp_path: Path,
 ) -> None:
@@ -2099,7 +2152,6 @@ def test_legacy_checkpoint_without_position_actions_remains_loadable(
     assert checkpoints[0].position_actions == ()
 
 
-
 def test_stop_aware_iterator_stops_before_starting_more_work(
     tmp_path: Path,
 ) -> None:
@@ -2162,7 +2214,6 @@ def test_runtime_persists_opening_runtime_lineage() -> None:
     assert "opening_lifecycle_sink=" in source
     assert '"opening_lineage_count": self.opening_lineage_count' in source
     assert '"opening_lineage_state_digest": self.opening_lineage_state_digest' in source
-
 
 
 def test_delayed_entry_stop_l2_telemetry_fails_open(
