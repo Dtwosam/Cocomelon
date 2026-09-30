@@ -156,6 +156,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"exit_reason": trade.exit_reason' in source
     assert 'CADENCE_SHADOW_STATE_FILENAME = "cadence-shadow-state.json"' in source
     assert "pump.cadence_shadow.state_payload()" in source
+    assert "cadence_trade_quality_calibration(" in source
+    assert '"cadence_trade_quality_calibration": (' in source
     assert 'ContinuousPaperTradePathStore(root / "trade-paths")' in source
     assert 'OriginalStopBookEvidenceStore(' in source
     assert 'root / "original-stop-books"' in source
