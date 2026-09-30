@@ -1,0 +1,111 @@
+name: Temporary cadence walk-forward audit 36694359628
+
+on:
+  push:
+    branches:
+      - audit/cadence-walk-forward-confidence-36694359628
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download exact predecessor paper state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11089237194"
+        run: |
+          set -euo pipefail
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > /tmp/state.zip
+          mkdir -p /tmp/artifact /tmp/state
+          unzip -q /tmp/state.zip -d /tmp/artifact
+          tar -xf /tmp/artifact/continuous-paper-state.tar \
+            -C /tmp/state \
+            ./cadence-shadow-state.json \
+            ./learning-features
+          test -s /tmp/state/cadence-shadow-state.json
+          test -d /tmp/state/learning-features/records
+      - name: Evaluate walk-forward confidence learner
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_walk_forward_confidence.py \
+            /tmp/state/cadence-shadow-state.json \
+            /tmp/state/learning-features \
+            --cadence-ms 900000 \
+            --horizon-ms 3600000 \
+            --json-out cadence-walk-forward-confidence.json \
+            > /tmp/cadence-walk-forward-confidence.stdout.json
+          cmp cadence-walk-forward-confidence.json \
+            /tmp/cadence-walk-forward-confidence.stdout.json
+      - name: Summarize walk-forward validation
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          from pathlib import Path
+
+          r=json.loads(
+              Path("cadence-walk-forward-confidence.json").read_text()
+          )
+          print("## 15m -> 1h walk-forward confidence")
+          for k in (
+              "status","settled_rows","evaluation_rows","lookback_rows",
+              "minimum_history_rows","maximum_history_rows",
+              "skipped_for_insufficient_history",
+              "no_supported_estimate_rows","admitted_rows","skipped_rows",
+              "actual_net_return_sum","candidate_net_return_sum",
+              "delta_net_return_sum","candidate_mean_net_return",
+              "positive_admitted_rows","negative_admitted_rows",
+              "structural_ready","development_qualified",
+          ):
+              print(f"- {k}: {r.get(k)}")
+          print("### Direction")
+          for direction,item in r.get("by_direction",{}).items():
+              print(
+                  f"- {direction}: validation={item.get('validation_rows')} "
+                  f"admitted={item.get('admitted_rows')} "
+                  f"unsupported={item.get('no_supported_estimate_rows')} "
+                  f"sum={item.get('candidate_net_return_sum')} "
+                  f"mean={item.get('candidate_mean_net_return')}"
+              )
+          print("### Stability")
+          for block in r.get("stability_blocks",[]):
+              print(
+                  f"- block {block['block_index']}: "
+                  f"n={block['admitted_rows']} "
+                  f"unsupported={block['no_supported_estimate_rows']} "
+                  f"sum={block['candidate_net_return_sum']} "
+                  f"mean={block['candidate_mean_net_return']} "
+                  f"passes={block['passes']}"
+              )
+          print("### Estimate cohorts")
+          for item in r.get("estimate_cohorts",[])[:12]:
+              print(
+                  "- "
+                  f"{item['direction']} / {item['lead_strategy']} / "
+                  f"{item['trend_regime']} / {item['volatility_regime']} / "
+                  f"{item['estimate_specificity']}: "
+                  f"n={item['validation_rows']} "
+                  f"admit={item['admitted_rows']} "
+                  f"sum={item['candidate_net_return_sum']} "
+                  f"mean_lb={item['mean_training_lower_bound']}"
+              )
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-walk-forward-confidence-36694359628
+          path: cadence-walk-forward-confidence.json
+          if-no-files-found: error
+          retention-days: 30
