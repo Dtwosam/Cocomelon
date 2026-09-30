@@ -11,6 +11,7 @@ from cocomelon.research.cadence_shadow import (
     _outcome_payload,
 )
 from cocomelon.research.learning_feature_snapshots import (
+    LearningFeatureSnapshotError,
     LearningFeatureSnapshotStore,
 )
 
@@ -435,7 +436,14 @@ def verify_frozen_cadence_training(
             raise FrozenCadenceTrainingManifestError(
                 "frozen training outcome content changed"
             )
-        verified = feature_store.load(frozen.feature_snapshot_id)
+        try:
+            verified = feature_store.load(
+                frozen.feature_snapshot_id
+            )
+        except LearningFeatureSnapshotError as exc:
+            raise FrozenCadenceTrainingManifestError(
+                "frozen training feature record invalid"
+            ) from exc
         if verified is None:
             raise FrozenCadenceTrainingManifestError(
                 "frozen training feature snapshot missing"
