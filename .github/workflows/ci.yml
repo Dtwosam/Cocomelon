@@ -186,4 +186,5 @@ jobs:
           tests/test_prospective_cutover_failure_cli.py
           tests/test_historical_cross_sectional_spread.py
           tests/test_historical_cross_sectional_spread_cli.py
+          tests/test_cadence_tree_learning.py
           -q
