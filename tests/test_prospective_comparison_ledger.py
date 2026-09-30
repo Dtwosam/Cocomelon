@@ -205,18 +205,39 @@ def test_append_only_extension_preserves_previous_rows() -> None:
 
 
 @pytest.mark.parametrize(
-    ("model", "field", "value"),
+    ("model", "field", "value", "expected"),
     [
-        ("micro", "prediction_net_return", "0.01"),
-        ("micro", "admitted", False),
-        ("baseline", "prediction_net_return", "0.03"),
-        ("baseline", "admitted", False),
+        (
+            "micro",
+            "prediction_net_return",
+            "0.01",
+            "previous paired row changed",
+        ),
+        (
+            "micro",
+            "admitted",
+            False,
+            "admitted does not match prediction sign",
+        ),
+        (
+            "baseline",
+            "prediction_net_return",
+            "0.03",
+            "previous paired row changed",
+        ),
+        (
+            "baseline",
+            "admitted",
+            False,
+            "admitted does not match prediction sign",
+        ),
     ],
 )
 def test_changed_prior_model_prediction_fails_closed(
     model: str,
     field: str,
     value: object,
+    expected: str,
 ) -> None:
     micro = _report(
         "micro",
@@ -252,7 +273,7 @@ def test_changed_prior_model_prediction_fails_closed(
 
     with pytest.raises(
         ProspectiveComparisonLedgerError,
-        match="previous paired row changed",
+        match=expected,
     ):
         _update(
             changed_micro,
