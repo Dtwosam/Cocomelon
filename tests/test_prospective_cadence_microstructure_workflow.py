@@ -75,3 +75,31 @@ def test_prospective_status_keeps_immutable_candidate_identity() -> None:
     )
     assert "Historical/touched outcomes do not count" in source
     assert "No paper orders are changed by this audit" in source
+
+
+def test_prospective_audit_catches_up_missed_success_events() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'cron: "23 * * * *"' in source
+    assert "Resolve source paper run" in source
+    assert "EVENT_SOURCE_CONCLUSION" in source
+    assert 'EVENT_SOURCE_CONCLUSION" == "success"' in source
+    assert "latest_success_catchup" in source
+    assert "actions/runs?status=success&per_page=100" in source
+    assert '.path == ".github/workflows/continuous-paper.yml"' in source
+    assert "SOURCE_RUN_ID=$source_run_id" in source
+    assert "SOURCE_RUN_ATTEMPT=$source_run_attempt" in source
+    assert "SOURCE_RESOLUTION_MODE=$resolution_mode" in source
+    assert (
+        "github.event.workflow_run.conclusion == 'success'"
+        not in source
+    )
+
+
+def test_manual_prospective_audit_keeps_exact_source_identity() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert 'EVENT_NAME" == "workflow_dispatch"' in source
+    assert 'source_run_id="$INPUT_SOURCE_RUN_ID"' in source
+    assert 'source_run_attempt="$INPUT_SOURCE_RUN_ATTEMPT"' in source
+    assert 'resolution_mode="manual_exact"' in source
