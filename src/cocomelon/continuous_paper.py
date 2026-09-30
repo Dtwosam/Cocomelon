@@ -75,6 +75,9 @@ from cocomelon.research.adaptive_delay_selector import (
     adaptive_delay_selector_summary,
 )
 from cocomelon.research.cadence_shadow import CadenceShadowComparator
+from cocomelon.research.cadence_trade_quality_calibration import (
+    cadence_trade_quality_calibration,
+)
 from cocomelon.research.closed_trade_concentration import (
     closed_trade_concentration_summary,
 )
@@ -2734,6 +2737,44 @@ class _RecordPump:
             self.cadence_shadow = None
 
 
+def _cadence_trade_quality_calibration_payload(
+    pump: _RecordPump,
+) -> dict[str, object]:
+    if pump.cadence_shadow_error is not None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": pump.cadence_shadow_error,
+        }
+    shadow = pump.cadence_shadow
+    if shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": None,
+        }
+    try:
+        payload = cadence_trade_quality_calibration(
+            shadow.settled_outcomes
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    result = dict(payload)
+    result["enabled"] = True
+    result["error"] = None
+    return result
+
+
 def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
     return {
         "trade_id": trade.trade_id,
@@ -4903,6 +4944,9 @@ def _live_status_payload(
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
+        "cadence_trade_quality_calibration": (
+            _cadence_trade_quality_calibration_payload(pump)
+        ),
         "trade_path_evidence": {
             "research_only": True,
             "durable_across_workers": True,
