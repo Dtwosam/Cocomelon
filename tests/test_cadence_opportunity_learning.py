@@ -189,6 +189,23 @@ def test_negative_training_bucket_is_skipped_without_banning_direction() -> None
         surface["actual_net_return_sum"]
     )
 
+    admitted_cohorts = surface["admitted_cohorts"]
+    skipped_cohorts = surface["skipped_cohorts"]
+    assert len(admitted_cohorts) == 1
+    assert admitted_cohorts[0]["direction"] == "long"
+    assert admitted_cohorts[0]["lead_strategy"] == "trend"
+    assert admitted_cohorts[0]["score_band"] == "80+"
+    assert admitted_cohorts[0]["training_estimate_rows"] == 4
+    assert Decimal(
+        admitted_cohorts[0]["training_estimate_mean_net_return"]
+    ) > Decimal("0")
+    assert len(skipped_cohorts) == 1
+    assert skipped_cohorts[0]["direction"] == "short"
+    assert skipped_cohorts[0]["score_band"] == "70-<75"
+    assert Decimal(
+        skipped_cohorts[0]["training_estimate_mean_net_return"]
+    ) < Decimal("0")
+
 
 def test_purge_removes_training_labels_that_overlap_validation_start() -> None:
     config = CadenceOpportunityLearningConfig(

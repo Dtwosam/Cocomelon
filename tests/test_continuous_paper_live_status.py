@@ -5749,6 +5749,36 @@ def test_cadence_opportunity_learning_renderer_shows_primary_surfaces() -> None:
                         {"passes": True},
                         {"passes": False},
                     ),
+                    "admitted_cohorts": (
+                        {
+                            "direction": "long",
+                            "lead_strategy": "mean_reversion",
+                            "score_band": "80+",
+                            "training_estimate_mean_net_return": "0.004",
+                            "training_estimate_rows": 44,
+                            "training_estimate_specificity": (
+                                "direction_strategy_score"
+                            ),
+                            "validation_rows": 8,
+                            "validation_mean_net_return": "0.006",
+                            "validation_net_return_sum": "0.048",
+                        },
+                    ),
+                    "skipped_cohorts": (
+                        {
+                            "direction": "short",
+                            "lead_strategy": "breakout",
+                            "score_band": "70-<75",
+                            "training_estimate_mean_net_return": "-0.003",
+                            "training_estimate_rows": 31,
+                            "training_estimate_specificity": (
+                                "direction_strategy_score"
+                            ),
+                            "validation_rows": 7,
+                            "validation_mean_net_return": "-0.004",
+                            "validation_net_return_sum": "-0.028",
+                        },
+                    ),
                 },
                 "900000:3600000": {
                     "status": "completed",
@@ -5779,3 +5809,7 @@ def test_cadence_opportunity_learning_renderer_shows_primary_surfaces() -> None:
     assert "12" in rendered
     assert "16" in rendered
     assert "development-qualified" in rendered
+    assert "Top admitted validation cohorts" in rendered
+    assert "mean_reversion" in rendered
+    assert "Most negative skipped validation cohorts" in rendered
+    assert "breakout" in rendered

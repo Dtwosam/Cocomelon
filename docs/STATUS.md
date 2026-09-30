@@ -2680,3 +2680,23 @@ The primary research surfaces are the unchanged 15-minute execution cadence eval
 This analysis is **touched development evidence** because the cadence archive already existed when the model was introduced. It may generate hypotheses and frozen future challengers, but it is not clean prospective promotion evidence. It never rewrites the active strategy, changes paper orders, changes risk limits, promotes a candidate, or grants live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Cadence opportunity cohort attribution — 2026-09-30
+
+The purged cadence learner now reports the exact validation cohorts behind its admitted and skipped decisions.
+
+Each cohort is keyed by:
+
+- direction;
+- lead strategy;
+- frozen decision-score band;
+- the training-only grouped-mean estimate used for admission;
+- the estimate support count and fallback specificity;
+- validation count, mean net return, and total net-return contribution.
+
+Admitted cohorts are ordered by validation contribution; skipped cohorts are ordered from most negative validation contribution upward. This makes the development result auditable and allows future hypotheses to target a setup combination rather than disabling an entire direction.
+
+These tables remain touched retrospective/development diagnostics. They may inform a newly frozen prospective candidate, but no cohort is promoted or applied to paper execution from this report alone.
+
+**LIVE TRADING: DISABLED.**

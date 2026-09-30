@@ -199,6 +199,76 @@ def _direction_summary(
     return payload
 
 
+def _cohort_attribution(
+    scored: tuple[
+        tuple[ShadowCadenceOutcome, bool, _MeanEstimate],
+        ...,
+    ],
+    *,
+    admitted: bool,
+) -> tuple[dict[str, object], ...]:
+    groups: dict[
+        tuple[str, str, str],
+        list[tuple[ShadowCadenceOutcome, _MeanEstimate]],
+    ] = defaultdict(list)
+    for row, take, estimate in scored:
+        if take is not admitted:
+            continue
+        key = (
+            row.sample.direction.value,
+            row.sample.lead_strategy,
+            _score_band(row.sample.score),
+        )
+        groups[key].append((row, estimate))
+
+    attributed: list[tuple[Decimal, dict[str, object]]] = []
+    for key, items in groups.items():
+        first_estimate = items[0][1]
+        if any(
+            estimate != first_estimate
+            for _, estimate in items[1:]
+        ):
+            raise CadenceOpportunityLearningError(
+                "cohort training estimate drifted inside validation"
+            )
+        outcomes = tuple(row for row, _ in items)
+        net_sum = sum((row.net_return for row in outcomes), ZERO)
+        mean = net_sum / Decimal(len(outcomes))
+        payload = {
+            "direction": key[0],
+            "lead_strategy": key[1],
+            "score_band": key[2],
+            "validation_rows": len(outcomes),
+            "positive_rows": sum(
+                1 for row in outcomes if row.net_return > ZERO
+            ),
+            "negative_rows": sum(
+                1 for row in outcomes if row.net_return < ZERO
+            ),
+            "validation_net_return_sum": str(net_sum),
+            "validation_mean_net_return": str(mean),
+            "training_estimate_mean_net_return": str(
+                first_estimate.mean
+            ),
+            "training_estimate_rows": first_estimate.count,
+            "training_estimate_specificity": (
+                first_estimate.specificity
+            ),
+            "training_group_key": first_estimate.group_key,
+        }
+        attributed.append((net_sum, payload))
+
+    attributed.sort(
+        key=lambda item: (
+            -item[0] if admitted else item[0],
+            str(item[1]["direction"]),
+            str(item[1]["lead_strategy"]),
+            str(item[1]["score_band"]),
+        )
+    )
+    return tuple(payload for _, payload in attributed)
+
+
 def _stability_blocks(
     rows: tuple[tuple[ShadowCadenceOutcome, bool], ...],
     *,
@@ -330,8 +400,20 @@ def _surface_report(
             "promotion_authority": False,
         }
 
-    realized = tuple((row, take) for row, take, _ in scored)
+    scored_tuple = tuple(scored)
+    realized = tuple(
+        (row, take)
+        for row, take, _ in scored_tuple
+    )
     admitted = tuple(row for row, take in realized if take)
+    admitted_cohorts = _cohort_attribution(
+        scored_tuple,
+        admitted=True,
+    )
+    skipped_cohorts = _cohort_attribution(
+        scored_tuple,
+        admitted=False,
+    )
     actual_sum = sum((row.net_return for row, _ in realized), ZERO)
     candidate_sum = sum((row.net_return for row in admitted), ZERO)
     candidate_mean = (
@@ -416,6 +498,8 @@ def _surface_report(
             1 for row in admitted if row.net_return < ZERO
         ),
         "prediction_specificity_counts": dict(specificity),
+        "admitted_cohorts": admitted_cohorts,
+        "skipped_cohorts": skipped_cohorts,
         "by_direction": by_direction,
         "stability_blocks": blocks,
         "structural_ready": structural_ready,
