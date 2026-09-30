@@ -22,4 +22,6 @@ def test_prospective_readiness_workflow_is_fail_closed() -> None:
     assert "**Status:** BLOCKED" in source
     assert "Fail closed on readiness integrity" in source
     assert "prospective-trade-quality-readiness.json" in source
-    assert "paper entries, timing, sizing, stops, risk" in source
+    assert "paper " in source
+    assert "entries, timing, sizing, stops, risk, promotion state" in source
+    assert "no authority to change" in source
