@@ -3276,3 +3276,29 @@ Pre-lifecycle readiness artifacts are rejected rather than interpreted as "no fa
 This is research/control-plane integrity only. It cannot replace candidates automatically and has no paper execution, timing, sizing, stop, risk, promotion, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective cadence actual-trade overlap — 2026-09-30
+
+A fourth, **non-gating** evidence stream now measures whether the frozen cadence microstructure challenger would have improved the future trades the paper strategy actually took.
+
+The join is exact rather than heuristic:
+
+- cadence prediction rows carry the immutable strategy `decision_id`;
+- closed paper trades carry `strategy_decision_id`;
+- a match is accepted only when those IDs are identical and market/direction also reconcile;
+- duplicate decision-to-trade mappings, changed prior rows, disappeared prior matches, or PnL reconciliation drift fail closed.
+
+For every matched future closed paper trade, the ledger records the candidate admission, actual paper PnL/R, exit reason, and candidate-minus-actual contribution. It separately reports:
+
+- blocked losing-trade PnL avoided;
+- blocked winning-trade PnL sacrificed;
+- admitted winners and admitted losers;
+- net avoided-loss minus sacrificed-win contribution;
+- LONG and SHORT splits.
+
+The ledger consumes the small `continuous-paper-learning-source-<run>-<attempt>` artifact and the canonical prospective prediction ledger, so it does not need the full durable recovery archive.
+
+Issue #704 is the canonical status surface. This overlap stream is descriptive future evidence only and **does not change the frozen prospective readiness gate**, paper execution, strategy, sizing, stops, risk, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
