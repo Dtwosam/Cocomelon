@@ -270,6 +270,101 @@ def load_frozen_cadence_training_manifest(
     )
 
 
+def build_frozen_cadence_training_manifest(
+    outcomes: tuple[ShadowCadenceOutcome, ...],
+    feature_store: LearningFeatureSnapshotStore,
+    *,
+    model_family: str,
+    feature_registry: tuple[str, ...],
+    prospective_start_ms: int,
+    cadence_ms: int,
+    horizon_ms: int,
+    source: dict[str, object],
+) -> FrozenCadenceTrainingManifest:
+    selected = tuple(
+        sorted(
+            (
+                outcome
+                for outcome in outcomes
+                if outcome.sample.cadence_ms == cadence_ms
+                and outcome.sample.horizon_ms == horizon_ms
+                and outcome.sample.target_end_ms
+                < prospective_start_ms
+            ),
+            key=lambda outcome: (
+                outcome.sample.target_end_ms,
+                outcome.sample.market.canonical,
+                outcome.sample.decision_id,
+            ),
+        )
+    )
+    rows: list[FrozenCadenceTrainingRow] = []
+    for outcome in selected:
+        verified = feature_store.load(
+            outcome.sample.feature_snapshot_id
+        )
+        if verified is None:
+            raise FrozenCadenceTrainingManifestError(
+                "freeze source feature snapshot missing"
+            )
+        if verified.snapshot.market != outcome.sample.market:
+            raise FrozenCadenceTrainingManifestError(
+                "freeze source feature market mismatch"
+            )
+        rows.append(
+            FrozenCadenceTrainingRow(
+                cadence_ms=outcome.sample.cadence_ms,
+                decision_id=outcome.sample.decision_id,
+                horizon_ms=outcome.sample.horizon_ms,
+                target_end_ms=outcome.sample.target_end_ms,
+                feature_snapshot_id=(
+                    outcome.sample.feature_snapshot_id
+                ),
+                outcome_sha256=_sha256(
+                    _outcome_payload(outcome)
+                ),
+                feature_record_sha256=verified.record_sha256,
+            )
+        )
+    row_payloads = [row.payload() for row in rows]
+    return FrozenCadenceTrainingManifest(
+        model_family=model_family,
+        feature_registry=feature_registry,
+        prospective_start_ms=prospective_start_ms,
+        source=dict(source),
+        training_rows=len(rows),
+        training_first_target_end_ms=(
+            None if not rows else rows[0].target_end_ms
+        ),
+        training_last_target_end_ms=(
+            None if not rows else rows[-1].target_end_ms
+        ),
+        rows_sha256=_sha256(row_payloads),
+        rows=tuple(rows),
+    )
+
+
+def frozen_cadence_training_manifest_payload(
+    manifest: FrozenCadenceTrainingManifest,
+) -> dict[str, object]:
+    return {
+        "schema_version": FROZEN_TRAINING_MANIFEST_SCHEMA_VERSION,
+        "model_family": manifest.model_family,
+        "feature_registry": list(manifest.feature_registry),
+        "prospective_start_ms": manifest.prospective_start_ms,
+        "source": manifest.source,
+        "training_rows": manifest.training_rows,
+        "training_first_target_end_ms": (
+            manifest.training_first_target_end_ms
+        ),
+        "training_last_target_end_ms": (
+            manifest.training_last_target_end_ms
+        ),
+        "rows_sha256": manifest.rows_sha256,
+        "rows": [row.payload() for row in manifest.rows],
+    }
+
+
 def verify_frozen_cadence_training(
     manifest: FrozenCadenceTrainingManifest,
     outcomes: tuple[ShadowCadenceOutcome, ...],
