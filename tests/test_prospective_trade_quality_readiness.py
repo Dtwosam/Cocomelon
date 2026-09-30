@@ -192,6 +192,40 @@ def test_current_small_sample_is_collecting() -> None:
 
 def test_cadence_candidate_can_become_review_ready() -> None:
     rows = _scored_rows(100, prediction="0.01", realized="0.02")
+    baseline_rows = _scored_rows(
+        100,
+        prediction="-0.01",
+        realized="0.02",
+    )
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(rows),
+        _comparison_ledger(
+            rows,
+            baseline_rows=baseline_rows,
+        ),
+        _timing_ledger(0),
+    )
+
+    cadence = result["cadence"]
+    comparison = result["comparison"]
+    assert result["status"] == "review_ready"
+    assert result["any_candidate_ready_for_review"] is True
+    assert cadence["standalone_ready_for_review"] is True
+    assert cadence["complexity_justified"] is True
+    assert cadence["ready_for_review"] is True
+    assert cadence["long_admitted_rows"] == 50
+    assert cadence["short_admitted_rows"] == 50
+    assert comparison["complexity_justified"] is True
+    assert comparison["positive_incremental_blocks"] == 4
+    assert all(
+        block["passes"] is True
+        for block in cadence["stability_blocks"]
+    )
+    assert result["authority"]["paper_execution_change_allowed"] is False
+
+
+def test_profitable_complex_model_is_blocked_without_incremental_value() -> None:
+    rows = _scored_rows(100, prediction="0.01", realized="0.02")
     result = prospective_trade_quality_readiness(
         _prediction_ledger(rows),
         _comparison_ledger(rows),
@@ -199,16 +233,60 @@ def test_cadence_candidate_can_become_review_ready() -> None:
     )
 
     cadence = result["cadence"]
-    assert result["status"] == "review_ready"
-    assert result["any_candidate_ready_for_review"] is True
-    assert cadence["ready_for_review"] is True
-    assert cadence["long_admitted_rows"] == 50
-    assert cadence["short_admitted_rows"] == 50
-    assert all(
-        block["passes"] is True
-        for block in cadence["stability_blocks"]
+    comparison = result["comparison"]
+    assert cadence["standalone_ready_for_review"] is True
+    assert comparison["microstructure_minus_baseline_sum"] == "0.00"
+    assert comparison["complexity_justified"] is False
+    assert cadence["complexity_justified"] is False
+    assert cadence["ready_for_review"] is False
+    assert result["any_candidate_ready_for_review"] is False
+    assert result["status"] == "collecting"
+
+
+def test_positive_total_increment_needs_chronological_stability() -> None:
+    micro_rows = _scored_rows(100, prediction="0.01", realized="0.02")
+    baseline_rows: list[dict[str, object]] = []
+    for index, row in enumerate(micro_rows):
+        block = index // 25
+        if block < 2:
+            baseline_prediction = "-0.01"
+            realized = "0.02"
+        else:
+            is_negative_micro_only = index % 5 == 0
+            baseline_prediction = (
+                "-0.01" if is_negative_micro_only else "0.01"
+            )
+            realized = "-0.01" if is_negative_micro_only else "0.02"
+        micro_rows[index] = {
+            **row,
+            "realized_net_return": realized,
+        }
+        baseline_rows.append(
+            {
+                **micro_rows[index],
+                "prediction_net_return": baseline_prediction,
+                "admitted": Decimal(baseline_prediction) > Decimal("0"),
+            }
+        )
+
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(micro_rows),
+        _comparison_ledger(
+            micro_rows,
+            baseline_rows=baseline_rows,
+        ),
+        _timing_ledger(0),
     )
-    assert result["authority"]["paper_execution_change_allowed"] is False
+
+    cadence = result["cadence"]
+    comparison = result["comparison"]
+    assert cadence["standalone_ready_for_review"] is True
+    assert Decimal(
+        comparison["microstructure_minus_baseline_sum"]
+    ) > Decimal("0")
+    assert comparison["positive_incremental_blocks"] == 2
+    assert comparison["complexity_justified"] is False
+    assert cadence["ready_for_review"] is False
 
 
 def test_timing_candidate_can_be_review_ready_independently() -> None:
