@@ -97,6 +97,10 @@ def test_learning_is_side_neutral_and_uses_purged_chronological_holdout() -> Non
                 lead_strategy="trend",
                 score="82",
                 net="0.02",
+                boundary_ms=(
+                    1_000_000
+                    + (index + 4) * FIFTEEN_MINUTES_MS
+                ),
             )
         )
 
@@ -143,6 +147,10 @@ def test_negative_training_bucket_is_skipped_without_banning_direction() -> None
                 )
             )
     for index in range(8, 16):
+        boundary = (
+            1_000_000
+            + (index + 4) * FIFTEEN_MINUTES_MS
+        )
         if index % 2 == 0:
             rows.append(
                 _outcome(
@@ -151,6 +159,7 @@ def test_negative_training_bucket_is_skipped_without_banning_direction() -> None
                     lead_strategy="trend",
                     score="82",
                     net="0.01",
+                    boundary_ms=boundary,
                 )
             )
         else:
@@ -161,6 +170,7 @@ def test_negative_training_bucket_is_skipped_without_banning_direction() -> None
                     lead_strategy="trend",
                     score="72",
                     net="-0.01",
+                    boundary_ms=boundary,
                 )
             )
 
