@@ -29,5 +29,5 @@ def test_timing_ledger_workflow_uses_safe_artifact_transport() -> None:
     assert "| @tsv" in source
     assert 'then "(.[0].id)' not in source
     assert 'then "\\(.[0].id)' not in source
-    assert "append-only timing ledger is blocked" in source
+    assert "Prospective timing append-only ledger is blocked." in source
     assert "No timing-ledger evidence is published" in source
