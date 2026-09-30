@@ -55,3 +55,14 @@ def test_continuous_paper_uploads_compact_timing_state() -> None:
         "continuous-paper-state/"
         "prospective-side-conditioned-delay-state.json"
     ) in source
+
+
+def test_blocked_status_preserves_runtime_metadata_without_shell_backticks() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cat > /tmp/timing-status.md <<EOF" not in source
+    assert "python - <<'PY' > /tmp/timing-status.md" in source
+    assert "os.environ['SOURCE_RUN_ID']" in source
+    assert "os.environ['SOURCE_RUN_ATTEMPT']" in source
+    assert "os.environ['SOURCE_RESOLUTION_MODE']" in source
+    assert "os.environ['TIMING_SHA']" in source
