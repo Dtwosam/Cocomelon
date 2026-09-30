@@ -103,7 +103,7 @@ def test_two_strike_state_round_trip_locks_rule_and_embargo() -> None:
 
 
 def test_two_strike_shadow_skips_once_then_resets() -> None:
-    start = 1_000_000
+    start = EMBARGO_MS + 1_000_000
     state = ProspectiveTwoStrikeStopFilterState(
         frozen_at_ms=start - EMBARGO_MS
     )
@@ -155,7 +155,7 @@ def test_two_strike_shadow_skips_once_then_resets() -> None:
 
 
 def test_two_strike_shadow_is_direction_and_market_separate() -> None:
-    start = 2_000_000
+    start = EMBARGO_MS + 2_000_000
     state = ProspectiveTwoStrikeStopFilterState(
         frozen_at_ms=start - EMBARGO_MS
     )
