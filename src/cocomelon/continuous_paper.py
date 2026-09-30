@@ -219,7 +219,10 @@ from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
 )
-from cocomelon.research.profit_lock_counterfactual import evaluate_profit_lock_state
+from cocomelon.research.profit_lock_counterfactual import (
+    ProfitLockTradeOutcome,
+    evaluate_profit_lock_state,
+)
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE as EXECUTION_MIN_ACTIVATED_TRADES_PER_RULE,
 )
@@ -2016,23 +2019,14 @@ def _prospective_combined_entry_filter_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
-    trade_path_store: ContinuousPaperTradePathStore,
     entry_filter_state: ProspectiveEntryFilterState,
     top10_rank_filter_state: ProspectiveTop10RankFilterState,
     state: ProspectiveCombinedEntryFilterState,
     *,
+    profit_lock_outcomes: tuple[ProfitLockTradeOutcome, ...] = (),
+    profit_lock_error: str | None = None,
     restore_error: str | None,
 ) -> dict[str, object]:
-    try:
-        profit_lock_outcomes = evaluate_profit_lock_state(
-            journal,
-            trade_path_store,
-        ).outcomes
-        profit_lock_error = None
-    except Exception as exc:
-        profit_lock_outcomes = ()
-        profit_lock_error = f"{type(exc).__name__}: {exc}"
-
     try:
         payload = evaluate_prospective_combined_entry_filter(
             journal,
@@ -4556,6 +4550,16 @@ def _live_status_payload(
         pump.journal,
         trade_path_store,
     )
+    try:
+        profit_lock_study = evaluate_profit_lock_state(
+            pump.journal,
+            trade_path_store,
+        )
+        profit_lock_outcomes = profit_lock_study.outcomes
+        profit_lock_error = None
+    except Exception as exc:
+        profit_lock_outcomes = ()
+        profit_lock_error = f"{type(exc).__name__}: {exc}"
     prospective_entry_filter = _prospective_entry_filter_payload(
         pump.journal,
         fact_store,
@@ -4596,10 +4600,11 @@ def _live_status_payload(
             pump.journal,
             fact_store,
             opening_rank_store,
-            trade_path_store,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
             prospective_combined_entry_filter_state,
+            profit_lock_outcomes=profit_lock_outcomes,
+            profit_lock_error=profit_lock_error,
             restore_error=(
                 prospective_combined_entry_filter_restore_error
             ),
