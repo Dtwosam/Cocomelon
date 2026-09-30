@@ -17,6 +17,7 @@ from cocomelon.continuous_paper import (
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
     _closed_trade_stability_payload,
+    _closed_trade_stop_reentry_payload,
     _closed_trade_utc_hour_payload,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
@@ -611,6 +612,27 @@ def test_closed_trade_concentration_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: concentration boom"
+
+
+def test_closed_trade_stop_reentry_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("reentry boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.closed_trade_stop_reentry_summary",
+        fail,
+    )
+    payload = _closed_trade_stop_reentry_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: reentry boom"
 
 
 def test_closed_trade_utc_hour_telemetry_fails_open(

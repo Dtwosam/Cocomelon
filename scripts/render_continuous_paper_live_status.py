@@ -6960,6 +6960,158 @@ def _closed_trade_stability_lines(raw: object) -> list[str]:
     return lines
 
 
+def _closed_trade_stop_reentry_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Same-side stop re-entry attribution",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No stop re-entry telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- closed / re-entry / fresh-or-reset trades: "
+                f"`{raw.get('closed_trades', 0)} / "
+                f"{raw.get('reentry_trades', 0)} / "
+                f"{raw.get('fresh_or_reset_trades', 0)}`"
+            ),
+            (
+                "- re-entry W/L / net PnL / mean R: "
+                f"`{raw.get('reentry_wins', 0)}/"
+                f"{raw.get('reentry_losses', 0)} / "
+                f"{raw.get('reentry_net_pnl', '0')} / "
+                f"{raw.get('reentry_mean_net_r')}`"
+            ),
+            (
+                "- fresh-or-reset W/L / net PnL / mean R: "
+                f"`{raw.get('fresh_or_reset_wins', 0)}/"
+                f"{raw.get('fresh_or_reset_losses', 0)} / "
+                f"{raw.get('fresh_or_reset_net_pnl', '0')} / "
+                f"{raw.get('fresh_or_reset_mean_net_r')}`"
+            ),
+        ]
+    )
+
+    buckets = raw.get("by_gap_bucket", {})
+    if not isinstance(buckets, dict):
+        buckets = {}
+    lines.extend(
+        [
+            "",
+            "| Gap after prior losing stop | Trades | W | L | Net PnL | Mean R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for bucket in ("0-5m", "5-30m", "30-120m", "120m+"):
+        item = buckets.get(bucket, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {bucket} | {trades} | {wins} | {losses} | {pnl} | {mean_r} |".format(
+                bucket=bucket,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+            )
+        )
+
+    windows = raw.get("skip_windows", {})
+    if not isinstance(windows, dict):
+        windows = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Descriptive skip window | Blocked | W | L | Blocked PnL | "
+                "Delta contribution | LOTO min delta | Robust? |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
+    for key, label in (
+        ("within_5m", "<=5m"),
+        ("within_30m", "<=30m"),
+        ("within_120m", "<=120m"),
+    ):
+        item = windows.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        robustness = item.get("robustness", {})
+        if not isinstance(robustness, dict):
+            robustness = {}
+        lines.append(
+            "| {label} | {trades} | {wins} | {losses} | {pnl} | "
+            "{delta} | {loto} | {robust} |".format(
+                label=label,
+                trades=item.get("blocked_trades", 0),
+                wins=item.get("blocked_winners", 0),
+                losses=item.get("blocked_losses", 0),
+                pnl=item.get("blocked_net_pnl", "0"),
+                delta=item.get("delta_trade_contribution_pnl", "0"),
+                loto=robustness.get(
+                    "leave_one_trade_out_min_delta_pnl",
+                    "0",
+                ),
+                robust=robustness.get(
+                    "positive_after_removing_any_one_trade",
+                    False,
+                ),
+            )
+        )
+
+    direction = raw.get("reentry_by_direction", {})
+    if not isinstance(direction, dict):
+        direction = {}
+    lines.extend(
+        [
+            "",
+            "| Re-entry side | Trades | W | L | Net PnL | Mean R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = direction.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {trades} | {wins} | {losses} | {pnl} | {mean_r} |".format(
+                side=side.upper(),
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_A re-entry means the most recent completed trade in the same "
+                "market and same direction was a losing mark-stop close. "
+                "The fixed skip windows are descriptive only and do not alter "
+                "paper entries, risk, or readiness gates._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_concentration_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -8785,6 +8937,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_concentration_lines(
             payload.get("closed_trade_concentration")
+        )
+    )
+    lines.extend(
+        _closed_trade_stop_reentry_lines(
+            payload.get("closed_trade_stop_reentry")
         )
     )
     lines.extend(

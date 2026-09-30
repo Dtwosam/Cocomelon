@@ -3351,3 +3351,20 @@ This closes an important attribution gap. A loss merely reaching +0.5R or +1R MF
 The overlap is descriptive and research-only. It does not alter the combined entry-filter gate, profit-lock readiness gate, paper entries, exits, stops, sizing, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Same-side stop re-entry attribution — 2026-09-30
+
+Closed paper trades now include a direction-neutral re-entry diagnostic for a specific repeated-loss behavior: reopening the same market in the same direction after the most recent completed same-side trade closed as a losing mark stop.
+
+The diagnostic is causal and descriptive:
+
+- only a prior close that was already complete before the new opening can qualify;
+- a winner, breakeven, non-stop exit, or first same-side trade resets the re-entry label;
+- re-entry outcomes are grouped into fixed `0-5m`, `5-30m`, `30-120m`, and `120m+` gap buckets;
+- fixed descriptive skip windows of `<=5m`, `<=30m`, and `<=120m` report blocked winners/losses, contribution delta, and leave-one-trade-out robustness;
+- LONG and SHORT re-entry cohorts are reported separately so any future rule can remain direction-neutral unless evidence says otherwise.
+
+This is research-only. No cooldown, veto, entry, exit, stop, sizing, risk, readiness, promotion, or live-execution behavior is changed by this diagnostic.
+
+**LIVE TRADING: DISABLED.**
