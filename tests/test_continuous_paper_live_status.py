@@ -3857,7 +3857,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "full_blocks=0, all_pnl_positive=false |" in output
     )
     assert "| opening fill liquidity | collecting | closed=3, need=27 |" in output
-    assert "review-ready studies: `0 / 23`" in output
+    assert "review-ready studies: `1 / 24`" in output
     assert "| 60s price confirmation | collecting | eval=10, confirmed=6, skipped=4 |" in output
     assert "### Trade-path evidence" in output
     assert "completed exact trade paths" in output
