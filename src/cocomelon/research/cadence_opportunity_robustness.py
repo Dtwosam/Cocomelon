@@ -4,13 +4,12 @@ from collections import defaultdict
 from decimal import Decimal
 from typing import Final, cast
 
-from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_opportunity_learning import (
     DEFAULT_CONFIG,
     CadenceOpportunityLearningConfig,
-    _MeanEstimate,
     _estimate,
     _fit_group_means,
+    _MeanEstimate,
     _score_band,
 )
 from cocomelon.research.cadence_shadow import (
