@@ -3222,3 +3222,20 @@ This does not loosen or alter the final sample/economic gates and does not chang
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Incremental A/B gate-path correction — 2026-09-30
+
+The fixed-window readiness layer distinguishes the cadence/timing gates from the microstructure-vs-baseline parsimony gate.
+
+Cadence quality and timing robustness require **all 4** frozen blocks to pass, so one failed closed block makes those candidate paths irrecoverable.
+
+The A/B parsimony rule requires positive microstructure-minus-baseline contribution in **at least 3 of 4** frozen blocks. Therefore:
+
+- 0 failed closed incremental blocks: path open;
+- 1 failed closed incremental block: path still open;
+- 2 or more failed closed incremental blocks: path irrecoverable.
+
+The readiness manifest now publishes the failed incremental-block count and the maximum allowed count explicitly. This is control-plane interpretation only; neither frozen model, prediction, paper trade, nor execution authority changes.
+
+**LIVE TRADING: DISABLED.**

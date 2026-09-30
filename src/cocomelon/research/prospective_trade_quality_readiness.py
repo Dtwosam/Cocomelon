@@ -478,9 +478,19 @@ def _comparison_summary(
             for block in blocks
             if block["closed"] is True and block["passes"] is not True
         ),
-        "incremental_gate_path_open": not any(
-            block["closed"] is True and block["passes"] is not True
-            for block in blocks
+        "maximum_allowed_failed_incremental_blocks": (
+            DEFAULT_CONFIG.stability_blocks
+            - MIN_POSITIVE_INCREMENTAL_BLOCKS
+        ),
+        "incremental_gate_path_open": (
+            sum(
+                1
+                for block in blocks
+                if block["closed"] is True
+                and block["passes"] is not True
+            )
+            <= DEFAULT_CONFIG.stability_blocks
+            - MIN_POSITIVE_INCREMENTAL_BLOCKS
         ),
         "positive_incremental_blocks": positive_blocks,
         "required_positive_incremental_blocks": (
