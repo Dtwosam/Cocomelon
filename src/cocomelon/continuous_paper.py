@@ -5802,14 +5802,18 @@ async def run_continuous_paper_session(
                     f"{market.canonical}"
                 )
             await pump.process(_record_from_public(market_snapshot_record_event(snapshot)))
-        for market in selected:
+        for market in _iter_until_stop(selected, stop_path):
             for candle in await _warmup_market(
                 reader,
                 market,
                 end_ms=started_at_ms,
                 config=config,
             ):
-                await pump.process(_record_from_public(candle_record_event(candle)))
+                if _stop_requested(stop_path):
+                    break
+                await pump.process(
+                    _record_from_public(candle_record_event(candle))
+                )
 
         async def refresh_funding() -> None:
             now_ms = utc_now_ms()
@@ -5924,91 +5928,92 @@ async def run_continuous_paper_session(
             )
 
         persist_checkpoint()
-        _emit_live_status(
-            execution,
-            pump,
-            selected,
-            feature_store,
-            facts,
-            opening_lineage_store,
-            trade_path_store,
-            opening_rank_store,
-            opening_fill_liquidity_store,
-            opening_opportunity_store,
-            opening_opportunity_path_store,
-            opening_opportunity_exit_book_store,
-            replacement_funding_store,
-            original_stop_book_store,
-            original_stop_book_capture,
-            profit_lock_execution_shadow,
-            delayed_entry_execution_shadow,
-            delayed_entry_120s_execution_shadow,
-            entry_mid_markout_shadow,
-            drawdown_tracker,
-            prospective_entry_filter_state,
-            prospective_delayed_price_confirmation_state,
-            prospective_top10_rank_filter_state,
-            prospective_combined_entry_filter_state,
-            prospective_replacement_exit_policy_state,
-            adaptive_delay_selector_state,
-            fill_aware_delay_selector_state,
-            delay_selector_comparison_state,
-            trade_path_capture_error=trade_path_sink.error,
-            opening_rank_capture_error=(
-                None
-                if opening_lineage_sink is None
-                else opening_lineage_sink.rank_error
-            ),
-            opening_fill_liquidity_capture_error=(
-                opening_fill_liquidity_sink.error
-            ),
-            opening_opportunity_capture_error=(
-                opening_opportunity_sink.error
-            ),
-            opening_opportunity_path_capture_error=(
-                opening_opportunity_sink.path_error
-            ),
-            opening_opportunity_exit_book_capture_error=(
-                opening_opportunity_sink.exit_book_error
-            ),
-            replacement_funding_capture_error=(
-                opening_opportunity_sink.funding_error
-            ),
-            prospective_entry_filter_restore_error=(
-                prospective_entry_filter_restore_error
-            ),
-            prospective_delayed_price_confirmation_restore_error=(
-                prospective_delayed_price_confirmation_restore_error
-            ),
-            prospective_top10_rank_filter_restore_error=(
-                prospective_top10_rank_filter_restore_error
-            ),
-            prospective_combined_entry_filter_restore_error=(
-                prospective_combined_entry_filter_restore_error
-            ),
-            prospective_replacement_exit_policy_restore_error=(
-                prospective_replacement_exit_policy_restore_error
-            ),
-            adaptive_delay_selector_restore_error=(
-                adaptive_delay_selector_restore_error
-            ),
-            fill_aware_delay_selector_restore_error=(
-                fill_aware_delay_selector_restore_error
-            ),
-            delay_selector_comparison_restore_error=(
-                delay_selector_comparison_restore_error
-            ),
-            risk_limits=replay_config.risk_limits,
-            paper_max_gross_leverage=(
-                replay_config.execution.paper_max_gross_leverage
-            ),
-            native_perp_min_notional=(
-                replay_config.execution.native_perp_min_notional
-            ),
-            paper_execution_config=replay_config.execution,
-            checkpoint_seconds=config.checkpoint_seconds,
-            timestamp_ms=utc_now_ms(),
-        )
+        if not _stop_requested(stop_path):
+            _emit_live_status(
+                execution,
+                pump,
+                selected,
+                feature_store,
+                facts,
+                opening_lineage_store,
+                trade_path_store,
+                opening_rank_store,
+                opening_fill_liquidity_store,
+                opening_opportunity_store,
+                opening_opportunity_path_store,
+                opening_opportunity_exit_book_store,
+                replacement_funding_store,
+                original_stop_book_store,
+                original_stop_book_capture,
+                profit_lock_execution_shadow,
+                delayed_entry_execution_shadow,
+                delayed_entry_120s_execution_shadow,
+                entry_mid_markout_shadow,
+                drawdown_tracker,
+                prospective_entry_filter_state,
+                prospective_delayed_price_confirmation_state,
+                prospective_top10_rank_filter_state,
+                prospective_combined_entry_filter_state,
+                prospective_replacement_exit_policy_state,
+                adaptive_delay_selector_state,
+                fill_aware_delay_selector_state,
+                delay_selector_comparison_state,
+                trade_path_capture_error=trade_path_sink.error,
+                opening_rank_capture_error=(
+                    None
+                    if opening_lineage_sink is None
+                    else opening_lineage_sink.rank_error
+                ),
+                opening_fill_liquidity_capture_error=(
+                    opening_fill_liquidity_sink.error
+                ),
+                opening_opportunity_capture_error=(
+                    opening_opportunity_sink.error
+                ),
+                opening_opportunity_path_capture_error=(
+                    opening_opportunity_sink.path_error
+                ),
+                opening_opportunity_exit_book_capture_error=(
+                    opening_opportunity_sink.exit_book_error
+                ),
+                replacement_funding_capture_error=(
+                    opening_opportunity_sink.funding_error
+                ),
+                prospective_entry_filter_restore_error=(
+                    prospective_entry_filter_restore_error
+                ),
+                prospective_delayed_price_confirmation_restore_error=(
+                    prospective_delayed_price_confirmation_restore_error
+                ),
+                prospective_top10_rank_filter_restore_error=(
+                    prospective_top10_rank_filter_restore_error
+                ),
+                prospective_combined_entry_filter_restore_error=(
+                    prospective_combined_entry_filter_restore_error
+                ),
+                prospective_replacement_exit_policy_restore_error=(
+                    prospective_replacement_exit_policy_restore_error
+                ),
+                adaptive_delay_selector_restore_error=(
+                    adaptive_delay_selector_restore_error
+                ),
+                fill_aware_delay_selector_restore_error=(
+                    fill_aware_delay_selector_restore_error
+                ),
+                delay_selector_comparison_restore_error=(
+                    delay_selector_comparison_restore_error
+                ),
+                risk_limits=replay_config.risk_limits,
+                paper_max_gross_leverage=(
+                    replay_config.execution.paper_max_gross_leverage
+                ),
+                native_perp_min_notional=(
+                    replay_config.execution.native_perp_min_notional
+                ),
+                paper_execution_config=replay_config.execution,
+                checkpoint_seconds=config.checkpoint_seconds,
+                timestamp_ms=utc_now_ms(),
+            )
 
         async def connection_factory() -> Any:
             return await connect_mainnet_ws(settings)

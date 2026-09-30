@@ -2621,3 +2621,12 @@ The continuous-paper runtime now honors an upgrade stop request inside the bound
 An already-started bounded HTTP request is allowed to finish and every evidence record already written remains durable. No evidence is pruned or partially rewritten, and this does not change strategy decisions, paper accounting, risk limits, promotion authority, execution authority, or live-order behavior.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Stop-aware continuous-paper startup handoff — 2026-09-30
+
+The continuous-paper startup path now honors an already-requested runtime handoff before starting each remaining market warmup and before the initial heavyweight live-status research render. If a newer main runtime arrives while a worker is restoring or starting, the worker still restores exact durable state and persists a checkpoint, but stops starting additional warmup work and skips the initial research render so it can reach the normal graceful-exit path sooner.
+
+This complements the stop-aware steady-state capture loops. In-flight bounded calls are not interrupted mid-write, and durable evidence already restored or recorded remains intact. No strategy, risk, paper-accounting, promotion, execution-authority, or live-order behavior changes.
+
+**LIVE TRADING: DISABLED.**
