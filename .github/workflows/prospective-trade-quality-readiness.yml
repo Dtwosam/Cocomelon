@@ -228,11 +228,11 @@ jobs:
                   tz=UTC,
               ).isoformat()
 
-          status = (
-              "READY FOR REVIEW"
-              if report["any_candidate_ready_for_review"]
-              else "collecting"
-          )
+          status = {
+              "review_ready": "READY FOR REVIEW",
+              "collecting": "collecting",
+              "all_candidates_failed": "ALL CANDIDATES FAILED",
+          }[report["status"]]
           lines = [
               "## Prospective trade-quality readiness",
               "",
@@ -268,6 +268,14 @@ jobs:
               "",
               "### Cadence microstructure challenger",
               "",
+              (
+                  "- lifecycle state: "
+                  f"`{cadence['lifecycle_state']}`"
+              ),
+              (
+                  "- irrecoverable failure components: "
+                  f"`{', '.join(cadence['irrecoverable_failure_components']) or 'none'}`"
+              ),
               (
                   "- ready for review: "
                   f"`{str(cadence['ready_for_review']).lower()}`"
@@ -399,6 +407,14 @@ jobs:
                   "",
                   "### Side-conditioned timing challenger",
                   "",
+                  (
+                      "- lifecycle state: "
+                      f"`{timing['lifecycle_state']}`"
+                  ),
+                  (
+                      "- irrecoverable failure components: "
+                      f"`{', '.join(timing['irrecoverable_failure_components']) or 'none'}`"
+                  ),
                   (
                       "- ready for review: "
                       f"`{str(timing['ready_for_review']).lower()}`"
