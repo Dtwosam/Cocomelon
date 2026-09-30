@@ -12,7 +12,9 @@ from cocomelon.research.continuous_paper_opening_rank import (
     ContinuousPaperOpeningRankEvidence,
     ContinuousPaperOpeningRankStore,
 )
-from cocomelon.research.delayed_entry_execution_shadow import DelayedEntryOutcome
+from cocomelon.research.delayed_entry_execution_shadow import (
+    DelayedEntryOutcome,
+)
 from cocomelon.research.delayed_entry_fill_weighted import (
     EVALUABLE_SOURCES,
     DelayedEntryFillWeightedError,
@@ -68,7 +70,10 @@ class ProspectiveTradeQualityState:
         }
 
     @classmethod
-    def from_payload(cls, raw: object) -> ProspectiveTradeQualityState:
+    def from_payload(
+        cls,
+        raw: object,
+    ) -> ProspectiveTradeQualityState:
         if not isinstance(raw, dict):
             raise ProspectiveTradeQualityError(
                 "trade-quality state must be an object"
@@ -109,6 +114,43 @@ class ProspectiveTradeQualityState:
             )
         except ValueError as exc:
             raise ProspectiveTradeQualityError(str(exc)) from exc
+
+
+@dataclass(slots=True)
+class _DirectionAccumulator:
+    evaluated: int = 0
+    admitted: int = 0
+    skipped: int = 0
+    actual_net_pnl: Decimal = ZERO
+    candidate_net_pnl: Decimal = ZERO
+    actual_net_r: Decimal = ZERO
+    candidate_net_r: Decimal = ZERO
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "evaluated": self.evaluated,
+            "admitted": self.admitted,
+            "skipped": self.skipped,
+            "actual_net_pnl": str(self.actual_net_pnl),
+            "candidate_net_pnl": str(self.candidate_net_pnl),
+            "delta_net_pnl": str(
+                self.candidate_net_pnl - self.actual_net_pnl
+            ),
+            "actual_mean_net_r": (
+                None
+                if self.evaluated == 0
+                else str(
+                    self.actual_net_r / Decimal(self.evaluated)
+                )
+            ),
+            "candidate_mean_net_r_contribution": (
+                None
+                if self.evaluated == 0
+                else str(
+                    self.candidate_net_r / Decimal(self.evaluated)
+                )
+            ),
+        }
 
 
 def _rank_for_trade(
@@ -161,47 +203,12 @@ def _signed_improvement_bps(
         raise ProspectiveTradeQualityError(
             "opening plan side does not match trade direction"
         )
-    signed = reference - price if plan.side is OrderSide.BUY else price - reference
+    signed = (
+        reference - price
+        if plan.side is OrderSide.BUY
+        else price - reference
+    )
     return signed / reference * BPS
-
-
-def _direction_bucket() -> dict[str, object]:
-    return {
-        "evaluated": 0,
-        "admitted": 0,
-        "skipped": 0,
-        "actual_net_pnl": ZERO,
-        "candidate_net_pnl": ZERO,
-        "actual_net_r": ZERO,
-        "candidate_net_r": ZERO,
-    }
-
-
-def _serialize_direction_bucket(bucket: dict[str, object]) -> dict[str, object]:
-    evaluated = int(bucket["evaluated"])
-    actual_net_r = Decimal(bucket["actual_net_r"])
-    candidate_net_r = Decimal(bucket["candidate_net_r"])
-    return {
-        "evaluated": evaluated,
-        "admitted": int(bucket["admitted"]),
-        "skipped": int(bucket["skipped"]),
-        "actual_net_pnl": str(Decimal(bucket["actual_net_pnl"])),
-        "candidate_net_pnl": str(Decimal(bucket["candidate_net_pnl"])),
-        "delta_net_pnl": str(
-            Decimal(bucket["candidate_net_pnl"])
-            - Decimal(bucket["actual_net_pnl"])
-        ),
-        "actual_mean_net_r": (
-            None
-            if evaluated == 0
-            else str(actual_net_r / Decimal(evaluated))
-        ),
-        "candidate_mean_net_r_contribution": (
-            None
-            if evaluated == 0
-            else str(candidate_net_r / Decimal(evaluated))
-        ),
-    }
 
 
 def prospective_trade_quality_summary(
@@ -242,8 +249,8 @@ def prospective_trade_quality_summary(
     candidate_net_r = ZERO
 
     by_direction = {
-        Direction.LONG.value: _direction_bucket(),
-        Direction.SHORT.value: _direction_bucket(),
+        Direction.LONG.value: _DirectionAccumulator(),
+        Direction.SHORT.value: _DirectionAccumulator(),
     }
 
     for trade in prospective:
@@ -263,14 +270,10 @@ def prospective_trade_quality_summary(
             rank_skips += 1
             actual_net += trade.net_pnl
             actual_net_r += trade.net_r
-            direction_bucket["evaluated"] = int(direction_bucket["evaluated"]) + 1
-            direction_bucket["skipped"] = int(direction_bucket["skipped"]) + 1
-            direction_bucket["actual_net_pnl"] = (
-                Decimal(direction_bucket["actual_net_pnl"]) + trade.net_pnl
-            )
-            direction_bucket["actual_net_r"] = (
-                Decimal(direction_bucket["actual_net_r"]) + trade.net_r
-            )
+            direction_bucket.evaluated += 1
+            direction_bucket.skipped += 1
+            direction_bucket.actual_net_pnl += trade.net_pnl
+            direction_bucket.actual_net_r += trade.net_r
             continue
 
         outcome = outcome_by_id.get(trade.trade_id)
@@ -292,48 +295,41 @@ def prospective_trade_quality_summary(
         if plan is None:
             missing_plan += 1
             continue
-        if (
-            plan.market != trade.market
-            or plan.reduce_only
-        ):
+        if plan.market != trade.market or plan.reduce_only:
             lineage_mismatch += 1
             continue
 
         evaluated += 1
         actual_net += trade.net_pnl
         actual_net_r += trade.net_r
-        direction_bucket["evaluated"] = int(direction_bucket["evaluated"]) + 1
-        direction_bucket["actual_net_pnl"] = (
-            Decimal(direction_bucket["actual_net_pnl"]) + trade.net_pnl
-        )
-        direction_bucket["actual_net_r"] = (
-            Decimal(direction_bucket["actual_net_r"]) + trade.net_r
-        )
+        direction_bucket.evaluated += 1
+        direction_bucket.actual_net_pnl += trade.net_pnl
+        direction_bucket.actual_net_r += trade.net_r
 
         if outcome.source == "no_fill":
             skipped += 1
             no_fill_skips += 1
-            direction_bucket["skipped"] = int(direction_bucket["skipped"]) + 1
+            direction_bucket.skipped += 1
             continue
 
-        improvement = _signed_improvement_bps(trade, outcome, plan)
+        improvement = _signed_improvement_bps(
+            trade,
+            outcome,
+            plan,
+        )
         if improvement is None:
             lineage_mismatch += 1
             evaluated -= 1
             actual_net -= trade.net_pnl
             actual_net_r -= trade.net_r
-            direction_bucket["evaluated"] = int(direction_bucket["evaluated"]) - 1
-            direction_bucket["actual_net_pnl"] = (
-                Decimal(direction_bucket["actual_net_pnl"]) - trade.net_pnl
-            )
-            direction_bucket["actual_net_r"] = (
-                Decimal(direction_bucket["actual_net_r"]) - trade.net_r
-            )
+            direction_bucket.evaluated -= 1
+            direction_bucket.actual_net_pnl -= trade.net_pnl
+            direction_bucket.actual_net_r -= trade.net_r
             continue
         if improvement < ZERO:
             skipped += 1
             worse_price_skips += 1
-            direction_bucket["skipped"] = int(direction_bucket["skipped"]) + 1
+            direction_bucket.skipped += 1
             continue
 
         try:
@@ -346,26 +342,20 @@ def prospective_trade_quality_summary(
             evaluated -= 1
             actual_net -= trade.net_pnl
             actual_net_r -= trade.net_r
-            direction_bucket["evaluated"] = int(direction_bucket["evaluated"]) - 1
-            direction_bucket["actual_net_pnl"] = (
-                Decimal(direction_bucket["actual_net_pnl"]) - trade.net_pnl
-            )
-            direction_bucket["actual_net_r"] = (
-                Decimal(direction_bucket["actual_net_r"]) - trade.net_r
-            )
+            direction_bucket.evaluated -= 1
+            direction_bucket.actual_net_pnl -= trade.net_pnl
+            direction_bucket.actual_net_r -= trade.net_r
             continue
 
         admitted += 1
         candidate_net += weighted.candidate_net_pnl_estimate
         candidate_net_r += weighted.candidate_net_r_contribution
-        direction_bucket["admitted"] = int(direction_bucket["admitted"]) + 1
-        direction_bucket["candidate_net_pnl"] = (
-            Decimal(direction_bucket["candidate_net_pnl"])
-            + weighted.candidate_net_pnl_estimate
+        direction_bucket.admitted += 1
+        direction_bucket.candidate_net_pnl += (
+            weighted.candidate_net_pnl_estimate
         )
-        direction_bucket["candidate_net_r"] = (
-            Decimal(direction_bucket["candidate_net_r"])
-            + weighted.candidate_net_r_contribution
+        direction_bucket.candidate_net_r += (
+            weighted.candidate_net_r_contribution
         )
 
     missing_total = max(
@@ -374,8 +364,8 @@ def prospective_trade_quality_summary(
     )
     missing_admitted = max(0, MIN_ADMITTED_TRADES - admitted)
     missing_skipped = max(0, MIN_SKIPPED_TRADES - skipped)
-    long_evaluated = int(by_direction[Direction.LONG.value]["evaluated"])
-    short_evaluated = int(by_direction[Direction.SHORT.value]["evaluated"])
+    long_evaluated = by_direction[Direction.LONG.value].evaluated
+    short_evaluated = by_direction[Direction.SHORT.value].evaluated
     missing_long = max(0, MIN_LONG_TRADES - long_evaluated)
     missing_short = max(0, MIN_SHORT_TRADES - short_evaluated)
 
@@ -420,9 +410,13 @@ def prospective_trade_quality_summary(
         "lineage_mismatches": lineage_mismatch,
         "actual_net_pnl": str(actual_net),
         "candidate_trade_contribution_pnl": str(candidate_net),
-        "delta_trade_contribution_pnl": str(candidate_net - actual_net),
+        "delta_trade_contribution_pnl": str(
+            candidate_net - actual_net
+        ),
         "actual_mean_net_r": (
-            None if evaluated == 0 else str(actual_net_r / Decimal(evaluated))
+            None
+            if evaluated == 0
+            else str(actual_net_r / Decimal(evaluated))
         ),
         "candidate_mean_net_r_contribution": (
             None
@@ -430,13 +424,15 @@ def prospective_trade_quality_summary(
             else str(candidate_net_r / Decimal(evaluated))
         ),
         "by_direction": {
-            direction: _serialize_direction_bucket(bucket)
+            direction: bucket.payload()
             for direction, bucket in by_direction.items()
         },
         "readiness": {
             "ready_for_review": ready,
             "integrity_clean": integrity_clean,
-            "min_prospective_evaluated_trades": MIN_PROSPECTIVE_EVALUATED_TRADES,
+            "min_prospective_evaluated_trades": (
+                MIN_PROSPECTIVE_EVALUATED_TRADES
+            ),
             "min_admitted_trades": MIN_ADMITTED_TRADES,
             "min_skipped_trades": MIN_SKIPPED_TRADES,
             "min_long_trades": MIN_LONG_TRADES,
