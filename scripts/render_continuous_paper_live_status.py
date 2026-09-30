@@ -3362,6 +3362,11 @@ def _prospective_allowed_residual_lines(
             f"{overall.get('loss_pnl_with_mfe_lt_0_25r', '0')}`"
         ),
         (
+            "- partial-traction (0.25-<0.5R MFE) losses / PnL: "
+            f"`{overall.get('losses_with_mfe_0_25_to_lt_0_5r', 0)} / "
+            f"{overall.get('loss_pnl_with_mfe_0_25_to_lt_0_5r', '0')}`"
+        ),
+        (
             "- giveback (>=0.5R MFE) losses / PnL: "
             f"`{overall.get('losses_after_mfe_ge_0_5r', 0)} / "
             f"{overall.get('loss_pnl_after_mfe_ge_0_5r', '0')}`"
