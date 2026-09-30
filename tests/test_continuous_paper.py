@@ -2184,3 +2184,13 @@ def test_delayed_entry_stop_l2_telemetry_fails_open(
     assert payload["promotion_authority"] is False
     assert payload["capture_error"] == "capture degraded"
     assert payload["error"] == "RuntimeError: stop l2 boom"
+
+
+def test_runtime_exposes_cadence_opportunity_learning() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    assert "evaluate_cadence_opportunity_learning(" in source
+    assert "cadence_opportunity_learning_payload(" in source
+    assert '"cadence_opportunity_learning": (' in source
+    assert "self.cadence_shadow.outcomes" in source
