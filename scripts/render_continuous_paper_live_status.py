@@ -3393,6 +3393,79 @@ def _prospective_allowed_residual_lines(
     ]
 
 
+def _prospective_residual_profit_lock_lines(
+    raw: object,
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return ["- residual profit-lock exact-path overlap: `not available`"]
+    error = raw.get("source_error")
+    if error:
+        return [
+            "- residual profit-lock exact-path overlap: `source unavailable`",
+            f"- residual profit-lock source error: `{error}`",
+        ]
+
+    lines = [
+        (
+            "- residual losses / complete-MFE / giveback / deep giveback: "
+            f"`{raw.get('residual_loss_trades', 0)} / "
+            f"{raw.get('complete_mfe_residual_losses', 0)} / "
+            f"{raw.get('giveback_residual_losses', 0)} / "
+            f"{raw.get('deep_giveback_residual_losses', 0)}`"
+        )
+    ]
+    by_rule = raw.get("by_rule", {})
+    if not isinstance(by_rule, dict):
+        by_rule = {}
+    for rule_id in (
+        "breakeven_after_0_5r",
+        "lock_0_5r_after_1r",
+    ):
+        item = by_rule.get(rule_id)
+        if not isinstance(item, dict):
+            continue
+        pnl_robustness = item.get("pnl_robustness", {})
+        r_robustness = item.get("net_r_robustness", {})
+        if not isinstance(pnl_robustness, dict):
+            pnl_robustness = {}
+        if not isinstance(r_robustness, dict):
+            r_robustness = {}
+        lines.extend(
+            [
+                (
+                    f"- {rule_id} exact-path matched / missing / triggered / "
+                    "rescued: "
+                    f"`{item.get('matched_exact_path_losses', 0)} / "
+                    f"{item.get('missing_exact_path_losses', 0)} / "
+                    f"{item.get('triggered_losses', 0)} / "
+                    f"{item.get('rescued_to_nonnegative', 0)}`"
+                ),
+                (
+                    f"- {rule_id} actual / candidate / delta PnL: "
+                    f"`{item.get('actual_net_pnl', '0')} / "
+                    f"{item.get('candidate_net_pnl_estimate', '0')} / "
+                    f"{item.get('delta_net_pnl_estimate', '0')}`"
+                ),
+                (
+                    f"- {rule_id} giveback triggered / delta PnL / delta R: "
+                    f"`{item.get('giveback_triggered_losses', 0)} / "
+                    f"{item.get('giveback_delta_net_pnl_estimate', '0')} / "
+                    f"{item.get('giveback_delta_net_r_estimate', '0')}`"
+                ),
+                (
+                    f"- {rule_id} robust after removing any one loss PnL / R: "
+                    f"`{pnl_robustness.get('positive_after_removing_any_one_loss', False)} / "
+                    f"{r_robustness.get('positive_after_removing_any_one_loss', False)}`"
+                ),
+            ]
+        )
+    lines.append(
+        "_Exact observed-path diagnostic only; it does not change the "
+        "combined-filter or profit-lock readiness gates._"
+    )
+    return lines
+
+
 def _prospective_entry_filter_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -4116,6 +4189,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_allowed_residual_lines(
             raw.get("allowed_residual")
+        )
+    )
+    lines.extend(
+        _prospective_residual_profit_lock_lines(
+            raw.get("residual_profit_lock")
         )
     )
     lines.extend(
