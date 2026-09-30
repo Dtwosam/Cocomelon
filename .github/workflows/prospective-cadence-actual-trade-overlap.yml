@@ -1,0 +1,483 @@
+name: Prospective Cadence Actual Trade Overlap
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/prospective-cadence-actual-trade-overlap.yml"
+      - "scripts/update_prospective_trade_overlap_ledger.py"
+      - "src/cocomelon/research/prospective_trade_overlap_ledger.py"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+      - "Prospective Cadence Prediction Ledger"
+    types: [completed]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-cadence-actual-trade-overlap
+  cancel-in-progress: false
+
+jobs:
+  overlap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      STATUS_ISSUE: "704"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve latest clean prediction ledger
+        id: prediction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/prediction
+          runs_json="$(
+            gh api -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-prediction-ledger.yml/runs?status=success&per_page=100"
+          )"
+          selected="$(
+            jq -r '
+              .workflow_runs
+              | sort_by(.updated_at)
+              | reverse
+              | .[]
+              | [.id, .run_attempt]
+              | @tsv
+            ' <<<"$runs_json" |
+            while IFS=$'\t' read -r run_id run_attempt; do
+              artifacts="$(
+                gh api -H "Accept: application/vnd.github+json"                   "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+              )"
+              line="$(
+                jq -r '
+                  .artifacts
+                  | map(
+                      select(
+                        (.expired | not)
+                        and (
+                          .name
+                          | startswith("cadence-microstructure-prediction-ledger-")
+                        )
+                      )
+                    )
+                  | if length == 1
+                    then "\(.[0].id)\t\(.[0].name)\t\(.[0].digest)"
+                    else ""
+                    end
+                ' <<<"$artifacts"
+              )"
+              if [[ -n "$line" ]]; then
+                printf '%s\t%s\t%s\n' "$run_id" "$run_attempt" "$line"
+                break
+              fi
+            done
+          )"
+          if [[ -z "$selected" ]]; then
+            echo "No clean prediction ledger is available yet." >&2
+            exit 1
+          fi
+          IFS=$'\t' read -r workflow_run_id run_attempt artifact_id artifact_name artifact_digest <<<"$selected"
+          gh api -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/prediction.zip
+          unzip -q /tmp/prediction.zip -d /tmp/prediction
+          ledger_path="$(
+            find /tmp/prediction -type f               -name 'cadence-microstructure-prediction-ledger.json'               -print -quit
+          )"
+          test -n "$ledger_path"
+          test -s "$ledger_path"
+          cp "$ledger_path" /tmp/prediction-ledger.json
+          echo "workflow_run_id=$workflow_run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve latest compact paper learning source
+        id: paper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs_json="$(
+            gh api -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=100"
+          )"
+          selected="$(
+            jq -r '
+              .workflow_runs
+              | map(
+                  select(
+                    .conclusion == "success"
+                    and .head_branch == "main"
+                    and (
+                      .event == "push"
+                      or .event == "workflow_dispatch"
+                      or .event == "schedule"
+                    )
+                  )
+                )
+              | sort_by(.created_at, .id)
+              | reverse
+              | .[]
+              | [.id, .run_attempt]
+              | @tsv
+            ' <<<"$runs_json" |
+            while IFS=$'\t' read -r run_id run_attempt; do
+              expected="continuous-paper-learning-source-$run_id-$run_attempt"
+              artifacts="$(
+                gh api -H "Accept: application/vnd.github+json"                   "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+              )"
+              line="$(
+                jq -r --arg expected "$expected" '
+                  .artifacts
+                  | map(
+                      select(
+                        (.expired | not)
+                        and .name == $expected
+                        and (.digest | startswith("sha256:"))
+                      )
+                    )
+                  | if length == 1
+                    then "\(.[0].id)\t\(.[0].name)\t\(.[0].digest)"
+                    else ""
+                    end
+                ' <<<"$artifacts"
+              )"
+              if [[ -n "$line" ]]; then
+                printf '%s\t%s\t%s\n' "$run_id" "$run_attempt" "$line"
+                break
+              fi
+            done
+          )"
+          if [[ -z "$selected" ]]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          IFS=$'\t' read -r run_id run_attempt artifact_id artifact_name artifact_digest <<<"$selected"
+          mkdir -p /tmp/paper
+          gh api -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"             > /tmp/paper.zip
+          unzip -q /tmp/paper.zip -d /tmp/paper
+          journal_path="$(
+            find /tmp/paper -type f -name 'journal.sqlite3' -print -quit
+          )"
+          test -n "$journal_path"
+          test -s "$journal_path"
+          cp "$journal_path" /tmp/journal.sqlite3
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting status
+        if: steps.paper.outputs.available != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREDICTION_RUN_ID: ${{ steps.prediction.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/status.md <<EOF
+          ## Prospective cadence actual-trade overlap
+
+          **Status:** collecting — waiting for first compact paper learning source
+
+          - latest prediction ledger workflow run: `$PREDICTION_RUN_ID`
+          - exact join key: `strategy_decision_id == prediction decision_id`
+          - readiness authority: `none`
+          - execution authority: `false`
+          - promotion authority: `false`
+
+          No fuzzy or historical backfill match is attempted. Overlap evidence begins only after a successful paper worker publishes the compact journal source.
+
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE"             -f body="$(cat /tmp/status.md)"
+
+      - name: Restore previous overlap ledger
+        id: previous
+        if: steps.paper.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-cadence-actual-trade-overlap.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r --arg current "$CURRENT_RUN_ID" '
+              .workflow_runs
+              | map(select((.id | tostring) != $current))
+              | sort_by(.updated_at)
+              | reverse
+              | .[].id
+            ' <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts="$(
+              gh api -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_id="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and .name == "cadence-prospective-actual-trade-overlap"
+                    )
+                  )
+                | if length == 1 then .[0].id else "" end
+              ' <<<"$artifacts"
+            )"
+            if [[ -z "$artifact_id" ]]; then
+              continue
+            fi
+            rm -rf /tmp/previous /tmp/previous.zip
+            mkdir -p /tmp/previous
+            gh api -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous.zip
+            unzip -q /tmp/previous.zip -d /tmp/previous
+            candidate="$(
+              find /tmp/previous -type f                 -name 'cadence-prospective-actual-trade-overlap.json'                 -print -quit
+            )"
+            if [[ -n "$candidate" && -s "$candidate" ]]; then
+              cp "$candidate" /tmp/previous-overlap.json
+              previous_path="/tmp/previous-overlap.json"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only actual-trade overlap
+        id: ledger
+        if: steps.paper.outputs.available == 'true'
+        env:
+          PAPER_RUN_ID: ${{ steps.paper.outputs.run_id }}
+          PAPER_RUN_ATTEMPT: ${{ steps.paper.outputs.run_attempt }}
+          LEARNING_ARTIFACT_NAME: ${{ steps.paper.outputs.artifact_name }}
+          LEARNING_ARTIFACT_DIGEST: ${{ steps.paper.outputs.artifact_digest }}
+          PREVIOUS_PATH: ${{ steps.previous.outputs.path }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          args=(
+            /tmp/prediction-ledger.json
+            /tmp/journal.sqlite3
+            --paper-run-id "$PAPER_RUN_ID"
+            --paper-run-attempt "$PAPER_RUN_ATTEMPT"
+            --learning-artifact-name "$LEARNING_ARTIFACT_NAME"
+            --learning-artifact-digest "$LEARNING_ARTIFACT_DIGEST"
+            --json-out cadence-prospective-actual-trade-overlap.json
+          )
+          if [[ -n "$PREVIOUS_PATH" ]]; then
+            args+=(--previous "$PREVIOUS_PATH")
+          fi
+          set +e
+          python scripts/update_prospective_trade_overlap_ledger.py             "${args[@]}"             > /tmp/overlap.stdout             2> /tmp/overlap.error
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [[ "$code" -ne 0 ]]; then
+            cat /tmp/overlap.error >&2
+          fi
+
+      - name: Publish blocked overlap status
+        if: steps.paper.outputs.available == 'true' && steps.ledger.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAPER_RUN_ID: ${{ steps.paper.outputs.run_id }}
+          PREDICTION_RUN_ID: ${{ steps.prediction.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          error="$(cat /tmp/overlap.error 2>/dev/null || true)"
+          if [[ -z "$error" ]]; then
+            error="unknown append-only overlap validation failure"
+          fi
+          cat > /tmp/status.md <<EOF
+          ## Prospective cadence actual-trade overlap
+
+          **Status:** BLOCKED
+
+          - source paper run: `$PAPER_RUN_ID`
+          - prediction ledger workflow run: `$PREDICTION_RUN_ID`
+          - exact join key: `strategy_decision_id == prediction decision_id`
+
+          ### Failure
+
+          `$error`
+
+          No new overlap ledger was accepted. Prior immutable evidence remains authoritative.
+
+          **Execution authority:** `false`  
+          **Promotion authority:** `false`  
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE"             -f body="$(cat /tmp/status.md)"
+
+      - name: Fail closed on overlap drift
+        if: steps.paper.outputs.available == 'true' && steps.ledger.outputs.exit_code != '0'
+        run: |
+          echo "Prospective actual-trade overlap validation failed." >&2
+          exit 1
+
+      - name: Publish clean overlap status
+        if: steps.paper.outputs.available == 'true' && steps.ledger.outputs.exit_code == '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAPER_RUN_ID: ${{ steps.paper.outputs.run_id }}
+          PAPER_RUN_ATTEMPT: ${{ steps.paper.outputs.run_attempt }}
+          PREDICTION_RUN_ID: ${{ steps.prediction.outputs.workflow_run_id }}
+          PREVIOUS_LEDGER_RUN_ID: ${{ steps.previous.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path(
+                  "cadence-prospective-actual-trade-overlap.json"
+              ).read_text(encoding="utf-8")
+          )
+          overall = ledger["summary"]["overall"]
+          by_direction = ledger["summary"]["by_direction"]
+          lines = [
+              "## Prospective cadence actual-trade overlap",
+              "",
+              "**Status:** append-only clean / diagnostic only",
+              "",
+              f"- source paper run / attempt: `{os.environ['PAPER_RUN_ID']} / {os.environ['PAPER_RUN_ATTEMPT']}`",
+              f"- prediction ledger workflow run: `{os.environ['PREDICTION_RUN_ID']}`",
+              (
+                  "- previous overlap workflow run: "
+                  f"`{os.environ.get('PREVIOUS_LEDGER_RUN_ID') or 'none'}`"
+              ),
+              f"- matched closed paper trades: `{overall['matched_closed_trades']}`",
+              (
+                  "- candidate admitted / blocked: "
+                  f"`{overall['candidate_admitted_trades']} / "
+                  f"{overall['candidate_blocked_trades']}`"
+              ),
+              (
+                  "- admitted winners / losers: "
+                  f"`{overall['admitted_winners']} / {overall['admitted_losers']}`"
+              ),
+              (
+                  "- blocked winners / losers: "
+                  f"`{overall['blocked_winners']} / {overall['blocked_losers']}`"
+              ),
+              (
+                  "- blocked loser PnL avoided / winner PnL sacrificed: "
+                  f"`{overall['blocked_loser_pnl_avoided']} / "
+                  f"{overall['blocked_winner_pnl_sacrificed']}`"
+              ),
+              (
+                  "- loss avoided minus win sacrificed: "
+                  f"`{overall['blocked_loss_minus_sacrificed_win']}`"
+              ),
+              (
+                  "- actual / candidate matched PnL / delta: "
+                  f"`{overall['actual_net_pnl_sum']} / "
+                  f"{overall['candidate_matched_net_pnl_sum']} / "
+                  f"{overall['candidate_minus_actual_net_pnl_sum']}`"
+              ),
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              "",
+              "### Direction",
+              "",
+          ]
+          for direction in ("long", "short"):
+              item = by_direction[direction]
+              lines.append(
+                  "- {direction}: matched={matched} admitted={admitted} "
+                  "blocked_losers={blocked_losers} blocked_winners={blocked_winners} "
+                  "actual={actual} candidate={candidate} delta={delta}".format(
+                      direction=direction.upper(),
+                      matched=item["matched_closed_trades"],
+                      admitted=item["candidate_admitted_trades"],
+                      blocked_losers=item["blocked_losers"],
+                      blocked_winners=item["blocked_winners"],
+                      actual=item["actual_net_pnl_sum"],
+                      candidate=item["candidate_matched_net_pnl_sum"],
+                      delta=item["candidate_minus_actual_net_pnl_sum"],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Latest exact matches",
+                  "",
+                  (
+                      "| Market | Side | Candidate | Actual outcome | "
+                      "Actual PnL | Delta vs actual | Decision |"
+                  ),
+                  "| --- | --- | --- | --- | ---: | ---: | --- |",
+              ]
+          )
+          for row in ledger["rows"][-10:]:
+              lines.append(
+                  "| {market} | {direction} | {candidate} | {outcome} | "
+                  "{pnl} | {delta} | {decision} |".format(
+                      market=row["market"],
+                      direction=row["direction"],
+                      candidate=(
+                          "admit" if row["candidate_admitted"] else "block"
+                      ),
+                      outcome=row["actual_outcome"],
+                      pnl=row["actual_net_pnl"],
+                      delta=row["candidate_minus_actual_net_pnl"],
+                      decision=row["decision_id"][:16],
+                  )
+              )
+          if not ledger["rows"]:
+              lines.append("| _none yet_ | - | - | - | - | - | - |")
+          lines.extend(
+              [
+                  "",
+                  (
+                      "This is descriptive future overlap evidence only. "
+                      "It does not change the frozen readiness gate."
+                  ),
+                  "",
+                  "**Execution authority:** `false`  ",
+                  "**Promotion authority:** `false`  ",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$STATUS_ISSUE"             -f body="$(cat /tmp/status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.paper.outputs.available == 'true' && steps.ledger.outputs.exit_code == '0'
+        with:
+          name: cadence-prospective-actual-trade-overlap
+          path: cadence-prospective-actual-trade-overlap.json
+          if-no-files-found: error
+          retention-days: 90
