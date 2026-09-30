@@ -854,9 +854,6 @@ def test_profit_lock_counterfactual_telemetry_fails_open(
 def test_combined_filter_profit_lock_overlap_fails_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_profit_lock(*_args: object) -> object:
-        raise RuntimeError("path boom")
-
     def combined(*_args: object, **_kwargs: object) -> dict[str, object]:
         return {
             "residual_profit_lock": {
@@ -871,10 +868,6 @@ def test_combined_filter_profit_lock_overlap_fails_open(
             "changes_readiness_gate": False,
         }
 
-    monkeypatch.setattr(
-        "cocomelon.continuous_paper.evaluate_profit_lock_state",
-        fail_profit_lock,
-    )
     monkeypatch.setattr(
         "cocomelon.continuous_paper."
         "evaluate_prospective_combined_entry_filter",
@@ -893,7 +886,7 @@ def test_combined_filter_profit_lock_overlap_fails_open(
         SimpleNamespace(),  # type: ignore[arg-type]
         SimpleNamespace(),  # type: ignore[arg-type]
         SimpleNamespace(),  # type: ignore[arg-type]
-        SimpleNamespace(),  # type: ignore[arg-type]
+        profit_lock_error="RuntimeError: path boom",
         restore_error=None,
     )
 
