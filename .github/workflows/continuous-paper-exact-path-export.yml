@@ -166,7 +166,7 @@ jobs:
           rm -rf exact-path-export
           mkdir -p exact-path-export
 
-          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             | python scripts/stream_zip_member.py continuous-paper-state.tar             | tar -xf - -C exact-path-export                 ./trade-paths                 ./session-summary.json
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             | python scripts/stream_zip_member.py continuous-paper-state.tar             | tar -xf - -C exact-path-export                 ./trade-paths/records                 ./session-summary.json
 
           test -f exact-path-export/session-summary.json
           test -d exact-path-export/trade-paths/records
