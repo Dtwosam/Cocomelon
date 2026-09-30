@@ -386,6 +386,11 @@ jobs:
                       f"`{str(timing['ready_for_review']).lower()}`"
                   ),
                   (
+                      "- sample complete / economics pass: "
+                      f"`{str(timing['sample_complete']).lower()} / "
+                      f"{str(timing['economics_pass']).lower()}`"
+                  ),
+                  (
                       "- integrity clean: "
                       f"`{str(timing['integrity_clean']).lower()}`"
                   ),
@@ -410,12 +415,49 @@ jobs:
                       f"{timing['selected_minus_60s_pnl']}`"
                   ),
                   (
+                      "- LONG selected / vs actual: "
+                      f"`{timing['by_direction']['long']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['long']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- SHORT selected / vs actual: "
+                      f"`{timing['by_direction']['short']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['short']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- positive vs 60s after removing any one market: "
+                      f"`{str(timing['market_robustness']['positive_vs_60s_after_any_single_market_removed']).lower()}`"
+                  ),
+                  (
                       "- missing closed / paired / LONG / SHORT: "
                       f"`{timing['missing']['prospective_closed_trades']} / "
                       f"{timing['missing']['paired_evaluable_trades']} / "
                       f"{timing['missing']['long_rows']} / "
                       f"{timing['missing']['short_rows']}`"
                   ),
+              ]
+          )
+          lines.extend(
+              [
+                  "",
+                  "#### Timing chronological robustness",
+                  "",
+              ]
+          )
+          for block in timing["temporal_blocks"]:
+              lines.append(
+                  "- block {block}: rows=`{rows}` selected=`{selected}` "
+                  "vs_actual=`{actual}` vs_60s=`{base}` passes=`{passes}`".format(
+                      block=block["block_index"],
+                      rows=block["rows"],
+                      selected=block["selected_net_pnl"],
+                      actual=block["selected_minus_actual_pnl"],
+                      base=block["selected_minus_60s_pnl"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
                   "",
                   "### Authority",
                   "",
