@@ -1,0 +1,560 @@
+name: Prospective Side-Conditioned Timing Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-side-conditioned-timing-ledger.yml"
+      - "tests/test_prospective_timing_ledger_workflow.py"
+  workflow_run:
+    workflows:
+      - Prospective Side-Conditioned Timing Audit
+    types:
+      - completed
+  schedule:
+    - cron: "53 * * * *"
+  workflow_dispatch:
+    inputs:
+      source_timing_audit_run_id:
+        description: Completed prospective timing-audit run ID
+        required: true
+        type: string
+      source_timing_audit_run_attempt:
+        description: Completed timing-audit run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-side-conditioned-timing-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TIMING_LEDGER_SHA: c5861658158014b359d9e00a67be96f8ba42275e
+      TIMING_LEDGER_ISSUE: "692"
+
+    steps:
+      - name: Resolve source timing-audit run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          INPUT_RUN_ID: ${{ inputs.source_timing_audit_run_id }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_timing_audit_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            timing_audit_run_id="$INPUT_RUN_ID"
+            timing_audit_run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          elif [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            timing_audit_run_id="$EVENT_RUN_ID"
+            timing_audit_run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          else
+            latest_success="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-side-conditioned-timing.yml/runs?status=success&per_page=100" |
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null
+                  then ""
+                  else [.id, .run_attempt] | @tsv
+                  end
+              '
+            )"
+            if [[ -n "$latest_success" ]]; then
+              IFS=$'\t' read -r timing_audit_run_id timing_audit_run_attempt <<<"$latest_success"
+            else
+              timing_audit_run_id=""
+              timing_audit_run_attempt=""
+            fi
+            resolution_mode="latest_success_bootstrap"
+          fi
+          if [[ -z "$timing_audit_run_id" || -z "$timing_audit_run_attempt" ]]; then
+            echo "Missing prospective timing-audit run identity." >&2
+            exit 1
+          fi
+          echo "timing_audit_run_id=$timing_audit_run_id" >> "$GITHUB_OUTPUT"
+          echo "timing_audit_run_attempt=$timing_audit_run_attempt" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve exact source paper run
+        id: paper
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIMING_AUDIT_RUN_ID: ${{ steps.source.outputs.timing_audit_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$TIMING_AUDIT_RUN_ID/artifacts?per_page=100"
+          )"
+          artifact_name="$(
+            jq -r '
+              .artifacts
+              | map(
+                  select(
+                    (.expired | not)
+                    and (
+                      .name
+                      | startswith(
+                          "prospective-side-conditioned-timing-"
+                        )
+                    )
+                  )
+                )
+              | if length == 1
+                then .[0].name
+                else ""
+                end
+            ' <<<"$artifacts_json"
+          )"
+          if [[ -z "$artifact_name" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          identity="${artifact_name#prospective-side-conditioned-timing-}"
+          paper_run_id="${identity%-*}"
+          paper_run_attempt="${identity##*-}"
+          if [[ -z "$paper_run_id" || -z "$paper_run_attempt" ]]; then
+            echo "Malformed timing-audit artifact name: $artifact_name" >&2
+            exit 1
+          fi
+          case "$paper_run_id:$paper_run_attempt" in
+            *[!0-9:]*)
+              echo "Timing artifact paper identity is not numeric." >&2
+              exit 1
+              ;;
+          esac
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "paper_run_id=$paper_run_id" >> "$GITHUB_OUTPUT"
+          echo "paper_run_attempt=$paper_run_attempt" >> "$GITHUB_OUTPUT"
+          echo "timing_audit_artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: ${{ steps.paper.outputs.ready == 'true' }}
+        with:
+          ref: ${{ env.TIMING_LEDGER_SHA }}
+
+      - uses: actions/setup-python@v7
+        if: ${{ steps.paper.outputs.ready == 'true' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e ".[dev]"
+        if: ${{ steps.paper.outputs.ready == 'true' }}
+
+      - name: Resolve compact timing state
+        id: timing_state
+        if: ${{ steps.paper.outputs.ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAPER_RUN_ID: ${{ steps.paper.outputs.paper_run_id }}
+          PAPER_RUN_ATTEMPT: ${{ steps.paper.outputs.paper_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$PAPER_RUN_ID/artifacts?per_page=100"
+          )"
+          artifact_name="continuous-paper-side-conditioned-timing-$PAPER_RUN_ID-$PAPER_RUN_ATTEMPT"
+          artifact_line="$(
+            jq -r \
+              --arg name "$artifact_name" \
+              '.artifacts
+               | map(select(.name == $name and (.expired | not)))
+               | if length == 1
+                 then [.[0].id, .[0].name] | @tsv
+                 else ""
+                 end' \
+              <<<"$artifacts_json"
+          )"
+          if [[ -z "$artifact_line" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          IFS=$'\t' read -r artifact_id resolved_name <<<"$artifact_line"
+          mkdir -p /tmp/timing-state
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > /tmp/timing-state.zip
+          unzip -q /tmp/timing-state.zip -d /tmp/timing-state
+          candidate_path="$(
+            find /tmp/timing-state \
+              -type f \
+              -name prospective-side-conditioned-delay-state.json \
+              -print -quit
+          )"
+          if [[ -z "$candidate_path" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          state_root="$(dirname "$candidate_path")"
+          for name in \
+            journal.sqlite3 \
+            delayed-entry-execution-shadow-state.json \
+            delayed-entry-120s-execution-shadow-state.json
+          do
+            test -s "$state_root/$name"
+          done
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "state_root=$state_root" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$resolved_name" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous timing ledger
+        id: previous
+        if: ${{ steps.timing_state.outputs.ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-side-conditioned-timing-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r \
+              --arg current "$CURRENT_RUN_ID" \
+              '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id' \
+              <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith(
+                            "prospective-side-conditioned-timing-ledger-"
+                          )
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [[ -z "$artifact_line" ]]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-timing-ledger
+            mkdir -p /tmp/previous-timing-ledger
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+              > /tmp/previous-timing-ledger.zip
+            unzip -q /tmp/previous-timing-ledger.zip \
+              -d /tmp/previous-timing-ledger
+            candidate="$(
+              find /tmp/previous-timing-ledger \
+                -type f \
+                -name 'prospective-side-conditioned-timing-ledger.json' \
+                -print -quit
+            )"
+            if [[ -n "$candidate" && -s "$candidate" ]]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only timing ledger
+        id: ledger
+        if: ${{ steps.timing_state.outputs.ready == 'true' }}
+        continue-on-error: true
+        env:
+          STATE_ROOT: ${{ steps.timing_state.outputs.state_root }}
+          PAPER_RUN_ID: ${{ steps.paper.outputs.paper_run_id }}
+          PAPER_RUN_ATTEMPT: ${{ steps.paper.outputs.paper_run_attempt }}
+          TIMING_ARTIFACT_NAME: ${{ steps.timing_state.outputs.artifact_name }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+        shell: bash
+        run: |
+          set +e
+          args=(
+            "$STATE_ROOT"
+            --source-paper-run-id "$PAPER_RUN_ID"
+            --source-paper-run-attempt "$PAPER_RUN_ATTEMPT"
+            --source-timing-artifact-name "$TIMING_ARTIFACT_NAME"
+            --json-out prospective-side-conditioned-timing-ledger.json
+          )
+          if [[ -n "$PREVIOUS_LEDGER_PATH" ]]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_prospective_side_conditioned_timing_ledger.py \
+            "${args[@]}" \
+            > /tmp/timing-ledger.stdout.json \
+            2> /tmp/timing-ledger.error
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            cmp \
+              prospective-side-conditioned-timing-ledger.json \
+              /tmp/timing-ledger.stdout.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/timing-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked timing-ledger status
+        if: >-
+          steps.paper.outputs.ready != 'true' ||
+          steps.timing_state.outputs.ready != 'true' ||
+          steps.ledger.outputs.clean != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIMING_AUDIT_RUN_ID: ${{ steps.source.outputs.timing_audit_run_id }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PAPER_READY: ${{ steps.paper.outputs.ready }}
+          STATE_READY: ${{ steps.timing_state.outputs.ready }}
+          LEDGER_CLEAN: ${{ steps.ledger.outputs.clean }}
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          error = os.environ.get("ERROR_TEXT", "").strip()
+          if not error:
+              if os.environ.get("PAPER_READY") != "true":
+                  error = "source timing audit has no evaluable artifact"
+              elif os.environ.get("STATE_READY") != "true":
+                  error = "exact compact timing state is unavailable"
+              else:
+                  error = "append-only timing ledger failed"
+          lines = [
+              "## Prospective side-conditioned timing outcome ledger",
+              "",
+              "**Status:** BLOCKED",
+              "",
+              f"- ledger extractor SHA: `{os.environ['TIMING_LEDGER_SHA']}`",
+              f"- source timing-audit run: `{os.environ['TIMING_AUDIT_RUN_ID']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- error: `{error}`",
+              "",
+              "No timing-ledger evidence is published from this run.",
+              "",
+              "**No paper orders are changed by this control plane.**",
+              "",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/timing-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$TIMING_LEDGER_ISSUE" \
+            -f body="$(cat /tmp/timing-ledger-status.md)"
+
+      - name: Fail closed on timing-ledger drift
+        if: >-
+          steps.paper.outputs.ready == 'true' &&
+          steps.timing_state.outputs.ready == 'true' &&
+          steps.ledger.outputs.clean != 'true'
+        shell: bash
+        run: |
+          echo "Prospective timing append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean timing-ledger status
+        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIMING_AUDIT_RUN_ID: ${{ steps.source.outputs.timing_audit_run_id }}
+          TIMING_AUDIT_RUN_ATTEMPT: ${{ steps.source.outputs.timing_audit_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PAPER_RUN_ID: ${{ steps.paper.outputs.paper_run_id }}
+          PAPER_RUN_ATTEMPT: ${{ steps.paper.outputs.paper_run_attempt }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from decimal import Decimal
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path(
+                  "prospective-side-conditioned-timing-ledger.json"
+              ).read_text(encoding="utf-8")
+          )
+          rows = ledger["rows"]
+
+          def dt(value):
+              if value is None:
+                  return "none"
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          def total(field):
+              return sum(
+                  (Decimal(row[field]) for row in rows),
+                  Decimal("0"),
+              )
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          diagnostics = ledger.get("latest_diagnostics", {})
+          lines = [
+              "## Prospective side-conditioned timing outcome ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- ledger extractor SHA: `{os.environ['TIMING_LEDGER_SHA']}`",
+              f"- source timing-audit run: `{os.environ['TIMING_AUDIT_RUN_ID']}`",
+              f"- source timing-audit attempt: `{os.environ['TIMING_AUDIT_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- source paper run: `{os.environ['PAPER_RUN_ID']}`",
+              f"- source paper attempt: `{os.environ['PAPER_RUN_ATTEMPT']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- candidate: `{ledger['candidate_id']}`",
+              f"- prospective start: `{dt(ledger['started_at_ms'])}`",
+              f"- rows / previous / newly appended: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']}`",
+              f"- first / last close: `{dt(ledger['first_closed_at_ms'])} / {dt(ledger['last_closed_at_ms'])}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              f"- selected net / delta vs actual / delta vs 60s: `{total('selected_net_pnl')} / {total('selected_minus_actual_pnl')} / {total('selected_minus_60s_pnl')}`",
+              f"- prospective closed / paired evaluable: `{diagnostics.get('prospective_closed_trades', 0)} / {diagnostics.get('paired_evaluable_trades', 0)}`",
+              "",
+              "### Direction",
+              "",
+          ]
+          for side in ("long", "short"):
+              items = [row for row in rows if row["direction"] == side]
+              selected = sum(
+                  (Decimal(row["selected_net_pnl"]) for row in items),
+                  Decimal("0"),
+              )
+              delta_actual = sum(
+                  (
+                      Decimal(row["selected_minus_actual_pnl"])
+                      for row in items
+                  ),
+                  Decimal("0"),
+              )
+              lines.append(
+                  f"- {side.upper()}: rows=`{len(items)}` "
+                  f"selected=`{selected}` "
+                  f"vs_actual=`{delta_actual}`"
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Latest immutable timing rows",
+                  "",
+                  "| Closed | Market | Side | Actual | 60s | 120s | Selected delay | Selected | Δ actual | Δ 60s | Fill | Trade |",
+                  "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+              ]
+          )
+          for row in rows[-8:]:
+              lines.append(
+                  "| {closed} | {market} | {side} | {actual} | "
+                  "{base} | {challenge} | {delay} | {selected} | "
+                  "{delta_actual} | {delta_60} | {fill} | {trade} |".format(
+                      closed=dt(row["closed_at_ms"]),
+                      market=row["market"],
+                      side=row["direction"],
+                      actual=row["actual_net_pnl"],
+                      base=row["base_60s_net_pnl"],
+                      challenge=row["challenger_120s_net_pnl"],
+                      delay=row["selected_delay_ms"],
+                      selected=row["selected_net_pnl"],
+                      delta_actual=row["selected_minus_actual_pnl"],
+                      delta_60=row["selected_minus_60s_pnl"],
+                      fill=row["selected_fill_fraction"],
+                      trade=str(row["trade_id"])[:16],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "Every previously published timing row must remain "
+                      "exactly identical in actual, 60s, 120s, selected "
+                      "delay/PnL, fill fraction, and deltas."
+                  ),
+                  "",
+                  "**No paper orders are changed by this control plane.**",
+                  "",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/timing-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$TIMING_LEDGER_ISSUE" \
+            -f body="$(cat /tmp/timing-ledger-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        with:
+          name: prospective-side-conditioned-timing-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-side-conditioned-timing-ledger.json
+          if-no-files-found: error
+          retention-days: 90
