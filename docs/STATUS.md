@@ -2945,3 +2945,16 @@ If the source campaign does not expose both compact cadence and feature artifact
 This publication path is research-only. It does not write Issue #469, does not dispatch trading workflows, and does not modify paper execution, strategy, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen prospective cadence baseline comparator — 2026-09-30
+
+A second future-only research model is frozen as a comparator for the richer microstructure challenger.
+
+`cadence_fixed_shallow_tree_v1` uses the original 10-feature cadence tree: direction, lead strategy, score, 5m/15m/1h returns, funding, open interest, trend regime, and volatility regime.
+
+It uses the **same immutable 652 training outcomes and feature records**, the same training digest `c1baa8a730980402d02b80f960afa249e6cb653392c64b887074cd9efb2034e4`, the same 15m→1h surface, the same `2026-09-30T14:00:00Z` prospective boundary, the same shallow-tree capacity, and the same side-neutral/stability qualification gates as the microstructure challenger.
+
+This comparator was specified without inspecting any settled post-freeze 1h outcome. Its purpose is to measure the **incremental value of the added microstructure/tradeability features** prospectively, not to create another promotion path. No model receives execution or promotion authority from this comparison.
+
+**LIVE TRADING: DISABLED.**
