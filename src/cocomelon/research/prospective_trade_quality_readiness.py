@@ -24,6 +24,7 @@ from cocomelon.research.prospective_timing_ledger import (
 )
 
 ZERO = Decimal("0")
+MIN_POSITIVE_INCREMENTAL_BLOCKS = 3
 
 
 class ProspectiveTradeQualityReadinessError(RuntimeError):
@@ -295,6 +296,63 @@ def _cadence_readiness(
     }
 
 
+def _comparison_blocks(
+    rows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    blocks: list[dict[str, object]] = []
+    for index in range(DEFAULT_CONFIG.stability_blocks):
+        start = index * len(rows) // DEFAULT_CONFIG.stability_blocks
+        end = (index + 1) * len(rows) // DEFAULT_CONFIG.stability_blocks
+        block = rows[start:end]
+        micro_only = tuple(
+            row
+            for row in block
+            if row["microstructure_admitted"] is True
+            and row["baseline_admitted"] is False
+        )
+        baseline_only = tuple(
+            row
+            for row in block
+            if row["microstructure_admitted"] is False
+            and row["baseline_admitted"] is True
+        )
+
+        def realized_sum(
+            items: tuple[dict[str, object], ...],
+        ) -> Decimal:
+            return sum(
+                (
+                    _decimal(
+                        row["realized_net_return"],
+                        field="realized_net_return",
+                    )
+                    for row in items
+                ),
+                ZERO,
+            )
+
+        micro_only_sum = realized_sum(micro_only)
+        baseline_only_sum = realized_sum(baseline_only)
+        delta = micro_only_sum - baseline_only_sum
+        blocks.append(
+            {
+                "block_index": index,
+                "paired_rows": len(block),
+                "microstructure_only_rows": len(micro_only),
+                "baseline_only_rows": len(baseline_only),
+                "microstructure_only_realized_sum": str(
+                    micro_only_sum
+                ),
+                "baseline_only_realized_sum": str(
+                    baseline_only_sum
+                ),
+                "microstructure_minus_baseline_sum": str(delta),
+                "passes": delta > ZERO,
+            }
+        )
+    return tuple(blocks)
+
+
 def _comparison_summary(
     comparison: dict[str, object],
 ) -> dict[str, object]:
@@ -342,27 +400,40 @@ def _comparison_summary(
     )
     micro_sum = realized_sum(micro)
     baseline_sum = realized_sum(baseline)
+    incremental_sum = micro_sum - baseline_sum
+    blocks = _comparison_blocks(rows)
+    positive_blocks = sum(
+        1 for block in blocks if block["passes"] is True
+    )
+    sample_complete = len(rows) >= DEFAULT_CONFIG.validation_rows
+    complexity_justified = (
+        sample_complete
+        and incremental_sum > ZERO
+        and positive_blocks >= MIN_POSITIVE_INCREMENTAL_BLOCKS
+    )
     return {
         "paired_rows": len(rows),
         "required_paired_rows": DEFAULT_CONFIG.validation_rows,
-        "paired_sample_complete": (
-            len(rows) >= DEFAULT_CONFIG.validation_rows
-        ),
+        "paired_sample_complete": sample_complete,
         "both_admit": len(both),
         "microstructure_only": len(micro_only),
         "baseline_only": len(baseline_only),
         "neither": neither,
         "microstructure_admitted_sum": str(micro_sum),
         "baseline_admitted_sum": str(baseline_sum),
-        "microstructure_minus_baseline_sum": str(
-            micro_sum - baseline_sum
-        ),
+        "microstructure_minus_baseline_sum": str(incremental_sum),
         "microstructure_only_realized_sum": str(
             realized_sum(micro_only)
         ),
         "baseline_only_realized_sum": str(
             realized_sum(baseline_only)
         ),
+        "incremental_stability_blocks": blocks,
+        "positive_incremental_blocks": positive_blocks,
+        "required_positive_incremental_blocks": (
+            MIN_POSITIVE_INCREMENTAL_BLOCKS
+        ),
+        "complexity_justified": complexity_justified,
         "missing_paired_rows": max(
             0,
             DEFAULT_CONFIG.validation_rows - len(rows),
@@ -519,6 +590,15 @@ def prospective_trade_quality_readiness(
     )
     cadence = _cadence_readiness(cadence_rows)
     comparison_summary = _comparison_summary(comparison)
+    standalone_cadence_ready = cadence["ready_for_review"] is True
+    complexity_justified = (
+        comparison_summary["complexity_justified"] is True
+    )
+    cadence["standalone_ready_for_review"] = standalone_cadence_ready
+    cadence["complexity_justified"] = complexity_justified
+    cadence["ready_for_review"] = (
+        standalone_cadence_ready and complexity_justified
+    )
     timing_summary = _timing_readiness(timing)
     any_ready = (
         cadence["ready_for_review"] is True
