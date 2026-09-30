@@ -6071,7 +6071,7 @@ async def run_continuous_paper_session(
     )
     (
         prospective_side_conditioned_delay_state,
-        prospective_side_conditioned_delay_restore_error,
+        _prospective_side_conditioned_delay_restore_error,
     ) = _restore_prospective_side_conditioned_delay(
         root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
         started_at_ms=started_at_ms,
