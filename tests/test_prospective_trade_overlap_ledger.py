@@ -27,9 +27,10 @@ def _trade(
     direction: Direction,
     net_pnl: str,
     opened_at_ms: int,
+    initial_risk: str = "10",
 ) -> TradeJournalEntry:
     net = Decimal(net_pnl)
-    initial_risk = Decimal("10")
+    initial_risk_amount = Decimal(initial_risk)
     return TradeJournalEntry(
         market=MarketId("", "BTC"),
         direction=direction,
@@ -46,7 +47,7 @@ def _trade(
         position_action_ids=(f"action-{suffix}",),
         funding_event_ids=(),
         initial_stop=Decimal("99"),
-        initial_risk_amount=initial_risk,
+        initial_risk_amount=initial_risk_amount,
         entry_price=Decimal("100"),
         exit_price=Decimal("101"),
         filled_quantity=Decimal("1"),
@@ -62,7 +63,7 @@ def _trade(
         holding_duration_ms=60_000,
         mfe=None,
         mae=None,
-        net_r=net / initial_risk,
+        net_r=net / initial_risk_amount,
         equity_before=Decimal("10000"),
         equity_after=Decimal("10000") + net,
         exit_reason="test_exit",
@@ -174,11 +175,21 @@ def test_overlap_separates_avoided_losses_from_sacrificed_wins() -> None:
     assert overall["actual_net_pnl_sum"] == "0"
     assert overall["candidate_matched_net_pnl_sum"] == "5"
     assert overall["candidate_minus_actual_net_pnl_sum"] == "5"
+    assert overall["actual_net_r_sum"] == "0.0"
+    assert overall["candidate_matched_net_r_sum"] == "0.5"
+    assert overall["candidate_minus_actual_net_r_sum"] == "0.5"
     robustness = ledger["robustness"]
     assert robustness["leave_one_trade_out_min_delta"] == "-7"
+    assert robustness["leave_one_trade_out_min_delta_net_r"] == "-0.7"
     assert robustness["positive_delta_after_removing_any_one_trade"] is False
+    assert (
+        robustness["positive_net_r_delta_after_removing_any_one_trade"]
+        is False
+    )
     readiness = ledger["readiness"]
     assert readiness["sample_complete"] is False
+    assert readiness["pnl_economics_positive"] is True
+    assert readiness["net_r_economics_positive"] is True
     assert readiness["ready_for_overlap_review"] is False
     assert readiness["missing_matched_closed_trades"] == 27
 
@@ -378,7 +389,13 @@ def test_overlap_review_requires_broad_profitable_robust_sample() -> None:
     robustness = ledger["robustness"]
     assert robustness["total_candidate_minus_actual_net_pnl"] == "20"
     assert robustness["leave_one_trade_out_min_delta"] == "19"
+    assert robustness["total_candidate_minus_actual_net_r"] == "2.0"
+    assert robustness["leave_one_trade_out_min_delta_net_r"] == "1.9"
     assert robustness["positive_delta_after_removing_any_one_trade"] is True
+    assert (
+        robustness["positive_net_r_delta_after_removing_any_one_trade"]
+        is True
+    )
 
 
 def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
@@ -399,7 +416,15 @@ def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
         source_learning_artifact_name="learning-20",
         source_learning_artifact_digest="sha256:" + "b" * 64,
     )
-    legacy = dict(current)
+    legacy = json.loads(json.dumps(current))
+    for stats in (
+        legacy["summary"]["overall"],
+        legacy["summary"]["by_direction"]["long"],
+        legacy["summary"]["by_direction"]["short"],
+    ):
+        for key in tuple(stats):
+            if "net_r" in key:
+                stats.pop(key)
     legacy.pop("readiness")
     legacy.pop("robustness")
     digest_payload = {
@@ -431,3 +456,174 @@ def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
     assert extended["prior_ledger_sha256"] == legacy["ledger_sha256"]
     assert "readiness" in extended
     assert "robustness" in extended
+
+
+def test_overlap_requires_risk_normalized_economic_confirmation() -> None:
+    scored_rows = []
+    trades = []
+    for index in range(30):
+        direction = Direction.LONG if index % 2 == 0 else Direction.SHORT
+        admitted = index >= 20
+        decision_id = f"risk-normalized-{index}"
+        boundary_ms = 400_000 + index * 10_000
+        scored_rows.append(
+            {
+                "decision_id": decision_id,
+                "boundary_ms": boundary_ms,
+                "market": "BTC",
+                "direction": direction.value,
+                "prediction_net_return": "0.01" if admitted else "-0.01",
+                "admitted": admitted,
+                "realized_net_return": "0.01" if admitted else "-0.01",
+            }
+        )
+        if admitted:
+            net_pnl = "10"
+            initial_risk = "100"
+        elif index < 10:
+            net_pnl = "-20"
+            initial_risk = "100"
+        else:
+            net_pnl = "1"
+            initial_risk = "0.5"
+        trades.append(
+            _trade(
+                f"risk-normalized-{index}",
+                decision_id=decision_id,
+                direction=direction,
+                net_pnl=net_pnl,
+                opened_at_ms=boundary_ms + 100,
+                initial_risk=initial_risk,
+            )
+        )
+
+    prediction = update_prediction_ledger(
+        {
+            "status": "collecting",
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "model_family": "test-model",
+            "prospective_start_ms": 1_000,
+            "cadence_ms": 900_000,
+            "horizon_ms": 3_600_000,
+            "frozen_training_rows": 652,
+            "frozen_training_rows_sha256": "a" * 64,
+            "scored_rows": tuple(scored_rows),
+        },
+        previous=None,
+        source_audit_run_id=10,
+        source_audit_run_attempt=1,
+        source_report_artifact_name="report",
+    )
+    ledger = update_trade_overlap_ledger(
+        prediction,
+        tuple(trades),
+        previous=None,
+        source_paper_run_id=20,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning",
+        source_learning_artifact_digest="sha256:" + "b" * 64,
+    )
+
+    overall = ledger["summary"]["overall"]
+    assert overall["candidate_matched_net_pnl_sum"] == "100"
+    assert overall["candidate_minus_actual_net_pnl_sum"] == "190"
+    assert overall["candidate_matched_net_r_sum"] == "1.0"
+    assert overall["candidate_minus_actual_net_r_sum"] == "-18.0"
+
+    readiness = ledger["readiness"]
+    assert readiness["sample_complete"] is True
+    assert readiness["pnl_economics_positive"] is True
+    assert readiness["net_r_economics_positive"] is False
+    assert readiness["economics_positive"] is False
+    assert readiness["pnl_single_trade_robust"] is True
+    assert readiness["net_r_single_trade_robust"] is False
+    assert readiness["single_trade_robust"] is False
+    assert readiness["ready_for_overlap_review"] is False
+
+
+def test_overlap_accepts_prior_pnl_only_readiness_ledger() -> None:
+    prediction = _prediction_ledger()
+    trades = (
+        _trade(
+            "prior-a",
+            decision_id="decision-blocked-loser",
+            direction=Direction.LONG,
+            net_pnl="-12",
+            opened_at_ms=2_100,
+        ),
+        _trade(
+            "prior-b",
+            decision_id="decision-blocked-winner",
+            direction=Direction.SHORT,
+            net_pnl="7",
+            opened_at_ms=3_100,
+        ),
+        _trade(
+            "prior-c",
+            decision_id="decision-admitted-winner",
+            direction=Direction.LONG,
+            net_pnl="5",
+            opened_at_ms=4_100,
+        ),
+    )
+    current = update_trade_overlap_ledger(
+        prediction,
+        trades,
+        previous=None,
+        source_paper_run_id=20,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning-20",
+        source_learning_artifact_digest="sha256:" + "b" * 64,
+    )
+    legacy = json.loads(json.dumps(current))
+    for stats in (
+        legacy["summary"]["overall"],
+        legacy["summary"]["by_direction"]["long"],
+        legacy["summary"]["by_direction"]["short"],
+    ):
+        for key in tuple(stats):
+            if "net_r" in key:
+                stats.pop(key)
+    for key in tuple(legacy["robustness"]):
+        if "net_r" in key:
+            legacy["robustness"].pop(key)
+    for key in (
+        "pnl_economics_positive",
+        "net_r_economics_positive",
+        "pnl_single_trade_robust",
+        "net_r_single_trade_robust",
+    ):
+        legacy["readiness"].pop(key)
+    legacy["readiness"]["economics_positive"] = True
+    legacy["readiness"]["single_trade_robust"] = False
+    legacy["readiness"]["ready_for_overlap_review"] = False
+    digest_payload = {
+        key: value
+        for key, value in legacy.items()
+        if key != "ledger_sha256"
+    }
+    legacy["ledger_sha256"] = hashlib.sha256(
+        json.dumps(
+            digest_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    validate_trade_overlap_ledger(legacy)
+    extended = update_trade_overlap_ledger(
+        prediction,
+        trades,
+        previous=legacy,
+        source_paper_run_id=21,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning-21",
+        source_learning_artifact_digest="sha256:" + "c" * 64,
+    )
+    assert extended["prior_ledger_sha256"] == legacy["ledger_sha256"]
+    assert "candidate_matched_net_r_sum" in extended["summary"]["overall"]
+    assert "net_r_economics_positive" in extended["readiness"]

@@ -67,6 +67,9 @@ def test_overlap_status_exposes_review_readiness_without_authority() -> None:
     assert "overlap review ready / sample complete / economics positive" in source
     assert "still needed matched / admitted / blocked" in source
     assert "still needed LONG matched/admitted / SHORT matched/admitted" in source
-    assert "leave-one-trade-out minimum delta" in source
+    assert "actual / candidate matched net R / delta" in source
+    assert "economic confirmation PnL / net R" in source
+    assert "single-trade robustness PnL / net R" in source
+    assert "leave-one-trade-out minimum delta PnL / net R" in source
     assert "review-only" in source
     assert "does not change the frozen readiness gate" in source

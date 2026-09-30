@@ -135,6 +135,9 @@ def _canonical_row(raw: object) -> dict[str, object]:
         raise ProspectiveTradeOverlapLedgerError(
             "candidate-minus-actual PnL does not reconcile"
         )
+    actual_net_r = Decimal(
+        _decimal_string(raw.get("actual_net_r"), field="actual_net_r")
+    )
     outcome = _required_string(raw, "actual_outcome")
     expected_outcome = (
         "winner"
@@ -144,6 +147,14 @@ def _canonical_row(raw: object) -> dict[str, object]:
     if outcome != expected_outcome:
         raise ProspectiveTradeOverlapLedgerError(
             "actual_outcome does not match actual_net_pnl"
+        )
+    if (
+        (actual_net_pnl > ZERO and actual_net_r <= ZERO)
+        or (actual_net_pnl < ZERO and actual_net_r >= ZERO)
+        or (actual_net_pnl == ZERO and actual_net_r != ZERO)
+    ):
+        raise ProspectiveTradeOverlapLedgerError(
+            "actual_net_r sign does not match actual_net_pnl"
         )
     return {
         "decision_id": decision_id,
@@ -163,10 +174,7 @@ def _canonical_row(raw: object) -> dict[str, object]:
         "opened_at_ms": opened_at_ms,
         "closed_at_ms": closed_at_ms,
         "actual_net_pnl": str(actual_net_pnl),
-        "actual_net_r": _decimal_string(
-            raw.get("actual_net_r"),
-            field="actual_net_r",
-        ),
+        "actual_net_r": str(actual_net_r),
         "actual_exit_reason": _required_string(
             raw,
             "actual_exit_reason",
@@ -213,7 +221,11 @@ def _ledger_digest_payload(
     }
 
 
-def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
+def _summary(
+    rows: tuple[dict[str, object], ...],
+    *,
+    include_net_r: bool = True,
+) -> dict[str, object]:
     def subset(
         *,
         direction: str | None = None,
@@ -233,6 +245,18 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
             (
                 Decimal(cast(str, row["candidate_matched_net_pnl"]))
                 for row in items
+            ),
+            ZERO,
+        )
+        actual_net_r = sum(
+            (Decimal(cast(str, row["actual_net_r"])) for row in items),
+            ZERO,
+        )
+        candidate_net_r = sum(
+            (
+                Decimal(cast(str, row["actual_net_r"]))
+                for row in items
+                if row["candidate_admitted"] is True
             ),
             ZERO,
         )
@@ -274,7 +298,21 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
             ),
             ZERO,
         )
-        return {
+        avoided_net_r = -sum(
+            (
+                Decimal(cast(str, row["actual_net_r"]))
+                for row in blocked_losers
+            ),
+            ZERO,
+        )
+        sacrificed_net_r = sum(
+            (
+                Decimal(cast(str, row["actual_net_r"]))
+                for row in blocked_winners
+            ),
+            ZERO,
+        )
+        result: dict[str, object] = {
             "matched_closed_trades": len(items),
             "candidate_admitted_trades": sum(
                 row["candidate_admitted"] is True for row in items
@@ -297,6 +335,26 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
                 avoided - sacrificed
             ),
         }
+        if include_net_r:
+            result.update(
+                {
+                    "actual_net_r_sum": str(actual_net_r),
+                    "candidate_matched_net_r_sum": str(candidate_net_r),
+                    "candidate_minus_actual_net_r_sum": str(
+                        candidate_net_r - actual_net_r
+                    ),
+                    "blocked_loser_net_r_avoided": str(
+                        avoided_net_r
+                    ),
+                    "blocked_winner_net_r_sacrificed": str(
+                        sacrificed_net_r
+                    ),
+                    "blocked_net_r_avoided_minus_sacrificed": str(
+                        avoided_net_r - sacrificed_net_r
+                    ),
+                }
+            )
+        return result
 
     return {
         "overall": stats(subset()),
@@ -309,6 +367,8 @@ def _summary(rows: tuple[dict[str, object], ...]) -> dict[str, object]:
 
 def _robustness(
     rows: tuple[dict[str, object], ...],
+    *,
+    include_net_r: bool = True,
 ) -> dict[str, object]:
     contributions = tuple(
         Decimal(cast(str, row["candidate_minus_actual_net_pnl"]))
@@ -319,18 +379,47 @@ def _robustness(
         total - contribution for contribution in contributions
     )
     minimum = min(leave_one_trade_out, default=ZERO)
-    return {
+    result: dict[str, object] = {
         "total_candidate_minus_actual_net_pnl": str(total),
         "leave_one_trade_out_min_delta": str(minimum),
         "positive_delta_after_removing_any_one_trade": (
             len(rows) >= 2 and minimum > ZERO
         ),
     }
+    if include_net_r:
+        net_r_contributions = tuple(
+            (
+                ZERO
+                if row["candidate_admitted"] is True
+                else -Decimal(cast(str, row["actual_net_r"]))
+            )
+            for row in rows
+        )
+        net_r_total = sum(net_r_contributions, ZERO)
+        net_r_leave_one_out = tuple(
+            net_r_total - contribution
+            for contribution in net_r_contributions
+        )
+        net_r_minimum = min(net_r_leave_one_out, default=ZERO)
+        result.update(
+            {
+                "total_candidate_minus_actual_net_r": str(net_r_total),
+                "leave_one_trade_out_min_delta_net_r": str(
+                    net_r_minimum
+                ),
+                "positive_net_r_delta_after_removing_any_one_trade": (
+                    len(rows) >= 2 and net_r_minimum > ZERO
+                ),
+            }
+        )
+    return result
 
 
 def _readiness(
     summary: dict[str, object],
     robustness: dict[str, object],
+    *,
+    include_net_r: bool = True,
 ) -> dict[str, object]:
     overall = cast(dict[str, object], summary["overall"])
     by_direction = cast(dict[str, dict[str, object]], summary["by_direction"])
@@ -360,13 +449,37 @@ def _readiness(
     delta = Decimal(
         cast(str, overall["candidate_minus_actual_net_pnl_sum"])
     )
-    economics_positive = candidate_pnl > ZERO and delta > ZERO
-    single_trade_robust = cast(
+    pnl_economics_positive = candidate_pnl > ZERO and delta > ZERO
+    pnl_single_trade_robust = cast(
         bool,
         robustness["positive_delta_after_removing_any_one_trade"],
     )
+    net_r_economics_positive = True
+    net_r_single_trade_robust = True
+    if include_net_r:
+        candidate_net_r = Decimal(
+            cast(str, overall["candidate_matched_net_r_sum"])
+        )
+        delta_net_r = Decimal(
+            cast(str, overall["candidate_minus_actual_net_r_sum"])
+        )
+        net_r_economics_positive = (
+            candidate_net_r > ZERO and delta_net_r > ZERO
+        )
+        net_r_single_trade_robust = cast(
+            bool,
+            robustness[
+                "positive_net_r_delta_after_removing_any_one_trade"
+            ],
+        )
+    economics_positive = (
+        pnl_economics_positive and net_r_economics_positive
+    )
+    single_trade_robust = (
+        pnl_single_trade_robust and net_r_single_trade_robust
+    )
 
-    return {
+    result: dict[str, object] = {
         "review_only": True,
         "changes_frozen_readiness_gate": False,
         "min_matched_closed_trades": OVERLAP_MIN_MATCHED_TRADES,
@@ -409,6 +522,16 @@ def _readiness(
             OVERLAP_MIN_ADMITTED_PER_DIRECTION - short_admitted,
         ),
     }
+    if include_net_r:
+        result.update(
+            {
+                "pnl_economics_positive": pnl_economics_positive,
+                "net_r_economics_positive": net_r_economics_positive,
+                "pnl_single_trade_robust": pnl_single_trade_robust,
+                "net_r_single_trade_robust": net_r_single_trade_robust,
+            }
+        )
+    return result
 
 
 def _trade_map(
@@ -514,16 +637,29 @@ def validate_trade_overlap_ledger(
             "trade overlap rows digest mismatch"
         )
     summary = _summary(rows)
-    if raw.get("summary") != summary:
+    legacy_summary = _summary(rows, include_net_r=False)
+    raw_summary = raw.get("summary")
+    if raw_summary == summary:
+        legacy_format = False
+    elif raw_summary == legacy_summary:
+        legacy_format = True
+    else:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap summary does not reconcile"
         )
-    robustness = _robustness(rows)
+    robustness = _robustness(
+        rows,
+        include_net_r=not legacy_format,
+    )
     if "robustness" in raw and raw.get("robustness") != robustness:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap robustness does not reconcile"
         )
-    readiness = _readiness(summary, robustness)
+    readiness = _readiness(
+        summary if not legacy_format else legacy_summary,
+        robustness,
+        include_net_r=not legacy_format,
+    )
     if "readiness" in raw and raw.get("readiness") != readiness:
         raise ProspectiveTradeOverlapLedgerError(
             "trade overlap readiness does not reconcile"

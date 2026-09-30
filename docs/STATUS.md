@@ -3308,8 +3308,8 @@ Issue #704 is the canonical status surface. This overlap stream is descriptive f
 
 The frozen prospective cadence candidate now has a separate review-only robustness contract for exact overlap with future closed paper trades.
 
-The diagnostic does not become overlap-review-ready until it has at least 30 exact matched closed trades, at least 10 admitted and 10 blocked trades, at least 5 matched trades per direction, and at least 2 admitted trades per direction. It also requires positive candidate matched PnL, positive improvement versus the actual matched trades, and positive improvement after removing any single matched trade.
+The diagnostic does not become overlap-review-ready until it has at least 30 exact matched closed trades, at least 10 admitted and 10 blocked trades, at least 5 matched trades per direction, and at least 2 admitted trades per direction. It requires positive candidate economics and positive improvement in both dollars and net R, where net R measures profit or loss relative to the risk carried by each trade. The improvement must also remain positive in both units after removing any single matched trade.
 
-This protects the trade-selection research from treating a tiny sample or one unusually large avoided loss as evidence of a durable improvement. The overlap contract is descriptive only and does not alter the frozen cadence readiness gate, paper execution, timing, sizing, stops, risk, promotion state, or live authority.
+This protects the trade-selection research from treating a tiny sample, one unusually large avoided loss, or changing trade size as evidence of a durable improvement. The overlap contract is descriptive only and does not alter the frozen cadence readiness gate, paper execution, timing, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
