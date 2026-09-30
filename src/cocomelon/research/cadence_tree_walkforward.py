@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final, cast
 
-from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import _resolve_rows
 from cocomelon.research.cadence_shadow import (
     FIFTEEN_MINUTES_MS,
