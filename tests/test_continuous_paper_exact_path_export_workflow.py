@@ -13,7 +13,10 @@ def test_exact_path_export_is_separate_research_workflow() -> None:
     assert "Continuous Paper Exact Path Export" in source
     assert 'workflows:' in source
     assert '"Continuous Mainnet Paper Trader"' in source
-    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" not in source
+    assert "EVENT_CONCLUSION:" in source
+    assert 'echo "eligible=false"' in source
+    assert "steps.source.outputs.eligible == 'true'" in source
     assert "workflow_dispatch:" in source
     assert "contents: read" in source
     assert "actions: read" in source
