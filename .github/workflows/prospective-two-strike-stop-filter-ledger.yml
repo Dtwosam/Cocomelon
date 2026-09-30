@@ -1,6 +1,11 @@
 name: Prospective Two-Strike Stop Filter Ledger
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-two-strike-stop-filter-ledger.yml"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
@@ -29,9 +34,6 @@ concurrency:
 
 jobs:
   ledger:
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -53,20 +55,50 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
           INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
           INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" != "success" ]; then
+            echo "source_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
           if [ "$EVENT_NAME" = "workflow_run" ]; then
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"
             resolution_mode="successful_event"
-          else
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_id="$INPUT_RUN_ID"
             run_attempt="$INPUT_RUN_ATTEMPT"
             resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            resolution_mode="latest_successful_push"
           fi
           if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
             echo "source paper run identity is invalid" >&2
@@ -134,6 +166,7 @@ jobs:
           echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
 
       - name: Download compact paper source
+        if: ${{ steps.source.outputs.source_eligible == 'true' }}
         id: compact
         shell: bash
         env:
@@ -167,7 +200,7 @@ jobs:
           echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
 
       - name: Publish waiting-for-state status
-        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible != 'true' }}
         shell: bash
         env:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
@@ -193,7 +226,7 @@ jobs:
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/two-strike-ledger-status.md)"
 
       - name: Restore previous two-strike ledger
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
         id: previous
         shell: bash
         env:
@@ -255,7 +288,7 @@ jobs:
           echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
 
       - name: Extend append-only two-strike ledger
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
         id: ledger
         continue-on-error: true
         shell: bash
@@ -298,6 +331,7 @@ jobs:
 
       - name: Publish blocked ledger status
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean != 'true'
         shell: bash
@@ -326,6 +360,7 @@ jobs:
 
       - name: Fail closed on two-strike ledger drift
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean != 'true'
         shell: bash
@@ -335,6 +370,7 @@ jobs:
 
       - name: Publish clean ledger status
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean == 'true'
         shell: bash
@@ -435,6 +471,7 @@ jobs:
 
       - name: Upload two-strike ledger
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean == 'true'
         uses: actions/upload-artifact@v7

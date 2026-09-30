@@ -15,8 +15,13 @@ def test_two_strike_ledger_workflow_is_research_only() -> None:
     source = _source()
 
     assert "Prospective Two-Strike Stop Filter Ledger" in source
+    assert "push:" in source
+    assert '".github/workflows/prospective-two-strike-stop-filter-ledger.yml"' in source
     assert '"Continuous Mainnet Paper Trader"' in source
-    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" not in source
+    assert "EVENT_CONCLUSION:" in source
+    assert 'echo "source_eligible=false"' in source
+    assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
     assert "contents: read" in source
     assert "issues: write" in source
@@ -35,6 +40,8 @@ def test_two_strike_ledger_binds_exact_compact_source() -> None:
     assert 'run.get("conclusion") != "success"' in source
     assert "source run attempt mismatch" in source
     assert "source repository mismatch" in source
+    assert "latest_successful_push" in source
+    assert "actions/workflows/continuous-paper.yml/runs?branch=main&status=completed" in source
     assert (
         'artifact_name="continuous-paper-learning-source-$run_id-$run_attempt"'
         in source
