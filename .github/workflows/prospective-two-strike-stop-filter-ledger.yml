@@ -1,6 +1,11 @@
 name: Prospective Two-Strike Stop Filter Ledger
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-two-strike-stop-filter-ledger.yml"
   workflow_run:
     workflows:
       - "Continuous Mainnet Paper Trader"
@@ -66,10 +71,34 @@ jobs:
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"
             resolution_mode="successful_event"
-          else
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             run_id="$INPUT_RUN_ID"
             run_attempt="$INPUT_RUN_ATTEMPT"
             resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            resolution_mode="latest_successful_push"
           fi
           if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
             echo "source paper run identity is invalid" >&2
@@ -259,7 +288,7 @@ jobs:
           echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
 
       - name: Extend append-only two-strike ledger
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
         id: ledger
         continue-on-error: true
         shell: bash
