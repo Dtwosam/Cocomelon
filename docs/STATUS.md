@@ -3167,3 +3167,21 @@ The workflow resolves the **latest completed** main-branch run for each ledger. 
 A `ready_for_review` result is evidence only. This aggregate gate cannot alter paper entries or timing, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective model parsimony gate — 2026-09-30
+
+The frozen cadence microstructure challenger must now justify its extra complexity against the simpler frozen shallow-tree baseline before it can become **ready for review**.
+
+This does not change either model, the prospective boundary, the 100-row sample requirement, or any paper behavior. It only tightens research interpretation:
+
+- the microstructure challenger must first pass its existing standalone future-only quality gate;
+- the A/B ledger must contain at least the same 100 paired prospective rows;
+- microstructure admitted contribution must exceed baseline admitted contribution on those identical rows;
+- incremental microstructure-minus-baseline contribution must be positive in at least 3 of 4 chronological blocks.
+
+A profitable complex model that merely matches or inconsistently beats the simpler baseline remains collecting. This is a precommitted parsimony rule added while only 3 prospective rows exist.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
