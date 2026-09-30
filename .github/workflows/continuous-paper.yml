@@ -28,6 +28,7 @@ on:
       - "src/cocomelon/research/closed_trade_friction.py"
       - "src/cocomelon/research/closed_trade_robustness.py"
       - "src/cocomelon/research/closed_trade_stability.py"
+      - "src/cocomelon/research/closed_trade_stop_reentry.py"
       - "src/cocomelon/research/closed_trade_utc_hour.py"
       - "src/cocomelon/research/continuous_paper_trade_paths.py"
       - "src/cocomelon/research/continuous_paper_opening_rank.py"
