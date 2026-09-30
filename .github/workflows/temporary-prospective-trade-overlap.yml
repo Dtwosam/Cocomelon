@@ -1,0 +1,218 @@
+name: Temporary prospective trade overlap audit 36737344379
+
+on:
+  push:
+    branches:
+      - audit/prospective-trade-overlap-36737344379
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Download immutable prospective prediction ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11113531761"
+        run: |
+          set -euo pipefail
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/prediction.zip
+          mkdir -p /tmp/prediction
+          unzip -q /tmp/prediction.zip -d /tmp/prediction
+          test -s /tmp/prediction/cadence-microstructure-prediction-ledger.json
+
+      - name: Download exact completed paper timing state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: "11107947564"
+        run: |
+          set -euo pipefail
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/timing.zip
+          mkdir -p /tmp/timing
+          unzip -q /tmp/timing.zip -d /tmp/timing
+          test -s /tmp/timing/continuous-paper-state/journal.sqlite3
+
+      - name: Join frozen predictions to actual paper trades
+        run: |
+          python - <<'PY' | tee prospective-trade-overlap.json
+          from __future__ import annotations
+
+          import json
+          from collections import defaultdict
+          from decimal import Decimal
+          from pathlib import Path
+
+          from cocomelon.journal.store import JournalStore
+          from cocomelon.research.prospective_prediction_ledger import (
+              load_prediction_ledger,
+          )
+
+          ZERO = Decimal("0")
+          ledger = load_prediction_ledger(
+              Path(
+                  "/tmp/prediction/"
+                  "cadence-microstructure-prediction-ledger.json"
+              )
+          )
+          start_ms = int(ledger["prospective_start_ms"])
+          rows = tuple(ledger["rows"])
+          by_decision = {}
+          for row in rows:
+              decision_id = str(row["decision_id"])
+              if decision_id in by_decision:
+                  raise SystemExit(
+                      "duplicate prediction strategy decision id"
+                  )
+              by_decision[decision_id] = row
+
+          journal = JournalStore(
+              Path("/tmp/timing/continuous-paper-state/journal.sqlite3")
+          )
+          try:
+              trades = tuple(journal.iter_trades())
+          finally:
+              journal.close()
+
+          prospective_trades = tuple(
+              trade
+              for trade in trades
+              if trade.opened_at_ms >= start_ms
+          )
+          by_trade_decision = {}
+          for trade in prospective_trades:
+              if trade.strategy_decision_id in by_trade_decision:
+                  raise SystemExit(
+                      "multiple prospective trades share strategy decision id"
+                  )
+              by_trade_decision[trade.strategy_decision_id] = trade
+
+          matched = []
+          unmatched = []
+          for trade in prospective_trades:
+              row = by_decision.get(trade.strategy_decision_id)
+              if row is None:
+                  unmatched.append(trade)
+                  continue
+              if row["market"] != trade.market.canonical:
+                  raise SystemExit("prediction/trade market lineage mismatch")
+              if row["direction"] != trade.direction.value:
+                  raise SystemExit(
+                      "prediction/trade direction lineage mismatch"
+                  )
+              matched.append((trade, row))
+
+          missing_trade_predictions = tuple(
+              row
+              for row in rows
+              if str(row["decision_id"]) not in by_trade_decision
+          )
+
+          def summary(items):
+              actual = sum(
+                  (trade.net_pnl for trade, _ in items),
+                  ZERO,
+              )
+              kept = sum(
+                  (
+                      trade.net_pnl
+                      for trade, row in items
+                      if row["admitted"] is True
+                  ),
+                  ZERO,
+              )
+              skipped = sum(
+                  (
+                      trade.net_pnl
+                      for trade, row in items
+                      if row["admitted"] is False
+                  ),
+                  ZERO,
+              )
+              return {
+                  "trades": len(items),
+                  "admitted_trades": sum(
+                      1 for _, row in items
+                      if row["admitted"] is True
+                  ),
+                  "skipped_trades": sum(
+                      1 for _, row in items
+                      if row["admitted"] is False
+                  ),
+                  "actual_net_pnl": str(actual),
+                  "candidate_same_execution_net_pnl": str(kept),
+                  "skipped_actual_net_pnl": str(skipped),
+                  "candidate_minus_actual_net_pnl": str(
+                      kept - actual
+                  ),
+              }
+
+          grouped = defaultdict(list)
+          for trade, row in matched:
+              grouped[trade.direction.value].append((trade, row))
+
+          report = {
+              "research_only": True,
+              "execution_authority": False,
+              "promotion_authority": False,
+              "source_paper_run_id": 36737344379,
+              "prediction_ledger_sha256": ledger["ledger_sha256"],
+              "prospective_start_ms": start_ms,
+              "prospective_closed_trades": len(prospective_trades),
+              "prediction_rows": len(rows),
+              "matched_trade_rows": len(matched),
+              "unmatched_prospective_trades": len(unmatched),
+              "prediction_rows_without_closed_trade": len(
+                  missing_trade_predictions
+              ),
+              "overall": summary(tuple(matched)),
+              "by_side": {
+                  side: summary(tuple(grouped.get(side, ())))
+                  for side in ("long", "short")
+              },
+              "matched_rows": [
+                  {
+                      "trade_id": trade.trade_id,
+                      "decision_id": trade.strategy_decision_id,
+                      "market": trade.market.canonical,
+                      "direction": trade.direction.value,
+                      "opened_at_ms": trade.opened_at_ms,
+                      "closed_at_ms": trade.closed_at_ms,
+                      "actual_net_pnl": str(trade.net_pnl),
+                      "prediction_net_return": row[
+                          "prediction_net_return"
+                      ],
+                      "admitted": row["admitted"],
+                  }
+                  for trade, row in matched
+              ],
+              "unmatched_trade_ids": [
+                  trade.trade_id for trade in unmatched
+              ],
+              "prediction_decision_ids_without_closed_trade": [
+                  row["decision_id"]
+                  for row in missing_trade_predictions
+              ],
+              "claim_scope": (
+                  "prospective_same_execution_skip_or_keep_contribution;"
+                  "no_portfolio_reflow"
+              ),
+          }
+          print(json.dumps(report, sort_keys=True))
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prospective-trade-overlap-36737344379
+          path: prospective-trade-overlap.json
+          if-no-files-found: error
+          retention-days: 30
