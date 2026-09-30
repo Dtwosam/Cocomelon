@@ -227,7 +227,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"delayed_entry_stop_l2_replay": (' in source
     assert "delayed_entry_stop_l2_replay(" in source
     assert "capture_error=original_stop_book_capture.error" in source
-    assert "paper_execution_config=replay_config.execution" in source
+    assert "def _operational_live_status_payload(" in source
+    assert '"heartbeat_scope": "operational"' in source
     assert '"delayed_entry_portfolio_capacity": (' in source
     assert "delayed_entry_portfolio_capacity_overlay(" in source
     assert (
@@ -2130,7 +2131,11 @@ def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
     )
     assert "if _stop_requested(stop_path):" in source
     assert "for market in _iter_until_stop(selected, stop_path):" in source
-    assert "if not _stop_requested(stop_path):\n            _emit_live_status(" in source
+    assert (
+        "if not _stop_requested(stop_path):\n"
+        "            _emit_operational_live_status("
+        in source
+    )
 
 
 def test_runtime_persists_authenticated_learning_features() -> None:
