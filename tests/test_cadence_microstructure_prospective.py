@@ -478,7 +478,7 @@ def test_changed_frozen_outcome_fails_closed(
 
     assert report["status"] == "not_ready"
     assert report["reason"] == "frozen_training_manifest_mismatch"
-    assert "outcome content changed" in report["frozen_training_error"]
+    assert "frozen training content changed" in report["frozen_training_error"]
 
 
 def test_changed_frozen_feature_record_fails_closed(
