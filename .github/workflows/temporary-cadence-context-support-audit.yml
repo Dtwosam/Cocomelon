@@ -23,7 +23,7 @@ jobs:
       - name: Download exact predecessor paper state
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: "11089237194"
+          ARTIFACT_ID: "11092470461"
         run: |
           set -euo pipefail
           gh api \
