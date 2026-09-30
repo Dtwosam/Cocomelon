@@ -4,7 +4,7 @@ import hashlib
 import json
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = (
@@ -118,10 +118,10 @@ def _entry_identity(
     entry: dict[str, object],
 ) -> tuple[int, str, str, str]:
     return (
-        int(entry["boundary_ms"]),
-        str(entry["market"]),
-        str(entry["direction"]),
-        str(entry["decision_id"]),
+        cast(int, entry["boundary_ms"]),
+        cast(str, entry["market"]),
+        cast(str, entry["direction"]),
+        cast(str, entry["decision_id"]),
     )
 
 
@@ -301,7 +301,10 @@ def update_prediction_ledger(
                 raise ProspectivePredictionLedgerError(
                     f"prediction ledger metadata drift: {key}"
                 )
-        previous_rows = tuple(validated["rows"])
+        previous_rows = cast(
+            tuple[dict[str, object], ...],
+            validated["rows"],
+        )
         raw_history = validated["source_history"]
         if not isinstance(raw_history, list):
             raise ProspectivePredictionLedgerError(
