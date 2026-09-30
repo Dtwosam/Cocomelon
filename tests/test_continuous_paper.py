@@ -279,6 +279,11 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
         'PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (' in source
     )
     assert (
+        'PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (' in source
+    )
+    assert "_restore_prospective_side_conditioned_delay(" in source
+    assert "prospective_side_conditioned_delay_state.payload()" in source
+    assert (
         'ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME = (' in source
     )
     assert '"adaptive_delay_selector": adaptive_delay_selector' in source

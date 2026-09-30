@@ -289,6 +289,9 @@ from cocomelon.research.prospective_replacement_exit_readiness import (
 from cocomelon.research.prospective_replacement_exit_robustness import (
     prospective_replacement_exit_robustness,
 )
+from cocomelon.research.prospective_side_conditioned_delay import (
+    ProspectiveSideConditionedDelayState,
+)
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
@@ -334,6 +337,9 @@ PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME = (
     "prospective-trade-quality-state.json"
+)
+PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (
+    "prospective-side-conditioned-delay-state.json"
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
@@ -1896,6 +1902,33 @@ def _restore_prospective_top10_rank_filter(
     except Exception as exc:
         return (
             ProspectiveTop10RankFilterState(
+                started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_prospective_side_conditioned_delay(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveSideConditionedDelayState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveSideConditionedDelayState(
+                started_at_ms=started_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveSideConditionedDelayState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveSideConditionedDelayState(
                 started_at_ms=started_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
@@ -6037,6 +6070,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_side_conditioned_delay_state,
+        _prospective_side_conditioned_delay_restore_error,
+    ) = _restore_prospective_side_conditioned_delay(
+        root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         adaptive_delay_selector_state,
         adaptive_delay_selector_restore_error,
     ) = _restore_adaptive_delay_selector(
@@ -6262,6 +6302,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,
                 prospective_replacement_exit_policy_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME,
+                prospective_side_conditioned_delay_state.payload(),
             )
             _write_json_atomic(
                 root / ADAPTIVE_DELAY_SELECTOR_STATE_FILENAME,
