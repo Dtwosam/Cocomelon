@@ -307,6 +307,10 @@ from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
     prospective_trade_quality_summary,
 )
+from cocomelon.research.prospective_two_strike_stop_filter import (
+    ProspectiveTwoStrikeStopFilterState,
+    evaluate_prospective_two_strike_stop_filter,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -350,6 +354,9 @@ PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
+)
+PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
+    "prospective-two-strike-stop-filter-state.json"
 )
 PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME = (
     "prospective-replacement-5m-exit-state.json"
@@ -2017,6 +2024,63 @@ def _restore_prospective_combined_entry_filter(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_two_strike_stop_filter(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveTwoStrikeStopFilterState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveTwoStrikeStopFilterState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveTwoStrikeStopFilterState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveTwoStrikeStopFilterState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_two_strike_stop_filter_payload(
+    journal: JournalStore,
+    state: ProspectiveTwoStrikeStopFilterState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_two_strike_stop_filter(
+            journal,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _prospective_combined_entry_filter_payload(
@@ -4436,6 +4500,9 @@ def _live_status_payload(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_two_strike_stop_filter_state: (
+        ProspectiveTwoStrikeStopFilterState
+    ),
     prospective_replacement_exit_policy_state: (
         ProspectiveReplacementExitPolicyState
     ),
@@ -4455,6 +4522,7 @@ def _live_status_payload(
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_two_strike_stop_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
@@ -4650,6 +4718,15 @@ def _live_status_payload(
             profit_lock_error=profit_lock_error,
             restore_error=(
                 prospective_combined_entry_filter_restore_error
+            ),
+        )
+    )
+    prospective_two_strike_stop_filter = (
+        _prospective_two_strike_stop_filter_payload(
+            pump.journal,
+            prospective_two_strike_stop_filter_state,
+            restore_error=(
+                prospective_two_strike_stop_filter_restore_error
             ),
         )
     )
@@ -5127,6 +5204,9 @@ def _live_status_payload(
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
         ),
+        "prospective_two_strike_stop_filter": (
+            prospective_two_strike_stop_filter
+        ),
         "prospective_capacity_reflow_opportunities": (
             prospective_capacity_reflow_opportunities
         ),
@@ -5552,6 +5632,9 @@ def _emit_live_status(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_two_strike_stop_filter_state: (
+        ProspectiveTwoStrikeStopFilterState
+    ),
     prospective_replacement_exit_policy_state: (
         ProspectiveReplacementExitPolicyState
     ),
@@ -5571,6 +5654,7 @@ def _emit_live_status(
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_two_strike_stop_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
     fill_aware_delay_selector_restore_error: str | None,
@@ -5608,6 +5692,7 @@ def _emit_live_status(
         prospective_top10_rank_filter_state,
         prospective_trade_quality_state,
         prospective_combined_entry_filter_state,
+        prospective_two_strike_stop_filter_state,
         prospective_replacement_exit_policy_state,
         adaptive_delay_selector_state,
         fill_aware_delay_selector_state,
@@ -5643,6 +5728,9 @@ def _emit_live_status(
         ),
         prospective_combined_entry_filter_restore_error=(
             prospective_combined_entry_filter_restore_error
+        ),
+        prospective_two_strike_stop_filter_restore_error=(
+            prospective_two_strike_stop_filter_restore_error
         ),
         prospective_replacement_exit_policy_restore_error=(
             prospective_replacement_exit_policy_restore_error
@@ -6131,6 +6219,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_two_strike_stop_filter_state,
+        prospective_two_strike_stop_filter_restore_error,
+    ) = _restore_prospective_two_strike_stop_filter(
+        root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_replacement_exit_policy_state,
         prospective_replacement_exit_policy_restore_error,
     ) = _restore_prospective_replacement_exit_policy(
@@ -6366,6 +6461,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
                 prospective_combined_entry_filter_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
+                prospective_two_strike_stop_filter_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_REPLACEMENT_EXIT_POLICY_STATE_FILENAME,

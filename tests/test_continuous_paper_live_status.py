@@ -27,6 +27,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
     _prospective_residual_profit_lock_lines,
+    _prospective_two_strike_stop_filter_lines,
     _replacement_funding_evidence_lines,
     render_live_status,
 )
@@ -6225,3 +6226,139 @@ def test_stop_reentry_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: reentry boom" in output
+
+
+def test_two_strike_renderer_exposes_frozen_future_only_gate() -> None:
+    lines = _prospective_two_strike_stop_filter_lines(
+        {
+            "enabled": True,
+            "state_restore_error": None,
+            "error": None,
+            "candidate_id": "prospective-two-strike-same-side-stop-v1",
+            "frozen_at_ms": 1000,
+            "started_at_ms": 21601000,
+            "embargo_ms": 21600000,
+            "rule": {
+                "strike_threshold": 2,
+                "direction_specific": False,
+            },
+            "prospective_closed_trades": 12,
+            "admitted_trades": 10,
+            "blocked_trades": 2,
+            "blocked_wins": 0,
+            "blocked_losses": 2,
+            "blocked_net_pnl": "-14",
+            "actual_net_pnl": "-9",
+            "candidate_net_pnl": "5",
+            "delta_net_pnl": "14",
+            "actual_net_r": "-0.9",
+            "candidate_net_r": "0.5",
+            "delta_net_r": "1.4",
+            "by_direction": {
+                "long": {
+                    "closed_trades": 7,
+                    "admitted_trades": 5,
+                    "blocked_trades": 2,
+                    "blocked_winners": 0,
+                    "blocked_losses": 2,
+                    "blocked_net_pnl": "-14",
+                    "delta_net_pnl": "14",
+                    "delta_net_r": "1.4",
+                },
+                "short": {
+                    "closed_trades": 5,
+                    "admitted_trades": 5,
+                    "blocked_trades": 0,
+                    "blocked_winners": 0,
+                    "blocked_losses": 0,
+                    "blocked_net_pnl": "0",
+                    "delta_net_pnl": "0",
+                    "delta_net_r": "0",
+                },
+            },
+            "blocked_by_market": {
+                "ENA": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-8",
+                    "net_r": "-0.8",
+                },
+                "HBAR": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-6",
+                    "net_r": "-0.6",
+                },
+            },
+            "robustness": {
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "attributed_trades": 12,
+                "nonzero_blocked_contributions": 2,
+                "markets_with_nonzero_blocked_contribution": 2,
+                "total_delta_trade_contribution_pnl": "14",
+                "largest_abs_trade_contribution": "8",
+                "largest_abs_trade_market": "ENA",
+                "largest_abs_trade_share": "0.5714",
+                "leave_one_trade_out_min_delta": "6",
+                "positive_after_any_single_trade_removed": True,
+                "largest_abs_market": "ENA",
+                "largest_abs_market_contribution": "8",
+                "largest_abs_market_share": "0.5714",
+                "leave_one_market_out_min_delta": "6",
+                "positive_after_any_single_market_removed": True,
+                "temporal": {
+                    "chronological_blocks": [],
+                    "configured_blocks": 4,
+                    "min_trades_per_full_block": 5,
+                    "full_blocks": 0,
+                    "positive_full_blocks": 0,
+                    "all_full_blocks_positive": False,
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "sample_complete": False,
+                "economics_positive": True,
+                "single_trade_robust": True,
+                "single_market_robust": True,
+                "missing_prospective_closed_trades": 18,
+                "missing_blocked_trades": 3,
+                "missing_admitted_trades": 0,
+                "missing_long_closed_trades": 0,
+                "missing_short_closed_trades": 0,
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective two-strike same-side stop filter" in output
+    assert "prospective-two-strike-same-side-stop-v1" in output
+    assert "`1000 / 21601000 / 21600000ms`" in output
+    assert "direction-specific: `false`" in output
+    assert "`12 / 10 / 2`" in output
+    assert "`-9 / 5 / 14`" in output
+    assert "| LONG | 7 | 5 | 2 | 0 | 2 | -14 | 14 | 1.4 |" in output
+    assert "| SHORT | 5 | 5 | 0 | 0 | 0 | 0 | 0 | 0 |" in output
+    assert "| ENA | 1 | 0 | 1 | -8 | -0.8 |" in output
+    assert "Future-only one-shot shadow" in output
+    assert "no paper order is changed" in output
+
+
+def test_two_strike_renderer_exposes_restore_failure() -> None:
+    output = "\n".join(
+        _prospective_two_strike_stop_filter_lines(
+            {
+                "enabled": False,
+                "state_restore_error": "ValueError: bad state",
+                "error": "RuntimeError: audit boom",
+            }
+        )
+    )
+
+    assert "state restore warning" in output
+    assert "ValueError: bad state" in output
+    assert "research error" in output
+    assert "RuntimeError: audit boom" in output
