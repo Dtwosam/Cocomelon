@@ -2897,3 +2897,28 @@ Artifact pattern:
 `continuous-paper-learning-features-<run_id>-<run_attempt>`
 
 This is artifact packaging only. It does not change feature capture, paper decisions, orders, risk, or live authority.
+
+
+### Immutable prospective cadence training fingerprint — 2026-09-30
+
+The prospective cadence microstructure challenger now uses an immutable pre-freeze training fingerprint instead of rebuilding training from each future paper state.
+
+Frozen source:
+
+- paper run: `36705233182`
+- source head: `d1f73e7d6abacc446bfcf09fa0f93ab2cecb3a81`
+- durable artifact ID: `11092470461`
+- durable artifact SHA-256: `c66a9f1c35ec5c1c996e413d0639b202e25469b9f4a99cf18af4ab053f5e5eb9`
+- freeze workflow run: `36724607840`
+- freeze artifact ID: `11101439177`
+- freeze artifact SHA-256: `f1b262c2c0904eb1bbe0aab6dd4f88734d9635fe28cd68747b343595495e4a89`
+- frozen rows: `652`
+- first frozen target end: `2026-09-26T21:30:00Z`
+- last frozen target end: `2026-09-29T16:15:00Z`
+- aggregate row/feature digest: `c1baa8a730980402d02b80f960afa249e6cb653392c64b887074cd9efb2034e4`
+
+Future prospective audits select the exact historical prefix ending at the frozen last target time, recompute every outcome hash plus immutable feature-record SHA, and require the row count and aggregate digest to match. Later-arriving historical rows are ignored when they fall after the frozen training prefix; insertions or mutations inside the frozen prefix fail closed.
+
+This strengthens research integrity only. It does not change active paper decisions, entries, exits, sizing, stops, risk, or live authority.
+
+**LIVE TRADING: DISABLED.**
