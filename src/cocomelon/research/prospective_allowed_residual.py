@@ -67,6 +67,13 @@ def _summary(
         and trade.mfe.r_multiple is not None
         and trade.mfe.r_multiple < Decimal("0.25")
     )
+    partial_traction_losses = tuple(
+        trade
+        for trade in complete_loss_excursions
+        if trade.mfe is not None
+        and trade.mfe.r_multiple is not None
+        and Decimal("0.25") <= trade.mfe.r_multiple < Decimal("0.5")
+    )
     giveback_losses = tuple(
         trade
         for trade in complete_loss_excursions
@@ -105,11 +112,20 @@ def _summary(
             len(losses) - len(complete_loss_excursions)
         ),
         "losses_with_mfe_lt_0_25r": len(never_worked_losses),
+        "losses_with_mfe_0_25_to_lt_0_5r": len(
+            partial_traction_losses
+        ),
         "losses_after_mfe_ge_0_5r": len(giveback_losses),
         "losses_after_mfe_ge_1r": len(severe_giveback_losses),
         "loss_pnl_with_mfe_lt_0_25r": str(
             sum(
                 (trade.net_pnl for trade in never_worked_losses),
+                ZERO,
+            )
+        ),
+        "loss_pnl_with_mfe_0_25_to_lt_0_5r": str(
+            sum(
+                (trade.net_pnl for trade in partial_traction_losses),
                 ZERO,
             )
         ),
