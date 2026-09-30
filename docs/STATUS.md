@@ -3146,3 +3146,24 @@ The ledger uses safe TSV artifact-identity transport and publishes BLOCKED befor
 This is research/control-plane only. It does not delay actual paper entries or change strategy, sizing, stops, risk, promotion state, or live execution authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Aggregate prospective trade-quality readiness — 2026-09-30
+
+Issue #695 is the canonical fail-closed readiness surface joining the three append-only future-evidence ledgers:
+
+- Issue #687 / `cadence-microstructure-prospective-prediction-ledger-v1`;
+- Issue #690 / `cadence-prospective-model-comparison-ledger-v1`;
+- Issue #692 / `prospective-side-conditioned-timing-ledger-v1`.
+
+The aggregate evaluator consumes ledger **artifacts**, not issue prose. It re-runs each ledger's canonical digest/schema validator, requires the cadence prediction ledger and A/B ledger to match exactly in frozen-training identity and every microstructure prediction/admission/realized row, and recomputes the frozen readiness thresholds from immutable rows.
+
+Cadence readiness mirrors the existing prospective contract: at least 100 settled future rows, at least 20 admitted rows, at least 10 LONG and 10 SHORT future rows, at least 5 admitted LONGs and 5 admitted SHORTs, positive admitted after-cost mean return, and all four chronological stability blocks passing with at least three admissions each.
+
+Timing readiness mirrors the frozen `long-120s-short-60s-v1` contract: at least 30 prospective closed trades, 20 paired-evaluable timing rows, at least 5 LONGs and 5 SHORTs, and clean missing-outcome/lineage integrity. Timing economics remain visible but do not add a new retrospective hurdle.
+
+The workflow resolves the **latest completed** main-branch run for each ledger. If the newest completed ledger run failed, its artifact is missing/expired, or cross-ledger lineage drifts, Issue #695 is marked BLOCKED rather than falling back to stale successful evidence.
+
+A `ready_for_review` result is evidence only. This aggregate gate cannot alter paper entries or timing, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
