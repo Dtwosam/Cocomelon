@@ -6,6 +6,8 @@ on:
       - Continuous Mainnet Paper Trader
     types:
       - completed
+  schedule:
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       source_run_id:
@@ -21,6 +23,7 @@ on:
 permissions:
   actions: read
   contents: read
+  issues: write
 
 concurrency:
   group: prospective-cadence-microstructure
@@ -28,19 +31,75 @@ concurrency:
 
 jobs:
   evaluate:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
-      SOURCE_RUN_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
       FROZEN_CANDIDATE_SHA: efde8803da35d16529157729c2080a1cd99f9a4a
+      PROSPECTIVE_STATUS_ISSUE: "674"
     steps:
       - uses: actions/checkout@v7
         with:
           ref: efde8803da35d16529157729c2080a1cd99f9a4a
+
+      - name: Resolve source paper run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_SOURCE_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT_SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          INPUT_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          INPUT_SOURCE_RUN_ATTEMPT: ${{ inputs.source_run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          source_run_id=""
+          source_run_attempt=""
+          resolution_mode=""
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            source_run_id="$INPUT_SOURCE_RUN_ID"
+            source_run_attempt="$INPUT_SOURCE_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          elif [[ "$EVENT_NAME" == "workflow_run" && "$EVENT_SOURCE_CONCLUSION" == "success" ]]; then
+            source_run_id="$EVENT_SOURCE_RUN_ID"
+            source_run_attempt="$EVENT_SOURCE_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          else
+            latest_success="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs?status=success&per_page=100" |
+              jq -r '
+                .workflow_runs
+                | map(
+                    select(
+                      .path == ".github/workflows/continuous-paper.yml"
+                      and .conclusion == "success"
+                    )
+                  )
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null then "" else "\(.id) \(.run_attempt)" end
+              '
+            )"
+            if [[ -n "$latest_success" ]]; then
+              read -r source_run_id source_run_attempt <<<"$latest_success"
+            fi
+            resolution_mode="latest_success_catchup"
+          fi
+
+          if [[ -z "$source_run_id" || -z "$source_run_attempt" ]]; then
+            echo "No successful continuous-paper source run is available." >&2
+            exit 1
+          fi
+
+          echo "SOURCE_RUN_ID=$source_run_id" >> "$GITHUB_ENV"
+          echo "SOURCE_RUN_ATTEMPT=$source_run_attempt" >> "$GITHUB_ENV"
+          echo "SOURCE_RESOLUTION_MODE=$resolution_mode" >> "$GITHUB_ENV"
+          echo "Resolved source run $source_run_id attempt $source_run_attempt via $resolution_mode."
 
       - uses: actions/setup-python@v7
         with:
@@ -84,7 +143,40 @@ jobs:
         run: |
           echo "## Frozen prospective cadence microstructure challenger" >> "$GITHUB_STEP_SUMMARY"
           echo "- source paper run: $SOURCE_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "- source resolution: $SOURCE_RESOLUTION_MODE" >> "$GITHUB_STEP_SUMMARY"
           echo "- status: compact research artifacts unavailable; evaluation skipped" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish unavailable prospective status
+        if: ${{ steps.artifacts.outputs.ready != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/prospective-status.md <<EOF
+          ## Frozen prospective cadence microstructure challenger
+
+          **Status:** blocked — compact research artifacts unavailable
+
+          - source paper run: `$SOURCE_RUN_ID`
+          - source run attempt: `$SOURCE_RUN_ATTEMPT`
+          - source resolution: `$SOURCE_RESOLUTION_MODE`
+          - audit workflow run: `${{ github.run_id }}`
+          - frozen evaluator SHA: `$FROZEN_CANDIDATE_SHA`
+          - prospective boundary: `2026-09-30T14:00:00Z`
+          - execution authority: `false`
+          - promotion authority: `false`
+          - live trading: `disabled`
+
+          The source paper run completed, but the compact cadence/feature artifacts required for future-only scoring were not both available. No prospective qualification claim is made.
+
+          **No paper orders are changed by this audit.**
+          EOF
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$PROSPECTIVE_STATUS_ISSUE" \
+            -f body="$(cat /tmp/prospective-status.md)"
 
       - name: Download compact research state
         if: ${{ steps.artifacts.outputs.ready == 'true' }}
@@ -175,6 +267,114 @@ jobs:
                   f"passes={block['passes']}"
               )
           PY
+
+
+      - name: Publish canonical prospective status
+        if: ${{ steps.artifacts.outputs.ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "cadence-microstructure-prospective.json"
+              ).read_text(encoding="utf-8")
+          )
+          lines = [
+              "## Frozen prospective cadence microstructure challenger",
+              "",
+              f"**Status:** {report.get('status', 'unknown')}",
+              "",
+              f"- source paper run: `{os.environ['SOURCE_RUN_ID']}`",
+              f"- source run attempt: `{os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['SOURCE_RESOLUTION_MODE']}`",
+              f"- audit workflow run: `${{ github.run_id }}`",
+              f"- frozen evaluator SHA: `{os.environ['FROZEN_CANDIDATE_SHA']}`",
+              (
+                  "- frozen training digest: `"
+                  f"{report.get('frozen_training_rows_sha256', 'unknown')}`"
+              ),
+              (
+                  "- prospective boundary ms: `"
+                  f"{report.get('prospective_start_ms')}`"
+              ),
+              f"- frozen training rows: `{report.get('frozen_training_rows', 0)}`",
+              (
+                  "- prospective settled rows: `"
+                  f"{report.get('prospective_rows', 0)} / "
+                  f"{report.get('required_prospective_rows', 0)}`"
+              ),
+              (
+                  "- admitted / skipped: `"
+                  f"{report.get('admitted_rows', 0)} / "
+                  f"{report.get('skipped_rows', 0)}`"
+              ),
+              (
+                  "- candidate net-return sum / mean: `"
+                  f"{report.get('candidate_net_return_sum')} / "
+                  f"{report.get('candidate_mean_net_return')}`"
+              ),
+              (
+                  "- development qualified: `"
+                  f"{str(bool(report.get('development_qualified'))).lower()}`"
+              ),
+              "",
+              "### Direction",
+              "",
+          ]
+          for direction in ("long", "short"):
+              item = report.get("by_direction", {}).get(direction, {})
+              lines.append(
+                  "- "
+                  f"{direction.upper()}: rows=`{item.get('prospective_rows', 0)}` "
+                  f"admitted=`{item.get('admitted_rows', 0)}` "
+                  f"sum=`{item.get('candidate_net_return_sum')}` "
+                  f"mean=`{item.get('candidate_mean_net_return')}`"
+              )
+          lines.extend(["", "### Chronological stability", ""])
+          blocks = report.get("stability_blocks", [])
+          if blocks:
+              for block in blocks:
+                  lines.append(
+                      "- block "
+                      f"{block.get('block_index')}: "
+                      f"rows=`{block.get('prospective_rows', 0)}` "
+                      f"admitted=`{block.get('admitted_rows', 0)}` "
+                      f"sum=`{block.get('candidate_net_return_sum')}` "
+                      f"passes=`{str(bool(block.get('passes'))).lower()}`"
+                  )
+          else:
+              lines.append(
+                  "_Not enough future-only settled rows for stability blocks yet._"
+              )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "Historical/touched outcomes do not count toward this "
+                      "status. The evaluator is pinned to immutable code and "
+                      "a committed pre-freeze training fingerprint."
+                  ),
+                  "",
+                  "**No paper orders are changed by this audit.**",
+              ]
+          )
+          Path("/tmp/prospective-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$PROSPECTIVE_STATUS_ISSUE" \
+            -f body="$(cat /tmp/prospective-status.md)"
 
       - uses: actions/upload-artifact@v7
         if: ${{ steps.artifacts.outputs.ready == 'true' }}
