@@ -3008,3 +3008,38 @@ Published evidence includes:
 This is a comparator only. Neither model gains execution or promotion authority from Issue #679, and no paper orders are changed by the comparison workflow.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Canonical prospective side-conditioned timing evidence — 2026-09-30
+
+Issue #682 is the canonical evidence surface for the frozen `long-120s-short-60s-v1` timing challenger.
+
+Future continuous-paper campaigns publish a compact timing artifact containing only:
+
+- `journal.sqlite3`;
+- the +60s delayed-entry outcome state;
+- the +120s delayed-entry outcome state;
+- the durable prospective side-conditioned candidate state.
+
+Artifact pattern:
+
+`continuous-paper-side-conditioned-timing-<run_id>-<run_attempt>`
+
+The automatic evaluator is pinned to candidate commit `31c73c809b2c6cce2d189c87715d4f9d7c18c290`. It cannot override the candidate start timestamp: the prospective boundary is read only from the durable candidate state created by the first worker containing the frozen rule.
+
+After every successfully completed paper campaign, and hourly as a catch-up backstop, the research workflow updates Issue #682 with:
+
+- exact source run and attempt;
+- frozen evaluator SHA and candidate ID;
+- prospective closed-trade and paired-evaluable counts;
+- LONG and SHORT contribution;
+- selected contribution versus actual timing and always-60s timing;
+- missing/non-evaluable outcome counts and lineage mismatches;
+- descriptive chronological and leave-one-market-out robustness;
+- frozen review-readiness state.
+
+If the compact artifact is unavailable, Issue #682 is explicitly marked blocked instead of retaining stale evidence.
+
+This publication path is research-only. It does not change actual paper entry timing, strategy, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
