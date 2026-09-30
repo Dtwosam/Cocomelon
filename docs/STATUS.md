@@ -3255,3 +3255,24 @@ Weak interim totals, sparse side counts, or incomplete samples remain `collectin
 The aggregate manifest reports lifecycle counts and uses `all_candidates_failed` only when every frozen candidate is irrecoverably failed. This is a research-state label only. It does not retire or replace a strategy automatically and carries no paper execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Immutable prospective first-failure receipts — 2026-09-30
+
+Issue #702 is the canonical first-failure surface for the frozen prospective trade-quality candidates.
+
+A separate append-only workflow consumes the canonical `prospective-trade-quality-readiness.json` artifact. When a candidate first enters `failed_closed_block`, it writes one immutable self-hashed receipt containing:
+
+- candidate identity and frozen prospective boundary/training identity;
+- exact readiness workflow run and attempt where irrecoverability was first observed;
+- irrecoverable failure components;
+- the exact failed closed block snapshot;
+- source prediction/comparison/timing ledger digests.
+
+Later readiness runs may add the other candidate's first-failure receipt, but an existing receipt cannot be rewritten or erased. If a previously failed candidate appears to recover under the same frozen contract, receipt continuity fails closed and Issue #702 is marked BLOCKED.
+
+Pre-lifecycle readiness artifacts are rejected rather than interpreted as "no failure". The workflow runs after successful readiness updates, on an hourly catch-up schedule, and can be manually pointed at an exact successful readiness run.
+
+This is research/control-plane integrity only. It cannot replace candidates automatically and has no paper execution, timing, sizing, stop, risk, promotion, or live authority.
+
+**LIVE TRADING: DISABLED.**
