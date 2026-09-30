@@ -198,8 +198,15 @@ def _receipt(
         raise ProspectiveCandidateFailureReceiptError(
             "FIRST_FAILURE_EVIDENCE_INCOMPLETE"
         )
+    candidate_instance_id = _sha256(
+        {
+            "candidate_key": candidate_key,
+            "candidate_identity": identity,
+        }
+    )
     payload = {
         "candidate_key": candidate_key,
+        "candidate_instance_id": candidate_instance_id,
         "lifecycle_state": _FAILED_STATE,
         "failure_components": components,
         "source_readiness_run_id": source_readiness_run_id,
@@ -229,14 +236,21 @@ def _validate_previous(
             "FAILURE_RECEIPT_ENTRIES_INVALID"
         )
     entries: list[dict[str, object]] = []
-    seen: set[str] = set()
+    seen_instances: set[str] = set()
     for raw in entries_raw:
         entry = _dict(raw, "FAILURE_RECEIPT_ENTRY_INVALID")
         candidate = _str(
             entry.get("candidate_key"),
             "FAILURE_RECEIPT_CANDIDATE_INVALID",
         )
-        if candidate not in _CANDIDATES or candidate in seen:
+        instance_id = _str(
+            entry.get("candidate_instance_id"),
+            "FAILURE_RECEIPT_INSTANCE_INVALID",
+        )
+        if (
+            candidate not in _CANDIDATES
+            or instance_id in seen_instances
+        ):
             raise ProspectiveCandidateFailureReceiptError(
                 "FAILURE_RECEIPT_CANDIDATE_INVALID"
             )
@@ -253,9 +267,14 @@ def _validate_previous(
             raise ProspectiveCandidateFailureReceiptError(
                 "FAILURE_RECEIPT_ID_MISMATCH"
             )
-        seen.add(candidate)
+        seen_instances.add(instance_id)
         entries.append(entry)
-    entries.sort(key=lambda item: str(item["candidate_key"]))
+    entries.sort(
+        key=lambda item: (
+            str(item["candidate_key"]),
+            str(item["candidate_instance_id"]),
+        )
+    )
     canonical = {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
@@ -319,14 +338,63 @@ def update_candidate_failure_receipts(
             "READINESS_LIFECYCLE_STATE_INVALID"
         )
 
+    current_identities = {
+        "cadence_microstructure": {
+            "model_family": _str(
+                cadence.get("model_family"),
+                "CADENCE_MODEL_FAMILY_INVALID",
+            ),
+            "prospective_start_ms": cadence.get(
+                "prospective_start_ms"
+            ),
+            "frozen_training_rows_sha256": _str(
+                cadence.get("frozen_training_rows_sha256"),
+                "CADENCE_TRAINING_DIGEST_INVALID",
+            ),
+            "prediction_ledger_sha256": _str(
+                cadence.get("prediction_ledger_sha256"),
+                "CADENCE_PREDICTION_LEDGER_INVALID",
+            ),
+            "comparison_ledger_sha256": _str(
+                cadence.get("comparison_ledger_sha256"),
+                "CADENCE_COMPARISON_LEDGER_INVALID",
+            ),
+        },
+        "side_conditioned_timing": {
+            "candidate_id": _str(
+                timing.get("candidate_id"),
+                "TIMING_CANDIDATE_INVALID",
+            ),
+            "started_at_ms": timing.get("started_at_ms"),
+            "timing_ledger_sha256": _str(
+                timing.get("timing_ledger_sha256"),
+                "TIMING_LEDGER_INVALID",
+            ),
+        },
+    }
+    current_instance_ids = {
+        candidate: _sha256(
+            {
+                "candidate_key": candidate,
+                "candidate_identity": identity,
+            }
+        )
+        for candidate, identity in current_identities.items()
+    }
+
     previous_entries = _validate_previous(previous)
     entries = {
-        str(entry["candidate_key"]): entry
+        str(entry["candidate_instance_id"]): entry
         for entry in previous_entries
     }
 
-    for candidate, entry in tuple(entries.items()):
-        if current_states.get(candidate) != _FAILED_STATE:
+    for entry in previous_entries:
+        candidate = str(entry["candidate_key"])
+        instance_id = str(entry["candidate_instance_id"])
+        if (
+            current_instance_ids.get(candidate) == instance_id
+            and current_states.get(candidate) != _FAILED_STATE
+        ):
             raise ProspectiveCandidateFailureReceiptError(
                 "FIRST_FAILURE_CANDIDATE_RECOVERED"
             )
@@ -338,19 +406,23 @@ def update_candidate_failure_receipts(
     for candidate in _CANDIDATES:
         if current_states.get(candidate) != _FAILED_STATE:
             continue
-        if candidate in entries:
+        instance_id = current_instance_ids[candidate]
+        if instance_id in entries:
             continue
-        entries[candidate] = _receipt(
+        entries[instance_id] = _receipt(
             readiness_report,
             candidate_key=candidate,
             source_readiness_run_id=run_id,
             source_readiness_run_attempt=run_attempt,
         )
 
-    ordered = [
-        entries[key]
-        for key in sorted(entries)
-    ]
+    ordered = sorted(
+        entries.values(),
+        key=lambda item: (
+            str(item["candidate_key"]),
+            str(item["candidate_instance_id"]),
+        ),
+    )
     canonical = {
         "kind": KIND,
         "schema_version": SCHEMA_VERSION,
