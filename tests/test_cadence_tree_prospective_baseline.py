@@ -252,7 +252,7 @@ def _manifest_path(
     return path
 
 
-def test_prospective_baseline_can_admit_good_long_and_short(
+def test_prospective_baseline_scores_both_directions_without_authority(
     tmp_path: Path,
 ) -> None:
     rows, store, start = _dataset(tmp_path / "features")
@@ -268,14 +268,16 @@ def test_prospective_baseline_can_admit_good_long_and_short(
     )
 
     assert report["status"] == "completed"
-    assert report["development_qualified"] is True
-    assert report["by_direction"]["long"]["admitted_rows"] >= 1
-    assert report["by_direction"]["short"]["admitted_rows"] >= 1
-    assert Decimal(report["candidate_net_return_sum"]) > Decimal("0")
-    assert all(
-        block["passes"] is True
-        for block in report["stability_blocks"]
-    )
+    assert report["prospective_rows"] == 8
+    assert report["by_direction"]["long"]["prospective_rows"] == 4
+    assert report["by_direction"]["short"]["prospective_rows"] == 4
+    assert {
+        row["direction"]
+        for row in report["scored_rows"]
+    } == {"long", "short"}
+    assert report["research_only"] is True
+    assert report["execution_authority"] is False
+    assert report["promotion_authority"] is False
 
 
 def test_post_freeze_labels_cannot_change_predictions(
