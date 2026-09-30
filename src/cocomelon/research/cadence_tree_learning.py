@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final
 
-from cocomelon.domain.features import FeatureSnapshot
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
     _ContextRow,
