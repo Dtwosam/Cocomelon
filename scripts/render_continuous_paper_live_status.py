@@ -35,6 +35,111 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+def _cadence_trade_quality_calibration_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Cadence trade-quality calibration",
+        "",
+        "- authority: `TOUCHED RESEARCH / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No cadence trade-quality calibration telemetry._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- calibration error: `{error}`")
+        return lines
+
+    status = raw.get("status", "unknown")
+    lines.extend(
+        [
+            f"- status: `{status}`",
+            (
+                "- paired 15m+1h decisions / incomplete pairs: "
+                f"`{raw.get('paired_decisions', 0)} / "
+                f"{raw.get('incomplete_decision_pairs', 0)}`"
+            ),
+            (
+                "- selected train groups: "
+                f"`{raw.get('selected_group_count', 0)}`"
+            ),
+        ]
+    )
+    if status != "completed":
+        lines.append(
+            "- still needed paired decisions: "
+            f"`{raw.get('still_needed_paired_decisions', 0)}`"
+        )
+        lines.append("- promotion authority: `false`")
+        return lines
+
+    baseline = raw.get("baseline_validation", {})
+    candidate = raw.get("candidate_validation", {})
+    by_direction = raw.get(
+        "candidate_validation_by_direction",
+        {},
+    )
+    if not isinstance(baseline, dict):
+        baseline = {}
+    if not isinstance(candidate, dict):
+        candidate = {}
+    if not isinstance(by_direction, dict):
+        by_direction = {}
+    long_summary = by_direction.get("long", {})
+    short_summary = by_direction.get("short", {})
+    if not isinstance(long_summary, dict):
+        long_summary = {}
+    if not isinstance(short_summary, dict):
+        short_summary = {}
+
+    lines.extend(
+        [
+            (
+                "- validation baseline count / mean 15m / mean 1h: "
+                f"`{baseline.get('count', 0)} / "
+                f"{baseline.get('mean_15m')} / "
+                f"{baseline.get('mean_1h')}`"
+            ),
+            (
+                "- admitted count / mean 15m / mean 1h: "
+                f"`{candidate.get('count', 0)} / "
+                f"{candidate.get('mean_15m')} / "
+                f"{candidate.get('mean_1h')}`"
+            ),
+            (
+                "- admitted LONG / SHORT: "
+                f"`{long_summary.get('count', 0)} / "
+                f"{short_summary.get('count', 0)}`"
+            ),
+            (
+                "- all four validation blocks positive: "
+                f"`{str(bool(raw.get('all_stability_blocks_positive'))).lower()}`"
+            ),
+            (
+                "- qualifies touched development: "
+                f"`{str(bool(raw.get('qualifies_development'))).lower()}`"
+            ),
+            "- promotion authority: `false`",
+            "",
+            (
+                "_Training uses only earlier cadence-shadow outcomes; the "
+                "trailing validation slice is chronological. This can justify "
+                "a later frozen prospective challenger only—it cannot alter "
+                "paper execution by itself._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _cadence_shadow_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
@@ -8476,6 +8581,11 @@ def render_live_status(
         ]
     )
     lines.extend(_cadence_shadow_lines(payload.get("cadence_shadow")))
+    lines.extend(
+        _cadence_trade_quality_calibration_lines(
+            payload.get("cadence_trade_quality_calibration")
+        )
+    )
     lines.extend(
         [
             "",
