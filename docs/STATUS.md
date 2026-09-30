@@ -2756,3 +2756,27 @@ The direct artifact preserves the exact cadence state already present inside the
 The full durable state remains unchanged and authoritative for runtime recovery. The cadence artifact is read-only research convenience data and grants no execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Disjoint cadence opportunity walk-forward diagnostics — 2026-09-30
+
+The exact predecessor state from continuous-paper run `36699032726` contains 652 settled 15m → 1h outcomes. A touched-development walk-forward audit evaluates the final six disjoint 50-opportunity windows with expanding training and a forward-label purge at every fold boundary.
+
+Aggregate result:
+
+- raw validation opportunity sum: `-0.7055804263512291545788161271`;
+- filtered candidate sum: `-0.2362224724184513200178525058`;
+- avoided-loss delta: `+0.4693579539327778345609636213`;
+- profitable candidate folds: `3 / 6`;
+- losing candidate folds: `3 / 6`;
+- admitted opportunities: `101` = `89 LONG + 12 SHORT`.
+
+The filter improves contribution versus taking every opportunity in five of six folds, but it is not independently profitable across time.
+
+The LONG / trend / score-80+ cohort appears in all six folds and is positive in four, yet its aggregate 63-row contribution is `-0.04104121904490894914285769371` with mean `-0.0006514479213477610975056776779`. That directly rejects freezing the terminal LONG/trend/80+ result as a standalone prospective rule.
+
+The next research problem is regime discrimination: identify observable, pre-decision context that separates the profitable and losing time windows without using market blacklists or future information.
+
+This is touched-development evidence only and has no paper or live execution authority.
+
+**LIVE TRADING: DISABLED.**
