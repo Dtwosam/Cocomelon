@@ -304,7 +304,6 @@ def test_overlap_rejects_duplicate_trade_decision_ids() -> None:
         )
 
 
-
 def test_overlap_review_requires_broad_profitable_robust_sample() -> None:
     scored_rows = []
     trades = []
@@ -380,7 +379,6 @@ def test_overlap_review_requires_broad_profitable_robust_sample() -> None:
     assert robustness["total_candidate_minus_actual_net_pnl"] == "20"
     assert robustness["leave_one_trade_out_min_delta"] == "19"
     assert robustness["positive_delta_after_removing_any_one_trade"] is True
-
 
 
 def test_overlap_accepts_legacy_ledger_without_review_diagnostics() -> None:
