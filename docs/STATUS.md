@@ -2741,3 +2741,22 @@ Heavy research analytics remain reproducible from durable state and completed ar
 This changes telemetry scheduling only. It does not change strategy decisions, paper execution, sizing, stops, risk limits, promotion state, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Disjoint cadence opportunity walk-forward diagnostics — 2026-09-30
+
+The cadence opportunity research path now includes a touched-development walk-forward diagnostic for the primary 15m → 1h surface.
+
+The default audit uses the final six **disjoint** 50-opportunity validation windows. For each fold it:
+
+- trains only on chronologically earlier outcomes;
+- purges training labels whose forward window overlaps the fold's first validation boundary;
+- requires at least 300 purged training rows;
+- refits the same hierarchical grouped-mean learner from training-only data;
+- records admitted after-cost contribution, direction mix, and exact admitted cohorts.
+
+The aggregate report records positive/negative fold counts, disjoint candidate and baseline contribution, LONG/SHORT admissions, and exact-cohort persistence across folds.
+
+This is descriptive touched-development evidence. It is intended to distinguish persistent opportunity structure from a favorable terminal holdout and cannot promote or change paper execution.
+
+**LIVE TRADING: DISABLED.**
