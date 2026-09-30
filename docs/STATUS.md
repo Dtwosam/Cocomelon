@@ -3332,3 +3332,22 @@ For every residual cohort and every existing side/strategy/rank/market grouping,
 This is descriptive only and does not change the frozen top-10 + no LONG-trend candidate, readiness gates, paper entries, stops, exits, sizing, risk, promotion state, or live authority. Its purpose is to keep future changes targeted: poor-entry losses should drive entry research, while profitable-then-losing trades should drive exit/profit-protection research instead of another broad entry veto.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Residual profit-lock exact-path overlap — 2026-09-30
+
+The frozen combined entry-screen allowed cohort is now cross-checked against the existing exact observed-path profit-lock counterfactuals.
+
+For each frozen profit-lock rule, the diagnostic reports:
+
+- allowed residual losses with and without complete exact-path outcomes;
+- activations, triggers, and losses rescued to non-negative estimated PnL;
+- actual versus candidate PnL and net-R contribution;
+- giveback-loss and deep-giveback-loss trigger coverage and contribution delta;
+- leave-one-loss-out robustness in both PnL and net R.
+
+This closes an important attribution gap. A loss merely reaching +0.5R or +1R MFE is no longer treated as proof that a profit lock would have helped; the rule must actually activate and trigger on the recorded mark path after frozen costs. Missing or broken path evidence is reported explicitly and fails open for telemetry only.
+
+The overlap is descriptive and research-only. It does not alter the combined entry-filter gate, profit-lock readiness gate, paper entries, exits, stops, sizing, risk, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
