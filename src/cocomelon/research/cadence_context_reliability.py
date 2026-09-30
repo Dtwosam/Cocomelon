@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
@@ -15,6 +15,7 @@ from cocomelon.research.cadence_context_learning import (
 from cocomelon.research.cadence_opportunity_learning import (
     DEFAULT_CONFIG,
     CadenceOpportunityLearningConfig,
+    _score_band,
 )
 from cocomelon.research.cadence_shadow import (
     FIFTEEN_MINUTES_MS,
@@ -213,7 +214,7 @@ def _cohort_attribution(
             (
                 sample.direction.value,
                 sample.lead_strategy,
-                str(sample.score),
+                _score_band(sample.score),
                 row.feature.trend_regime.value,
                 row.feature.volatility_regime.value,
                 estimate.specificity,
@@ -235,7 +236,7 @@ def _cohort_attribution(
                 {
                     "direction": key[0],
                     "lead_strategy": key[1],
-                    "score": key[2],
+                    "score_band": key[2],
                     "trend_regime": key[3],
                     "volatility_regime": key[4],
                     "training_estimate_specificity": key[5],
@@ -456,7 +457,10 @@ def evaluate_cadence_context_reliability(
     baseline_sum = Decimal(
         str(baseline.get("candidate_net_return_sum", "0"))
     )
-    baseline_admitted = int(baseline.get("admitted_rows", 0))
+    baseline_admitted = cast(
+        int,
+        baseline.get("admitted_rows", 0),
+    )
 
     return {
         "status": "completed",
