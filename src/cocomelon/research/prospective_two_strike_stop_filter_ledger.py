@@ -81,11 +81,10 @@ def _required_int(
 
 def _row_identity(
     row: dict[str, object],
-) -> tuple[int, int, str]:
+) -> tuple[int, str]:
     return (
         cast(int, row["opened_at_ms"]),
-        cast(int, row["closed_at_ms"]),
-        cast(str, row["trade_id"]),
+        cast(str, row["opening_plan_id"]),
     )
 
 
@@ -95,6 +94,7 @@ def _canonical_row(raw: object) -> dict[str, object]:
             "ledger row must be an object"
         )
     trade_id = _required_string(raw, "trade_id")
+    opening_plan_id = _required_string(raw, "opening_plan_id")
     market = _required_string(raw, "market")
     direction = _required_string(raw, "direction")
     if direction not in {"long", "short"}:
@@ -126,6 +126,7 @@ def _canonical_row(raw: object) -> dict[str, object]:
         )
     return {
         "trade_id": trade_id,
+        "opening_plan_id": opening_plan_id,
         "market": market,
         "direction": direction,
         "opened_at_ms": opened_at_ms,
@@ -155,6 +156,13 @@ def _canonical_rows(
     if len(trade_ids) != len(set(trade_ids)):
         raise ProspectiveTwoStrikeStopFilterLedgerError(
             "duplicate ledger trade id"
+        )
+    opening_plan_ids = tuple(
+        cast(str, row["opening_plan_id"]) for row in rows
+    )
+    if len(opening_plan_ids) != len(set(opening_plan_ids)):
+        raise ProspectiveTwoStrikeStopFilterLedgerError(
+            "duplicate ledger opening plan id"
         )
     return tuple(sorted(rows, key=_row_identity))
 
@@ -220,6 +228,7 @@ def _candidate_rows(
         rows.append(
             {
                 "trade_id": trade.trade_id,
+                "opening_plan_id": trade.opening_plan_id,
                 "market": trade.market.canonical,
                 "direction": trade.direction.value,
                 "opened_at_ms": trade.opened_at_ms,
@@ -435,30 +444,31 @@ def update_two_strike_ledger(
             str,
             validated["ledger_sha256"],
         )
-        current_by_id = {
-            cast(str, row["trade_id"]): row
+        current_by_opening_plan = {
+            cast(str, row["opening_plan_id"]): row
             for row in rows
         }
         for old in previous_rows:
-            trade_id = cast(str, old["trade_id"])
-            current = current_by_id.get(trade_id)
+            opening_plan_id = cast(str, old["opening_plan_id"])
+            current = current_by_opening_plan.get(opening_plan_id)
             if current is None:
                 raise ProspectiveTwoStrikeStopFilterLedgerError(
-                    "previous two-strike trade row disappeared"
+                    "previous two-strike opening row disappeared"
                 )
             if current != old:
                 raise ProspectiveTwoStrikeStopFilterLedgerError(
                     "previous two-strike trade row changed"
                 )
 
-    old_ids = {
-        cast(str, row["trade_id"])
+    old_opening_plan_ids = {
+        cast(str, row["opening_plan_id"])
         for row in previous_rows
     }
     new_rows = tuple(
         row
         for row in rows
-        if cast(str, row["trade_id"]) not in old_ids
+        if cast(str, row["opening_plan_id"])
+        not in old_opening_plan_ids
     )
     history.append(
         {
