@@ -2730,3 +2730,14 @@ Because the promising 1-hour result is temporally unstable and one-sided, it is 
 A new offline robustness audit therefore decomposes admitted validation contribution by market and chronological block, reports absolute-contribution concentration, leave-one-market-out sums, and exact cohort market/block attribution. These diagnostics do not alter learner admissions, paper orders, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+### Operational heartbeat / research separation — 2026-09-30
+
+Continuous paper live telemetry is now split by responsibility.
+
+The trading hot path emits an **operational-only heartbeat** built from in-memory account state, open positions, execution health, decision/risk counters, the latest observation, and the bounded recent-trade buffer. It does not run cumulative research decompositions before WebSocket streaming starts or during each steady-state polling cycle.
+
+Heavy research analytics remain reproducible from durable state and completed artifacts through exact-state audit scripts such as the cadence opportunity learner and robustness audits. This prevents growing research history from delaying market streaming, live-status freshness, or graceful runtime handoff.
+
+This changes telemetry scheduling only. It does not change strategy decisions, paper execution, sizing, stops, risk limits, promotion state, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

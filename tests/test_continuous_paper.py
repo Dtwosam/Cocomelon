@@ -227,7 +227,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"delayed_entry_stop_l2_replay": (' in source
     assert "delayed_entry_stop_l2_replay(" in source
     assert "capture_error=original_stop_book_capture.error" in source
-    assert "paper_execution_config=replay_config.execution" in source
+    assert "def _operational_live_status_payload(" in source
+    assert '"heartbeat_scope": "operational"' in source
     assert '"delayed_entry_portfolio_capacity": (' in source
     assert "delayed_entry_portfolio_capacity_overlay(" in source
     assert (
@@ -2130,7 +2131,11 @@ def test_continuous_runtime_honors_upgrade_stop_file_contract() -> None:
     )
     assert "if _stop_requested(stop_path):" in source
     assert "for market in _iter_until_stop(selected, stop_path):" in source
-    assert "if not _stop_requested(stop_path):\n            _emit_live_status(" in source
+    assert (
+        "if not _stop_requested(stop_path):\n"
+        "            _emit_operational_live_status("
+        in source
+    )
 
 
 def test_runtime_persists_authenticated_learning_features() -> None:
@@ -2194,3 +2199,13 @@ def test_runtime_exposes_cadence_opportunity_learning() -> None:
     assert "cadence_opportunity_learning_payload(" in source
     assert '"cadence_opportunity_learning": (' in source
     assert "self.cadence_shadow.outcomes" in source
+
+
+def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"heartbeat_scope": "operational"' in source
+    assert source.count("_emit_operational_live_status(") == 3
+    assert source.count("_emit_live_status(") == 1

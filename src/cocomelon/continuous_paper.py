@@ -5206,6 +5206,219 @@ def _live_status_payload(
     }
 
 
+def _operational_live_status_payload(
+    execution: PaperExecutionAdapter,
+    pump: _RecordPump,
+    selected_markets: tuple[MarketId, ...],
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    positions: list[dict[str, object]] = []
+    for position in execution.account.positions:
+        latest_mark = position.latest_mark
+        protection = _position_protection_metrics(
+            side=position.side.value,
+            quantity=position.quantity,
+            entry_price=position.average_entry_price,
+            stop_price=position.stop_price,
+            latest_mark=latest_mark,
+            planned_risk=position.planned_risk,
+        )
+        positions.append(
+            {
+                "market": position.market.canonical,
+                "side": position.side.value,
+                "quantity": str(position.quantity),
+                "average_entry_price": str(position.average_entry_price),
+                "stop_price": str(position.stop_price),
+                "latest_mark": (
+                    None if latest_mark is None else str(latest_mark)
+                ),
+                **protection,
+                "planned_risk": str(position.planned_risk),
+                "opened_at_ms": position.opened_at_ms,
+                "opening_plan_id": position.opening_plan_id,
+            }
+        )
+
+    open_planned_risk = sum(
+        (position.planned_risk for position in execution.account.positions),
+        Decimal("0"),
+    )
+    open_planned_risk_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else open_planned_risk / execution.account.equity
+    )
+    open_stop_trigger_gross_pnl = sum(
+        (
+            Decimal(str(position["stop_trigger_gross_pnl"]))
+            for position in positions
+        ),
+        Decimal("0"),
+    )
+    open_stop_trigger_gross_r = (
+        None
+        if open_planned_risk == 0
+        else open_stop_trigger_gross_pnl / open_planned_risk
+    )
+    protected_stop_count = sum(
+        1
+        for position in positions
+        if position["stop_protects_profit"] is True
+    )
+    total_account_pnl = (
+        execution.account.equity - execution.account.starting_cash
+    )
+    total_return_fraction = (
+        Decimal("0")
+        if execution.account.starting_cash == 0
+        else total_account_pnl / execution.account.starting_cash
+    )
+    gross_open_notional_fraction = (
+        Decimal("0")
+        if execution.account.equity == 0
+        else (
+            execution.account.gross_open_notional
+            / execution.account.equity
+        )
+    )
+
+    activity = pump.pipeline.session_decision_activity
+    observation = pump.last_observation
+    last_observation: dict[str, object] | None = None
+    if observation is not None:
+        last_observation = {
+            "kind": observation.kind.value,
+            "timestamp_ms": observation.timestamp_ms,
+            "market": (
+                None
+                if observation.market is None
+                else observation.market.canonical
+            ),
+            "reason_codes": list(observation.reason_codes),
+            "plan_id": observation.plan_id,
+        }
+
+    return {
+        "kind": "continuous-paper-heartbeat",
+        "heartbeat_scope": "operational",
+        "timestamp_ms": timestamp_ms,
+        "paper_only": True,
+        "live_orders": False,
+        "research_telemetry_deferred": True,
+        "selected_market_count": len(selected_markets),
+        "selected_markets": [
+            market.canonical for market in selected_markets
+        ],
+        "processed_records": pump.processed_records,
+        "journal_observations": pump.journal_observations,
+        "closed_trades": pump.closed_trades,
+        "session_closed_trades": pump.session_closed_trades,
+        "recent_closed_trades": [
+            _closed_trade_status_payload(trade)
+            for trade in reversed(pump.recent_closed_trades)
+        ],
+        "open_planned_risk": str(open_planned_risk),
+        "open_planned_risk_fraction_of_equity": str(
+            open_planned_risk_fraction
+        ),
+        "open_stop_trigger_gross_pnl": str(
+            open_stop_trigger_gross_pnl
+        ),
+        "open_stop_trigger_gross_r": (
+            None
+            if open_stop_trigger_gross_r is None
+            else str(open_stop_trigger_gross_r)
+        ),
+        "open_positions_with_profit_protected_stop": (
+            protected_stop_count
+        ),
+        "gross_open_notional": str(
+            execution.account.gross_open_notional
+        ),
+        "gross_open_notional_fraction_of_equity": str(
+            gross_open_notional_fraction
+        ),
+        "available_margin": str(execution.account.available_margin),
+        "session_decision_epochs": activity.decision_epochs,
+        "last_decision_boundary_ms": activity.last_decision_boundary_ms,
+        "last_decision_evaluated_at_ms": (
+            activity.last_decision_evaluated_at_ms
+        ),
+        "session_decisions": {
+            "long": activity.long_decisions,
+            "short": activity.short_decisions,
+            "no_trade": activity.no_trade_decisions,
+        },
+        "session_decision_reason_counts": dict(
+            activity.decision_reason_counts
+        ),
+        "session_risk": {
+            "evaluations": activity.risk_evaluations,
+            "approvals": activity.risk_approvals,
+            "rejections": activity.risk_rejections,
+            "reason_counts": dict(activity.risk_reason_counts),
+        },
+        "session_opening_execution_attempts": (
+            activity.opening_execution_attempts
+        ),
+        "session_opening_fills": activity.opening_fills,
+        "open_position_count": len(positions),
+        "positions": positions,
+        "starting_cash": str(execution.account.starting_cash),
+        "cash": str(execution.account.cash),
+        "equity": str(execution.account.equity),
+        "day_start_ms": execution.account.day_start_ms,
+        "day_start_equity": str(execution.account.day_start_equity),
+        "daily_realized_pnl": str(
+            execution.account.daily_realized_pnl
+        ),
+        "total_account_pnl": str(total_account_pnl),
+        "total_return_fraction": str(total_return_fraction),
+        "unrealized_pnl": str(execution.account.unrealized_pnl),
+        "realized_gross_pnl": str(
+            execution.account.realized_gross_pnl
+        ),
+        "cumulative_fees": str(execution.account.cumulative_fees),
+        "cumulative_funding": str(
+            execution.account.cumulative_funding
+        ),
+        "execution_healthy": (
+            execution.health.healthy_for_new_exposure
+        ),
+        "execution_reason_codes": list(
+            execution.health.reason_codes
+        ),
+        "last_observation": last_observation,
+    }
+
+
+def _emit_operational_live_status(
+    execution: PaperExecutionAdapter,
+    pump: _RecordPump,
+    selected_markets: tuple[MarketId, ...],
+    *,
+    timestamp_ms: int,
+) -> None:
+    payload = _operational_live_status_payload(
+        execution,
+        pump,
+        selected_markets,
+        timestamp_ms=timestamp_ms,
+    )
+    print(
+        "COCOMELON_PAPER_HEARTBEAT "
+        + json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+
+
 def _emit_live_status(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
@@ -6074,93 +6287,10 @@ async def run_continuous_paper_session(
 
         persist_checkpoint()
         if not _stop_requested(stop_path):
-            _emit_live_status(
+            _emit_operational_live_status(
                 execution,
                 pump,
                 selected,
-                feature_store,
-                facts,
-                opening_lineage_store,
-                trade_path_store,
-                opening_rank_store,
-                opening_fill_liquidity_store,
-                opening_opportunity_store,
-                opening_opportunity_path_store,
-                opening_opportunity_exit_book_store,
-                replacement_funding_store,
-                original_stop_book_store,
-                original_stop_book_capture,
-                profit_lock_execution_shadow,
-                delayed_entry_execution_shadow,
-                delayed_entry_120s_execution_shadow,
-                entry_mid_markout_shadow,
-                drawdown_tracker,
-                prospective_entry_filter_state,
-                prospective_delayed_price_confirmation_state,
-                prospective_top10_rank_filter_state,
-                prospective_trade_quality_state,
-                prospective_combined_entry_filter_state,
-                prospective_replacement_exit_policy_state,
-                adaptive_delay_selector_state,
-                fill_aware_delay_selector_state,
-                delay_selector_comparison_state,
-                trade_path_capture_error=trade_path_sink.error,
-                opening_rank_capture_error=(
-                    None
-                    if opening_lineage_sink is None
-                    else opening_lineage_sink.rank_error
-                ),
-                opening_fill_liquidity_capture_error=(
-                    opening_fill_liquidity_sink.error
-                ),
-                opening_opportunity_capture_error=(
-                    opening_opportunity_sink.error
-                ),
-                opening_opportunity_path_capture_error=(
-                    opening_opportunity_sink.path_error
-                ),
-                opening_opportunity_exit_book_capture_error=(
-                    opening_opportunity_sink.exit_book_error
-                ),
-                replacement_funding_capture_error=(
-                    opening_opportunity_sink.funding_error
-                ),
-                prospective_entry_filter_restore_error=(
-                    prospective_entry_filter_restore_error
-                ),
-                prospective_delayed_price_confirmation_restore_error=(
-                    prospective_delayed_price_confirmation_restore_error
-                ),
-                prospective_top10_rank_filter_restore_error=(
-                    prospective_top10_rank_filter_restore_error
-                ),
-                prospective_trade_quality_restore_error=(
-                    prospective_trade_quality_restore_error
-                ),
-                prospective_combined_entry_filter_restore_error=(
-                    prospective_combined_entry_filter_restore_error
-                ),
-                prospective_replacement_exit_policy_restore_error=(
-                    prospective_replacement_exit_policy_restore_error
-                ),
-                adaptive_delay_selector_restore_error=(
-                    adaptive_delay_selector_restore_error
-                ),
-                fill_aware_delay_selector_restore_error=(
-                    fill_aware_delay_selector_restore_error
-                ),
-                delay_selector_comparison_restore_error=(
-                    delay_selector_comparison_restore_error
-                ),
-                risk_limits=replay_config.risk_limits,
-                paper_max_gross_leverage=(
-                    replay_config.execution.paper_max_gross_leverage
-                ),
-                native_perp_min_notional=(
-                    replay_config.execution.native_perp_min_notional
-                ),
-                paper_execution_config=replay_config.execution,
-                checkpoint_seconds=config.checkpoint_seconds,
                 timestamp_ms=utc_now_ms(),
             )
 
@@ -6314,93 +6444,10 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
 
-                _emit_live_status(
+                _emit_operational_live_status(
                     execution,
                     pump,
                     selected,
-                    feature_store,
-                    facts,
-                    opening_lineage_store,
-                    trade_path_store,
-                    opening_rank_store,
-                    opening_fill_liquidity_store,
-                    opening_opportunity_store,
-                    opening_opportunity_path_store,
-                    opening_opportunity_exit_book_store,
-                    replacement_funding_store,
-                    original_stop_book_store,
-                    original_stop_book_capture,
-                    profit_lock_execution_shadow,
-                    delayed_entry_execution_shadow,
-                    delayed_entry_120s_execution_shadow,
-                    entry_mid_markout_shadow,
-                    drawdown_tracker,
-                    prospective_entry_filter_state,
-                    prospective_delayed_price_confirmation_state,
-                    prospective_top10_rank_filter_state,
-                    prospective_trade_quality_state,
-                    prospective_combined_entry_filter_state,
-                    prospective_replacement_exit_policy_state,
-                    adaptive_delay_selector_state,
-                    fill_aware_delay_selector_state,
-                    delay_selector_comparison_state,
-                    trade_path_capture_error=trade_path_sink.error,
-                    opening_rank_capture_error=(
-                        None
-                        if opening_lineage_sink is None
-                        else opening_lineage_sink.rank_error
-                    ),
-                    opening_fill_liquidity_capture_error=(
-                        opening_fill_liquidity_sink.error
-                    ),
-                    opening_opportunity_capture_error=(
-                        opening_opportunity_sink.error
-                    ),
-                    opening_opportunity_path_capture_error=(
-                        opening_opportunity_sink.path_error
-                    ),
-                    opening_opportunity_exit_book_capture_error=(
-                        opening_opportunity_sink.exit_book_error
-                    ),
-                    replacement_funding_capture_error=(
-                        opening_opportunity_sink.funding_error
-                    ),
-                    prospective_entry_filter_restore_error=(
-                        prospective_entry_filter_restore_error
-                    ),
-                    prospective_delayed_price_confirmation_restore_error=(
-                        prospective_delayed_price_confirmation_restore_error
-                    ),
-                    prospective_top10_rank_filter_restore_error=(
-                        prospective_top10_rank_filter_restore_error
-                    ),
-                    prospective_trade_quality_restore_error=(
-                        prospective_trade_quality_restore_error
-                    ),
-                    prospective_combined_entry_filter_restore_error=(
-                        prospective_combined_entry_filter_restore_error
-                    ),
-                    prospective_replacement_exit_policy_restore_error=(
-                        prospective_replacement_exit_policy_restore_error
-                    ),
-                    adaptive_delay_selector_restore_error=(
-                        adaptive_delay_selector_restore_error
-                    ),
-                    fill_aware_delay_selector_restore_error=(
-                        fill_aware_delay_selector_restore_error
-                    ),
-                    delay_selector_comparison_restore_error=(
-                        delay_selector_comparison_restore_error
-                    ),
-                    risk_limits=replay_config.risk_limits,
-                    paper_max_gross_leverage=(
-                        replay_config.execution.paper_max_gross_leverage
-                    ),
-                    native_perp_min_notional=(
-                        replay_config.execution.native_perp_min_notional
-                    ),
-                    paper_execution_config=replay_config.execution,
-                    checkpoint_seconds=config.checkpoint_seconds,
                     timestamp_ms=now_ms,
                 )
 
