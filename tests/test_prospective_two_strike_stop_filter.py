@@ -235,6 +235,54 @@ def test_two_strike_shadow_is_direction_and_market_separate() -> None:
     )
 
 
+def test_two_strike_shadow_uses_only_closes_known_before_opening() -> None:
+    start = EMBARGO_MS + 3_000_000
+    state = ProspectiveTwoStrikeStopFilterState(
+        frozen_at_ms=start - EMBARGO_MS
+    )
+    trades = (
+        _trade(
+            "overlap-loss-1",
+            opened_at_ms=start,
+            pnl="-5",
+            hold_ms=300_000,
+        ),
+        _trade(
+            "overlap-loss-2",
+            opened_at_ms=start + 120_000,
+            pnl="-6",
+            hold_ms=300_000,
+        ),
+        _trade(
+            "overlap-third-open",
+            opened_at_ms=start + 240_000,
+            pnl="4",
+            exit_reason="OPPOSITE_FRESH_THESIS",
+            hold_ms=600_000,
+        ),
+        _trade(
+            "after-two-known-closes",
+            opened_at_ms=start + 480_000,
+            pnl="-9",
+        ),
+    )
+
+    result = prospective_two_strike_stop_filter_summary(
+        trades,
+        state,
+    )
+
+    strikes = result["decision_prior_strikes"]
+    assert isinstance(strikes, dict)
+    assert strikes[trades[0].trade_id] == 0
+    assert strikes[trades[1].trade_id] == 0
+    assert strikes[trades[2].trade_id] == 0
+    assert strikes[trades[3].trade_id] == 2
+    assert result["blocked_trades"] == 1
+    assert result["blocked_losses"] == 1
+    assert result["blocked_net_pnl"] == "-9"
+
+
 def test_two_strike_shadow_ignores_pre_embargo_history() -> None:
     frozen = 3_000_000
     state = ProspectiveTwoStrikeStopFilterState(
