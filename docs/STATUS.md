@@ -3433,3 +3433,27 @@ The workflow bootstraps once when introduced and then follows successful Continu
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only two-strike prospective ledger — 2026-10-01
+
+The frozen `prospective-two-strike-same-side-stop-v1` challenger now has a dedicated durable evidence path separate from the live paper worker.
+
+The compact continuous-learning artifact carries the tiny `prospective-two-strike-stop-filter-state.json` freeze record alongside the paper journal. A separate workflow consumes only successful paper handoffs and writes an append-only trade-level ledger to Issue #715 and an immutable artifact.
+
+Each post-embargo closed trade row records:
+
+- trade identity, market, direction, open/close timestamps and exit reason;
+- realized net PnL and net R;
+- the candidate's prior same-market/same-direction strike count at the opening;
+- the frozen ADMIT/BLOCK decision implied by the two-strike rule.
+
+Previously published rows must remain identical. Candidate ID, freeze timestamp, six-hour clean-start boundary, embargo and rule metadata are locked across ledger updates. A missing historical row, changed historical row, altered source-artifact identity, or freeze/rule drift blocks the new ledger update instead of rewriting evidence.
+
+Old compact artifacts that predate export of the two-strike state receive zero credit and publish a waiting status instead of reconstructing or guessing the original freeze.
+
+The ledger mirrors the precommitted sample/economic/leave-one-trade/leave-one-market readiness diagnostics but has no authority to change paper orders, risk, stops, sizing, promotion, or live trading.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
