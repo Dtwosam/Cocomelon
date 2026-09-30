@@ -29,9 +29,6 @@ concurrency:
 
 jobs:
   ledger:
-    if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -53,12 +50,18 @@ jobs:
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
           EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
           INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
           INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
         run: |
           set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" != "success" ]; then
+            echo "source_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
           if [ "$EVENT_NAME" = "workflow_run" ]; then
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"
@@ -134,6 +137,7 @@ jobs:
           echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
 
       - name: Download compact paper source
+        if: ${{ steps.source.outputs.source_eligible == 'true' }}
         id: compact
         shell: bash
         env:
@@ -167,7 +171,7 @@ jobs:
           echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
 
       - name: Publish waiting-for-state status
-        if: ${{ steps.compact.outputs.eligible != 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible != 'true' }}
         shell: bash
         env:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
@@ -193,7 +197,7 @@ jobs:
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/two-strike-ledger-status.md)"
 
       - name: Restore previous two-strike ledger
-        if: ${{ steps.compact.outputs.eligible == 'true' }}
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
         id: previous
         shell: bash
         env:
@@ -298,6 +302,7 @@ jobs:
 
       - name: Publish blocked ledger status
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean != 'true'
         shell: bash
@@ -326,6 +331,7 @@ jobs:
 
       - name: Fail closed on two-strike ledger drift
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean != 'true'
         shell: bash
@@ -335,6 +341,7 @@ jobs:
 
       - name: Publish clean ledger status
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean == 'true'
         shell: bash
@@ -435,6 +442,7 @@ jobs:
 
       - name: Upload two-strike ledger
         if: >-
+          steps.source.outputs.source_eligible == 'true' &&
           steps.compact.outputs.eligible == 'true' &&
           steps.ledger.outputs.clean == 'true'
         uses: actions/upload-artifact@v7
