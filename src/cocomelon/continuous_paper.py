@@ -2016,6 +2016,7 @@ def _prospective_combined_entry_filter_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
     opening_rank_store: ContinuousPaperOpeningRankStore,
+    trade_path_store: ContinuousPaperTradePathStore,
     entry_filter_state: ProspectiveEntryFilterState,
     top10_rank_filter_state: ProspectiveTop10RankFilterState,
     state: ProspectiveCombinedEntryFilterState,
@@ -2023,11 +2024,22 @@ def _prospective_combined_entry_filter_payload(
     restore_error: str | None,
 ) -> dict[str, object]:
     try:
+        profit_lock_outcomes = evaluate_profit_lock_state(
+            journal,
+            trade_path_store,
+        ).outcomes
+        profit_lock_error = None
+    except Exception as exc:
+        profit_lock_outcomes = ()
+        profit_lock_error = f"{type(exc).__name__}: {exc}"
+
+    try:
         payload = evaluate_prospective_combined_entry_filter(
             journal,
             fact_store,
             opening_rank_store,
             state,
+            profit_lock_outcomes=profit_lock_outcomes,
         )
     except Exception as exc:
         return {
@@ -2066,6 +2078,12 @@ def _prospective_combined_entry_filter_payload(
         matched_overlap["error"] = None
 
     payload = dict(payload)
+    residual_profit_lock = payload.get("residual_profit_lock")
+    if isinstance(residual_profit_lock, dict):
+        residual_profit_lock = dict(residual_profit_lock)
+        residual_profit_lock["enabled"] = profit_lock_error is None
+        residual_profit_lock["source_error"] = profit_lock_error
+        payload["residual_profit_lock"] = residual_profit_lock
     payload["matched_standalone_overlap"] = matched_overlap
     payload["enabled"] = True
     payload["state_restore_error"] = restore_error
@@ -4578,6 +4596,7 @@ def _live_status_payload(
             pump.journal,
             fact_store,
             opening_rank_store,
+            trade_path_store,
             prospective_entry_filter_state,
             prospective_top10_rank_filter_state,
             prospective_combined_entry_filter_state,
