@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from decimal import Decimal
 from typing import Any, Final
 
@@ -10,6 +11,11 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
     _ContextRow,
     _resolve_rows,
+)
+from cocomelon.research.cadence_microstructure_training_manifest import (
+    FrozenCadenceTrainingManifestError,
+    load_frozen_cadence_training_manifest,
+    verify_frozen_cadence_training,
 )
 from cocomelon.research.cadence_opportunity_learning import (
     DEFAULT_CONFIG,
@@ -31,6 +37,11 @@ from cocomelon.research.learning_feature_snapshots import (
 ZERO: Final = Decimal("0")
 MODEL_FAMILY: Final = "cadence_microstructure_tree_prospective_v1"
 PROSPECTIVE_START_MS: Final = 1_790_776_800_000
+DEFAULT_FROZEN_TRAINING_MANIFEST_PATH: Final = (
+    Path(__file__).with_name(
+        "cadence_microstructure_frozen_training_v1.json"
+    )
+)
 FEATURE_REGISTRY: Final = (
     "direction",
     "lead_strategy",
@@ -281,6 +292,9 @@ def evaluate_cadence_microstructure_prospective(
     horizon_ms: int = ONE_HOUR_MS,
     validation_config: CadenceOpportunityLearningConfig = DEFAULT_CONFIG,
     tree_config: CadenceTreeConfig = DEFAULT_TREE_CONFIG,
+    frozen_training_manifest_path: str | Path = (
+        DEFAULT_FROZEN_TRAINING_MANIFEST_PATH
+    ),
 ) -> dict[str, object]:
     if prospective_start_ms < 0:
         raise ValueError("prospective_start_ms must be non-negative")
@@ -300,16 +314,36 @@ def evaluate_cadence_microstructure_prospective(
             ),
         )
     )
-    training = tuple(
-        row
-        for row in surface
-        if row.sample.target_end_ms < prospective_start_ms
-    )
     prospective = tuple(
         row
         for row in surface
         if row.sample.boundary_ms >= prospective_start_ms
     )
+    try:
+        manifest = load_frozen_cadence_training_manifest(
+            frozen_training_manifest_path
+        )
+        training = verify_frozen_cadence_training(
+            manifest,
+            surface,
+            feature_store,
+            model_family=MODEL_FAMILY,
+            feature_registry=FEATURE_REGISTRY,
+            prospective_start_ms=prospective_start_ms,
+            cadence_ms=cadence_ms,
+            horizon_ms=horizon_ms,
+        )
+    except FrozenCadenceTrainingManifestError as exc:
+        return {
+            "status": "not_ready",
+            "reason": "frozen_training_manifest_mismatch",
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "prospective_start_ms": prospective_start_ms,
+            "prospective_rows": len(prospective),
+            "frozen_training_error": str(exc),
+        }
     if len(training) < validation_config.min_train_rows:
         return {
             "status": "not_ready",
@@ -320,6 +354,7 @@ def evaluate_cadence_microstructure_prospective(
             "prospective_start_ms": prospective_start_ms,
             "training_rows": len(training),
             "prospective_rows": len(prospective),
+            "frozen_training_rows_sha256": manifest.rows_sha256,
         }
 
     training_rows, missing_training = _resolve_rows(
@@ -427,6 +462,8 @@ def evaluate_cadence_microstructure_prospective(
         "cadence_ms": cadence_ms,
         "horizon_ms": horizon_ms,
         "frozen_training_rows": len(training_rows),
+        "frozen_training_rows_sha256": manifest.rows_sha256,
+        "frozen_training_source": manifest.source,
         "frozen_training_last_target_end_ms": (
             None
             if not training
