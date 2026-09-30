@@ -25,6 +25,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_replacement_exit_policy_lines,
     _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
+    _prospective_residual_profit_lock_lines,
     _replacement_funding_evidence_lines,
     render_live_status,
 )
@@ -4745,7 +4746,6 @@ def test_renderer_omits_full_heartbeat_and_bounds_oversized_issue_body() -> None
     assert "audit authority" in completed.stdout
 
 
-
 def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     lines = _delayed_entry_stop_l2_lines(
         {
@@ -4829,7 +4829,6 @@ def test_exact_stop_l2_renderer_keeps_execution_reality_separate() -> None:
     assert "no synthetic remainder exit is invented" in output
 
 
-
 def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
     lines = _prospective_combined_entry_filter_lines(
         {
@@ -4900,7 +4899,6 @@ def test_combined_entry_filter_renderer_shows_frozen_intersection() -> None:
     assert "`-16 / 5 / 21`" in output
     assert "LONG+trend & rank >10" in output
     assert "earlier standalone LONG+trend and top-10 studies" in output
-
 
 
 
@@ -5009,7 +5007,6 @@ def test_opening_opportunity_renderer_exposes_capture_completeness() -> None:
     assert "forward mark paths" in output
     assert "real horizon L2 exit books" in output
     assert "never retroactively" in output
-
 
 
 
@@ -5611,7 +5608,6 @@ def test_prospective_filter_robustness_renderer_exposes_concentration() -> None:
     assert "does not change the frozen prospective readiness gate" in output
 
 
-
 def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
     lines = _prospective_allowed_residual_lines(
         {
@@ -5717,7 +5713,6 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
     assert "SOL / -8 / n1" in output
     assert "ETH / -4 / n1" in output
     assert "does not change the frozen filter or readiness gate" in output
-
 
 
 def test_fixed_schedule_filter_renderer_exposes_portfolio_effects() -> None:
@@ -5946,3 +5941,79 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered
+
+
+def test_residual_profit_lock_renderer_exposes_exact_path_saves() -> None:
+    lines = _prospective_residual_profit_lock_lines(
+        {
+            "enabled": True,
+            "source_error": None,
+            "residual_loss_trades": 3,
+            "complete_mfe_residual_losses": 3,
+            "giveback_residual_losses": 2,
+            "deep_giveback_residual_losses": 1,
+            "by_rule": {
+                "breakeven_after_0_5r": {
+                    "matched_exact_path_losses": 3,
+                    "missing_exact_path_losses": 0,
+                    "triggered_losses": 2,
+                    "rescued_to_nonnegative": 1,
+                    "actual_net_pnl": "-18",
+                    "candidate_net_pnl_estimate": "-8.5",
+                    "delta_net_pnl_estimate": "9.5",
+                    "giveback_triggered_losses": 2,
+                    "giveback_delta_net_pnl_estimate": "9.5",
+                    "giveback_delta_net_r_estimate": "0.95",
+                    "pnl_robustness": {
+                        "positive_after_removing_any_one_loss": True,
+                    },
+                    "net_r_robustness": {
+                        "positive_after_removing_any_one_loss": True,
+                    },
+                },
+                "lock_0_5r_after_1r": {
+                    "matched_exact_path_losses": 3,
+                    "missing_exact_path_losses": 0,
+                    "triggered_losses": 1,
+                    "rescued_to_nonnegative": 1,
+                    "actual_net_pnl": "-18",
+                    "candidate_net_pnl_estimate": "-11",
+                    "delta_net_pnl_estimate": "7",
+                    "giveback_triggered_losses": 1,
+                    "giveback_delta_net_pnl_estimate": "7",
+                    "giveback_delta_net_r_estimate": "0.7",
+                    "pnl_robustness": {
+                        "positive_after_removing_any_one_loss": False,
+                    },
+                    "net_r_robustness": {
+                        "positive_after_removing_any_one_loss": False,
+                    },
+                },
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "residual losses / complete-MFE / giveback / deep giveback" in output
+    assert "`3 / 3 / 2 / 1`" in output
+    assert "breakeven_after_0_5r exact-path matched / missing / triggered / rescued" in output
+    assert "`3 / 0 / 2 / 1`" in output
+    assert "breakeven_after_0_5r actual / candidate / delta PnL" in output
+    assert "`-18 / -8.5 / 9.5`" in output
+    assert "robust after removing any one loss PnL / R" in output
+    assert "`True / True`" in output
+    assert "does not change the combined-filter or profit-lock readiness gates" in output
+
+
+def test_residual_profit_lock_renderer_exposes_source_failure() -> None:
+    output = "\n".join(
+        _prospective_residual_profit_lock_lines(
+            {
+                "enabled": False,
+                "source_error": "RuntimeError: path boom",
+            }
+        )
+    )
+
+    assert "source unavailable" in output
+    assert "RuntimeError: path boom" in output
