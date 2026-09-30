@@ -49,3 +49,12 @@ def test_overlap_workflow_keeps_one_append_only_artifact() -> None:
     assert "cadence-prospective-actual-trade-overlap.json" in source
     assert "name: cadence-prospective-actual-trade-overlap" in source
     assert "retention-days: 90" in source
+
+
+def test_overlap_status_metadata_is_not_shell_interpreted() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cat > /tmp/status.md <<EOF" not in source
+    assert source.count("Path(\"/tmp/status.md\").write_text(") == 3
+    assert "os.environ['PREDICTION_RUN_ID']" in source
+    assert "os.environ['PAPER_RUN_ID']" in source
