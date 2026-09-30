@@ -3108,3 +3108,26 @@ The workflow restores the last successful ledger and requires every previously p
 This ledger is deliberately separate from both frozen evaluators. It cannot change either model, cannot choose a winner, and has no paper-execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective side-conditioned timing row ledger core — 2026-09-30
+
+The frozen `long-120s-short-60s-v1` timing experiment now has a separate row-level ledger core.
+
+For every future trade that is prospectively eligible and has causally evaluable +60s and +120s visible-book shadow outcomes, the extractor records:
+
+- immutable trade ID, market, direction, open time, and close time;
+- actual paper net PnL;
+- +60s fill-weighted same-exit net PnL;
+- +120s fill-weighted same-exit net PnL;
+- frozen selected delay (LONG=120s, SHORT=60s);
+- selected fill fraction and selected net PnL;
+- selected delta versus actual timing and versus always-60s.
+
+The append-only ledger rejects any previously published row that disappears or changes and rejects candidate-start/rule drift. Late-settling older trades may append when their paired timing outcomes become evaluable.
+
+The publishing workflow is intentionally deferred until this extractor core is merged, so the workflow can be pinned to the exact immutable merge SHA.
+
+This is research/control-plane only. It does not delay actual paper entries or change strategy, sizing, stops, risk, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
