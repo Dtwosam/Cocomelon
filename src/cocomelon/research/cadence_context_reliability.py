@@ -7,8 +7,8 @@ from typing import Final, cast
 
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
-    _ContextRow,
     _context_keys,
+    _ContextRow,
     _resolve_rows,
     evaluate_cadence_context_learning,
 )
