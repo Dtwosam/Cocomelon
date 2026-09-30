@@ -18,6 +18,7 @@ def _report() -> dict[str, object]:
         "cadence": {
             "model_family": "micro-v1",
             "prospective_start_ms": 100,
+            "frozen_training_rows": 652,
             "frozen_training_rows_sha256": "a" * 64,
             "prediction_ledger_sha256": "b" * 64,
             "comparison_ledger_sha256": "c" * 64,
@@ -311,6 +312,7 @@ def test_new_candidate_generation_does_not_rewrite_old_failure() -> None:
     assert isinstance(replacement_cadence, dict)
     replacement_cadence["model_family"] = "micro-v2"
     replacement_cadence["prospective_start_ms"] = 999
+    replacement_cadence["frozen_training_rows"] = 700
     replacement_cadence["frozen_training_rows_sha256"] = "e" * 64
     replacement_cadence["prediction_ledger_sha256"] = "f" * 64
     replacement_cadence["comparison_ledger_sha256"] = "1" * 64
@@ -323,5 +325,47 @@ def test_new_candidate_generation_does_not_rewrite_old_failure() -> None:
     )
 
     assert second["entry_count"] == 1
+    assert second["entries"] == first["entries"]
+    assert second["ledger_sha256"] == first["ledger_sha256"]
+
+
+def test_evidence_ledger_growth_does_not_change_candidate_instance() -> None:
+    failed = _report()
+    cadence = failed["cadence"]
+    assert isinstance(cadence, dict)
+    cadence["lifecycle_state"] = "failed_closed_block"
+    cadence["irrecoverable_failure_components"] = (
+        "standalone_stability",
+    )
+    cadence["stability_blocks"] = (
+        {
+            "block_index": 0,
+            "start_row": 1,
+            "end_row": 25,
+            "required_rows": 25,
+            "prospective_rows": 25,
+            "closed": True,
+            "passes": False,
+            "candidate_net_return_sum": "-0.2",
+        },
+    )
+    first = update_candidate_failure_receipts(
+        failed,
+        source_readiness_run_id=20,
+        source_readiness_run_attempt=1,
+    )
+
+    later = deepcopy(failed)
+    later_cadence = later["cadence"]
+    assert isinstance(later_cadence, dict)
+    later_cadence["prediction_ledger_sha256"] = "e" * 64
+    later_cadence["comparison_ledger_sha256"] = "f" * 64
+    second = update_candidate_failure_receipts(
+        later,
+        source_readiness_run_id=30,
+        source_readiness_run_attempt=1,
+        previous=first,
+    )
+
     assert second["entries"] == first["entries"]
     assert second["ledger_sha256"] == first["ledger_sha256"]
