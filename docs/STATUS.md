@@ -3185,3 +3185,23 @@ A profitable complex model that merely matches or inconsistently beats the simpl
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Prospective timing economic readiness gate — 2026-09-30
+
+The frozen LONG=120s / SHORT=60s timing evaluator remains immutable. Its descriptive economics are now enforced by the aggregate review-readiness layer **before the first prospective timing row exists**.
+
+Counts and clean lineage are necessary but no longer sufficient. Timing can become ready for review only when:
+
+- 30 prospective closed trades and 20 paired evaluable trades are present, with at least 5 LONG and 5 SHORT;
+- selected timing has positive total net PnL;
+- selected timing improves total PnL versus actual entries and versus always-60s;
+- LONG and SHORT selected PnL are each positive and each improves versus actual entries;
+- all 4 chronological blocks contain at least 5 paired trades and improve versus both actual and always-60s;
+- selected-minus-60s contribution remains positive after removing any single market.
+
+This only tightens evidence interpretation. It does not alter the frozen timing shadow or paper execution.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
