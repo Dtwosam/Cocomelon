@@ -1,0 +1,415 @@
+name: Prospective Trade Quality Readiness
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-trade-quality-readiness.yml"
+      - "scripts/evaluate_prospective_trade_quality_readiness.py"
+      - "src/cocomelon/research/prospective_trade_quality_readiness.py"
+  workflow_run:
+    workflows:
+      - Prospective Cadence Prediction Ledger
+      - Prospective Cadence A/B Ledger
+      - Prospective Side-Conditioned Timing Ledger
+    types:
+      - completed
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-trade-quality-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      READINESS_ISSUE: "695"
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve latest completed immutable ledgers
+        id: ledgers
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          resolve_ledger() {
+            local key="$1"
+            local workflow_file="$2"
+            local artifact_prefix="$3"
+            local expected_file="$4"
+            local out_dir="/tmp/readiness-$key"
+
+            local runs_json
+            runs_json="$(
+              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow_file/runs?branch=main&per_page=100"
+            )"
+            local run_line
+            run_line="$(
+              jq -r '
+                .workflow_runs
+                | map(select(.status == "completed"))
+                | sort_by(.updated_at)
+                | reverse
+                | .[0]
+                | if . == null
+                  then ""
+                  else [.id, .run_attempt, .conclusion] | @tsv
+                  end
+              ' <<<"$runs_json"
+            )"
+            if [[ -z "$run_line" ]]; then
+              echo "No completed $key ledger workflow run exists." >&2
+              return 1
+            fi
+
+            local run_id run_attempt conclusion
+            IFS=$'\t' read -r run_id run_attempt conclusion <<<"$run_line"
+            if [[ "$conclusion" != "success" ]]; then
+              echo "Latest completed $key ledger run $run_id concluded $conclusion." >&2
+              return 1
+            fi
+
+            local artifacts_json artifact_line
+            artifacts_json="$(
+              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r                 --arg prefix "$artifact_prefix"                 '.artifacts
+                 | map(
+                     select(
+                       (.expired | not)
+                       and (.name | startswith($prefix))
+                     )
+                   )
+                 | if length == 1
+                   then [.[0].id, .[0].name, .[0].digest] | @tsv
+                   else ""
+                   end'                 <<<"$artifacts_json"
+            )"
+            if [[ -z "$artifact_line" ]]; then
+              echo "Expected exactly one current $key ledger artifact." >&2
+              return 1
+            fi
+
+            local artifact_id artifact_name artifact_digest
+            IFS=$'\t' read -r               artifact_id artifact_name artifact_digest               <<<"$artifact_line"
+            rm -rf "$out_dir" "$out_dir.zip"
+            mkdir -p "$out_dir"
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > "$out_dir.zip"
+            unzip -q "$out_dir.zip" -d "$out_dir"
+            local ledger_path
+            ledger_path="$(
+              find "$out_dir"                 -type f                 -name "$expected_file"                 -print -quit
+            )"
+            if [[ -z "$ledger_path" || ! -s "$ledger_path" ]]; then
+              echo "$key ledger JSON is missing." >&2
+              return 1
+            fi
+
+            {
+              echo "${key}_path=$ledger_path"
+              echo "${key}_run_id=$run_id"
+              echo "${key}_run_attempt=$run_attempt"
+              echo "${key}_artifact_name=$artifact_name"
+              echo "${key}_artifact_digest=$artifact_digest"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          resolve_ledger             prediction             prospective-cadence-prediction-ledger.yml             cadence-microstructure-prediction-ledger-             cadence-microstructure-prediction-ledger.json
+          resolve_ledger             comparison             prospective-cadence-comparison-ledger.yml             cadence-model-comparison-ledger-             cadence-model-comparison-ledger.json
+          resolve_ledger             timing             prospective-side-conditioned-timing-ledger.yml             prospective-side-conditioned-timing-ledger-             prospective-side-conditioned-timing-ledger.json
+
+      - name: Build fail-closed readiness manifest
+        id: evaluate
+        if: ${{ steps.ledgers.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_prospective_trade_quality_readiness.py             "${{ steps.ledgers.outputs.prediction_path }}"             "${{ steps.ledgers.outputs.comparison_path }}"             "${{ steps.ledgers.outputs.timing_path }}"             --json-out prospective-trade-quality-readiness.json             > /tmp/readiness.stdout.json
+          cmp             prospective-trade-quality-readiness.json             /tmp/readiness.stdout.json
+
+      - name: Publish blocked readiness status
+        if: >-
+          steps.ledgers.outcome != 'success' ||
+          steps.evaluate.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.READINESS_ISSUE }}
+          LEDGER_OUTCOME: ${{ steps.ledgers.outcome }}
+          EVALUATE_OUTCOME: ${{ steps.evaluate.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/readiness-status.md <<EOF
+          ## Prospective trade-quality readiness
+
+          **Status:** BLOCKED
+
+          - ledger resolution: `$LEDGER_OUTCOME`
+          - readiness evaluation: `$EVALUATE_OUTCOME`
+
+          The aggregate gate refuses to reuse stale successful evidence when the newest completed ledger run is failed, missing, expired, or cross-ledger inconsistent.
+
+          No candidate is marked ready from this run. Prior immutable ledger artifacts remain evidence only.
+
+          **Execution authority:** `false`  
+          **Promotion authority:** `false`  
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
+
+      - name: Fail closed on readiness integrity
+        if: >-
+          steps.ledgers.outcome != 'success' ||
+          steps.evaluate.outcome != 'success'
+        shell: bash
+        run: |
+          echo "Prospective readiness is blocked." >&2
+          exit 1
+
+      - name: Publish readiness status
+        if: >-
+          steps.ledgers.outcome == 'success' &&
+          steps.evaluate.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.READINESS_ISSUE }}
+          PREDICTION_RUN_ID: ${{ steps.ledgers.outputs.prediction_run_id }}
+          COMPARISON_RUN_ID: ${{ steps.ledgers.outputs.comparison_run_id }}
+          TIMING_RUN_ID: ${{ steps.ledgers.outputs.timing_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "prospective-trade-quality-readiness.json"
+              ).read_text(encoding="utf-8")
+          )
+          cadence = report["cadence"]
+          comparison = report["comparison"]
+          timing = report["timing"]
+
+          def iso_ms(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          status = (
+              "READY FOR REVIEW"
+              if report["any_candidate_ready_for_review"]
+              else "collecting"
+          )
+          lines = [
+              "## Prospective trade-quality readiness",
+              "",
+              f"**Status:** {status}",
+              "",
+              "### Immutable sources",
+              "",
+              (
+                  "- cadence prediction ledger workflow run: "
+                  f"`{os.environ['PREDICTION_RUN_ID']}`"
+              ),
+              (
+                  "- cadence A/B ledger workflow run: "
+                  f"`{os.environ['COMPARISON_RUN_ID']}`"
+              ),
+              (
+                  "- timing ledger workflow run: "
+                  f"`{os.environ['TIMING_RUN_ID']}`"
+              ),
+              (
+                  "- cadence training digest: "
+                  f"`{cadence['frozen_training_rows_sha256']}`"
+              ),
+              (
+                  "- cadence prospective start: "
+                  f"`{iso_ms(cadence['prospective_start_ms'])}`"
+              ),
+              (
+                  "- timing prospective start: "
+                  f"`{iso_ms(timing['started_at_ms'])}`"
+              ),
+              "- cross-ledger cadence alignment: `clean`",
+              "",
+              "### Cadence microstructure challenger",
+              "",
+              (
+                  "- ready for review: "
+                  f"`{str(cadence['ready_for_review']).lower()}`"
+              ),
+              (
+                  "- prospective rows / required: "
+                  f"`{cadence['prospective_rows']} / "
+                  f"{cadence['required_prospective_rows']}`"
+              ),
+              (
+                  "- admitted rows / required: "
+                  f"`{cadence['admitted_rows']} / "
+                  f"{cadence['required_admitted_rows']}`"
+              ),
+              (
+                  "- LONG rows / admitted: "
+                  f"`{cadence['long_rows']} / "
+                  f"{cadence['long_admitted_rows']}`"
+              ),
+              (
+                  "- SHORT rows / admitted: "
+                  f"`{cadence['short_rows']} / "
+                  f"{cadence['short_admitted_rows']}`"
+              ),
+              (
+                  "- candidate sum / mean: "
+                  f"`{cadence['candidate_net_return_sum']} / "
+                  f"{cadence['candidate_mean_net_return']}`"
+              ),
+              (
+                  "- missing rows / admitted / LONG admitted / "
+                  "SHORT admitted: "
+                  f"`{cadence['missing']['prospective_rows']} / "
+                  f"{cadence['missing']['admitted_rows']} / "
+                  f"{cadence['missing']['long_admitted_rows']} / "
+                  f"{cadence['missing']['short_admitted_rows']}`"
+              ),
+              "",
+              "#### Chronological stability",
+              "",
+          ]
+          for block in cadence["stability_blocks"]:
+              lines.append(
+                  "- block {block}: rows=`{rows}` admitted=`{admitted}` "
+                  "sum=`{total}` passes=`{passes}`".format(
+                      block=block["block_index"],
+                      rows=block["prospective_rows"],
+                      admitted=block["admitted_rows"],
+                      total=block["candidate_net_return_sum"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Frozen model A/B",
+                  "",
+                  (
+                      "- paired future rows / required: "
+                      f"`{comparison['paired_rows']} / "
+                      f"{comparison['required_paired_rows']}`"
+                  ),
+                  (
+                      "- microstructure minus baseline contribution: "
+                      f"`{comparison['microstructure_minus_baseline_sum']}`"
+                  ),
+                  (
+                      "- both / micro-only / baseline-only / neither: "
+                      f"`{comparison['both_admit']} / "
+                      f"{comparison['microstructure_only']} / "
+                      f"{comparison['baseline_only']} / "
+                      f"{comparison['neither']}`"
+                  ),
+                  "",
+                  "### Side-conditioned timing challenger",
+                  "",
+                  (
+                      "- ready for review: "
+                      f"`{str(timing['ready_for_review']).lower()}`"
+                  ),
+                  (
+                      "- integrity clean: "
+                      f"`{str(timing['integrity_clean']).lower()}`"
+                  ),
+                  (
+                      "- prospective closed / required: "
+                      f"`{timing['prospective_closed_trades']} / "
+                      f"{timing['required']['prospective_closed_trades']}`"
+                  ),
+                  (
+                      "- paired evaluable / required: "
+                      f"`{timing['paired_evaluable_trades']} / "
+                      f"{timing['required']['paired_evaluable_trades']}`"
+                  ),
+                  (
+                      "- LONG / SHORT rows: "
+                      f"`{timing['long_rows']} / {timing['short_rows']}`"
+                  ),
+                  (
+                      "- selected net / delta vs actual / delta vs 60s: "
+                      f"`{timing['selected_net_pnl']} / "
+                      f"{timing['selected_minus_actual_pnl']} / "
+                      f"{timing['selected_minus_60s_pnl']}`"
+                  ),
+                  (
+                      "- missing closed / paired / LONG / SHORT: "
+                      f"`{timing['missing']['prospective_closed_trades']} / "
+                      f"{timing['missing']['paired_evaluable_trades']} / "
+                      f"{timing['missing']['long_rows']} / "
+                      f"{timing['missing']['short_rows']}`"
+                  ),
+                  "",
+                  "### Authority",
+                  "",
+                  (
+                      "A `ready_for_review` result is evidence only. "
+                      "This aggregate gate has no authority to change paper "
+                      "entries, timing, sizing, stops, risk, promotion state, "
+                      "or live execution."
+                  ),
+                  "",
+                  "**Execution authority:** `false`  ",
+                  "**Promotion authority:** `false`  ",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/readiness-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: >-
+          steps.ledgers.outcome == 'success' &&
+          steps.evaluate.outcome == 'success'
+        with:
+          name: prospective-trade-quality-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-trade-quality-readiness.json
+          if-no-files-found: error
+          retention-days: 90
