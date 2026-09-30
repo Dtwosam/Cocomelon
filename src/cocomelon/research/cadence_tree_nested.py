@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
@@ -153,7 +153,7 @@ def _threshold_result(
         blocks=validation_config.stability_blocks,
     )
     stable = all(
-        int(block["admitted_rows"])
+        cast(int, block["admitted_rows"])
         >= validation_config.min_block_admitted
         and block["mean_net_return"] is not None
         and Decimal(str(block["mean_net_return"])) > ZERO
@@ -207,7 +207,7 @@ def _select_threshold(
         key=lambda result: (
             Decimal(str(result["mean_net_return"])),
             Decimal(str(result["net_return_sum"])),
-            int(result["admitted_rows"]),
+            cast(int, result["admitted_rows"]),
             -Decimal(str(result["threshold"])),
         ),
     )
