@@ -16,7 +16,10 @@ def test_two_strike_ledger_workflow_is_research_only() -> None:
 
     assert "Prospective Two-Strike Stop Filter Ledger" in source
     assert '"Continuous Mainnet Paper Trader"' in source
-    assert "github.event.workflow_run.conclusion == 'success'" in source
+    assert "github.event.workflow_run.conclusion == 'success'" not in source
+    assert "EVENT_CONCLUSION:" in source
+    assert 'echo "source_eligible=false"' in source
+    assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
     assert "contents: read" in source
     assert "issues: write" in source
