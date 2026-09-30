@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Final
 
 from cocomelon.domain.strategy import Direction
-from cocomelon.research.cadence_context_learning import _resolve_rows
+from cocomelon.research.cadence_context_learning import (
+    _ContextRow,
+    _resolve_rows,
+)
 from cocomelon.research.cadence_microstructure_training_manifest import (
     FrozenCadenceTrainingManifestError,
     load_frozen_cadence_training_manifest,
@@ -41,7 +44,7 @@ DEFAULT_FROZEN_TRAINING_MANIFEST_PATH: Final = Path(__file__).with_name(
 
 
 def _direction_summary(
-    scored: tuple[tuple[object, Decimal], ...],
+    scored: tuple[tuple[_ContextRow, Decimal], ...],
 ) -> dict[str, object]:
     # Kept local so the prospective result has the same compact schema as
     # the microstructure challenger without changing the frozen tree module.
@@ -72,7 +75,7 @@ def _direction_summary(
 
 
 def _stability_blocks(
-    scored: tuple[tuple[object, Decimal], ...],
+    scored: tuple[tuple[_ContextRow, Decimal], ...],
     *,
     blocks: int,
     min_block_admitted: int,
