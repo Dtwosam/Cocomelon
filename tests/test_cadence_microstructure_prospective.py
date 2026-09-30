@@ -308,3 +308,28 @@ def test_pre_freeze_rows_never_count_as_prospective(
     assert report["research_only"] is True
     assert report["execution_authority"] is False
     assert report["promotion_authority"] is False
+
+
+def test_zero_post_freeze_rows_is_collecting_not_error(
+    tmp_path: Path,
+) -> None:
+    rows, store, start = _dataset(tmp_path / "features")
+    after_all_rows = start + 20 * FIFTEEN_MINUTES_MS
+
+    report = evaluate_cadence_microstructure_prospective(
+        rows,
+        store,
+        prospective_start_ms=after_all_rows,
+        validation_config=_validation_config(),
+        tree_config=_tree_config(),
+    )
+
+    assert report["status"] == "collecting"
+    assert report["prospective_rows"] == 0
+    assert report["admitted_rows"] == 0
+    assert report["scored_rows"] == ()
+    assert report["development_qualified"] is False
+    assert (
+        report["frozen_training_last_target_end_ms"]
+        < after_all_rows
+    )
