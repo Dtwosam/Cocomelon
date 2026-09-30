@@ -290,6 +290,10 @@ from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
 )
+from cocomelon.research.prospective_trade_quality import (
+    ProspectiveTradeQualityState,
+    prospective_trade_quality_summary,
+)
 from cocomelon.util.time import utc_now_ms
 
 RUN_ID = CONTINUOUS_PAPER_REPLAY_RUN_ID
@@ -324,6 +328,9 @@ PROSPECTIVE_DELAYED_PRICE_CONFIRM_STATE_FILENAME = (
 )
 PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME = (
     "prospective-top10-rank-filter-state.json"
+)
+PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME = (
+    "prospective-trade-quality-state.json"
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
@@ -1919,6 +1926,29 @@ def _restore_prospective_replacement_exit_policy(
         )
 
 
+def _restore_prospective_trade_quality(
+    path: Path,
+    *,
+    started_at_ms: int,
+) -> tuple[ProspectiveTradeQualityState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveTradeQualityState(started_at_ms=started_at_ms),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveTradeQualityState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveTradeQualityState(started_at_ms=started_at_ms),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
 def _restore_prospective_combined_entry_filter(
     path: Path,
     *,
@@ -2018,6 +2048,52 @@ def _prospective_top10_rank_filter_payload(
         payload = evaluate_prospective_top10_rank_filter(
             journal,
             opening_rank_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
+def _prospective_trade_quality_payload(
+    journal: JournalStore,
+    opening_rank_store: ContinuousPaperOpeningRankStore,
+    delayed_shadow: _ContinuousDelayedEntryExecutionShadowSink,
+    plan_loader: Callable[[str], PaperOrderPlan | None],
+    state: ProspectiveTradeQualityState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    if delayed_shadow.shadow is None:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": delayed_shadow.error,
+        }
+    try:
+        payload = prospective_trade_quality_summary(
+            tuple(journal.iter_trades()),
+            opening_rank_store,
+            delayed_shadow.shadow.outcomes,
+            plan_loader,
             state,
         )
     except Exception as exc:
@@ -4245,6 +4321,7 @@ def _live_status_payload(
         ProspectiveDelayedPriceConfirmationState
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
     prospective_replacement_exit_policy_state: (
         ProspectiveReplacementExitPolicyState
@@ -4263,6 +4340,7 @@ def _live_status_payload(
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
@@ -4415,6 +4493,14 @@ def _live_status_payload(
                 prospective_top10_rank_filter_restore_error
             ),
         )
+    )
+    prospective_trade_quality = _prospective_trade_quality_payload(
+        pump.journal,
+        opening_rank_store,
+        delayed_entry_execution_shadow,
+        execution.store.load_plan,
+        prospective_trade_quality_state,
+        restore_error=prospective_trade_quality_restore_error,
     )
     prospective_combined_entry_filter = (
         _prospective_combined_entry_filter_payload(
@@ -4895,6 +4981,7 @@ def _live_status_payload(
         "prospective_top10_rank_filter": (
             prospective_top10_rank_filter
         ),
+        "prospective_trade_quality": prospective_trade_quality,
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
         ),
@@ -5108,6 +5195,7 @@ def _emit_live_status(
         ProspectiveDelayedPriceConfirmationState
     ),
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
+    prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
     prospective_replacement_exit_policy_state: (
         ProspectiveReplacementExitPolicyState
@@ -5126,6 +5214,7 @@ def _emit_live_status(
     prospective_entry_filter_restore_error: str | None,
     prospective_delayed_price_confirmation_restore_error: str | None,
     prospective_top10_rank_filter_restore_error: str | None,
+    prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
@@ -5162,6 +5251,7 @@ def _emit_live_status(
         prospective_entry_filter_state,
         prospective_delayed_price_confirmation_state,
         prospective_top10_rank_filter_state,
+        prospective_trade_quality_state,
         prospective_combined_entry_filter_state,
         prospective_replacement_exit_policy_state,
         adaptive_delay_selector_state,
@@ -5192,6 +5282,9 @@ def _emit_live_status(
         ),
         prospective_top10_rank_filter_restore_error=(
             prospective_top10_rank_filter_restore_error
+        ),
+        prospective_trade_quality_restore_error=(
+            prospective_trade_quality_restore_error
         ),
         prospective_combined_entry_filter_restore_error=(
             prospective_combined_entry_filter_restore_error
@@ -5669,6 +5762,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_trade_quality_state,
+        prospective_trade_quality_restore_error,
+    ) = _restore_prospective_trade_quality(
+        root / PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME,
+        started_at_ms=started_at_ms,
+    )
+    (
         prospective_combined_entry_filter_state,
         prospective_combined_entry_filter_restore_error,
     ) = _restore_prospective_combined_entry_filter(
@@ -5896,6 +5996,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_TOP10_RANK_FILTER_STATE_FILENAME,
                 prospective_top10_rank_filter_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_TRADE_QUALITY_STATE_FILENAME,
+                prospective_trade_quality_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
@@ -6189,6 +6293,7 @@ async def run_continuous_paper_session(
                     prospective_entry_filter_state,
                     prospective_delayed_price_confirmation_state,
                     prospective_top10_rank_filter_state,
+                    prospective_trade_quality_state,
                     prospective_combined_entry_filter_state,
                     prospective_replacement_exit_policy_state,
                     adaptive_delay_selector_state,
@@ -6223,6 +6328,9 @@ async def run_continuous_paper_session(
                     ),
                     prospective_top10_rank_filter_restore_error=(
                         prospective_top10_rank_filter_restore_error
+                    ),
+                    prospective_trade_quality_restore_error=(
+                        prospective_trade_quality_restore_error
                     ),
                     prospective_combined_entry_filter_restore_error=(
                         prospective_combined_entry_filter_restore_error
