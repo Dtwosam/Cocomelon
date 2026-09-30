@@ -289,7 +289,7 @@ def test_positive_total_increment_needs_chronological_stability() -> None:
     assert cadence["ready_for_review"] is False
 
 
-def test_timing_candidate_can_be_review_ready_independently() -> None:
+def test_timing_candidate_can_become_review_ready_independently() -> None:
     rows = _scored_rows(3, prediction="-0.01", realized="0.01")
     result = prospective_trade_quality_readiness(
         _prediction_ledger(rows),
@@ -300,11 +300,118 @@ def test_timing_candidate_can_be_review_ready_independently() -> None:
     assert result["cadence"]["ready_for_review"] is False
     timing = result["timing"]
     assert timing["ready_for_review"] is True
+    assert timing["sample_complete"] is True
+    assert timing["economics_pass"] is True
     assert timing["long_rows"] == 10
     assert timing["short_rows"] == 10
     assert timing["integrity_clean"] is True
+    assert all(
+        block["passes"] is True
+        for block in timing["temporal_blocks"]
+    )
+    assert (
+        timing["market_robustness"][
+            "positive_vs_60s_after_any_single_market_removed"
+        ]
+        is True
+    )
     assert result["status"] == "review_ready"
 
+
+def test_timing_counts_alone_cannot_make_losing_candidate_ready() -> None:
+    timing_rows = list(_timing_rows(20))
+    for index, row in enumerate(timing_rows):
+        selected = Decimal(str(row["selected_net_pnl"]))
+        actual = selected + Decimal("1")
+        timing_rows[index] = {
+            **row,
+            "actual_net_pnl": str(actual),
+            "selected_minus_actual_pnl": "-1",
+        }
+    diagnostics = {
+        "prospective_closed_trades": 30,
+        "paired_evaluable_trades": 20,
+        "missing_60s_outcomes": 0,
+        "missing_120s_outcomes": 0,
+        "non_evaluable_60s": 0,
+        "non_evaluable_120s": 0,
+        "lineage_mismatches": 0,
+    }
+    ledger = update_timing_ledger(
+        tuple(timing_rows),
+        diagnostics,
+        ProspectiveSideConditionedDelayState(started_at_ms=START_MS),
+        previous=None,
+        source_paper_run_id=40,
+        source_paper_run_attempt=1,
+        source_timing_artifact_name="timing-losing",
+    )
+    cadence_rows = _scored_rows(3, prediction="-0.01", realized="0.01")
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(cadence_rows),
+        _comparison_ledger(cadence_rows),
+        ledger,
+    )
+
+    timing = result["timing"]
+    assert timing["sample_complete"] is True
+    assert timing["integrity_clean"] is True
+    assert timing["economics_pass"] is False
+    assert timing["ready_for_review"] is False
+    assert result["status"] == "collecting"
+
+
+def test_timing_total_gain_needs_temporal_robustness() -> None:
+    timing_rows = list(_timing_rows(20))
+    for index, row in enumerate(timing_rows):
+        block = index // 5
+        if block < 3:
+            continue
+        selected = Decimal(str(row["selected_net_pnl"]))
+        base = Decimal(str(row["base_60s_net_pnl"]))
+        actual = selected + Decimal("2")
+        if row["direction"] == "long":
+            selected = Decimal("0")
+        timing_rows[index] = {
+            **row,
+            "actual_net_pnl": str(actual),
+            "selected_net_pnl": str(selected),
+            "selected_minus_actual_pnl": str(selected - actual),
+            "selected_minus_60s_pnl": str(selected - base),
+        }
+    diagnostics = {
+        "prospective_closed_trades": 30,
+        "paired_evaluable_trades": 20,
+        "missing_60s_outcomes": 0,
+        "missing_120s_outcomes": 0,
+        "non_evaluable_60s": 0,
+        "non_evaluable_120s": 0,
+        "lineage_mismatches": 0,
+    }
+    ledger = update_timing_ledger(
+        tuple(timing_rows),
+        diagnostics,
+        ProspectiveSideConditionedDelayState(started_at_ms=START_MS),
+        previous=None,
+        source_paper_run_id=40,
+        source_paper_run_attempt=1,
+        source_timing_artifact_name="timing-unstable",
+    )
+    cadence_rows = _scored_rows(3, prediction="-0.01", realized="0.01")
+    result = prospective_trade_quality_readiness(
+        _prediction_ledger(cadence_rows),
+        _comparison_ledger(cadence_rows),
+        ledger,
+    )
+
+    timing = result["timing"]
+    assert timing["sample_complete"] is True
+    assert timing["ready_for_review"] is False
+    assert timing["economics_pass"] is False
+    assert any(
+        block["passes"] is False
+        for block in timing["temporal_blocks"]
+    )
 
 def test_prediction_and_ab_ledgers_must_match_exactly() -> None:
     prediction_rows = _scored_rows(3)
