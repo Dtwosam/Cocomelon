@@ -367,14 +367,18 @@ def test_timing_total_gain_needs_temporal_robustness() -> None:
         block = index // 5
         if block < 3:
             continue
-        selected = Decimal(str(row["selected_net_pnl"]))
         base = Decimal(str(row["base_60s_net_pnl"]))
-        actual = selected + Decimal("2")
+        challenger = Decimal(str(row["challenger_120s_net_pnl"]))
         if row["direction"] == "long":
-            selected = Decimal("0")
+            challenger = Decimal("0")
+            selected = challenger
+        else:
+            selected = base
+        actual = selected + Decimal("2")
         timing_rows[index] = {
             **row,
             "actual_net_pnl": str(actual),
+            "challenger_120s_net_pnl": str(challenger),
             "selected_net_pnl": str(selected),
             "selected_minus_actual_pnl": str(selected - actual),
             "selected_minus_60s_pnl": str(selected - base),
@@ -412,6 +416,7 @@ def test_timing_total_gain_needs_temporal_robustness() -> None:
         block["passes"] is False
         for block in timing["temporal_blocks"]
     )
+
 
 def test_prediction_and_ab_ledgers_must_match_exactly() -> None:
     prediction_rows = _scored_rows(3)
