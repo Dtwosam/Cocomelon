@@ -3,8 +3,8 @@ from __future__ import annotations
 import importlib
 import math
 from dataclasses import dataclass
-from pathlib import Path
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Final
 
 from cocomelon.domain.strategy import Direction
