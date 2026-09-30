@@ -50,8 +50,6 @@ jobs:
           import json
           import os
           import subprocess
-          import tempfile
-          import zipfile
           from pathlib import Path
 
           payload = json.loads(
@@ -80,7 +78,7 @@ jobs:
                   != os.environ["GITHUB_REPOSITORY"]
               ):
                   continue
-              expected = f"continuous-paper-state-{run_id}-{attempt}"
+              expected = f"continuous-paper-learning-source-{run_id}-{attempt}"
               artifacts_raw = subprocess.run(
                   [
                       "/usr/bin/gh",
@@ -102,23 +100,6 @@ jobs:
               artifact = matches[0]
               digest = artifact.get("digest")
               if not isinstance(digest, str) or not digest.startswith("sha256:"):
-                  continue
-              with tempfile.NamedTemporaryFile(suffix=".zip") as handle:
-                  with open(handle.name, "wb") as output:
-                      subprocess.run(
-                          [
-                              "/usr/bin/gh",
-                              "api",
-                              f"/repos/{os.environ['GITHUB_REPOSITORY']}/actions/artifacts/{artifact['id']}/zip",
-                          ],
-                          check=True,
-                          stdout=output,
-                      )
-                  with zipfile.ZipFile(handle.name) as archive:
-                      names = tuple(archive.namelist())
-              if not any(name.startswith("learning-features/records/") for name in names):
-                  continue
-              if not any(name.startswith("opening-lineage/records/") for name in names):
                   continue
               print(run_id)
               break
@@ -250,9 +231,21 @@ jobs:
             echo "newest lineage-capable paper worker is already in learning state"
             exit 0
           fi
-          if [ -n "$LATEST_STATE_UPSTREAM_RUN_ID" ]             && [ "$LATEST_STATE_UPSTREAM_RUN_ID" -gt "$LATEST_WORKER_RUN_ID" ]; then
-            echo "trusted learning state is ahead of newest lineage-capable paper worker" >&2
-            exit 65
+          if [ -n "$LATEST_STATE_UPSTREAM_RUN_ID" ]; then
+            WORKER_CREATED_AT="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$LATEST_WORKER_RUN_ID" \
+                --jq '.created_at'
+            )"
+            STATE_CREATED_AT="$(
+              /usr/bin/gh api \
+                "/repos/$GITHUB_REPOSITORY/actions/runs/$LATEST_STATE_UPSTREAM_RUN_ID" \
+                --jq '.created_at'
+            )"
+            if [[ "$STATE_CREATED_AT" > "$WORKER_CREATED_AT" || "$STATE_CREATED_AT" == "$WORKER_CREATED_AT" ]]; then
+              echo "trusted learning state already covers same or newer paper worker"
+              exit 0
+            fi
           fi
           ACTIVE_SYNC="$(
             /usr/bin/gh api               "/repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper-learning-evidence.yml/runs?per_page=100"               --jq '.workflow_runs[]
