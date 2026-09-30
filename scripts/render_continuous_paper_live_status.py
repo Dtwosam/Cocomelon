@@ -7029,6 +7029,97 @@ def _closed_trade_stop_reentry_lines(raw: object) -> list[str]:
             )
         )
 
+    streaks = raw.get("by_prior_losing_stop_streak", {})
+    if not isinstance(streaks, dict):
+        streaks = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Prior consecutive same-side losing stops | Trades | W | L | "
+                "Net PnL | Mean R |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for streak in ("0", "1", "2", "3+"):
+        item = streaks.get(streak, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {streak} | {trades} | {wins} | {losses} | {pnl} | {mean_r} |".format(
+                streak=streak,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+            )
+        )
+
+    stop_thresholds = raw.get(
+        "skip_after_prior_losing_stops",
+        {},
+    )
+    if not isinstance(stop_thresholds, dict):
+        stop_thresholds = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Descriptive prior-stop threshold | Blocked | W | L | "
+                "Blocked PnL | Delta contribution | LOTO trade | "
+                "LOMO market | Trade robust? | Market robust? |"
+            ),
+            (
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: | "
+                "---: | --- | --- |"
+            ),
+        ]
+    )
+    for key, label in (
+        ("after_1", ">=1 prior stop"),
+        ("after_2", ">=2 prior stops"),
+        ("after_3", ">=3 prior stops"),
+    ):
+        item = stop_thresholds.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        robustness = item.get("robustness", {})
+        market_robustness = item.get("market_robustness", {})
+        if not isinstance(robustness, dict):
+            robustness = {}
+        if not isinstance(market_robustness, dict):
+            market_robustness = {}
+        lines.append(
+            "| {label} | {trades} | {wins} | {losses} | {pnl} | "
+            "{delta} | {loto_trade} | {lomo_market} | {trade_robust} | "
+            "{market_robust} |".format(
+                label=label,
+                trades=item.get("blocked_trades", 0),
+                wins=item.get("blocked_winners", 0),
+                losses=item.get("blocked_losses", 0),
+                pnl=item.get("blocked_net_pnl", "0"),
+                delta=item.get("delta_trade_contribution_pnl", "0"),
+                loto_trade=robustness.get(
+                    "leave_one_trade_out_min_delta_pnl",
+                    "0",
+                ),
+                lomo_market=market_robustness.get(
+                    "leave_one_market_out_min_delta_pnl",
+                    "0",
+                ),
+                trade_robust=robustness.get(
+                    "positive_after_removing_any_one_trade",
+                    False,
+                ),
+                market_robust=market_robustness.get(
+                    "positive_after_removing_any_one_market",
+                    False,
+                ),
+            )
+        )
+
     windows = raw.get("skip_windows", {})
     if not isinstance(windows, dict):
         windows = {}

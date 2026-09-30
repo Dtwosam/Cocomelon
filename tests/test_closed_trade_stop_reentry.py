@@ -224,3 +224,93 @@ def test_stop_reentry_empty_summary_is_zero_safe() -> None:
     assert isinstance(windows, dict)
     assert windows["within_5m"]["blocked_trades"] == 0
     assert windows["within_5m"]["delta_trade_contribution_pnl"] == "0"
+
+
+def test_stop_reentry_tracks_prior_losing_stop_streak_depth() -> None:
+    trades = (
+        _trade(
+            "sol-loss-1",
+            opened_at_ms=0,
+            closed_at_ms=60_000,
+            pnl="-10",
+        ),
+        _trade(
+            "sol-loss-2",
+            opened_at_ms=600_000,
+            closed_at_ms=660_000,
+            pnl="-6",
+        ),
+        _trade(
+            "sol-loss-3",
+            opened_at_ms=1_200_000,
+            closed_at_ms=1_260_000,
+            pnl="-4",
+        ),
+        _trade(
+            "sol-winner",
+            opened_at_ms=1_800_000,
+            closed_at_ms=1_860_000,
+            pnl="3",
+            exit_reason="OPPOSITE_FRESH_THESIS",
+        ),
+        _trade(
+            "eth-loss-1",
+            market="ETH",
+            opened_at_ms=2_400_000,
+            closed_at_ms=2_460_000,
+            pnl="-8",
+        ),
+        _trade(
+            "eth-loss-2",
+            market="ETH",
+            opened_at_ms=3_000_000,
+            closed_at_ms=3_060_000,
+            pnl="-5",
+        ),
+        _trade(
+            "eth-loss-3",
+            market="ETH",
+            opened_at_ms=3_600_000,
+            closed_at_ms=3_660_000,
+            pnl="-7",
+        ),
+    )
+
+    result = closed_trade_stop_reentry_summary(trades)
+
+    by_streak = result["by_prior_losing_stop_streak"]
+    assert isinstance(by_streak, dict)
+    assert by_streak["0"]["trades"] == 2
+    assert by_streak["1"]["trades"] == 2
+    assert by_streak["2"]["trades"] == 2
+    assert by_streak["3+"]["trades"] == 1
+    assert by_streak["2"]["wins"] == 0
+    assert by_streak["2"]["losses"] == 2
+    assert by_streak["2"]["net_pnl"] == "-11"
+    assert by_streak["3+"]["net_pnl"] == "3"
+
+    thresholds = result["skip_after_prior_losing_stops"]
+    assert isinstance(thresholds, dict)
+    after_2 = thresholds["after_2"]
+    assert after_2["blocked_trades"] == 3
+    assert after_2["blocked_winners"] == 1
+    assert after_2["blocked_losses"] == 2
+    assert after_2["blocked_net_pnl"] == "-8"
+    assert after_2["delta_trade_contribution_pnl"] == "8"
+    robustness = after_2["robustness"]
+    assert isinstance(robustness, dict)
+    assert robustness["leave_one_trade_out_min_delta_pnl"] == "1"
+    assert robustness["positive_after_removing_any_one_trade"] is True
+    market_robustness = after_2["market_robustness"]
+    assert isinstance(market_robustness, dict)
+    assert market_robustness["market_count"] == 2
+    assert market_robustness["leave_one_market_out_min_delta_pnl"] == "1"
+    assert (
+        market_robustness["positive_after_removing_any_one_market"]
+        is True
+    )
+
+    after_3 = thresholds["after_3"]
+    assert after_3["blocked_trades"] == 1
+    assert after_3["blocked_winners"] == 1
+    assert after_3["delta_trade_contribution_pnl"] == "-3"

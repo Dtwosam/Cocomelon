@@ -3368,3 +3368,24 @@ The diagnostic is causal and descriptive:
 This is research-only. No cooldown, veto, entry, exit, stop, sizing, risk, readiness, promotion, or live-execution behavior is changed by this diagnostic.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Repeated losing-stop streak evidence — 2026-09-30
+
+A direct read of the completed predecessor paper journal from worker run `36776912988` (compact learning-source artifact `11127078697`) provides 61 closed trades for retrospective attribution.
+
+The time-cooldown hypothesis is not supported by that journal:
+
+- 16 trades reopened the same market in the same direction after a prior losing mark-stop close;
+- all 16 reopened more than two hours after the prior stop, so the fixed `<=5m`, `<=30m`, and `<=120m` descriptive skip windows would have changed zero historical trades.
+
+The stronger repeated-loss pattern is prior stop depth rather than elapsed time:
+
+- after exactly one prior consecutive same-side losing stop: 11 trades, 5 winners / 6 losers, +35.9364722210739215 net PnL;
+- after at least two prior consecutive same-side losing stops: 5 trades, 0 winners / 5 losers, -54.411794794875 net PnL and -2.18609613581944 net R;
+- removing any one of those five trades still leaves the descriptive avoided-loss contribution positive (minimum +33.059041189375 PnL);
+- those five trades came from two markets: four ENA LONG attempts and one HBAR LONG attempt; removing either market still leaves positive avoided-loss contribution (minimum +10.912728899875 PnL).
+
+This is retrospective same-sample evidence only. It does not justify a direction-specific rule, does not count toward any prospective gate, and has no execution authority. The runtime diagnostic now measures prior consecutive same-market/same-direction losing-stop depth as `0`, `1`, `2`, and `3+`, plus descriptive thresholds at `>=1`, `>=2`, and `>=3` with leave-one-trade-out and leave-one-market-out robustness.
+
+**LIVE TRADING: DISABLED.**
