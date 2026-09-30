@@ -189,4 +189,5 @@ jobs:
           tests/test_historical_cross_sectional_spread_cli.py
           tests/test_cadence_tree_learning.py
           tests/test_cadence_microstructure_prospective.py
+          tests/test_prospective_cadence_microstructure_workflow.py
           -q
