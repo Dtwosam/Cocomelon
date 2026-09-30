@@ -19,7 +19,7 @@ from cocomelon.research.learning_feature_snapshots import (
 
 ZERO: Final = Decimal("0")
 MEDIAN: Final = Decimal("0.5")
-DEFAULT_MIN_CONTEXT_MARKETS: Final = 5
+DEFAULT_MIN_CONTEXT_MARKETS: Final = 10
 
 
 class CadenceActiveContextError(RuntimeError):
