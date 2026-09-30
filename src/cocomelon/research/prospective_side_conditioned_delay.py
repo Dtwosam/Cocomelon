@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryOutcome,
