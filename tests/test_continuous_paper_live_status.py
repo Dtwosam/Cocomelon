@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 from scripts.render_continuous_paper_live_status import (
+    _cadence_opportunity_learning_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
     _prospective_allowed_residual_lines,
@@ -5718,3 +5719,63 @@ def test_fixed_schedule_filter_renderer_exposes_portfolio_effects() -> None:
     assert "fixed-schedule blocked PnL / admitted / blocked" in output
     assert "`-25 / 8 / 4`" in output
     assert "replacement trades, equity-driven resizing" in output
+
+
+def test_cadence_opportunity_learning_renderer_shows_primary_surfaces() -> None:
+    lines = _cadence_opportunity_learning_lines(
+        {
+            "enabled": True,
+            "error": None,
+            "settled_outcomes": 1000,
+            "model_family": "hierarchical_grouped_mean_v1",
+            "primary_ready_for_review": True,
+            "development_qualified": False,
+            "surfaces": {
+                "900000:900000": {
+                    "status": "completed",
+                    "training_rows": 400,
+                    "validation_rows": 100,
+                    "purged_overlap_rows": 1,
+                    "admitted_rows": 25,
+                    "skipped_rows": 75,
+                    "actual_net_return_sum": "-0.4",
+                    "candidate_net_return_sum": "0.2",
+                    "delta_net_return_sum": "0.6",
+                    "by_direction": {
+                        "long": {"admitted_rows": 12},
+                        "short": {"admitted_rows": 13},
+                    },
+                    "stability_blocks": (
+                        {"passes": True},
+                        {"passes": False},
+                    ),
+                },
+                "900000:3600000": {
+                    "status": "completed",
+                    "training_rows": 390,
+                    "validation_rows": 100,
+                    "purged_overlap_rows": 4,
+                    "admitted_rows": 30,
+                    "skipped_rows": 70,
+                    "actual_net_return_sum": "-0.3",
+                    "candidate_net_return_sum": "0.1",
+                    "delta_net_return_sum": "0.4",
+                    "by_direction": {
+                        "long": {"admitted_rows": 14},
+                        "short": {"admitted_rows": 16},
+                    },
+                    "stability_blocks": (
+                        {"passes": True},
+                        {"passes": True},
+                    ),
+                },
+            },
+        }
+    )
+    rendered = "\n".join(lines)
+    assert "Cadence opportunity learning" in rendered
+    assert "15m → 15m" in rendered
+    assert "15m → 1h" in rendered
+    assert "12" in rendered
+    assert "16" in rendered
+    assert "development-qualified" in rendered
