@@ -3322,6 +3322,16 @@ def _prospective_allowed_residual_lines(
             f"n{value.get('trades', 0)}"
         )
 
+    def worst_loss_shape(field: str) -> str:
+        value = raw.get(field)
+        if not isinstance(value, dict):
+            return "none"
+        return (
+            f"{value.get('label')} / "
+            f"{value.get('loss_pnl')} / "
+            f"n{value.get('losses', 0)}"
+        )
+
     return [
         (
             "- allowed residual trades / net / winner PnL / loser PnL: "
@@ -3340,6 +3350,41 @@ def _prospective_allowed_residual_lines(
             "- worst side×strategy / worst market: "
             f"`{worst('worst_side_lead_strategy')} / "
             f"{worst('worst_market')}`"
+        ),
+        (
+            "- residual loss shape complete / missing excursion: "
+            f"`{overall.get('complete_excursion_losses', 0)} / "
+            f"{overall.get('missing_or_incomplete_excursion_losses', 0)}`"
+        ),
+        (
+            "- never-worked (<0.25R MFE) losses / PnL: "
+            f"`{overall.get('losses_with_mfe_lt_0_25r', 0)} / "
+            f"{overall.get('loss_pnl_with_mfe_lt_0_25r', '0')}`"
+        ),
+        (
+            "- partial-traction (0.25-<0.5R MFE) losses / PnL: "
+            f"`{overall.get('losses_with_mfe_0_25_to_lt_0_5r', 0)} / "
+            f"{overall.get('loss_pnl_with_mfe_0_25_to_lt_0_5r', '0')}`"
+        ),
+        (
+            "- giveback (>=0.5R MFE) losses / PnL: "
+            f"`{overall.get('losses_after_mfe_ge_0_5r', 0)} / "
+            f"{overall.get('loss_pnl_after_mfe_ge_0_5r', '0')}`"
+        ),
+        (
+            "- deep giveback (>=1R MFE) losses / PnL: "
+            f"`{overall.get('losses_after_mfe_ge_1r', 0)} / "
+            f"{overall.get('loss_pnl_after_mfe_ge_1r', '0')}`"
+        ),
+        (
+            "- worst never-worked market / giveback market: "
+            f"`{worst_loss_shape('worst_market_never_worked')} / "
+            f"{worst_loss_shape('worst_market_giveback')}`"
+        ),
+        (
+            "- worst never-worked side×strategy / giveback side×strategy: "
+            f"`{worst_loss_shape('worst_side_lead_strategy_never_worked')} / "
+            f"{worst_loss_shape('worst_side_lead_strategy_giveback')}`"
         ),
         (
             "_Allowed-cohort residual attribution is descriptive only; "

@@ -50,6 +50,44 @@ def _summary(
         ZERO,
     )
     net_r = sum((item.trade.net_r for item in values), ZERO)
+    losses = tuple(
+        item.trade for item in values if item.trade.net_pnl < ZERO
+    )
+    complete_loss_excursions = tuple(
+        trade
+        for trade in losses
+        if trade.mfe is not None
+        and trade.mfe.complete
+        and trade.mfe.r_multiple is not None
+    )
+    never_worked_losses = tuple(
+        trade
+        for trade in complete_loss_excursions
+        if trade.mfe is not None
+        and trade.mfe.r_multiple is not None
+        and trade.mfe.r_multiple < Decimal("0.25")
+    )
+    partial_traction_losses = tuple(
+        trade
+        for trade in complete_loss_excursions
+        if trade.mfe is not None
+        and trade.mfe.r_multiple is not None
+        and Decimal("0.25") <= trade.mfe.r_multiple < Decimal("0.5")
+    )
+    giveback_losses = tuple(
+        trade
+        for trade in complete_loss_excursions
+        if trade.mfe is not None
+        and trade.mfe.r_multiple is not None
+        and trade.mfe.r_multiple >= Decimal("0.5")
+    )
+    severe_giveback_losses = tuple(
+        trade
+        for trade in complete_loss_excursions
+        if trade.mfe is not None
+        and trade.mfe.r_multiple is not None
+        and trade.mfe.r_multiple >= Decimal("1")
+    )
     return {
         "trades": len(values),
         "wins": sum(
@@ -68,6 +106,37 @@ def _summary(
             None
             if not values
             else str(net_r / Decimal(len(values)))
+        ),
+        "complete_excursion_losses": len(complete_loss_excursions),
+        "missing_or_incomplete_excursion_losses": (
+            len(losses) - len(complete_loss_excursions)
+        ),
+        "losses_with_mfe_lt_0_25r": len(never_worked_losses),
+        "losses_with_mfe_0_25_to_lt_0_5r": len(
+            partial_traction_losses
+        ),
+        "losses_after_mfe_ge_0_5r": len(giveback_losses),
+        "losses_after_mfe_ge_1r": len(severe_giveback_losses),
+        "loss_pnl_with_mfe_lt_0_25r": str(
+            sum(
+                (trade.net_pnl for trade in never_worked_losses),
+                ZERO,
+            )
+        ),
+        "loss_pnl_with_mfe_0_25_to_lt_0_5r": str(
+            sum(
+                (trade.net_pnl for trade in partial_traction_losses),
+                ZERO,
+            )
+        ),
+        "loss_pnl_after_mfe_ge_0_5r": str(
+            sum((trade.net_pnl for trade in giveback_losses), ZERO)
+        ),
+        "loss_pnl_after_mfe_ge_1r": str(
+            sum(
+                (trade.net_pnl for trade in severe_giveback_losses),
+                ZERO,
+            )
         ),
     }
 
@@ -148,6 +217,40 @@ def _worst_group(
     }
 
 
+def _worst_loss_shape_group(
+    grouped: dict[str, dict[str, object]],
+    *,
+    count_key: str,
+    pnl_key: str,
+) -> dict[str, object] | None:
+    candidates: list[tuple[str, int, Decimal]] = []
+    for label, summary in grouped.items():
+        count = summary.get(count_key)
+        raw_pnl = summary.get(pnl_key)
+        if isinstance(count, bool) or not isinstance(count, int):
+            raise ProspectiveAllowedResidualError(
+                f"residual group {count_key} must be an integer"
+            )
+        if not isinstance(raw_pnl, str):
+            raise ProspectiveAllowedResidualError(
+                f"residual group {pnl_key} must be a string"
+            )
+        if count <= 0:
+            continue
+        candidates.append((label, count, Decimal(raw_pnl)))
+    if not candidates:
+        return None
+    label, count, loss_pnl = min(
+        candidates,
+        key=lambda item: (-item[1], item[2], item[0]),
+    )
+    return {
+        "label": label,
+        "losses": count,
+        "loss_pnl": str(loss_pnl),
+    }
+
+
 def prospective_allowed_residual_attribution(
     items: Sequence[AllowedResidualItem],
 ) -> dict[str, object]:
@@ -183,4 +286,28 @@ def prospective_allowed_residual_attribution(
             by_side_lead_strategy
         ),
         "worst_market": _worst_group(by_market),
+        "worst_market_never_worked": _worst_loss_shape_group(
+            by_market,
+            count_key="losses_with_mfe_lt_0_25r",
+            pnl_key="loss_pnl_with_mfe_lt_0_25r",
+        ),
+        "worst_market_giveback": _worst_loss_shape_group(
+            by_market,
+            count_key="losses_after_mfe_ge_0_5r",
+            pnl_key="loss_pnl_after_mfe_ge_0_5r",
+        ),
+        "worst_side_lead_strategy_never_worked": (
+            _worst_loss_shape_group(
+                by_side_lead_strategy,
+                count_key="losses_with_mfe_lt_0_25r",
+                pnl_key="loss_pnl_with_mfe_lt_0_25r",
+            )
+        ),
+        "worst_side_lead_strategy_giveback": (
+            _worst_loss_shape_group(
+                by_side_lead_strategy,
+                count_key="losses_after_mfe_ge_0_5r",
+                pnl_key="loss_pnl_after_mfe_ge_0_5r",
+            )
+        ),
     }

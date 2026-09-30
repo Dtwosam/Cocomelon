@@ -5620,6 +5620,16 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
                 "net_pnl": "-4",
                 "winner_pnl": "12",
                 "loser_pnl": "-16",
+                "complete_excursion_losses": 3,
+                "missing_or_incomplete_excursion_losses": 1,
+                "losses_with_mfe_lt_0_25r": 1,
+                "losses_with_mfe_0_25_to_lt_0_5r": 1,
+                "losses_after_mfe_ge_0_5r": 2,
+                "losses_after_mfe_ge_1r": 1,
+                "loss_pnl_with_mfe_lt_0_25r": "-8",
+                "loss_pnl_with_mfe_0_25_to_lt_0_5r": "-1",
+                "loss_pnl_after_mfe_ge_0_5r": "-7",
+                "loss_pnl_after_mfe_ge_1r": "-4",
             },
             "by_side": {
                 "long": {
@@ -5661,6 +5671,26 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
                 "net_pnl": "-10",
                 "trades": 2,
             },
+            "worst_market_never_worked": {
+                "label": "SOL",
+                "losses": 1,
+                "loss_pnl": "-8",
+            },
+            "worst_market_giveback": {
+                "label": "ETH",
+                "losses": 1,
+                "loss_pnl": "-4",
+            },
+            "worst_side_lead_strategy_never_worked": {
+                "label": "long:breakout",
+                "losses": 1,
+                "loss_pnl": "-8",
+            },
+            "worst_side_lead_strategy_giveback": {
+                "label": "short:trend",
+                "losses": 1,
+                "loss_pnl": "-4",
+            },
         }
     )
     output = "\n".join(lines)
@@ -5673,6 +5703,19 @@ def test_allowed_residual_renderer_exposes_remaining_loss_clusters() -> None:
     assert "1-5=n2/pnl-6" in output
     assert "long:breakout / -8 / n2" in output
     assert "SOL / -10 / n2" in output
+    assert "residual loss shape complete / missing excursion" in output
+    assert "`3 / 1`" in output
+    assert "never-worked (<0.25R MFE) losses / PnL" in output
+    assert "`1 / -8`" in output
+    assert "partial-traction (0.25-<0.5R MFE) losses / PnL" in output
+    assert "`1 / -1`" in output
+    assert "giveback (>=0.5R MFE) losses / PnL" in output
+    assert "`2 / -7`" in output
+    assert "deep giveback (>=1R MFE) losses / PnL" in output
+    assert "`1 / -4`" in output
+    assert "worst never-worked market / giveback market" in output
+    assert "SOL / -8 / n1" in output
+    assert "ETH / -4 / n1" in output
     assert "does not change the frozen filter or readiness gate" in output
 
 

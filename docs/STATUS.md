@@ -3313,3 +3313,22 @@ The diagnostic does not become overlap-review-ready until it has at least 30 exa
 This protects the trade-selection research from treating a tiny sample, one unusually large avoided loss, or changing trade size as evidence of a durable improvement. The overlap contract is descriptive only and does not alter the frozen cadence readiness gate, paper execution, timing, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Residual loss-shape diagnostic — 2026-09-30
+
+The allowed-cohort residual analyzer now separates surviving losses into entry-quality failures versus profit giveback.
+
+For every residual cohort and every existing side/strategy/rank/market grouping, it reports:
+
+- losses with complete versus missing/incomplete MFE evidence;
+- losses that never reached +0.25R MFE;
+- losses that reached +0.25R but stayed below +0.5R MFE;
+- losses that reached at least +0.5R MFE before closing negative;
+- losses that reached at least +1R MFE before closing negative;
+- the PnL attached to each loss shape;
+- the worst market and side×strategy clusters for never-worked losses and giveback losses.
+
+This is descriptive only and does not change the frozen top-10 + no LONG-trend candidate, readiness gates, paper entries, stops, exits, sizing, risk, promotion state, or live authority. Its purpose is to keep future changes targeted: poor-entry losses should drive entry research, while profitable-then-losing trades should drive exit/profit-protection research instead of another broad entry veto.
+
+**LIVE TRADING: DISABLED.**

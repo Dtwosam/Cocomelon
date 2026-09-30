@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from cocomelon.domain.journal import TradeJournalEntry
+from cocomelon.domain.journal import ExcursionMetric, TradeJournalEntry
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import EvidenceClass
 from cocomelon.domain.strategy import Direction
@@ -21,6 +21,8 @@ def _trade(
     market: str,
     direction: Direction,
     pnl: str,
+    mfe_r: str | None = None,
+    mfe_complete: bool = True,
 ) -> TradeJournalEntry:
     value = Decimal(pnl)
     entry = Decimal("100")
@@ -62,7 +64,21 @@ def _trade(
         entry_slippage_fraction=Decimal("0"),
         exit_slippage_fraction=Decimal("0"),
         holding_duration_ms=1_000,
-        mfe=None,
+        mfe=(
+            None
+            if mfe_r is None
+            else ExcursionMetric(
+                kind="mfe",
+                price=Decimal("101"),
+                per_unit=Decimal("1"),
+                fraction=Decimal("0.01"),
+                currency=Decimal(mfe_r) * Decimal("10"),
+                r_multiple=Decimal(mfe_r),
+                timestamp_ms=1_500,
+                source_event_key=f"mfe-{suffix}",
+                complete=mfe_complete,
+            )
+        ),
         mae=None,
         net_r=value / Decimal("10"),
         equity_before=Decimal("10000"),
@@ -179,3 +195,106 @@ def test_allowed_residual_rejects_duplicate_trade_ids() -> None:
                 AllowedResidualItem(trade),
             )
         )
+
+
+def test_allowed_residual_classifies_bad_entries_vs_profit_giveback() -> None:
+    items = (
+        AllowedResidualItem(
+            _trade(
+                suffix="never-worked",
+                market="SOL",
+                direction=Direction.LONG,
+                pnl="-8",
+                mfe_r="0.10",
+            ),
+            lead_strategy="breakout",
+            ordinal=2,
+        ),
+        AllowedResidualItem(
+            _trade(
+                suffix="partial-traction",
+                market="XRP",
+                direction=Direction.SHORT,
+                pnl="-3",
+                mfe_r="0.35",
+            ),
+            lead_strategy="breakout",
+            ordinal=3,
+        ),
+        AllowedResidualItem(
+            _trade(
+                suffix="giveback-sol",
+                market="SOL",
+                direction=Direction.SHORT,
+                pnl="-2",
+                mfe_r="0.80",
+            ),
+            lead_strategy="breakout",
+            ordinal=4,
+        ),
+        AllowedResidualItem(
+            _trade(
+                suffix="giveback-eth",
+                market="ETH",
+                direction=Direction.LONG,
+                pnl="-4",
+                mfe_r="1.20",
+            ),
+            lead_strategy="breakout",
+            ordinal=5,
+        ),
+        AllowedResidualItem(
+            _trade(
+                suffix="missing",
+                market="BTC",
+                direction=Direction.SHORT,
+                pnl="-1",
+            ),
+            lead_strategy="trend",
+            ordinal=7,
+        ),
+        AllowedResidualItem(
+            _trade(
+                suffix="winner",
+                market="ETH",
+                direction=Direction.SHORT,
+                pnl="5",
+                mfe_r="0.70",
+            ),
+            lead_strategy="trend",
+            ordinal=8,
+        ),
+    )
+
+    result = prospective_allowed_residual_attribution(items)
+
+    overall = result["overall"]
+    assert isinstance(overall, dict)
+    assert overall["losses"] == 5
+    assert overall["complete_excursion_losses"] == 4
+    assert overall["missing_or_incomplete_excursion_losses"] == 1
+    assert overall["losses_with_mfe_lt_0_25r"] == 1
+    assert overall["losses_with_mfe_0_25_to_lt_0_5r"] == 1
+    assert overall["losses_after_mfe_ge_0_5r"] == 2
+    assert overall["losses_after_mfe_ge_1r"] == 1
+    assert overall["loss_pnl_with_mfe_lt_0_25r"] == "-8"
+    assert overall["loss_pnl_with_mfe_0_25_to_lt_0_5r"] == "-3"
+    assert overall["loss_pnl_after_mfe_ge_0_5r"] == "-6"
+    assert overall["loss_pnl_after_mfe_ge_1r"] == "-4"
+
+    by_market = result["by_market"]
+    assert isinstance(by_market, dict)
+    assert by_market["SOL"]["losses_with_mfe_lt_0_25r"] == 1
+    assert by_market["ETH"]["losses_after_mfe_ge_1r"] == 1
+
+    worst_never_worked = result["worst_market_never_worked"]
+    assert isinstance(worst_never_worked, dict)
+    assert worst_never_worked["label"] == "SOL"
+    assert worst_never_worked["losses"] == 1
+    assert worst_never_worked["loss_pnl"] == "-8"
+
+    worst_giveback = result["worst_market_giveback"]
+    assert isinstance(worst_giveback, dict)
+    assert worst_giveback["label"] == "ETH"
+    assert worst_giveback["losses"] == 1
+    assert worst_giveback["loss_pnl"] == "-4"
