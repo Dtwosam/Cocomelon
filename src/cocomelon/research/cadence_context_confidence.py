@@ -8,8 +8,8 @@ from typing import Final
 from cocomelon.domain.strategy import Direction
 from cocomelon.research.cadence_context_learning import (
     CadenceContextLearningError,
-    _ContextRow,
     _context_keys,
+    _ContextRow,
     _resolve_rows,
 )
 from cocomelon.research.cadence_opportunity_learning import (
