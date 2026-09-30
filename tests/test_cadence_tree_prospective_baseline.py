@@ -15,13 +15,6 @@ from cocomelon.domain.features import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.strategy import Direction
-from cocomelon.research.cadence_tree_prospective_baseline import (
-    DEFAULT_FROZEN_TRAINING_MANIFEST_PATH,
-    FEATURE_REGISTRY,
-    MODEL_FAMILY,
-    PROSPECTIVE_START_MS,
-    evaluate_cadence_tree_prospective_baseline,
-)
 from cocomelon.research.cadence_microstructure_training_manifest import (
     build_frozen_cadence_training_manifest,
     frozen_cadence_training_manifest_payload,
@@ -37,6 +30,13 @@ from cocomelon.research.cadence_shadow import (
     ShadowCadenceOutcome,
 )
 from cocomelon.research.cadence_tree_learning import CadenceTreeConfig
+from cocomelon.research.cadence_tree_prospective_baseline import (
+    DEFAULT_FROZEN_TRAINING_MANIFEST_PATH,
+    FEATURE_REGISTRY,
+    MODEL_FAMILY,
+    PROSPECTIVE_START_MS,
+    evaluate_cadence_tree_prospective_baseline,
+)
 from cocomelon.research.learning_feature_snapshots import (
     LearningFeatureSnapshotStore,
 )
