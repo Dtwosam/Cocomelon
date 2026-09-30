@@ -146,10 +146,16 @@ def _receipt(
             "prospective_start_ms": cadence.get(
                 "prospective_start_ms"
             ),
+            "frozen_training_rows": _int(
+                cadence.get("frozen_training_rows"),
+                "CADENCE_TRAINING_ROWS_INVALID",
+            ),
             "frozen_training_rows_sha256": _str(
                 cadence.get("frozen_training_rows_sha256"),
                 "CADENCE_TRAINING_DIGEST_INVALID",
             ),
+        }
+        source_ledger_identity = {
             "prediction_ledger_sha256": _str(
                 cadence.get("prediction_ledger_sha256"),
                 "CADENCE_PREDICTION_LEDGER_INVALID",
@@ -183,6 +189,8 @@ def _receipt(
                 "TIMING_CANDIDATE_INVALID",
             ),
             "started_at_ms": timing.get("started_at_ms"),
+        }
+        source_ledger_identity = {
             "timing_ledger_sha256": _str(
                 timing.get("timing_ledger_sha256"),
                 "TIMING_LEDGER_INVALID",
@@ -212,6 +220,7 @@ def _receipt(
         "source_readiness_run_id": source_readiness_run_id,
         "source_readiness_run_attempt": source_readiness_run_attempt,
         "candidate_identity": identity,
+        "source_ledger_identity": source_ledger_identity,
         "failed_closed_blocks": blocks,
     }
     return {**payload, "receipt_id": _sha256(payload)}
@@ -347,17 +356,13 @@ def update_candidate_failure_receipts(
             "prospective_start_ms": cadence.get(
                 "prospective_start_ms"
             ),
+            "frozen_training_rows": _int(
+                cadence.get("frozen_training_rows"),
+                "CADENCE_TRAINING_ROWS_INVALID",
+            ),
             "frozen_training_rows_sha256": _str(
                 cadence.get("frozen_training_rows_sha256"),
                 "CADENCE_TRAINING_DIGEST_INVALID",
-            ),
-            "prediction_ledger_sha256": _str(
-                cadence.get("prediction_ledger_sha256"),
-                "CADENCE_PREDICTION_LEDGER_INVALID",
-            ),
-            "comparison_ledger_sha256": _str(
-                cadence.get("comparison_ledger_sha256"),
-                "CADENCE_COMPARISON_LEDGER_INVALID",
             ),
         },
         "side_conditioned_timing": {
@@ -366,10 +371,6 @@ def update_candidate_failure_receipts(
                 "TIMING_CANDIDATE_INVALID",
             ),
             "started_at_ms": timing.get("started_at_ms"),
-            "timing_ledger_sha256": _str(
-                timing.get("timing_ledger_sha256"),
-                "TIMING_LEDGER_INVALID",
-            ),
         },
     }
     current_instance_ids = {
