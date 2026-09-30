@@ -172,6 +172,13 @@ def test_overlap_separates_avoided_losses_from_sacrificed_wins() -> None:
     assert overall["actual_net_pnl_sum"] == "0"
     assert overall["candidate_matched_net_pnl_sum"] == "5"
     assert overall["candidate_minus_actual_net_pnl_sum"] == "5"
+    robustness = ledger["robustness"]
+    assert robustness["leave_one_trade_out_min_delta"] == "-7"
+    assert robustness["positive_delta_after_removing_any_one_trade"] is False
+    readiness = ledger["readiness"]
+    assert readiness["sample_complete"] is False
+    assert readiness["ready_for_overlap_review"] is False
+    assert readiness["missing_matched_closed_trades"] == 27
 
 
 def test_overlap_is_append_only_when_new_trade_closes() -> None:
@@ -293,3 +300,81 @@ def test_overlap_rejects_duplicate_trade_decision_ids() -> None:
             source_learning_artifact_name="learning",
             source_learning_artifact_digest="sha256:" + "b" * 64,
         )
+
+
+
+def test_overlap_review_requires_broad_profitable_robust_sample() -> None:
+    scored_rows = []
+    trades = []
+    for index in range(30):
+        direction = Direction.LONG if index % 2 == 0 else Direction.SHORT
+        admitted = index >= 20
+        decision_id = f"readiness-{index}"
+        boundary_ms = 10_000 + index * 10_000
+        scored_rows.append(
+            {
+                "decision_id": decision_id,
+                "boundary_ms": boundary_ms,
+                "market": "BTC",
+                "direction": direction.value,
+                "prediction_net_return": "0.01" if admitted else "-0.01",
+                "admitted": admitted,
+                "realized_net_return": "0.01" if admitted else "-0.01",
+            }
+        )
+        trades.append(
+            _trade(
+                f"ready-{index}",
+                decision_id=decision_id,
+                direction=direction,
+                net_pnl="1" if admitted else "-1",
+                opened_at_ms=boundary_ms + 100,
+            )
+        )
+
+    prediction = update_prediction_ledger(
+        {
+            "status": "collecting",
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "model_family": "test-model",
+            "prospective_start_ms": 1_000,
+            "cadence_ms": 900_000,
+            "horizon_ms": 3_600_000,
+            "frozen_training_rows": 652,
+            "frozen_training_rows_sha256": "a" * 64,
+            "scored_rows": tuple(scored_rows),
+        },
+        previous=None,
+        source_audit_run_id=10,
+        source_audit_run_attempt=1,
+        source_report_artifact_name="report",
+    )
+    ledger = update_trade_overlap_ledger(
+        prediction,
+        tuple(trades),
+        previous=None,
+        source_paper_run_id=20,
+        source_paper_run_attempt=1,
+        source_learning_artifact_name="learning",
+        source_learning_artifact_digest="sha256:" + "b" * 64,
+    )
+
+    readiness = ledger["readiness"]
+    assert readiness["sample_complete"] is True
+    assert readiness["economics_positive"] is True
+    assert readiness["single_trade_robust"] is True
+    assert readiness["ready_for_overlap_review"] is True
+    assert readiness["missing_matched_closed_trades"] == 0
+    assert readiness["missing_candidate_admitted_trades"] == 0
+    assert readiness["missing_candidate_blocked_trades"] == 0
+    assert readiness["missing_long_matched_trades"] == 0
+    assert readiness["missing_short_matched_trades"] == 0
+    assert readiness["missing_long_admitted_trades"] == 0
+    assert readiness["missing_short_admitted_trades"] == 0
+
+    robustness = ledger["robustness"]
+    assert robustness["total_candidate_minus_actual_net_pnl"] == "20"
+    assert robustness["leave_one_trade_out_min_delta"] == "19"
+    assert robustness["positive_delta_after_removing_any_one_trade"] is True
