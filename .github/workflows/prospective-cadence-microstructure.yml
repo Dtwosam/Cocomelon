@@ -1,0 +1,160 @@
+name: Prospective Cadence Microstructure Audit
+
+on:
+  workflow_run:
+    workflows:
+      - Continuous Mainnet Paper Trader
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed continuous-paper run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Completed continuous-paper run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: prospective-cadence-microstructure
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_RUN_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_id || github.event.workflow_run.id }}
+      SOURCE_RUN_ATTEMPT: ${{ github.event_name == 'workflow_dispatch' && inputs.source_run_attempt || github.event.workflow_run.run_attempt }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e ".[dev,research]"
+
+      - name: Resolve compact research artifacts
+        id: artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifacts_json="$(
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100"
+          )"
+          cadence_name="continuous-paper-cadence-shadow-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          features_name="continuous-paper-learning-features-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          cadence_id="$(
+            jq -r               --arg name "$cadence_name"               '.artifacts[] | select(.name == $name and .expired == false) | .id'               <<<"$artifacts_json" |
+            head -n 1
+          )"
+          features_id="$(
+            jq -r               --arg name "$features_name"               '.artifacts[] | select(.name == $name and .expired == false) | .id'               <<<"$artifacts_json" |
+            head -n 1
+          )"
+          test -n "$cadence_id"
+          test -n "$features_id"
+          echo "cadence_id=$cadence_id" >> "$GITHUB_OUTPUT"
+          echo "features_id=$features_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact research state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CADENCE_ID: ${{ steps.artifacts.outputs.cadence_id }}
+          FEATURES_ID: ${{ steps.artifacts.outputs.features_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/cadence-artifact /tmp/features-artifact
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$CADENCE_ID/zip"             > /tmp/cadence.zip
+          gh api             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/actions/artifacts/$FEATURES_ID/zip"             > /tmp/features.zip
+          unzip -q /tmp/cadence.zip -d /tmp/cadence-artifact
+          unzip -q /tmp/features.zip -d /tmp/features-artifact
+
+          cadence_path="$(
+            find /tmp/cadence-artifact               -type f               -name cadence-shadow-state.json               -print -quit
+          )"
+          records_dir="$(
+            find /tmp/features-artifact               -type d               -name records               -print -quit
+          )"
+          test -n "$cadence_path"
+          test -n "$records_dir"
+          feature_root="$(dirname "$records_dir")"
+          echo "CADENCE_PATH=$cadence_path" >> "$GITHUB_ENV"
+          echo "FEATURE_ROOT=$feature_root" >> "$GITHUB_ENV"
+
+      - name: Evaluate frozen prospective challenger
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_cadence_microstructure_prospective.py             "$CADENCE_PATH"             "$FEATURE_ROOT"             --json-out cadence-microstructure-prospective.json             > /tmp/cadence-microstructure-prospective.stdout.json
+          cmp             cadence-microstructure-prospective.json             /tmp/cadence-microstructure-prospective.stdout.json
+
+      - name: Summarize prospective evidence
+        shell: bash
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "cadence-microstructure-prospective.json"
+              ).read_text(encoding="utf-8")
+          )
+          print("## Frozen prospective cadence microstructure challenger")
+          print(f"- source paper run: {os.environ['SOURCE_RUN_ID']}")
+          for field in (
+              "status",
+              "prospective_start_ms",
+              "frozen_training_rows",
+              "prospective_rows",
+              "required_prospective_rows",
+              "admitted_rows",
+              "skipped_rows",
+              "candidate_net_return_sum",
+              "candidate_mean_net_return",
+              "development_qualified",
+          ):
+              print(f"- {field}: {report.get(field)}")
+          print("### Direction")
+          for direction, item in report.get("by_direction", {}).items():
+              print(
+                  f"- {direction}: "
+                  f"rows={item.get('prospective_rows')} "
+                  f"admitted={item.get('admitted_rows')} "
+                  f"sum={item.get('candidate_net_return_sum')} "
+                  f"mean={item.get('candidate_mean_net_return')}"
+              )
+          print("### Chronological blocks")
+          for block in report.get("stability_blocks", []):
+              print(
+                  f"- block {block['block_index']}: "
+                  f"rows={block['prospective_rows']} "
+                  f"admitted={block['admitted_rows']} "
+                  f"sum={block['candidate_net_return_sum']} "
+                  f"passes={block['passes']}"
+              )
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cadence-microstructure-prospective-${{ env.SOURCE_RUN_ID }}-${{ env.SOURCE_RUN_ATTEMPT }}
+          path: cadence-microstructure-prospective.json
+          if-no-files-found: error
+          retention-days: 90
