@@ -3389,3 +3389,26 @@ The stronger repeated-loss pattern is prior stop depth rather than elapsed time:
 This is retrospective same-sample evidence only. It does not justify a direction-specific rule, does not count toward any prospective gate, and has no execution authority. The runtime diagnostic now measures prior consecutive same-market/same-direction losing-stop depth as `0`, `1`, `2`, and `3+`, plus descriptive thresholds at `>=1`, `>=2`, and `>=3` with leave-one-trade-out and leave-one-market-out robustness.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen prospective two-strike stop filter — 2026-09-30
+
+The touched 61-trade predecessor journal exposed a repeated same-market/same-direction losing-stop pattern, but that retrospective evidence receives **zero prospective credit**.
+
+A new direction-neutral research-only challenger is frozen as `prospective-two-strike-same-side-stop-v1`:
+
+- scope: same market + same direction, applied identically to LONG and SHORT;
+- a strike is earned only when a **candidate-admitted** trade closes negative via `MARK_STOP_TRIGGERED`;
+- after two candidate-admitted strikes on one market/direction key, the next observed opening for that key is skipped once and the candidate strike count resets to zero;
+- the actual outcome of a candidate-blocked trade never updates candidate strike state;
+- a candidate-admitted non-losing-stop close resets that key to zero;
+- overlapping openings are evaluated only from closes known before each opening event;
+- the candidate changes no real paper order and models no replacement trades.
+
+Candidate freeze is durable across worker handoffs. Clean scoring starts only after a locked **six-hour embargo** from the first post-merge freeze timestamp. Restarts restore the original freeze; unreadable/tampered state starts a new freeze and therefore loses evidence instead of inheriting credit.
+
+The precommitted review gate requires at least 30 prospective closed trades, 5 blocked trades, 10 admitted trades, 5 LONG closes, and 5 SHORT closes, plus positive PnL and net-R delta and positive leave-one-trade-out and leave-one-market-out robustness.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
