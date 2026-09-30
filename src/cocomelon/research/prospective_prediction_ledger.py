@@ -60,13 +60,11 @@ def _required_int(raw: dict[str, object], key: str) -> int:
         raise ProspectivePredictionLedgerError(
             f"{key} must be an integer"
         )
-    try:
-        resolved = int(value)
-    except (TypeError, ValueError) as exc:
+    if not isinstance(value, int):
         raise ProspectivePredictionLedgerError(
             f"{key} must be an integer"
-        ) from exc
-    return resolved
+        )
+    return value
 
 
 def _canonical_entry(raw: object) -> dict[str, object]:
@@ -328,23 +326,6 @@ def update_prediction_ledger(
                 raise ProspectivePredictionLedgerError(
                     "previous prospective row changed"
                 )
-
-        if previous_rows:
-            frontier = max(
-                int(row["boundary_ms"])
-                for row in previous_rows
-            )
-            previous_identities = {
-                _entry_identity(row)
-                for row in previous_rows
-            }
-            for row in rows:
-                if _entry_identity(row) in previous_identities:
-                    continue
-                if int(row["boundary_ms"]) < frontier:
-                    raise ProspectivePredictionLedgerError(
-                        "new prospective row predates ledger frontier"
-                    )
 
     previous_identities = {
         _entry_identity(row)
