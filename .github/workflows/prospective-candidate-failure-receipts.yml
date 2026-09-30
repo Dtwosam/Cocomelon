@@ -1,0 +1,412 @@
+name: Prospective Candidate First-Failure Receipts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prospective-candidate-failure-receipts.yml"
+      - "scripts/update_prospective_candidate_failure_receipts.py"
+      - "src/cocomelon/research/prospective_candidate_failure_receipts.py"
+  workflow_run:
+    workflows:
+      - Prospective Trade Quality Readiness
+    types:
+      - completed
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      source_readiness_run_id:
+        description: Optional successful readiness workflow run ID
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: prospective-candidate-first-failure-receipts
+  cancel-in-progress: false
+
+env:
+  RECEIPT_ISSUE: "702"
+
+jobs:
+  receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e ".[dev]"
+
+      - name: Resolve canonical readiness manifest
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          INPUT_RUN_ID: ${{ inputs.source_readiness_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=""
+          run_attempt=""
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$EVENT_CONCLUSION" != "success" ]]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+          elif [[ -n "$INPUT_RUN_ID" ]]; then
+            run_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$INPUT_RUN_ID"
+            )"
+            if [[ "$(jq -r '.conclusion' <<<"$run_json")" != "success" ]]; then
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$(jq -r '.run_attempt' <<<"$run_json")"
+          else
+            runs_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-trade-quality-readiness.yml/runs?status=success&branch=main&per_page=20"
+            )"
+            run_id="$(
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | if length > 0 then .[0].id else "" end
+              ' <<<"$runs_json"
+            )"
+            run_attempt="$(
+              jq -r '
+                .workflow_runs
+                | sort_by(.updated_at)
+                | reverse
+                | if length > 0 then .[0].run_attempt else "" end
+              ' <<<"$runs_json"
+            )"
+          fi
+
+          if [[ -z "$run_id" || -z "$run_attempt" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          artifacts_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+          )"
+          artifact_name="prospective-trade-quality-readiness-$run_id-$run_attempt"
+          artifact_id="$(
+            jq -r \
+              --arg name "$artifact_name" \
+              '.artifacts
+               | map(select(.name == $name and (.expired | not)))
+               | if length > 0 then .[0].id else "" end' \
+              <<<"$artifacts_json"
+          )"
+          if [[ -z "$artifact_id" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+            echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          rm -rf /tmp/readiness /tmp/readiness.zip
+          mkdir -p /tmp/readiness
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+            > /tmp/readiness.zip
+          unzip -q /tmp/readiness.zip -d /tmp/readiness
+          manifest="$(
+            find /tmp/readiness \
+              -type f \
+              -name prospective-trade-quality-readiness.json \
+              -print -quit
+          )"
+          if [[ -z "$manifest" || ! -s "$manifest" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+            echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          cp "$manifest" /tmp/current-readiness.json
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous first-failure receipts
+        id: previous
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-candidate-failure-receipts.yml/runs?status=success&branch=main&per_page=100"
+          )"
+          mapfile -t run_ids < <(
+            jq -r \
+              --arg current "$CURRENT_RUN_ID" \
+              '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id' \
+              <<<"$runs_json"
+          )
+          for run_id in "${run_ids[@]}"; do
+            artifacts_json="$(
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_id="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith(
+                            "prospective-candidate-failure-receipts-"
+                          )
+                      )
+                    )
+                  )
+                | if length > 0 then .[0].id else "" end
+              ' <<<"$artifacts_json"
+            )"
+            if [[ -z "$artifact_id" ]]; then
+              continue
+            fi
+            rm -rf /tmp/previous-receipts /tmp/previous-receipts.zip
+            mkdir -p /tmp/previous-receipts
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+              > /tmp/previous-receipts.zip
+            unzip -q /tmp/previous-receipts.zip -d /tmp/previous-receipts
+            candidate="$(
+              find /tmp/previous-receipts \
+                -type f \
+                -name prospective-candidate-failure-receipts.json \
+                -print -quit
+            )"
+            if [[ -n "$candidate" && -s "$candidate" ]]; then
+              cp "$candidate" /tmp/previous-receipts.json
+              previous_path="/tmp/previous-receipts.json"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Update append-only first-failure receipts
+        id: update
+        if: ${{ steps.source.outputs.ready == 'true' }}
+        continue-on-error: true
+        env:
+          PREVIOUS_PATH: ${{ steps.previous.outputs.path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            /tmp/current-readiness.json
+            --source-readiness-run-id "$SOURCE_RUN_ID"
+            --source-readiness-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --json-out prospective-candidate-failure-receipts.json
+          )
+          if [[ -n "$PREVIOUS_PATH" ]]; then
+            args+=(--previous "$PREVIOUS_PATH")
+          fi
+          python scripts/update_prospective_candidate_failure_receipts.py \
+            "${args[@]}" \
+            > /tmp/failure-receipts.stdout.json
+          cmp \
+            prospective-candidate-failure-receipts.json \
+            /tmp/failure-receipts.stdout.json
+
+      - name: Publish blocked receipt status
+        if: >-
+          steps.source.outputs.ready != 'true' ||
+          steps.update.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.RECEIPT_ISSUE }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_READY: ${{ steps.source.outputs.ready }}
+          UPDATE_OUTCOME: ${{ steps.update.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/failure-receipts-status.md <<EOF
+          ## Prospective candidate first-failure receipts
+
+          **Status:** BLOCKED
+
+          - source readiness run: `$SOURCE_RUN_ID`
+          - source readiness attempt: `$SOURCE_RUN_ATTEMPT`
+          - canonical readiness artifact resolved: `$SOURCE_READY`
+          - receipt update outcome: `$UPDATE_OUTCOME`
+
+          The receipt layer refuses to infer or rewrite first-failure evidence when the canonical readiness artifact is missing, pre-lifecycle, invalid, or inconsistent with a prior immutable receipt.
+
+          **Execution authority:** `false`
+          **Promotion authority:** `false`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
+            -f body="$(cat /tmp/failure-receipts-status.md)"
+
+      - name: Fail closed on receipt integrity
+        if: >-
+          steps.source.outputs.ready != 'true' ||
+          steps.update.outcome != 'success'
+        shell: bash
+        run: |
+          echo "Prospective first-failure receipts are blocked." >&2
+          exit 1
+
+      - name: Publish first-failure receipt status
+        if: >-
+          steps.source.outputs.ready == 'true' &&
+          steps.update.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.RECEIPT_ISSUE }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          PREVIOUS_RUN_ID: ${{ steps.previous.outputs.workflow_run_id }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path(
+                  "prospective-candidate-failure-receipts.json"
+              ).read_text(encoding="utf-8")
+          )
+          entries = ledger["entries"]
+          status = (
+              "no irrecoverable candidate failure recorded"
+              if not entries
+              else f"{len(entries)} immutable first-failure receipt(s) preserved"
+          )
+          lines = [
+              "## Prospective candidate first-failure receipts",
+              "",
+              f"**Status:** {status}",
+              "",
+              f"- source readiness run: `{os.environ['SOURCE_RUN_ID']}`",
+              f"- source readiness attempt: `{os.environ['SOURCE_RUN_ATTEMPT']}`",
+              (
+                  "- previous receipt workflow run: "
+                  f"`{os.environ.get('PREVIOUS_RUN_ID') or 'none'}`"
+              ),
+              f"- receipt count: `{ledger['entry_count']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+          ]
+          for entry in entries:
+              lines.extend(
+                  [
+                      "",
+                      f"### {entry['candidate_key']}",
+                      "",
+                      f"- receipt ID: `{entry['receipt_id']}`",
+                      (
+                          "- first failed readiness run / attempt: "
+                          f"`{entry['source_readiness_run_id']} / "
+                          f"{entry['source_readiness_run_attempt']}`"
+                      ),
+                      (
+                          "- failure components: "
+                          f"`{', '.join(entry['failure_components'])}`"
+                      ),
+                      "- failed closed blocks:",
+                  ]
+              )
+              for block in entry["failed_closed_blocks"]:
+                  lines.append(
+                      "  - "
+                      f"{block['family']} block "
+                      f"{block['block_index']} "
+                      f"rows {block['start_row']}-{block['end_row']} "
+                      f"(observed={block['observed_rows']}): "
+                      f"candidate_sum={block['candidate_net_return_sum']} "
+                      f"incremental_sum={block['incremental_net_return_sum']} "
+                      f"vs_actual={block['selected_minus_actual_pnl']} "
+                      f"vs_60s={block['selected_minus_60s_pnl']}"
+                  )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "Receipts are append-only first-failure evidence. "
+                      "Later runs may add another candidate receipt but may "
+                      "not rewrite or erase an existing one."
+                  ),
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/failure-receipts-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" \
+            -f body="$(cat /tmp/failure-receipts-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: >-
+          steps.source.outputs.ready == 'true' &&
+          steps.update.outcome == 'success'
+        with:
+          name: prospective-candidate-failure-receipts-${{ steps.source.outputs.run_id }}-${{ steps.source.outputs.run_attempt }}
+          path: prospective-candidate-failure-receipts.json
+          if-no-files-found: error
+          retention-days: 90
