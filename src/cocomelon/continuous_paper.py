@@ -6057,6 +6057,7 @@ async def run_continuous_paper_session(
                 prospective_entry_filter_state,
                 prospective_delayed_price_confirmation_state,
                 prospective_top10_rank_filter_state,
+                prospective_trade_quality_state,
                 prospective_combined_entry_filter_state,
                 prospective_replacement_exit_policy_state,
                 adaptive_delay_selector_state,
@@ -6091,6 +6092,9 @@ async def run_continuous_paper_session(
                 ),
                 prospective_top10_rank_filter_restore_error=(
                     prospective_top10_rank_filter_restore_error
+                ),
+                prospective_trade_quality_restore_error=(
+                    prospective_trade_quality_restore_error
                 ),
                 prospective_combined_entry_filter_restore_error=(
                     prospective_combined_entry_filter_restore_error
