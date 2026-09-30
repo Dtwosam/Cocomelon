@@ -90,6 +90,8 @@ from cocomelon.research.profit_lock_execution_shadow import (
 )
 from cocomelon.research.prospective_two_strike_stop_filter import (
     EMBARGO_MS as TWO_STRIKE_EMBARGO_MS,
+)
+from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
 )
 
