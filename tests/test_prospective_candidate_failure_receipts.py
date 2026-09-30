@@ -260,3 +260,20 @@ def test_previous_receipt_tampering_fails_closed() -> None:
             source_readiness_run_attempt=1,
             previous=ledger,
         )
+
+
+def test_pre_lifecycle_readiness_manifest_is_rejected() -> None:
+    report = _report()
+    cadence = report["cadence"]
+    assert isinstance(cadence, dict)
+    cadence.pop("lifecycle_state")
+
+    with pytest.raises(
+        ProspectiveCandidateFailureReceiptError,
+        match="READINESS_LIFECYCLE_STATE_INVALID",
+    ):
+        update_candidate_failure_receipts(
+            report,
+            source_readiness_run_id=10,
+            source_readiness_run_attempt=1,
+        )
