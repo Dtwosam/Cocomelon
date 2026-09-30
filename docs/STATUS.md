@@ -2715,6 +2715,21 @@ This is intended for reproducible handoff-artifact review and incident analysis 
 **LIVE TRADING: DISABLED.**
 
 
+### Cadence opportunity robustness diagnostics — 2026-09-30
+
+The exact handoff-state audit shows that the purged cadence learner is structurally reviewable but not development-qualified.
+
+Primary 15-minute cadence findings from run `36694359628`:
+
+- 15m → 15m: 607 purged training rows, 100 validation rows, only 5 admitted rows, admitted validation sum `-0.01979833086445153168627683349`; zero SHORT admissions; all four chronological stability blocks fail.
+- 15m → 1h: 541 purged training rows, 100 validation rows, 32 admitted rows, admitted validation sum `0.05115679681488476627838235566` versus `-0.2507418357977606892700705526` for taking every validation opportunity; however all 32 admissions are LONG and only two of four chronological blocks are positive.
+- The sole admitted 15m → 1h exact cohort is LONG / trend / score 80+, with training-only mean net return `0.0002074996153318252029940204788` over 126 rows and validation mean `0.001598649900465148946199448614` over 32 rows.
+
+Because the promising 1-hour result is temporally unstable and one-sided, it is **not frozen as a prospective trading rule**.
+
+A new offline robustness audit therefore decomposes admitted validation contribution by market and chronological block, reports absolute-contribution concentration, leave-one-market-out sums, and exact cohort market/block attribution. These diagnostics do not alter learner admissions, paper orders, risk, promotion state, or live authority.
+
+**LIVE TRADING: DISABLED.**
 ### Operational heartbeat / research separation — 2026-09-30
 
 Continuous paper live telemetry is now split by responsibility.
