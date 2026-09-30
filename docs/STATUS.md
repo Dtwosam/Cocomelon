@@ -3131,3 +3131,18 @@ The publishing workflow is intentionally deferred until this extractor core is m
 This is research/control-plane only. It does not delay actual paper entries or change strategy, sizing, stops, risk, promotion state, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Pinned prospective side-conditioned timing outcome ledger — 2026-09-30
+
+Issue #692 is the canonical append-only row surface for the frozen `long-120s-short-60s-v1` timing challenger.
+
+The publisher is pinned to immutable extractor SHA `c5861658158014b359d9e00a67be96f8ba42275e`. It resolves the exact successful timing-audit artifact, derives the exact source paper run/attempt, then consumes only that paper run's compact side-conditioned timing state.
+
+For every causally evaluable future trade, the ledger preserves actual PnL, +60s and +120s fill-weighted same-exit PnL, selected side-conditioned delay/PnL/fill fraction, and deltas versus actual and always-60s. Every previously published row must remain identical. Missing/changed rows or candidate-rule/start drift fail closed; late-settling older trades may append.
+
+The ledger uses safe TSV artifact-identity transport and publishes BLOCKED before failing on append-only drift.
+
+This is research/control-plane only. It does not delay actual paper entries or change strategy, sizing, stops, risk, promotion state, or live execution authority.
+
+**LIVE TRADING: DISABLED.**
