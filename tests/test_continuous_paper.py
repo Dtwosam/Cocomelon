@@ -1069,6 +1069,43 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "_l2_event_fresh_for_promotion(" in source
     assert "required_market_keys <= ready" in source
 
+def test_runtime_rechecks_l2_after_async_rotation_before_heartbeat() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    helper_index = source.index(
+        "async def recover_systemic_l2_if_needed()"
+    )
+    first_check_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        helper_index,
+    )
+    rotation_index = source.index(
+        "not systemically_unhealthy_l2\n"
+        "                    and now_ms >= next_selection_refresh_ms",
+        first_check_index,
+    )
+    late_check_index = source.index(
+        "await recover_systemic_l2_if_needed()",
+        rotation_index,
+    )
+    heartbeat_index = source.index(
+        "_emit_operational_live_status(",
+        late_check_index,
+    )
+
+    assert (
+        helper_index
+        < first_check_index
+        < rotation_index
+        < late_check_index
+        < heartbeat_index
+    )
+    assert source.count(
+        "await recover_systemic_l2_if_needed()"
+    ) == 2
+
+
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
     ready = {"BTC", "ETH"}
     required = frozenset({"BTC", "ETH"})
