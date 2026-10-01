@@ -40,6 +40,7 @@ from cocomelon.evidence.lifecycle import (
     OpenLifecycleCheckpoint,
     OpenLifecycleMarkPath,
     PositionResearchObserver,
+    SessionDecisionActivity,
 )
 from cocomelon.evidence.openings import BaselineOpeningTrace
 from cocomelon.evidence.recording import (
@@ -1271,6 +1272,43 @@ def _l2_event_fresh_for_promotion(
     return 0 <= age_ms <= max_book_age_ms
 
 
+def _is_systemic_l2_failure(
+    required_market_keys: frozenset[str],
+    unhealthy_market_keys: frozenset[str],
+) -> bool:
+    required_count = len(required_market_keys)
+    if required_count == 0:
+        return False
+    unhealthy_count = len(
+        required_market_keys & unhealthy_market_keys
+    )
+    if required_count == 1:
+        return unhealthy_count == 1
+    minimum_unhealthy = max(
+        2,
+        (required_count + 1) // 2,
+    )
+    return unhealthy_count >= minimum_unhealthy
+
+
+def _latest_epoch_stale_l2_market_keys(
+    activity: SessionDecisionActivity,
+    *,
+    selected_market_keys: frozenset[str],
+    max_book_age_ms: int,
+) -> frozenset[str]:
+    if max_book_age_ms <= 0:
+        raise ValueError("max_book_age_ms must be positive")
+    return frozenset(
+        market
+        for market, age_ms in activity.latest_epoch_stale_book_age_ms
+        if (
+            market in selected_market_keys
+            and age_ms >= max_book_age_ms
+        )
+    )
+
+
 @dataclass(slots=True)
 class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
@@ -1327,19 +1365,10 @@ class _SupervisorGroup:
         *,
         now_ms: int,
     ) -> bool:
-        required_count = len(self.required_market_keys)
-        if required_count == 0:
-            return False
-        unhealthy_count = len(
-            self.unhealthy_l2_market_keys(now_ms=now_ms)
+        return _is_systemic_l2_failure(
+            self.required_market_keys,
+            self.unhealthy_l2_market_keys(now_ms=now_ms),
         )
-        if required_count == 1:
-            return unhealthy_count == 1
-        minimum_unhealthy = max(
-            2,
-            (required_count + 1) // 2,
-        )
-        return unhealthy_count >= minimum_unhealthy
 
 
 async def _wait_supervisor_group_ready(
@@ -3613,6 +3642,7 @@ class _RecordPump:
         self.stale_l2_rest_reseed_attempts = 0
         self.stale_l2_rest_reseed_books = 0
         self.stale_l2_rest_reseed_failures = 0
+        self.stale_l2_pipeline_recovery_triggers = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -6062,6 +6092,9 @@ def _live_status_payload(
         "stale_l2_rest_reseed_failures": (
             pump.stale_l2_rest_reseed_failures
         ),
+        "stale_l2_pipeline_recovery_triggers": (
+            pump.stale_l2_pipeline_recovery_triggers
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7746,6 +7779,7 @@ async def run_continuous_paper_session(
         deadline_ms = started_at_ms + config.duration_seconds * 1000
         next_selection_refresh_ms = started_at_ms + config.selection_refresh_seconds * 1000
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
+        last_pipeline_stale_recovery_boundary_ms: int | None = None
 
         exit_reason = "duration_elapsed"
         try:
@@ -7803,16 +7837,56 @@ async def run_continuous_paper_session(
                     break
 
                 health_now_ms = utc_now_ms()
-                systemically_unhealthy_l2 = (
-                    supervisor_group.systemically_stale_l2(
+                supervisor_unhealthy_market_keys = (
+                    supervisor_group.unhealthy_l2_market_keys(
                         now_ms=health_now_ms,
                     )
                 )
+                supervisor_systemically_unhealthy_l2 = (
+                    _is_systemic_l2_failure(
+                        supervisor_group.required_market_keys,
+                        supervisor_unhealthy_market_keys,
+                    )
+                )
+                decision_activity = (
+                    pipeline.session_decision_activity
+                )
+                decision_boundary_ms = (
+                    decision_activity.last_decision_boundary_ms
+                )
+                pipeline_stale_market_keys = (
+                    _latest_epoch_stale_l2_market_keys(
+                        decision_activity,
+                        selected_market_keys=frozenset(
+                            selected_keys
+                        ),
+                        max_book_age_ms=(
+                            replay_config.eligibility.max_book_age_ms
+                        ),
+                    )
+                )
+                pipeline_systemically_unhealthy_l2 = (
+                    decision_boundary_ms is not None
+                    and decision_boundary_ms
+                    != last_pipeline_stale_recovery_boundary_ms
+                    and _is_systemic_l2_failure(
+                        frozenset(selected_keys),
+                        pipeline_stale_market_keys,
+                    )
+                )
+                systemically_unhealthy_l2 = (
+                    supervisor_systemically_unhealthy_l2
+                    or pipeline_systemically_unhealthy_l2
+                )
                 if systemically_unhealthy_l2:
-                    unhealthy_market_keys = (
-                        supervisor_group.unhealthy_l2_market_keys(
-                            now_ms=health_now_ms,
+                    if pipeline_systemically_unhealthy_l2:
+                        pump.stale_l2_pipeline_recovery_triggers += 1
+                        last_pipeline_stale_recovery_boundary_ms = (
+                            decision_boundary_ms
                         )
+                    unhealthy_market_keys = (
+                        supervisor_unhealthy_market_keys
+                        | pipeline_stale_market_keys
                     )
                     reseed_markets = tuple(
                         market
