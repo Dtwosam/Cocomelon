@@ -373,7 +373,7 @@ jobs:
             --state-root "$STATE_ROOT" \
             --duration-seconds 19800 \
             --deep-limit 20 \
-            --context-poll-seconds 60 \
+            --context-poll-seconds 30 \
             --selection-refresh-seconds 300 \
             --checkpoint-seconds 30 \
             --stop-file /tmp/continuous-paper-upgrade-requested \
