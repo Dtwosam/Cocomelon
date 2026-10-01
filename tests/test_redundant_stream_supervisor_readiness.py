@@ -156,11 +156,6 @@ def test_stale_l2_lane_fails_over_without_revoking_other_streams() -> None:
     async def run() -> None:
         events: list[StreamEvent] = []
         gaps: list[DataGap] = []
-        mux = RedundantStreamMux(
-            event_sink=events.append,  # type: ignore[arg-type]
-            gap_sink=gaps.append,  # type: ignore[arg-type]
-        )
-
         receive = datetime(2026, 8, 25, tzinfo=UTC)
 
         async def emit_event(event: StreamEvent) -> None:
