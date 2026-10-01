@@ -2425,6 +2425,64 @@ def _prospective_consecutive_loss_cooldown_shadow_payload(
     return payload
 
 
+def _restore_prospective_global_loss_gate(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveGlobalLossGateState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveGlobalLossGateState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveGlobalLossGateState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveGlobalLossGateState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_global_loss_gate_payload(
+    journal: JournalStore,
+    state: ProspectiveGlobalLossGateState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_global_loss_gate(
+            journal,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_risk_limits": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
+
+
 def _restore_prospective_two_strike_stop_filter(
     path: Path,
     *,
