@@ -65,6 +65,7 @@ from cocomelon.continuous_paper import (
     _record_from_payload,
     _record_from_stream,
     _record_payload,
+    _revoke_stale_l2_readiness,
     _RecordPump,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
@@ -684,6 +685,35 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "pipeline.reconcile_markets(selected)" in window
     assert "event.kind is StreamKind.L2_BOOK" in source
     assert "required_market_keys <= ready" in source
+
+def test_stale_l2_gap_revokes_rotation_readiness() -> None:
+    ready = {"BTC", "ETH"}
+    required = frozenset({"BTC", "ETH"})
+
+    _revoke_stale_l2_readiness(
+        ready,
+        DataGap(
+            stream_id="l2Book:BTC",
+            started_ms=10_000,
+            ended_ms=None,
+            reason="stale",
+        ),
+        required_market_keys=required,
+    )
+    assert ready == {"ETH"}
+
+    _revoke_stale_l2_readiness(
+        ready,
+        DataGap(
+            stream_id="l2Book:ETH",
+            started_ms=10_000,
+            ended_ms=10_001,
+            reason="recovered",
+        ),
+        required_market_keys=required,
+    )
+    assert ready == {"ETH"}
+
 
 def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
     receive = datetime.fromtimestamp(10, tz=UTC)
