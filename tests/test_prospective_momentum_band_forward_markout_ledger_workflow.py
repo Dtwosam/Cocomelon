@@ -92,7 +92,7 @@ def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
     )
 
 
-def test_fast_markout_waiting_and_blocked_status_escape_markdown_backticks() -> None:
+def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() -> None:
     source = _source()
     waiting = source.split(
         "      - name: Publish waiting-for-source status",
@@ -113,10 +113,12 @@ def test_fast_markout_waiting_and_blocked_status_escape_markdown_backticks() -> 
         1,
     )[1]
 
-    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in waiting
-    assert r"\`$RESOLUTION_MODE\`" in waiting
-    assert waiting.count(r"\`false\`") == 3
-    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in blocked
-    assert r"\`$error\`" in blocked
-    assert blocked.count(r"\`false\`") == 3
-    assert r"\`false\`" not in clean
+    assert "python - <<'PY'" in waiting
+    assert "python - <<'PY'" in blocked
+    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in waiting
+    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in blocked
+    assert "os.environ['SOURCE_RUN_ID']" in waiting
+    assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
+    assert "os.environ['RESOLUTION_MODE']" in waiting
+    assert 'os.environ.get("ERROR_TEXT")' in blocked
+    assert "\\\`false\\\`" not in clean
