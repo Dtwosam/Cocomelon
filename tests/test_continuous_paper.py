@@ -488,6 +488,8 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"stop_price": str(position.stop_price)' in source
     assert '"session_decision_epochs"' in source
     assert '"session_decisions"' in source
+    assert '"session_eligibility"' in source
+    assert '"latest_epoch_eligibility"' in source
     assert '"session_risk"' in source
     assert '"open_planned_risk"' in source
     assert '"open_planned_risk_fraction_of_equity"' in source
