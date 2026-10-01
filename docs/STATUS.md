@@ -4036,3 +4036,21 @@ This is an acceleration layer for learning whether the **surviving entry stack**
 **Promotion authority:** `false`  
 **Changes closed-trade readiness:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Late decision-epoch stale-L2 recovery hardening — 2026-10-01
+
+Worker run `36933148500` exposed a control-loop race after the latest L2 recovery changes. A completed decision epoch reported 20 evaluated markets, 16 rankable markets rejected for `stale_book`, and 16 matching stale-book age observations at about 8.8 seconds, while runtime recovery/reseed counters remained zero across multiple later heartbeats.
+
+The pure recovery planner already recognizes that exact 16-of-20 pattern as systemic. The remaining gap was sequencing: WebSocket processing can finish a decision epoch after the control loop's first L2 health snapshot, while later asynchronous refresh/rotation work delays the next chance to act.
+
+The runtime now centralizes systemic L2 recovery in one helper and checks it twice per control cycle:
+
+- normal recovery check immediately after refreshed context/funding work;
+- a second check after any shortlist warmup/rotation awaits and immediately before the operational heartbeat.
+
+The existing decision-boundary deduplication remains authoritative, so the same pipeline stale epoch cannot trigger duplicate recovery. If the first check already recovered systemic L2, the late check is skipped.
+
+This is market-data liveness hardening only. The 5-second deep-book eligibility threshold, strategy cadence, candidate rules, risk limits, execution model, and live-order authority are unchanged.
+
+**LIVE TRADING: DISABLED.**
