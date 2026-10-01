@@ -309,6 +309,10 @@ from cocomelon.research.prospective_full_stack_entry_exit import (
 from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
     prospective_full_stack_exit_capacity_reflow,
 )
+from cocomelon.research.prospective_global_loss_gate import (
+    ProspectiveGlobalLossGateState,
+    evaluate_prospective_global_loss_gate,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
@@ -408,6 +412,12 @@ PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME = (
 )
 PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME = (
     "prospective-momentum-band-forward-markout-summary.json"
+)
+PROSPECTIVE_GLOBAL_LOSS_GATE_STATE_FILENAME = (
+    "prospective-global-two-loss-gate-state.json"
+)
+PROSPECTIVE_GLOBAL_LOSS_GATE_SUMMARY_FILENAME = (
+    "prospective-global-two-loss-gate-summary.json"
 )
 PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
     "prospective-two-strike-stop-filter-state.json"
