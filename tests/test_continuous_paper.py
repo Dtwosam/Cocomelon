@@ -84,6 +84,8 @@ from cocomelon.continuous_paper import (
     _revoke_stale_l2_readiness,
     _stop_requested,
     _SupervisorGroup,
+    _systemically_unready_l2,
+    _wait_l2_health_wakeup,
     _wait_supervisor_group_ready,
 )
 from cocomelon.domain.execution import (
@@ -768,6 +770,46 @@ def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
     )
 
 
+def test_systemically_unready_l2_requires_cross_lane_overlap() -> None:
+    required = frozenset({"BTC", "ETH", "SOL", "ENA"})
+
+    assert _systemically_unready_l2(
+        required,
+        (
+            {"SOL"},
+            {"ENA"},
+        ),
+    )
+    assert not _systemically_unready_l2(
+        required,
+        (
+            {"SOL", "ENA"},
+            {"BTC", "ETH"},
+        ),
+    )
+
+
+def test_l2_health_wakeup_interrupts_long_context_sleep() -> None:
+    async def scenario() -> tuple[bool, bool, bool]:
+        wakeup = asyncio.Event()
+        wakeup.set()
+        woke = await _wait_l2_health_wakeup(
+            wakeup,
+            timeout_seconds=1.0,
+        )
+        cleared = not wakeup.is_set()
+        timed_out = await _wait_l2_health_wakeup(
+            wakeup,
+            timeout_seconds=0.005,
+        )
+        return woke, cleared, timed_out
+
+    woke, cleared, timed_out = asyncio.run(scenario())
+    assert woke is True
+    assert cleared is True
+    assert timed_out is False
+
+
 def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
     required = frozenset({"BTC", "ETH", "SOL", "ENA"})
 
@@ -863,9 +905,17 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
         in source
     )
     assert "_l2_event_fresh_for_promotion(" in source
+    assert "l2_health_wakeup.set()" in source
+    wait_index = source.index(
+        "await _wait_l2_health_wakeup("
+    )
     recovery_index = source.index(
         "systemically_unhealthy_l2 = ("
     )
+    refresh_index = source.index(
+        ") = await _refresh_native_market_snapshots(reader)"
+    )
+    assert wait_index < recovery_index < refresh_index
     rotation_index = source.index(
         "if (\n"
         "                    not systemically_unhealthy_l2\n"
