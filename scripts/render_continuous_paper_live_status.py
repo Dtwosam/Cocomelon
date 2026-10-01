@@ -35,6 +35,7 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+
 def _stale_book_age_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
