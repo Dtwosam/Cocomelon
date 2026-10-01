@@ -305,6 +305,198 @@ def _canonical_row(
     }
 
 
+def _validate_stored_row(
+    raw: dict[str, object],
+) -> dict[str, object]:
+    trade_id = _required_string(raw, "trade_id")
+    opening_plan_id = _required_string(raw, "opening_plan_id")
+    market = _required_string(raw, "market")
+    direction = _required_string(raw, "direction")
+    if direction not in {"long", "short"}:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored row direction must be long or short"
+        )
+    opened_at_ms = _required_int(raw, "opened_at_ms")
+    closed_at_ms = _required_int(raw, "closed_at_ms")
+    if opened_at_ms < 0 or closed_at_ms < opened_at_ms:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored row timestamps are invalid"
+        )
+    initial_risk = Decimal(
+        _decimal_string(
+            raw.get("initial_risk_amount"),
+            field="initial_risk_amount",
+        )
+    )
+    if initial_risk <= ZERO:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored row initial risk must be positive"
+        )
+    actual_pnl = Decimal(
+        _decimal_string(
+            raw.get("actual_net_pnl"),
+            field="actual_net_pnl",
+        )
+    )
+    actual_r = Decimal(
+        _decimal_string(
+            raw.get("actual_net_r"),
+            field="actual_net_r",
+        )
+    )
+    if actual_r != actual_pnl / initial_risk:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored actual net R does not reconcile"
+        )
+
+    entry_decision = raw.get("entry_decision")
+    exit_evaluation = raw.get("exit_evaluation")
+    if entry_decision not in {"BLOCK", "ADMIT"}:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored entry decision is invalid"
+        )
+    if (
+        entry_decision == "BLOCK"
+        and exit_evaluation != "NOT_APPLICABLE"
+    ):
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored blocked row has invalid exit evaluation"
+        )
+    if (
+        entry_decision == "ADMIT"
+        and exit_evaluation != "EVALUATED"
+    ):
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored admitted row must be terminal evaluated"
+        )
+
+    entry_pnl = Decimal(
+        _decimal_string(
+            raw.get("entry_stack_candidate_net_pnl"),
+            field="entry_stack_candidate_net_pnl",
+        )
+    )
+    entry_r = Decimal(
+        _decimal_string(
+            raw.get("entry_stack_candidate_net_r"),
+            field="entry_stack_candidate_net_r",
+        )
+    )
+    expected_entry_pnl = (
+        ZERO if entry_decision == "BLOCK" else actual_pnl
+    )
+    expected_entry_r = (
+        ZERO if entry_decision == "BLOCK" else actual_r
+    )
+    if entry_pnl != expected_entry_pnl or entry_r != expected_entry_r:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored entry-stack economics do not reconcile"
+        )
+
+    full_pnl = Decimal(
+        _decimal_string(
+            raw.get("full_stack_candidate_net_pnl"),
+            field="full_stack_candidate_net_pnl",
+        )
+    )
+    full_r = Decimal(
+        _decimal_string(
+            raw.get("full_stack_candidate_net_r"),
+            field="full_stack_candidate_net_r",
+        )
+    )
+    if full_r != full_pnl / initial_risk:
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored full-stack net R does not reconcile"
+        )
+    if entry_decision == "BLOCK" and (
+        full_pnl != ZERO or full_r != ZERO
+    ):
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored blocked row full-stack economics must be zero"
+        )
+
+    delta_pnl = Decimal(
+        _decimal_string(
+            raw.get("full_stack_delta_net_pnl"),
+            field="full_stack_delta_net_pnl",
+        )
+    )
+    delta_r = Decimal(
+        _decimal_string(
+            raw.get("full_stack_delta_net_r"),
+            field="full_stack_delta_net_r",
+        )
+    )
+    breakeven_pnl = Decimal(
+        _decimal_string(
+            raw.get("breakeven_incremental_net_pnl"),
+            field="breakeven_incremental_net_pnl",
+        )
+    )
+    breakeven_r = Decimal(
+        _decimal_string(
+            raw.get("breakeven_incremental_net_r"),
+            field="breakeven_incremental_net_r",
+        )
+    )
+    if (
+        delta_pnl != full_pnl - actual_pnl
+        or delta_r != full_r - actual_r
+        or breakeven_pnl != full_pnl - entry_pnl
+        or breakeven_r != full_r - entry_r
+    ):
+        raise ProspectiveFullStackMatchedTradeLedgerError(
+            "stored derived economics do not reconcile"
+        )
+
+    activated = raw.get("breakeven_activated")
+    triggered = raw.get("breakeven_triggered")
+    source = raw.get("breakeven_source")
+    if entry_decision == "BLOCK":
+        if activated is not None or triggered is not None or source is not None:
+            raise ProspectiveFullStackMatchedTradeLedgerError(
+                "stored blocked row cannot carry breakeven evidence"
+            )
+    else:
+        if not isinstance(activated, bool) or not isinstance(
+            triggered,
+            bool,
+        ):
+            raise ProspectiveFullStackMatchedTradeLedgerError(
+                "stored breakeven flags must be booleans"
+            )
+        if not isinstance(source, str) or not source.strip():
+            raise ProspectiveFullStackMatchedTradeLedgerError(
+                "stored breakeven source must be a string"
+            )
+
+    return {
+        "trade_id": trade_id,
+        "opening_plan_id": opening_plan_id,
+        "market": market,
+        "direction": direction,
+        "opened_at_ms": opened_at_ms,
+        "closed_at_ms": closed_at_ms,
+        "initial_risk_amount": str(initial_risk),
+        "actual_net_pnl": str(actual_pnl),
+        "actual_net_r": str(actual_r),
+        "entry_decision": entry_decision,
+        "exit_evaluation": exit_evaluation,
+        "entry_stack_candidate_net_pnl": str(entry_pnl),
+        "entry_stack_candidate_net_r": str(entry_r),
+        "full_stack_candidate_net_pnl": str(full_pnl),
+        "full_stack_candidate_net_r": str(full_r),
+        "full_stack_delta_net_pnl": str(delta_pnl),
+        "full_stack_delta_net_r": str(delta_r),
+        "breakeven_incremental_net_pnl": str(breakeven_pnl),
+        "breakeven_incremental_net_r": str(breakeven_r),
+        "breakeven_activated": activated,
+        "breakeven_triggered": triggered,
+        "breakeven_source": source,
+    }
+
+
 def _terminal_rows(
     trades: Sequence[TradeJournalEntry],
     summary: dict[str, object],
@@ -787,13 +979,14 @@ def validate_full_stack_matched_trade_ledger(
             raise ProspectiveFullStackMatchedTradeLedgerError(
                 "full-stack ledger row must be an object"
             )
-        trade_id = _required_string(raw_row, "trade_id")
+        normalized = _validate_stored_row(raw_row)
+        trade_id = cast(str, normalized["trade_id"])
         if trade_id in seen:
             raise ProspectiveFullStackMatchedTradeLedgerError(
                 "full-stack ledger contains duplicate trade ids"
             )
         seen.add(trade_id)
-        rows.append(dict(raw_row))
+        rows.append(normalized)
     row_tuple = tuple(rows)
     if raw.get("row_count") != len(row_tuple):
         raise ProspectiveFullStackMatchedTradeLedgerError(
