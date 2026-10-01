@@ -424,7 +424,6 @@ def _economic_two_strike_trades(
         ("ETH", Direction.LONG),
         ("ETH", Direction.SHORT),
     )
-    ordinal = 0
     for cycle in range(8):
         market, direction = keys[cycle % len(keys)]
         base = start + cycle * 600_000
@@ -448,7 +447,6 @@ def _economic_two_strike_trades(
                     ),
                 )
             )
-            ordinal += 1
     return tuple(trades)
 
 
