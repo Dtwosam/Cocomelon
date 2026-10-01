@@ -3610,6 +3610,9 @@ class _RecordPump:
         self.stale_l2_recovery_attempts = 0
         self.stale_l2_recovery_promotions = 0
         self.stale_l2_recovery_readiness_failures = 0
+        self.stale_l2_rest_reseed_attempts = 0
+        self.stale_l2_rest_reseed_books = 0
+        self.stale_l2_rest_reseed_failures = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -3765,6 +3768,48 @@ class _RecordPump:
                 f"{type(exc).__name__}: {exc}"
             )
             self.cadence_shadow = None
+
+
+async def _reseed_l2_books_via_rest(
+    reader: InfoClient,
+    markets: Sequence[MarketId],
+    pump: _RecordPump,
+    *,
+    max_book_age_ms: int,
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> tuple[int, int]:
+    if max_book_age_ms <= 0:
+        raise ValueError("max_book_age_ms must be positive")
+
+    refreshed = 0
+    failed = 0
+    seen: set[str] = set()
+    for market in markets:
+        if market.canonical in seen:
+            continue
+        seen.add(market.canonical)
+        try:
+            raw = await asyncio.to_thread(
+                reader.l2_book,
+                market,
+            )
+            received_at_ms = clock_ms()
+            book = normalize_l2_book_snapshot(
+                market,
+                raw,
+                received_at_ms=received_at_ms,
+            )
+            if not _l2_event_fresh_for_promotion(
+                book,
+                max_book_age_ms=max_book_age_ms,
+            ):
+                failed += 1
+                continue
+            await pump.process(_record_from_stream(book))
+            refreshed += 1
+        except Exception:
+            failed += 1
+    return refreshed, failed
 
 
 def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
@@ -6008,6 +6053,15 @@ def _live_status_payload(
         "stale_l2_recovery_readiness_failures": (
             pump.stale_l2_recovery_readiness_failures
         ),
+        "stale_l2_rest_reseed_attempts": (
+            pump.stale_l2_rest_reseed_attempts
+        ),
+        "stale_l2_rest_reseed_books": (
+            pump.stale_l2_rest_reseed_books
+        ),
+        "stale_l2_rest_reseed_failures": (
+            pump.stale_l2_rest_reseed_failures
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7755,6 +7809,33 @@ async def run_continuous_paper_session(
                     )
                 )
                 if systemically_unhealthy_l2:
+                    unhealthy_market_keys = (
+                        supervisor_group.unhealthy_l2_market_keys(
+                            now_ms=health_now_ms,
+                        )
+                    )
+                    reseed_markets = tuple(
+                        market
+                        for market in selected
+                        if market.canonical in unhealthy_market_keys
+                    )
+                    pump.stale_l2_rest_reseed_attempts += 1
+                    (
+                        reseeded_books,
+                        reseed_failures,
+                    ) = await _reseed_l2_books_via_rest(
+                        reader,
+                        reseed_markets,
+                        pump,
+                        max_book_age_ms=(
+                            replay_config.eligibility.max_book_age_ms
+                        ),
+                    )
+                    pump.stale_l2_rest_reseed_books += reseeded_books
+                    pump.stale_l2_rest_reseed_failures += (
+                        reseed_failures
+                    )
+
                     pump.stale_l2_recovery_attempts += 1
                     replacement_group = await start_supervisors(
                         selected,
