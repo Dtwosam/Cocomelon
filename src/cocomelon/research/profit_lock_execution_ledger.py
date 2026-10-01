@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Final, cast
 
@@ -140,7 +140,12 @@ def _decimal_or_none(value: object) -> Decimal | None:
         raise ProfitLockExecutionLedgerError(
             "economic value must be a decimal string or null"
         )
-    resolved = Decimal(value)
+    try:
+        resolved = Decimal(value)
+    except InvalidOperation as exc:
+        raise ProfitLockExecutionLedgerError(
+            "economic value must be a decimal string or null"
+        ) from exc
     if not resolved.is_finite():
         raise ProfitLockExecutionLedgerError(
             "economic value must be finite"
@@ -463,8 +468,9 @@ def _reconcile_journal(
     *,
     started_at_ms: int,
 ) -> None:
-    trade_by_id = {trade.trade_id: trade for trade in trades}
-    if len(trade_by_id) != len(tuple(trades)):
+    values = tuple(trades)
+    trade_by_id = {trade.trade_id: trade for trade in values}
+    if len(trade_by_id) != len(values):
         raise ProfitLockExecutionLedgerError(
             "journal contains duplicate trade ids"
         )
@@ -531,7 +537,12 @@ def validate_profit_lock_execution_ledger(
         raise ProfitLockExecutionLedgerError(
             "profit-lock execution state schema drift"
         )
-    if not isinstance(metadata.get("started_at_ms"), int):
+    started_at_ms = metadata.get("started_at_ms")
+    if (
+        isinstance(started_at_ms, bool)
+        or not isinstance(started_at_ms, int)
+        or started_at_ms < 0
+    ):
         raise ProfitLockExecutionLedgerError(
             "profit-lock execution start is invalid"
         )
@@ -558,17 +569,62 @@ def validate_profit_lock_execution_ledger(
         raise ProfitLockExecutionLedgerError(
             "profit-lock execution source history must be a list"
         )
-    if not isinstance(raw.get("summary"), dict):
+    integrity = raw.get("integrity_counters")
+    if not isinstance(integrity, dict):
         raise ProfitLockExecutionLedgerError(
-            "profit-lock execution summary must be an object"
+            "profit-lock execution integrity counters are invalid"
         )
-    if not isinstance(raw.get("readiness"), dict):
+    for key in (
+        "excluded_closed_trades",
+        "lineage_mismatch_closed_trades",
+        "orphaned_restored_positions",
+    ):
+        value = integrity.get(key)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+        ):
+            raise ProfitLockExecutionLedgerError(
+                f"profit-lock execution integrity counter is invalid: {key}"
+            )
+
+    rule_ids = tuple(
+        rule.rule_id for rule in DEFAULT_PROFIT_LOCK_RULES
+    )
+    rule_summaries = tuple(
+        _rule_summary(rows, rule_id) for rule_id in rule_ids
+    )
+    expected_summary = {
+        "closed_outcome_count": len(rows),
+        "rules": list(rule_summaries),
+    }
+    if raw.get("summary") != expected_summary:
         raise ProfitLockExecutionLedgerError(
-            "profit-lock execution readiness must be an object"
+            "profit-lock execution summary does not reconcile"
         )
-    if not isinstance(raw.get("economic_robustness"), dict):
+    expected_readiness = _readiness_payload(
+        rule_summaries,
+        lineage_mismatch_closed_trades=cast(
+            int,
+            integrity["lineage_mismatch_closed_trades"],
+        ),
+        orphaned_restored_positions=cast(
+            int,
+            integrity["orphaned_restored_positions"],
+        ),
+    )
+    if raw.get("readiness") != expected_readiness:
         raise ProfitLockExecutionLedgerError(
-            "profit-lock execution economics must be an object"
+            "profit-lock execution readiness does not reconcile"
+        )
+    expected_economics = {
+        rule_id: _economic_robustness(rows, rule_id)
+        for rule_id in rule_ids
+    }
+    if raw.get("economic_robustness") != expected_economics:
+        raise ProfitLockExecutionLedgerError(
+            "profit-lock execution economics do not reconcile"
         )
     expected_digest = _sha256_text(
         _canonical_json(_digest_payload(raw))
