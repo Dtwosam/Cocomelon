@@ -3492,3 +3492,36 @@ This is research/control-plane only. It does not move actual paper stops, close 
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen prospective breakeven profit-lock challenger — 2026-10-01
+
+The mature visible-book execution shadow selected one exit challenger for a new clean campaign: `prospective-breakeven-after-0_5r-v1`.
+
+The selection evidence is **touched predecessor evidence only**. Before freeze, the existing `breakeven_after_0_5r` execution shadow reached 30 economically evaluated trades, 16 activations, 10 triggers and 10 simulated full visible-book closes, with positive PnL/net-R contribution and positive leave-one-trade / leave-one-market robustness. Those observations justify selecting the challenger, but they receive **zero** clean promotion credit.
+
+The frozen challenger is unchanged from the observed shadow rule:
+
+- activate after the position reaches `+0.5R`;
+- candidate stop level is breakeven (`0R`);
+- use the existing visible-book execution simulator and its frozen cost/execution semantics;
+- apply the same rule to LONG and SHORT;
+- no replacement entry logic and no other profit-lock rule is bundled into this candidate.
+
+The paper worker now persists a dedicated immutable freeze state. First deployment establishes `frozen_at_ms`; clean scoring starts only after a locked six-hour embargo. Normal worker handoffs restore the same freeze. Missing pre-freeze state receives no backfill, and a reset state begins a new clean campaign rather than inheriting old credit.
+
+Clean readiness is computed from the existing append-only profit-lock execution ledger plus the cumulative paper journal. It requires:
+
+- at least 30 economically evaluated future trades;
+- at least 15 activations, 10 triggers and 10 complete visible-book simulated closes;
+- at least 5 evaluated LONG and 5 evaluated SHORT trades;
+- no missing future outcome, orphan outcome, lineage mismatch, restored-position orphan or incomplete triggered close;
+- positive candidate PnL and net R;
+- positive candidate-minus-actual PnL and net-R delta;
+- positive leave-one-trade and leave-one-market robustness in both PnL and net R.
+
+Issue #724 is the clean readiness surface. `ready_for_review` remains non-promotional and grants no paper stop mutation by itself. Any later paper-only rollout is a separate decision after the clean gate passes; live promotion remains subject to every locked live gate and explicit authorization.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
