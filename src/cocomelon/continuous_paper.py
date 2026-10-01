@@ -2514,6 +2514,9 @@ def _prospective_full_stack_exit_capacity_reflow_payload(
             evaluation.releases,
             config,
             position_history_loader=position_history_loader,
+            released_position_terminal_contribution_by_plan=dict(
+                evaluation.release_terminal_contributions
+            ),
         )
     except Exception as exc:
         fill = {
