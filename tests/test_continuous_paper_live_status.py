@@ -10,6 +10,7 @@ from scripts.render_continuous_paper_live_status import (
     _closed_trade_stop_reentry_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
+    _post_freshness_paper_cohort_lines,
     _prospective_allowed_residual_lines,
     _prospective_candidate_stack_overlap_lines,
     _prospective_capacity_reflow_exit_fill_lines,
@@ -6847,3 +6848,87 @@ def test_entry_filter_renderers_include_shared_economic_readiness() -> None:
         assert "Candidate economic readiness" in output
         assert "candidate profitable / improvement positive" in output
         assert "economics ready: `true`" in output
+
+
+def test_post_freshness_cohort_renderer_exposes_fixed_boundary() -> None:
+    lines = _post_freshness_paper_cohort_lines(
+        {
+            "enabled": True,
+            "error": None,
+            "cohort_id": "post-paper-data-freshness-fixes-v1",
+            "cohort_started_at_ms": 1790880761000,
+            "cohort_source_run_id": 36910111457,
+            "cohort_source_head_sha": (
+                "d97774d790628555cbff891f5c5d68952f287e43"
+            ),
+            "cohort_wins": 2,
+            "cohort_losses": 1,
+            "cohort_breakeven": 0,
+            "cohort_net_pnl": "12",
+            "cohort_net_r": "0.8",
+            "cohort_mean_net_r": "0.2666666666666666666666666667",
+            "pre_cohort_closed_trades": 73,
+            "pre_cohort_net_pnl": "-184",
+            "pre_cohort_net_r": "-8",
+            "pre_cohort_mean_net_r": "-0.1095890410958904109589041096",
+            "descriptive_sample_complete": False,
+            "minimum_descriptive_closed_trades": 10,
+            "by_direction": {
+                "long": {
+                    "trades": 1,
+                    "wins": 1,
+                    "losses": 0,
+                    "net_pnl": "5",
+                    "mean_net_r": "0.3",
+                },
+                "short": {
+                    "trades": 2,
+                    "wins": 1,
+                    "losses": 1,
+                    "net_pnl": "7",
+                    "mean_net_r": "0.25",
+                },
+            },
+            "by_exit_reason": {
+                "MARK_STOP_TRIGGERED": {
+                    "trades": 1,
+                    "wins": 0,
+                    "losses": 1,
+                    "net_pnl": "-3",
+                    "mean_net_r": "-0.2",
+                },
+                "OPPOSITE_FRESH_THESIS": {
+                    "trades": 2,
+                    "wins": 2,
+                    "losses": 0,
+                    "net_pnl": "15",
+                    "mean_net_r": "0.5",
+                },
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Post-data-freshness paper cohort" in output
+    assert "post-paper-data-freshness-fixes-v1" in output
+    assert "1790880761000 / 36910111457 / d97774d" in output
+    assert "cohort closed W/L/BE / PnL / net R / mean R" in output
+    assert "| LONG | 1 | 1 | 0 | 5 | 0.3 |" in output
+    assert "| SHORT | 2 | 1 | 1 | 7 | 0.25 |" in output
+    assert "| MARK_STOP_TRIGGERED | 1 | 0 | 1 | -3 | -0.2 |" in output
+    assert "Boundary is trade open time" in output
+    assert "cannot reset, promote, or override" in output
+
+
+def test_post_freshness_cohort_renderer_exposes_failure() -> None:
+    output = "\n".join(
+        _post_freshness_paper_cohort_lines(
+            {
+                "enabled": False,
+                "error": "RuntimeError: cohort boom",
+            }
+        )
+    )
+
+    assert "research error" in output
+    assert "RuntimeError: cohort boom" in output

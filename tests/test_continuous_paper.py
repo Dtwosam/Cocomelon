@@ -52,6 +52,7 @@ from cocomelon.continuous_paper import (
     _position_action_from_payload,
     _position_action_payload,
     _position_protection_metrics,
+    _post_freshness_paper_cohort_payload,
     _profit_lock_counterfactual_payload,
     _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
@@ -1452,6 +1453,27 @@ def test_closed_trade_stop_reentry_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: reentry boom"
+
+
+def test_post_freshness_cohort_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("post-freshness boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.post_freshness_paper_cohort_summary",
+        fail,
+    )
+    payload = _post_freshness_paper_cohort_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: post-freshness boom"
 
 
 def test_closed_trade_utc_hour_telemetry_fails_open(

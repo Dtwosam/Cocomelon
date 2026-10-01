@@ -3893,3 +3893,23 @@ This removes artificial context aging from network latency and retry time. A slo
 The 30-second polling cadence and the 60-second stale-context rejection ceiling remain unchanged. No eligibility threshold, strategy rule, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Post-data-freshness paper cohort — 2026-10-01
+
+Paper performance now has a fixed descriptive cohort starting at the first worker that contains the current market-data continuity/freshness fixes: worker run `36910111457`, head `d97774d790628555cbff891f5c5d68952f287e43`, started at `2026-10-01T18:52:41Z`.
+
+The cohort boundary is **trade open time**, not close time. A position opened before that worker remains in the pre-cohort even if it closes later.
+
+The boundary intentionally groups the paper-data fixes that materially changed input quality before a decision is made:
+
+- stale-L2 lane and supervisor-group recovery without relaxing the existing 5-second freshness ceiling;
+- funding-oracle context continuity across worker handoffs;
+- REST market-context polling at 30 seconds while retaining the existing 60-second stale-context rejection ceiling;
+- REST market-context provenance timestamped at response receipt rather than request start.
+
+Heartbeat research telemetry now reports post-boundary W/L/PnL/net-R, LONG/SHORT splits, and exit-reason cohorts beside the pre-boundary aggregate. Ten post-boundary closes are required before the status labels the descriptive sample complete.
+
+This cohort does **not** reset or alter any prospective candidate, does not change any readiness gate, and has no execution or promotion authority. Its purpose is attribution: distinguish strategy losses from losses generated under already-fixed market-data defects.
+
+**LIVE TRADING: DISABLED.**
