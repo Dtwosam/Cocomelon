@@ -6821,7 +6821,7 @@ async def run_continuous_paper_session(
                 opening_opportunity_store,
                 opening_opportunity_path_store,
                 prospective_consecutive_loss_cooldown_shadow_state,
-                paper_execution_config,
+                replay_config.execution,
                 restore_error=(
                     prospective_consecutive_loss_cooldown_shadow_restore_error
                 ),
