@@ -7628,6 +7628,10 @@ async def run_continuous_paper_session(
                 prospective_momentum_band_entry_state.payload(),
             )
             _write_json_atomic(
+                root / PROSPECTIVE_GLOBAL_LOSS_GATE_STATE_FILENAME,
+                prospective_global_loss_gate_state.payload(),
+            )
+            _write_json_atomic(
                 root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
                 prospective_two_strike_stop_filter_state.payload(),
             )
