@@ -281,6 +281,10 @@ def test_continuous_paper_bootstrap_watches_runtime_dependencies() -> None:
         in source
     )
     assert (
+        '"src/cocomelon/research/prospective_full_stack_exit_capacity_reflow.py"'
+        in source
+    )
+    assert (
         '"src/cocomelon/research/prospective_capacity_reflow_exit_fill.py"'
         in source
     )
@@ -428,6 +432,31 @@ def test_continuous_paper_exports_full_stack_capacity_reflow_summary() -> None:
     )
     assert "Render full-stack capacity-reflow research summary" in source
     assert "exact realized option-horizons / available" in source
+    assert "cross-horizon economics aggregated: false" in source
+    assert "portfolio counterfactual: false" in source
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    pack_at = source.index(
+        "- name: Pack durable continuous paper state"
+    )
+    assert compact_at < pack_at
+
+
+def test_continuous_paper_exports_full_stack_exit_capacity_reflow_summary() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "prospective-full-stack-exit-capacity-reflow-summary.json"
+        in source
+    )
+    assert (
+        "continuous-paper-full-stack-exit-capacity-reflow-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+        in source
+    )
+    assert "Render full-stack exit-capacity-reflow research summary" in source
+    assert "exact early-released positions / integrity clean" in source
     assert "cross-horizon economics aggregated: false" in source
     assert "portfolio counterfactual: false" in source
     compact_at = source.index(
