@@ -1226,9 +1226,12 @@ class _ContinuousEntryMidMarkoutSink:
 class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
     tasks: tuple[asyncio.Task[None], ...]
+    mux: RedundantStreamMux
+    forward_events: asyncio.Event
     forward_gaps: asyncio.Event
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
+    warmup_l2_events: tuple[dict[str, StreamEvent], ...]
 
 
 async def _wait_supervisor_group_ready(
@@ -1256,9 +1259,26 @@ async def _wait_supervisor_group_ready(
         await asyncio.sleep(poll_seconds)
 
 
+async def _seed_supervisor_group_l2(
+    group: _SupervisorGroup,
+) -> int:
+    for market_key in sorted(group.required_market_keys):
+        for lane, events in enumerate(group.warmup_l2_events):
+            event = events.get(market_key)
+            if event is None:
+                raise RuntimeError(
+                    "replacement supervisor lost required warmup L2 "
+                    f"event for lane={lane} market={market_key}"
+                )
+            await group.mux.on_event(lane, event)
+    return len(group.required_market_keys)
+
+
 async def _cancel_supervisor_group(
     group: _SupervisorGroup,
 ) -> None:
+    group.forward_events.clear()
+    group.forward_gaps.clear()
     for task in group.tasks:
         task.cancel()
     await asyncio.gather(*group.tasks, return_exceptions=True)
@@ -3202,6 +3222,7 @@ class _RecordPump:
         self.shortlist_rotation_attempts = 0
         self.shortlist_rotation_promotions = 0
         self.shortlist_rotation_readiness_failures = 0
+        self.shortlist_rotation_seeded_markets = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -5565,6 +5586,9 @@ def _live_status_payload(
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
         ),
+        "shortlist_rotation_seeded_markets": (
+            pump.shortlist_rotation_seeded_markets
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -6068,6 +6092,9 @@ def _operational_live_status_payload(
         "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
+        ),
+        "shortlist_rotation_seeded_markets": (
+            pump.shortlist_rotation_seeded_markets
         ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
@@ -7154,10 +7181,14 @@ async def run_continuous_paper_session(
         async def start_supervisors(
             markets: tuple[MarketId, ...],
             *,
+            forward_events: bool,
             forward_gaps: bool,
         ) -> _SupervisorGroup:
             plan = DeepWatchlistManager().reconcile(markets)
+            event_gate = asyncio.Event()
             gap_gate = asyncio.Event()
+            if forward_events:
+                event_gate.set()
             if forward_gaps:
                 gap_gate.set()
             required_market_keys = frozenset(
@@ -7166,6 +7197,9 @@ async def run_continuous_paper_session(
             ready_market_keys: tuple[set[str], ...] = tuple(
                 set() for _ in range(2)
             )
+            warmup_l2_events: tuple[
+                dict[str, StreamEvent], ...
+            ] = tuple({} for _ in range(2))
 
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
@@ -7190,10 +7224,11 @@ async def run_continuous_paper_session(
                         and event.market.canonical
                         in required_market_keys
                     ):
-                        ready_market_keys[lane].add(
-                            event.market.canonical
-                        )
-                    await mux.on_event(lane, event)
+                        market_key = event.market.canonical
+                        ready_market_keys[lane].add(market_key)
+                        warmup_l2_events[lane][market_key] = event
+                    if event_gate.is_set():
+                        await mux.on_event(lane, event)
 
                 async def lane_gap_sink(
                     gap: DataGap,
@@ -7216,13 +7251,17 @@ async def run_continuous_paper_session(
             return _SupervisorGroup(
                 supervisors=tuple(supervisors),
                 tasks=tuple(tasks),
+                mux=mux,
+                forward_events=event_gate,
                 forward_gaps=gap_gate,
                 required_market_keys=required_market_keys,
                 ready_market_keys=ready_market_keys,
+                warmup_l2_events=warmup_l2_events,
             )
 
         supervisor_group = await start_supervisors(
             selected,
+            forward_events=True,
             forward_gaps=True,
         )
         replacement_funding_oracle_task = asyncio.create_task(
@@ -7326,6 +7365,7 @@ async def run_continuous_paper_session(
                         pump.shortlist_rotation_attempts += 1
                         replacement_group = await start_supervisors(
                             desired,
+                            forward_events=False,
                             forward_gaps=False,
                         )
                         replacement_ready = (
@@ -7334,12 +7374,20 @@ async def run_continuous_paper_session(
                             )
                         )
                         if replacement_ready:
-                            replacement_group.forward_gaps.set()
                             selected = desired
                             selected_keys = desired_keys
                             pipeline.reconcile_markets(selected)
                             pump.reconcile_cadence_shadow(selected)
+                            replacement_group.forward_events.set()
+                            pump.shortlist_rotation_seeded_markets += (
+                                await _seed_supervisor_group_l2(
+                                    replacement_group
+                                )
+                            )
+                            replacement_group.forward_gaps.set()
                             previous_group = supervisor_group
+                            previous_group.forward_events.clear()
+                            previous_group.forward_gaps.clear()
                             supervisor_group = replacement_group
                             pump.shortlist_rotation_promotions += 1
                             await _cancel_supervisor_group(
