@@ -64,15 +64,9 @@ jobs:
             resolution_mode="successful_event"
           else
             latest_success="$(
-              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/runs?status=success&per_page=100" |
+              gh api                 -H "Accept: application/vnd.github+json"                 "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?status=success&branch=main&per_page=100" |
               jq -r '
                 .workflow_runs
-                | map(
-                    select(
-                      .path == ".github/workflows/continuous-paper.yml"
-                      and .conclusion == "success"
-                    )
-                  )
                 | sort_by(.updated_at)
                 | reverse
                 | .[0]
@@ -145,6 +139,39 @@ jobs:
           echo "cadence_id=$cadence_id" >> "$GITHUB_OUTPUT"
           echo "features_id=$features_id" >> "$GITHUB_OUTPUT"
 
+      - name: Build no-evidence comparison receipt
+        if: ${{ steps.artifacts.outputs.ready != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "status": "no_evidence",
+              "reason": "compact_research_artifacts_unavailable",
+              "source_paper_run_id": int(os.environ["SOURCE_RUN_ID"]),
+              "source_paper_run_attempt": int(
+                  os.environ["SOURCE_RUN_ATTEMPT"]
+              ),
+              "source_resolution": os.environ["SOURCE_RESOLUTION_MODE"],
+              "microstructure_sha": os.environ["MICROSTRUCTURE_SHA"],
+              "baseline_sha": os.environ["BASELINE_SHA"],
+              "execution_authority": False,
+              "promotion_authority": False,
+          }
+          Path("cadence-model-comparison-no-evidence.json").write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
       - name: Publish blocked comparison status
         if: ${{ steps.artifacts.outputs.ready != 'true' }}
         env:
@@ -152,22 +179,51 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/comparison-status.md <<EOF
-          ## Frozen prospective cadence model comparison
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** blocked — compact research artifacts unavailable
-
-          - source paper run: `$SOURCE_RUN_ID`
-          - source run attempt: `$SOURCE_RUN_ATTEMPT`
-          - source resolution: `$SOURCE_RESOLUTION_MODE`
-          - microstructure SHA: `$MICROSTRUCTURE_SHA`
-          - baseline SHA: `$BASELINE_SHA`
-          - execution authority: `false`
-          - promotion authority: `false`
-
-          No future-model comparison claim is made until both compact artifacts are available.
-          EOF
+          lines = [
+              "## Frozen prospective cadence model comparison",
+              "",
+              "**Status:** blocked — compact research artifacts unavailable",
+              "",
+              f"- source paper run: `{os.environ['SOURCE_RUN_ID']}`",
+              (
+                  "- source run attempt: "
+                  f"`{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['SOURCE_RESOLUTION_MODE']}`"
+              ),
+              (
+                  "- microstructure SHA: "
+                  f"`{os.environ['MICROSTRUCTURE_SHA']}`"
+              ),
+              f"- baseline SHA: `{os.environ['BASELINE_SHA']}`",
+              "- execution authority: `false`",
+              "- promotion authority: `false`",
+              "",
+              (
+                  "No future-model comparison claim is made until both "
+                  "compact artifacts are available."
+              ),
+          ]
+          Path("/tmp/comparison-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_ISSUE"             -f body="$(cat /tmp/comparison-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.artifacts.outputs.ready != 'true' }}
+        with:
+          name: cadence-model-comparison-no-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cadence-model-comparison-no-evidence.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Download compact research state
         if: ${{ steps.artifacts.outputs.ready == 'true' }}
