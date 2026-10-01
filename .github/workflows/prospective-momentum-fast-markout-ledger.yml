@@ -204,15 +204,15 @@ jobs:
 
           **Status:** waiting for new-format compact source
 
-          - source paper run / attempt: `$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT`
-          - source resolution: `$RESOLUTION_MODE`
+          - source paper run / attempt: \\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\\`
+          - source resolution: \\`$RESOLUTION_MODE\\`
           - reason: compact source predates the fast momentum-markout export
 
           No fast-markout row is credited from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes closed-trade readiness:** `false`
+          **Execution authority:** \\`false\\`
+          **Promotion authority:** \\`false\\`
+          **Changes closed-trade readiness:** \\`false\\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
@@ -335,14 +335,14 @@ jobs:
 
           **Status:** BLOCKED — append-only invariant failure
 
-          - source paper run / attempt: `$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT`
-          - error: `$error`
+          - source paper run / attempt: \\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\\`
+          - error: \\`$error\\`
 
           No fast momentum evidence is published from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes closed-trade readiness:** `false`
+          **Execution authority:** \\`false\\`
+          **Promotion authority:** \\`false\\`
+          **Changes closed-trade readiness:** \\`false\\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
@@ -435,9 +435,9 @@ jobs:
                   "Only opportunities with all 5m/15m/1h horizons settled or definitively stale become immutable. Pending or missing-path rows remain unfrozen.",
                   "Every previously published terminal row must remain byte-for-byte equivalent after canonicalization.",
                   "",
-                  "**Execution authority:** `false`",
-                  "**Promotion authority:** `false`",
-                  "**Changes closed-trade readiness:** `false`",
+                  "**Execution authority:** \\`false\\`",
+                  "**Promotion authority:** \\`false\\`",
+                  "**Changes closed-trade readiness:** \\`false\\`",
                   "**LIVE TRADING: DISABLED.**",
               ]
           )
