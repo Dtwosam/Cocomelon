@@ -9165,6 +9165,16 @@ def _render_operational_live_status(
             f"- selected markets: {payload['selected_market_count']}",
             f"- processed records: {payload['processed_records']}",
             (
+                "- duplicate records dropped: "
+                f"{payload.get('duplicate_records_dropped', 0)}"
+            ),
+            (
+                "- shortlist rotations attempts / promoted / failed readiness: "
+                f"{payload.get('shortlist_rotation_attempts', 0)} / "
+                f"{payload.get('shortlist_rotation_promotions', 0)} / "
+                f"{payload.get('shortlist_rotation_readiness_failures', 0)}"
+            ),
+            (
                 "- journal observations: "
                 f"{payload['journal_observations']}"
             ),
@@ -9966,6 +9976,16 @@ def render_live_status(
             "",
             f"- selected markets: `{payload['selected_market_count']}`",
             f"- processed records: `{payload['processed_records']}`",
+            (
+                "- duplicate records dropped: "
+                f"`{payload.get('duplicate_records_dropped', 0)}`"
+            ),
+            (
+                "- shortlist rotations attempts / promoted / failed readiness: "
+                f"`{payload.get('shortlist_rotation_attempts', 0)} / "
+                f"{payload.get('shortlist_rotation_promotions', 0)} / "
+                f"{payload.get('shortlist_rotation_readiness_failures', 0)}`"
+            ),
             f"- journal observations: `{payload['journal_observations']}`",
             "",
             (
