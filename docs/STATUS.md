@@ -3568,3 +3568,25 @@ Issue #728 is the durable status surface. The ledger mirrors the candidate’s p
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Momentum incremental stack overlap — 2026-10-01
+
+The prospective candidate-stack audit now measures the frozen zero-strike momentum-band challenger against the existing combined entry-screen + two-strike base stack on a common future-only start.
+
+The extension separates closed trades into four descriptive cohorts:
+
+- blocked by both the base stack and momentum;
+- blocked only by the existing base stack;
+- blocked only by momentum;
+- blocked by neither.
+
+Only the **momentum-only** cohort counts as incremental momentum evidence. The audit reports its realized PnL/net R, LONG/SHORT split, market split, and leave-one-trade / leave-one-market robustness. It also reports the full three-filter stack minus the existing base stack, so redundant momentum blocks cannot be mistaken for new edge.
+
+All three decision maps must be present after the later clean start for integrity to be clean. Missing decisions reduce matched coverage instead of being guessed.
+
+This overlap is descriptive only. It changes no candidate readiness gate, paper order, entry, exit, stop, sizing, risk, promotion state, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**

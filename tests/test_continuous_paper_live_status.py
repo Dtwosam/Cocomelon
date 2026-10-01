@@ -6564,6 +6564,75 @@ def test_candidate_stack_overlap_renderer_exposes_incremental_value() -> None:
                     "leave_one_market_out_min_delta": "0",
                     "positive_after_any_single_market_removed": False,
                 },
+                "momentum_incremental_overlap": {
+                    "overlap_started_at_ms": 1200,
+                    "closed_trades_since_overlap_start": 4,
+                    "matched_trades": 4,
+                    "missing_combined_decisions": 0,
+                    "missing_two_strike_decisions": 0,
+                    "missing_momentum_decisions": 0,
+                    "integrity_clean": True,
+                    "actual_net_pnl": "-4",
+                    "base_stack_candidate_net_pnl": "2",
+                    "momentum_candidate_net_pnl": "12",
+                    "full_stack_candidate_net_pnl": "8",
+                    "full_stack_minus_base_net_pnl": "6",
+                    "full_stack_minus_base_net_r": "0.6",
+                    "momentum_unique_blocked_trades": 1,
+                    "momentum_unique_blocked_net_pnl": "-6",
+                    "buckets": {
+                        "base_and_momentum_block": {
+                            "trades": 1,
+                            "wins": 0,
+                            "losses": 1,
+                            "net_pnl": "-10",
+                            "net_r": "-1",
+                        },
+                        "base_only_block": {
+                            "trades": 1,
+                            "wins": 1,
+                            "losses": 0,
+                            "net_pnl": "4",
+                            "net_r": "0.4",
+                        },
+                        "momentum_only_block": {
+                            "trades": 1,
+                            "wins": 0,
+                            "losses": 1,
+                            "net_pnl": "-6",
+                            "net_r": "-0.6",
+                        },
+                        "none_block": {
+                            "trades": 1,
+                            "wins": 1,
+                            "losses": 0,
+                            "net_pnl": "8",
+                            "net_r": "0.8",
+                        },
+                    },
+                    "momentum_incremental_by_direction": {
+                        "long": {
+                            "trades": 0,
+                            "wins": 0,
+                            "losses": 0,
+                            "net_pnl": "0",
+                            "net_r": "0",
+                        },
+                        "short": {
+                            "trades": 1,
+                            "wins": 0,
+                            "losses": 1,
+                            "net_pnl": "-6",
+                            "net_r": "-0.6",
+                        },
+                    },
+                    "momentum_incremental_robustness": {
+                        "leave_one_trade_out_min_delta": "0",
+                        "positive_after_any_single_trade_removed": False,
+                        "leave_one_market_out_min_delta": "0",
+                        "positive_after_any_single_market_removed": False,
+                    },
+                },
             }
         )
     )
@@ -6575,6 +6644,14 @@ def test_candidate_stack_overlap_renderer_exposes_incremental_value() -> None:
     assert "| Two-strike only | 1 | 0 | 1 | -6 | -0.6 |" in output
     assert "| Neither blocks | 1 | 1 | 0 | 8 | 0.8 |" in output
     assert "| SHORT | 1 | 0 | 1 | -6 | -0.6 |" in output
+    assert "Momentum incremental value vs base stack" in output
+    assert "`1200 / 4 / 4`" in output
+    assert "`0 / 0 / 0`" in output
+    assert "`-4 / 2 / 12 / 8`" in output
+    assert "`6 / 0.6`" in output
+    assert "`1 / -6`" in output
+    assert "| Momentum only | 1 | 0 | 1 | -6 | -0.6 |" in output
+    assert "Momentum receives incremental credit only" in output
     assert "does not change either candidate's readiness gate" in output
 
 

@@ -2189,12 +2189,14 @@ def _prospective_candidate_stack_overlap_payload(
     journal: JournalStore,
     combined: dict[str, object],
     two_strike: dict[str, object],
+    momentum: dict[str, object],
 ) -> dict[str, object]:
     try:
         payload = prospective_candidate_stack_overlap_summary(
             tuple(journal.iter_trades()),
             combined,
             two_strike,
+            momentum,
         )
     except Exception as exc:
         return {
@@ -4877,6 +4879,7 @@ def _live_status_payload(
             pump.journal,
             prospective_combined_entry_filter,
             prospective_two_strike_stop_filter,
+            prospective_momentum_band_entry,
         )
     )
     prospective_capacity_reflow_opportunities = (

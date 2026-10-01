@@ -4377,6 +4377,126 @@ def _prospective_two_strike_stop_filter_lines(
     return lines
 
 
+def _prospective_momentum_incremental_overlap_lines(
+    raw: object,
+) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+    lines = [
+        "",
+        "#### Momentum incremental value vs base stack",
+        "",
+        (
+            "- common start / closed / matched: "
+            f"`{raw.get('overlap_started_at_ms')} / "
+            f"{raw.get('closed_trades_since_overlap_start', 0)} / "
+            f"{raw.get('matched_trades', 0)}`"
+        ),
+        (
+            "- missing combined / two-strike / momentum decisions: "
+            f"`{raw.get('missing_combined_decisions', 0)} / "
+            f"{raw.get('missing_two_strike_decisions', 0)} / "
+            f"{raw.get('missing_momentum_decisions', 0)}`"
+        ),
+        (
+            "- integrity clean: "
+            f"`{str(bool(raw.get('integrity_clean'))).lower()}`"
+        ),
+        (
+            "- actual / base-stack / momentum-only / full-stack PnL: "
+            f"`{raw.get('actual_net_pnl', '0')} / "
+            f"{raw.get('base_stack_candidate_net_pnl', '0')} / "
+            f"{raw.get('momentum_candidate_net_pnl', '0')} / "
+            f"{raw.get('full_stack_candidate_net_pnl', '0')}`"
+        ),
+        (
+            "- full stack minus base stack PnL / R: "
+            f"`{raw.get('full_stack_minus_base_net_pnl', '0')} / "
+            f"{raw.get('full_stack_minus_base_net_r', '0')}`"
+        ),
+        (
+            "- momentum-unique blocked trades / actual PnL: "
+            f"`{raw.get('momentum_unique_blocked_trades', 0)} / "
+            f"{raw.get('momentum_unique_blocked_net_pnl', '0')}`"
+        ),
+    ]
+
+    buckets = raw.get("buckets", {})
+    if not isinstance(buckets, dict):
+        buckets = {}
+    lines.extend(
+        [
+            "",
+            "| Base stack vs momentum | Trades | W | L | Net PnL | Net R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, label in (
+        ("base_and_momentum_block", "Both block"),
+        ("base_only_block", "Base only"),
+        ("momentum_only_block", "Momentum only"),
+        ("none_block", "Neither blocks"),
+    ):
+        item = buckets.get(key, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {label} | {trades} | {wins} | {losses} | {pnl} | {net_r} |".format(
+                label=label,
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                net_r=item.get("net_r", "0"),
+            )
+        )
+
+    directions = raw.get(
+        "momentum_incremental_by_direction",
+        {},
+    )
+    if not isinstance(directions, dict):
+        directions = {}
+    lines.extend(
+        [
+            "",
+            "| Momentum-only side | Trades | W | L | Net PnL | Net R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = directions.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {trades} | {wins} | {losses} | {pnl} | {net_r} |".format(
+                side=side.upper(),
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                net_r=item.get("net_r", "0"),
+            )
+        )
+
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("momentum_incremental_robustness")
+        )
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "_Momentum receives incremental credit only for trades the "
+                "existing combined + two-strike stack would still admit. "
+                "This is descriptive only and changes no readiness gate._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_candidate_stack_overlap_lines(
     raw: object,
 ) -> list[str]:
@@ -4492,6 +4612,11 @@ def _prospective_candidate_stack_overlap_lines(
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("two_strike_incremental_robustness")
+        )
+    )
+    lines.extend(
+        _prospective_momentum_incremental_overlap_lines(
+            raw.get("momentum_incremental_overlap")
         )
     )
     lines.extend(

@@ -172,3 +172,123 @@ def test_candidate_stack_overlap_uses_later_clean_start() -> None:
     assert isinstance(buckets, dict)
     assert buckets["two_strike_only"]["trades"] == 1
     assert buckets["two_strike_only"]["net_pnl"] == "-4"
+
+
+def test_candidate_stack_overlap_measures_unique_momentum_value() -> None:
+    trades = (
+        _trade("base-and-momentum", opened_at_ms=1_000, pnl="-10"),
+        _trade("base-only", opened_at_ms=2_000, pnl="4"),
+        _trade(
+            "momentum-only",
+            opened_at_ms=3_000,
+            pnl="-6",
+            direction=Direction.SHORT,
+        ),
+        _trade("none", opened_at_ms=4_000, pnl="8"),
+    )
+    combined = {
+        "started_at_ms": 500,
+        "decision_block_reason_by_trade_id": {
+            trades[0].trade_id: "long_trend",
+            trades[1].trade_id: "rank_above_10",
+            trades[2].trade_id: None,
+            trades[3].trade_id: None,
+        },
+    }
+    two_strike = {
+        "started_at_ms": 700,
+        "decision_prior_strikes": {
+            trades[0].trade_id: 2,
+            trades[1].trade_id: 0,
+            trades[2].trade_id: 0,
+            trades[3].trade_id: 0,
+        },
+    }
+    momentum = {
+        "started_at_ms": 900,
+        "decision_details": {
+            trades[0].trade_id: {"decision": "BLOCK"},
+            trades[1].trade_id: {"decision": "ADMIT"},
+            trades[2].trade_id: {"decision": "BLOCK"},
+            trades[3].trade_id: {"decision": "ADMIT"},
+        },
+    }
+
+    result = prospective_candidate_stack_overlap_summary(
+        trades,
+        combined,
+        two_strike,
+        momentum,
+    )
+
+    extension = result["momentum_incremental_overlap"]
+    assert isinstance(extension, dict)
+    assert extension["overlap_started_at_ms"] == 900
+    assert extension["matched_trades"] == 4
+    assert extension["integrity_clean"] is True
+    buckets = extension["buckets"]
+    assert isinstance(buckets, dict)
+    assert buckets["base_and_momentum_block"]["net_pnl"] == "-10"
+    assert buckets["base_only_block"]["net_pnl"] == "4"
+    assert buckets["momentum_only_block"]["net_pnl"] == "-6"
+    assert buckets["none_block"]["net_pnl"] == "8"
+    assert extension["base_stack_candidate_net_pnl"] == "2"
+    assert extension["momentum_candidate_net_pnl"] == "12"
+    assert extension["full_stack_candidate_net_pnl"] == "8"
+    assert extension["full_stack_minus_base_net_pnl"] == "6"
+    assert extension["momentum_unique_blocked_trades"] == 1
+    assert extension["momentum_unique_blocked_net_pnl"] == "-6"
+
+    by_direction = extension["momentum_incremental_by_direction"]
+    assert isinstance(by_direction, dict)
+    assert by_direction["short"]["trades"] == 1
+    assert by_direction["short"]["net_pnl"] == "-6"
+
+    by_market = extension["momentum_incremental_by_market"]
+    assert isinstance(by_market, dict)
+    assert by_market["SOL"]["trades"] == 1
+
+    robustness = extension["momentum_incremental_robustness"]
+    assert isinstance(robustness, dict)
+    assert robustness["leave_one_trade_out_min_delta"] == "0"
+    assert (
+        robustness["positive_after_any_single_trade_removed"]
+        is None
+    )
+
+
+def test_candidate_stack_overlap_reports_missing_momentum_decisions() -> None:
+    first = _trade("momentum-known", opened_at_ms=3_000, pnl="-5")
+    second = _trade("momentum-missing", opened_at_ms=4_000, pnl="-3")
+    result = prospective_candidate_stack_overlap_summary(
+        (first, second),
+        {
+            "started_at_ms": 1_000,
+            "decision_block_reason_by_trade_id": {
+                first.trade_id: None,
+                second.trade_id: None,
+            },
+        },
+        {
+            "started_at_ms": 1_500,
+            "decision_prior_strikes": {
+                first.trade_id: 0,
+                second.trade_id: 0,
+            },
+        },
+        {
+            "started_at_ms": 2_000,
+            "decision_details": {
+                first.trade_id: {"decision": "BLOCK"},
+            },
+        },
+    )
+
+    extension = result["momentum_incremental_overlap"]
+    assert isinstance(extension, dict)
+    assert extension["closed_trades_since_overlap_start"] == 2
+    assert extension["matched_trades"] == 1
+    assert extension["missing_combined_decisions"] == 0
+    assert extension["missing_two_strike_decisions"] == 0
+    assert extension["missing_momentum_decisions"] == 1
+    assert extension["integrity_clean"] is False
