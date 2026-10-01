@@ -297,7 +297,8 @@ class WebSocketSupervisor:
             except TimeoutError:
                 now_ms = self._clock_ms()
                 await self._open_l2_stale_gaps_if_needed(now_ms)
-                if now_ms >= next_heartbeat_ms:
+                heartbeat_due = wake_ms == next_heartbeat_ms
+                if heartbeat_due or now_ms >= next_heartbeat_ms:
                     await connection.send_json({"method": "ping"})
                     next_heartbeat_ms = (
                         self._clock_ms() + heartbeat_ms
