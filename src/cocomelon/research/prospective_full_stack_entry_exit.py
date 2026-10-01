@@ -11,6 +11,8 @@ from cocomelon.research.profit_lock_execution_shadow import (
 )
 from cocomelon.research.prospective_breakeven_profit_lock import (
     RULE_ID as BREAKEVEN_RULE_ID,
+)
+from cocomelon.research.prospective_breakeven_profit_lock import (
     ProspectiveBreakevenProfitLockState,
 )
 
