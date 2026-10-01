@@ -117,6 +117,71 @@ def test_restore_script_streams_packed_artifact_end_to_end(
     assert not (tmp_path / "state.zip").exists()
 
 
+def test_restore_script_streams_fast_resume_member(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source-fast"
+    source_root.mkdir()
+    (source_root / "runtime-state.json").write_text(
+        '{"state":"fast"}\n',
+        encoding="utf-8",
+    )
+    tar_path = tmp_path / "continuous-paper-resume.tar"
+    with tarfile.open(tar_path, "w") as archive:
+        archive.add(
+            source_root / "runtime-state.json",
+            arcname="./runtime-state.json",
+        )
+    artifact_zip = tmp_path / "resume.zip"
+    with zipfile.ZipFile(
+        artifact_zip,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        archive.writestr(
+            "continuous-paper-resume.tar.zst",
+            tar_path.read_bytes(),
+        )
+
+    fake_bin, env = _fake_gh(
+        tmp_path,
+        workflow_source="steps:\n  - name: Fast resume producer\n",
+        artifact_zip=artifact_zip,
+    )
+    fake_zstd = fake_bin / "zstd"
+    fake_zstd.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" -t "* ]]; then
+  test -s "$3"
+  exit 0
+fi
+cat
+""",
+        encoding="utf-8",
+    )
+    fake_zstd.chmod(0o755)
+
+    state_root = tmp_path / "restored-fast"
+    subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "789",
+            SOURCE_SHA,
+            str(state_root),
+            "continuous-paper-resume.tar.zst",
+        ],
+        check=True,
+        env=env,
+    )
+
+    assert (state_root / "runtime-state.json").read_text(
+        encoding="utf-8"
+    ) == '{"state":"fast"}\n'
+
+
 def test_stream_zip_member_handles_forced_zip64(
     tmp_path: Path,
 ) -> None:
@@ -354,5 +419,7 @@ def test_restore_script_uses_stream_for_packed_artifacts() -> None:
         "    | tar -xf - -C \"$state_root\""
         in source
     )
+    assert 'continuous-paper-resume.tar.zst' in source
+    assert '| zstd -d -c --no-progress \\' in source
     assert '> "$tmp_root/state.zip"' in source
     assert 'unzip -q "$tmp_root/state.zip" -d "$artifact_root"' in source
