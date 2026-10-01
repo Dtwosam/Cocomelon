@@ -136,7 +136,9 @@ def test_full_stack_entry_exit_telemetry_fails_open() -> None:
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["changes_readiness_gate"] is False
-    assert "decision map" in str(payload["error"])
+    assert "ProspectiveFullStackEntryExitError" in str(
+        payload["error"]
+    )
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
