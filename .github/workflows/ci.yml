@@ -210,6 +210,7 @@ jobs:
           tests/test_prospective_candidate_stack_overlap.py
           tests/test_prospective_combined_entry_filter.py
           tests/test_prospective_full_stack_entry_exit.py
+          tests/test_prospective_full_stack_capacity_reflow.py
           tests/test_prospective_residual_profit_lock.py
           tests/test_prospective_comparison_ledger.py
           tests/test_prospective_comparison_ledger_workflow.py
