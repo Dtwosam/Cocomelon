@@ -3808,6 +3808,7 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "duplicate records dropped" in output
     assert "`4`" in output
     assert "shortlist rotations attempts / promoted / failed readiness" in output
+    assert "stale-L2 recoveries attempts / promoted / failed readiness" in output
     assert "`3 / 2 / 1`" in output
     assert "strategy reasons:" in output
     assert "NO_SIGNAL=19" in output
