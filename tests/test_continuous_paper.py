@@ -19,6 +19,7 @@ from cocomelon.continuous_paper import (
     _closed_trade_stability_payload,
     _closed_trade_stop_reentry_payload,
     _closed_trade_utc_hour_payload,
+    _consecutive_loss_cooldown_status,
     _ContinuousDelayedEntryExecutionShadowSink,
     _ContinuousEntryMidMarkoutSink,
     _ContinuousOpeningFillLiquiditySink,
@@ -87,6 +88,7 @@ from cocomelon.domain.execution import (
 )
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
+from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.execution.accounting import PaperPosition, PositionSide
@@ -109,6 +111,50 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
 )
 
+
+def test_consecutive_loss_cooldown_status_locks_exact_boundary() -> None:
+    execution = SimpleNamespace(
+        account=SimpleNamespace(
+            consecutive_losses=3,
+            last_closed_trade_ms=1_000,
+        )
+    )
+    limits = RiskLimits(
+        consecutive_loss_cooldown=3,
+        cooldown_ms=3_600_000,
+    )
+
+    active = _consecutive_loss_cooldown_status(
+        execution,  # type: ignore[arg-type]
+        limits,
+        timestamp_ms=3_600_999,
+    )
+    assert active["active"] is True
+    assert active["elapsed_since_last_close_ms"] == 3_599_999
+    assert active["remaining_ms"] == 1
+    assert active["state_consistent"] is True
+
+    expired = _consecutive_loss_cooldown_status(
+        execution,  # type: ignore[arg-type]
+        limits,
+        timestamp_ms=3_601_000,
+    )
+    assert expired["active"] is False
+    assert expired["remaining_ms"] == 0
+
+    inconsistent = _consecutive_loss_cooldown_status(
+        SimpleNamespace(
+            account=SimpleNamespace(
+                consecutive_losses=3,
+                last_closed_trade_ms=None,
+            )
+        ),  # type: ignore[arg-type]
+        limits,
+        timestamp_ms=3_601_000,
+    )
+    assert inconsistent["active"] is False
+    assert inconsistent["remaining_ms"] is None
+    assert inconsistent["state_consistent"] is False
 
 def test_candidate_stack_overlap_telemetry_fails_open() -> None:
     payload = _prospective_candidate_stack_overlap_payload(

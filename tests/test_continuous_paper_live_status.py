@@ -101,6 +101,17 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
             "rejections": 0,
             "reason_counts": {"APPROVED": 1},
         },
+        "consecutive_loss_cooldown": {
+            "consecutive_losses": 3,
+            "threshold": 3,
+            "cooldown_ms": 3_600_000,
+            "last_closed_trade_ms": 1_699_997_700_000,
+            "elapsed_since_last_close_ms": 2_300_000,
+            "remaining_ms": 1_300_000,
+            "threshold_reached": True,
+            "active": True,
+            "state_consistent": True,
+        },
         "session_opening_execution_attempts": 1,
         "session_opening_fills": 1,
         "last_observation": {
@@ -3782,6 +3793,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "stale_book=1" in output
     assert "session eligibility evaluated / rankable / deep-ready" in output
     assert "session eligibility reasons:" in output
+    assert "consecutive losses / threshold" in output
+    assert "`3 / 3`" in output
+    assert "loss cooldown active / elapsed / remaining / configured" in output
+    assert "`true / 2300000 / 1300000 / 3600000ms`" in output
     assert "duplicate records dropped" in output
     assert "`4`" in output
     assert "shortlist rotations attempts / promoted / failed readiness" in output
@@ -5960,6 +5975,17 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "rejections": 0,
             "reason_counts": {"APPROVED": 2},
         },
+        "consecutive_loss_cooldown": {
+            "consecutive_losses": 3,
+            "threshold": 3,
+            "cooldown_ms": 3_600_000,
+            "last_closed_trade_ms": 1_699_997_700_000,
+            "elapsed_since_last_close_ms": 2_300_000,
+            "remaining_ms": 1_300_000,
+            "threshold_reached": True,
+            "active": True,
+            "state_consistent": True,
+        },
         "session_opening_execution_attempts": 2,
         "session_opening_fills": 2,
         "positions": [
@@ -6001,6 +6027,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "session eligibility evaluated / rankable / deep-ready: 40 / 40 / 8" in rendered
     assert "missing_deep_data=30" in rendered
     assert "stale_book=2" in rendered
+    assert "consecutive losses / threshold: 3 / 3" in rendered
+    assert (
+        "loss cooldown active / elapsed / remaining / configured: "
+        "true / 2300000 / 1300000 / 3600000ms"
+        in rendered
+    )
     assert "duplicate records dropped: 7" in rendered
     assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "research telemetry deferred: true" in rendered

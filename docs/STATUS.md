@@ -3757,3 +3757,14 @@ On a shortlist change:
 This is a market-data continuity fix. It does not loosen eligibility, strategy, risk, sizing, stop, exit, promotion or live-order rules. Its purpose is to prevent shortlist refresh mechanics from manufacturing `missing_deep_data` or stale-book blind windows that can suppress otherwise valid paper opportunities and contaminate research cohorts.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Consecutive-loss cooldown timing telemetry — 2026-10-01
+
+The paper heartbeat now exposes the exact state behind the global consecutive-loss cooldown: current consecutive losses, configured strike threshold, last close timestamp, elapsed time since that close, remaining cooldown time, configured cooldown duration, active/expired state, and state consistency.
+
+This is operational observability only. The baseline remains a one-hour cooldown after the third consecutive loss. No risk threshold, cooldown duration, entry rule, sizing rule, stop, exit, promotion state, or live authority is changed.
+
+The timing is especially important for the clean cooldown-relaxation shadow because rejected opportunities can now be interpreted against the frozen 15m / 30m / 45m alternatives without inferring timing from unrelated trade history.
+
+**LIVE TRADING: DISABLED.**

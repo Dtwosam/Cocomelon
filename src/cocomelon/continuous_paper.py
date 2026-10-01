@@ -5631,6 +5631,13 @@ def _live_status_payload(
             "rejections": activity.risk_rejections,
             "reason_counts": risk_reason_counts,
         },
+        "consecutive_loss_cooldown": (
+            _consecutive_loss_cooldown_status(
+                execution,
+                risk_limits,
+                timestamp_ms=timestamp_ms,
+            )
+        ),
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
@@ -5908,10 +5915,52 @@ def _live_status_payload(
     }
 
 
+def _consecutive_loss_cooldown_status(
+    execution: PaperExecutionAdapter,
+    risk_limits: RiskLimits,
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    consecutive_losses = execution.account.consecutive_losses
+    last_closed_ms = execution.account.last_closed_trade_ms
+    threshold_reached = (
+        consecutive_losses >= risk_limits.consecutive_loss_cooldown
+    )
+    state_consistent = (
+        not threshold_reached
+        or (
+            last_closed_ms is not None
+            and last_closed_ms <= timestamp_ms
+        )
+    )
+    elapsed_ms = (
+        None
+        if last_closed_ms is None or last_closed_ms > timestamp_ms
+        else timestamp_ms - last_closed_ms
+    )
+    remaining_ms: int | None = None
+    active = False
+    if threshold_reached and state_consistent and elapsed_ms is not None:
+        remaining_ms = max(0, risk_limits.cooldown_ms - elapsed_ms)
+        active = remaining_ms > 0
+    return {
+        "consecutive_losses": consecutive_losses,
+        "threshold": risk_limits.consecutive_loss_cooldown,
+        "cooldown_ms": risk_limits.cooldown_ms,
+        "last_closed_trade_ms": last_closed_ms,
+        "elapsed_since_last_close_ms": elapsed_ms,
+        "remaining_ms": remaining_ms,
+        "threshold_reached": threshold_reached,
+        "active": active,
+        "state_consistent": state_consistent,
+    }
+
+
 def _operational_live_status_payload(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
+    risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
 ) -> dict[str, object]:
@@ -6082,6 +6131,13 @@ def _operational_live_status_payload(
             "rejections": activity.risk_rejections,
             "reason_counts": dict(activity.risk_reason_counts),
         },
+        "consecutive_loss_cooldown": (
+            _consecutive_loss_cooldown_status(
+                execution,
+                risk_limits,
+                timestamp_ms=timestamp_ms,
+            )
+        ),
         "session_opening_execution_attempts": (
             activity.opening_execution_attempts
         ),
@@ -6120,6 +6176,7 @@ def _emit_operational_live_status(
     execution: PaperExecutionAdapter,
     pump: _RecordPump,
     selected_markets: tuple[MarketId, ...],
+    risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
 ) -> None:
@@ -6127,6 +6184,7 @@ def _emit_operational_live_status(
         execution,
         pump,
         selected_markets,
+        risk_limits,
         timestamp_ms=timestamp_ms,
     )
     print(
@@ -7086,6 +7144,7 @@ async def run_continuous_paper_session(
                 execution,
                 pump,
                 selected,
+                replay_config.risk_limits,
                 timestamp_ms=utc_now_ms(),
             )
 
@@ -7303,6 +7362,7 @@ async def run_continuous_paper_session(
                     execution,
                     pump,
                     selected,
+                    replay_config.risk_limits,
                     timestamp_ms=now_ms,
                 )
 
