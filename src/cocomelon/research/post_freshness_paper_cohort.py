@@ -123,7 +123,6 @@ def post_freshness_paper_cohort_summary(
     }
 
 
-
 def _runway_slice(
     opportunities: tuple[
         ContinuousPaperOpeningOpportunityEvidence, ...
