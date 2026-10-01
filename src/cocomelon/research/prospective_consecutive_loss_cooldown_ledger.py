@@ -748,9 +748,17 @@ def _source_rows(
             raise ProspectiveConsecutiveLossCooldownLedgerError(
                 f"cooldown shadow source drift: {key}"
             )
-    if summary.get("changes_risk_limits") is not False:
+    if (
+        summary.get("research_only") is not True
+        or summary.get("execution_authority") is not False
+        or summary.get("promotion_authority") is not False
+        or summary.get("changes_risk_limits") is not False
+        or summary.get("forward_markout_only") is not True
+        or summary.get("replacement_exits_modeled") is not False
+        or summary.get("realized_pnl_modeled") is not False
+    ):
         raise ProspectiveConsecutiveLossCooldownLedgerError(
-            "cooldown shadow source changed risk authority"
+            "cooldown shadow source authority or claim scope drift"
         )
     raw_options = summary.get("option_results")
     if not isinstance(raw_options, list):
