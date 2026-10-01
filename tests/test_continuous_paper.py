@@ -53,6 +53,7 @@ from cocomelon.continuous_paper import (
     _profit_lock_counterfactual_payload,
     _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
+    _prospective_consecutive_loss_cooldown_shadow_payload,
     _prospective_two_strike_stop_filter_payload,
     _record_from_gap,
     _record_from_payload,
@@ -2386,3 +2387,35 @@ def test_two_strike_payload_failure_is_research_only(
     assert payload["frozen_at_ms"] == 100
     assert payload["started_at_ms"] == 100 + TWO_STRIKE_EMBARGO_MS
     assert payload["error"] == "RuntimeError: two-strike boom"
+
+
+def test_cooldown_shadow_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("cooldown boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_consecutive_loss_cooldown_shadow",
+        fail,
+    )
+    state = SimpleNamespace(
+        candidate_id="cooldown-test",
+        frozen_at_ms=100,
+        started_at_ms=200,
+    )
+    payload = _prospective_consecutive_loss_cooldown_shadow_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        state,  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        restore_error=None,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["changes_risk_limits"] is False
+    assert payload["error"] == "RuntimeError: cooldown boom"
