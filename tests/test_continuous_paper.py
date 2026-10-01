@@ -63,6 +63,8 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
+    _SupervisorGroup,
+    _wait_supervisor_group_ready,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
     _restore_delay_selector_comparison,
@@ -428,6 +430,118 @@ def test_full_stack_entry_exit_telemetry_fails_open() -> None:
         payload["error"]
     )
 
+
+def test_record_pump_drops_duplicate_event_keys() -> None:
+    class Pipeline:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def on_record(
+            self,
+            _record: ReplayRecord,
+            _now_ms: int,
+        ) -> tuple[object, ...]:
+            self.calls += 1
+            return ()
+
+        def finalize(self, _end_ms: int) -> tuple[object, ...]:
+            return ()
+
+    class Journal:
+        def iter_trades(self) -> tuple[object, ...]:
+            return ()
+
+        def record_observation(self, _observation: object) -> None:
+            raise AssertionError("no observations expected")
+
+        def record_trade(self, _trade: object) -> None:
+            raise AssertionError("no trades expected")
+
+    pipeline = Pipeline()
+    pump = _RecordPump(
+        pipeline,  # type: ignore[arg-type]
+        Journal(),  # type: ignore[arg-type]
+        last_available_at_ms=0,
+    )
+    record = ReplayRecord(
+        record_kind=SourceRecordKind.NORMALIZED_EVENT,
+        available_at_ms=1,
+        source="hyperliquid-mainnet-ws",
+        schema_version=1,
+        market="BTC",
+        exchange_time_ms=1,
+        event_key="duplicate-key",
+        payload_json='{"mark_px":"100"}',
+        event_kind="active_asset_ctx",
+    )
+
+    asyncio.run(pump.process(record))
+    asyncio.run(pump.process(record))
+
+    assert pipeline.calls == 1
+    assert pump.processed_records == 1
+    assert pump.duplicate_records_dropped == 1
+
+
+def test_supervisor_group_readiness_requires_full_market_coverage() -> None:
+    async def scenario() -> tuple[bool, bool]:
+        sleeper = asyncio.create_task(asyncio.sleep(60))
+        group = _SupervisorGroup(
+            supervisors=(),
+            tasks=(sleeper,),
+            forward_gaps=asyncio.Event(),
+            required_market_keys=frozenset({"BTC", "ETH"}),
+            ready_market_keys=({"BTC"}, {"BTC", "ETH"}),
+        )
+        try:
+            incomplete = await _wait_supervisor_group_ready(
+                group,
+                timeout_seconds=0.02,
+                poll_seconds=0.005,
+            )
+            group.ready_market_keys[0].add("ETH")
+            complete = await _wait_supervisor_group_ready(
+                group,
+                timeout_seconds=0.02,
+                poll_seconds=0.005,
+            )
+            return incomplete, complete
+        finally:
+            sleeper.cancel()
+            await asyncio.gather(sleeper, return_exceptions=True)
+
+    incomplete, complete = asyncio.run(scenario())
+    assert incomplete is False
+    assert complete is True
+
+
+def test_rotation_promotes_replacement_before_retiring_previous() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+    start_index = source.index(
+        "replacement_group = await start_supervisors("
+    )
+    readiness_index = source.index(
+        "await _wait_supervisor_group_ready(",
+        start_index,
+    )
+    promote_index = source.index(
+        "supervisor_group = replacement_group",
+        readiness_index,
+    )
+    retire_index = source.index(
+        "await _cancel_supervisor_group(",
+        promote_index,
+    )
+
+    assert start_index < readiness_index < promote_index < retire_index
+    window = source[start_index:retire_index]
+    assert "forward_gaps=False" in window
+    assert "replacement_group.forward_gaps.set()" in window
+    assert "pipeline.reconcile_markets(selected)" in window
+    assert "event.kind is StreamKind.L2_BOOK" in source
+    assert "required_market_keys <= ready" in source
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
     with pytest.raises(ValueError, match="divisible"):
