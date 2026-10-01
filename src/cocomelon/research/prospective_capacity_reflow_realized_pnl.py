@@ -407,6 +407,8 @@ def prospective_capacity_reflow_realized_pnl_summary(
         },
         "exact_realized_pnl_option_horizons": exact_option_horizons,
         "exact_realized_pnl_available": exact_option_horizons > 0,
+        "exact_realized_return_modeled": True,
+        "entry_notional_normalized": True,
         "funding_evidence_modeled": True,
         "zero_funding_boundary_is_exact_zero_funding": True,
         "cross_horizon_economics_aggregated": False,
