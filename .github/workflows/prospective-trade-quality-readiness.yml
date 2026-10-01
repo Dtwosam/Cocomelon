@@ -63,6 +63,7 @@ jobs:
             local workflow_file="$2"
             local artifact_prefix="$3"
             local expected_file="$4"
+            local no_evidence_prefix="${5:-}"
             local out_dir="/tmp/readiness-$key"
 
             local runs_json
@@ -112,13 +113,27 @@ jobs:
                    else ""
                    end'                 <<<"$artifacts_json"
             )"
-            if [[ -z "$artifact_line" ]]; then
-              echo "Expected exactly one current $key ledger artifact." >&2
-              return 1
-            fi
-
-            local artifact_id artifact_name artifact_digest
-            IFS=$'\t' read -r               artifact_id artifact_name artifact_digest               <<<"$artifact_line"
+            if [[ -z "$artifact_line" && -n "$no_evidence_prefix" ]]; then
+              local no_evidence_line
+              no_evidence_line="$(
+                jq -r \
+                  --arg prefix "$no_evidence_prefix" \
+                  '.artifacts
+                   | map(
+                       select(
+                         (.expired | not)
+                         and (.name | startswith($prefix))
+                       )
+                     )
+                   | if length == 1
+                     then [.[0].id, .[0].name, .[0].digest] | @tsv
+                     else ""
+                     end' \
+                  <<<"$artifacts_json"
+              )"
+              if [[ -n "$no_evidence_line" ]]; then
+                local receipt_id receipt_name receipt_digest
+                IFS=            IFS=$'\t' read -r               artifact_id artifact_name artifact_digest               <<<"$artifact_line"
             rm -rf "$out_dir" "$out_dir.zip"
             mkdir -p "$out_dir"
             gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > "$out_dir.zip"
@@ -138,16 +153,19 @@ jobs:
               echo "${key}_run_attempt=$run_attempt"
               echo "${key}_artifact_name=$artifact_name"
               echo "${key}_artifact_digest=$artifact_digest"
+              echo "${key}_no_evidence=false"
             } >> "$GITHUB_OUTPUT"
           }
 
           resolve_ledger             prediction             prospective-cadence-prediction-ledger.yml             cadence-microstructure-prediction-ledger-             cadence-microstructure-prediction-ledger.json
-          resolve_ledger             comparison             prospective-cadence-comparison-ledger.yml             cadence-model-comparison-ledger-             cadence-model-comparison-ledger.json
+          resolve_ledger             comparison             prospective-cadence-comparison-ledger.yml             cadence-model-comparison-ledger-             cadence-model-comparison-ledger.json             cadence-model-comparison-ledger-no-evidence-
           resolve_ledger             timing             prospective-side-conditioned-timing-ledger.yml             prospective-side-conditioned-timing-ledger-             prospective-side-conditioned-timing-ledger.json
 
       - name: Build fail-closed readiness manifest
         id: evaluate
-        if: ${{ steps.ledgers.outcome == 'success' }}
+        if: >-
+          steps.ledgers.outcome == 'success' &&
+          steps.ledgers.outputs.comparison_no_evidence != 'true'
         continue-on-error: true
         shell: bash
         run: |
@@ -158,36 +176,96 @@ jobs:
       - name: Publish blocked readiness status
         if: >-
           steps.ledgers.outcome != 'success' ||
+          steps.ledgers.outputs.comparison_no_evidence == 'true' ||
           steps.evaluate.outcome != 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ env.READINESS_ISSUE }}
           LEDGER_OUTCOME: ${{ steps.ledgers.outcome }}
           EVALUATE_OUTCOME: ${{ steps.evaluate.outcome }}
+          COMPARISON_NO_EVIDENCE: ${{ steps.ledgers.outputs.comparison_no_evidence }}
+          COMPARISON_RUN_ID: ${{ steps.ledgers.outputs.comparison_run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/readiness-status.md <<EOF
-          ## Prospective trade-quality readiness
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED
-
-          - ledger resolution: `$LEDGER_OUTCOME`
-          - readiness evaluation: `$EVALUATE_OUTCOME`
-
-          The aggregate gate refuses to reuse stale successful evidence when the newest completed ledger run is failed, missing, expired, or cross-ledger inconsistent.
-
-          No candidate is marked ready from this run. Prior immutable ledger artifacts remain evidence only.
-
-          **Execution authority:** `false`  
-          **Promotion authority:** `false`  
-          **LIVE TRADING: DISABLED.**
-          EOF
+          no_evidence = (
+              os.environ.get("COMPARISON_NO_EVIDENCE") == "true"
+          )
+          status = (
+              "BLOCKED — no new comparison evidence"
+              if no_evidence
+              else "BLOCKED"
+          )
+          lines = [
+              "## Prospective trade-quality readiness",
+              "",
+              f"**Status:** {status}",
+              "",
+              (
+                  "- ledger resolution: "
+                  f"`{os.environ.get('LEDGER_OUTCOME', 'unknown')}`"
+              ),
+              (
+                  "- readiness evaluation: "
+                  f"`{os.environ.get('EVALUATE_OUTCOME', 'unknown')}`"
+              ),
+          ]
+          if no_evidence:
+              lines.extend(
+                  [
+                      (
+                          "- comparison ledger workflow run: "
+                          f"`{os.environ.get('COMPARISON_RUN_ID') or 'unknown'}`"
+                      ),
+                      "",
+                      (
+                          "The newest comparison ledger carries an explicit "
+                          "no-evidence receipt. Prior successful comparison "
+                          "rows remain immutable evidence but are not reused "
+                          "as if they were current."
+                      ),
+                  ]
+              )
+          else:
+              lines.extend(
+                  [
+                      "",
+                      (
+                          "The aggregate gate refuses to reuse stale "
+                          "successful evidence when the newest completed "
+                          "ledger run is failed, missing, expired, or "
+                          "cross-ledger inconsistent."
+                      ),
+                  ]
+              )
+          lines.extend(
+              [
+                  "",
+                  (
+                      "No candidate is marked ready from this run. Prior "
+                      "immutable ledger artifacts remain evidence only."
+                  ),
+                  "",
+                  "**Execution authority:** `false`  ",
+                  "**Promotion authority:** `false`  ",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/readiness-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
 
       - name: Fail closed on readiness integrity
         if: >-
           steps.ledgers.outcome != 'success' ||
+          steps.ledgers.outputs.comparison_no_evidence == 'true' ||
           steps.evaluate.outcome != 'success'
         shell: bash
         run: |
@@ -197,6 +275,7 @@ jobs:
       - name: Publish readiness status
         if: >-
           steps.ledgers.outcome == 'success' &&
+          steps.ledgers.outputs.comparison_no_evidence != 'true' &&
           steps.evaluate.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -527,6 +606,477 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: >-
           steps.ledgers.outcome == 'success' &&
+          steps.ledgers.outputs.comparison_no_evidence != 'true' &&
+          steps.evaluate.outcome == 'success'
+        with:
+          name: prospective-trade-quality-readiness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prospective-trade-quality-readiness.json
+          if-no-files-found: error
+          retention-days: 90
+\t' read -r \
+                  receipt_id receipt_name receipt_digest \
+                  <<<"$no_evidence_line"
+                rm -rf "$out_dir" "$out_dir.zip"
+                mkdir -p "$out_dir"
+                gh api \
+                  -H "Accept: application/vnd.github+json" \
+                  "repos/$GITHUB_REPOSITORY/actions/artifacts/$receipt_id/zip" \
+                  > "$out_dir.zip"
+                unzip -q "$out_dir.zip" -d "$out_dir"
+                local receipt_path
+                receipt_path="$(
+                  find "$out_dir" \
+                    -type f \
+                    -name 'cadence-model-comparison-ledger-no-evidence.json' \
+                    -print -quit
+                )"
+                if [[ -z "$receipt_path" || ! -s "$receipt_path" ]]; then
+                  echo "$key no-evidence receipt JSON is missing." >&2
+                  return 1
+                fi
+                python - "$receipt_path" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(sys.argv[1]).read_text(encoding="utf-8")
+          )
+          if payload.get("status") != "no_evidence":
+              raise SystemExit("comparison ledger receipt status mismatch")
+          if payload.get("execution_authority") is not False:
+              raise SystemExit("comparison ledger receipt has execution authority")
+          if payload.get("promotion_authority") is not False:
+              raise SystemExit("comparison ledger receipt has promotion authority")
+          PY
+                {
+                  echo "${key}_no_evidence=true"
+                  echo "${key}_run_id=$run_id"
+                  echo "${key}_run_attempt=$run_attempt"
+                  echo "${key}_artifact_name=$receipt_name"
+                  echo "${key}_artifact_digest=$receipt_digest"
+                } >> "$GITHUB_OUTPUT"
+                return 0
+              fi
+            fi
+
+            if [[ -z "$artifact_line" ]]; then
+              echo "Expected exactly one current $key ledger artifact." >&2
+              return 1
+            fi
+
+            local artifact_id artifact_name artifact_digest
+            IFS=$'\t' read -r               artifact_id artifact_name artifact_digest               <<<"$artifact_line"
+            rm -rf "$out_dir" "$out_dir.zip"
+            mkdir -p "$out_dir"
+            gh api               -H "Accept: application/vnd.github+json"               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > "$out_dir.zip"
+            unzip -q "$out_dir.zip" -d "$out_dir"
+            local ledger_path
+            ledger_path="$(
+              find "$out_dir"                 -type f                 -name "$expected_file"                 -print -quit
+            )"
+            if [[ -z "$ledger_path" || ! -s "$ledger_path" ]]; then
+              echo "$key ledger JSON is missing." >&2
+              return 1
+            fi
+
+            {
+              echo "${key}_path=$ledger_path"
+              echo "${key}_run_id=$run_id"
+              echo "${key}_run_attempt=$run_attempt"
+              echo "${key}_artifact_name=$artifact_name"
+              echo "${key}_artifact_digest=$artifact_digest"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          resolve_ledger             prediction             prospective-cadence-prediction-ledger.yml             cadence-microstructure-prediction-ledger-             cadence-microstructure-prediction-ledger.json
+          resolve_ledger             comparison             prospective-cadence-comparison-ledger.yml             cadence-model-comparison-ledger-             cadence-model-comparison-ledger.json
+          resolve_ledger             timing             prospective-side-conditioned-timing-ledger.yml             prospective-side-conditioned-timing-ledger-             prospective-side-conditioned-timing-ledger.json
+
+      - name: Build fail-closed readiness manifest
+        id: evaluate
+        if: ${{ steps.ledgers.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/evaluate_prospective_trade_quality_readiness.py             "${{ steps.ledgers.outputs.prediction_path }}"             "${{ steps.ledgers.outputs.comparison_path }}"             "${{ steps.ledgers.outputs.timing_path }}"             --json-out prospective-trade-quality-readiness.json             > /tmp/readiness.stdout.json
+          cmp             prospective-trade-quality-readiness.json             /tmp/readiness.stdout.json
+
+      - name: Publish blocked readiness status
+        if: >-
+          steps.ledgers.outcome != 'success' ||
+          steps.evaluate.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.READINESS_ISSUE }}
+          LEDGER_OUTCOME: ${{ steps.ledgers.outcome }}
+          EVALUATE_OUTCOME: ${{ steps.evaluate.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/readiness-status.md <<EOF
+          ## Prospective trade-quality readiness
+
+          **Status:** BLOCKED
+
+          - ledger resolution: `$LEDGER_OUTCOME`
+          - readiness evaluation: `$EVALUATE_OUTCOME`
+
+          The aggregate gate refuses to reuse stale successful evidence when the newest completed ledger run is failed, missing, expired, or cross-ledger inconsistent.
+
+          No candidate is marked ready from this run. Prior immutable ledger artifacts remain evidence only.
+
+          **Execution authority:** `false`  
+          **Promotion authority:** `false`  
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
+
+      - name: Fail closed on readiness integrity
+        if: >-
+          steps.ledgers.outcome != 'success' ||
+          steps.evaluate.outcome != 'success'
+        shell: bash
+        run: |
+          echo "Prospective readiness is blocked." >&2
+          exit 1
+
+      - name: Publish readiness status
+        if: >-
+          steps.ledgers.outcome == 'success' &&
+          steps.ledgers.outputs.comparison_no_evidence != 'true' &&
+          steps.evaluate.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ env.READINESS_ISSUE }}
+          PREDICTION_RUN_ID: ${{ steps.ledgers.outputs.prediction_run_id }}
+          COMPARISON_RUN_ID: ${{ steps.ledgers.outputs.comparison_run_id }}
+          TIMING_RUN_ID: ${{ steps.ledgers.outputs.timing_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          report = json.loads(
+              Path(
+                  "prospective-trade-quality-readiness.json"
+              ).read_text(encoding="utf-8")
+          )
+          cadence = report["cadence"]
+          comparison = report["comparison"]
+          timing = report["timing"]
+
+          def iso_ms(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          status = {
+              "review_ready": "READY FOR REVIEW",
+              "collecting": "collecting",
+              "all_candidates_failed": "ALL CANDIDATES FAILED",
+          }[report["status"]]
+          lines = [
+              "## Prospective trade-quality readiness",
+              "",
+              f"**Status:** {status}",
+              "",
+              "### Immutable sources",
+              "",
+              (
+                  "- cadence prediction ledger workflow run: "
+                  f"`{os.environ['PREDICTION_RUN_ID']}`"
+              ),
+              (
+                  "- cadence A/B ledger workflow run: "
+                  f"`{os.environ['COMPARISON_RUN_ID']}`"
+              ),
+              (
+                  "- timing ledger workflow run: "
+                  f"`{os.environ['TIMING_RUN_ID']}`"
+              ),
+              (
+                  "- cadence training digest: "
+                  f"`{cadence['frozen_training_rows_sha256']}`"
+              ),
+              (
+                  "- cadence prospective start: "
+                  f"`{iso_ms(cadence['prospective_start_ms'])}`"
+              ),
+              (
+                  "- timing prospective start: "
+                  f"`{iso_ms(timing['started_at_ms'])}`"
+              ),
+              "- cross-ledger cadence alignment: `clean`",
+              "",
+              "### Cadence microstructure challenger",
+              "",
+              (
+                  "- lifecycle state: "
+                  f"`{cadence['lifecycle_state']}`"
+              ),
+              (
+                  "- irrecoverable failure components: "
+                  f"`{', '.join(cadence['irrecoverable_failure_components']) or 'none'}`"
+              ),
+              (
+                  "- ready for review: "
+                  f"`{str(cadence['ready_for_review']).lower()}`"
+              ),
+              (
+                  "- standalone quality gate: "
+                  f"`{str(cadence['standalone_ready_for_review']).lower()}`"
+              ),
+              (
+                  "- complexity justified vs baseline: "
+                  f"`{str(cadence['complexity_justified']).lower()}`"
+              ),
+              (
+                  "- current gate path open / closed blocks failed: "
+                  f"`{str(cadence['gate_path_open']).lower()} / "
+                  f"{cadence['failed_closed_stability_blocks']}`"
+              ),
+              (
+                  "- prospective rows / required: "
+                  f"`{cadence['prospective_rows']} / "
+                  f"{cadence['required_prospective_rows']}`"
+              ),
+              (
+                  "- admitted rows / required: "
+                  f"`{cadence['admitted_rows']} / "
+                  f"{cadence['required_admitted_rows']}`"
+              ),
+              (
+                  "- LONG rows / admitted: "
+                  f"`{cadence['long_rows']} / "
+                  f"{cadence['long_admitted_rows']}`"
+              ),
+              (
+                  "- SHORT rows / admitted: "
+                  f"`{cadence['short_rows']} / "
+                  f"{cadence['short_admitted_rows']}`"
+              ),
+              (
+                  "- candidate sum / mean: "
+                  f"`{cadence['candidate_net_return_sum']} / "
+                  f"{cadence['candidate_mean_net_return']}`"
+              ),
+              (
+                  "- missing rows / admitted / LONG admitted / "
+                  "SHORT admitted: "
+                  f"`{cadence['missing']['prospective_rows']} / "
+                  f"{cadence['missing']['admitted_rows']} / "
+                  f"{cadence['missing']['long_admitted_rows']} / "
+                  f"{cadence['missing']['short_admitted_rows']}`"
+              ),
+              "",
+              "#### Chronological stability",
+              "",
+          ]
+          for block in cadence["stability_blocks"]:
+              lines.append(
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` admitted=`{admitted}` "
+                  "sum=`{total}` passes=`{passes}`".format(
+                      block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
+                      rows=block["prospective_rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
+                      admitted=block["admitted_rows"],
+                      total=block["candidate_net_return_sum"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Frozen model A/B",
+                  "",
+                  (
+                      "- paired future rows / required: "
+                      f"`{comparison['paired_rows']} / "
+                      f"{comparison['required_paired_rows']}`"
+                  ),
+                  (
+                      "- microstructure minus baseline contribution: "
+                      f"`{comparison['microstructure_minus_baseline_sum']}`"
+                  ),
+                  (
+                      "- complexity justified / positive incremental blocks: "
+                      f"`{str(comparison['complexity_justified']).lower()} / "
+                      f"{comparison['positive_incremental_blocks']} / "
+                      f"{comparison['required_positive_incremental_blocks']}`"
+                  ),
+                  (
+                      "- incremental gate path open / closed blocks failed / allowed: "
+                      f"`{str(comparison['incremental_gate_path_open']).lower()} / "
+                      f"{comparison['failed_closed_incremental_blocks']} / "
+                      f"{comparison['maximum_allowed_failed_incremental_blocks']}`"
+                  ),
+                  (
+                      "- both / micro-only / baseline-only / neither: "
+                      f"`{comparison['both_admit']} / "
+                      f"{comparison['microstructure_only']} / "
+                      f"{comparison['baseline_only']} / "
+                      f"{comparison['neither']}`"
+                  ),
+                  "",
+                  "#### Incremental chronological stability",
+                  "",
+              ]
+          )
+          for block in comparison["incremental_stability_blocks"]:
+              lines.append(
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` micro-only=`{micro}` "
+                  "baseline-only=`{baseline}` delta=`{delta}` "
+                  "passes=`{passes}`".format(
+                      block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
+                      rows=block["paired_rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
+                      micro=block["microstructure_only_rows"],
+                      baseline=block["baseline_only_rows"],
+                      delta=block["microstructure_minus_baseline_sum"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Side-conditioned timing challenger",
+                  "",
+                  (
+                      "- lifecycle state: "
+                      f"`{timing['lifecycle_state']}`"
+                  ),
+                  (
+                      "- irrecoverable failure components: "
+                      f"`{', '.join(timing['irrecoverable_failure_components']) or 'none'}`"
+                  ),
+                  (
+                      "- ready for review: "
+                      f"`{str(timing['ready_for_review']).lower()}`"
+                  ),
+                  (
+                      "- sample complete / economics pass: "
+                      f"`{str(timing['sample_complete']).lower()} / "
+                      f"{str(timing['economics_pass']).lower()}`"
+                  ),
+                  (
+                      "- current gate path open / closed blocks failed: "
+                      f"`{str(timing['gate_path_open']).lower()} / "
+                      f"{timing['failed_closed_temporal_blocks']}`"
+                  ),
+                  (
+                      "- integrity clean: "
+                      f"`{str(timing['integrity_clean']).lower()}`"
+                  ),
+                  (
+                      "- prospective closed / required: "
+                      f"`{timing['prospective_closed_trades']} / "
+                      f"{timing['required']['prospective_closed_trades']}`"
+                  ),
+                  (
+                      "- paired evaluable / required: "
+                      f"`{timing['paired_evaluable_trades']} / "
+                      f"{timing['required']['paired_evaluable_trades']}`"
+                  ),
+                  (
+                      "- LONG / SHORT rows: "
+                      f"`{timing['long_rows']} / {timing['short_rows']}`"
+                  ),
+                  (
+                      "- selected net / delta vs actual / delta vs 60s: "
+                      f"`{timing['selected_net_pnl']} / "
+                      f"{timing['selected_minus_actual_pnl']} / "
+                      f"{timing['selected_minus_60s_pnl']}`"
+                  ),
+                  (
+                      "- LONG selected / vs actual: "
+                      f"`{timing['by_direction']['long']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['long']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- SHORT selected / vs actual: "
+                      f"`{timing['by_direction']['short']['selected_net_pnl']} / "
+                      f"{timing['by_direction']['short']['selected_minus_actual_pnl']}`"
+                  ),
+                  (
+                      "- positive vs 60s after removing any one market: "
+                      f"`{str(timing['market_robustness']['positive_vs_60s_after_any_single_market_removed']).lower()}`"
+                  ),
+                  (
+                      "- missing closed / paired / LONG / SHORT: "
+                      f"`{timing['missing']['prospective_closed_trades']} / "
+                      f"{timing['missing']['paired_evaluable_trades']} / "
+                      f"{timing['missing']['long_rows']} / "
+                      f"{timing['missing']['short_rows']}`"
+                  ),
+              ]
+          )
+          lines.extend(
+              [
+                  "",
+                  "#### Timing chronological robustness",
+                  "",
+              ]
+          )
+          for block in timing["temporal_blocks"]:
+              lines.append(
+                  "- block {block} rows {start}-{end}: rows=`{rows}/{required}` "
+                  "closed=`{closed}` selected=`{selected}` "
+                  "vs_actual=`{actual}` vs_60s=`{base}` passes=`{passes}`".format(
+                      block=block["block_index"],
+                      start=block["start_row"],
+                      end=block["end_row"],
+                      rows=block["rows"],
+                      required=block["required_rows"],
+                      closed=str(block["closed"]).lower(),
+                      selected=block["selected_net_pnl"],
+                      actual=block["selected_minus_actual_pnl"],
+                      base=block["selected_minus_60s_pnl"],
+                      passes=str(block["passes"]).lower(),
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "### Authority",
+                  "",
+                  (
+                      "A `ready_for_review` result is evidence only. "
+                      "This aggregate gate has no authority to change paper "
+                      "entries, timing, sizing, stops, risk, promotion state, "
+                      "or live execution."
+                  ),
+                  "",
+                  "**Execution authority:** `false`  ",
+                  "**Promotion authority:** `false`  ",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/readiness-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER"             -f body="$(cat /tmp/readiness-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: >-
+          steps.ledgers.outcome == 'success' &&
+          steps.ledgers.outputs.comparison_no_evidence != 'true' &&
           steps.evaluate.outcome == 'success'
         with:
           name: prospective-trade-quality-readiness-${{ github.run_id }}-${{ github.run_attempt }}
