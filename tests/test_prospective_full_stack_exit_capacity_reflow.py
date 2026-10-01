@@ -430,6 +430,12 @@ def test_exact_completed_breakeven_releases_capacity(
     assert result.summary["candidate_capacity_release_opportunities"] == 1
     assert result.summary["candidate_early_released_positions"] == 1
     assert result.summary["integrity_clean"] is True
+    assert result.release_terminal_contributions == (
+        ("plan-btc", Decimal("-0.2")),
+    )
+    assert result.summary[
+        "release_terminal_contribution_by_opening_plan"
+    ] == {"plan-btc": "-0.2"}
     assert len(result.releases) == 1
     release = result.releases[0]
     assert release.opportunity_market == "SOL"
