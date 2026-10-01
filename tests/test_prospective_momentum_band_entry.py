@@ -635,3 +635,112 @@ def test_momentum_opportunity_rejects_pre_start_query(
             direction=Direction.LONG,
             timestamp_ms=state.started_at_ms - 1,
         )
+
+
+def _momentum_economic_sample(
+    store: LearningFeatureSnapshotStore,
+    *,
+    allowed_pnl: str,
+) -> tuple[
+    tuple[TradeJournalEntry, ...],
+    ProspectiveMomentumBandEntryState,
+]:
+    frozen = 30_000_000
+    state = ProspectiveMomentumBandEntryState(
+        frozen_at_ms=frozen
+    )
+    start = state.started_at_ms
+    trades: list[TradeJournalEntry] = []
+    for index in range(30):
+        blocked = index < 10
+        long = index % 2 == 0
+        market = "SOL" if long else "ETH"
+        direction = Direction.LONG if long else Direction.SHORT
+        opened_at_ms = start + index * 120_000
+        if blocked:
+            return_1h = "0.001" if long else "-0.001"
+            day_return = "0.02" if long else "-0.02"
+            pnl = "-1"
+            exit_reason = "MARK_STOP_TRIGGERED"
+        else:
+            return_1h = "0.02" if long else "-0.02"
+            day_return = "0.08" if long else "-0.08"
+            pnl = allowed_pnl
+            exit_reason = "OPPOSITE_FRESH_THESIS"
+        feature_id = _record(
+            store,
+            market,
+            as_of_ms=opened_at_ms - 1,
+            return_1h=return_1h,
+            day_return=day_return,
+        )
+        trades.append(
+            _trade(
+                f"economic-{index}",
+                market=market,
+                direction=direction,
+                opened_at_ms=opened_at_ms,
+                pnl=pnl,
+                feature_snapshot_id=feature_id,
+                exit_reason=exit_reason,
+            )
+        )
+    return tuple(trades), state
+
+
+def test_momentum_requires_profitable_robust_economics(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    trades, state = _momentum_economic_sample(
+        store,
+        allowed_pnl="2",
+    )
+
+    result = prospective_momentum_band_entry_summary(
+        trades,
+        store,
+        state,
+    )
+
+    assert result["prospective_closed_trades"] == 30
+    assert result["blocked_trades"] == 10
+    assert result["admitted_trades"] == 20
+    assert result["candidate_net_pnl"] == "40"
+    assert result["delta_net_pnl"] == "10"
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["sample_complete"] is True
+    assert readiness["candidate_profitable"] is True
+    assert readiness["improvement_positive"] is True
+    assert readiness["candidate_single_trade_robust"] is True
+    assert readiness["candidate_single_market_robust"] is True
+    assert readiness["delta_single_trade_robust"] is True
+    assert readiness["delta_single_market_robust"] is True
+    assert readiness["ready_for_review"] is True
+
+
+def test_momentum_rejects_less_bad_losing_candidate(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    trades, state = _momentum_economic_sample(
+        store,
+        allowed_pnl="-1",
+    )
+
+    result = prospective_momentum_band_entry_summary(
+        trades,
+        store,
+        state,
+    )
+
+    assert result["candidate_net_pnl"] == "-20"
+    assert result["delta_net_pnl"] == "10"
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["sample_complete"] is True
+    assert readiness["candidate_profitable"] is False
+    assert readiness["improvement_positive"] is True
+    assert readiness["economics_positive"] is False
+    assert readiness["ready_for_review"] is False
