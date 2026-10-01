@@ -19,6 +19,7 @@ def _fake_gh(
     *,
     workflow_source: str,
     artifact_zip: Path,
+    artifact_failures: int = 0,
 ) -> tuple[Path, dict[str, str]]:
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -26,6 +27,8 @@ def _fake_gh(
     workflow_b64.write_bytes(
         base64.b64encode(workflow_source.encode("utf-8"))
     )
+    artifact_counter = tmp_path / "artifact-counter.txt"
+    artifact_counter.write_text("0", encoding="utf-8")
     fake_gh = fake_bin / "gh"
     fake_gh.write_text(
         """#!/usr/bin/env bash
@@ -33,6 +36,14 @@ set -euo pipefail
 if [[ "$*" == *"/contents/.github/workflows/continuous-paper.yml?"* ]]; then
   cat "$FAKE_WORKFLOW_B64"
 elif [[ "$*" == *"/actions/artifacts/"*"/zip"* ]]; then
+  count="$(cat "$FAKE_ARTIFACT_COUNTER")"
+  next="$((count + 1))"
+  printf '%s' "$next" > "$FAKE_ARTIFACT_COUNTER"
+  if [ "$count" -lt "$FAKE_ARTIFACT_FAILURES" ]; then
+    size="$(wc -c < "$FAKE_ARTIFACT_ZIP")"
+    head -c "$((size / 2))" "$FAKE_ARTIFACT_ZIP"
+    exit 1
+  fi
   cat "$FAKE_ARTIFACT_ZIP"
 else
   echo "unexpected fake gh call: $*" >&2
@@ -49,6 +60,8 @@ fi
             "GITHUB_REPOSITORY": "Dtwosam/Cocomelon",
             "FAKE_WORKFLOW_B64": str(workflow_b64),
             "FAKE_ARTIFACT_ZIP": str(artifact_zip),
+            "FAKE_ARTIFACT_COUNTER": str(artifact_counter),
+            "FAKE_ARTIFACT_FAILURES": str(artifact_failures),
         }
     )
     return fake_bin, env
@@ -115,6 +128,73 @@ def test_restore_script_streams_packed_artifact_end_to_end(
         encoding="utf-8"
     ) == '{"state":"exact"}\n'
     assert not (tmp_path / "state.zip").exists()
+
+
+def test_restore_script_retries_interrupted_packed_stream(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source-retry"
+    source_root.mkdir()
+    (source_root / "runtime-state.json").write_text(
+        '{"state":"retried"}\n',
+        encoding="utf-8",
+    )
+    tar_path = tmp_path / "retry-state.tar"
+    with tarfile.open(tar_path, "w") as archive:
+        archive.add(
+            source_root / "runtime-state.json",
+            arcname="./runtime-state.json",
+        )
+    artifact_zip = tmp_path / "retry-packed.zip"
+    with zipfile.ZipFile(
+        artifact_zip,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        allowZip64=True,
+    ) as archive:
+        with archive.open(
+            "continuous-paper-state.tar",
+            "w",
+            force_zip64=True,
+        ) as member:
+            member.write(tar_path.read_bytes())
+
+    _, env = _fake_gh(
+        tmp_path,
+        workflow_source=(
+            "steps:\n"
+            "  - name: Pack durable continuous paper state\n"
+        ),
+        artifact_zip=artifact_zip,
+        artifact_failures=1,
+    )
+    env["COCOMELON_STATE_RESTORE_ATTEMPTS"] = "2"
+    env["COCOMELON_STATE_RESTORE_RETRY_SLEEP_SECONDS"] = "0"
+    state_root = tmp_path / "restored-retry"
+
+    result = subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "789",
+            SOURCE_SHA,
+            str(state_root),
+        ],
+        check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert (state_root / "runtime-state.json").read_text(
+        encoding="utf-8"
+    ) == '{"state":"retried"}\n'
+    assert "attempt 1/2" in result.stdout
+    assert "attempt 2/2" in result.stdout
+    assert "discarding partial state" in result.stdout
+    assert Path(env["FAKE_ARTIFACT_COUNTER"]).read_text(
+        encoding="utf-8"
+    ) == "2"
 
 
 def test_stream_zip_member_handles_forced_zip64(
@@ -354,5 +434,8 @@ def test_restore_script_uses_stream_for_packed_artifacts() -> None:
         "    | tar -xf - -C \"$state_root\""
         in source
     )
+    assert 'COCOMELON_STATE_RESTORE_ATTEMPTS:-3' in source
+    assert "discarding partial state" in source
+    assert 'rm -rf "$state_root"' in source
     assert '> "$tmp_root/state.zip"' in source
     assert 'unzip -q "$tmp_root/state.zip" -d "$artifact_root"' in source
