@@ -58,6 +58,10 @@ def test_two_strike_ledger_handles_old_source_without_credit() -> None:
     assert "waiting for new-format compact source" in source
     assert "No prospective row is credited from this run." in source
     assert "predates export of the frozen two-strike state" in source
+    assert r"\`$SOURCE_RUN_ID\`" in source
+    assert r"\`$SOURCE_RUN_ATTEMPT\`" in source
+    assert r"\`$RESOLUTION_MODE\`" in source
+    assert r"\`false\`" in source
 
 
 def test_two_strike_ledger_restores_and_extends_append_only_evidence() -> None:
@@ -69,6 +73,7 @@ def test_two_strike_ledger_restores_and_extends_append_only_evidence() -> None:
     assert "--source-artifact-digest" in source
     assert "--previous" in source
     assert "append-only invariant failure" in source
+    assert r"\`$error\`" in source
     assert "Fail closed on two-strike ledger drift" in source
     assert "Every previously published trade row" in source
     assert "**Execution authority:**" in source
