@@ -417,9 +417,9 @@ def prospective_momentum_band_forward_markout_summary(
             for row in row_values:
                 if row["momentum_decision"] != decision:
                     continue
-                markouts = row["markouts"]
-                assert isinstance(markouts, dict)
-                markout = markouts[key]
+                row_markouts = row["markouts"]
+                assert isinstance(row_markouts, dict)
+                markout = row_markouts[key]
                 assert isinstance(markout, dict)
                 status = markout["status"]
                 assert isinstance(status, str)
@@ -432,9 +432,9 @@ def prospective_momentum_band_forward_markout_summary(
                         "settled markout is missing directional return"
                     )
                 values.append(Decimal(raw))
-                direction = row["direction"]
-                assert isinstance(direction, str)
-                by_direction[direction] += 1
+                row_direction = row["direction"]
+                assert isinstance(row_direction, str)
+                by_direction[row_direction] += 1
             mean_value = _mean(tuple(values))
             decisions[decision.lower()] = {
                 "opportunities": sum(
