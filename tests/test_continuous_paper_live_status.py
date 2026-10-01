@@ -65,6 +65,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "execution_healthy": True,
         "selected_market_count": 20,
         "processed_records": 123,
+        "duplicate_records_dropped": 4,
+        "shortlist_rotation_attempts": 3,
+        "shortlist_rotation_promotions": 2,
+        "shortlist_rotation_readiness_failures": 1,
         "journal_observations": 7,
         "session_decision_epochs": 1,
         "last_decision_boundary_ms": 1_699_999_970_000,
@@ -3778,6 +3782,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "stale_book=1" in output
     assert "session eligibility evaluated / rankable / deep-ready" in output
     assert "session eligibility reasons:" in output
+    assert "duplicate records dropped" in output
+    assert "`4`" in output
+    assert "shortlist rotations attempts / promoted / failed readiness" in output
+    assert "`3 / 2 / 1`" in output
     assert "strategy reasons:" in output
     assert "NO_SIGNAL=19" in output
     assert "risk reasons:" in output
@@ -5989,6 +5997,8 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "session eligibility evaluated / rankable / deep-ready: 40 / 40 / 8" in rendered
     assert "missing_deep_data=30" in rendered
     assert "stale_book=2" in rendered
+    assert "duplicate records dropped: 7" in rendered
+    assert "shortlist rotations attempts / promoted / failed readiness: 5 / 4 / 1" in rendered
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered
