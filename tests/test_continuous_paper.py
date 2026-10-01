@@ -60,6 +60,7 @@ from cocomelon.continuous_paper import (
     _prospective_full_stack_capacity_reflow_payload,
     _prospective_full_stack_entry_exit_payload,
     _prospective_full_stack_exit_capacity_reflow_payload,
+    _prospective_global_loss_gate_payload,
     _prospective_momentum_band_entry_payload,
     _prospective_two_strike_stop_filter_payload,
     _ranked_selection,
@@ -79,6 +80,7 @@ from cocomelon.continuous_paper import (
     _restore_profit_lock_execution_shadow,
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
+    _restore_prospective_global_loss_gate,
     _restore_prospective_momentum_band_entry,
     _restore_prospective_top10_rank_filter,
     _restore_prospective_two_strike_stop_filter,
@@ -108,6 +110,10 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionShadow,
+)
+from cocomelon.research.prospective_global_loss_gate import (
+    EMBARGO_MS as GLOBAL_LOSS_GATE_EMBARGO_MS,
+    ProspectiveGlobalLossGateState,
 )
 from cocomelon.research.prospective_momentum_band_entry import (
     EMBARGO_MS as MOMENTUM_BAND_EMBARGO_MS,
@@ -3370,6 +3376,87 @@ def test_momentum_band_payload_failure_is_research_only(
         == 100 + MOMENTUM_BAND_EMBARGO_MS
     )
     assert payload["error"] == "RuntimeError: momentum-band boom"
+
+
+def test_global_loss_gate_state_restore_preserves_original_freeze(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "global-loss-gate.json"
+    original = ProspectiveGlobalLossGateState(
+        frozen_at_ms=123
+    )
+    path.write_text(
+        json.dumps(original.payload()),
+        encoding="utf-8",
+    )
+
+    restored, error = _restore_prospective_global_loss_gate(
+        path,
+        frozen_at_ms=999,
+    )
+
+    assert error is None
+    assert restored == original
+    assert restored.frozen_at_ms == 123
+    assert (
+        restored.started_at_ms
+        == 123 + GLOBAL_LOSS_GATE_EMBARGO_MS
+    )
+
+
+def test_global_loss_gate_restore_failure_restarts_clean_freeze(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "global-loss-gate.json"
+    path.write_text("{bad", encoding="utf-8")
+
+    restored, error = _restore_prospective_global_loss_gate(
+        path,
+        frozen_at_ms=999,
+    )
+
+    assert restored.frozen_at_ms == 999
+    assert (
+        restored.started_at_ms
+        == 999 + GLOBAL_LOSS_GATE_EMBARGO_MS
+    )
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+def test_global_loss_gate_payload_failure_is_research_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("global-loss-gate boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_global_loss_gate",
+        fail,
+    )
+    state = ProspectiveGlobalLossGateState(
+        frozen_at_ms=100
+    )
+
+    payload = _prospective_global_loss_gate_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        state,
+        restore_error=None,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["changes_risk_limits"] is False
+    assert payload["candidate_id"] == state.candidate_id
+    assert payload["frozen_at_ms"] == 100
+    assert (
+        payload["started_at_ms"]
+        == 100 + GLOBAL_LOSS_GATE_EMBARGO_MS
+    )
+    assert payload["error"] == "RuntimeError: global-loss-gate boom"
 
 
 def test_two_strike_state_restore_preserves_original_freeze(
