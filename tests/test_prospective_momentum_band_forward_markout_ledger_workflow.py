@@ -90,3 +90,12 @@ def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
         "branch=main&status=completed&per_page=50"
         in source
     )
+
+
+def test_fast_markout_waiting_and_blocked_status_escape_markdown_backticks() -> None:
+    source = _source()
+
+    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in source
+    assert r"\`$RESOLUTION_MODE\`" in source
+    assert r"\`$error\`" in source
+    assert source.count(r"\`false\`") >= 6
