@@ -54,6 +54,7 @@ from cocomelon.continuous_paper import (
     _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
     _prospective_consecutive_loss_cooldown_shadow_payload,
+    _prospective_full_stack_entry_exit_payload,
     _prospective_momentum_band_entry_payload,
     _prospective_two_strike_stop_filter_payload,
     _record_from_gap,
@@ -120,6 +121,23 @@ def test_candidate_stack_overlap_telemetry_fails_open() -> None:
     assert payload["promotion_authority"] is False
     assert payload["changes_readiness_gate"] is False
     assert "started_at_ms" in str(payload["error"])
+def test_full_stack_entry_exit_telemetry_fails_open() -> None:
+    payload = _prospective_full_stack_entry_exit_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        {},
+        {},
+        {},
+        {},
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["changes_readiness_gate"] is False
+    assert "decision map" in str(payload["error"])
+
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
