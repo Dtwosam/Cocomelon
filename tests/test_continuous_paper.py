@@ -110,6 +110,7 @@ def test_candidate_stack_overlap_telemetry_fails_open() -> None:
         SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
         {},
         {},
+        {},
     )
 
     assert payload["enabled"] is False
