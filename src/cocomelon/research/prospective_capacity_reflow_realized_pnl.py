@@ -222,11 +222,17 @@ def prospective_capacity_reflow_realized_pnl_summary(
             raise ProspectiveCapacityReflowRealizedPnlError(
                 "replacement direction is invalid"
             )
+        entry_price = _decimal(
+            raw_option.get("entry_price"),
+            "entry_price",
+            positive=True,
+        )
         entry_quantity = _decimal(
             raw_option.get("entry_quantity"),
             "entry_quantity",
             positive=True,
         )
+        entry_notional = entry_price * entry_quantity
         signed_quantity = (
             entry_quantity
             if direction == "long"
@@ -303,6 +309,7 @@ def prospective_capacity_reflow_realized_pnl_summary(
             missing_boundaries: list[int] = []
             incomplete_reason: str | None = None
             exact_realized_pnl: str | None = None
+            exact_realized_return_fraction: str | None = None
             funding_pnl: str | None = None
 
             if not complete_close:
@@ -317,6 +324,9 @@ def prospective_capacity_reflow_realized_pnl_summary(
                     exact_option_horizons += 1
                     funding_pnl = str(ZERO)
                     exact_realized_pnl = str(fee_adjusted_pnl)
+                    exact_realized_return_fraction = str(
+                        fee_adjusted_pnl / entry_notional
+                    )
                 else:
                     summary.funding_evidence_required_closes += 1
                     for boundary_ms in boundaries:
@@ -343,6 +353,9 @@ def prospective_capacity_reflow_realized_pnl_summary(
                         exact_option_horizons += 1
                         funding_pnl = str(funding_cash)
                         exact_realized_pnl = str(total)
+                        exact_realized_return_fraction = str(
+                            total / entry_notional
+                        )
 
             classified_exits[key] = {
                 "horizon_ms": horizon_ms,
@@ -353,6 +366,9 @@ def prospective_capacity_reflow_realized_pnl_summary(
                 "missing_funding_boundaries_ms": missing_boundaries,
                 "funding_cash_pnl": funding_pnl,
                 "exact_realized_pnl": exact_realized_pnl,
+                "exact_realized_return_fraction": (
+                    exact_realized_return_fraction
+                ),
                 "incomplete_reason": incomplete_reason,
                 "complete_close": complete_close,
             }
@@ -364,7 +380,9 @@ def prospective_capacity_reflow_realized_pnl_summary(
                 "opportunity_timestamp_ms": opportunity_timestamp_ms,
                 "opportunity_market": market,
                 "opportunity_direction": direction,
+                "entry_price": str(entry_price),
                 "entry_quantity": str(entry_quantity),
+                "entry_notional": str(entry_notional),
                 "entry_attempt_timestamp_ms": entry_ms,
                 "exits": classified_exits,
             }
