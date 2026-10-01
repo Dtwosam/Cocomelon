@@ -817,6 +817,13 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     assert "_l2_event_fresh_for_promotion(" in source
 
 
+def test_continuous_context_poll_has_freshness_headroom() -> None:
+    config = ContinuousPaperConfig()
+
+    assert config.context_poll_seconds == 30
+    assert config.context_poll_seconds * 1000 < 60_000
+
+
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
     with pytest.raises(ValueError, match="divisible"):
         ContinuousPaperConfig(
