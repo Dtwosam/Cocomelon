@@ -437,7 +437,7 @@ DRAWDOWN_STATE_FILENAME = "drawdown-state.json"
 class ContinuousPaperConfig:
     duration_seconds: int = 19_800
     deep_limit: int = 20
-    context_poll_seconds: int = 60
+    context_poll_seconds: int = 30
     selection_refresh_seconds: int = 300
     checkpoint_seconds: int = 30
     warmup_5m_bars: int = 25
