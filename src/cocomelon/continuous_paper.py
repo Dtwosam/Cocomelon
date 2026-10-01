@@ -292,6 +292,10 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_momentum_band_entry import (
+    ProspectiveMomentumBandEntryState,
+    evaluate_prospective_momentum_band_entry,
+)
 from cocomelon.research.prospective_replacement_exit_policy import (
     ProspectiveReplacementExitPolicyState,
     prospective_replacement_exit_policy_summary,
@@ -308,10 +312,6 @@ from cocomelon.research.prospective_side_conditioned_delay import (
 from cocomelon.research.prospective_top10_rank_filter import (
     ProspectiveTop10RankFilterState,
     evaluate_prospective_top10_rank_filter,
-)
-from cocomelon.research.prospective_momentum_band_entry import (
-    ProspectiveMomentumBandEntryState,
-    evaluate_prospective_momentum_band_entry,
 )
 from cocomelon.research.prospective_trade_quality import (
     ProspectiveTradeQualityState,
