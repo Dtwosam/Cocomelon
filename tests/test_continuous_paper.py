@@ -67,6 +67,7 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
+    _ranked_selection,
     _refresh_native_market_snapshots,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
@@ -91,7 +92,12 @@ from cocomelon.domain.execution import (
     PositionAction,
     PositionActionType,
 )
-from cocomelon.domain.market import MarketId
+from cocomelon.domain.market import (
+    MarketId,
+    PerpMarketContext,
+    PerpMarketMeta,
+    PerpMarketSnapshot,
+)
 from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
@@ -116,6 +122,115 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
 )
 
+
+
+
+def _watchlist_snapshot(
+    coin: str,
+    *,
+    volume: str,
+    open_interest: str = "10",
+    received_at_ms: int = 1_000,
+    valid_prices: bool = True,
+) -> PerpMarketSnapshot:
+    market = MarketId("", coin)
+    price = Decimal("100") if valid_prices else None
+    return PerpMarketSnapshot(
+        meta=PerpMarketMeta(
+            market=market,
+            wire_name=coin,
+            sz_decimals=2,
+            max_leverage=10,
+            margin_table_id=None,
+            only_isolated=False,
+            is_delisted=False,
+            margin_mode=None,
+        ),
+        context=PerpMarketContext(
+            market=market,
+            mark_px=price,
+            mid_px=price,
+            oracle_px=price,
+            funding=Decimal("0"),
+            open_interest=Decimal(open_interest),
+            day_ntl_vlm=Decimal(volume),
+            premium=Decimal("0"),
+            prev_day_px=Decimal("100"),
+        ),
+        source="test",
+        received_at_ms=received_at_ms,
+        schema_version=1,
+    )
+
+
+def test_ranked_selection_pads_l2_watchlist_when_ranker_collapses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = {
+        item.meta.market.canonical: item
+        for item in (
+            _watchlist_snapshot("RANKED", volume="1"),
+            _watchlist_snapshot("LIQUID", volume="900"),
+            _watchlist_snapshot("SECOND", volume="800"),
+            _watchlist_snapshot("THIRD", volume="700"),
+            _watchlist_snapshot("INVALID", volume="1000", valid_prices=False),
+        )
+    }
+    ranked_market = MarketId("", "RANKED")
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper._startup_ranks",
+        lambda *_args, **_kwargs: (
+            {},
+            (SimpleNamespace(market=ranked_market),),
+        ),
+    )
+
+    selected = _ranked_selection(
+        snapshots,
+        as_of_ms=1_000,
+        deep_limit=4,
+        pinned=(),
+    )
+
+    assert [market.canonical for market in selected] == [
+        "RANKED",
+        "LIQUID",
+        "SECOND",
+        "THIRD",
+    ]
+
+
+def test_ranked_selection_keeps_pinned_market_beyond_watchlist_floor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    snapshots = {
+        item.meta.market.canonical: item
+        for item in (
+            _watchlist_snapshot("RANKED", volume="1"),
+            _watchlist_snapshot("LIQUID", volume="900"),
+            _watchlist_snapshot("SECOND", volume="800"),
+        )
+    }
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper._startup_ranks",
+        lambda *_args, **_kwargs: (
+            {},
+            (SimpleNamespace(market=MarketId("", "RANKED")),),
+        ),
+    )
+
+    selected = _ranked_selection(
+        snapshots,
+        as_of_ms=1_000,
+        deep_limit=2,
+        pinned=(MarketId("", "PINNED"),),
+    )
+
+    assert [market.canonical for market in selected] == [
+        "RANKED",
+        "LIQUID",
+        "PINNED",
+    ]
 
 def test_consecutive_loss_cooldown_status_locks_exact_boundary() -> None:
     execution = SimpleNamespace(
