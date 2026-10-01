@@ -390,3 +390,25 @@ def test_continuous_paper_watches_recursive_research_dependencies() -> None:
         if source.count(dependency) < 2
     ]
     assert missing == []
+
+
+def test_continuous_paper_exports_full_stack_entry_exit_summary() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "prospective-full-stack-entry-exit-summary.json"
+        in source
+    )
+    assert (
+        "continuous-paper-full-stack-entry-exit-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+        in source
+    )
+    assert "Render full-stack entry-exit research summary" in source
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    pack_at = source.index(
+        "- name: Pack durable continuous paper state"
+    )
+    assert compact_at < pack_at
