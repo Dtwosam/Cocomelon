@@ -139,7 +139,6 @@ def test_full_stack_entry_exit_telemetry_fails_open() -> None:
     assert "decision map" in str(payload["error"])
 
 
-
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
     with pytest.raises(ValueError, match="divisible"):
         ContinuousPaperConfig(
@@ -2543,3 +2542,24 @@ def test_cooldown_shadow_telemetry_fails_open(
     assert payload["promotion_authority"] is False
     assert payload["changes_risk_limits"] is False
     assert payload["error"] == "RuntimeError: cooldown boom"
+
+
+def test_full_stack_entry_exit_summary_is_persisted_at_worker_end() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = ('
+        in source
+    )
+    assert (
+        '"prospective-full-stack-entry-exit-summary.json"'
+        in source
+    )
+    assert "_prospective_full_stack_entry_exit_payload(" in source
+    assert "profit_lock_execution_shadow.state_payload()" in source
+    assert (
+        "root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME"
+        in source
+    )
