@@ -3724,6 +3724,22 @@ Replacement-trade economics remain separate in Issue #738. This ledger is matche
 **LIVE TRADING: DISABLED.**
 
 
+### Eligibility readiness cause telemetry — 2026-10-01
+
+The paper runtime now preserves the scanner's granular eligibility causes through the operational heartbeat instead of collapsing every readiness failure into strategy-level `not_deep_ready` or `not_rankable`.
+
+For both the cumulative worker session and the latest decision epoch, the status reports:
+
+- evaluated market count;
+- rankable market count;
+- deep-ready market count;
+- exact eligibility reason counts, including broad eligibility failures plus `missing_deep_data`, `stale_book`, `excessive_spread`, and `insufficient_depth`.
+
+No eligibility threshold is loosened and no trade is admitted by this change. Its purpose is to distinguish healthy selectivity from degraded/stale/missing market data before entry research interprets a NO_TRADE cohort.
+
+**LIVE TRADING: DISABLED.**
+
+
 ### Exact breakeven early-exit capacity reflow — 2026-10-01
 
 The common-start full entry+exit stack now has a separate one-hop capacity audit for opportunities that could exist because the exact breakeven challenger closes an admitted position before the real paper trade closes.
