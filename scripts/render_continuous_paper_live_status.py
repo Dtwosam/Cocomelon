@@ -7810,6 +7810,109 @@ def _post_freshness_paper_cohort_lines(raw: object) -> list[str]:
     return lines
 
 
+def _clean_evidence_runway_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Clean candidate evidence runway",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No clean evidence runway telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    common = raw.get("common", {})
+    if not isinstance(common, dict):
+        common = {}
+    reason_counts = common.get("risk_reason_counts", {})
+    if not isinstance(reason_counts, dict):
+        reason_counts = {}
+    reasons = ", ".join(
+        f"{reason}={count}"
+        for reason, count in sorted(reason_counts.items())
+    ) or "none"
+
+    lines.extend(
+        [
+            (
+                "- common clean start / stage: "
+                f"`{raw.get('common_started_at_ms')} / "
+                f"{common.get('stage', 'unknown')}`"
+            ),
+            (
+                "- common opportunities L/S / risk A/R / openings / "
+                "closed / still open: "
+                f"`{common.get('opportunities_long', 0)}/"
+                f"{common.get('opportunities_short', 0)} / "
+                f"{common.get('risk_approved', 0)}/"
+                f"{common.get('risk_rejected', 0)} / "
+                f"{common.get('paper_openings', 0)} / "
+                f"{common.get('paper_closed_trades', 0)} / "
+                f"{common.get('paper_unclosed_openings', 0)}`"
+            ),
+            (
+                "- common closed PnL / net R / lineage clean: "
+                f"`{common.get('closed_trade_net_pnl', '0')} / "
+                f"{common.get('closed_trade_net_r', '0')} / "
+                f"{str(bool(common.get('lineage_integrity_clean'))).lower()}`"
+            ),
+            f"- common risk rejection reasons: `{reasons}`",
+        ]
+    )
+
+    by_candidate = raw.get("by_candidate", {})
+    if not isinstance(by_candidate, dict):
+        by_candidate = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Candidate | Stage | Opp L/S | Risk A/R | Opened | "
+                "Closed | Still open | PnL | Net R |"
+            ),
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for candidate_id, item in sorted(by_candidate.items()):
+        if not isinstance(item, dict):
+            continue
+        lines.append(
+            "| {candidate} | {stage} | {long}/{short} | {approved}/{rejected} | "
+            "{opened} | {closed} | {open_count} | {pnl} | {net_r} |".format(
+                candidate=candidate_id,
+                stage=item.get("stage", "unknown"),
+                long=item.get("opportunities_long", 0),
+                short=item.get("opportunities_short", 0),
+                approved=item.get("risk_approved", 0),
+                rejected=item.get("risk_rejected", 0),
+                opened=item.get("paper_openings", 0),
+                closed=item.get("paper_closed_trades", 0),
+                open_count=item.get("paper_unclosed_openings", 0),
+                pnl=item.get("closed_trade_net_pnl", "0"),
+                net_r=item.get("closed_trade_net_r", "0"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_This diagnostic explains evidence starvation only. It does "
+                "not loosen strategy, risk, execution, or candidate review gates._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_stop_reentry_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -9157,7 +9260,6 @@ def _delayed_entry_stop_l2_lines(
     return lines
 
 
-
 def _render_operational_live_status(
     payload: Mapping[str, Any],
     *,
@@ -9986,6 +10088,11 @@ def render_live_status(
     lines.extend(
         _post_freshness_paper_cohort_lines(
             payload.get("post_freshness_paper_cohort")
+        )
+    )
+    lines.extend(
+        _clean_evidence_runway_lines(
+            payload.get("clean_evidence_runway")
         )
     )
     lines.extend(

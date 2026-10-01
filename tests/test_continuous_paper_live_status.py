@@ -7,6 +7,7 @@ import sys
 
 from scripts.render_continuous_paper_live_status import (
     _cadence_opportunity_learning_lines,
+    _clean_evidence_runway_lines,
     _closed_trade_stop_reentry_lines,
     _delayed_entry_stop_l2_lines,
     _opening_opportunity_evidence_lines,
@@ -6929,6 +6930,70 @@ def test_post_freshness_cohort_renderer_exposes_fixed_boundary() -> None:
     assert "| MARK_STOP_TRIGGERED | 1 | 0 | 1 | -3 | -0.2 |" in output
     assert "Boundary is trade open time" in output
     assert "cannot reset, promote, or override" in output
+
+
+def test_clean_evidence_runway_renderer_exposes_bottleneck() -> None:
+    lines = _clean_evidence_runway_lines(
+        {
+            "enabled": True,
+            "error": None,
+            "common_started_at_ms": 2_000,
+            "common": {
+                "stage": "risk_rejected",
+                "opportunities_long": 3,
+                "opportunities_short": 2,
+                "risk_approved": 0,
+                "risk_rejected": 5,
+                "paper_openings": 0,
+                "paper_closed_trades": 0,
+                "paper_unclosed_openings": 0,
+                "closed_trade_net_pnl": "0",
+                "closed_trade_net_r": "0",
+                "lineage_integrity_clean": True,
+                "risk_reason_counts": {
+                    "consecutive_loss_cooldown": 4,
+                    "max_open_risk": 1,
+                },
+            },
+            "by_candidate": {
+                "candidate-a": {
+                    "stage": "closed_trade_evidence_available",
+                    "opportunities_long": 5,
+                    "opportunities_short": 4,
+                    "risk_approved": 3,
+                    "risk_rejected": 6,
+                    "paper_openings": 2,
+                    "paper_closed_trades": 1,
+                    "paper_unclosed_openings": 1,
+                    "closed_trade_net_pnl": "7",
+                    "closed_trade_net_r": "0.4",
+                },
+                "candidate-b": {
+                    "stage": "risk_rejected",
+                    "opportunities_long": 3,
+                    "opportunities_short": 2,
+                    "risk_approved": 0,
+                    "risk_rejected": 5,
+                    "paper_openings": 0,
+                    "paper_closed_trades": 0,
+                    "paper_unclosed_openings": 0,
+                    "closed_trade_net_pnl": "0",
+                    "closed_trade_net_r": "0",
+                },
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Clean candidate evidence runway" in output
+    assert "2000 / risk_rejected" in output
+    assert "common opportunities L/S / risk A/R" in output
+    assert "`3/2 / 0/5 / 0 / 0 / 0`" in output
+    assert "consecutive_loss_cooldown=4" in output
+    assert "max_open_risk=1" in output
+    assert "| candidate-a | closed_trade_evidence_available |" in output
+    assert "| candidate-b | risk_rejected |" in output
+    assert "does not loosen strategy, risk, execution" in output
 
 
 def test_post_freshness_cohort_renderer_exposes_failure() -> None:

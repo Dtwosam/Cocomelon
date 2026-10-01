@@ -13,6 +13,7 @@ from cocomelon.continuous_paper import (
     RUN_ID,
     ContinuousPaperConfig,
     _account_lifecycle_bridge_payload,
+    _clean_evidence_runway_payload,
     _closed_trade_concentration_payload,
     _closed_trade_friction_payload,
     _closed_trade_robustness_payload,
@@ -1770,6 +1771,42 @@ def test_post_freshness_cohort_telemetry_fails_open(
     assert payload["execution_authority"] is False
     assert payload["promotion_authority"] is False
     assert payload["error"] == "RuntimeError: post-freshness boom"
+
+
+def test_clean_evidence_runway_telemetry_fails_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("runway boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper.clean_evidence_runway_summary",
+        fail,
+    )
+    payload = _clean_evidence_runway_payload(
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(  # type: ignore[arg-type]
+            candidate_id="combined",
+            started_at_ms=1_000,
+        ),
+        SimpleNamespace(  # type: ignore[arg-type]
+            candidate_id="momentum",
+            started_at_ms=2_000,
+        ),
+        SimpleNamespace(  # type: ignore[arg-type]
+            candidate_id="two-strike",
+            started_at_ms=1_500,
+        ),
+        timestamp_ms=3_000,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["error"] == "RuntimeError: runway boom"
 
 
 def test_closed_trade_utc_hour_telemetry_fails_open(
