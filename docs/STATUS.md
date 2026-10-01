@@ -3974,3 +3974,18 @@ The reseed is deliberately conservative:
 This addresses a failure mode where the decision engine can have zero deep-ready markets while the websocket control plane is recovering. It does not relax eligibility, spread, depth, risk, stop, sizing, strategy, or live-order thresholds and does not fabricate microstructure.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fast exact paper-worker resume path — 2026-10-01
+
+The continuous paper handoff now has an optional fast-resume lane for the large durable runtime state.
+
+The predecessor still produces the existing full durable state artifact unchanged. In addition, after trading stops and the final state is measured, it can create a precompressed `continuous-paper-resume.tar.zst` artifact containing the same state tree. Exact successors prefer that artifact and fall back automatically to the existing durable state artifact when the fast artifact is absent or unavailable.
+
+Exact handoff workers use a source-run-specific concurrency key, so a successor may restore the already-finalized state while its predecessor continues uploading research and long-retention artifacts. Scheduled and push watchdog runs remain in the guarded concurrency lane and still self-skip when a real paper worker is active. The predecessor has already stopped the trading runtime before the fast successor is dispatched, so this optimization does not permit overlapping paper execution.
+
+The fast pack/upload/dispatch path is non-authoritative and failure-tolerant. Any fast-path failure leaves the existing durable upload and fallback successor dispatch intact.
+
+This changes no strategy, risk, sizing, entry, exit, stop, candidate readiness, paper accounting, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**

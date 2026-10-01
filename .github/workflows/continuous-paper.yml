@@ -135,7 +135,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: continuous-mainnet-paper-trader
+  group: continuous-mainnet-paper-trader-${{ inputs.source_run_id || 'guarded' }}
   cancel-in-progress: false
 
 jobs:
@@ -170,7 +170,7 @@ jobs:
           active = [
               run for run in payload.get("workflow_runs", [])
               if run.get("id") != current
-              and run.get("status") == "in_progress"
+              and run.get("status") in {"queued", "pending", "in_progress"}
               and run.get("head_branch") == "main"
           ]
           print(active[0]["id"] if active else "")
@@ -218,36 +218,96 @@ jobs:
               raise SystemExit("predecessor repository mismatch")
           if expected_attempt and str(run.get("run_attempt")) != expected_attempt:
               raise SystemExit("predecessor run attempt mismatch")
-          if run.get("status") not in {"in_progress", "completed"}:
+          status = run.get("status")
+          if status not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
+          if status == "completed" and run.get("conclusion") != "success":
+              raise SystemExit("completed predecessor run must be successful")
           head_sha = run.get("head_sha")
           if not isinstance(head_sha, str) or len(head_sha) != 40:
               raise SystemExit("predecessor head sha is invalid")
           print(head_sha)
           '
           )"
-          ARTIFACT_NAME="continuous-paper-state-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          RESUME_ARTIFACT_NAME="continuous-paper-resume-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
+          STATE_ARTIFACT_NAME="continuous-paper-state-$SOURCE_RUN_ID-$SOURCE_RUN_ATTEMPT"
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/source-artifacts.json
-          ARTIFACT_ID="$(
-            python - "$ARTIFACT_NAME" <<'PY'
+          ARTIFACT_SELECTION="$(
+            python - "$RESUME_ARTIFACT_NAME" "$STATE_ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          resume_name, state_name = sys.argv[1:3]
+          payload = json.loads(Path("/tmp/source-artifacts.json").read_text(encoding="utf-8"))
+          by_name = {
+              item.get("name"): item
+              for item in payload.get("artifacts", [])
+              if item.get("expired") is False
+          }
+          resume = by_name.get(resume_name)
+          if isinstance(resume, dict):
+              print(
+                  f"{resume['id']} continuous-paper-resume.tar.zst"
+              )
+              raise SystemExit(0)
+          state = by_name.get(state_name)
+          if not isinstance(state, dict):
+              raise SystemExit(
+                  "expected exact predecessor resume or durable state artifact"
+              )
+          print(f"{state['id']} -")
+          PY
+          )"
+          read -r ARTIFACT_ID ARTIFACT_MEMBER <<< "$ARTIFACT_SELECTION"
+          if [ "$ARTIFACT_MEMBER" = "continuous-paper-resume.tar.zst" ]; then
+            if ! bash scripts/restore_continuous_paper_state.sh \
+              "$ARTIFACT_ID" \
+              "$SOURCE_HEAD_SHA" \
+              "$STATE_ROOT" \
+              "$ARTIFACT_MEMBER"; then
+              echo "::warning::fast resume restore failed; waiting for exact durable fallback"
+              DURABLE_ARTIFACT_ID=""
+              for poll in $(seq 1 40); do
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/source-artifacts.json
+                DURABLE_ARTIFACT_ID="$(
+                  python - "$STATE_ARTIFACT_NAME" <<'PY'
           import json
           import sys
           from pathlib import Path
           name = sys.argv[1]
-          payload = json.loads(Path("/tmp/source-artifacts.json").read_text(encoding="utf-8"))
+          payload = json.loads(
+              Path("/tmp/source-artifacts.json").read_text(encoding="utf-8")
+          )
           matches = [
-              item for item in payload.get("artifacts", [])
-              if item.get("name") == name and item.get("expired") is False
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == name
+              and item.get("expired") is False
           ]
-          if len(matches) != 1:
-              raise SystemExit(f"expected exactly one predecessor state artifact named {name}")
-          print(matches[0]["id"])
+          print(matches[0]["id"] if len(matches) == 1 else "")
           PY
-          )"
-          bash scripts/restore_continuous_paper_state.sh \
-            "$ARTIFACT_ID" \
-            "$SOURCE_HEAD_SHA" \
-            "$STATE_ROOT"
+                )"
+                if [ -n "$DURABLE_ARTIFACT_ID" ]; then
+                  break
+                fi
+                echo "::notice::durable fallback not published yet ($poll/40)"
+                sleep 15
+              done
+              if [ -z "$DURABLE_ARTIFACT_ID" ]; then
+                echo "exact predecessor durable fallback did not appear" >&2
+                exit 1
+              fi
+              bash scripts/restore_continuous_paper_state.sh \
+                "$DURABLE_ARTIFACT_ID" \
+                "$SOURCE_HEAD_SHA" \
+                "$STATE_ROOT"
+            fi
+          else
+            bash scripts/restore_continuous_paper_state.sh \
+              "$ARTIFACT_ID" \
+              "$SOURCE_HEAD_SHA" \
+              "$STATE_ROOT"
+          fi
 
       - name: Restore latest trusted state for watchdog/manual recovery
         if: ${{ steps.guard.outputs.skip != 'true' && inputs.source_run_id == '' }}
@@ -427,6 +487,53 @@ jobs:
             --json-out /tmp/continuous-paper-state-size.json \
             --markdown-out /tmp/continuous-paper-state-size.md
           cat /tmp/continuous-paper-state-size.md | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Pack fast continuous paper resume state
+        id: fast_resume_pack
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v zstd >/dev/null
+          test -d "$STATE_ROOT"
+          rm -f continuous-paper-resume.tar.zst
+          tar -cf - -C "$STATE_ROOT" . \
+            | zstd -T0 -3 --no-progress -o continuous-paper-resume.tar.zst
+          zstd -t --no-progress continuous-paper-resume.tar.zst
+          test -s continuous-paper-resume.tar.zst
+
+      - name: Upload fast continuous paper resume state
+        id: fast_resume_upload
+        if: ${{ always() && steps.guard.outputs.skip != 'true' && steps.fast_resume_pack.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 20
+        uses: actions/upload-artifact@v7
+        with:
+          name: continuous-paper-resume-${{ github.run_id }}-${{ github.run_attempt }}
+          path: continuous-paper-resume.tar.zst
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Queue exact successor from fast resume
+        id: fast_resume_dispatch
+        if: ${{ success() && steps.guard.outputs.skip != 'true' && steps.fast_resume_upload.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run continuous-paper.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f "source_run_id=$GITHUB_RUN_ID" \
+            -f "source_run_attempt=$GITHUB_RUN_ATTEMPT"
+
+      - name: Remove local fast resume archive
+        if: ${{ always() && steps.guard.outputs.skip != 'true' }}
+        shell: bash
+        run: rm -f continuous-paper-resume.tar.zst
 
       - name: Upload cadence shadow research state
         if: ${{ always() && steps.guard.outputs.skip != 'true' && hashFiles('continuous-paper-state/cadence-shadow-state.json') != '' }}
@@ -922,8 +1029,8 @@ jobs:
           print("- live orders: false")
           PY
 
-      - name: Queue exact successor continuous paper worker
-        if: ${{ success() && steps.guard.outputs.skip != 'true' }}
+      - name: Queue fallback exact successor continuous paper worker
+        if: ${{ success() && steps.guard.outputs.skip != 'true' && steps.fast_resume_dispatch.outcome != 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

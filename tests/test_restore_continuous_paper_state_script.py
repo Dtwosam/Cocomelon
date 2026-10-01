@@ -117,6 +117,164 @@ def test_restore_script_streams_packed_artifact_end_to_end(
     assert not (tmp_path / "state.zip").exists()
 
 
+def test_restore_script_streams_fast_resume_member(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source-fast"
+    source_root.mkdir()
+    (source_root / "runtime-state.json").write_text(
+        '{"state":"fast"}\n',
+        encoding="utf-8",
+    )
+    tar_path = tmp_path / "continuous-paper-resume.tar"
+    with tarfile.open(tar_path, "w") as archive:
+        archive.add(
+            source_root / "runtime-state.json",
+            arcname="./runtime-state.json",
+        )
+    artifact_zip = tmp_path / "resume.zip"
+    with zipfile.ZipFile(
+        artifact_zip,
+        "w",
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+    ) as archive:
+        archive.writestr(
+            "continuous-paper-resume.tar.zst",
+            tar_path.read_bytes(),
+        )
+
+    fake_bin, env = _fake_gh(
+        tmp_path,
+        workflow_source="steps:\n  - name: Fast resume producer\n",
+        artifact_zip=artifact_zip,
+    )
+    fake_zstd = fake_bin / "zstd"
+    fake_zstd.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ " $* " == *" -t "* ]]; then
+  test -s "$3"
+  exit 0
+fi
+cat
+""",
+        encoding="utf-8",
+    )
+    fake_zstd.chmod(0o755)
+
+    state_root = tmp_path / "restored-fast"
+    subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "789",
+            SOURCE_SHA,
+            str(state_root),
+            "continuous-paper-resume.tar.zst",
+        ],
+        check=True,
+        env=env,
+    )
+
+    assert (state_root / "runtime-state.json").read_text(
+        encoding="utf-8"
+    ) == '{"state":"fast"}\n'
+
+
+def test_restore_script_retries_transient_packed_download(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source-retry"
+    source_root.mkdir()
+    (source_root / "runtime-state.json").write_text(
+        '{"state":"retried"}\n',
+        encoding="utf-8",
+    )
+    tar_path = tmp_path / "retry-state.tar"
+    with tarfile.open(tar_path, "w") as archive:
+        archive.add(
+            source_root / "runtime-state.json",
+            arcname="./runtime-state.json",
+        )
+    artifact_zip = tmp_path / "retry-packed.zip"
+    with zipfile.ZipFile(
+        artifact_zip,
+        "w",
+        compression=zipfile.ZIP_DEFLATED,
+        allowZip64=True,
+    ) as archive:
+        archive.writestr(
+            "continuous-paper-state.tar",
+            tar_path.read_bytes(),
+        )
+
+    fake_bin = tmp_path / "retry-bin"
+    fake_bin.mkdir()
+    workflow_b64 = tmp_path / "retry-workflow.b64"
+    workflow_b64.write_bytes(
+        base64.b64encode(
+            b"steps:\n"
+            b"  - name: Pack durable continuous paper state\n"
+        )
+    )
+    counter = tmp_path / "artifact-attempts"
+    fake_gh = fake_bin / "gh"
+    fake_gh.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *"/contents/.github/workflows/continuous-paper.yml?"* ]]; then
+  cat "$FAKE_WORKFLOW_B64"
+elif [[ "$*" == *"/actions/artifacts/"*"/zip"* ]]; then
+  attempts=0
+  if [ -f "$FAKE_ATTEMPT_COUNTER" ]; then
+    attempts="$(cat "$FAKE_ATTEMPT_COUNTER")"
+  fi
+  attempts=$((attempts + 1))
+  printf '%s' "$attempts" > "$FAKE_ATTEMPT_COUNTER"
+  if [ "$attempts" -eq 1 ]; then
+    bytes="$(stat -c %s "$FAKE_ARTIFACT_ZIP")"
+    head -c $((bytes / 2)) "$FAKE_ARTIFACT_ZIP"
+    exit 1
+  fi
+  cat "$FAKE_ARTIFACT_ZIP"
+else
+  exit 9
+fi
+""",
+        encoding="utf-8",
+    )
+    fake_gh.chmod(0o755)
+    env = dict(os.environ)
+    env.update(
+        {
+            "PATH": f"{fake_bin}:{env['PATH']}",
+            "GITHUB_REPOSITORY": "Dtwosam/Cocomelon",
+            "FAKE_WORKFLOW_B64": str(workflow_b64),
+            "FAKE_ARTIFACT_ZIP": str(artifact_zip),
+            "FAKE_ATTEMPT_COUNTER": str(counter),
+        }
+    )
+
+    state_root = tmp_path / "restored-retry"
+    subprocess.run(
+        [
+            "bash",
+            str(SCRIPT),
+            "321",
+            SOURCE_SHA,
+            str(state_root),
+        ],
+        check=True,
+        env=env,
+    )
+
+    assert counter.read_text(encoding="utf-8") == "2"
+    assert (state_root / "runtime-state.json").read_text(
+        encoding="utf-8"
+    ) == '{"state":"retried"}\n'
+
+
 def test_stream_zip_member_handles_forced_zip64(
     tmp_path: Path,
 ) -> None:
@@ -348,11 +506,12 @@ def test_restore_script_uses_stream_for_packed_artifacts() -> None:
         'grep -Fq -- "- name: Pack durable continuous paper state"'
         in source
     )
-    assert (
-        "| python scripts/stream_zip_member.py "
-        "continuous-paper-state.tar \\\n"
-        "    | tar -xf - -C \"$state_root\""
-        in source
-    )
+    assert "restore_stream_with_retries()" in source
+    assert "for attempt in 1 2 3" in source
+    assert 'rm -rf "$state_root"' in source
+    assert 'python scripts/stream_zip_member.py "$member"' in source
+    assert 'continuous-paper-resume.tar.zst' in source
+    assert '| zstd -d -c --no-progress \\' in source
+    assert 'restore_stream_with_retries "tar" "continuous-paper-state.tar"' in source
     assert '> "$tmp_root/state.zip"' in source
     assert 'unzip -q "$tmp_root/state.zip" -d "$artifact_root"' in source
