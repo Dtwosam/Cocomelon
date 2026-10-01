@@ -857,6 +857,15 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
         in source
     )
     assert "_l2_event_fresh_for_promotion(" in source
+    recovery_index = source.index(
+        "systemically_unhealthy_l2 = ("
+    )
+    rotation_index = source.index(
+        "if (\n"
+        "                    not systemically_unhealthy_l2\n"
+        "                    and now_ms >= next_selection_refresh_ms"
+    )
+    assert recovery_index < rotation_index
 
 
 def test_context_refresh_timestamps_response_receipt() -> None:
