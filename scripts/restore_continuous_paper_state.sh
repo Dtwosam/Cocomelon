@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [ "$#" -ne 3 ]; then
-  echo "usage: $0 <artifact-id> <source-head-sha> <state-root>" >&2
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+  echo "usage: $0 <artifact-id> <source-head-sha> <state-root> [member-name]" >&2
   exit 2
 fi
 
 artifact_id="$1"
 source_head_sha="$2"
 state_root="$3"
+member_name="${4:-}"
 
 if [[ ! "$artifact_id" =~ ^[0-9]+$ ]]; then
   echo "artifact id must be numeric" >&2
@@ -37,7 +38,18 @@ gh api \
 rm -rf "$state_root"
 mkdir -p "$state_root"
 
-if grep -Fq -- "- name: Pack durable continuous paper state" "$workflow_source"; then
+if [ "$member_name" = "continuous-paper-resume.tar.zst" ]; then
+  command -v zstd >/dev/null
+  echo "::notice::streaming fast continuous-paper resume artifact $artifact_id"
+  gh api \
+    "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+    | python scripts/stream_zip_member.py "$member_name" \
+    | zstd -d -c --no-progress \
+    | tar -xf - -C "$state_root"
+elif [ -n "$member_name" ]; then
+  echo "unsupported packed state member: $member_name" >&2
+  exit 2
+elif grep -Fq -- "- name: Pack durable continuous paper state" "$workflow_source"; then
   echo "::notice::streaming packed continuous-paper artifact $artifact_id"
   gh api \
     "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
