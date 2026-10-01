@@ -124,6 +124,14 @@ def _campaign_metadata(
         raise ProspectiveFullStackReflowExactLedgerError(
             "realized_pnl summary must be an object"
         )
+    if realized.get("exact_realized_return_modeled") is not True:
+        raise ProspectiveFullStackReflowExactLedgerError(
+            "realized PnL source predates return normalization"
+        )
+    if realized.get("entry_notional_normalized") is not True:
+        raise ProspectiveFullStackReflowExactLedgerError(
+            "realized PnL source lacks entry-notional normalization"
+        )
     horizons = tuple(_integer_list(realized, "horizons_ms"))
     if (
         not horizons
