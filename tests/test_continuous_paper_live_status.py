@@ -21,6 +21,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_capacity_reflow_release_lineage_lines,
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
+    _prospective_consecutive_loss_cooldown_shadow_lines,
     _prospective_daily_loss_lockout_reflow_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
@@ -6463,3 +6464,144 @@ def test_candidate_stack_overlap_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: overlap boom" in output
+
+
+def test_cooldown_shadow_renderer_exposes_clean_forward_evidence() -> None:
+    output = "\n".join(
+        _prospective_consecutive_loss_cooldown_shadow_lines(
+            {
+                "enabled": True,
+                "error": None,
+                "state_restore_error": None,
+                "candidate_id": (
+                    "prospective-consecutive-loss-cooldown-relaxation-v1"
+                ),
+                "frozen_at_ms": 100,
+                "started_at_ms": 21_600_100,
+                "embargo_ms": 21_600_000,
+                "observed_cooldown_rejections": 18,
+                "pre_clean_touched_cooldown_rejections": 14,
+                "clean_cooldown_rejections": 4,
+                "candidate_eligible_cooldown_rejections": 3,
+                "missing_rank_evidence": 0,
+                "stale_rank_evidence": 0,
+                "counterfactual_risk_rejections": {
+                    "correlation_bucket_exhausted": 1,
+                },
+                "execution_results": {"full": 2},
+                "by_horizon": {
+                    "300000": {
+                        "settled": 2,
+                        "pending": 0,
+                        "stale": 0,
+                        "missing_path": 0,
+                        "positive": 1,
+                        "negative": 1,
+                        "flat": 0,
+                        "entry_fee_adjusted_mark_to_market_pnl": "3",
+                        "mean_directional_return_fraction": "0.002",
+                    },
+                    "900000": {
+                        "settled": 2,
+                        "pending": 0,
+                        "stale": 0,
+                        "missing_path": 0,
+                        "positive": 2,
+                        "negative": 0,
+                        "flat": 0,
+                        "entry_fee_adjusted_mark_to_market_pnl": "7",
+                        "mean_directional_return_fraction": "0.004",
+                    },
+                    "3600000": {
+                        "settled": 2,
+                        "pending": 0,
+                        "stale": 0,
+                        "missing_path": 0,
+                        "positive": 2,
+                        "negative": 0,
+                        "flat": 0,
+                        "entry_fee_adjusted_mark_to_market_pnl": "9",
+                        "mean_directional_return_fraction": "0.005",
+                    },
+                },
+                "relaxation_windows": {
+                    "900000": {
+                        "would_unblock_opportunities": 2,
+                        "fillable_opportunities": 2,
+                        "one_hour_robustness": {
+                            "settled_options": 2,
+                            "total_entry_fee_adjusted_pnl": "9",
+                            "leave_one_option_out_min_pnl": "4",
+                            "leave_one_market_out_min_pnl": "4",
+                            "positive_after_removing_any_one_option": True,
+                            "positive_after_removing_any_one_market": True,
+                        },
+                    },
+                    "1800000": {
+                        "would_unblock_opportunities": 1,
+                        "fillable_opportunities": 1,
+                        "one_hour_robustness": {
+                            "settled_options": 1,
+                            "total_entry_fee_adjusted_pnl": "5",
+                            "leave_one_option_out_min_pnl": "0",
+                            "leave_one_market_out_min_pnl": "0",
+                            "positive_after_removing_any_one_option": False,
+                            "positive_after_removing_any_one_market": False,
+                        },
+                    },
+                    "2700000": {
+                        "would_unblock_opportunities": 0,
+                        "fillable_opportunities": 0,
+                        "one_hour_robustness": {
+                            "settled_options": 0,
+                            "total_entry_fee_adjusted_pnl": "0",
+                            "leave_one_option_out_min_pnl": "0",
+                            "leave_one_market_out_min_pnl": "0",
+                            "positive_after_removing_any_one_option": False,
+                            "positive_after_removing_any_one_market": False,
+                        },
+                    },
+                },
+                "by_direction": {
+                    "long": {
+                        "options": 1,
+                        "fillable": 1,
+                        "settled_1h": 1,
+                        "positive_1h": 1,
+                        "negative_1h": 0,
+                        "entry_fee_adjusted_1h_pnl": "4",
+                    },
+                    "short": {
+                        "options": 2,
+                        "fillable": 1,
+                        "settled_1h": 1,
+                        "positive_1h": 1,
+                        "negative_1h": 0,
+                        "entry_fee_adjusted_1h_pnl": "5",
+                    },
+                },
+            }
+        )
+    )
+
+    assert "consecutive-loss cooldown relaxation shadow" in output
+    assert "`18 / 14 / 4 / 3`" in output
+    assert "| 1h | 2 | 0 | 0 | 0 | 2 | 0 | 0 | 9 | 0.005 |" in output
+    assert "| 15m | 2 | 2 | 2 | 9 | 4 | 4 | True / True |" in output
+    assert "Only the cooldown veto is expired in the shadow" in output
+    assert "actual risk limits are unchanged" in output
+
+
+def test_cooldown_shadow_renderer_exposes_failure() -> None:
+    output = "\n".join(
+        _prospective_consecutive_loss_cooldown_shadow_lines(
+            {
+                "enabled": False,
+                "state_restore_error": "bad state",
+                "error": "RuntimeError: shadow boom",
+            }
+        )
+    )
+
+    assert "state restore warning" in output
+    assert "RuntimeError: shadow boom" in output
