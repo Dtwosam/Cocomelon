@@ -222,6 +222,9 @@ from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookCapture,
     OriginalStopBookEvidenceStore,
 )
+from cocomelon.research.post_freshness_paper_cohort import (
+    post_freshness_paper_cohort_summary,
+)
 from cocomelon.research.profit_lock_counterfactual import (
     ProfitLockStudy,
     ProfitLockTradeOutcome,
@@ -4146,6 +4149,27 @@ def _closed_trade_stop_reentry_payload(
     return payload
 
 
+def _post_freshness_paper_cohort_payload(
+    journal: JournalStore,
+) -> dict[str, object]:
+    try:
+        payload = post_freshness_paper_cohort_summary(
+            tuple(journal.iter_trades())
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_concentration_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -5386,6 +5410,11 @@ def _live_status_payload(
             pump.journal,
         )
     )
+    post_freshness_paper_cohort = (
+        _post_freshness_paper_cohort_payload(
+            pump.journal,
+        )
+    )
     closed_trade_utc_hour = _closed_trade_utc_hour_payload(
         pump.journal,
         fact_store,
@@ -5877,6 +5906,7 @@ def _live_status_payload(
         "drawdown": drawdown,
         "closed_trade_concentration": closed_trade_concentration,
         "closed_trade_stop_reentry": closed_trade_stop_reentry,
+        "post_freshness_paper_cohort": post_freshness_paper_cohort,
         "closed_trade_utc_hour": closed_trade_utc_hour,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
