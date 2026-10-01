@@ -94,6 +94,9 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
                 "missing_deep_data": 12,
                 "stale_book": 1,
             },
+            "stale_book_age_ms_by_market": {
+                "ETH": 6200,
+            },
         },
         "session_risk": {
             "evaluations": 1,
@@ -3791,6 +3794,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "latest eligibility reasons:" in output
     assert "missing_deep_data=12" in output
     assert "stale_book=1" in output
+    assert "latest stale-book age coverage / reason count" in output
+    assert "`1 / 1`" in output
+    assert "latest stale-book age min / median / max" in output
+    assert "`6200 / 6200 / 6200ms`" in output
+    assert "worst stale books: `ETH=6200ms`" in output
     assert "session eligibility evaluated / rankable / deep-ready" in output
     assert "session eligibility reasons:" in output
     assert "consecutive losses / threshold" in output
@@ -5966,7 +5974,12 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "rankable": 20,
             "deep_ready": 4,
             "reason_counts": {
-                "missing_deep_data": 16,
+                "missing_deep_data": 14,
+                "stale_book": 2,
+            },
+            "stale_book_age_ms_by_market": {
+                "SOL": 5100,
+                "ETH": 12900,
             },
         },
         "session_risk": {
@@ -6023,7 +6036,10 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "Worker run: 123" in rendered
     assert "BTC" in rendered
     assert "latest eligibility markets / rankable / deep-ready: 20 / 20 / 4" in rendered
-    assert "latest eligibility reasons: missing_deep_data=16" in rendered
+    assert "latest eligibility reasons: missing_deep_data=14, stale_book=2" in rendered
+    assert "latest stale-book age coverage / reason count: `2 / 2`" in rendered
+    assert "latest stale-book age min / median / max: `5100 / 9000 / 12900ms`" in rendered
+    assert "worst stale books: `ETH=12900ms, SOL=5100ms`" in rendered
     assert "session eligibility evaluated / rankable / deep-ready: 40 / 40 / 8" in rendered
     assert "missing_deep_data=30" in rendered
     assert "stale_book=2" in rendered

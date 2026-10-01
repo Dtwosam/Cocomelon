@@ -3784,3 +3784,14 @@ This is operational observability only. The baseline remains a one-hour cooldown
 The timing is especially important for the clean cooldown-relaxation shadow because rejected opportunities can now be interpreted against the frozen 15m / 30m / 45m alternatives without inferring timing from unrelated trade history.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Latest-epoch stale-book age telemetry — 2026-10-01
+
+The continuous paper heartbeat now preserves exact book age for every latest-epoch market whose scanner eligibility failed with `stale_book`.
+
+The status reports stale-age evidence coverage, min/median/max age, and the five worst stale markets. This distinguishes borderline freshness misses just over the scanner's existing 5-second deep-readiness limit from genuinely stalled market-data lanes.
+
+This is observability only. The scanner freshness threshold, execution freshness threshold, shortlist selection, strategy, risk, sizing, stops, exits, promotion state, and live authority are unchanged.
+
+**LIVE TRADING: DISABLED.**

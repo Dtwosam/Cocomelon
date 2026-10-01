@@ -35,6 +35,70 @@ def _reason_summary(raw: object) -> str:
     )
     return ", ".join(f"{reason}={count}" for reason, count in counts[:8])
 
+
+def _stale_book_age_lines(raw: object) -> list[str]:
+    if not isinstance(raw, dict):
+        return [
+            "- latest stale-book age coverage / reason count: `0 / 0`",
+            "- latest stale-book age min / median / max: `none`",
+            "- worst stale books: `none`",
+        ]
+    reason_counts = raw.get("reason_counts", {})
+    stale_reason_count = 0
+    if isinstance(reason_counts, dict):
+        value = reason_counts.get("stale_book", 0)
+        if isinstance(value, int) and not isinstance(value, bool):
+            stale_reason_count = max(0, value)
+
+    raw_ages = raw.get("stale_book_age_ms_by_market", {})
+    ages: list[tuple[str, int]] = []
+    if isinstance(raw_ages, dict):
+        for market, age in raw_ages.items():
+            if (
+                isinstance(age, int)
+                and not isinstance(age, bool)
+                and age >= 0
+            ):
+                ages.append((str(market), age))
+    ages.sort(key=lambda item: (item[1], item[0]))
+    if not ages:
+        return [
+            (
+                "- latest stale-book age coverage / reason count: "
+                f"`0 / {stale_reason_count}`"
+            ),
+            "- latest stale-book age min / median / max: `none`",
+            "- worst stale books: `none`",
+        ]
+
+    ordered = [age for _market, age in ages]
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        median = ordered[midpoint]
+    else:
+        median = (
+            ordered[midpoint - 1] + ordered[midpoint]
+        ) // 2
+    worst = sorted(
+        ages,
+        key=lambda item: (-item[1], item[0]),
+    )[:5]
+    worst_text = ", ".join(
+        f"{market}={age}ms" for market, age in worst
+    )
+    return [
+        (
+            "- latest stale-book age coverage / reason count: "
+            f"`{len(ages)} / {stale_reason_count}`"
+        ),
+        (
+            "- latest stale-book age min / median / max: "
+            f"`{ordered[0]} / {median} / {ordered[-1]}ms`"
+        ),
+        f"- worst stale books: `{worst_text}`",
+    ]
+
+
 def _cadence_shadow_lines(raw: object) -> list[str]:
     if not isinstance(raw, dict):
         return [
@@ -9144,6 +9208,7 @@ def _render_operational_live_status(
                 "- latest eligibility reasons: "
                 f"{_reason_summary(latest_eligibility.get('reason_counts', {}))}"
             ),
+            *_stale_book_age_lines(latest_eligibility),
             (
                 "- session eligibility evaluated / rankable / deep-ready: "
                 f"{eligibility.get('evaluations', 0)} / "
@@ -9960,6 +10025,7 @@ def render_live_status(
                 "- latest eligibility reasons: "
                 f"`{_reason_summary(latest_eligibility.get('reason_counts', {}))}`"
             ),
+            *_stale_book_age_lines(latest_eligibility),
             (
                 "- session eligibility evaluated / rankable / deep-ready: "
                 f"`{eligibility.get('evaluations', 0)} / "

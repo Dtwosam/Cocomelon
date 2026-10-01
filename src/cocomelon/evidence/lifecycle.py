@@ -186,6 +186,7 @@ class SessionDecisionActivity:
     latest_epoch_rankable_count: int
     latest_epoch_deep_ready_count: int
     latest_epoch_eligibility_reason_counts: tuple[tuple[str, int], ...]
+    latest_epoch_stale_book_age_ms: tuple[tuple[str, int], ...]
     risk_evaluations: int
     risk_approvals: int
     risk_rejections: int
@@ -296,6 +297,7 @@ class BaselineReplayPipeline:
         self._latest_epoch_rankable_count = 0
         self._latest_epoch_deep_ready_count = 0
         self._latest_epoch_eligibility_reason_counts: dict[str, int] = {}
+        self._latest_epoch_stale_book_age_ms: dict[str, int] = {}
         self._risk_evaluations = 0
         self._risk_approvals = 0
         self._risk_rejections = 0
@@ -339,6 +341,11 @@ class BaselineReplayPipeline:
             latest_epoch_eligibility_reason_counts=tuple(
                 sorted(
                     self._latest_epoch_eligibility_reason_counts.items()
+                )
+            ),
+            latest_epoch_stale_book_age_ms=tuple(
+                sorted(
+                    self._latest_epoch_stale_book_age_ms.items()
                 )
             ),
             risk_evaluations=self._risk_evaluations,
@@ -593,6 +600,7 @@ class BaselineReplayPipeline:
         self._latest_epoch_rankable_count = 0
         self._latest_epoch_deep_ready_count = 0
         self._latest_epoch_eligibility_reason_counts = {}
+        self._latest_epoch_stale_book_age_ms = {}
         observations: list[JournalObservation] = []
         for evaluation in epoch.markets:
             self._eligibility_evaluations += 1
@@ -613,6 +621,13 @@ class BaselineReplayPipeline:
                     )
                     + 1
                 )
+            if (
+                "stale_book" in evaluation.eligibility.reasons
+                and evaluation.feature.book_age_ms is not None
+            ):
+                self._latest_epoch_stale_book_age_ms[
+                    evaluation.feature.market.canonical
+                ] = evaluation.feature.book_age_ms
             decision = evaluation.decision
             direction = decision.direction.value
             if direction not in self._decision_counts:
