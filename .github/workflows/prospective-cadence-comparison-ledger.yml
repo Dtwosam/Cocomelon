@@ -130,6 +130,11 @@ jobs:
                       .name
                       | startswith("cadence-model-comparison-")
                     )
+                    and (
+                      (.name | startswith(
+                        "cadence-model-comparison-no-evidence-"
+                      )) | not
+                    )
                   )
                 )
               | if length == 1
@@ -138,20 +143,84 @@ jobs:
                 end
             ' <<<"$artifacts_json"
           )"
-          if [[ -z "$artifact_line" ]]; then
-            echo "Expected exactly one model-comparison artifact." >&2
-            exit 1
+          no_evidence_line="$(
+            jq -r '
+              .artifacts
+              | map(
+                  select(
+                    (.expired | not)
+                    and (
+                      .name
+                      | startswith(
+                        "cadence-model-comparison-no-evidence-"
+                      )
+                    )
+                  )
+                )
+              | if length == 1
+                then [.[0].id, .[0].name] | @tsv
+                else ""
+                end
+            ' <<<"$artifacts_json"
+          )"
+
+          if [[ -n "$artifact_line" && -z "$no_evidence_line" ]]; then
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+              > /tmp/current-comparison.zip
+            unzip -q /tmp/current-comparison.zip -d /tmp/current-comparison
+            for name in comparison.json microstructure.json baseline.json; do
+              test -s "/tmp/current-comparison/$name"
+            done
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "no_evidence=false" >> "$GITHUB_OUTPUT"
+            echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
-          gh api \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
-            > /tmp/current-comparison.zip
-          unzip -q /tmp/current-comparison.zip -d /tmp/current-comparison
-          for name in comparison.json microstructure.json baseline.json; do
-            test -s "/tmp/current-comparison/$name"
-          done
-          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "$artifact_line" && -n "$no_evidence_line" ]]; then
+            IFS=$'\t' read -r receipt_id receipt_name <<<"$no_evidence_line"
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/actions/artifacts/$receipt_id/zip" \
+              > /tmp/current-comparison-no-evidence.zip
+            unzip -q \
+              /tmp/current-comparison-no-evidence.zip \
+              -d /tmp/current-comparison
+            receipt_path="$(
+              find /tmp/current-comparison \
+                -type f \
+                -name 'cadence-model-comparison-no-evidence.json' \
+                -print -quit
+            )"
+            test -n "$receipt_path"
+            test -s "$receipt_path"
+            python - "$receipt_path" "$COMPARISON_RUN_ID" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(
+              Path(sys.argv[1]).read_text(encoding="utf-8")
+          )
+          if payload.get("status") != "no_evidence":
+              raise SystemExit("comparison no-evidence receipt status mismatch")
+          if payload.get("execution_authority") is not False:
+              raise SystemExit("comparison receipt has execution authority")
+          if payload.get("promotion_authority") is not False:
+              raise SystemExit("comparison receipt has promotion authority")
+          PY
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "no_evidence=true" >> "$GITHUB_OUTPUT"
+            echo "artifact_name=$receipt_name" >> "$GITHUB_OUTPUT"
+            echo "receipt_path=$receipt_path" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Comparison artifact identity is ambiguous or missing." >&2
+          exit 1
 
       - name: Restore previous paired ledger
         id: previous
@@ -232,6 +301,7 @@ jobs:
 
       - name: Extend append-only paired ledger
         id: ledger
+        if: ${{ steps.current.outputs.available == 'true' }}
         continue-on-error: true
         env:
           COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
@@ -274,7 +344,9 @@ jobs:
           fi
 
       - name: Publish blocked paired-ledger status
-        if: ${{ steps.ledger.outputs.clean != 'true' }}
+        if: >-
+          steps.current.outputs.available == 'true' &&
+          steps.ledger.outputs.clean != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           ERROR_TEXT: ${{ steps.ledger.outputs.error }}
@@ -322,14 +394,127 @@ jobs:
             -f body="$(cat /tmp/paired-ledger-status.md)"
 
       - name: Fail closed on paired-ledger drift
-        if: ${{ steps.ledger.outputs.clean != 'true' }}
+        if: >-
+          steps.current.outputs.available == 'true' &&
+          steps.ledger.outputs.clean != 'true'
         shell: bash
         run: |
           echo "Prospective A/B append-only ledger is blocked." >&2
           exit 1
 
+      - name: Build paired-ledger no-evidence receipt
+        if: ${{ steps.current.outputs.no_evidence == 'true' }}
+        env:
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+          COMPARISON_RUN_ATTEMPT: ${{ steps.source.outputs.comparison_run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.current.outputs.artifact_name }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          payload = {
+              "status": "no_evidence",
+              "reason": "source_comparison_no_evidence",
+              "source_comparison_run_id": int(
+                  os.environ["COMPARISON_RUN_ID"]
+              ),
+              "source_comparison_run_attempt": int(
+                  os.environ["COMPARISON_RUN_ATTEMPT"]
+              ),
+              "source_artifact_name": os.environ["SOURCE_ARTIFACT_NAME"],
+              "source_resolution": os.environ["RESOLUTION_MODE"],
+              "previous_ledger_workflow_run_id": (
+                  os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or None
+              ),
+              "execution_authority": False,
+              "promotion_authority": False,
+          }
+          Path(
+              "cadence-model-comparison-ledger-no-evidence.json"
+          ).write_text(
+              json.dumps(
+                  payload,
+                  sort_keys=True,
+                  separators=(",", ":"),
+              ) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Publish paired-ledger no-evidence status
+        if: ${{ steps.current.outputs.no_evidence == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
+          COMPARISON_RUN_ATTEMPT: ${{ steps.source.outputs.comparison_run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Prospective cadence A/B experiment ledger",
+              "",
+              "**Status:** BLOCKED — no new comparison evidence",
+              "",
+              (
+                  "- source comparison run: "
+                  f"`{os.environ['COMPARISON_RUN_ID']}`"
+              ),
+              (
+                  "- source comparison attempt: "
+                  f"`{os.environ['COMPARISON_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['RESOLUTION_MODE']}`"
+              ),
+              f"- previous ledger workflow run: `{previous}`",
+              "",
+              (
+                  "The source comparison intentionally published a "
+                  "no-evidence receipt. No prior paired ledger is reused "
+                  "as if it were current."
+              ),
+              "",
+              "**Execution authority:** `false`  ",
+              "**Promotion authority:** `false`  ",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/paired-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$COMPARISON_LEDGER_ISSUE" \
+            -f body="$(cat /tmp/paired-ledger-status.md)"
+
+      - uses: actions/upload-artifact@v7
+        if: ${{ steps.current.outputs.no_evidence == 'true' }}
+        with:
+          name: cadence-model-comparison-ledger-no-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cadence-model-comparison-ledger-no-evidence.json
+          if-no-files-found: error
+          retention-days: 90
+
       - name: Publish clean paired-ledger status
-        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        if: >-
+          steps.current.outputs.available == 'true' &&
+          steps.ledger.outputs.clean == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           COMPARISON_RUN_ID: ${{ steps.source.outputs.comparison_run_id }}
@@ -467,7 +652,9 @@ jobs:
             -f body="$(cat /tmp/paired-ledger-status.md)"
 
       - uses: actions/upload-artifact@v7
-        if: ${{ steps.ledger.outputs.clean == 'true' }}
+        if: >-
+          steps.current.outputs.available == 'true' &&
+          steps.ledger.outputs.clean == 'true'
         with:
           name: cadence-model-comparison-ledger-${{ github.run_id }}-${{ github.run_attempt }}
           path: cadence-model-comparison-ledger.json
