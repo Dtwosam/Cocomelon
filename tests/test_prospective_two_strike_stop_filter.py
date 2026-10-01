@@ -410,3 +410,93 @@ def test_two_strike_prior_strikes_rejects_pre_start_query() -> None:
             direction=Direction.LONG,
             timestamp_ms=state.started_at_ms - 1,
         )
+
+
+def _economic_two_strike_trades(
+    *,
+    winner_pnl: str,
+) -> tuple[TradeJournalEntry, ...]:
+    start = EMBARGO_MS + 20_000_000
+    trades: list[TradeJournalEntry] = []
+    keys = (
+        ("SOL", Direction.LONG),
+        ("SOL", Direction.SHORT),
+        ("ETH", Direction.LONG),
+        ("ETH", Direction.SHORT),
+    )
+    ordinal = 0
+    for cycle in range(8):
+        market, direction = keys[cycle % len(keys)]
+        base = start + cycle * 600_000
+        for suffix, offset, pnl in (
+            ("loss-a", 0, "-1"),
+            ("loss-b", 120_000, "-1"),
+            ("blocked-loss", 240_000, "-3"),
+            ("winner-reset", 360_000, winner_pnl),
+        ):
+            trades.append(
+                _trade(
+                    f"economic-{cycle}-{suffix}",
+                    market=market,
+                    direction=direction,
+                    opened_at_ms=base + offset,
+                    pnl=pnl,
+                    exit_reason=(
+                        "OPPOSITE_FRESH_THESIS"
+                        if suffix == "winner-reset"
+                        else "MARK_STOP_TRIGGERED"
+                    ),
+                )
+            )
+            ordinal += 1
+    return tuple(trades)
+
+
+def test_two_strike_requires_profitable_robust_economics() -> None:
+    trades = _economic_two_strike_trades(winner_pnl="5")
+    state = ProspectiveTwoStrikeStopFilterState(
+        frozen_at_ms=20_000_000
+    )
+
+    result = prospective_two_strike_stop_filter_summary(
+        trades,
+        state,
+    )
+
+    assert result["prospective_closed_trades"] == 32
+    assert result["blocked_trades"] == 8
+    assert result["admitted_trades"] == 24
+    assert result["candidate_net_pnl"] == "24"
+    assert result["delta_net_pnl"] == "24"
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["sample_complete"] is True
+    assert readiness["candidate_profitable"] is True
+    assert readiness["improvement_positive"] is True
+    assert readiness["candidate_single_trade_robust"] is True
+    assert readiness["candidate_single_market_robust"] is True
+    assert readiness["delta_single_trade_robust"] is True
+    assert readiness["delta_single_market_robust"] is True
+    assert readiness["ready_for_review"] is True
+
+
+def test_two_strike_rejects_less_bad_losing_candidate() -> None:
+    trades = _economic_two_strike_trades(winner_pnl="1")
+    state = ProspectiveTwoStrikeStopFilterState(
+        frozen_at_ms=20_000_000
+    )
+
+    result = prospective_two_strike_stop_filter_summary(
+        trades,
+        state,
+    )
+
+    assert result["candidate_net_pnl"] == "-8"
+    assert result["delta_net_pnl"] == "24"
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["sample_complete"] is True
+    assert readiness["candidate_profitable"] is False
+    assert readiness["improvement_positive"] is True
+    assert readiness["economics_positive"] is False
+    assert readiness["ready_for_review"] is False
