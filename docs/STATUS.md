@@ -3657,3 +3657,24 @@ For every closed trade after that common start:
 This is matched-trade contribution evidence only. It is not a portfolio counterfactual, models no replacement trades, changes no candidate readiness gate, and has no execution or promotion authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Full entry-stack capacity reflow audit — 2026-10-01
+
+The common-start entry stack now has a portfolio-capacity correction path instead of assuming every blocked trade simply disappears with no downstream effect.
+
+The new audit is deliberately one-hop and conservative:
+
+- replacement candidates must be opening opportunities that were actually observed and rejected by the real paper risk engine for aggregate or correlation-bucket capacity;
+- the replacement opportunity must have complete, fresh rank evidence and must pass the frozen combined, two-strike, and zero-strike momentum entry rules at its own decision timestamp;
+- a capacity release receives credit only when the occupied baseline position is proven by opening lineage and closed-trade identity to be one the same frozen entry stack would have blocked;
+- missing feature evidence, stale or missing rank evidence, unresolved open release positions, and missing stack decision maps are explicit integrity misses rather than guessed;
+- for proven releases, the existing captured risk request, account state, L2 book, execution config, and single-position removal accounting are reused to test conservative risk approval, order planning, and IOC replacement-entry fillability.
+
+The audit does **not** recursively simulate a new alternate portfolio, does not assume replacement exits, and does not claim replacement or portfolio PnL. Entry-fill simulation failures are isolated from the causal release-lineage result.
+
+The output is written only at paper-worker completion as `prospective-full-stack-capacity-reflow-summary.json` and is included in the compact learning artifact.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
