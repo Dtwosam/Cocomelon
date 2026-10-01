@@ -3851,3 +3851,23 @@ The paper runtime now keeps the 5,000 ms deep-book eligibility ceiling unchanged
 No stale book is made tradable, no freshness threshold is widened, and no paper order is created from missing microstructure. This is a data-availability repair, not a strategy relaxation.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Entry-filter economic readiness hardening — 2026-10-01
+
+Prospective entry-filter review readiness now uses one shared economic standard across the combined top-10/no-LONG-trend screen, the two-strike same-side stop filter, and the zero-strike momentum-band filter.
+
+A candidate can no longer become review-ready merely because it loses less than actual paper. The pre-existing frozen decision rules and prospective rows are unchanged, but review readiness now additionally requires:
+
+- the candidate itself to have positive net PnL and positive net R;
+- positive candidate-minus-actual improvement in both PnL and net R;
+- candidate profitability to remain positive after removing any one trade;
+- candidate profitability to remain positive after removing any one market;
+- candidate-minus-actual improvement to remain positive after removing any one trade;
+- candidate-minus-actual improvement to remain positive after removing any one market.
+
+The combined entry screen previously had only sample/integrity readiness, while two-strike only required positive improvement. Momentum already required positive candidate economics, but now uses the same candidate-and-delta leave-one-out standard as the other filters.
+
+This hardens evidence interpretation only. It does not change frozen entry decisions, historical rows, paper orders, sizing, stops, risk limits, candidate promotion authority, or live execution.
+
+**LIVE TRADING: DISABLED.**
