@@ -3680,3 +3680,22 @@ The output is written only at paper-worker completion as `prospective-full-stack
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only exact full-stack reflow PnL ledger — 2026-10-01
+
+The one-hop full entry-stack capacity-reflow audit now has a separate durable exact-economics ledger at Issue #738.
+
+Only a replacement option at a fixed exit horizon becomes immutable when the replacement exit fully closes and every crossed hourly funding boundary has complete captured evidence. Missing exits, partial exits and missing funding evidence remain outside the immutable ledger and may mature in later paper artifacts.
+
+Each exact row locks the replacement option identity, opportunity market/direction, entry fill price/quantity/notional, fixed exit horizon, funding-boundary lineage, funding cash PnL, exact realized PnL and exact realized return. Previously published exact rows must never disappear or change.
+
+Economics remain strictly separated by horizon. No best-horizon selection and no cross-horizon aggregation are allowed. Each horizon has its own precommitted review bar: at least 20 exact option-horizons, at least 5 LONG, 5 SHORT and 4 markets, positive realized PnL and return, plus positive leave-one-option and leave-one-market robustness in both units.
+
+Old compact paper sources that predate entry-notional/return normalization publish a waiting status and receive no ledger credit.
+
+This is research-only evidence. It does not change paper entries, exits, capacity limits, risk, readiness of any frozen candidate, promotion state or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
