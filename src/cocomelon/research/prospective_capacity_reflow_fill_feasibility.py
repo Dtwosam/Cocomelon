@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from decimal import Decimal
 from typing import Final
@@ -195,6 +195,9 @@ def _counterfactual_request(
     release: CandidateCausedCapacityRelease,
     history: tuple[PaperPosition, ...],
     config: PaperExecutionConfig,
+    *,
+    released_terminal_contribution: Decimal = ZERO,
+    replace_open_position_with_terminal_contribution: bool = False,
 ) -> tuple[RiskRequest, Decimal]:
     if not history:
         raise ProspectiveCapacityReflowFillFeasibilityError(
@@ -281,13 +284,26 @@ def _counterfactual_request(
             "release position exceeds captured account capacity"
         )
 
+    if not released_terminal_contribution.is_finite():
+        raise ProspectiveCapacityReflowFillFeasibilityError(
+            "released terminal contribution must be finite"
+        )
     cash_contribution = _position_cash_contribution(current)
     total_contribution = _position_total_contribution(current)
+    terminal_contribution = (
+        released_terminal_contribution
+        if replace_open_position_with_terminal_contribution
+        else ZERO
+    )
     counterfactual_equity = (
-        account.equity - total_contribution
+        account.equity
+        - total_contribution
+        + terminal_contribution
     )
     counterfactual_daily = (
-        account.daily_realized_pnl - cash_contribution
+        account.daily_realized_pnl
+        - cash_contribution
+        + terminal_contribution
     )
     if counterfactual_equity <= ZERO:
         raise ProspectiveCapacityReflowFillFeasibilityError(
@@ -301,19 +317,25 @@ def _counterfactual_request(
             "counterfactual available margin is negative"
         )
 
-    contributions = tuple(
-        _position_total_contribution(position)
-        for position in history
-    )
-    minimum_contribution = min(contributions)
-    peak_upper_bound = (
-        account.rolling_7d_peak_equity
-        + max(ZERO, -minimum_contribution)
-    )
-    peak_upper_bound = max(
-        peak_upper_bound,
-        counterfactual_equity,
-    )
+    if replace_open_position_with_terminal_contribution:
+        peak_upper_bound = max(
+            account.rolling_7d_peak_equity,
+            counterfactual_equity,
+        )
+    else:
+        contributions = tuple(
+            _position_total_contribution(position)
+            for position in history
+        )
+        minimum_contribution = min(contributions)
+        peak_upper_bound = (
+            account.rolling_7d_peak_equity
+            + max(ZERO, -minimum_contribution)
+        )
+        peak_upper_bound = max(
+            peak_upper_bound,
+            counterfactual_equity,
+        )
 
     counterfactual_account = replace(
         account,
@@ -354,6 +376,9 @@ def prospective_capacity_reflow_fill_feasibility_summary(
     config: PaperExecutionConfig,
     *,
     position_history_loader: PositionHistoryLoader,
+    released_position_terminal_contribution_by_plan: (
+        Mapping[str, Decimal] | None
+    ) = None,
 ) -> dict[str, object]:
     by_id = {
         evidence.opportunity_id: evidence
@@ -384,6 +409,9 @@ def prospective_capacity_reflow_fill_feasibility_summary(
     fillable_option_ids: set[str] = set()
     fillable_opportunity_ids: set[str] = set()
     seen_option_ids: set[str] = set()
+    terminal_contribution_mode = (
+        released_position_terminal_contribution_by_plan is not None
+    )
 
     for release in releases:
         evidence = by_id.get(release.opportunity_id)
@@ -406,11 +434,31 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             release.release_opening_plan_id,
             evidence.opportunity_timestamp_ms,
         )
+        terminal_contribution = ZERO
+        if released_position_terminal_contribution_by_plan is not None:
+            candidate_contribution = (
+                released_position_terminal_contribution_by_plan.get(
+                    release.release_opening_plan_id
+                )
+            )
+            if candidate_contribution is None:
+                raise ProspectiveCapacityReflowFillFeasibilityError(
+                    "release terminal contribution is missing"
+                )
+            if not candidate_contribution.is_finite():
+                raise ProspectiveCapacityReflowFillFeasibilityError(
+                    "release terminal contribution must be finite"
+                )
+            terminal_contribution = candidate_contribution
         request, equity_delta = _counterfactual_request(
             evidence,
             release,
             history,
             config,
+            released_terminal_contribution=terminal_contribution,
+            replace_open_position_with_terminal_contribution=(
+                terminal_contribution_mode
+            ),
         )
         option_payload: dict[str, object] = {
             "option_id": option_id,
@@ -429,6 +477,11 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             ),
             "release_block_reason": release.release_block_reason,
             "counterfactual_equity_delta": str(equity_delta),
+            "released_position_terminal_contribution": (
+                str(terminal_contribution)
+                if terminal_contribution_mode
+                else None
+            ),
             "risk_approved": False,
             "risk_reason_codes": [],
             "planning_approved": False,
@@ -629,7 +682,10 @@ def prospective_capacity_reflow_fill_feasibility_summary(
             sorted(by_execution_result.items())
         ),
         "account_capacity_credit_mode": (
-            "exact_single_release_accounting_other_positions_fixed"
+            "terminal_contribution_single_release_accounting_"
+            "other_positions_fixed"
+            if terminal_contribution_mode
+            else "exact_single_release_accounting_other_positions_fixed"
         ),
         "replacement_entry_fills_modeled": True,
         "replacement_exits_modeled": False,
