@@ -40,3 +40,15 @@ def test_breakeven_readiness_has_no_execution_or_promotion_authority() -> None:
     assert "**LIVE TRADING: DISABLED.**" in source
     assert "ready for review" in source
     assert "cannot move stops or grant execution/promotion authority" in source
+
+
+def test_breakeven_status_markdown_avoids_shell_backtick_substitution() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cat > /tmp/breakeven-status.md <<EOF" not in source
+    assert source.count(
+        'Path("/tmp/breakeven-status.md").write_text('
+    ) == 3
+    assert '- candidate state present: `false`' in source
+    assert '**Execution authority:** `false`' in source
+    assert '**Promotion authority:** `false`' in source
