@@ -89,6 +89,9 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     ) == 3
     assert "RESUME_ARTIFACT_NAME" in source
     assert "STATE_ARTIFACT_NAME" in source
+    assert "fast resume restore failed; waiting for exact durable fallback" in source
+    assert "for poll in $(seq 1 40)" in source
+    assert "durable fallback did not appear" in source
     assert "SOURCE_HEAD_SHA" in source
     assert "ARTIFACT_HEAD_SHA" in source
     assert source.count("timeout-minutes: 30") >= 2
