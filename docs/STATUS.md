@@ -3913,3 +3913,26 @@ Heartbeat research telemetry now reports post-boundary W/L/PnL/net-R, LONG/SHORT
 This cohort does **not** reset or alter any prospective candidate, does not change any readiness gate, and has no execution or promotion authority. Its purpose is attribution: distinguish strategy losses from losses generated under already-fixed market-data defects.
 
 **LIVE TRADING: DISABLED.**
+
+
+### L2 recovery readiness-drift fix — 2026-10-01
+
+A live paper heartbeat on worker `36910111457` exposed a recovery blind spot: 16 rankable markets simultaneously failed deep readiness with `stale_book` at roughly 33.5 seconds of book age, while the redundant L2 group still reported zero recovery attempts. The following heartbeat also showed the selected watchlist collapse from 20 markets to the single pinned open-position market before any stale-L2 recovery attempt was recorded.
+
+Two mechanisms combined:
+
+1. the group-level recovery check depended only on each websocket supervisor's stale-stream clock. A reconnect can temporarily refresh the supervisor's subscription/message fallback clock before that lane has delivered any fresh L2 book, so two churning lanes can avoid being simultaneously classified stale even while the trading pipeline has no fresh deep book;
+2. shortlist rotation ran before systemic L2 recovery, so degraded input could replace/shrink the unhealthy group before the recovery check observed it.
+
+The paper runtime now treats a required market as unhealthy on a lane when either:
+
+- the supervisor reports that market's L2 stream stale by exchange-time freshness; or
+- that lane has not demonstrated a fresh L2 book for the market.
+
+A required market counts toward systemic recovery only when it is unhealthy on **both** redundant lanes. The existing majority threshold remains unchanged, so a single inactive market cannot create reconnect churn. Open L2 disconnect gaps now also revoke lane readiness; readiness returns only after a fresh book is observed.
+
+Systemic L2 health is now evaluated before shortlist rotation. If the current group is systemically unhealthy, recovery runs first and that cycle's shortlist refresh is deferred; the refresh remains due and is retried on the next healthy cycle. This prevents stale/degraded input from rewriting the selected universe before the data plane is repaired.
+
+This changes data-plane recovery only. The existing 5-second book-freshness ceiling, scanner eligibility, strategy, sizing, risk, stops, exits, candidate gates, and live authority are unchanged.
+
+**LIVE TRADING: DISABLED.**

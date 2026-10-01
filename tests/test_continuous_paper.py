@@ -664,8 +664,14 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
+    rotation_guard_index = source.index(
+        "if (\n"
+        "                    not systemically_unhealthy_l2\n"
+        "                    and now_ms >= next_selection_refresh_ms"
+    )
     start_index = source.index(
-        "replacement_group = await start_supervisors("
+        "replacement_group = await start_supervisors(",
+        rotation_guard_index,
     )
     readiness_index = source.index(
         "await _wait_supervisor_group_ready(",
@@ -715,6 +721,18 @@ def test_stale_l2_gap_revokes_rotation_readiness() -> None:
         required_market_keys=required,
     )
     assert ready == {"ETH"}
+
+    _revoke_stale_l2_readiness(
+        ready,
+        DataGap(
+            stream_id="l2Book:ETH",
+            started_ms=10_002,
+            ended_ms=None,
+            reason="disconnect",
+        ),
+        required_market_keys=required,
+    )
+    assert ready == set()
 
 
 def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
@@ -773,7 +791,10 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"ETH", "SOL", "ENA"},
+            {"ETH", "SOL", "ENA"},
+        ),
     )
     majority = _SupervisorGroup(
         supervisors=(
@@ -783,7 +804,10 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"SOL", "ENA"},
+        ),
     )
     split_lanes = _SupervisorGroup(
         supervisors=(
@@ -793,12 +817,34 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"BTC", "ETH"},
+        ),
+    )
+    reconnect_grace_without_books = _SupervisorGroup(
+        supervisors=(
+            Lane(()),  # type: ignore[arg-type]
+            Lane(()),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"SOL"},
+            {"ENA"},
+        ),
     )
 
     assert one_market.systemically_stale_l2(now_ms=10_000) is False
     assert majority.systemically_stale_l2(now_ms=10_000) is True
     assert split_lanes.systemically_stale_l2(now_ms=10_000) is False
+    assert (
+        reconnect_grace_without_books.systemically_stale_l2(
+            now_ms=10_000
+        )
+        is True
+    )
 
 
 def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
@@ -817,6 +863,15 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
         in source
     )
     assert "_l2_event_fresh_for_promotion(" in source
+    recovery_index = source.index(
+        "systemically_unhealthy_l2 = ("
+    )
+    rotation_index = source.index(
+        "if (\n"
+        "                    not systemically_unhealthy_l2\n"
+        "                    and now_ms >= next_selection_refresh_ms"
+    )
+    assert recovery_index < rotation_index
 
 
 def test_context_refresh_timestamps_response_receipt() -> None:
