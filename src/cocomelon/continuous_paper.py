@@ -3416,6 +3416,54 @@ async def _refresh_native_market_snapshots(
     )
 
 
+def _watchlist_fallback_sort_key(
+    snapshot: PerpMarketSnapshot,
+) -> tuple[Decimal, Decimal, str]:
+    context = snapshot.context
+    mark_px = context.mark_px
+    open_interest_notional = (
+        Decimal("0")
+        if mark_px is None
+        else context.open_interest * mark_px
+    )
+    return (
+        -context.day_ntl_vlm,
+        -open_interest_notional,
+        snapshot.meta.market.canonical,
+    )
+
+
+def _watchlist_fallback_eligible(
+    snapshot: PerpMarketSnapshot,
+    *,
+    as_of_ms: int,
+) -> bool:
+    if (
+        snapshot.meta.market.dex != ""
+        or snapshot.received_at_ms > as_of_ms
+    ):
+        return False
+    context = snapshot.context
+    required_prices = (
+        context.mark_px,
+        context.mid_px,
+        context.oracle_px,
+        context.prev_day_px,
+    )
+    return (
+        all(
+            value is not None
+            and value.is_finite()
+            and value > 0
+            for value in required_prices
+        )
+        and context.day_ntl_vlm.is_finite()
+        and context.day_ntl_vlm > 0
+        and context.open_interest.is_finite()
+        and context.open_interest >= 0
+    )
+
+
 def _ranked_selection(
     snapshots: dict[str, PerpMarketSnapshot],
     *,
@@ -3423,18 +3471,59 @@ def _ranked_selection(
     deep_limit: int,
     pinned: tuple[MarketId, ...],
 ) -> tuple[MarketId, ...]:
-    _feature_map, ranks = _startup_ranks(snapshots, as_of_ms=as_of_ms)
-    ranked = [rank.market for rank in ranks if rank.market.dex == ""]
-    selected = ranked[:deep_limit]
-    selected_by_key = {market.canonical: market for market in selected}
+    if deep_limit <= 0:
+        raise ValueError("deep_limit must be positive")
+    _feature_map, ranks = _startup_ranks(
+        snapshots,
+        as_of_ms=as_of_ms,
+    )
+    ranked = [
+        rank.market
+        for rank in ranks
+        if rank.market.dex == ""
+    ]
+    selected = list(ranked[:deep_limit])
+    selected_keys = {
+        market.canonical for market in selected
+    }
+    if len(selected) < deep_limit:
+        fallback = sorted(
+            (
+                snapshot
+                for snapshot in snapshots.values()
+                if (
+                    snapshot.meta.market.canonical
+                    not in selected_keys
+                    and _watchlist_fallback_eligible(
+                        snapshot,
+                        as_of_ms=as_of_ms,
+                    )
+                )
+            ),
+            key=_watchlist_fallback_sort_key,
+        )
+        for snapshot in fallback:
+            if len(selected) >= deep_limit:
+                break
+            market = snapshot.meta.market
+            selected.append(market)
+            selected_keys.add(market.canonical)
+
+    selected_by_key = {
+        market.canonical: market for market in selected
+    }
     for market in pinned:
         selected_by_key[market.canonical] = market
+    order = {
+        market.canonical: index
+        for index, market in enumerate(selected)
+    }
     return tuple(
         sorted(
             selected_by_key.values(),
             key=lambda market: (
-                0 if market.canonical in {item.canonical for item in selected} else 1,
-                selected.index(market) if market in selected else deep_limit,
+                0 if market.canonical in order else 1,
+                order.get(market.canonical, deep_limit),
                 market.canonical,
             ),
         )
