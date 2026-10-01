@@ -9260,7 +9260,6 @@ def _delayed_entry_stop_l2_lines(
     return lines
 
 
-
 def _render_operational_live_status(
     payload: Mapping[str, Any],
     *,
