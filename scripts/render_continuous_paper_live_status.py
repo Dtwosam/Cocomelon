@@ -4631,6 +4631,146 @@ def _prospective_candidate_stack_overlap_lines(
     return lines
 
 
+def _prospective_full_stack_entry_exit_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective full entry + exit stack",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No full entry-exit stack telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    robustness = raw.get("robustness", {})
+    if not isinstance(robustness, dict):
+        robustness = {}
+    lines.extend(
+        [
+            (
+                "- common start / closed / economically evaluated: "
+                f"`{raw.get('overlap_started_at_ms')} / "
+                f"{raw.get('closed_trades_since_overlap_start', 0)} / "
+                f"{raw.get('economically_evaluated_trades', 0)}`"
+            ),
+            (
+                "- component starts combined / two-strike / momentum / "
+                "breakeven: "
+                f"`{raw.get('combined_started_at_ms')} / "
+                f"{raw.get('two_strike_started_at_ms')} / "
+                f"{raw.get('momentum_started_at_ms')} / "
+                f"{raw.get('breakeven_started_at_ms')}`"
+            ),
+            (
+                "- entry blocked / admitted: "
+                f"`{raw.get('entry_blocked_trades', 0)} / "
+                f"{raw.get('entry_admitted_trades', 0)}`"
+            ),
+            (
+                "- missing combined / two-strike / momentum / breakeven / "
+                "unevaluable exit: "
+                f"`{raw.get('missing_combined_decisions', 0)} / "
+                f"{raw.get('missing_two_strike_decisions', 0)} / "
+                f"{raw.get('missing_momentum_decisions', 0)} / "
+                f"{raw.get('missing_breakeven_outcomes', 0)} / "
+                f"{raw.get('unevaluable_breakeven_outcomes', 0)}`"
+            ),
+            (
+                "- integrity clean: "
+                f"`{str(bool(raw.get('integrity_clean'))).lower()}`"
+            ),
+            (
+                "- actual / entry-stack / full-stack PnL: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('entry_stack_candidate_net_pnl', '0')} / "
+                f"{raw.get('full_stack_candidate_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / entry-stack / full-stack net R: "
+                f"`{raw.get('actual_net_r', '0')} / "
+                f"{raw.get('entry_stack_candidate_net_r', '0')} / "
+                f"{raw.get('full_stack_candidate_net_r', '0')}`"
+            ),
+            (
+                "- full-stack delta PnL / R: "
+                f"`{raw.get('full_stack_delta_net_pnl', '0')} / "
+                f"{raw.get('full_stack_delta_net_r', '0')}`"
+            ),
+            (
+                "- breakeven incremental beyond entry stack PnL / R: "
+                f"`{raw.get('breakeven_incremental_net_pnl', '0')} / "
+                f"{raw.get('breakeven_incremental_net_r', '0')}`"
+            ),
+            (
+                "- leave-one-trade minimum delta PnL / R: "
+                f"`{robustness.get('leave_one_trade_out_min_delta_pnl', '0')} / "
+                f"{robustness.get('leave_one_trade_out_min_delta_r', '0')}`"
+            ),
+            (
+                "- leave-one-market minimum delta PnL / R: "
+                f"`{robustness.get('leave_one_market_out_min_delta_pnl', '0')} / "
+                f"{robustness.get('leave_one_market_out_min_delta_r', '0')}`"
+            ),
+        ]
+    )
+
+    directions = raw.get("by_direction", {})
+    if not isinstance(directions, dict):
+        directions = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Side | Trades | Actual PnL | Candidate PnL | Delta PnL | "
+                "Actual R | Candidate R | Delta R |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = directions.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {trades} | {actual} | {candidate} | {delta} | "
+            "{actual_r} | {candidate_r} | {delta_r} |".format(
+                side=side.upper(),
+                trades=item.get("trades", 0),
+                actual=item.get("actual_net_pnl", "0"),
+                candidate=item.get("candidate_net_pnl", "0"),
+                delta=item.get("delta_net_pnl", "0"),
+                actual_r=item.get("actual_net_r", "0"),
+                candidate_r=item.get("candidate_net_r", "0"),
+                delta_r=item.get("delta_net_r", "0"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Matched-trade contribution only. Entry-blocked trades contribute "
+                "zero; exact visible-book breakeven economics apply only to "
+                "entry-admitted trades. Missing exit outcomes are never guessed. "
+                "This changes no readiness gate or paper order._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_combined_entry_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -9432,6 +9572,11 @@ def render_live_status(
     lines.extend(
         _prospective_candidate_stack_overlap_lines(
             payload.get("prospective_candidate_stack_overlap")
+        )
+    )
+    lines.extend(
+        _prospective_full_stack_entry_exit_lines(
+            payload.get("prospective_full_stack_entry_exit")
         )
     )
     lines.extend(
