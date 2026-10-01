@@ -67,8 +67,8 @@ def test_full_stack_reflow_exact_ledger_keeps_horizons_separate() -> None:
     assert "Fixed exit horizons" in source
     assert "no best-horizon selection" in source
     assert "cross-horizon aggregation" in source
-    assert "for horizon_ms in ledger["horizons_ms"]" in source
-    assert "summary["by_horizon"][str(horizon_ms)]" in source
+    assert 'for horizon_ms in ledger["horizons_ms"]' in source
+    assert 'summary["by_horizon"][str(horizon_ms)]' in source
 
 
 def test_full_stack_reflow_exact_ledger_non_success_wake_falls_back() -> None:
