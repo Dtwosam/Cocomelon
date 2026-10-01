@@ -453,6 +453,23 @@ def _candidate_rows(
                 raise ProspectiveMomentumBandEntryLedgerError(
                     "evaluated signed momentum is missing"
                 )
+            expected_return_1h = (
+                snapshot.return_1h
+                if trade.direction.value == "long"
+                else -snapshot.return_1h
+            )
+            expected_day_return = (
+                snapshot.day_return
+                if trade.direction.value == "long"
+                else -snapshot.day_return
+            )
+            if (
+                Decimal(signed_return_1h) != expected_return_1h
+                or Decimal(signed_day_return) != expected_day_return
+            ):
+                raise ProspectiveMomentumBandEntryLedgerError(
+                    "signed momentum does not match feature snapshot"
+                )
         else:
             raise ProspectiveMomentumBandEntryLedgerError(
                 "candidate detail reason is unsupported"
