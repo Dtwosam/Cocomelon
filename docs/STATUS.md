@@ -3974,3 +3974,16 @@ The reseed is deliberately conservative:
 This addresses a failure mode where the decision engine can have zero deep-ready markets while the websocket control plane is recovering. It does not relax eligibility, spread, depth, risk, stop, sizing, strategy, or live-order thresholds and does not fabricate microstructure.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Retry-safe packed paper-state restore — 2026-10-01
+
+The first exact successor after the fresh-L2 recovery merge failed before trading because the authenticated packed predecessor artifact download was interrupted mid-stream by a network timeout. The ZIP decoder correctly rejected the truncated member and tar correctly rejected the incomplete archive; no paper trade ran from the partial state.
+
+Packed restore now retries the full authenticated stream up to three times by default. Before every attempt, the destination state directory is deleted and recreated, so bytes extracted by a failed attempt can never be mixed with a later retry. A retry is considered successful only when the GitHub artifact stream, ZIP member decoder, and tar extraction all exit successfully under `pipefail`.
+
+The retry count and retry sleep are bounded workflow controls, not trading parameters. Legacy restore compatibility is unchanged, exact predecessor identity checks remain unchanged, and a final failed restore still prevents the paper trader and exact-successor handoff from running.
+
+This is continuity/transport hardening only. It does not reset the paper account, discard historical evidence, relax market-data freshness, or change strategy, risk, sizing, stops, promotion, or live-order authority.
+
+**LIVE TRADING: DISABLED.**
