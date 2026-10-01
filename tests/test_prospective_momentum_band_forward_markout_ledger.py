@@ -87,7 +87,9 @@ def _row(
         "momentum_decision": decision,
         "momentum_reason": reason,
         "momentum_prior_strikes": 0,
-        "signed_return_1h": "0.03",
+        "signed_return_1h": (
+            "0.03" if decision == "ADMIT" else "0.005"
+        ),
         "signed_day_return": "0.05",
         "markouts": {
             str(horizon_ms): _markout(
@@ -378,3 +380,23 @@ def test_fast_markout_ledger_review_bar_can_pass() -> None:
         assert readiness["single_market_robust"] is True
         assert readiness["ready_for_early_evidence_review"] is True
         assert readiness["changes_closed_trade_readiness_gate"] is False
+
+
+def test_fast_markout_ledger_rejects_decision_threshold_tamper() -> None:
+    state = ProspectiveMomentumBandEntryState(frozen_at_ms=8_000_000)
+    row = _row(state, 1, decision="BLOCK")
+    row["signed_return_1h"] = "0.03"
+
+    with pytest.raises(
+        ProspectiveMomentumBandForwardMarkoutLedgerError,
+        match="does not match frozen thresholds",
+    ):
+        update_momentum_forward_markout_ledger(
+            _summary(state, [row]),
+            state,
+            previous=None,
+            source_paper_run_id=80,
+            source_paper_run_attempt=1,
+            source_artifact_name="learning-80-1",
+            source_artifact_digest=_digest("5"),
+        )
