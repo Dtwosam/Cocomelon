@@ -308,6 +308,9 @@ from cocomelon.research.prospective_full_stack_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_entry_exit import (
     prospective_full_stack_entry_exit_summary,
 )
+from cocomelon.research.prospective_full_stack_forward_markout import (
+    prospective_full_stack_forward_markout_summary,
+)
 from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
     prospective_full_stack_exit_capacity_reflow,
 )
@@ -395,6 +398,9 @@ PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
     "prospective-full-stack-entry-exit-summary.json"
+)
+PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME = (
+    "prospective-full-stack-forward-markout-summary.json"
 )
 PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME = (
     "prospective-full-stack-capacity-reflow-summary.json"
@@ -2438,6 +2444,49 @@ def _prospective_momentum_band_forward_markout_payload(
             "descriptive_only": True,
             "changes_readiness_gate": False,
             "candidate_id": momentum_state.candidate_id,
+            "overlap_started_at_ms": overlap_start,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_full_stack_forward_markout_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    path_store: ContinuousPaperOpeningOpportunityPathStore,
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    combined_state: ProspectiveCombinedEntryFilterState,
+    two_strike_state: ProspectiveTwoStrikeStopFilterState,
+    momentum_state: ProspectiveMomentumBandEntryState,
+) -> dict[str, object]:
+    overlap_start = max(
+        combined_state.started_at_ms,
+        two_strike_state.started_at_ms,
+        momentum_state.started_at_ms,
+    )
+    try:
+        payload = prospective_full_stack_forward_markout_summary(
+            opportunity_store.iter_records(),
+            path_store.iter_paths(),
+            tuple(journal.iter_trades()),
+            feature_store,
+            combined_state,
+            two_strike_state,
+            momentum_state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "changes_closed_trade_readiness_gate": False,
+            "candidate_stack": "combined+two_strike+momentum",
             "overlap_started_at_ms": overlap_start,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -8221,6 +8270,22 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_MOMENTUM_BAND_FORWARD_MARKOUT_SUMMARY_FILENAME,
             momentum_band_forward_markout,
+        )
+        full_stack_forward_markout = (
+            _prospective_full_stack_forward_markout_payload(
+                opening_opportunity_store,
+                opening_opportunity_path_store,
+                journal,
+                feature_store,
+                prospective_combined_entry_filter_state,
+                prospective_two_strike_stop_filter_state,
+                prospective_momentum_band_entry_state,
+            )
+        )
+        _write_json_atomic(
+            root
+            / PROSPECTIVE_FULL_STACK_FORWARD_MARKOUT_SUMMARY_FILENAME,
+            full_stack_forward_markout,
         )
         if profit_lock_execution_shadow.shadow is None:
             full_stack_entry_exit = {
