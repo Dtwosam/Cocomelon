@@ -161,6 +161,9 @@ def _summary(
         "promotion_authority": False,
         "descriptive_only": True,
         "changes_risk_limits": False,
+        "forward_markout_only": True,
+        "replacement_exits_modeled": False,
+        "realized_pnl_modeled": False,
         "option_results": options,
     }
 
