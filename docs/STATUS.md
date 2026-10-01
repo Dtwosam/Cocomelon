@@ -3551,3 +3551,20 @@ This challenger does not change actual paper entries, exits, stops, sizing, risk
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only momentum-band entry ledger — 2026-10-01
+
+The frozen zero-strike momentum-band challenger now has a durable append-only evidence path bound to exact successful paper artifacts.
+
+Each clean ledger row locks the matching closed paper trade and opening-plan identity together with the candidate prior-strike state, immutable feature-snapshot ID, canonical feature-record SHA when the feature was evaluated, signed 1h/day momentum values, candidate decision/reason, and realized PnL/net R.
+
+The ledger only starts from a compact paper source that contains the original frozen momentum-band state. Older compact artifacts receive zero credit. Every update is tied to one exact successful main-branch paper run and the SHA-256 digest of its compact learning artifact.
+
+Previously published rows may not disappear or change. Candidate ID, freeze timestamp, six-hour clean-start boundary, embargo, and frozen rule must remain identical. Evaluated feature records are content-bound, while missing/incomplete features remain explicit fail-open rows and keep clean readiness blocked.
+
+Issue #728 is the durable status surface. The ledger mirrors the candidate’s precommitted sample, economics, feature-integrity, leave-one-trade, and leave-one-market diagnostics but cannot alter paper orders, entries, exits, stops, sizing, risk, promotion, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
