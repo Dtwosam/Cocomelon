@@ -53,6 +53,7 @@ from cocomelon.continuous_paper import (
     _profit_lock_counterfactual_payload,
     _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
+    _prospective_momentum_band_entry_payload,
     _prospective_two_strike_stop_filter_payload,
     _record_from_gap,
     _record_from_payload,
@@ -69,6 +70,7 @@ from cocomelon.continuous_paper import (
     _restore_profit_lock_execution_shadow,
     _restore_prospective_delayed_price_confirmation,
     _restore_prospective_entry_filter,
+    _restore_prospective_momentum_band_entry,
     _restore_prospective_top10_rank_filter,
     _restore_prospective_two_strike_stop_filter,
     _stop_requested,
@@ -88,6 +90,12 @@ from cocomelon.research.delayed_entry_execution_shadow import (
 )
 from cocomelon.research.profit_lock_execution_shadow import (
     ProfitLockExecutionShadow,
+)
+from cocomelon.research.prospective_momentum_band_entry import (
+    EMBARGO_MS as MOMENTUM_BAND_EMBARGO_MS,
+)
+from cocomelon.research.prospective_momentum_band_entry import (
+    ProspectiveMomentumBandEntryState,
 )
 from cocomelon.research.prospective_two_strike_stop_filter import (
     EMBARGO_MS as TWO_STRIKE_EMBARGO_MS,
@@ -346,6 +354,15 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert (
         '"prospective_combined_entry_filter": (' in source
     )
+    assert (
+        'PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME = ('
+        in source
+    )
+    assert "prospective-momentum-band-entry-state.json" in source
+    assert "_restore_prospective_momentum_band_entry(" in source
+    assert "prospective_momentum_band_entry_state.payload()" in source
+    assert '"prospective_momentum_band_entry": (' in source
+    assert "evaluate_prospective_momentum_band_entry(" in source
     assert (
         'PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = ('
         in source
@@ -2322,6 +2339,87 @@ def test_runtime_hot_path_uses_only_operational_heartbeat() -> None:
     assert '"heartbeat_scope": "operational"' in source
     assert source.count("_emit_operational_live_status(") == 3
     assert source.count("_emit_live_status(") == 1
+
+
+def test_momentum_band_state_restore_preserves_original_freeze(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "momentum-band.json"
+    original = ProspectiveMomentumBandEntryState(
+        frozen_at_ms=123
+    )
+    path.write_text(
+        json.dumps(original.payload()),
+        encoding="utf-8",
+    )
+
+    restored, error = _restore_prospective_momentum_band_entry(
+        path,
+        frozen_at_ms=999,
+    )
+
+    assert error is None
+    assert restored == original
+    assert restored.frozen_at_ms == 123
+    assert (
+        restored.started_at_ms
+        == 123 + MOMENTUM_BAND_EMBARGO_MS
+    )
+
+
+def test_momentum_band_restore_failure_restarts_clean_freeze(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "momentum-band.json"
+    path.write_text("{bad", encoding="utf-8")
+
+    restored, error = _restore_prospective_momentum_band_entry(
+        path,
+        frozen_at_ms=999,
+    )
+
+    assert restored.frozen_at_ms == 999
+    assert (
+        restored.started_at_ms
+        == 999 + MOMENTUM_BAND_EMBARGO_MS
+    )
+    assert error is not None
+    assert "JSONDecodeError" in error
+
+
+def test_momentum_band_payload_failure_is_research_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("momentum-band boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_momentum_band_entry",
+        fail,
+    )
+    state = ProspectiveMomentumBandEntryState(
+        frozen_at_ms=100
+    )
+
+    payload = _prospective_momentum_band_entry_payload(
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        state,
+        restore_error=None,
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["candidate_id"] == state.candidate_id
+    assert payload["frozen_at_ms"] == 100
+    assert (
+        payload["started_at_ms"]
+        == 100 + MOMENTUM_BAND_EMBARGO_MS
+    )
+    assert payload["error"] == "RuntimeError: momentum-band boom"
 
 
 def test_two_strike_state_restore_preserves_original_freeze(

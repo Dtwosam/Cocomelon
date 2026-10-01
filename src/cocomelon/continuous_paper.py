@@ -292,6 +292,10 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_momentum_band_entry import (
+    ProspectiveMomentumBandEntryState,
+    evaluate_prospective_momentum_band_entry,
+)
 from cocomelon.research.prospective_replacement_exit_policy import (
     ProspectiveReplacementExitPolicyState,
     prospective_replacement_exit_policy_summary,
@@ -363,6 +367,9 @@ PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
 )
 PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
     "prospective-breakeven-profit-lock-state.json"
+)
+PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME = (
+    "prospective-momentum-band-entry-state.json"
 )
 PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
     "prospective-two-strike-stop-filter-state.json"
@@ -2060,6 +2067,65 @@ def _restore_prospective_breakeven_profit_lock(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_momentum_band_entry(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveMomentumBandEntryState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveMomentumBandEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveMomentumBandEntryState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveMomentumBandEntryState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_momentum_band_entry_payload(
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    state: ProspectiveMomentumBandEntryState,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = evaluate_prospective_momentum_band_entry(
+            journal,
+            feature_store,
+            state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _restore_prospective_two_strike_stop_filter(
@@ -4562,6 +4628,9 @@ def _live_status_payload(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_momentum_band_entry_state: (
+        ProspectiveMomentumBandEntryState
+    ),
     prospective_two_strike_stop_filter_state: (
         ProspectiveTwoStrikeStopFilterState
     ),
@@ -4584,6 +4653,7 @@ def _live_status_payload(
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_momentum_band_entry_restore_error: str | None,
     prospective_two_strike_stop_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
@@ -4780,6 +4850,16 @@ def _live_status_payload(
             profit_lock_error=profit_lock_error,
             restore_error=(
                 prospective_combined_entry_filter_restore_error
+            ),
+        )
+    )
+    prospective_momentum_band_entry = (
+        _prospective_momentum_band_entry_payload(
+            pump.journal,
+            feature_store,
+            prospective_momentum_band_entry_state,
+            restore_error=(
+                prospective_momentum_band_entry_restore_error
             ),
         )
     )
@@ -5273,6 +5353,9 @@ def _live_status_payload(
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
         ),
+        "prospective_momentum_band_entry": (
+            prospective_momentum_band_entry
+        ),
         "prospective_two_strike_stop_filter": (
             prospective_two_strike_stop_filter
         ),
@@ -5704,6 +5787,9 @@ def _emit_live_status(
     prospective_top10_rank_filter_state: ProspectiveTop10RankFilterState,
     prospective_trade_quality_state: ProspectiveTradeQualityState,
     prospective_combined_entry_filter_state: ProspectiveCombinedEntryFilterState,
+    prospective_momentum_band_entry_state: (
+        ProspectiveMomentumBandEntryState
+    ),
     prospective_two_strike_stop_filter_state: (
         ProspectiveTwoStrikeStopFilterState
     ),
@@ -5726,6 +5812,7 @@ def _emit_live_status(
     prospective_top10_rank_filter_restore_error: str | None,
     prospective_trade_quality_restore_error: str | None,
     prospective_combined_entry_filter_restore_error: str | None,
+    prospective_momentum_band_entry_restore_error: str | None,
     prospective_two_strike_stop_filter_restore_error: str | None,
     prospective_replacement_exit_policy_restore_error: str | None,
     adaptive_delay_selector_restore_error: str | None,
@@ -5764,6 +5851,7 @@ def _emit_live_status(
         prospective_top10_rank_filter_state,
         prospective_trade_quality_state,
         prospective_combined_entry_filter_state,
+        prospective_momentum_band_entry_state,
         prospective_two_strike_stop_filter_state,
         prospective_replacement_exit_policy_state,
         adaptive_delay_selector_state,
@@ -5800,6 +5888,9 @@ def _emit_live_status(
         ),
         prospective_combined_entry_filter_restore_error=(
             prospective_combined_entry_filter_restore_error
+        ),
+        prospective_momentum_band_entry_restore_error=(
+            prospective_momentum_band_entry_restore_error
         ),
         prospective_two_strike_stop_filter_restore_error=(
             prospective_two_strike_stop_filter_restore_error
@@ -6298,6 +6389,13 @@ async def run_continuous_paper_session(
         frozen_at_ms=started_at_ms,
     )
     (
+        prospective_momentum_band_entry_state,
+        prospective_momentum_band_entry_restore_error,
+    ) = _restore_prospective_momentum_band_entry(
+        root / PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
@@ -6544,6 +6642,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
                 prospective_breakeven_profit_lock_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_MOMENTUM_BAND_ENTRY_STATE_FILENAME,
+                prospective_momentum_band_entry_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,

@@ -196,6 +196,7 @@ jobs:
           tests/test_prospective_breakeven_profit_lock.py
           tests/test_prospective_breakeven_profit_lock_workflow.py
           tests/test_continuous_paper_exact_path_export_workflow.py
+          tests/test_prospective_momentum_band_entry.py
           tests/test_prospective_two_strike_stop_filter.py
           tests/test_prospective_two_strike_stop_filter_ledger.py
           tests/test_prospective_two_strike_stop_filter_ledger_workflow.py

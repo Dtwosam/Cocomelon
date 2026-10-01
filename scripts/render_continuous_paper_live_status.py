@@ -4038,6 +4038,169 @@ def _prospective_trade_quality_lines(
     return lines
 
 
+def _prospective_momentum_band_entry_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "### Prospective zero-strike momentum-band entry filter",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append(
+            "_No prospective momentum-band telemetry in this heartbeat._"
+        )
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    restore_error = raw.get("state_restore_error")
+    if restore_error:
+        lines.append(
+            f"- state restore warning: `{restore_error}`"
+        )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    rule = raw.get("rule", {})
+    readiness = raw.get("readiness", {})
+    if not isinstance(rule, dict):
+        rule = {}
+    if not isinstance(readiness, dict):
+        readiness = {}
+
+    lines.extend(
+        [
+            f"- candidate: `{raw.get('candidate_id', 'unknown')}`",
+            (
+                "- frozen / clean start / embargo: "
+                f"`{raw.get('frozen_at_ms')} / "
+                f"{raw.get('started_at_ms')} / "
+                f"{raw.get('embargo_ms')}ms`"
+            ),
+            (
+                "- zero-strike rule: require signed 1h return >= "
+                f"`{rule.get('min_signed_return_1h', 'unknown')}` "
+                "and signed day return <= "
+                f"`{rule.get('max_signed_day_return', 'unknown')}`"
+            ),
+            (
+                "- nonzero-strike / missing-feature handling: "
+                f"`bypass / {rule.get('missing_feature_action', 'unknown')}`"
+            ),
+            (
+                "- prospective closed / admitted / blocked: "
+                f"`{raw.get('prospective_closed_trades', 0)} / "
+                f"{raw.get('admitted_trades', 0)} / "
+                f"{raw.get('blocked_trades', 0)}`"
+            ),
+            (
+                "- zero-strike feature evaluated / nonzero bypass / "
+                "missing features: "
+                f"`{raw.get('zero_strike_feature_evaluated', 0)} / "
+                f"{raw.get('nonzero_strike_bypass', 0)} / "
+                f"{raw.get('missing_feature_trades', 0)}`"
+            ),
+            (
+                "- blocked W/L / blocked PnL: "
+                f"`{raw.get('blocked_wins', 0)}/"
+                f"{raw.get('blocked_losses', 0)} / "
+                f"{raw.get('blocked_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / candidate / delta PnL: "
+                f"`{raw.get('actual_net_pnl', '0')} / "
+                f"{raw.get('candidate_net_pnl', '0')} / "
+                f"{raw.get('delta_net_pnl', '0')}`"
+            ),
+            (
+                "- actual / candidate / delta net R: "
+                f"`{raw.get('actual_net_r', '0')} / "
+                f"{raw.get('candidate_net_r', '0')} / "
+                f"{raw.get('delta_net_r', '0')}`"
+            ),
+            (
+                "- sample / feature integrity / economics / "
+                "trade robustness / market robustness: "
+                f"`{str(bool(readiness.get('sample_complete'))).lower()} / "
+                f"{str(bool(readiness.get('feature_integrity_clean'))).lower()} / "
+                f"{str(bool(readiness.get('economics_positive'))).lower()} / "
+                f"{str(bool(readiness.get('single_trade_robust'))).lower()} / "
+                f"{str(bool(readiness.get('single_market_robust'))).lower()}`"
+            ),
+            (
+                "- ready for review: "
+                f"`{str(bool(readiness.get('ready_for_review'))).lower()}`"
+            ),
+            (
+                "- still needed closed / blocked / admitted / LONG / SHORT / "
+                "features: "
+                f"`{readiness.get('missing_prospective_closed_trades', 0)} / "
+                f"{readiness.get('missing_blocked_trades', 0)} / "
+                f"{readiness.get('missing_admitted_trades', 0)} / "
+                f"{readiness.get('missing_long_closed_trades', 0)} / "
+                f"{readiness.get('missing_short_closed_trades', 0)} / "
+                f"{readiness.get('missing_feature_trades', 0)}`"
+            ),
+        ]
+    )
+
+    by_direction = raw.get("by_direction", {})
+    if not isinstance(by_direction, dict):
+        by_direction = {}
+    lines.extend(
+        [
+            "",
+            (
+                "| Side | Closed | Admitted | Blocked | Blocked W | "
+                "Blocked L | Blocked PnL | Candidate PnL | Candidate R |"
+            ),
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = by_direction.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {closed} | {admitted} | {blocked} | {wins} | "
+            "{losses} | {blocked_pnl} | {candidate_pnl} | "
+            "{candidate_r} |".format(
+                side=side.upper(),
+                closed=item.get("closed_trades", 0),
+                admitted=item.get("admitted_trades", 0),
+                blocked=item.get("blocked_trades", 0),
+                wins=item.get("blocked_winners", 0),
+                losses=item.get("blocked_losses", 0),
+                blocked_pnl=item.get("blocked_net_pnl", "0"),
+                candidate_pnl=item.get("candidate_net_pnl", "0"),
+                candidate_r=item.get("candidate_net_r", "0"),
+            )
+        )
+
+    lines.extend(
+        _prospective_filter_robustness_lines(
+            raw.get("robustness")
+        )
+    )
+    lines.extend(
+        [
+            "",
+            (
+                "_Future-only zero-strike shadow: touched discovery trades "
+                "receive zero clean credit, missing features fail open but "
+                "block clean readiness, nonzero-strike phases are left to the "
+                "repeated-stop challenger, and no paper order is changed._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _prospective_two_strike_stop_filter_lines(
     raw: object,
 ) -> list[str]:
@@ -9129,6 +9292,11 @@ def render_live_status(
     lines.extend(
         _prospective_combined_entry_filter_lines(
             payload.get("prospective_combined_entry_filter")
+        )
+    )
+    lines.extend(
+        _prospective_momentum_band_entry_lines(
+            payload.get("prospective_momentum_band_entry")
         )
     )
     lines.extend(
