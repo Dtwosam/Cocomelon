@@ -3962,7 +3962,9 @@ The paper runtime can now reseed the decision pipeline from the venue's real mai
 The reseed is deliberately conservative:
 
 - it runs only inside the existing systemic L2 recovery path;
-- it requests only the selected markets that are unhealthy on both redundant websocket lanes;
+- systemic failure can be confirmed either by both redundant websocket lanes **or by a new decision epoch whose own eligibility evidence shows a majority of selected books stale**;
+- a pipeline-evidence trigger is consumed at most once per decision boundary, preventing repeated reconnect/reseed churn from one stale epoch;
+- it requests only selected markets implicated by the websocket or decision-pipeline stale evidence;
 - every REST response is normalized through the existing real-L2 normalizer;
 - the book must pass the **same existing max-book-age freshness ceiling** used for websocket replacement readiness or it is discarded;
 - accepted snapshots are recorded as real `hyperliquid-mainnet-info` L2 evidence and pass through the same replay/paper pipeline;
