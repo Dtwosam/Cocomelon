@@ -3795,3 +3795,21 @@ The status reports stale-age evidence coverage, min/median/max age, and the five
 This is observability only. The scanner freshness threshold, execution freshness threshold, shortlist selection, strategy, risk, sizing, stops, exits, promotion state, and live authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Momentum-band fast forward-markout audit — 2026-10-01
+
+The frozen zero-strike momentum-band entry challenger now has a separate fast descriptive evidence path that does not wait for trades to close.
+
+The audit starts at the common clean boundary across the existing combined entry screen, two-strike repeated-stop filter, and momentum-band challenger. It only evaluates opening opportunities that the real paper risk engine approved and that the existing combined + two-strike base stack would already allow. This isolates the momentum challenger’s incremental decision instead of crediting it for opportunities another rule already rejected.
+
+For each eligible opportunity, the audit reuses the immutable decision-time feature snapshot and the already captured opening-opportunity mark path. It reports direction-signed forward returns at fixed 5-minute, 15-minute, and 1-hour horizons for momentum ADMIT versus BLOCK decisions, plus the ADMIT-minus-BLOCK mean-return spread and leave-one-opportunity / leave-one-market robustness.
+
+Missing/stale rank, missing/incomplete momentum features, missing paths, pending horizons, and stale path marks remain explicit. No prices are guessed and no trade PnL, replacement trades, or alternate execution are invented.
+
+This is an early diagnostic only. It cannot change the momentum challenger’s 30-closed-trade clean readiness gate, any other readiness gate, paper orders, entries, exits, stops, sizing, risk, promotion state, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes readiness gate:** `false`  
+**LIVE TRADING: DISABLED.**
