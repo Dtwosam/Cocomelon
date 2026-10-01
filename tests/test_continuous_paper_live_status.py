@@ -71,6 +71,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "shortlist_rotation_attempts": 3,
         "shortlist_rotation_promotions": 2,
         "shortlist_rotation_readiness_failures": 1,
+        "stale_l2_recovery_attempts": 3,
+        "stale_l2_recovery_promotions": 2,
+        "stale_l2_recovery_readiness_failures": 1,
+        "stale_l2_rest_reseed_attempts": 3,
+        "stale_l2_rest_reseed_books": 11,
+        "stale_l2_rest_reseed_failures": 2,
+        "stale_l2_pipeline_recovery_triggers": 2,
         "journal_observations": 7,
         "session_decision_epochs": 1,
         "last_decision_boundary_ms": 1_699_999_970_000,
@@ -3812,6 +3819,10 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "shortlist rotations attempts / promoted / failed readiness" in output
     assert "stale-L2 recoveries attempts / promoted / failed readiness" in output
     assert "`3 / 2 / 1`" in output
+    assert "stale-L2 REST reseed cycles / fresh books / failures" in output
+    assert "`3 / 11 / 2`" in output
+    assert "stale-L2 pipeline-evidence recovery triggers" in output
+    assert "`2`" in output
     assert "strategy reasons:" in output
     assert "NO_SIGNAL=19" in output
     assert "risk reasons:" in output

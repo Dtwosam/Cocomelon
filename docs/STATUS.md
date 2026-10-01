@@ -3953,3 +3953,24 @@ The paper watchlist is now decoupled from immediate coarse trading eligibility:
 This changes **data subscription coverage only**. Fallback-padded markets still pass through the existing scanner eligibility, deep-readiness, strategy, sizing, risk, stop, exit, and execution gates before any paper opening can occur. No threshold is relaxed and no live authority is added.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Fresh REST L2 reseed during systemic websocket staleness — 2026-10-01
+
+The paper runtime can now reseed the decision pipeline from the venue's real mainnet REST `l2Book` endpoint when the active redundant websocket group is systemically unhealthy.
+
+The reseed is deliberately conservative:
+
+- it runs only inside the existing systemic L2 recovery path;
+- systemic failure can be confirmed either by both redundant websocket lanes **or by a new decision epoch whose own eligibility evidence shows a majority of selected books stale**;
+- a pipeline-evidence trigger is consumed at most once per decision boundary, preventing repeated reconnect/reseed churn from one stale epoch;
+- it requests only selected markets implicated by the websocket or decision-pipeline stale evidence;
+- every REST response is normalized through the existing real-L2 normalizer;
+- the book must pass the **same existing max-book-age freshness ceiling** used for websocket replacement readiness or it is discarded;
+- accepted snapshots are recorded as real `hyperliquid-mainnet-info` L2 evidence and pass through the same replay/paper pipeline;
+- REST reseeding does **not** mark either websocket lane healthy and does not replace the existing redundant-lane recovery; websocket replacement still runs immediately afterward;
+- reseed cycles, accepted fresh books, and failed/stale responses are exposed in the operational heartbeat.
+
+This addresses a failure mode where the decision engine can have zero deep-ready markets while the websocket control plane is recovering. It does not relax eligibility, spread, depth, risk, stop, sizing, strategy, or live-order thresholds and does not fabricate microstructure.
+
+**LIVE TRADING: DISABLED.**
