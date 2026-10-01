@@ -1276,23 +1276,75 @@ class _SupervisorGroup:
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
 
+    def _stale_l2_market_keys_by_lane(
+        self,
+        *,
+        now_ms: int,
+    ) -> tuple[frozenset[str], ...]:
+        return tuple(
+            frozenset(
+                stream_id.removeprefix("l2Book:")
+                for stream_id in supervisor.stale_l2_streams(
+                    now_ms=now_ms
+                )
+                if stream_id.startswith("l2Book:")
+                and stream_id.removeprefix("l2Book:")
+                in self.required_market_keys
+            )
+            for supervisor in self.supervisors
+        )
+
     def stale_l2_market_keys(
         self,
         *,
         now_ms: int,
     ) -> frozenset[str]:
-        stale_by_lane = tuple(
-            set(supervisor.stale_l2_streams(now_ms=now_ms))
-            for supervisor in self.supervisors
+        stale_by_lane = self._stale_l2_market_keys_by_lane(
+            now_ms=now_ms
         )
         return frozenset(
             market
             for market in self.required_market_keys
-            if all(
-                f"l2Book:{market}" in stale
+            if stale_by_lane
+            and all(
+                market in stale
                 for stale in stale_by_lane
             )
         )
+
+    def l2_health_payload(
+        self,
+        *,
+        now_ms: int,
+    ) -> dict[str, object]:
+        stale_by_lane = self._stale_l2_market_keys_by_lane(
+            now_ms=now_ms
+        )
+        any_lane_stale = frozenset().union(*stale_by_lane)
+        all_lanes_stale = self.stale_l2_market_keys(
+            now_ms=now_ms
+        )
+        ready_counts = [
+            len(self.required_market_keys & ready)
+            for ready in self.ready_market_keys
+        ]
+        return {
+            "required_market_count": len(
+                self.required_market_keys
+            ),
+            "lane_count": len(self.supervisors),
+            "ready_market_counts_by_lane": ready_counts,
+            "stale_market_counts_by_lane": [
+                len(stale) for stale in stale_by_lane
+            ],
+            "any_lane_stale_count": len(any_lane_stale),
+            "all_lanes_stale_count": len(all_lanes_stale),
+            "any_lane_stale_markets": sorted(any_lane_stale),
+            "all_lanes_stale_markets": sorted(all_lanes_stale),
+            "systemically_stale": self.systemically_stale_l2(
+                now_ms=now_ms
+            ),
+        }
 
     def systemically_stale_l2(
         self,
@@ -5851,6 +5903,7 @@ def _live_status_payload(
         "stale_l2_recovery_readiness_failures": (
             pump.stale_l2_recovery_readiness_failures
         ),
+        "l2_lane_health": l2_lane_health,
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -6252,6 +6305,7 @@ def _operational_live_status_payload(
     risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
+    l2_lane_health: dict[str, object] | None = None,
 ) -> dict[str, object]:
     positions: list[dict[str, object]] = []
     for position in execution.account.positions:
@@ -6471,6 +6525,7 @@ def _emit_operational_live_status(
     risk_limits: RiskLimits,
     *,
     timestamp_ms: int,
+    l2_lane_health: dict[str, object] | None = None,
 ) -> None:
     payload = _operational_live_status_payload(
         execution,
@@ -6478,6 +6533,7 @@ def _emit_operational_live_status(
         selected_markets,
         risk_limits,
         timestamp_ms=timestamp_ms,
+        l2_lane_health=l2_lane_health,
     )
     print(
         "COCOMELON_PAPER_HEARTBEAT "
@@ -7697,6 +7753,11 @@ async def run_continuous_paper_session(
                     selected,
                     replay_config.risk_limits,
                     timestamp_ms=now_ms,
+                    l2_lane_health=(
+                        supervisor_group.l2_health_payload(
+                            now_ms=health_now_ms
+                        )
+                    ),
                 )
 
                 if now_ms >= next_checkpoint_ms:
