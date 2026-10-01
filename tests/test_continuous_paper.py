@@ -716,6 +716,18 @@ def test_stale_l2_gap_revokes_rotation_readiness() -> None:
     )
     assert ready == {"ETH"}
 
+    _revoke_stale_l2_readiness(
+        ready,
+        DataGap(
+            stream_id="l2Book:ETH",
+            started_ms=10_002,
+            ended_ms=None,
+            reason="disconnect",
+        ),
+        required_market_keys=required,
+    )
+    assert ready == set()
+
 
 def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
     receive = datetime.fromtimestamp(10, tz=UTC)
@@ -773,7 +785,10 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"ETH", "SOL", "ENA"},
+            {"ETH", "SOL", "ENA"},
+        ),
     )
     majority = _SupervisorGroup(
         supervisors=(
@@ -783,7 +798,10 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"SOL", "ENA"},
+        ),
     )
     split_lanes = _SupervisorGroup(
         supervisors=(
@@ -793,12 +811,34 @@ def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
         tasks=(),
         forward_gaps=asyncio.Event(),
         required_market_keys=required,
-        ready_market_keys=(set(), set()),
+        ready_market_keys=(
+            {"SOL", "ENA"},
+            {"BTC", "ETH"},
+        ),
+    )
+    reconnect_grace_without_books = _SupervisorGroup(
+        supervisors=(
+            Lane(()),  # type: ignore[arg-type]
+            Lane(()),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(
+            {"SOL"},
+            {"ENA"},
+        ),
     )
 
     assert one_market.systemically_stale_l2(now_ms=10_000) is False
     assert majority.systemically_stale_l2(now_ms=10_000) is True
     assert split_lanes.systemically_stale_l2(now_ms=10_000) is False
+    assert (
+        reconnect_grace_without_books.systemically_stale_l2(
+            now_ms=10_000
+        )
+        is True
+    )
 
 
 def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
