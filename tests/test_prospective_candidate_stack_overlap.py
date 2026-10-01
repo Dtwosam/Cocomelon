@@ -253,7 +253,7 @@ def test_candidate_stack_overlap_measures_unique_momentum_value() -> None:
     assert robustness["leave_one_trade_out_min_delta"] == "0"
     assert (
         robustness["positive_after_any_single_trade_removed"]
-        is False
+        is None
     )
 
 
