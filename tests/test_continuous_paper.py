@@ -745,6 +745,7 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     assert '"session_decisions"' in source
     assert '"session_eligibility"' in source
     assert '"latest_epoch_eligibility"' in source
+    assert '"stale_book_age_ms_by_market"' in source
     assert '"session_risk"' in source
     assert '"open_planned_risk"' in source
     assert '"open_planned_risk_fraction_of_equity"' in source
