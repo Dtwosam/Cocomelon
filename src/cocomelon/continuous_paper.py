@@ -7366,6 +7366,13 @@ async def run_continuous_paper_session(
         frozen_at_ms=started_at_ms,
     )
     (
+        prospective_global_loss_gate_state,
+        prospective_global_loss_gate_restore_error,
+    ) = _restore_prospective_global_loss_gate(
+        root / PROSPECTIVE_GLOBAL_LOSS_GATE_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
