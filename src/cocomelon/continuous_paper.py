@@ -2342,12 +2342,6 @@ def _prospective_full_stack_capacity_reflow_payload(
             two_strike_summary,
             momentum_summary,
         )
-        fill = prospective_capacity_reflow_fill_feasibility_summary(
-            opportunities,
-            evaluation.releases,
-            config,
-            position_history_loader=position_history_loader,
-        )
     except Exception as exc:
         return {
             "enabled": False,
@@ -2359,10 +2353,34 @@ def _prospective_full_stack_capacity_reflow_payload(
             "overlap_started_at_ms": overlap_start,
             "error": f"{type(exc).__name__}: {exc}",
         }
+
+    try:
+        fill = prospective_capacity_reflow_fill_feasibility_summary(
+            opportunities,
+            evaluation.releases,
+            config,
+            position_history_loader=position_history_loader,
+        )
+    except Exception as exc:
+        fill = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "replacement_entry_fills_modeled": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    else:
+        fill = dict(fill)
+        fill["enabled"] = True
+        fill["error"] = None
+
     payload = dict(evaluation.summary)
     payload["enabled"] = True
     payload["fill_feasibility"] = fill
-    payload["replacement_entries_modeled"] = True
+    payload["replacement_entries_modeled"] = (
+        fill.get("enabled") is True
+    )
     payload["replacement_exits_modeled"] = False
     payload["pnl_modeled"] = False
     payload["error"] = None
