@@ -170,7 +170,7 @@ jobs:
           active = [
               run for run in payload.get("workflow_runs", [])
               if run.get("id") != current
-              and run.get("status") == "in_progress"
+              and run.get("status") in {"queued", "pending", "in_progress"}
               and run.get("head_branch") == "main"
           ]
           print(active[0]["id"] if active else "")
