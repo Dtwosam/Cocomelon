@@ -501,7 +501,6 @@ def prospective_breakeven_profit_lock_summary(
     }
 
 
-
 def prospective_breakeven_from_execution_ledger(
     trades: Sequence[TradeJournalEntry],
     execution_ledger: object,
