@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from decimal import Decimal
 
 import pytest
 
@@ -47,8 +48,7 @@ def _exit(
         "funding_cash_pnl": funding_cash,
         "exact_realized_pnl": exact_pnl,
         "exact_realized_return_fraction": str(
-            __import__("decimal").Decimal(exact_pnl)
-            / __import__("decimal").Decimal(entry_notional)
+            Decimal(exact_pnl) / Decimal(entry_notional)
         ),
         "incomplete_reason": None,
         "complete_close": True,
