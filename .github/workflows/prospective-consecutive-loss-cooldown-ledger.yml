@@ -217,16 +217,16 @@ jobs:
 
           **Status:** waiting for new-format compact source
 
-          - source paper run: `$SOURCE_RUN_ID`
-          - source paper attempt: `$SOURCE_RUN_ATTEMPT`
-          - source resolution: `$RESOLUTION_MODE`
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - source resolution: \`$RESOLUTION_MODE\`
           - reason: compact source predates export of the frozen cooldown state/summary
 
           No clean option row is credited from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes risk limits:** `false`
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **Changes risk limits:** \`false\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api \
@@ -359,15 +359,15 @@ jobs:
 
           **Status:** BLOCKED — append-only invariant failure
 
-          - source paper run: `$SOURCE_RUN_ID`
-          - source paper attempt: `$SOURCE_RUN_ATTEMPT`
-          - error: `$error`
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - error: \`$error\`
 
           No cooldown evidence is published from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes risk limits:** `false`
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **Changes risk limits:** \`false\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api \
