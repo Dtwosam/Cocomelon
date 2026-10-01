@@ -748,13 +748,64 @@ def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
     )
 
 
+def test_supervisor_group_recovers_on_majority_stale_l2() -> None:
+    required = frozenset({"BTC", "ETH", "SOL", "ENA"})
+
+    class Lane:
+        def __init__(self, stale: tuple[str, ...]) -> None:
+            self._stale = stale
+
+        def stale_l2_streams(
+            self,
+            *,
+            now_ms: int,
+        ) -> tuple[str, ...]:
+            del now_ms
+            return self._stale
+
+    one_market = _SupervisorGroup(
+        supervisors=(
+            Lane(("l2Book:BTC",)),  # type: ignore[arg-type]
+            Lane(("l2Book:BTC",)),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(set(), set()),
+    )
+    majority = _SupervisorGroup(
+        supervisors=(
+            Lane(("l2Book:BTC", "l2Book:ETH")),  # type: ignore[arg-type]
+            Lane(("l2Book:BTC", "l2Book:ETH")),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(set(), set()),
+    )
+    split_lanes = _SupervisorGroup(
+        supervisors=(
+            Lane(("l2Book:BTC", "l2Book:ETH")),  # type: ignore[arg-type]
+            Lane(("l2Book:SOL", "l2Book:ENA")),  # type: ignore[arg-type]
+        ),
+        tasks=(),
+        forward_gaps=asyncio.Event(),
+        required_market_keys=required,
+        ready_market_keys=(set(), set()),
+    )
+
+    assert one_market.systemically_stale_l2(now_ms=10_000) is False
+    assert majority.systemically_stale_l2(now_ms=10_000) is True
+    assert split_lanes.systemically_stale_l2(now_ms=10_000) is False
+
+
 def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
 
     assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
-    assert "all_required_l2_stale(" in source
+    assert "systemically_stale_l2(" in source
     assert "pump.stale_l2_recovery_attempts += 1" in source
     assert "pump.stale_l2_recovery_promotions += 1" in source
     assert "stale_l2_recovery_readiness_failures += 1" in source
