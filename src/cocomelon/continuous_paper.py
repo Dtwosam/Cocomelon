@@ -7659,7 +7659,41 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
 
-                if now_ms >= next_selection_refresh_ms:
+                health_now_ms = utc_now_ms()
+                systemically_unhealthy_l2 = (
+                    supervisor_group.systemically_stale_l2(
+                        now_ms=health_now_ms,
+                    )
+                )
+                if systemically_unhealthy_l2:
+                    pump.stale_l2_recovery_attempts += 1
+                    replacement_group = await start_supervisors(
+                        selected,
+                        forward_gaps=False,
+                    )
+                    replacement_ready = (
+                        await _wait_supervisor_group_ready(
+                            replacement_group
+                        )
+                    )
+                    if replacement_ready:
+                        replacement_group.forward_gaps.set()
+                        previous_group = supervisor_group
+                        supervisor_group = replacement_group
+                        pump.stale_l2_recovery_promotions += 1
+                        await _cancel_supervisor_group(
+                            previous_group
+                        )
+                    else:
+                        pump.stale_l2_recovery_readiness_failures += 1
+                        await _cancel_supervisor_group(
+                            replacement_group
+                        )
+
+                if (
+                    not systemically_unhealthy_l2
+                    and now_ms >= next_selection_refresh_ms
+                ):
                     pinned = tuple(
                         position.market for position in execution.account.positions
                     )
@@ -7724,34 +7758,6 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
-
-                health_now_ms = utc_now_ms()
-                if supervisor_group.systemically_stale_l2(
-                    now_ms=health_now_ms,
-                ):
-                    pump.stale_l2_recovery_attempts += 1
-                    replacement_group = await start_supervisors(
-                        selected,
-                        forward_gaps=False,
-                    )
-                    replacement_ready = (
-                        await _wait_supervisor_group_ready(
-                            replacement_group
-                        )
-                    )
-                    if replacement_ready:
-                        replacement_group.forward_gaps.set()
-                        previous_group = supervisor_group
-                        supervisor_group = replacement_group
-                        pump.stale_l2_recovery_promotions += 1
-                        await _cancel_supervisor_group(
-                            previous_group
-                        )
-                    else:
-                        pump.stale_l2_recovery_readiness_failures += 1
-                        await _cancel_supervisor_group(
-                            replacement_group
-                        )
 
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
