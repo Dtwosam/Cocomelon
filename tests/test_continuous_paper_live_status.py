@@ -6818,3 +6818,32 @@ def test_filter_economic_readiness_renderer_exposes_profit_and_robustness() -> N
     assert "delta LOO market min PnL / R" in output
     assert "`3 / 0.3`" in output
     assert "economics ready: `true`" in output
+
+
+def test_entry_filter_renderers_include_shared_economic_readiness() -> None:
+    economics = {
+        "candidate_profitable": True,
+        "improvement_positive": True,
+        "candidate_single_trade_robust": True,
+        "candidate_single_market_robust": True,
+        "delta_single_trade_robust": True,
+        "delta_single_market_robust": True,
+        "economics_ready": True,
+    }
+    payload = {
+        "enabled": True,
+        "error": None,
+        "economic_readiness": economics,
+        "readiness": {},
+        "rule": {},
+    }
+
+    for renderer in (
+        _prospective_combined_entry_filter_lines,
+        _prospective_two_strike_stop_filter_lines,
+        _prospective_momentum_band_entry_lines,
+    ):
+        output = "\n".join(renderer(payload))
+        assert "Candidate economic readiness" in output
+        assert "candidate profitable / improvement positive" in output
+        assert "economics ready: `true`" in output
