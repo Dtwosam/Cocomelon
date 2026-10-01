@@ -3525,3 +3525,29 @@ Issue #724 is the clean readiness surface. `ready_for_review` remains non-promot
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Frozen prospective zero-strike momentum-band entry challenger — 2026-10-01
+
+The newest completed compact paper journal contains 69 touched closed trades. The repeated-stop challenger can only act after prior candidate-admitted losing stops, so the remaining research question is first/reset entry quality.
+
+Retrospective feature attribution found one compact direction-normalized pattern worth a clean challenger:
+
+- only evaluate a market/direction key while its candidate losing-stop strike count is zero;
+- require direction-signed 1h return to be at least `+1.5%`;
+- reject direction-signed day return above `+10%` as already too extended;
+- after a candidate-admitted losing mark stop, the momentum-band screen steps aside until a candidate-admitted non-losing-stop close resets the key;
+- a blocked actual trade never updates candidate strike state;
+- LONG and SHORT use the identical signed rule.
+
+On the touched 69-trade journal, the state-machine counterfactual blocked 50 trades and left 19 trades with +94.29 net PnL and +2.97 net R. The allowed LONG and SHORT cohorts were both positive, and the candidate result was positive in each of four chronological blocks. The two newest clean first-strike losses, ADA LONG and FET LONG, also fail this touched rule. These observations are **discovery evidence only** and receive zero clean credit.
+
+The frozen research-only candidate is `prospective-zero-strike-momentum-band-v1`. It uses the immutable opening feature snapshot already attached to each paper trade. Missing or incomplete opening features fail open to ADMIT for paper safety but block clean review readiness.
+
+First deployment establishes a durable freeze timestamp. Clean scoring begins only after a locked six-hour embargo. The precommitted review gate requires at least 30 future closed trades, 5 blocked, 10 admitted, 5 LONG and 5 SHORT closes, complete feature integrity, positive candidate PnL and net R, positive candidate-minus-actual PnL and net-R delta, and positive leave-one-trade / leave-one-market robustness.
+
+This challenger does not change actual paper entries, exits, stops, sizing, risk, promotion state, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
