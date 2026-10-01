@@ -292,6 +292,49 @@ def test_fill_feasibility_replays_conservative_risk_and_exact_ioc() -> None:
     assert result["promotion_authority"] is False
 
 
+def test_fill_feasibility_replaces_open_position_with_terminal_contribution() -> None:
+    evidence = _evidence()
+    result = prospective_capacity_reflow_fill_feasibility_summary(
+        (evidence,),
+        (_release(evidence),),
+        PaperExecutionConfig(),
+        position_history_loader=_history,
+        released_position_terminal_contribution_by_plan={
+            "release-plan-btc": Decimal("-0.2"),
+        },
+    )
+
+    option_results = result["option_results"]
+    assert isinstance(option_results, list)
+    option = option_results[0]
+    assert isinstance(option, dict)
+    assert option["counterfactual_equity_delta"] == "0.8"
+    assert option["released_position_terminal_contribution"] == "-0.2"
+    assert result["counterfactual_equity_delta_min"] == "0.8"
+    assert result["counterfactual_equity_delta_max"] == "0.8"
+    assert result["account_capacity_credit_mode"] == (
+        "terminal_contribution_single_release_accounting_"
+        "other_positions_fixed"
+    )
+    assert result["conservative_risk_approvals"] == 1
+
+
+def test_fill_feasibility_requires_terminal_contribution_for_each_release() -> None:
+    evidence = _evidence()
+
+    with pytest.raises(
+        ProspectiveCapacityReflowFillFeasibilityError,
+        match="release terminal contribution is missing",
+    ):
+        prospective_capacity_reflow_fill_feasibility_summary(
+            (evidence,),
+            (_release(evidence),),
+            PaperExecutionConfig(),
+            position_history_loader=_history,
+            released_position_terminal_contribution_by_plan={},
+        )
+
+
 def test_fill_feasibility_refuses_execution_config_drift() -> None:
     evidence = _evidence()
 
