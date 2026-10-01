@@ -255,7 +255,7 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
         trade = _trade(
             f"ready-{index}",
             opened_at_ms=candidate.started_at_ms + index * 120_000,
-            pnl="-1",
+            pnl="-1" if index < 10 else "1",
             market=market,
             direction=direction,
         )
@@ -293,10 +293,10 @@ def test_prospective_breakeven_ready_requires_profitable_robust_both_sides() -> 
                 no_fill_count=0,
                 actual_net_pnl=trade.net_pnl,
                 actual_net_r=trade.net_r,
-                candidate_net_pnl_estimate=Decimal("1"),
-                candidate_net_r_estimate=Decimal("0.1"),
-                delta_net_pnl_estimate=Decimal("2"),
-                delta_net_r_estimate=Decimal("0.2"),
+                candidate_net_pnl_estimate=trade.net_pnl,
+                candidate_net_r_estimate=trade.net_r,
+                delta_net_pnl_estimate=Decimal("0"),
+                delta_net_r_estimate=Decimal("0"),
                 candidate_source="actual_close",
             )
         )
