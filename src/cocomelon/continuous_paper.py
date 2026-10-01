@@ -5,7 +5,7 @@ import json
 import os
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
@@ -1271,6 +1271,47 @@ def _l2_event_fresh_for_promotion(
     return 0 <= age_ms <= max_book_age_ms
 
 
+def _systemic_l2_threshold(required_count: int) -> int:
+    if required_count < 0:
+        raise ValueError("required_count must be non-negative")
+    if required_count <= 1:
+        return required_count
+    return max(2, (required_count + 1) // 2)
+
+
+def _systemically_unready_l2(
+    required_market_keys: frozenset[str],
+    ready_market_keys: tuple[set[str], ...],
+) -> bool:
+    if not required_market_keys or not ready_market_keys:
+        return False
+    unready_count = sum(
+        all(market not in ready for ready in ready_market_keys)
+        for market in required_market_keys
+    )
+    return unready_count >= _systemic_l2_threshold(
+        len(required_market_keys)
+    )
+
+
+async def _wait_l2_health_wakeup(
+    wakeup: asyncio.Event,
+    *,
+    timeout_seconds: float,
+) -> bool:
+    if timeout_seconds <= 0:
+        raise ValueError("L2 health wait timeout must be positive")
+    try:
+        await asyncio.wait_for(
+            wakeup.wait(),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        return False
+    wakeup.clear()
+    return True
+
+
 @dataclass(slots=True)
 class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
@@ -1278,6 +1319,9 @@ class _SupervisorGroup:
     forward_gaps: asyncio.Event
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
+    l2_health_wakeup: asyncio.Event = field(
+        default_factory=asyncio.Event
+    )
 
     def stale_l2_market_keys(
         self,
@@ -1333,13 +1377,9 @@ class _SupervisorGroup:
         unhealthy_count = len(
             self.unhealthy_l2_market_keys(now_ms=now_ms)
         )
-        if required_count == 1:
-            return unhealthy_count == 1
-        minimum_unhealthy = max(
-            2,
-            (required_count + 1) // 2,
+        return unhealthy_count >= _systemic_l2_threshold(
+            required_count
         )
-        return unhealthy_count >= minimum_unhealthy
 
 
 async def _wait_supervisor_group_ready(
@@ -7525,6 +7565,8 @@ async def run_continuous_paper_session(
             ready_market_keys: tuple[set[str], ...] = tuple(
                 set() for _ in range(2)
             )
+            group_started_at_ms = utc_now_ms()
+            l2_health_wakeup = asyncio.Event()
 
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
@@ -7568,6 +7610,19 @@ async def run_continuous_paper_session(
                         gap,
                         required_market_keys=required_market_keys,
                     )
+                    if (
+                        gap.is_open
+                        and gap.reason in {"stale", "disconnect"}
+                        and (
+                            utc_now_ms() - group_started_at_ms
+                            >= replay_config.eligibility.max_book_age_ms
+                        )
+                        and _systemically_unready_l2(
+                            required_market_keys,
+                            ready_market_keys,
+                        )
+                    ):
+                        l2_health_wakeup.set()
                     await mux.on_gap(lane, gap)
 
                 supervisor = WebSocketSupervisor(
@@ -7591,6 +7646,7 @@ async def run_continuous_paper_session(
                 forward_gaps=gap_gate,
                 required_market_keys=required_market_keys,
                 ready_market_keys=ready_market_keys,
+                l2_health_wakeup=l2_health_wakeup,
             )
 
         supervisor_group = await start_supervisors(
@@ -7615,11 +7671,45 @@ async def run_continuous_paper_session(
                     float(config.context_poll_seconds),
                     max(0.1, (deadline_ms - now_ms) / 1000),
                 )
-                await asyncio.sleep(sleep_seconds)
+                await _wait_l2_health_wakeup(
+                    supervisor_group.l2_health_wakeup,
+                    timeout_seconds=sleep_seconds,
+                )
                 now_ms = utc_now_ms()
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+
+                health_now_ms = utc_now_ms()
+                systemically_unhealthy_l2 = (
+                    supervisor_group.systemically_stale_l2(
+                        now_ms=health_now_ms,
+                    )
+                )
+                if systemically_unhealthy_l2:
+                    pump.stale_l2_recovery_attempts += 1
+                    replacement_group = await start_supervisors(
+                        selected,
+                        forward_gaps=False,
+                    )
+                    replacement_ready = (
+                        await _wait_supervisor_group_ready(
+                            replacement_group
+                        )
+                    )
+                    if replacement_ready:
+                        replacement_group.forward_gaps.set()
+                        previous_group = supervisor_group
+                        supervisor_group = replacement_group
+                        pump.stale_l2_recovery_promotions += 1
+                        await _cancel_supervisor_group(
+                            previous_group
+                        )
+                    else:
+                        pump.stale_l2_recovery_readiness_failures += 1
+                        await _cancel_supervisor_group(
+                            replacement_group
+                        )
 
                 (
                     refreshed,
@@ -7658,37 +7748,6 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
-
-                health_now_ms = utc_now_ms()
-                systemically_unhealthy_l2 = (
-                    supervisor_group.systemically_stale_l2(
-                        now_ms=health_now_ms,
-                    )
-                )
-                if systemically_unhealthy_l2:
-                    pump.stale_l2_recovery_attempts += 1
-                    replacement_group = await start_supervisors(
-                        selected,
-                        forward_gaps=False,
-                    )
-                    replacement_ready = (
-                        await _wait_supervisor_group_ready(
-                            replacement_group
-                        )
-                    )
-                    if replacement_ready:
-                        replacement_group.forward_gaps.set()
-                        previous_group = supervisor_group
-                        supervisor_group = replacement_group
-                        pump.stale_l2_recovery_promotions += 1
-                        await _cancel_supervisor_group(
-                            previous_group
-                        )
-                    else:
-                        pump.stale_l2_recovery_readiness_failures += 1
-                        await _cancel_supervisor_group(
-                            replacement_group
-                        )
 
                 if (
                     not systemically_unhealthy_l2
