@@ -7958,6 +7958,99 @@ async def run_continuous_paper_session(
         next_checkpoint_ms = started_at_ms + config.checkpoint_seconds * 1000
         last_pipeline_stale_recovery_boundary_ms: int | None = None
 
+        async def recover_systemic_l2_if_needed() -> bool:
+            nonlocal supervisor_group
+            nonlocal last_pipeline_stale_recovery_boundary_ms
+
+            health_now_ms = utc_now_ms()
+            supervisor_unhealthy_market_keys = (
+                supervisor_group.unhealthy_l2_market_keys(
+                    now_ms=health_now_ms,
+                )
+            )
+            supervisor_systemically_unhealthy_l2 = (
+                _is_systemic_l2_failure(
+                    supervisor_group.required_market_keys,
+                    supervisor_unhealthy_market_keys,
+                )
+            )
+            decision_activity = pipeline.session_decision_activity
+            (
+                pipeline_recovery_boundary_ms,
+                pipeline_stale_market_keys,
+                pipeline_reason_fallback,
+            ) = _pipeline_l2_recovery_plan(
+                decision_activity,
+                selected_market_keys=frozenset(selected_keys),
+                last_recovery_boundary_ms=(
+                    last_pipeline_stale_recovery_boundary_ms
+                ),
+                max_book_age_ms=(
+                    replay_config.eligibility.max_book_age_ms
+                ),
+            )
+            pipeline_systemically_unhealthy_l2 = (
+                pipeline_recovery_boundary_ms is not None
+            )
+            systemically_unhealthy_l2 = (
+                supervisor_systemically_unhealthy_l2
+                or pipeline_systemically_unhealthy_l2
+            )
+            if not systemically_unhealthy_l2:
+                return False
+
+            if pipeline_systemically_unhealthy_l2:
+                pump.stale_l2_pipeline_recovery_triggers += 1
+                if pipeline_reason_fallback:
+                    pump.stale_l2_pipeline_reason_fallback_triggers += 1
+                last_pipeline_stale_recovery_boundary_ms = (
+                    pipeline_recovery_boundary_ms
+                )
+            unhealthy_market_keys = (
+                supervisor_unhealthy_market_keys
+                | pipeline_stale_market_keys
+            )
+            reseed_markets = tuple(
+                market
+                for market in selected
+                if market.canonical in unhealthy_market_keys
+            )
+            pump.stale_l2_rest_reseed_attempts += 1
+            (
+                reseeded_books,
+                reseed_failures,
+            ) = await _reseed_l2_books_via_rest(
+                reader,
+                reseed_markets,
+                pump,
+                max_book_age_ms=(
+                    replay_config.eligibility.max_book_age_ms
+                ),
+            )
+            pump.stale_l2_rest_reseed_books += reseeded_books
+            pump.stale_l2_rest_reseed_failures += (
+                reseed_failures
+            )
+
+            pump.stale_l2_recovery_attempts += 1
+            replacement_group = await start_supervisors(
+                selected,
+                forward_gaps=False,
+            )
+            replacement_ready = await _wait_supervisor_group_ready(
+                replacement_group
+            )
+            if replacement_ready:
+                replacement_group.forward_gaps.set()
+                previous_group = supervisor_group
+                supervisor_group = replacement_group
+                pump.stale_l2_recovery_promotions += 1
+                await _cancel_supervisor_group(previous_group)
+            else:
+                pump.stale_l2_recovery_readiness_failures += 1
+                await _cancel_supervisor_group(replacement_group)
+            return True
+
         exit_reason = "duration_elapsed"
         try:
             while utc_now_ms() < deadline_ms:
@@ -8013,99 +8106,9 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
 
-                health_now_ms = utc_now_ms()
-                supervisor_unhealthy_market_keys = (
-                    supervisor_group.unhealthy_l2_market_keys(
-                        now_ms=health_now_ms,
-                    )
-                )
-                supervisor_systemically_unhealthy_l2 = (
-                    _is_systemic_l2_failure(
-                        supervisor_group.required_market_keys,
-                        supervisor_unhealthy_market_keys,
-                    )
-                )
-                decision_activity = (
-                    pipeline.session_decision_activity
-                )
-                (
-                    pipeline_recovery_boundary_ms,
-                    pipeline_stale_market_keys,
-                    pipeline_reason_fallback,
-                ) = _pipeline_l2_recovery_plan(
-                    decision_activity,
-                    selected_market_keys=frozenset(selected_keys),
-                    last_recovery_boundary_ms=(
-                        last_pipeline_stale_recovery_boundary_ms
-                    ),
-                    max_book_age_ms=(
-                        replay_config.eligibility.max_book_age_ms
-                    ),
-                )
-                pipeline_systemically_unhealthy_l2 = (
-                    pipeline_recovery_boundary_ms is not None
-                )
                 systemically_unhealthy_l2 = (
-                    supervisor_systemically_unhealthy_l2
-                    or pipeline_systemically_unhealthy_l2
+                    await recover_systemic_l2_if_needed()
                 )
-                if systemically_unhealthy_l2:
-                    if pipeline_systemically_unhealthy_l2:
-                        pump.stale_l2_pipeline_recovery_triggers += 1
-                        if pipeline_reason_fallback:
-                            pump.stale_l2_pipeline_reason_fallback_triggers += 1
-                        last_pipeline_stale_recovery_boundary_ms = (
-                            pipeline_recovery_boundary_ms
-                        )
-                    unhealthy_market_keys = (
-                        supervisor_unhealthy_market_keys
-                        | pipeline_stale_market_keys
-                    )
-                    reseed_markets = tuple(
-                        market
-                        for market in selected
-                        if market.canonical in unhealthy_market_keys
-                    )
-                    pump.stale_l2_rest_reseed_attempts += 1
-                    (
-                        reseeded_books,
-                        reseed_failures,
-                    ) = await _reseed_l2_books_via_rest(
-                        reader,
-                        reseed_markets,
-                        pump,
-                        max_book_age_ms=(
-                            replay_config.eligibility.max_book_age_ms
-                        ),
-                    )
-                    pump.stale_l2_rest_reseed_books += reseeded_books
-                    pump.stale_l2_rest_reseed_failures += (
-                        reseed_failures
-                    )
-
-                    pump.stale_l2_recovery_attempts += 1
-                    replacement_group = await start_supervisors(
-                        selected,
-                        forward_gaps=False,
-                    )
-                    replacement_ready = (
-                        await _wait_supervisor_group_ready(
-                            replacement_group
-                        )
-                    )
-                    if replacement_ready:
-                        replacement_group.forward_gaps.set()
-                        previous_group = supervisor_group
-                        supervisor_group = replacement_group
-                        pump.stale_l2_recovery_promotions += 1
-                        await _cancel_supervisor_group(
-                            previous_group
-                        )
-                    else:
-                        pump.stale_l2_recovery_readiness_failures += 1
-                        await _cancel_supervisor_group(
-                            replacement_group
-                        )
 
                 if (
                     not systemically_unhealthy_l2
@@ -8179,6 +8182,11 @@ async def run_continuous_paper_session(
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
+
+                if not systemically_unhealthy_l2:
+                    systemically_unhealthy_l2 = (
+                        await recover_systemic_l2_if_needed()
+                    )
 
                 _emit_operational_live_status(
                     execution,
