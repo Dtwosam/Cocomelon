@@ -11,6 +11,9 @@ from cocomelon.domain.strategy import Direction
 from cocomelon.research.profit_lock_counterfactual import (
     DEFAULT_PROFIT_LOCK_RULES,
 )
+from cocomelon.research.profit_lock_execution_ledger import (
+    update_profit_lock_execution_ledger,
+)
 from cocomelon.research.profit_lock_execution_shadow import (
     EXECUTION_SHADOW_STATE_SCHEMA_VERSION,
     ProfitLockExecutionOutcome,
@@ -19,6 +22,7 @@ from cocomelon.research.prospective_breakeven_profit_lock import (
     EMBARGO_MS,
     ProspectiveBreakevenProfitLockError,
     ProspectiveBreakevenProfitLockState,
+    prospective_breakeven_from_execution_ledger,
     prospective_breakeven_profit_lock_summary,
 )
 
@@ -348,3 +352,43 @@ def test_prospective_breakeven_incomplete_trigger_blocks_integrity() -> None:
     assert result["triggered_incomplete"] == 1
     assert readiness["integrity_clean"] is False
     assert readiness["ready_for_review"] is False
+
+
+def test_prospective_breakeven_reuses_immutable_execution_ledger() -> None:
+    candidate = ProspectiveBreakevenProfitLockState(
+        frozen_at_ms=5_000_000
+    )
+    trade = _trade(
+        "ledger",
+        opened_at_ms=candidate.started_at_ms,
+        pnl="-5",
+        market="ETH",
+        direction=Direction.SHORT,
+    )
+    execution_ledger = update_profit_lock_execution_ledger(
+        (trade,),
+        _state((_outcome(trade, candidate_pnl="1"),)),
+        previous=None,
+        source_paper_run_id=77,
+        source_paper_run_attempt=2,
+        source_artifact_name="learning-77-2",
+        source_artifact_digest="sha256:" + "a" * 64,
+    )
+
+    result = prospective_breakeven_from_execution_ledger(
+        (trade,),
+        execution_ledger,
+        candidate,
+    )
+
+    assert result["prospective_closed_trades"] == 1
+    assert result["matched_outcomes"] == 1
+    assert result["delta_net_pnl"] == "6"
+    assert (
+        result["source_execution_ledger_sha256"]
+        == execution_ledger["ledger_sha256"]
+    )
+    assert result["source_execution_ledger_row_count"] == 1
+    assert result["source_paper_run_id"] == 77
+    assert result["source_paper_run_attempt"] == 2
+    assert result["source_artifact_name"] == "learning-77-2"
