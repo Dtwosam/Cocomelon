@@ -31,3 +31,22 @@ def test_paired_ledger_uses_safe_artifact_identity_transport() -> None:
     assert 'then "\\(.[0].id)' not in source
     assert "previous paired row" not in source
     assert "append-only invariant failure" in source
+
+
+def test_paired_ledger_preserves_explicit_no_evidence_state() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "cadence-model-comparison-no-evidence-" in source
+    assert "cadence-model-comparison-ledger-no-evidence.json" in source
+    assert "cadence-model-comparison-ledger-no-evidence-" in source
+    assert 'echo "no_evidence=true" >> "$GITHUB_OUTPUT"' in source
+    assert "source_comparison_no_evidence" in source
+    assert "no prior paired ledger is reused" in source.lower()
+    assert (
+        "steps.current.outputs.available == 'true' &&"
+        in source
+    )
+    assert (
+        "steps.current.outputs.no_evidence == 'true'"
+        in source
+    )
