@@ -178,6 +178,14 @@ class SessionDecisionActivity:
     short_decisions: int
     no_trade_decisions: int
     decision_reason_counts: tuple[tuple[str, int], ...]
+    eligibility_evaluations: int
+    eligibility_rankable: int
+    eligibility_deep_ready: int
+    eligibility_reason_counts: tuple[tuple[str, int], ...]
+    latest_epoch_market_count: int
+    latest_epoch_rankable_count: int
+    latest_epoch_deep_ready_count: int
+    latest_epoch_eligibility_reason_counts: tuple[tuple[str, int], ...]
     risk_evaluations: int
     risk_approvals: int
     risk_rejections: int
@@ -280,6 +288,14 @@ class BaselineReplayPipeline:
             "no_trade": 0,
         }
         self._decision_reason_counts: dict[str, int] = {}
+        self._eligibility_evaluations = 0
+        self._eligibility_rankable = 0
+        self._eligibility_deep_ready = 0
+        self._eligibility_reason_counts: dict[str, int] = {}
+        self._latest_epoch_market_count = 0
+        self._latest_epoch_rankable_count = 0
+        self._latest_epoch_deep_ready_count = 0
+        self._latest_epoch_eligibility_reason_counts: dict[str, int] = {}
         self._risk_evaluations = 0
         self._risk_approvals = 0
         self._risk_rejections = 0
@@ -304,7 +320,27 @@ class BaselineReplayPipeline:
             long_decisions=self._decision_counts["long"],
             short_decisions=self._decision_counts["short"],
             no_trade_decisions=self._decision_counts["no_trade"],
-            decision_reason_counts=tuple(sorted(self._decision_reason_counts.items())),
+            decision_reason_counts=tuple(
+                sorted(self._decision_reason_counts.items())
+            ),
+            eligibility_evaluations=self._eligibility_evaluations,
+            eligibility_rankable=self._eligibility_rankable,
+            eligibility_deep_ready=self._eligibility_deep_ready,
+            eligibility_reason_counts=tuple(
+                sorted(self._eligibility_reason_counts.items())
+            ),
+            latest_epoch_market_count=self._latest_epoch_market_count,
+            latest_epoch_rankable_count=(
+                self._latest_epoch_rankable_count
+            ),
+            latest_epoch_deep_ready_count=(
+                self._latest_epoch_deep_ready_count
+            ),
+            latest_epoch_eligibility_reason_counts=tuple(
+                sorted(
+                    self._latest_epoch_eligibility_reason_counts.items()
+                )
+            ),
             risk_evaluations=self._risk_evaluations,
             risk_approvals=self._risk_approvals,
             risk_rejections=self._risk_rejections,
@@ -553,8 +589,30 @@ class BaselineReplayPipeline:
         self._decision_epochs += 1
         self._last_decision_boundary_ms = epoch.boundary_ms
         self._last_decision_evaluated_at_ms = epoch.evaluated_at_ms
+        self._latest_epoch_market_count = len(epoch.markets)
+        self._latest_epoch_rankable_count = 0
+        self._latest_epoch_deep_ready_count = 0
+        self._latest_epoch_eligibility_reason_counts = {}
         observations: list[JournalObservation] = []
         for evaluation in epoch.markets:
+            self._eligibility_evaluations += 1
+            if evaluation.eligibility.rankable:
+                self._eligibility_rankable += 1
+                self._latest_epoch_rankable_count += 1
+            if evaluation.eligibility.deep_ready:
+                self._eligibility_deep_ready += 1
+                self._latest_epoch_deep_ready_count += 1
+            for reason in evaluation.eligibility.reasons:
+                self._eligibility_reason_counts[reason] = (
+                    self._eligibility_reason_counts.get(reason, 0) + 1
+                )
+                self._latest_epoch_eligibility_reason_counts[reason] = (
+                    self._latest_epoch_eligibility_reason_counts.get(
+                        reason,
+                        0,
+                    )
+                    + 1
+                )
             decision = evaluation.decision
             direction = decision.direction.value
             if direction not in self._decision_counts:
