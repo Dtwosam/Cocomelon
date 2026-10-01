@@ -26,3 +26,20 @@ def test_prospective_readiness_workflow_is_fail_closed() -> None:
     assert "paper " in source
     assert "entries, timing, sizing, stops, risk, promotion state" in source
     assert "no authority to change" in source
+
+
+def test_prospective_readiness_blocks_no_evidence_without_stale_reuse() -> None:
+    source = Path(
+        ".github/workflows/prospective-trade-quality-readiness.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "cadence-model-comparison-ledger-no-evidence-" in source
+    assert "comparison_no_evidence" in source
+    assert (
+        "steps.ledgers.outputs.comparison_no_evidence != 'true'"
+        in source
+    )
+    assert "BLOCKED — no new comparison evidence" in source
+    assert "are not reused as if they were current" in source
+    assert "cat > /tmp/readiness-status.md <<EOF" not in source
+    assert 'Path("/tmp/readiness-status.md").write_text' in source
