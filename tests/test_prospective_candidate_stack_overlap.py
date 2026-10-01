@@ -120,8 +120,9 @@ def test_candidate_stack_overlap_separates_incremental_blocks() -> None:
 def test_candidate_stack_overlap_reports_missing_decisions() -> None:
     first = _trade("first", opened_at_ms=2_000, pnl="-5")
     second = _trade("second", opened_at_ms=3_000, pnl="-3")
+    third = _trade("third", opened_at_ms=4_000, pnl="-2")
     result = prospective_candidate_stack_overlap_summary(
-        (first, second),
+        (first, second, third),
         {
             "started_at_ms": 1_000,
             "decision_block_reason_by_trade_id": {
@@ -137,10 +138,10 @@ def test_candidate_stack_overlap_reports_missing_decisions() -> None:
         },
     )
 
-    assert result["closed_trades_since_overlap_start"] == 2
+    assert result["closed_trades_since_overlap_start"] == 3
     assert result["matched_trades"] == 1
-    assert result["missing_combined_decisions"] == 1
-    assert result["missing_two_strike_decisions"] == 0
+    assert result["missing_combined_decisions"] == 2
+    assert result["missing_two_strike_decisions"] == 1
     assert result["integrity_clean"] is False
 
 
