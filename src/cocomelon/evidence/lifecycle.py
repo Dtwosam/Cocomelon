@@ -374,21 +374,51 @@ class BaselineReplayPipeline:
         def mark_price(record: ReplayRecord) -> Decimal:
             payload = record.payload
             if not isinstance(payload, dict):
-                raise ReplayInvariantError("mark observation payload must be an object")
+                raise ReplayInvariantError(
+                    "mark observation payload must be an object"
+                )
             raw = payload.get("mark_px")
             try:
                 value = Decimal(str(raw))
             except Exception as exc:
-                raise ReplayInvariantError("mark observation price is invalid") from exc
+                raise ReplayInvariantError(
+                    "mark observation price is invalid"
+                ) from exc
             if not value.is_finite() or value <= ZERO:
-                raise ReplayInvariantError("mark observation price must be positive")
+                raise ReplayInvariantError(
+                    "mark observation price must be positive"
+                )
             return value
 
-        low = min(records, key=lambda record: (mark_price(record), record.sort_key))
-        high = max(records, key=lambda record: (mark_price(record), record.sort_key))
-        extrema = {low.event_key: low, high.event_key: high}
+        low = min(
+            records,
+            key=lambda record: (mark_price(record), record.sort_key),
+        )
+        high = max(
+            records,
+            key=lambda record: (mark_price(record), record.sort_key),
+        )
+        retained = {low.event_key: low, high.event_key: high}
+
+        # Funding reconciliation needs the last asset context observed at or
+        # before each hourly boundary. Keep one such record per crossed hour
+        # so a worker handoff does not discard the exact oracle evidence while
+        # still bounding checkpoint growth.
+        latest_by_boundary: dict[int, ReplayRecord] = {}
+        for record in records:
+            boundary_ms = (
+                (record.available_at_ms + HOUR_MS - 1)
+                // HOUR_MS
+                * HOUR_MS
+            )
+            existing = latest_by_boundary.get(boundary_ms)
+            if existing is None or record.sort_key > existing.sort_key:
+                latest_by_boundary[boundary_ms] = record
+        for record in latest_by_boundary.values():
+            retained[record.event_key] = record
+
         return tuple(
-            sorted(extrema.values(), key=lambda record: record.sort_key)
+            sorted(retained.values(), key=lambda record: record.sort_key)
         )
 
     @property
@@ -524,12 +554,34 @@ class BaselineReplayPipeline:
             if key in lifecycle.actions:
                 raise ReplayInvariantError("restored position action duplicate")
             lifecycle.actions[key] = action
+        restored_oracles: list[StreamEvent] = []
         for record in checkpoint.mark_observations:
             if record.market != checkpoint.market.canonical:
-                raise ReplayInvariantError("restored mark observation market mismatch")
+                raise ReplayInvariantError(
+                    "restored mark observation market mismatch"
+                )
             if record.event_key is None:
-                raise ReplayInvariantError("restored mark observation key missing")
+                raise ReplayInvariantError(
+                    "restored mark observation key missing"
+                )
+            if record.event_kind != StreamKind.ACTIVE_ASSET_CTX.value:
+                raise ReplayInvariantError(
+                    "restored mark observation kind mismatch"
+                )
             lifecycle.marks[record.event_key] = record
+            restored_oracles.append(
+                replay_record_stream_event(record)
+            )
+        if restored_oracles:
+            history = self._oracle_history.setdefault(market_key, [])
+            history.extend(restored_oracles)
+            history.sort(
+                key=lambda item: (
+                    _receive_ms(item),
+                    item.event_key,
+                )
+            )
+            self._latest_mark[market_key] = history[-1]
         for accrual in funding_accruals:
             if accrual.market != checkpoint.market:
                 raise ReplayInvariantError("restored funding market mismatch")
