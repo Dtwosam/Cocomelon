@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -52,6 +53,7 @@ from cocomelon.continuous_paper import (
     _load_checkpoint,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
+    _pipeline_l2_recovery_plan,
     _position_action_from_payload,
     _position_action_payload,
     _position_protection_metrics,
@@ -852,6 +854,153 @@ def test_pipeline_stale_l2_trigger_uses_latest_decision_epoch() -> None:
         )
         is False
     )
+
+
+def test_pipeline_l2_recovery_plan_uses_exact_stale_keys() -> None:
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=10_000,
+        last_decision_evaluated_at_ms=10_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=4,
+        decision_reason_counts=(("not_deep_ready", 4),),
+        eligibility_evaluations=4,
+        eligibility_rankable=4,
+        eligibility_deep_ready=0,
+        eligibility_reason_counts=(("stale_book", 2),),
+        latest_epoch_market_count=4,
+        latest_epoch_rankable_count=4,
+        latest_epoch_deep_ready_count=0,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 2),
+        ),
+        latest_epoch_stale_book_age_ms=(
+            ("BTC", 6_000),
+            ("ETH", 7_000),
+        ),
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+
+    boundary, markets, fallback = _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=frozenset(
+            {"BTC", "ETH", "SOL", "ENA"}
+        ),
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    )
+
+    assert boundary == 10_000
+    assert markets == frozenset({"BTC", "ETH"})
+    assert fallback is False
+
+
+def test_pipeline_l2_recovery_plan_falls_back_to_epoch_stale_count() -> None:
+    stale_ages = tuple(
+        (f"stale-{index}", 57_233)
+        for index in range(16)
+    )
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=20_000,
+        last_decision_evaluated_at_ms=20_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=20,
+        decision_reason_counts=(("not_deep_ready", 20),),
+        eligibility_evaluations=20,
+        eligibility_rankable=16,
+        eligibility_deep_ready=0,
+        eligibility_reason_counts=(("stale_book", 16),),
+        latest_epoch_market_count=20,
+        latest_epoch_rankable_count=16,
+        latest_epoch_deep_ready_count=0,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 16),
+        ),
+        latest_epoch_stale_book_age_ms=stale_ages,
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    selected = frozenset(
+        f"selected-{index}" for index in range(20)
+    )
+
+    boundary, markets, fallback = _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=selected,
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    )
+
+    assert boundary == 20_000
+    assert markets == selected
+    assert fallback is True
+
+
+def test_pipeline_l2_recovery_plan_does_not_repeat_or_overreact() -> None:
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=30_000,
+        last_decision_evaluated_at_ms=30_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=20,
+        decision_reason_counts=(("not_deep_ready", 20),),
+        eligibility_evaluations=20,
+        eligibility_rankable=20,
+        eligibility_deep_ready=12,
+        eligibility_reason_counts=(("stale_book", 8),),
+        latest_epoch_market_count=20,
+        latest_epoch_rankable_count=20,
+        latest_epoch_deep_ready_count=12,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 8),
+        ),
+        latest_epoch_stale_book_age_ms=tuple(
+            (f"stale-{index}", 57_233)
+            for index in range(8)
+        ),
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    selected = frozenset(
+        f"selected-{index}" for index in range(20)
+    )
+
+    assert _pipeline_l2_recovery_plan(
+        activity,
+        selected_market_keys=selected,
+        last_recovery_boundary_ms=None,
+        max_book_age_ms=5_000,
+    ) == (None, frozenset(), False)
+
+    systemic_activity = replace(
+        activity,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 16),
+        ),
+    )
+    assert _pipeline_l2_recovery_plan(
+        systemic_activity,
+        selected_market_keys=selected,
+        last_recovery_boundary_ms=30_000,
+        max_book_age_ms=5_000,
+    ) == (None, frozenset(), False)
 
 
 def test_supervisor_group_readiness_requires_full_market_coverage() -> None:

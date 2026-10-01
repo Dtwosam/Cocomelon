@@ -1273,16 +1273,15 @@ def _l2_event_fresh_for_promotion(
     return 0 <= age_ms <= max_book_age_ms
 
 
-def _is_systemic_l2_failure(
-    required_market_keys: frozenset[str],
-    unhealthy_market_keys: frozenset[str],
+def _is_systemic_l2_count(
+    required_count: int,
+    unhealthy_count: int,
 ) -> bool:
-    required_count = len(required_market_keys)
+    if required_count < 0 or unhealthy_count < 0:
+        raise ValueError("L2 market counts must be non-negative")
     if required_count == 0:
         return False
-    unhealthy_count = len(
-        required_market_keys & unhealthy_market_keys
-    )
+    unhealthy_count = min(unhealthy_count, required_count)
     if required_count == 1:
         return unhealthy_count == 1
     minimum_unhealthy = max(
@@ -1290,6 +1289,16 @@ def _is_systemic_l2_failure(
         (required_count + 1) // 2,
     )
     return unhealthy_count >= minimum_unhealthy
+
+
+def _is_systemic_l2_failure(
+    required_market_keys: frozenset[str],
+    unhealthy_market_keys: frozenset[str],
+) -> bool:
+    return _is_systemic_l2_count(
+        len(required_market_keys),
+        len(required_market_keys & unhealthy_market_keys),
+    )
 
 
 def _latest_epoch_stale_l2_market_keys(
@@ -1308,6 +1317,68 @@ def _latest_epoch_stale_l2_market_keys(
             and age_ms >= max_book_age_ms
         )
     )
+
+
+def _pipeline_l2_recovery_plan(
+    activity: SessionDecisionActivity,
+    *,
+    selected_market_keys: frozenset[str],
+    last_recovery_boundary_ms: int | None,
+    max_book_age_ms: int,
+) -> tuple[int | None, frozenset[str], bool]:
+    if max_book_age_ms <= 0:
+        raise ValueError("max_book_age_ms must be positive")
+    boundary_ms = activity.last_decision_boundary_ms
+    if (
+        boundary_ms is None
+        or boundary_ms == last_recovery_boundary_ms
+        or not selected_market_keys
+    ):
+        return None, frozenset(), False
+
+    stale_selected = _latest_epoch_stale_l2_market_keys(
+        activity,
+        selected_market_keys=selected_market_keys,
+        max_book_age_ms=max_book_age_ms,
+    )
+    if _is_systemic_l2_failure(
+        selected_market_keys,
+        stale_selected,
+    ):
+        return boundary_ms, stale_selected, False
+
+    reason_counts = dict(
+        activity.latest_epoch_eligibility_reason_counts
+    )
+    raw_stale_reason_count = reason_counts.get("stale_book", 0)
+    stale_reason_count = (
+        raw_stale_reason_count
+        if (
+            isinstance(raw_stale_reason_count, int)
+            and not isinstance(raw_stale_reason_count, bool)
+            and raw_stale_reason_count > 0
+        )
+        else 0
+    )
+    if (
+        activity.latest_epoch_market_count
+        != len(selected_market_keys)
+    ):
+        return None, frozenset(), False
+
+    required_count = len(selected_market_keys)
+    systemic_reason_count = _is_systemic_l2_count(
+        required_count,
+        stale_reason_count,
+    )
+    if not systemic_reason_count:
+        return None, frozenset(), False
+
+    # Eligibility is authoritative for whether the latest decision epoch
+    # rejected a market for stale L2. If the per-market telemetry cannot be
+    # joined back to the current selected-key namespace, recover the whole
+    # selected set instead of leaving a systemically stale paper worker blind.
+    return boundary_ms, selected_market_keys, True
 
 
 @dataclass(slots=True)
@@ -3644,6 +3715,7 @@ class _RecordPump:
         self.stale_l2_rest_reseed_books = 0
         self.stale_l2_rest_reseed_failures = 0
         self.stale_l2_pipeline_recovery_triggers = 0
+        self.stale_l2_pipeline_reason_fallback_triggers = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -6147,6 +6219,9 @@ def _live_status_payload(
         "stale_l2_pipeline_recovery_triggers": (
             pump.stale_l2_pipeline_recovery_triggers
         ),
+        "stale_l2_pipeline_reason_fallback_triggers": (
+            pump.stale_l2_pipeline_reason_fallback_triggers
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7904,28 +7979,22 @@ async def run_continuous_paper_session(
                 decision_activity = (
                     pipeline.session_decision_activity
                 )
-                decision_boundary_ms = (
-                    decision_activity.last_decision_boundary_ms
-                )
-                pipeline_stale_market_keys = (
-                    _latest_epoch_stale_l2_market_keys(
-                        decision_activity,
-                        selected_market_keys=frozenset(
-                            selected_keys
-                        ),
-                        max_book_age_ms=(
-                            replay_config.eligibility.max_book_age_ms
-                        ),
-                    )
+                (
+                    pipeline_recovery_boundary_ms,
+                    pipeline_stale_market_keys,
+                    pipeline_reason_fallback,
+                ) = _pipeline_l2_recovery_plan(
+                    decision_activity,
+                    selected_market_keys=frozenset(selected_keys),
+                    last_recovery_boundary_ms=(
+                        last_pipeline_stale_recovery_boundary_ms
+                    ),
+                    max_book_age_ms=(
+                        replay_config.eligibility.max_book_age_ms
+                    ),
                 )
                 pipeline_systemically_unhealthy_l2 = (
-                    decision_boundary_ms is not None
-                    and decision_boundary_ms
-                    != last_pipeline_stale_recovery_boundary_ms
-                    and _is_systemic_l2_failure(
-                        frozenset(selected_keys),
-                        pipeline_stale_market_keys,
-                    )
+                    pipeline_recovery_boundary_ms is not None
                 )
                 systemically_unhealthy_l2 = (
                     supervisor_systemically_unhealthy_l2
@@ -7934,8 +8003,10 @@ async def run_continuous_paper_session(
                 if systemically_unhealthy_l2:
                     if pipeline_systemically_unhealthy_l2:
                         pump.stale_l2_pipeline_recovery_triggers += 1
+                        if pipeline_reason_fallback:
+                            pump.stale_l2_pipeline_reason_fallback_triggers += 1
                         last_pipeline_stale_recovery_boundary_ms = (
-                            decision_boundary_ms
+                            pipeline_recovery_boundary_ms
                         )
                     unhealthy_market_keys = (
                         supervisor_unhealthy_market_keys

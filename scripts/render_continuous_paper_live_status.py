@@ -9562,8 +9562,10 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_rest_reseed_failures', 0)}"
             ),
             (
-                "- stale-L2 pipeline-evidence recovery triggers: "
-                f"{payload.get('stale_l2_pipeline_recovery_triggers', 0)}"
+                "- stale-L2 pipeline-evidence recovery triggers / "
+                "reason-count fallbacks: "
+                f"{payload.get('stale_l2_pipeline_recovery_triggers', 0)} / "
+                f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}"
             ),
             (
                 "- journal observations: "
@@ -10416,8 +10418,10 @@ def render_live_status(
                 f"{payload.get('stale_l2_rest_reseed_failures', 0)}`"
             ),
             (
-                "- stale-L2 pipeline-evidence recovery triggers: "
-                f"`{payload.get('stale_l2_pipeline_recovery_triggers', 0)}`"
+                "- stale-L2 pipeline-evidence recovery triggers / "
+                "reason-count fallbacks: "
+                f"`{payload.get('stale_l2_pipeline_recovery_triggers', 0)} / "
+                f"{payload.get('stale_l2_pipeline_reason_fallback_triggers', 0)}`"
             ),
             f"- journal observations: `{payload['journal_observations']}`",
             "",
