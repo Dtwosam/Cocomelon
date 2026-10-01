@@ -9460,6 +9460,10 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_rest_reseed_failures', 0)}"
             ),
             (
+                "- stale-L2 pipeline-evidence recovery triggers: "
+                f"{payload.get('stale_l2_pipeline_recovery_triggers', 0)}"
+            ),
+            (
                 "- journal observations: "
                 f"{payload['journal_observations']}"
             ),
