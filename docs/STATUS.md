@@ -3936,3 +3936,20 @@ Systemic L2 health is now evaluated before shortlist rotation. If the current gr
 This changes data-plane recovery only. The existing 5-second book-freshness ceiling, scanner eligibility, strategy, sizing, risk, stops, exits, candidate gates, and live authority are unchanged.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paper L2 watchlist liquidity floor — 2026-10-01
+
+A live worker on the current freshness/recovery stack exposed a second data-plane lock-in: after one shortlist rotation, the websocket watchlist fell to the single pinned open-position market while the prior decision epoch had evaluated 20 markets and found 16 coarse-rankable. Later five-minute refreshes did not expand the watchlist, leaving the decision engine unable to collect fresh deep books for markets that could otherwise become eligible again.
+
+The paper watchlist is now decoupled from immediate coarse trading eligibility:
+
+- coarse-ranked native markets remain first and unchanged;
+- when the coarse ranker returns fewer markets than the configured deep watchlist limit, unused subscription slots are filled deterministically from valid native REST snapshots;
+- fallback ordering uses 24-hour notional volume first, then mark-valued open interest, then canonical market name;
+- snapshots with invalid/non-positive required prices, invalid volume, future receipt timestamps, or non-native DEX identity are not eligible for fallback padding;
+- pinned open-position markets remain subscribed even when they sit outside the configured watchlist limit.
+
+This changes **data subscription coverage only**. Fallback-padded markets still pass through the existing scanner eligibility, deep-readiness, strategy, sizing, risk, stop, exit, and execution gates before any paper opening can occur. No threshold is relaxed and no live authority is added.
+
+**LIVE TRADING: DISABLED.**
