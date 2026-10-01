@@ -352,6 +352,13 @@ def test_runtime_source_exposes_structured_live_heartbeat() -> None:
     )
     assert "prospective-two-strike-stop-filter-state.json" in source
     assert "_restore_prospective_two_strike_stop_filter(" in source
+    assert (
+        'PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = ('
+        in source
+    )
+    assert "prospective-breakeven-profit-lock-state.json" in source
+    assert "_restore_prospective_breakeven_profit_lock(" in source
+    assert "prospective_breakeven_profit_lock_state.payload()" in source
     assert "prospective_two_strike_stop_filter_state.payload()" in source
     assert (
         '"prospective_two_strike_stop_filter": (' in source
