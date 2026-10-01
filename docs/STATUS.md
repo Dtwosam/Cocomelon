@@ -3699,3 +3699,26 @@ This is research-only evidence. It does not change paper entries, exits, capacit
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only full entry-exit stack matched-trade ledger — 2026-10-01
+
+The common-start combined entry screen + two-strike + momentum + exact breakeven stack now has a separate durable matched-trade ledger at Issue #740.
+
+A closed trade becomes immutable only when its stack economics are terminal:
+
+- an entry-blocked trade freezes immediately with candidate contribution of zero and no exit counterfactual;
+- an entry-admitted trade freezes only after the breakeven execution outcome is economically evaluable;
+- missing or unevaluable admitted exits remain pending and receive no immutable economic credit.
+
+Every row is cross-checked against the compact paper journal for market, side, opening lineage, actual net PnL, actual net R and initial risk. Candidate net R must reconcile exactly with candidate PnL and the trade's frozen initial risk.
+
+The campaign identity locks the common overlap start plus the individual combined, two-strike, momentum and breakeven clean starts. Published terminal rows may never disappear or change.
+
+The precommitted evidence-review bar is deliberately stricter than "better than actual paper": at least 30 terminal trades, 5 entry-blocked, 10 entry-admitted, 5 LONG, 5 SHORT and 4 markets; zero pending closed trades; positive final-stack PnL and net R; positive improvement versus actual PnL and net R; and positive leave-one-trade and leave-one-market robustness for both the final stack itself and its improvement.
+
+Replacement-trade economics remain separate in Issue #738. This ledger is matched-trade contribution only and does not claim a complete portfolio counterfactual.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
