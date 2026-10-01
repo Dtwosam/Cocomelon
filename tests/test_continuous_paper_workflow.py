@@ -5,7 +5,11 @@ WORKFLOW = Path(".github/workflows/continuous-paper.yml")
 
 def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
-    assert "group: continuous-mainnet-paper-trader" in source
+    assert (
+        "group: continuous-mainnet-paper-trader-"
+        "${{ inputs.source_run_id || 'guarded' }}"
+        in source
+    )
     assert "cancel-in-progress: false" in source
     assert 'duration-seconds 19800' in source
     assert 'selection-refresh-seconds 300' in source
@@ -44,41 +48,73 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
     assert 'run.get("status") == "in_progress"' in source
     assert 'run.get("status") in {"queued", "in_progress", "pending"}' not in source
-    assert "Queue exact successor continuous paper worker" in source
+    assert "Queue exact successor from fast resume" in source
+    assert "Queue fallback exact successor continuous paper worker" in source
     assert "\n  continue:\n" not in source
-    upload_at = source.index("- name: Upload durable continuous paper state")
-    dispatch_at = source.index(
-        "- name: Queue exact successor continuous paper worker"
+    fast_upload_at = source.index(
+        "- name: Upload fast continuous paper resume state"
     )
-    assert upload_at < dispatch_at
+    fast_dispatch_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    durable_upload_at = source.index(
+        "- name: Upload durable continuous paper state"
+    )
+    fallback_dispatch_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    assert fast_upload_at < fast_dispatch_at < durable_upload_at
+    assert durable_upload_at < fallback_dispatch_at
 
-def test_continuous_paper_state_handoff_uses_single_packed_artifact() -> None:
+def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
     assert "- name: Measure durable continuous paper state" in source
     assert "scripts/summarize_continuous_paper_state.py" in source
     assert "--json-out /tmp/continuous-paper-state-size.json" in source
     assert "--markdown-out /tmp/continuous-paper-state-size.md" in source
     assert 'tee -a "$GITHUB_STEP_SUMMARY"' in source
+    assert "- name: Pack fast continuous paper resume state" in source
+    assert "continuous-paper-resume.tar.zst" in source
+    assert "zstd -T0 -3 --no-progress" in source
+    assert "compression-level: 0" in source
+    assert "retention-days: 14" in source
     assert "- name: Pack durable continuous paper state" in source
     assert 'tar -cf continuous-paper-state.tar -C "$STATE_ROOT" .' in source
     assert "path: continuous-paper-state.tar" in source
     assert "compression-level: 6" in source
-    assert "timeout-minutes: 20" in source
     assert source.count(
         "bash scripts/restore_continuous_paper_state.sh"
-    ) == 2
+    ) == 3
+    assert "RESUME_ARTIFACT_NAME" in source
+    assert "STATE_ARTIFACT_NAME" in source
     assert "SOURCE_HEAD_SHA" in source
     assert "ARTIFACT_HEAD_SHA" in source
     assert source.count("timeout-minutes: 30") >= 2
+
     measure_at = source.index(
         "- name: Measure durable continuous paper state"
     )
-    pack_at = source.index("- name: Pack durable continuous paper state")
-    upload_at = source.index("- name: Upload durable continuous paper state")
-    dispatch_at = source.index(
-        "- name: Queue exact successor continuous paper worker"
+    fast_pack_at = source.index(
+        "- name: Pack fast continuous paper resume state"
     )
-    assert measure_at < pack_at < upload_at < dispatch_at
+    fast_upload_at = source.index(
+        "- name: Upload fast continuous paper resume state"
+    )
+    fast_dispatch_at = source.index(
+        "- name: Queue exact successor from fast resume"
+    )
+    durable_pack_at = source.index(
+        "- name: Pack durable continuous paper state"
+    )
+    durable_upload_at = source.index(
+        "- name: Upload durable continuous paper state"
+    )
+    fallback_dispatch_at = source.index(
+        "- name: Queue fallback exact successor continuous paper worker"
+    )
+    assert measure_at < fast_pack_at < fast_upload_at < fast_dispatch_at
+    assert fast_dispatch_at < durable_pack_at < durable_upload_at
+    assert durable_upload_at < fallback_dispatch_at
 
 
 def test_continuous_paper_upgrade_watchdog_does_not_require_heartbeat() -> None:
