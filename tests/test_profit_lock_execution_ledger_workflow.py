@@ -89,7 +89,7 @@ def test_profit_lock_execution_ledger_restores_append_only_evidence() -> None:
 def test_compact_paper_source_exports_execution_shadow_state() -> None:
     source = PAPER_WORKFLOW.read_text(encoding="utf-8")
 
-    artifact = "continuous-paper-learning-source-\${{ github.run_id }}"
+    artifact = "continuous-paper-learning-source-${{ github.run_id }}"
     assert artifact in source
     assert (
         "continuous-paper-state/"
