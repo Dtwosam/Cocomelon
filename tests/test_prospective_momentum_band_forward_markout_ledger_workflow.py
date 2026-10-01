@@ -94,8 +94,29 @@ def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
 
 def test_fast_markout_waiting_and_blocked_status_escape_markdown_backticks() -> None:
     source = _source()
+    waiting = source.split(
+        "      - name: Publish waiting-for-source status",
+        1,
+    )[1].split(
+        "      - name: Restore previous fast-markout ledger",
+        1,
+    )[0]
+    blocked = source.split(
+        "      - name: Publish blocked ledger status",
+        1,
+    )[1].split(
+        "      - name: Fail closed on ledger drift",
+        1,
+    )[0]
+    clean = source.split(
+        "      - name: Publish clean ledger status",
+        1,
+    )[1]
 
-    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in source
-    assert r"\`$RESOLUTION_MODE\`" in source
-    assert r"\`$error\`" in source
-    assert source.count(r"\`false\`") >= 6
+    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in waiting
+    assert r"\`$RESOLUTION_MODE\`" in waiting
+    assert waiting.count(r"\`false\`") == 3
+    assert r"\`$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT\`" in blocked
+    assert r"\`$error\`" in blocked
+    assert blocked.count(r"\`false\`") == 3
+    assert r"\`false\`" not in clean
