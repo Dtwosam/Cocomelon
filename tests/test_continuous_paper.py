@@ -123,7 +123,6 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
 )
 
 
-
 def _watchlist_snapshot(
     coin: str,
     *,
