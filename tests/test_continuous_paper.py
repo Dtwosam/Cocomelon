@@ -93,6 +93,8 @@ from cocomelon.research.profit_lock_execution_shadow import (
 )
 from cocomelon.research.prospective_momentum_band_entry import (
     EMBARGO_MS as MOMENTUM_BAND_EMBARGO_MS,
+)
+from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
 )
 from cocomelon.research.prospective_two_strike_stop_filter import (
