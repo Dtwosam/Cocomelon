@@ -418,7 +418,7 @@ def test_cooldown_ledger_summarizes_fixed_windows_robustly() -> None:
     assert robustness["market_count"] == 2
     assert robustness["leave_one_market_out_min_pnl"] == "3"
     assert robustness["positive_after_removing_any_one_market"] is True
-    assert robustness["total_fee_adjusted_directional_return"] == "0.015"
+    assert robustness["total_fee_adjusted_directional_return"] == "0.0150"
     assert robustness["leave_one_option_out_min_return"] == "0.0075"
     assert robustness["leave_one_market_out_min_return"] == "0.0075"
     readiness = robustness["review_readiness"]
