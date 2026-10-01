@@ -218,8 +218,11 @@ jobs:
               raise SystemExit("predecessor repository mismatch")
           if expected_attempt and str(run.get("run_attempt")) != expected_attempt:
               raise SystemExit("predecessor run attempt mismatch")
-          if run.get("status") not in {"in_progress", "completed"}:
+          status = run.get("status")
+          if status not in {"in_progress", "completed"}:
               raise SystemExit("predecessor run status is not resumable")
+          if status == "completed" and run.get("conclusion") != "success":
+              raise SystemExit("completed predecessor run must be successful")
           head_sha = run.get("head_sha")
           if not isinstance(head_sha, str) or len(head_sha) != 40:
               raise SystemExit("predecessor head sha is invalid")
