@@ -22,6 +22,7 @@ def _exit(
     *,
     exact_pnl: str | None,
     funding_cash: str = "0",
+    entry_notional: str = "200",
 ) -> dict[str, object]:
     if exact_pnl is None:
         return {
@@ -33,6 +34,7 @@ def _exit(
             "missing_funding_boundaries_ms": [],
             "funding_cash_pnl": None,
             "exact_realized_pnl": None,
+            "exact_realized_return_fraction": None,
             "incomplete_reason": "missing_exit_result",
         }
     return {
@@ -44,6 +46,10 @@ def _exit(
         "missing_funding_boundaries_ms": [],
         "funding_cash_pnl": funding_cash,
         "exact_realized_pnl": exact_pnl,
+        "exact_realized_return_fraction": str(
+            __import__("decimal").Decimal(exact_pnl)
+            / __import__("decimal").Decimal(entry_notional)
+        ),
         "incomplete_reason": None,
         "complete_close": True,
     }
@@ -64,7 +70,9 @@ def _option(
         "opportunity_timestamp_ms": timestamp,
         "opportunity_market": market,
         "opportunity_direction": direction,
+        "entry_price": "100",
         "entry_quantity": "2",
+        "entry_notional": "200",
         "entry_attempt_timestamp_ms": timestamp + 1_000,
         "exits": {
             str(horizon): _exit(
@@ -313,8 +321,11 @@ def test_exact_ledger_keeps_horizon_economics_separate_and_robust() -> None:
         assert item["short_exact_options"] == 10
         assert item["market_count"] == 4
         assert item["total_exact_realized_pnl"] == "40"
+        assert item["total_exact_realized_return"] == "0.20"
         assert item["leave_one_option_out_min_pnl"] == "38"
+        assert item["leave_one_option_out_min_return"] == "0.19"
         assert item["leave_one_market_out_min_pnl"] == "30"
+        assert item["leave_one_market_out_min_return"] == "0.15"
         readiness = item["review_readiness"]
         assert readiness["sample_complete"] is True
         assert readiness["economics_positive"] is True
