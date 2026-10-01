@@ -86,6 +86,8 @@ def test_realized_pnl_is_exact_only_when_no_funding_boundary_is_crossed() -> Non
     )
 
     assert result["exact_realized_pnl_available"] is True
+    assert result["exact_realized_return_modeled"] is True
+    assert result["entry_notional_normalized"] is True
     assert result["cross_horizon_economics_aggregated"] is False
     assert result["execution_authority"] is False
     assert result["promotion_authority"] is False
