@@ -51,6 +51,7 @@ from cocomelon.continuous_paper import (
     _position_action_payload,
     _position_protection_metrics,
     _profit_lock_counterfactual_payload,
+    _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
     _prospective_two_strike_stop_filter_payload,
     _record_from_gap,
@@ -94,6 +95,21 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
 from cocomelon.research.prospective_two_strike_stop_filter import (
     ProspectiveTwoStrikeStopFilterState,
 )
+
+
+def test_candidate_stack_overlap_telemetry_fails_open() -> None:
+    payload = _prospective_candidate_stack_overlap_payload(
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        {},
+        {},
+    )
+
+    assert payload["enabled"] is False
+    assert payload["research_only"] is True
+    assert payload["execution_authority"] is False
+    assert payload["promotion_authority"] is False
+    assert payload["changes_readiness_gate"] is False
+    assert "started_at_ms" in str(payload["error"])
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
