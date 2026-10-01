@@ -3813,3 +3813,21 @@ This is an early diagnostic only. It cannot change the momentum challenger’s 3
 **Promotion authority:** `false`  
 **Changes readiness gate:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only momentum fast-markout evidence ledger — 2026-10-01
+
+The frozen zero-strike momentum-band challenger now has a separate append-only fast evidence path in Issue #750 for its fixed 5-minute, 15-minute, and 1-hour forward markouts after the existing combined + two-strike base stack.
+
+The ledger is bound to the exact authenticated compact paper artifact and the frozen momentum state. An opportunity becomes immutable only when all three fixed horizons are terminal: each horizon must be either settled from an on-time recorded mark or definitively stale. Pending and missing-path opportunities remain unfrozen so normal path maturation cannot be mistaken for historical evidence drift.
+
+Previously published terminal opportunities may never disappear or change. Candidate identity, freeze, clean start, common stack start, frozen rule, fixed horizons, and maximum accepted mark lag are locked across updates. Each source run also records whether rank and feature integrity was clean; any integrity miss blocks the fast evidence from becoming review-ready.
+
+The precommitted early evidence bar is evaluated separately at every fixed horizon: at least 20 settled opportunities, at least 5 momentum ADMIT and 5 momentum BLOCK observations, at least 5 LONG and 5 SHORT observations, at least 4 markets, positive mean directional return for ADMIT, negative mean directional return for BLOCK, positive ADMIT-minus-BLOCK mean spread, and positive leave-one-opportunity / leave-one-market spread robustness.
+
+This is an early separation diagnostic only. It cannot change the momentum challenger's 30-closed-trade readiness gate, any paper order, entry, exit, stop, sizing, risk, promotion state, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes closed-trade readiness:** `false`  
+**LIVE TRADING: DISABLED.**
