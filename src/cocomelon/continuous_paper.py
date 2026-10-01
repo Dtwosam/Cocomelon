@@ -7978,6 +7978,15 @@ async def run_continuous_paper_session(
             / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
             cooldown_shadow_summary,
         )
+        global_loss_gate_summary = _prospective_global_loss_gate_payload(
+            journal,
+            prospective_global_loss_gate_state,
+            restore_error=prospective_global_loss_gate_restore_error,
+        )
+        _write_json_atomic(
+            root / PROSPECTIVE_GLOBAL_LOSS_GATE_SUMMARY_FILENAME,
+            global_loss_gate_summary,
+        )
         full_stack_combined = _prospective_combined_entry_filter_payload(
             journal,
             facts,
