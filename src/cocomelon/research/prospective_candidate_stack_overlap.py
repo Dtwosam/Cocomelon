@@ -106,11 +106,20 @@ def prospective_candidate_stack_overlap_summary(
 
     for trade in prospective:
         trade_id = trade.trade_id
-        if trade_id not in combined_decisions:
+        missing_combined_decision = (
+            trade_id not in combined_decisions
+        )
+        missing_two_strike_decision = (
+            trade_id not in two_decisions
+        )
+        if missing_combined_decision:
             missing_combined += 1
-            continue
-        if trade_id not in two_decisions:
+        if missing_two_strike_decision:
             missing_two_strike += 1
+        if (
+            missing_combined_decision
+            or missing_two_strike_decision
+        ):
             continue
 
         reason = combined_decisions[trade_id]
