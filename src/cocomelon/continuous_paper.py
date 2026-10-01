@@ -3263,7 +3263,6 @@ def _closed_trade_status_payload(trade: TradeJournalEntry) -> dict[str, object]:
     }
 
 
-
 def _closed_trade_performance(
     trades: tuple[TradeJournalEntry, ...],
     feature_store: LearningFeatureSnapshotStore,
