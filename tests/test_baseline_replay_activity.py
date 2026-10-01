@@ -248,6 +248,7 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
             decision_activity.latest_epoch_eligibility_reason_counts
             == ()
         )
+        assert decision_activity.latest_epoch_stale_book_age_ms == ()
         assert decision_activity.risk_evaluations == 1
         assert decision_activity.risk_approvals == 1
         assert decision_activity.risk_rejections == 0
@@ -343,6 +344,9 @@ def test_pipeline_reports_underlying_eligibility_failure_reasons(
                 ("missing_deep_data", 1),
                 ("stale_book", 1),
             )
+        )
+        assert activity.latest_epoch_stale_book_age_ms == (
+            (MARKET.canonical, feature.book_age_ms),
         )
     finally:
         execution.close()
