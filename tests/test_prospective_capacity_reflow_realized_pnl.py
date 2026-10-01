@@ -71,8 +71,14 @@ def test_realized_pnl_is_exact_only_when_no_funding_boundary_is_crossed() -> Non
 
     option = result["option_results"][0]
     assert option["opportunity_timestamp_ms"] == 9_000
+    assert option["entry_price"] == "100"
+    assert option["entry_quantity"] == "2"
+    assert option["entry_notional"] == "200"
     assert option["exits"]["300000"]["funding_boundary_count"] == 0
     assert option["exits"]["300000"]["exact_realized_pnl"] == "3.80"
+    assert option["exits"]["300000"][
+        "exact_realized_return_fraction"
+    ] == "0.019"
     assert option["exits"]["3600000"]["funding_boundary_count"] == 1
     assert option["exits"]["3600000"]["exact_realized_pnl"] is None
     assert option["exits"]["3600000"]["incomplete_reason"] == (
@@ -188,6 +194,7 @@ def test_funding_evidence_completes_exact_realized_pnl() -> None:
     assert classified["missing_funding_boundaries_ms"] == []
     assert classified["funding_cash_pnl"] == "-0.200"
     assert classified["exact_realized_pnl"] == "-2.450"
+    assert classified["exact_realized_return_fraction"] == "-0.01225"
     assert classified["incomplete_reason"] is None
     assert result["funding_evidence_modeled"] is True
 
