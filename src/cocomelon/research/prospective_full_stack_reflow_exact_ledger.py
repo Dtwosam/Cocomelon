@@ -181,13 +181,31 @@ def _canonical_exact_row(
         raise ProspectiveFullStackReflowExactLedgerError(
             "replacement direction must be long or short"
         )
+    entry_price = _decimal_string(
+        option.get("entry_price"),
+        field="entry_price",
+    )
     entry_quantity = _decimal_string(
         option.get("entry_quantity"),
         field="entry_quantity",
     )
-    if Decimal(entry_quantity) <= ZERO:
+    entry_notional = _decimal_string(
+        option.get("entry_notional"),
+        field="entry_notional",
+    )
+    if (
+        Decimal(entry_price) <= ZERO
+        or Decimal(entry_quantity) <= ZERO
+        or Decimal(entry_notional) <= ZERO
+    ):
         raise ProspectiveFullStackReflowExactLedgerError(
-            "entry_quantity must be positive"
+            "replacement entry economics must be positive"
+        )
+    if Decimal(entry_price) * Decimal(entry_quantity) != Decimal(
+        entry_notional
+    ):
+        raise ProspectiveFullStackReflowExactLedgerError(
+            "replacement entry notional does not reconcile"
         )
     entry_attempt_timestamp_ms = _required_int(
         option,
@@ -245,13 +263,26 @@ def _canonical_exact_row(
         exit_row.get("exact_realized_pnl"),
         field="exact_realized_pnl",
     )
+    exact_realized_return = _decimal_string(
+        exit_row.get("exact_realized_return_fraction"),
+        field="exact_realized_return_fraction",
+    )
+    expected_return = (
+        Decimal(exact_realized_pnl) / Decimal(entry_notional)
+    )
+    if Decimal(exact_realized_return) != expected_return:
+        raise ProspectiveFullStackReflowExactLedgerError(
+            "exact realized return does not reconcile"
+        )
     return {
         "option_id": option_id,
         "opportunity_id": opportunity_id,
         "opportunity_timestamp_ms": opportunity_timestamp_ms,
         "opportunity_market": market,
         "opportunity_direction": direction,
+        "entry_price": entry_price,
         "entry_quantity": entry_quantity,
+        "entry_notional": entry_notional,
         "entry_attempt_timestamp_ms": entry_attempt_timestamp_ms,
         "horizon_ms": horizon_ms,
         "funding_boundary_count": funding_boundary_count,
@@ -259,6 +290,7 @@ def _canonical_exact_row(
         "funding_evidence_count": funding_evidence_count,
         "funding_cash_pnl": funding_cash_pnl,
         "exact_realized_pnl": exact_realized_pnl,
+        "exact_realized_return_fraction": exact_realized_return,
     }
 
 
@@ -317,6 +349,13 @@ def _exact_rows(
             cast(int, row["horizon_ms"]),
         )
     )
+    if any(
+        cast(int, row["horizon_ms"]) not in horizons
+        for row in rows
+    ):
+        raise ProspectiveFullStackReflowExactLedgerError(
+            "ledger row horizon is outside the fixed set"
+        )
     identities = tuple(
         (
             cast(str, row["option_id"]),
@@ -352,20 +391,47 @@ def _horizon_summary(
         (Decimal(cast(str, row["exact_realized_pnl"])) for row in values),
         ZERO,
     )
-    leave_option = tuple(
+    total_return = sum(
+        (
+            Decimal(
+                cast(str, row["exact_realized_return_fraction"])
+            )
+            for row in values
+        ),
+        ZERO,
+    )
+    leave_option_pnl = tuple(
         total_pnl - Decimal(cast(str, row["exact_realized_pnl"]))
         for row in values
     )
+    leave_option_return = tuple(
+        total_return
+        - Decimal(
+            cast(str, row["exact_realized_return_fraction"])
+        )
+        for row in values
+    )
     by_market: dict[str, Decimal] = {}
+    by_market_return: dict[str, Decimal] = {}
     for row in values:
         market = cast(str, row["opportunity_market"])
         by_market[market] = (
             by_market.get(market, ZERO)
             + Decimal(cast(str, row["exact_realized_pnl"]))
         )
-    leave_market = tuple(
+        by_market_return[market] = (
+            by_market_return.get(market, ZERO)
+            + Decimal(
+                cast(str, row["exact_realized_return_fraction"])
+            )
+        )
+    leave_market_pnl = tuple(
         total_pnl - market_pnl
         for market_pnl in by_market.values()
+    )
+    leave_market_return = tuple(
+        total_return - market_return
+        for market_return in by_market_return.values()
     )
     long_count = sum(
         row["opportunity_direction"] == "long" for row in values
@@ -380,14 +446,16 @@ def _horizon_summary(
         and short_count >= MIN_EXACT_OPTIONS_PER_DIRECTION
         and market_count >= MIN_EXACT_MARKETS
     )
-    economics_positive = total_pnl > ZERO
+    economics_positive = total_pnl > ZERO and total_return > ZERO
     option_robust = (
         len(values) >= 2
-        and min(leave_option, default=ZERO) > ZERO
+        and min(leave_option_pnl, default=ZERO) > ZERO
+        and min(leave_option_return, default=ZERO) > ZERO
     )
     market_robust = (
         market_count >= 2
-        and min(leave_market, default=ZERO) > ZERO
+        and min(leave_market_pnl, default=ZERO) > ZERO
+        and min(leave_market_return, default=ZERO) > ZERO
     )
     return {
         "horizon_ms": horizon_ms,
@@ -396,11 +464,26 @@ def _horizon_summary(
         "short_exact_options": short_count,
         "market_count": market_count,
         "total_exact_realized_pnl": str(total_pnl),
+        "total_exact_realized_return": str(total_return),
         "leave_one_option_out_min_pnl": (
-            None if not leave_option else str(min(leave_option))
+            None
+            if not leave_option_pnl
+            else str(min(leave_option_pnl))
+        ),
+        "leave_one_option_out_min_return": (
+            None
+            if not leave_option_return
+            else str(min(leave_option_return))
         ),
         "leave_one_market_out_min_pnl": (
-            None if not leave_market else str(min(leave_market))
+            None
+            if not leave_market_pnl
+            else str(min(leave_market_pnl))
+        ),
+        "leave_one_market_out_min_return": (
+            None
+            if not leave_market_return
+            else str(min(leave_market_return))
         ),
         "review_readiness": {
             "sample_complete": sample_complete,
@@ -527,6 +610,10 @@ def validate_full_stack_reflow_exact_ledger(
                     dict[str, object],
                     row,
                 ).get("exact_realized_pnl"),
+                "exact_realized_return_fraction": cast(
+                    dict[str, object],
+                    row,
+                ).get("exact_realized_return_fraction"),
             },
             horizon_ms=_required_int(
                 cast(dict[str, object], row),
