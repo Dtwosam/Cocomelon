@@ -258,6 +258,7 @@ from cocomelon.research.prospective_capacity_reflow_exit_fill import (
 )
 from cocomelon.research.prospective_capacity_reflow_fill_feasibility import (
     evaluate_prospective_capacity_reflow_fill_feasibility,
+    prospective_capacity_reflow_fill_feasibility_summary,
 )
 from cocomelon.research.prospective_capacity_reflow_forward_excursion import (
     evaluate_prospective_capacity_reflow_forward_excursion,
@@ -295,6 +296,9 @@ from cocomelon.research.prospective_delayed_price_confirmation import (
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
+)
+from cocomelon.research.prospective_full_stack_capacity_reflow import (
+    prospective_full_stack_capacity_reflow,
 )
 from cocomelon.research.prospective_full_stack_entry_exit import (
     prospective_full_stack_entry_exit_summary,
@@ -380,6 +384,9 @@ PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
     "prospective-full-stack-entry-exit-summary.json"
+)
+PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME = (
+    "prospective-full-stack-capacity-reflow-summary.json"
 )
 PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
     "prospective-breakeven-profit-lock-state.json"
@@ -2294,6 +2301,70 @@ def _prospective_candidate_stack_overlap_payload(
         }
     payload = dict(payload)
     payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_full_stack_capacity_reflow_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    lineage_store: ContinuousPaperOpeningLineageStore,
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    combined_state: ProspectiveCombinedEntryFilterState,
+    two_strike_state: ProspectiveTwoStrikeStopFilterState,
+    momentum_state: ProspectiveMomentumBandEntryState,
+    combined_summary: dict[str, object],
+    two_strike_summary: dict[str, object],
+    momentum_summary: dict[str, object],
+    config: PaperExecutionConfig,
+    *,
+    position_history_loader: Callable[
+        [str, int],
+        tuple[PaperPosition, ...],
+    ],
+) -> dict[str, object]:
+    overlap_start = max(
+        combined_state.started_at_ms,
+        two_strike_state.started_at_ms,
+        momentum_state.started_at_ms,
+    )
+    try:
+        opportunities = opportunity_store.iter_records()
+        evaluation = prospective_full_stack_capacity_reflow(
+            opportunities,
+            lineage_store.iter_records(),
+            tuple(journal.iter_trades()),
+            feature_store,
+            combined_state,
+            two_strike_state,
+            momentum_state,
+            combined_summary,
+            two_strike_summary,
+            momentum_summary,
+        )
+        fill = prospective_capacity_reflow_fill_feasibility_summary(
+            opportunities,
+            evaluation.releases,
+            config,
+            position_history_loader=position_history_loader,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "overlap_started_at_ms": overlap_start,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(evaluation.summary)
+    payload["enabled"] = True
+    payload["fill_feasibility"] = fill
+    payload["replacement_entries_modeled"] = True
+    payload["replacement_exits_modeled"] = False
+    payload["pnl_modeled"] = False
     payload["error"] = None
     return payload
 
@@ -7075,6 +7146,31 @@ async def run_continuous_paper_session(
         _write_json_atomic(
             root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
             full_stack_entry_exit,
+        )
+        full_stack_capacity_reflow = (
+            _prospective_full_stack_capacity_reflow_payload(
+                opening_opportunity_store,
+                opening_lineage_store,
+                journal,
+                feature_store,
+                prospective_combined_entry_filter_state,
+                prospective_two_strike_stop_filter_state,
+                prospective_momentum_band_entry_state,
+                full_stack_combined,
+                full_stack_two_strike,
+                full_stack_momentum,
+                replay_config.execution,
+                position_history_loader=lambda plan_id, through_ms: (
+                    execution.store.load_position_history(
+                        plan_id,
+                        through_ms=through_ms,
+                    )
+                ),
+            )
+        )
+        _write_json_atomic(
+            root / PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME,
+            full_stack_capacity_reflow,
         )
         closed_trades = tuple(journal.iter_trades())
         summary = ContinuousPaperSummary(
