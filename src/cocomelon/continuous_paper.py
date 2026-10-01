@@ -1272,16 +1272,15 @@ def _l2_event_fresh_for_promotion(
     return 0 <= age_ms <= max_book_age_ms
 
 
-def _is_systemic_l2_failure(
-    required_market_keys: frozenset[str],
-    unhealthy_market_keys: frozenset[str],
+def _is_systemic_l2_count(
+    required_count: int,
+    unhealthy_count: int,
 ) -> bool:
-    required_count = len(required_market_keys)
+    if required_count < 0 or unhealthy_count < 0:
+        raise ValueError("L2 market counts must be non-negative")
     if required_count == 0:
         return False
-    unhealthy_count = len(
-        required_market_keys & unhealthy_market_keys
-    )
+    unhealthy_count = min(unhealthy_count, required_count)
     if required_count == 1:
         return unhealthy_count == 1
     minimum_unhealthy = max(
@@ -1289,6 +1288,16 @@ def _is_systemic_l2_failure(
         (required_count + 1) // 2,
     )
     return unhealthy_count >= minimum_unhealthy
+
+
+def _is_systemic_l2_failure(
+    required_market_keys: frozenset[str],
+    unhealthy_market_keys: frozenset[str],
+) -> bool:
+    return _is_systemic_l2_count(
+        len(required_market_keys),
+        len(required_market_keys & unhealthy_market_keys),
+    )
 
 
 def _latest_epoch_stale_l2_market_keys(
@@ -1357,14 +1366,9 @@ def _pipeline_l2_recovery_plan(
         return None, frozenset(), False
 
     required_count = len(selected_market_keys)
-    systemic_reason_count = _is_systemic_l2_failure(
-        frozenset(str(index) for index in range(required_count)),
-        frozenset(
-            str(index)
-            for index in range(
-                min(stale_reason_count, required_count)
-            )
-        ),
+    systemic_reason_count = _is_systemic_l2_count(
+        required_count,
+        stale_reason_count,
     )
     if not systemic_reason_count:
         return None, frozenset(), False
