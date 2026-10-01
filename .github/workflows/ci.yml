@@ -191,6 +191,7 @@ jobs:
           tests/test_cadence_microstructure_prospective.py
           tests/test_cadence_tree_prospective_baseline.py
           tests/test_closed_trade_stop_reentry.py
+          tests/test_prospective_consecutive_loss_cooldown_shadow.py
           tests/test_profit_lock_execution_ledger.py
           tests/test_profit_lock_execution_ledger_workflow.py
           tests/test_prospective_breakeven_profit_lock.py

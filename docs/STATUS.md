@@ -3590,3 +3590,31 @@ This overlap is descriptive only. It changes no candidate readiness gate, paper 
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+
+### Frozen future-only consecutive-loss cooldown relaxation shadow — 2026-10-01
+
+A live paper heartbeat exposed 14 strategy opportunities that were all rejected by the existing `consecutive_loss_cooldown` risk veto after the account reached three consecutive losses. That observation is **touched research evidence only** and receives zero clean review credit.
+
+A new research-only shadow is frozen as `prospective-consecutive-loss-cooldown-relaxation-v1`.
+
+The baseline risk rule remains unchanged: after at least three consecutive losses, the paper engine can reject new exposure for up to one hour after the most recent close. The shadow tests fixed shorter cooldown windows of 15, 30, and 45 minutes without changing real risk behavior.
+
+For each clean future cooldown rejection, the shadow:
+
+- first applies the existing top-10 + no-LONG-trend entry screen;
+- changes only the cooldown timestamp so that the baseline cooldown is treated as expired;
+- reruns the same conservative risk engine, so capacity, daily/weekly loss, existing-market, health, and other vetoes still apply;
+- reruns the actual opening planner and decision-time IOC simulation against the captured L2 book;
+- scores filled shadow entries on the already-recorded forward mark path at fixed 5-minute, 15-minute, and 1-hour horizons;
+- reports entry-fee-adjusted mark-to-market contribution, LONG/SHORT cohorts, elapsed-since-loss buckets, and leave-one-opportunity / leave-one-market robustness for the 1-hour horizon.
+
+The candidate is frozen behind a six-hour embargo. Pre-freeze and pre-embargo opportunities are counted only as touched evidence. State survives worker handoffs; unreadable or tampered state starts a fresh freeze and therefore loses evidence rather than inheriting credit.
+
+This study does **not** model a replacement exit or realized trade PnL and cannot authorize a risk-limit change. Any future proposal to shorten the real cooldown must first survive fresh future evidence rather than rely on the 14 opportunities that motivated the study.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes risk limits:** `false`  
+**LIVE TRADING: DISABLED.**
