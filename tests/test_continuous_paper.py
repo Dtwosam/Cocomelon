@@ -44,8 +44,10 @@ from cocomelon.continuous_paper import (
     _entry_markout_payload,
     _entry_markout_predictiveness_payload,
     _excursion_timing_payload,
+    _is_systemic_l2_failure,
     _iter_until_stop,
     _l2_event_fresh_for_promotion,
+    _latest_epoch_stale_l2_market_keys,
     _load_checkpoint,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
@@ -103,6 +105,7 @@ from cocomelon.domain.replay import ReplayRecord, SourceRecordKind
 from cocomelon.domain.risk import RiskLimits
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.contracts import BaselineReplayConfig
+from cocomelon.evidence.lifecycle import SessionDecisionActivity
 from cocomelon.execution.accounting import PaperPosition, PositionSide
 from cocomelon.research.delayed_entry_execution_shadow import (
     DelayedEntryExecutionShadow,
@@ -799,6 +802,57 @@ def test_rest_l2_reseed_accepts_only_fresh_real_books() -> None:
     assert record.source == "hyperliquid-mainnet-info"
 
 
+def test_pipeline_stale_l2_trigger_uses_latest_decision_epoch() -> None:
+    activity = SessionDecisionActivity(
+        decision_epochs=1,
+        last_decision_boundary_ms=10_000,
+        last_decision_evaluated_at_ms=10_100,
+        long_decisions=0,
+        short_decisions=0,
+        no_trade_decisions=4,
+        decision_reason_counts=(("not_deep_ready", 4),),
+        eligibility_evaluations=4,
+        eligibility_rankable=4,
+        eligibility_deep_ready=0,
+        eligibility_reason_counts=(("stale_book", 2),),
+        latest_epoch_market_count=4,
+        latest_epoch_rankable_count=4,
+        latest_epoch_deep_ready_count=0,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 2),
+        ),
+        latest_epoch_stale_book_age_ms=(
+            ("BTC", 6_000),
+            ("ETH", 7_000),
+            ("SOL", 1_000),
+            ("OLD", 9_000),
+        ),
+        risk_evaluations=0,
+        risk_approvals=0,
+        risk_rejections=0,
+        risk_reason_counts=(),
+        opening_execution_attempts=0,
+        opening_fills=0,
+    )
+    selected = frozenset({"BTC", "ETH", "SOL", "ENA"})
+
+    stale = _latest_epoch_stale_l2_market_keys(
+        activity,
+        selected_market_keys=selected,
+        max_book_age_ms=5_000,
+    )
+
+    assert stale == frozenset({"BTC", "ETH"})
+    assert _is_systemic_l2_failure(selected, stale) is True
+    assert (
+        _is_systemic_l2_failure(
+            selected,
+            frozenset({"BTC"}),
+        )
+        is False
+    )
+
+
 def test_supervisor_group_readiness_requires_full_market_coverage() -> None:
     async def scenario() -> tuple[bool, bool]:
         sleeper = asyncio.create_task(asyncio.sleep(60))
@@ -1025,6 +1079,9 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
 
     assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
     assert "systemically_stale_l2(" in source
+    assert "pipeline_systemically_unhealthy_l2" in source
+    assert "last_pipeline_stale_recovery_boundary_ms" in source
+    assert "pump.stale_l2_pipeline_recovery_triggers += 1" in source
     assert "pump.stale_l2_rest_reseed_attempts += 1" in source
     assert "_reseed_l2_books_via_rest(" in source
     assert "pump.stale_l2_rest_reseed_books += reseeded_books" in source
