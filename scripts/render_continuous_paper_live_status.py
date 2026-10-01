@@ -9454,6 +9454,12 @@ def _render_operational_live_status(
                 f"{payload.get('stale_l2_recovery_readiness_failures', 0)}"
             ),
             (
+                "- stale-L2 REST reseed cycles / fresh books / failures: "
+                f"{payload.get('stale_l2_rest_reseed_attempts', 0)} / "
+                f"{payload.get('stale_l2_rest_reseed_books', 0)} / "
+                f"{payload.get('stale_l2_rest_reseed_failures', 0)}"
+            ),
+            (
                 "- journal observations: "
                 f"{payload['journal_observations']}"
             ),
