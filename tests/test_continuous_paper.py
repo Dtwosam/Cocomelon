@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -987,13 +988,11 @@ def test_pipeline_l2_recovery_plan_does_not_repeat_or_overreact() -> None:
         max_book_age_ms=5_000,
     ) == (None, frozenset(), False)
 
-    systemic_activity = SessionDecisionActivity(
-        **{
-            **activity.__dict__,
-            "latest_epoch_eligibility_reason_counts": (
-                ("stale_book", 16),
-            ),
-        }
+    systemic_activity = replace(
+        activity,
+        latest_epoch_eligibility_reason_counts=(
+            ("stale_book", 16),
+        ),
     )
     assert _pipeline_l2_recovery_plan(
         systemic_activity,
