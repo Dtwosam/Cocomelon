@@ -3740,6 +3740,22 @@ No eligibility threshold is loosened and no trade is admitted by this change. It
 **LIVE TRADING: DISABLED.**
 
 
+### Exact breakeven early-exit capacity reflow — 2026-10-01
+
+The common-start full entry+exit stack now has a separate one-hop capacity audit for opportunities that could exist because the exact breakeven challenger closes an admitted position before the real paper trade closes.
+
+Capacity is credited only at the exact simulated close **completion** timestamp, never at activation or trigger time. A release is eligible only when the position was admitted by the frozen entry stack, the breakeven execution shadow fully closed it through the visible-book IOC path, the real paper position was still open at the later observed capacity-rejected opportunity, and that later opportunity independently passes the frozen combined, two-strike and momentum entry rules.
+
+The audit then reuses the existing captured risk request, account state, position history, L2 book, paper execution configuration, fixed-horizon exit books and exact funding evidence to test replacement entry fillability and exact option-horizon realized PnL. Missing rank/features, missing prospective decision maps, or missing exact breakeven outcomes remain explicit integrity misses; incomplete or not-yet-completed breakeven exits receive no release credit.
+
+Entry-block capacity releases remain in the existing full entry-stack reflow audit. Early-exit releases are written separately as `prospective-full-stack-exit-capacity-reflow-summary.json` so the two causal mechanisms cannot be double-counted. The layer is one-hop only, never recursively simulates replacement occupancy, never aggregates alternative exit horizons, and does not claim a complete portfolio counterfactual.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes readiness gates:** `false`  
+**LIVE TRADING: DISABLED.**
+
+
 ### Overlap-safe deep-shortlist websocket rotation — 2026-10-01
 
 The continuous paper runtime no longer tears down the active deep-data websocket pair before a refreshed shortlist has proven replacement coverage.
