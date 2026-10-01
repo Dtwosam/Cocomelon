@@ -62,12 +62,8 @@ jobs:
           INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" != "success" ]; then
-            echo "source_eligible=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           echo "source_eligible=true" >> "$GITHUB_OUTPUT"
-          if [ "$EVENT_NAME" = "workflow_run" ]; then
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
             run_id="$EVENT_RUN_ID"
             run_attempt="$EVENT_RUN_ATTEMPT"
             resolution_mode="successful_event"
@@ -98,7 +94,11 @@ jobs:
                   break
           '
             )"
-            resolution_mode="latest_successful_push"
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              resolution_mode="latest_successful_after_non_success_wake"
+            else
+              resolution_mode="latest_successful_push"
+            fi
           fi
           if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
             echo "source paper run identity is invalid" >&2
