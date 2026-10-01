@@ -189,6 +189,28 @@ jobs:
             exit 0
           fi
           test -s "$summary_path"
+          if ! python - "$summary_path" <<'PY'
+          import json
+          import sys
+
+          payload = json.load(open(sys.argv[1], encoding="utf-8"))
+          realized = payload.get("realized_pnl")
+          eligible = (
+              isinstance(realized, dict)
+              and realized.get("exact_realized_return_modeled") is True
+              and realized.get("entry_notional_normalized") is True
+              and isinstance(realized.get("horizons_ms"), list)
+              and isinstance(realized.get("option_results"), list)
+              and payload.get("cross_horizon_economics_aggregated") is False
+              and payload.get("strategy_level_realized_pnl_claimed") is False
+          )
+          raise SystemExit(0 if eligible else 1)
+          PY
+          then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           echo "eligible=true" >> "$GITHUB_OUTPUT"
           echo "summary_path=$summary_path" >> "$GITHUB_OUTPUT"
 
@@ -208,7 +230,7 @@ jobs:
           - source paper run: `$SOURCE_RUN_ID`
           - source paper attempt: `$SOURCE_RUN_ATTEMPT`
           - source resolution: `$RESOLUTION_MODE`
-          - reason: compact source does not contain the full-stack capacity-reflow summary
+          - reason: compact source predates the return-normalized exact-PnL summary format
 
           No exact replacement option-horizon row is credited from this run.
 
@@ -409,30 +431,34 @@ jobs:
               "",
               "### Fixed exit horizons",
               "",
-              "| Horizon | Exact | LONG | SHORT | Markets | Exact PnL | LOO option | LOO market | Ready? |",
-              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+              "| Horizon | Exact | LONG | SHORT | Markets | Exact PnL | Exact return | LOO option PnL/return | LOO market PnL/return | Ready? |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
           ]
           for horizon_ms in ledger["horizons_ms"]:
               item = summary["by_horizon"][str(horizon_ms)]
               readiness = item["review_readiness"]
               lines.append(
                   "| {minutes}m | {exact} | {long} | {short} | {markets} | "
-                  "{pnl} | {loo_option} | {loo_market} | {ready} |".format(
+                  "{pnl} | {ret} | {loo_option_pnl}/{loo_option_ret} | "
+                  "{loo_market_pnl}/{loo_market_ret} | {ready} |".format(
                       minutes=horizon_ms // 60000,
                       exact=item["exact_option_horizons"],
                       long=item["long_exact_options"],
                       short=item["short_exact_options"],
                       markets=item["market_count"],
                       pnl=item["total_exact_realized_pnl"],
-                      loo_option=item["leave_one_option_out_min_pnl"],
-                      loo_market=item["leave_one_market_out_min_pnl"],
+                      ret=item["total_exact_realized_return"],
+                      loo_option_pnl=item["leave_one_option_out_min_pnl"],
+                      loo_option_ret=item["leave_one_option_out_min_return"],
+                      loo_market_pnl=item["leave_one_market_out_min_pnl"],
+                      loo_market_ret=item["leave_one_market_out_min_return"],
                       ready=readiness["ready_for_evidence_review"],
                   )
               )
           lines.extend(
               [
                   "",
-                  "Precommitted review bar per horizon: >=20 exact option-horizons, >=5 LONG, >=5 SHORT, >=4 markets, positive realized PnL, plus positive leave-one-option and leave-one-market PnL.",
+                  "Precommitted review bar per horizon: >=20 exact option-horizons, >=5 LONG, >=5 SHORT, >=4 markets, positive realized PnL and return, plus positive leave-one-option and leave-one-market robustness in both units.",
                   "Only fully closed exits with complete crossed funding-boundary evidence become immutable rows. Incomplete horizons remain pending and may mature later.",
                   "Economics remain separate by fixed horizon; no best-horizon selection or cross-horizon aggregation is allowed.",
                   "Every previously published exact row must remain byte-for-byte equivalent after canonicalization.",
