@@ -39,6 +39,10 @@ def test_continuous_paper_publishes_compact_learning_source() -> None:
 
     assert "continuous-paper-learning-source-" in source
     assert "continuous-paper-state/session-summary.json" in source
+    assert (
+        "continuous-paper-state/prospective-breakeven-profit-lock-state.json"
+        in source
+    )
     assert "continuous-paper-state/prospective-two-strike-stop-filter-state.json" in source
     assert "continuous-paper-state/journal.sqlite3" in source
     assert "continuous-paper-state/learning-features" in source
