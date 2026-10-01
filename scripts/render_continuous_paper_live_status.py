@@ -10024,6 +10024,7 @@ def render_live_status(
                 "- latest eligibility reasons: "
                 f"`{_reason_summary(latest_eligibility.get('reason_counts', {}))}`"
             ),
+            *_stale_book_age_lines(latest_eligibility),
             (
                 "- session eligibility evaluated / rankable / deep-ready: "
                 f"`{eligibility.get('evaluations', 0)} / "
