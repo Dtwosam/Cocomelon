@@ -164,6 +164,7 @@ def _summary(
         "forward_markout_only": True,
         "replacement_exits_modeled": False,
         "realized_pnl_modeled": False,
+        "candidate_eligible_cooldown_rejections": len(options),
         "option_results": options,
     }
 
