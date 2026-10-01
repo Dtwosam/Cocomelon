@@ -1234,6 +1234,23 @@ class _ContinuousEntryMidMarkoutSink:
         return payload
 
 
+def _l2_event_fresh_for_promotion(
+    event: StreamEvent,
+    *,
+    max_book_age_ms: int,
+) -> bool:
+    if max_book_age_ms <= 0:
+        raise ValueError("max_book_age_ms must be positive")
+    if (
+        event.kind is not StreamKind.L2_BOOK
+        or event.exchange_time_ms is None
+    ):
+        return False
+    received_at_ms = int(event.receive_time.timestamp() * 1000)
+    age_ms = received_at_ms - event.exchange_time_ms
+    return 0 <= age_ms <= max_book_age_ms
+
+
 @dataclass(slots=True)
 class _SupervisorGroup:
     supervisors: tuple[WebSocketSupervisor, ...]
@@ -1241,6 +1258,34 @@ class _SupervisorGroup:
     forward_gaps: asyncio.Event
     required_market_keys: frozenset[str]
     ready_market_keys: tuple[set[str], ...]
+
+    def stale_l2_market_keys(
+        self,
+        *,
+        now_ms: int,
+    ) -> frozenset[str]:
+        stale_by_lane = tuple(
+            set(supervisor.stale_l2_streams(now_ms=now_ms))
+            for supervisor in self.supervisors
+        )
+        return frozenset(
+            market
+            for market in self.required_market_keys
+            if all(
+                f"l2Book:{market}" in stale
+                for stale in stale_by_lane
+            )
+        )
+
+    def all_required_l2_stale(
+        self,
+        *,
+        now_ms: int,
+    ) -> bool:
+        return bool(self.required_market_keys) and (
+            self.stale_l2_market_keys(now_ms=now_ms)
+            == self.required_market_keys
+        )
 
 
 async def _wait_supervisor_group_ready(
@@ -3405,6 +3450,9 @@ class _RecordPump:
         self.shortlist_rotation_attempts = 0
         self.shortlist_rotation_promotions = 0
         self.shortlist_rotation_readiness_failures = 0
+        self.stale_l2_recovery_attempts = 0
+        self.stale_l2_recovery_promotions = 0
+        self.stale_l2_recovery_readiness_failures = 0
         self._recent_record_keys: deque[str] = deque()
         self._recent_record_key_set: set[str] = set()
         self._record_dedup_size = 131_072
@@ -5768,6 +5816,15 @@ def _live_status_payload(
         "shortlist_rotation_readiness_failures": (
             pump.shortlist_rotation_readiness_failures
         ),
+        "stale_l2_recovery_attempts": (
+            pump.stale_l2_recovery_attempts
+        ),
+        "stale_l2_recovery_promotions": (
+            pump.stale_l2_recovery_promotions
+        ),
+        "stale_l2_recovery_readiness_failures": (
+            pump.stale_l2_recovery_readiness_failures
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7395,9 +7452,14 @@ async def run_continuous_paper_session(
                     lane: int = lane,
                 ) -> None:
                     if (
-                        event.kind is StreamKind.L2_BOOK
-                        and event.market.canonical
+                        event.market.canonical
                         in required_market_keys
+                        and _l2_event_fresh_for_promotion(
+                            event,
+                            max_book_age_ms=(
+                                replay_config.eligibility.max_book_age_ms
+                            ),
+                        )
                     ):
                         ready_market_keys[lane].add(
                             event.market.canonical
@@ -7417,6 +7479,9 @@ async def run_continuous_paper_session(
                     gap_sink=lane_gap_sink,
                     clock_ms=utc_now_ms,
                     utcnow=lambda: datetime.now(UTC),
+                    stale_after_ms=(
+                        replay_config.eligibility.max_book_age_ms
+                    ),
                 )
                 supervisors.append(supervisor)
                 tasks.append(
@@ -7562,6 +7627,37 @@ async def run_continuous_paper_session(
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
+
+                health_now_ms = utc_now_ms()
+                if supervisor_group.all_required_l2_stale(
+                    now_ms=health_now_ms,
+                ):
+                    pump.stale_l2_recovery_attempts += 1
+                    replacement_group = await start_supervisors(
+                        selected,
+                        forward_gaps=False,
+                    )
+                    replacement_ready = (
+                        await _wait_supervisor_group_ready(
+                            replacement_group
+                        )
+                    )
+                    if replacement_ready:
+                        replacement_group.forward_gaps.set()
+                        previous_group = supervisor_group
+                        supervisor_group = replacement_group
+                        pump.stale_l2_recovery_promotions += 1
+                        await _cancel_supervisor_group(
+                            previous_group
+                        )
+                    else:
+                        (
+                            pump
+                            .stale_l2_recovery_readiness_failures
+                        ) += 1
+                        await _cancel_supervisor_group(
+                            replacement_group
+                        )
 
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
