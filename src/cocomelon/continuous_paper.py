@@ -365,6 +365,9 @@ PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
 PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME = (
     "prospective-consecutive-loss-cooldown-shadow-state.json"
 )
+PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
+    "prospective-consecutive-loss-cooldown-shadow-summary.json"
+)
 PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
     "prospective-two-strike-stop-filter-state.json"
 )
@@ -4826,17 +4829,6 @@ def _live_status_payload(
             ),
         )
     )
-    prospective_consecutive_loss_cooldown_shadow = (
-        _prospective_consecutive_loss_cooldown_shadow_payload(
-            opening_opportunity_store,
-            opening_opportunity_path_store,
-            prospective_consecutive_loss_cooldown_shadow_state,
-            paper_execution_config,
-            restore_error=(
-                prospective_consecutive_loss_cooldown_shadow_restore_error
-            ),
-        )
-    )
     prospective_two_strike_stop_filter = (
         _prospective_two_strike_stop_filter_payload(
             pump.journal,
@@ -5326,9 +5318,6 @@ def _live_status_payload(
         "prospective_trade_quality": prospective_trade_quality,
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
-        ),
-        "prospective_consecutive_loss_cooldown_shadow": (
-            prospective_consecutive_loss_cooldown_shadow
         ),
         "prospective_two_strike_stop_filter": (
             prospective_two_strike_stop_filter
@@ -6827,6 +6816,22 @@ async def run_continuous_paper_session(
 
         persist_checkpoint()
         ended_at_ms = utc_now_ms()
+        cooldown_shadow_summary = (
+            _prospective_consecutive_loss_cooldown_shadow_payload(
+                opening_opportunity_store,
+                opening_opportunity_path_store,
+                prospective_consecutive_loss_cooldown_shadow_state,
+                paper_execution_config,
+                restore_error=(
+                    prospective_consecutive_loss_cooldown_shadow_restore_error
+                ),
+            )
+        )
+        _write_json_atomic(
+            root
+            / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
+            cooldown_shadow_summary,
+        )
         closed_trades = tuple(journal.iter_trades())
         summary = ContinuousPaperSummary(
             started_at_ms=started_at_ms,
