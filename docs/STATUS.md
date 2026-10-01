@@ -3475,3 +3475,20 @@ The report compares actual, combined-only, two-strike-only, and stacked trade-co
 This overlap is descriptive only. It gives no fresh readiness credit to either candidate, does not combine their promotion gates, and does not change paper execution, entries, exits, sizing, stops, risk, or live authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Append-only profit-lock execution shadow ledger — 2026-10-01
+
+The visible-book profit-lock execution shadow now has a compact append-only evidence path separate from the multi-gigabyte paper recovery artifact.
+
+Each completed paper worker exports `profit-lock-execution-shadow-state.json` inside the authenticated compact learning source. Issue #721 consumes that exact successful paper artifact and records immutable per-trade/per-rule execution-shadow outcomes, including activation, trigger, simulated full-close state, visible-book candidate economics, and source type.
+
+The ledger locks the existing execution-shadow start timestamp, rule definitions, and paper execution configuration. Every outcome must reconcile to the matching journal trade by opening plan, market, side, realized PnL, and realized R. Previously published outcomes may not disappear or change, source artifact identity is exact, and lineage/orphan counters may not regress.
+
+The pre-existing review-volume gate is unchanged: per rule, 30 economically evaluated trades, 15 activations, 10 triggers, and 10 fully simulated visible-book closes are required, with clean lineage/orphan counters. The ledger also reports PnL/net-R contribution plus leave-one-trade and leave-one-market robustness as descriptive economic diagnostics; those diagnostics do not grant promotion or execution authority.
+
+This is research/control-plane only. It does not move actual paper stops, close positions, change entries, sizing, risk, or live-order authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
