@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.execution import PaperExecutionConfig
+from cocomelon.domain.risk import RiskRequest
 from cocomelon.evidence.openings import conservative_cost_estimate
 from cocomelon.execution.ioc import simulate_ioc
 from cocomelon.execution.planner import PlanningRejection, plan_opening_order
@@ -241,7 +242,7 @@ def _execution_config_compatible(
 
 def _expire_only_cooldown(
     evidence: ContinuousPaperOpeningOpportunityEvidence,
-):
+) -> tuple[RiskRequest, int, int]:
     request = evidence.risk_request_object
     if request.timestamp_ms != evidence.opportunity_timestamp_ms:
         raise ProspectiveConsecutiveLossCooldownShadowError(
@@ -719,11 +720,14 @@ def prospective_consecutive_loss_cooldown_shadow_summary(
         candidates = tuple(
             result
             for result in result_tuple
-            if int(
-                result["baseline_elapsed_since_last_close_ms"]
+            if isinstance(
+                result["baseline_elapsed_since_last_close_ms"],
+                int,
             )
+            and result["baseline_elapsed_since_last_close_ms"]
             >= window_ms
-            and int(result["baseline_cooldown_ms"]) > window_ms
+            and isinstance(result["baseline_cooldown_ms"], int)
+            and result["baseline_cooldown_ms"] > window_ms
         )
         fillable = tuple(
             result
