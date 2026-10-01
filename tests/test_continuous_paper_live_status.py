@@ -3794,6 +3794,11 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "latest eligibility reasons:" in output
     assert "missing_deep_data=12" in output
     assert "stale_book=1" in output
+    assert "latest stale-book age coverage / reason count" in output
+    assert "`1 / 1`" in output
+    assert "latest stale-book age min / median / max" in output
+    assert "`6200 / 6200 / 6200ms`" in output
+    assert "worst stale books: `ETH=6200ms`" in output
     assert "session eligibility evaluated / rankable / deep-ready" in output
     assert "session eligibility reasons:" in output
     assert "consecutive losses / threshold" in output
