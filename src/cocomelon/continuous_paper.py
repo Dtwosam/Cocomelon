@@ -7144,7 +7144,7 @@ async def run_continuous_paper_session(
                 execution,
                 pump,
                 selected,
-                risk_limits,
+                replay_config.risk_limits,
                 timestamp_ms=utc_now_ms(),
             )
 
@@ -7362,7 +7362,7 @@ async def run_continuous_paper_session(
                     execution,
                     pump,
                     selected,
-                    risk_limits,
+                    replay_config.risk_limits,
                     timestamp_ms=now_ms,
                 )
 
