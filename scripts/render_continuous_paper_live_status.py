@@ -9255,6 +9255,12 @@ def _render_operational_live_status(
                 f"{payload.get('shortlist_rotation_readiness_failures', 0)}"
             ),
             (
+                "- stale-L2 recoveries attempts / promoted / failed readiness: "
+                f"{payload.get('stale_l2_recovery_attempts', 0)} / "
+                f"{payload.get('stale_l2_recovery_promotions', 0)} / "
+                f"{payload.get('stale_l2_recovery_readiness_failures', 0)}"
+            ),
+            (
                 "- journal observations: "
                 f"{payload['journal_observations']}"
             ),
