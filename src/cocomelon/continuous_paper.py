@@ -31,7 +31,7 @@ from cocomelon.domain.market import (
 )
 from cocomelon.domain.replay import EvidenceClass, ReplayRecord, SourceRecordKind
 from cocomelon.domain.risk import RiskLimits
-from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evaluation.store import EvaluationFactStore
 from cocomelon.evidence.contracts import BaselineReplayConfig
 from cocomelon.evidence.lifecycle import (
@@ -1220,6 +1220,48 @@ class _ContinuousEntryMidMarkoutSink:
         )
         payload["error"] = self.error
         return payload
+
+
+@dataclass(slots=True)
+class _SupervisorGroup:
+    supervisors: tuple[WebSocketSupervisor, ...]
+    tasks: tuple[asyncio.Task[None], ...]
+    forward_gaps: asyncio.Event
+    required_market_keys: frozenset[str]
+    ready_market_keys: tuple[set[str], ...]
+
+
+async def _wait_supervisor_group_ready(
+    group: _SupervisorGroup,
+    *,
+    timeout_seconds: float = 15.0,
+    poll_seconds: float = 0.05,
+) -> bool:
+    if timeout_seconds <= 0 or poll_seconds <= 0:
+        raise ValueError(
+            "supervisor readiness timings must be positive"
+        )
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while True:
+        if any(task.done() for task in group.tasks):
+            return False
+        if all(
+            group.required_market_keys <= ready
+            for ready in group.ready_market_keys
+        ):
+            return True
+        if loop.time() >= deadline:
+            return False
+        await asyncio.sleep(poll_seconds)
+
+
+async def _cancel_supervisor_group(
+    group: _SupervisorGroup,
+) -> None:
+    for task in group.tasks:
+        task.cancel()
+    await asyncio.gather(*group.tasks, return_exceptions=True)
 
 
 class _ContinuousOpeningLineageSink:
@@ -3156,10 +3198,24 @@ class _RecordPump:
         self.closed_trades = len(self._known_trade_ids)
         self.session_closed_trades = 0
         self.last_observation: JournalObservation | None = None
+        self.duplicate_records_dropped = 0
+        self.shortlist_rotation_attempts = 0
+        self.shortlist_rotation_promotions = 0
+        self.shortlist_rotation_readiness_failures = 0
+        self._recent_record_keys: deque[str] = deque()
+        self._recent_record_key_set: set[str] = set()
+        self._record_dedup_size = 131_072
         self._lock = asyncio.Lock()
 
     async def process(self, record: ReplayRecord) -> None:
         async with self._lock:
+            record_key = record.event_key
+            if (
+                record_key is not None
+                and record_key in self._recent_record_key_set
+            ):
+                self.duplicate_records_dropped += 1
+                return
             available = max(self.last_available_at_ms, record.available_at_ms)
             if available != record.available_at_ms:
                 record = ReplayRecord(
@@ -3215,6 +3271,15 @@ class _RecordPump:
             self.last_available_at_ms = available
             self.processed_records += 1
             self.journal_observations += len(observations)
+            if record_key is not None:
+                self._recent_record_key_set.add(record_key)
+                self._recent_record_keys.append(record_key)
+                while (
+                    len(self._recent_record_keys)
+                    > self._record_dedup_size
+                ):
+                    oldest = self._recent_record_keys.popleft()
+                    self._recent_record_key_set.discard(oldest)
 
     @property
     def recent_closed_trades(self) -> tuple[TradeJournalEntry, ...]:
@@ -5494,6 +5559,12 @@ def _live_status_payload(
             market.canonical for market in selected_markets
         ],
         "processed_records": pump.processed_records,
+        "duplicate_records_dropped": pump.duplicate_records_dropped,
+        "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
+        "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
+        "shortlist_rotation_readiness_failures": (
+            pump.shortlist_rotation_readiness_failures
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -5943,6 +6014,12 @@ def _operational_live_status_payload(
             market.canonical for market in selected_markets
         ],
         "processed_records": pump.processed_records,
+        "duplicate_records_dropped": pump.duplicate_records_dropped,
+        "shortlist_rotation_attempts": pump.shortlist_rotation_attempts,
+        "shortlist_rotation_promotions": pump.shortlist_rotation_promotions,
+        "shortlist_rotation_readiness_failures": (
+            pump.shortlist_rotation_readiness_failures
+        ),
         "journal_observations": pump.journal_observations,
         "closed_trades": pump.closed_trades,
         "session_closed_trades": pump.session_closed_trades,
@@ -7017,22 +7094,50 @@ async def run_continuous_paper_session(
 
         async def start_supervisors(
             markets: tuple[MarketId, ...],
-        ) -> tuple[tuple[WebSocketSupervisor, ...], tuple[asyncio.Task[None], ...]]:
+            *,
+            forward_gaps: bool,
+        ) -> _SupervisorGroup:
             plan = DeepWatchlistManager().reconcile(markets)
+            gap_gate = asyncio.Event()
+            if forward_gaps:
+                gap_gate.set()
+            required_market_keys = frozenset(
+                market.canonical for market in markets
+            )
+            ready_market_keys = tuple(set() for _ in range(2))
+
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
 
             async def gap_sink(gap: DataGap) -> None:
-                await pump.process(_record_from_gap(gap))
+                if gap_gate.is_set():
+                    await pump.process(_record_from_gap(gap))
 
-            mux = RedundantStreamMux(event_sink=event_sink, gap_sink=gap_sink)
+            mux = RedundantStreamMux(
+                event_sink=event_sink,
+                gap_sink=gap_sink,
+            )
             supervisors: list[WebSocketSupervisor] = []
             tasks: list[asyncio.Task[None]] = []
             for lane in range(2):
-                async def lane_event_sink(event: StreamEvent, lane: int = lane) -> None:
+                async def lane_event_sink(
+                    event: StreamEvent,
+                    lane: int = lane,
+                ) -> None:
+                    if (
+                        event.kind is StreamKind.L2_BOOK
+                        and event.market.canonical
+                        in required_market_keys
+                    ):
+                        ready_market_keys[lane].add(
+                            event.market.canonical
+                        )
                     await mux.on_event(lane, event)
 
-                async def lane_gap_sink(gap: DataGap, lane: int = lane) -> None:
+                async def lane_gap_sink(
+                    gap: DataGap,
+                    lane: int = lane,
+                ) -> None:
                     await mux.on_gap(lane, gap)
 
                 supervisor = WebSocketSupervisor(
@@ -7044,10 +7149,21 @@ async def run_continuous_paper_session(
                     utcnow=lambda: datetime.now(UTC),
                 )
                 supervisors.append(supervisor)
-                tasks.append(asyncio.create_task(supervisor.run()))
-            return tuple(supervisors), tuple(tasks)
+                tasks.append(
+                    asyncio.create_task(supervisor.run())
+                )
+            return _SupervisorGroup(
+                supervisors=tuple(supervisors),
+                tasks=tuple(tasks),
+                forward_gaps=gap_gate,
+                required_market_keys=required_market_keys,
+                ready_market_keys=ready_market_keys,
+            )
 
-        _supervisors, supervisor_tasks = await start_supervisors(selected)
+        supervisor_group = await start_supervisors(
+            selected,
+            forward_gaps=True,
+        )
         replacement_funding_oracle_task = asyncio.create_task(
             capture_replacement_funding_oracles()
         )
@@ -7146,14 +7262,33 @@ async def run_continuous_paper_session(
                                 _record_from_public(candle_record_event(candle))
                             )
                     if desired_keys != selected_keys:
-                        for task in supervisor_tasks:
-                            task.cancel()
-                        await asyncio.gather(*supervisor_tasks, return_exceptions=True)
-                        selected = desired
-                        selected_keys = desired_keys
-                        pipeline.reconcile_markets(selected)
-                        pump.reconcile_cadence_shadow(selected)
-                        _supervisors, supervisor_tasks = await start_supervisors(selected)
+                        pump.shortlist_rotation_attempts += 1
+                        replacement_group = await start_supervisors(
+                            desired,
+                            forward_gaps=False,
+                        )
+                        replacement_ready = (
+                            await _wait_supervisor_group_ready(
+                                replacement_group
+                            )
+                        )
+                        if replacement_ready:
+                            replacement_group.forward_gaps.set()
+                            selected = desired
+                            selected_keys = desired_keys
+                            pipeline.reconcile_markets(selected)
+                            pump.reconcile_cadence_shadow(selected)
+                            previous_group = supervisor_group
+                            supervisor_group = replacement_group
+                            pump.shortlist_rotation_promotions += 1
+                            await _cancel_supervisor_group(
+                                previous_group
+                            )
+                        else:
+                            pump.shortlist_rotation_readiness_failures += 1
+                            await _cancel_supervisor_group(
+                                replacement_group
+                            )
                     next_selection_refresh_ms = (
                         now_ms + config.selection_refresh_seconds * 1000
                     )
@@ -7174,7 +7309,9 @@ async def run_continuous_paper_session(
                     next_checkpoint_ms = now_ms + config.checkpoint_seconds * 1000
 
                 failed = tuple(
-                    task for task in supervisor_tasks if task.done() and not task.cancelled()
+                    task
+                    for task in supervisor_group.tasks
+                    if task.done() and not task.cancelled()
                 )
                 for task in failed:
                     exc = task.exception()
@@ -7182,10 +7319,8 @@ async def run_continuous_paper_session(
                         raise exc
         finally:
             replacement_funding_oracle_task.cancel()
-            for task in supervisor_tasks:
-                task.cancel()
+            await _cancel_supervisor_group(supervisor_group)
             await asyncio.gather(
-                *supervisor_tasks,
                 replacement_funding_oracle_task,
                 return_exceptions=True,
             )
