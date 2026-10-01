@@ -7651,10 +7651,7 @@ async def run_continuous_paper_session(
                             previous_group
                         )
                     else:
-                        (
-                            pump
-                            .stale_l2_recovery_readiness_failures
-                        ) += 1
+                        pump.stale_l2_recovery_readiness_failures += 1
                         await _cancel_supervisor_group(
                             replacement_group
                         )
