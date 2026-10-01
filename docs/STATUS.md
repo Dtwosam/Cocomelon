@@ -3871,3 +3871,14 @@ The combined entry screen previously had only sample/integrity readiness, while 
 This hardens evidence interpretation only. It does not change frozen entry decisions, historical rows, paper orders, sizing, stops, risk limits, candidate promotion authority, or live execution.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Paper context freshness headroom — 2026-10-01
+
+The continuous paper runtime showed a full-universe availability failure with `stale_context=20`, while stale-L2 age coverage and stale-L2 recovery attempts remained zero. The context producer was polling REST market context every 60 seconds while coarse eligibility rejects context older than 60 seconds. Normal scheduling and request latency therefore left no freshness margin.
+
+The paper runtime now refreshes REST market context every **30 seconds** while preserving the existing **60-second stale-context rejection ceiling**. This changes data refresh cadence only; it does not loosen eligibility, L2 freshness, strategy, risk, sizing, stop, readiness, promotion, or live-order authority.
+
+The operational success criterion is that future decision epochs regain rankable markets without changing the stale-context threshold.
+
+**LIVE TRADING: DISABLED.**
