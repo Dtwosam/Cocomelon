@@ -22,6 +22,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_combined_entry_filter_lines,
     _prospective_combined_matched_overlap_lines,
     _prospective_daily_loss_lockout_reflow_lines,
+    _prospective_filter_economic_readiness_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
     _prospective_momentum_band_entry_lines,
@@ -6779,3 +6780,41 @@ def test_candidate_stack_overlap_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: overlap boom" in output
+
+
+def test_filter_economic_readiness_renderer_exposes_profit_and_robustness() -> None:
+    lines = _prospective_filter_economic_readiness_lines(
+        {
+            "candidate_profitable": True,
+            "improvement_positive": True,
+            "candidate_single_trade_robust": True,
+            "candidate_single_market_robust": True,
+            "delta_single_trade_robust": True,
+            "delta_single_market_robust": True,
+            "candidate_leave_one_trade_out_min_pnl": "12",
+            "candidate_leave_one_trade_out_min_r": "1.2",
+            "candidate_leave_one_market_out_min_pnl": "7",
+            "candidate_leave_one_market_out_min_r": "0.7",
+            "delta_leave_one_trade_out_min_pnl": "5",
+            "delta_leave_one_trade_out_min_r": "0.5",
+            "delta_leave_one_market_out_min_pnl": "3",
+            "delta_leave_one_market_out_min_r": "0.3",
+            "economics_ready": True,
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Candidate economic readiness" in output
+    assert "candidate profitable / improvement positive" in output
+    assert "`True / True`" in output
+    assert "candidate LOO trade / market robust" in output
+    assert "delta LOO trade / market robust" in output
+    assert "candidate LOO trade min PnL / R" in output
+    assert "`12 / 1.2`" in output
+    assert "candidate LOO market min PnL / R" in output
+    assert "`7 / 0.7`" in output
+    assert "delta LOO trade min PnL / R" in output
+    assert "`5 / 0.5`" in output
+    assert "delta LOO market min PnL / R" in output
+    assert "`3 / 0.3`" in output
+    assert "economics ready: `true`" in output
