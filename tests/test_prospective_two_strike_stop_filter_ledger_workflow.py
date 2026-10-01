@@ -20,7 +20,9 @@ def test_two_strike_ledger_workflow_is_research_only() -> None:
     assert '"Continuous Mainnet Paper Trader"' in source
     assert "github.event.workflow_run.conclusion == 'success'" not in source
     assert "EVENT_CONCLUSION:" in source
-    assert 'echo "source_eligible=false"' in source
+    assert 'echo "source_eligible=false"' not in source
+    assert '"$EVENT_CONCLUSION" = "success"' in source
+    assert "latest_successful_after_non_success_wake" in source
     assert "steps.source.outputs.source_eligible == 'true'" in source
     assert "actions: read" in source
     assert "contents: read" in source
@@ -79,3 +81,20 @@ def test_two_strike_ledger_restores_and_extends_append_only_evidence() -> None:
     assert "**Execution authority:**" in source
     assert "**Promotion authority:**" in source
     assert "**LIVE TRADING: DISABLED.**" in source
+
+
+def test_two_strike_ledger_non_success_wake_falls_back_to_success() -> None:
+    source = _source()
+
+    assert (
+        'if [ "$EVENT_NAME" = "workflow_run" ] && '
+        '[ "$EVENT_CONCLUSION" = "success" ]; then'
+        in source
+    )
+    assert 'resolution_mode="successful_event"' in source
+    assert 'resolution_mode="latest_successful_after_non_success_wake"' in source
+    assert (
+        'actions/workflows/continuous-paper.yml/runs?'
+        'branch=main&status=completed&per_page=50'
+        in source
+    )
