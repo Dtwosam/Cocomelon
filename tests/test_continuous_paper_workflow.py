@@ -427,6 +427,8 @@ def test_continuous_paper_exports_full_stack_capacity_reflow_summary() -> None:
         in source
     )
     assert "Render full-stack capacity-reflow research summary" in source
+    assert "exact realized option-horizons / available" in source
+    assert "cross-horizon economics aggregated: false" in source
     assert "portfolio counterfactual: false" in source
     compact_at = source.index(
         "- name: Upload compact continuous learning source"
