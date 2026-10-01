@@ -3364,14 +3364,28 @@ def _prospective_entry_filter_payload(
     return payload
 
 
-def _native_market_snapshots(
+async def _refresh_native_market_snapshots(
     reader: InfoClient,
     *,
-    received_at_ms: int,
-) -> dict[str, PerpMarketSnapshot]:
-    raw = reader.meta_and_asset_ctxs("")
-    snapshots = normalize_meta_and_asset_ctxs("", raw, received_at_ms=received_at_ms)
-    return {snapshot.meta.market.canonical: snapshot for snapshot in snapshots}
+    clock_ms: Callable[[], int] = utc_now_ms,
+) -> tuple[dict[str, PerpMarketSnapshot], int]:
+    raw = await asyncio.to_thread(
+        reader.meta_and_asset_ctxs,
+        "",
+    )
+    received_at_ms = clock_ms()
+    snapshots = normalize_meta_and_asset_ctxs(
+        "",
+        raw,
+        received_at_ms=received_at_ms,
+    )
+    return (
+        {
+            snapshot.meta.market.canonical: snapshot
+            for snapshot in snapshots
+        },
+        received_at_ms,
+    )
 
 
 def _ranked_selection(
@@ -7189,12 +7203,10 @@ async def run_continuous_paper_session(
                 + ",".join(execution.health.reason_codes)
             )
 
-        initial_received_at_ms = utc_now_ms()
-        snapshots = await asyncio.to_thread(
-            _native_market_snapshots,
-            reader,
-            received_at_ms=initial_received_at_ms,
-        )
+        (
+            snapshots,
+            initial_received_at_ms,
+        ) = await _refresh_native_market_snapshots(reader)
         opening_opportunity_sink.observe_snapshots(snapshots)
         await capture_due_exit_books(
             snapshots,
@@ -7554,18 +7566,17 @@ async def run_continuous_paper_session(
                     exit_reason = "upgrade_requested"
                     break
 
-                refreshed = await asyncio.to_thread(
-                    _native_market_snapshots,
-                    reader,
-                    received_at_ms=now_ms,
-                )
+                (
+                    refreshed,
+                    refreshed_received_at_ms,
+                ) = await _refresh_native_market_snapshots(reader)
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
                     break
                 opening_opportunity_sink.observe_snapshots(refreshed)
                 await capture_due_exit_books(
                     refreshed,
-                    now_ms=now_ms,
+                    now_ms=refreshed_received_at_ms,
                 )
                 if _stop_requested(stop_path):
                     exit_reason = "upgrade_requested"
@@ -7599,7 +7610,7 @@ async def run_continuous_paper_session(
                     )
                     desired = _ranked_selection(
                         refreshed,
-                        as_of_ms=now_ms,
+                        as_of_ms=rank_observed_at_ms,
                         deep_limit=config.deep_limit,
                         pinned=pinned,
                     )
