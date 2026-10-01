@@ -3636,3 +3636,24 @@ Before clean data exists, each fixed cooldown window has a precommitted evidence
 **Promotion authority:** `false`  
 **Changes risk limits:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Common-start full entry + breakeven stack audit — 2026-10-01
+
+The prospective research surface now includes one common-start matched-trade diagnostic for the candidate machine as a whole rather than judging entry and exit challengers in isolation.
+
+The audit begins at the latest clean start across the frozen combined entry screen, two-strike repeated-stop filter, zero-strike momentum-band filter, and breakeven-after-0.5R exit challenger.
+
+For every closed trade after that common start:
+
+- the combined, two-strike, and momentum decision maps must all be present;
+- if any entry candidate blocks the trade, the full-stack candidate contribution is zero and no exit credit is required;
+- if the entry stack admits the trade, the exact visible-book breakeven execution-shadow outcome must exist and reconcile by trade, opening plan, market, direction, realized PnL, and realized R;
+- missing or economically unevaluable breakeven outcomes remain explicit integrity misses and are never guessed;
+- actual, entry-stack-only, and full entry+exit PnL/net-R contributions are reported on the same evaluable cohort;
+- the incremental contribution from breakeven beyond the entry stack is reported separately;
+- the full-stack delta is stress-tested with leave-one-trade and leave-one-market robustness and split by LONG/SHORT and market.
+
+This is matched-trade contribution evidence only. It is not a portfolio counterfactual, models no replacement trades, changes no candidate readiness gate, and has no execution or promotion authority.
+
+**LIVE TRADING: DISABLED.**

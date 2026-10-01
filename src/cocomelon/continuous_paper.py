@@ -296,6 +296,9 @@ from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
     evaluate_prospective_entry_filter,
 )
+from cocomelon.research.prospective_full_stack_entry_exit import (
+    prospective_full_stack_entry_exit_summary,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
@@ -374,6 +377,9 @@ PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME = (
 )
 PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME = (
     "prospective-consecutive-loss-cooldown-shadow-summary.json"
+)
+PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
+    "prospective-full-stack-entry-exit-summary.json"
 )
 PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
     "prospective-breakeven-profit-lock-state.json"
@@ -2283,6 +2289,39 @@ def _prospective_candidate_stack_overlap_payload(
             "research_only": True,
             "execution_authority": False,
             "promotion_authority": False,
+            "changes_readiness_gate": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
+def _prospective_full_stack_entry_exit_payload(
+    journal: JournalStore,
+    combined: dict[str, object],
+    two_strike: dict[str, object],
+    momentum: dict[str, object],
+    execution_shadow_state: dict[str, object],
+    breakeven_state: ProspectiveBreakevenProfitLockState,
+) -> dict[str, object]:
+    try:
+        payload = prospective_full_stack_entry_exit_summary(
+            tuple(journal.iter_trades()),
+            combined,
+            two_strike,
+            momentum,
+            execution_shadow_state,
+            breakeven_state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
             "changes_readiness_gate": False,
             "error": f"{type(exc).__name__}: {exc}",
         }
@@ -6980,6 +7019,62 @@ async def run_continuous_paper_session(
             root
             / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_SUMMARY_FILENAME,
             cooldown_shadow_summary,
+        )
+        full_stack_combined = _prospective_combined_entry_filter_payload(
+            journal,
+            facts,
+            opening_rank_store,
+            prospective_entry_filter_state,
+            prospective_top10_rank_filter_state,
+            prospective_combined_entry_filter_state,
+            restore_error=(
+                prospective_combined_entry_filter_restore_error
+            ),
+        )
+        full_stack_momentum = _prospective_momentum_band_entry_payload(
+            journal,
+            feature_store,
+            prospective_momentum_band_entry_state,
+            restore_error=(
+                prospective_momentum_band_entry_restore_error
+            ),
+        )
+        full_stack_two_strike = (
+            _prospective_two_strike_stop_filter_payload(
+                journal,
+                prospective_two_strike_stop_filter_state,
+                restore_error=(
+                    prospective_two_strike_stop_filter_restore_error
+                ),
+            )
+        )
+        if profit_lock_execution_shadow.shadow is None:
+            full_stack_entry_exit = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "error": (
+                    profit_lock_execution_shadow.error
+                    or "profit-lock execution shadow unavailable"
+                ),
+            }
+        else:
+            full_stack_entry_exit = (
+                _prospective_full_stack_entry_exit_payload(
+                    journal,
+                    full_stack_combined,
+                    full_stack_two_strike,
+                    full_stack_momentum,
+                    profit_lock_execution_shadow.shadow.state_payload(),
+                    prospective_breakeven_profit_lock_state,
+                )
+            )
+        _write_json_atomic(
+            root / PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME,
+            full_stack_entry_exit,
         )
         closed_trades = tuple(journal.iter_trades())
         summary = ContinuousPaperSummary(
