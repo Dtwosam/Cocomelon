@@ -9,6 +9,9 @@ from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.research.profit_lock_counterfactual import (
     DEFAULT_PROFIT_LOCK_RULES,
 )
+from cocomelon.research.profit_lock_execution_ledger import (
+    validate_profit_lock_execution_ledger,
+)
 from cocomelon.research.profit_lock_execution_readiness import (
     MIN_ACTIVATED_TRADES_PER_RULE,
     MIN_ECONOMICALLY_EVALUATED_TRADES_PER_RULE,
@@ -496,3 +499,81 @@ def prospective_breakeven_profit_lock_summary(
             "missing_short_evaluated_trades": missing_short,
         },
     }
+
+
+
+def prospective_breakeven_from_execution_ledger(
+    trades: Sequence[TradeJournalEntry],
+    execution_ledger: object,
+    state: ProspectiveBreakevenProfitLockState,
+) -> dict[str, object]:
+    validated = validate_profit_lock_execution_ledger(
+        execution_ledger
+    )
+    candidate = validated.get("candidate")
+    integrity = validated.get("integrity_counters")
+    rows = validated.get("rows")
+    if not isinstance(candidate, Mapping):
+        raise ProspectiveBreakevenProfitLockError(
+            "execution ledger candidate metadata is invalid"
+        )
+    if not isinstance(integrity, Mapping):
+        raise ProspectiveBreakevenProfitLockError(
+            "execution ledger integrity counters are invalid"
+        )
+    if not isinstance(rows, tuple):
+        raise ProspectiveBreakevenProfitLockError(
+            "execution ledger rows are invalid"
+        )
+
+    shadow_state = {
+        "schema_version": candidate.get(
+            "state_schema_version"
+        ),
+        "started_at_ms": candidate.get("started_at_ms"),
+        "execution_config": candidate.get("execution_config"),
+        "rules": candidate.get("rules"),
+        "positions": [],
+        "outcomes": list(rows),
+        "excluded_closed_trades": integrity.get(
+            "excluded_closed_trades",
+            0,
+        ),
+        "lineage_mismatch_closed_trades": integrity.get(
+            "lineage_mismatch_closed_trades",
+            0,
+        ),
+        "orphaned_restored_positions": integrity.get(
+            "orphaned_restored_positions",
+            0,
+        ),
+    }
+    result = prospective_breakeven_profit_lock_summary(
+        trades,
+        shadow_state,
+        state,
+    )
+    result = dict(result)
+    result["source_execution_ledger_sha256"] = validated.get(
+        "ledger_sha256"
+    )
+    result["source_execution_ledger_row_count"] = validated.get(
+        "row_count"
+    )
+    source_history = validated.get("source_history")
+    if isinstance(source_history, list) and source_history:
+        latest = source_history[-1]
+        if isinstance(latest, Mapping):
+            result["source_paper_run_id"] = latest.get(
+                "source_paper_run_id"
+            )
+            result["source_paper_run_attempt"] = latest.get(
+                "source_paper_run_attempt"
+            )
+            result["source_artifact_name"] = latest.get(
+                "source_artifact_name"
+            )
+            result["source_artifact_digest"] = latest.get(
+                "source_artifact_digest"
+            )
+    return result
