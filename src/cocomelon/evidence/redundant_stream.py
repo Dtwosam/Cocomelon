@@ -16,8 +16,10 @@ class RedundantStreamMux:
     """Merge redundant normalized public streams without hiding true data loss.
 
     One lane is active per stream while the other continuously buffers normalized
-    events. A lane-local disconnect switches to a proven healthy standby and
-    backfills events the active lane did not emit. A durable gap is forwarded
+    events. A lane-local disconnect or stale-stream gap switches that stream to
+    a proven healthy standby while unrelated streams can remain on the same lane.
+    The standby backfills events the active lane did not emit. A durable gap is
+    forwarded
     whenever no lane has demonstrated continuous coverage for the stream.
 
     Supervisors send every subscription before they begin receiving messages. The
@@ -253,10 +255,14 @@ class RedundantStreamMux:
             return
 
         if gap.is_open:
-            self._session_ready_lanes.discard(lane)
+            if gap.reason != "stale":
+                self._session_ready_lanes.discard(lane)
             starts[lane] = gap.started_ms
             if lane == self.active_lane(stream_id):
-                standby = self._available_lane(stream_id, excluding=lane)
+                standby = self._available_lane(
+                    stream_id,
+                    excluding=lane,
+                )
                 if standby is not None:
                     await self._switch(stream_id, standby)
             await self._open_aggregate_gap_if_needed(

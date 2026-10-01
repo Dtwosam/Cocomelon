@@ -3831,3 +3831,23 @@ This is an early separation diagnostic only. It cannot change the momentum chall
 **Promotion authority:** `false`  
 **Changes closed-trade readiness:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Stream-local L2 freshness recovery — 2026-10-01
+
+A live paper decision epoch exposed a market-data failure mode that was safe but economically disabling: 18 rankable markets were simultaneously rejected as `stale_book`, each with the exact same 54,591 ms book age, while other websocket records continued to arrive and both shortlist rotations had reported ready.
+
+The root architecture was that websocket freshness existed only as a reporting helper. Redundant failover reacted to disconnect gaps, but an individual L2 subscription could stop advancing while trades, candles, or asset-context traffic kept the websocket session alive. In that state the active L2 lane remained selected and fresher standby books could remain buffered. Rotation readiness also accepted the first L2 snapshot without checking its exchange-time age.
+
+The paper runtime now keeps the 5,000 ms deep-book eligibility ceiling unchanged and adds fail-closed recovery around it:
+
+- L2 lane health is measured from the Hyperliquid exchange timestamp, not merely local message receipt;
+- when one lane's L2 stream exceeds the frozen eligibility age, that stream opens a lane-local stale gap and can fail over to the redundant lane without revoking unrelated streams on the same websocket;
+- supervisor wakeups include the next L2 stale deadline, so a silent book is detected even while no message arrives;
+- shortlist replacement readiness credits only L2 snapshots that are already within the same frozen 5,000 ms age ceiling at receipt;
+- if every selected market is stale on both redundant lanes at a runtime health check, a fresh replacement supervisor pair is started and is promoted only after both new lanes prove fresh L2 for every selected market;
+- stale-L2 recovery attempts, promotions, and readiness failures are exposed in the operational heartbeat.
+
+No stale book is made tradable, no freshness threshold is widened, and no paper order is created from missing microstructure. This is a data-availability repair, not a strategy relaxation.
+
+**LIVE TRADING: DISABLED.**

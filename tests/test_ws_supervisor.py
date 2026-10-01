@@ -58,6 +58,20 @@ def trade(tid: int, time_ms: int = 1000) -> dict[str, object]:
     }
 
 
+def book(time_ms: int = 1000) -> dict[str, object]:
+    return {
+        "channel": "l2Book",
+        "data": {
+            "coin": "BTC",
+            "levels": [
+                [{"n": 1, "px": "99", "sz": "1"}],
+                [{"n": 1, "px": "101", "sz": "1"}],
+            ],
+            "time": time_ms,
+        },
+    }
+
+
 def test_reconnect_resubscribes_and_closes_gap_on_recovery() -> None:
     async def run() -> None:
         first = FakeConnection([trade(1), ConnectionError("drop")])
@@ -266,5 +280,119 @@ def test_event_sink_failure_surfaces_without_reconnect() -> None:
 
         assert factory_calls == 1
         assert supervisor.health.reconnect_count == 0
+
+    asyncio.run(run())
+
+
+def test_l2_exchange_staleness_opens_and_recovers_stream_gap() -> None:
+    async def run() -> None:
+        now = [1_000]
+        rows = [
+            (1_000, book(1_000)),
+            (7_000, trade(1, 7_000)),
+            (7_001, book(7_001)),
+        ]
+
+        class ClockedConnection(FakeConnection):
+            async def recv_json(self) -> dict[str, object]:
+                timestamp_ms, row = rows.pop(0)
+                now[0] = timestamp_ms
+                assert isinstance(row, dict)
+                return row
+
+        connection = ClockedConnection([])
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+
+        async def factory() -> ClockedConnection:
+            return connection
+
+        async def event_sink(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            (
+                {"type": "l2Book", "coin": "BTC"},
+                {"type": "trades", "coin": "BTC"},
+            ),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=3,
+        )
+
+        assert [event.kind.value for event in events] == [
+            "l2_book",
+            "trade",
+            "l2_book",
+        ]
+        assert any(
+            gap.stream_id == "l2Book:BTC"
+            and gap.reason == "stale"
+            and gap.ended_ms is None
+            for gap in gaps
+        )
+        assert any(
+            gap.stream_id == "l2Book:BTC"
+            and gap.reason == "recovered"
+            and gap.ended_ms is not None
+            for gap in gaps
+        )
+        assert supervisor.stale_l2_streams(now_ms=7_001) == ()
+
+    asyncio.run(run())
+
+
+def test_l2_staleness_uses_exchange_time_not_recent_receive() -> None:
+    async def run() -> None:
+        now = [10_000]
+        connection = FakeConnection([book(1_000)])
+        gaps: list[DataGap] = []
+
+        async def factory() -> FakeConnection:
+            return connection
+
+        async def event_sink(_event: StreamEvent) -> None:
+            return None
+
+        async def gap_sink(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        supervisor = WebSocketSupervisor(
+            factory,
+            ({"type": "l2Book", "coin": "BTC"},),
+            event_sink=event_sink,
+            gap_sink=gap_sink,
+            clock_ms=lambda: now[0],
+            utcnow=lambda: datetime.fromtimestamp(
+                now[0] / 1000,
+                tz=UTC,
+            ),
+            stale_after_ms=5_000,
+        )
+        await supervisor.run(
+            max_sessions=1,
+            max_messages_per_session=1,
+        )
+
+        assert supervisor.stale_l2_streams(now_ms=10_000) == (
+            "l2Book:BTC",
+        )
+        assert any(
+            gap.reason == "stale" and gap.stream_id == "l2Book:BTC"
+            for gap in gaps
+        )
 
     asyncio.run(run())

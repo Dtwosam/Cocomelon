@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from cocomelon.domain.stream import DataGap, StreamEvent
+from cocomelon.domain.market import MarketId
+from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
+from cocomelon.hyperliquid.ws_protocol import normalize_ws_message
 from cocomelon.hyperliquid.ws_supervisor import WebSocketSupervisor
 
 RECEIVED = datetime(2026, 8, 25, tzinfo=UTC)
@@ -144,5 +147,93 @@ def test_supervisor_lane_activity_proves_cross_stream_standby_readiness() -> Non
         assert mux.active_lane("trades:BTC") == 1
         assert primary.closed is True
         assert standby.closed is True
+
+    asyncio.run(run())
+
+
+def test_stale_l2_lane_fails_over_without_revoking_other_streams() -> None:
+    async def run() -> None:
+        events: list[StreamEvent] = []
+        gaps: list[DataGap] = []
+        receive = datetime(2026, 8, 25, tzinfo=UTC)
+
+        async def emit_event(event: StreamEvent) -> None:
+            events.append(event)
+
+        async def emit_gap(gap: DataGap) -> None:
+            gaps.append(gap)
+
+        mux = RedundantStreamMux(
+            event_sink=emit_event,
+            gap_sink=emit_gap,
+        )
+        lane0_trade = StreamEvent(
+            kind=StreamKind.TRADE,
+            market=MarketId("", "BTC"),
+            exchange_time_ms=1_000,
+            receive_time=receive,
+            schema_version=1,
+            source="test",
+            event_key="trade-lane0",
+            payload={
+                "side": "B",
+                "price": Decimal("100"),
+                "size": Decimal("1"),
+                "hash": "0x1",
+                "tid": 1,
+                "users": (),
+            },
+        )
+        lane1_trade = StreamEvent(
+            kind=StreamKind.TRADE,
+            market=MarketId("", "BTC"),
+            exchange_time_ms=1_001,
+            receive_time=receive,
+            schema_version=1,
+            source="test",
+            event_key="trade-lane1",
+            payload={
+                "side": "B",
+                "price": Decimal("100"),
+                "size": Decimal("1"),
+                "hash": "0x2",
+                "tid": 2,
+                "users": (),
+            },
+        )
+        lane0_book = normalize_ws_message(
+            _book(1_000),
+            receive_time=receive,
+        )[0]
+        lane1_book = normalize_ws_message(
+            _book(2_000),
+            receive_time=receive,
+        )[0]
+
+        await mux.on_event(0, lane0_trade)
+        await mux.on_event(0, lane0_book)
+        await mux.on_event(1, lane1_trade)
+        await mux.on_event(1, lane1_book)
+
+        assert mux.active_lane("trades:BTC") == 0
+        assert mux.active_lane("l2Book:BTC") == 0
+
+        await mux.on_gap(
+            0,
+            DataGap(
+                stream_id="l2Book:BTC",
+                started_ms=6_000,
+                ended_ms=None,
+                reason="stale",
+            ),
+        )
+
+        assert mux.active_lane("l2Book:BTC") == 1
+        assert mux.active_lane("trades:BTC") == 0
+        assert any(
+            event.event_key == lane1_book.event_key
+            for event in events
+        )
+        assert gaps == []
 
     asyncio.run(run())
