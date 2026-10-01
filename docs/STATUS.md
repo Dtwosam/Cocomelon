@@ -3989,3 +3989,26 @@ The fast pack/upload/dispatch path is non-authoritative and failure-tolerant. An
 This changes no strategy, risk, sizing, entry, exit, stop, candidate readiness, paper accounting, promotion, or live-order authority.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Clean candidate evidence runway diagnostic — 2026-10-01
+
+The paper status now explains why a frozen prospective candidate may still have zero immutable closed-trade evidence after its clean start.
+
+For the combined entry screen, two-strike stop filter, zero-strike momentum-band filter, and their latest common start, the diagnostic reports:
+
+- directional opening opportunities observed after the relevant clean start;
+- LONG/SHORT opportunity split and market breadth;
+- baseline risk approvals, rejections, and exact rejection-reason counts;
+- actual paper openings captured by durable opening lineage;
+- closed versus still-open paper trades;
+- realized PnL/net R for closed trades after the clean start;
+- opening-lineage integrity and age of the oldest still-open clean opening.
+
+The status assigns one descriptive stage: waiting for a directional opportunity, risk-rejected, approved without an opening, openings waiting to close, or closed-trade evidence available.
+
+This is an evidence-starvation diagnostic only. It does not loosen strategy, risk, execution, candidate readiness, promotion, or live-order gates, and it is not an immutable economic ledger.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**LIVE TRADING: DISABLED.**
