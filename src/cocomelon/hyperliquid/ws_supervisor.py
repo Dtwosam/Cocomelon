@@ -96,6 +96,68 @@ class WebSocketSupervisor:
             anomaly_count=self._anomaly_count,
         )
 
+    def _l2_stream_ids(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                subscription_id(subscription)
+                for subscription in self._subscriptions
+                if subscription.get("type") == "l2Book"
+            )
+        )
+
+    def _l2_freshness_anchor_ms(self, stream_id: str) -> int | None:
+        exchange_time = self._last_exchange_time.get(stream_id)
+        if exchange_time is not None:
+            return exchange_time
+        return self._last_stream_message.get(stream_id)
+
+    def _l2_stream_is_stale(
+        self,
+        stream_id: str,
+        *,
+        now_ms: int,
+    ) -> bool:
+        anchor = self._l2_freshness_anchor_ms(stream_id)
+        return (
+            anchor is not None
+            and now_ms - anchor >= self._stale_after_ms
+        )
+
+    def _next_l2_stale_deadline_ms(self) -> int | None:
+        deadlines = tuple(
+            anchor + self._stale_after_ms
+            for stream_id in self._l2_stream_ids()
+            if stream_id not in self._open_gaps
+            if (
+                anchor := self._l2_freshness_anchor_ms(stream_id)
+            )
+            is not None
+        )
+        return None if not deadlines else min(deadlines)
+
+    async def _open_l2_stale_gaps_if_needed(
+        self,
+        now_ms: int,
+    ) -> None:
+        for stream_id in self._l2_stream_ids():
+            if stream_id in self._open_gaps:
+                continue
+            anchor = self._l2_freshness_anchor_ms(stream_id)
+            if (
+                anchor is None
+                or now_ms - anchor < self._stale_after_ms
+            ):
+                continue
+            started_ms = anchor + self._stale_after_ms
+            gap = DataGap(
+                stream_id=stream_id,
+                started_ms=started_ms,
+                ended_ms=None,
+                reason="stale",
+            )
+            self._open_gaps[stream_id] = gap
+            await self._emit_gap(gap)
+
     async def _subscribe_all(self, connection: WsConnection) -> None:
         ordered = sorted(self._subscriptions, key=subscription_id)
         for subscription in ordered:
@@ -184,7 +246,19 @@ class WebSocketSupervisor:
             if exchange_time is not None:
                 self._last_exchange_time[stream_id] = exchange_time
             self._last_stream_message[stream_id] = now_ms
-            await self._close_gap_if_needed(stream_id, now_ms)
+            if (
+                event.kind is StreamKind.L2_BOOK
+                and self._l2_stream_is_stale(
+                    stream_id,
+                    now_ms=now_ms,
+                )
+            ):
+                await self._open_l2_stale_gaps_if_needed(now_ms)
+            else:
+                await self._close_gap_if_needed(
+                    stream_id,
+                    now_ms,
+                )
             await self._emit_event(event)
 
     async def _session(
@@ -199,10 +273,21 @@ class WebSocketSupervisor:
         next_heartbeat_ms = self._clock_ms() + heartbeat_ms
         while max_messages is None or received < max_messages:
             now_ms = self._clock_ms()
-            remaining_seconds = max(0.0, (next_heartbeat_ms - now_ms) / 1000)
+            next_stale_ms = self._next_l2_stale_deadline_ms()
+            wake_ms = next_heartbeat_ms
+            if next_stale_ms is not None:
+                wake_ms = min(wake_ms, next_stale_ms)
+            remaining_seconds = max(
+                0.0,
+                (wake_ms - now_ms) / 1000,
+            )
             if remaining_seconds == 0.0:
-                await connection.send_json({"method": "ping"})
-                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
+                await self._open_l2_stale_gaps_if_needed(now_ms)
+                if now_ms >= next_heartbeat_ms:
+                    await connection.send_json({"method": "ping"})
+                    next_heartbeat_ms = (
+                        self._clock_ms() + heartbeat_ms
+                    )
                 continue
             try:
                 raw = await asyncio.wait_for(
@@ -210,15 +295,24 @@ class WebSocketSupervisor:
                     timeout=remaining_seconds,
                 )
             except TimeoutError:
-                await connection.send_json({"method": "ping"})
-                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
+                now_ms = self._clock_ms()
+                await self._open_l2_stale_gaps_if_needed(now_ms)
+                if now_ms >= next_heartbeat_ms:
+                    await connection.send_json({"method": "ping"})
+                    next_heartbeat_ms = (
+                        self._clock_ms() + heartbeat_ms
+                    )
                 continue
             self._last_server_message_ms = self._clock_ms()
             await self._dispatch(raw)
             received += 1
-            if self._clock_ms() >= next_heartbeat_ms:
+            now_ms = self._clock_ms()
+            await self._open_l2_stale_gaps_if_needed(now_ms)
+            if now_ms >= next_heartbeat_ms:
                 await connection.send_json({"method": "ping"})
-                next_heartbeat_ms = self._clock_ms() + heartbeat_ms
+                next_heartbeat_ms = (
+                    self._clock_ms() + heartbeat_ms
+                )
 
     async def run(
         self,
@@ -259,6 +353,20 @@ class WebSocketSupervisor:
                 if connection is not None:
                     await connection.close()
                 self._connected = False
+
+    def stale_l2_streams(
+        self,
+        *,
+        now_ms: int,
+    ) -> tuple[str, ...]:
+        return tuple(
+            stream_id
+            for stream_id in self._l2_stream_ids()
+            if self._l2_stream_is_stale(
+                stream_id,
+                now_ms=now_ms,
+            )
+        )
 
     def stale_streams(self, *, now_ms: int) -> tuple[str, ...]:
         stale = []
