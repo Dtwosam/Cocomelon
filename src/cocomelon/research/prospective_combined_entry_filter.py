@@ -21,6 +21,9 @@ from cocomelon.research.prospective_allowed_residual import (
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
 )
+from cocomelon.research.prospective_filter_economic_readiness import (
+    prospective_filter_economic_readiness,
+)
 from cocomelon.research.prospective_filter_fixed_schedule import (
     ProspectiveFilterPortfolioItem,
     prospective_filter_fixed_schedule_portfolio,
@@ -286,14 +289,16 @@ def prospective_combined_entry_filter_summary(
         (trade.net_pnl for trade, _, _, _ in blocked),
         ZERO,
     )
-    robustness = prospective_filter_robustness(
-        tuple(
-            (
-                trade,
-                reason is not None,
-            )
-            for trade, _rank, _lead_strategy, reason in attributed
+    filter_items = tuple(
+        (
+            trade,
+            reason is not None,
         )
+        for trade, _rank, _lead_strategy, reason in attributed
+    )
+    robustness = prospective_filter_robustness(filter_items)
+    economic_readiness = prospective_filter_economic_readiness(
+        filter_items
     )
     allowed_residual_items = tuple(
         AllowedResidualItem(
@@ -383,11 +388,41 @@ def prospective_combined_entry_filter_summary(
         and missing_rank_evidence == 0
         and stale_rank_evidence == 0
     )
+    candidate_profitable = (
+        economic_readiness["candidate_profitable"] is True
+    )
+    improvement_positive = (
+        economic_readiness["improvement_positive"] is True
+    )
+    candidate_trade_robust = (
+        economic_readiness["candidate_single_trade_robust"] is True
+    )
+    candidate_market_robust = (
+        economic_readiness["candidate_single_market_robust"] is True
+    )
+    delta_trade_robust = (
+        economic_readiness["delta_single_trade_robust"] is True
+    )
+    delta_market_robust = (
+        economic_readiness["delta_single_market_robust"] is True
+    )
+    economics_positive = (
+        candidate_profitable and improvement_positive
+    )
+    single_trade_robust = (
+        candidate_trade_robust and delta_trade_robust
+    )
+    single_market_robust = (
+        candidate_market_robust and delta_market_robust
+    )
     ready = (
         integrity_clean
         and missing_total == 0
         and missing_blocked == 0
         and missing_allowed == 0
+        and economics_positive
+        and single_trade_robust
+        and single_market_robust
     )
 
     return {
@@ -429,6 +464,7 @@ def prospective_combined_entry_filter_summary(
             for trade, _rank, _lead_strategy, reason in attributed
         },
         "robustness": robustness,
+        "economic_readiness": economic_readiness,
         "allowed_residual": allowed_residual,
         "residual_profit_lock": residual_profit_lock,
         "fixed_schedule_portfolio": fixed_schedule_portfolio,
@@ -439,6 +475,9 @@ def prospective_combined_entry_filter_summary(
         "delta_trade_contribution_pnl": str(
             allowed_net_pnl - actual_net_pnl
         ),
+        "actual_net_r": economic_readiness["actual_net_r"],
+        "candidate_net_r": economic_readiness["candidate_net_r"],
+        "delta_net_r": economic_readiness["delta_net_r"],
         "actual_mean_net_r": _mean_decimal(
             tuple(
                 trade.net_r
@@ -484,6 +523,19 @@ def prospective_combined_entry_filter_summary(
         "readiness": {
             "ready_for_review": ready,
             "integrity_clean": integrity_clean,
+            "candidate_profitable": candidate_profitable,
+            "improvement_positive": improvement_positive,
+            "economics_positive": economics_positive,
+            "candidate_single_trade_robust": (
+                candidate_trade_robust
+            ),
+            "candidate_single_market_robust": (
+                candidate_market_robust
+            ),
+            "delta_single_trade_robust": delta_trade_robust,
+            "delta_single_market_robust": delta_market_robust,
+            "single_trade_robust": single_trade_robust,
+            "single_market_robust": single_market_robust,
             "min_prospective_closed_trades": (
                 MIN_PROSPECTIVE_CLOSED_TRADES
             ),
