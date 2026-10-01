@@ -675,10 +675,10 @@ def prospective_consecutive_loss_cooldown_shadow_summary(
         pnl = ZERO
         returns = ZERO
         for result in result_tuple:
-            markouts = result["markouts"]
-            if not isinstance(markouts, dict):
+            raw_markouts = result["markouts"]
+            if not isinstance(raw_markouts, dict):
                 continue
-            markout = markouts.get(key)
+            markout = raw_markouts.get(key)
             if not isinstance(markout, dict):
                 continue
             status = markout.get("status")
