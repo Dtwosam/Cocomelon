@@ -257,11 +257,48 @@ jobs:
           )"
           read -r ARTIFACT_ID ARTIFACT_MEMBER <<< "$ARTIFACT_SELECTION"
           if [ "$ARTIFACT_MEMBER" = "continuous-paper-resume.tar.zst" ]; then
-            bash scripts/restore_continuous_paper_state.sh \
+            if ! bash scripts/restore_continuous_paper_state.sh \
               "$ARTIFACT_ID" \
               "$SOURCE_HEAD_SHA" \
               "$STATE_ROOT" \
-              "$ARTIFACT_MEMBER"
+              "$ARTIFACT_MEMBER"; then
+              echo "::warning::fast resume restore failed; waiting for exact durable fallback"
+              DURABLE_ARTIFACT_ID=""
+              for poll in $(seq 1 40); do
+                gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" > /tmp/source-artifacts.json
+                DURABLE_ARTIFACT_ID="$(
+                  python - "$STATE_ARTIFACT_NAME" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          name = sys.argv[1]
+          payload = json.loads(
+              Path("/tmp/source-artifacts.json").read_text(encoding="utf-8")
+          )
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == name
+              and item.get("expired") is False
+          ]
+          print(matches[0]["id"] if len(matches) == 1 else "")
+          PY
+                )"
+                if [ -n "$DURABLE_ARTIFACT_ID" ]; then
+                  break
+                fi
+                echo "::notice::durable fallback not published yet ($poll/40)"
+                sleep 15
+              done
+              if [ -z "$DURABLE_ARTIFACT_ID" ]; then
+                echo "exact predecessor durable fallback did not appear" >&2
+                exit 1
+              fi
+              bash scripts/restore_continuous_paper_state.sh \
+                "$DURABLE_ARTIFACT_ID" \
+                "$SOURCE_HEAD_SHA" \
+                "$STATE_ROOT"
+            fi
           else
             bash scripts/restore_continuous_paper_state.sh \
               "$ARTIFACT_ID" \
