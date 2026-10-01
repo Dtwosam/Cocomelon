@@ -27,6 +27,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_replacement_exit_policy_lines,
     _prospective_replacement_exit_readiness_lines,
     _prospective_replacement_exit_robustness_lines,
+    _prospective_momentum_band_entry_lines,
     _prospective_residual_profit_lock_lines,
     _prospective_two_strike_stop_filter_lines,
     _replacement_funding_evidence_lines,
@@ -6227,6 +6228,132 @@ def test_stop_reentry_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: reentry boom" in output
+
+
+def test_momentum_band_renderer_exposes_clean_future_gate() -> None:
+    lines = _prospective_momentum_band_entry_lines(
+        {
+            "enabled": True,
+            "state_restore_error": None,
+            "error": None,
+            "candidate_id": "prospective-zero-strike-momentum-band-v1",
+            "frozen_at_ms": 1000,
+            "started_at_ms": 21601000,
+            "embargo_ms": 21600000,
+            "rule": {
+                "min_signed_return_1h": "0.015",
+                "max_signed_day_return": "0.10",
+                "missing_feature_action": "admit_fail_open",
+            },
+            "prospective_closed_trades": 12,
+            "admitted_trades": 5,
+            "blocked_trades": 7,
+            "zero_strike_feature_evaluated": 10,
+            "nonzero_strike_bypass": 2,
+            "missing_feature_trades": 0,
+            "blocked_wins": 1,
+            "blocked_losses": 6,
+            "blocked_net_pnl": "-20",
+            "actual_net_pnl": "-10",
+            "candidate_net_pnl": "10",
+            "delta_net_pnl": "20",
+            "actual_net_r": "-1",
+            "candidate_net_r": "1",
+            "delta_net_r": "2",
+            "by_direction": {
+                "long": {
+                    "closed_trades": 6,
+                    "admitted_trades": 2,
+                    "blocked_trades": 4,
+                    "blocked_winners": 1,
+                    "blocked_losses": 3,
+                    "blocked_net_pnl": "-8",
+                    "candidate_net_pnl": "3",
+                    "candidate_net_r": "0.3",
+                },
+                "short": {
+                    "closed_trades": 6,
+                    "admitted_trades": 3,
+                    "blocked_trades": 3,
+                    "blocked_winners": 0,
+                    "blocked_losses": 3,
+                    "blocked_net_pnl": "-12",
+                    "candidate_net_pnl": "7",
+                    "candidate_net_r": "0.7",
+                },
+            },
+            "robustness": {
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "attributed_trades": 12,
+                "nonzero_blocked_contributions": 7,
+                "markets_with_nonzero_blocked_contribution": 3,
+                "total_delta_trade_contribution_pnl": "20",
+                "largest_abs_trade_contribution": "5",
+                "largest_abs_trade_market": "SOL",
+                "largest_abs_trade_share": "0.25",
+                "leave_one_trade_out_min_delta": "15",
+                "positive_after_any_single_trade_removed": True,
+                "largest_abs_market": "SOL",
+                "largest_abs_market_contribution": "8",
+                "largest_abs_market_share": "0.4",
+                "leave_one_market_out_min_delta": "12",
+                "positive_after_any_single_market_removed": True,
+                "temporal": {
+                    "chronological_blocks": [],
+                    "configured_blocks": 4,
+                    "min_trades_per_full_block": 5,
+                    "full_blocks": 0,
+                    "positive_full_blocks": 0,
+                    "all_full_blocks_positive": False,
+                },
+            },
+            "readiness": {
+                "ready_for_review": False,
+                "sample_complete": False,
+                "feature_integrity_clean": True,
+                "economics_positive": True,
+                "single_trade_robust": True,
+                "single_market_robust": True,
+                "missing_prospective_closed_trades": 18,
+                "missing_blocked_trades": 0,
+                "missing_admitted_trades": 5,
+                "missing_long_closed_trades": 0,
+                "missing_short_closed_trades": 0,
+                "missing_feature_trades": 0,
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective zero-strike momentum-band entry filter" in output
+    assert "prospective-zero-strike-momentum-band-v1" in output
+    assert "signed 1h return >= `0.015`" in output
+    assert "signed day return <= `0.10`" in output
+    assert "`12 / 5 / 7`" in output
+    assert "`10 / 2 / 0`" in output
+    assert "`-10 / 10 / 20`" in output
+    assert "| LONG | 6 | 2 | 4 | 1 | 3 | -8 | 3 | 0.3 |" in output
+    assert "| SHORT | 6 | 3 | 3 | 0 | 3 | -12 | 7 | 0.7 |" in output
+    assert "missing features fail open but block clean readiness" in output
+    assert "no paper order is changed" in output
+
+
+def test_momentum_band_renderer_exposes_restore_failure() -> None:
+    output = "\n".join(
+        _prospective_momentum_band_entry_lines(
+            {
+                "enabled": False,
+                "state_restore_error": "ValueError: bad state",
+                "error": "RuntimeError: momentum boom",
+            }
+        )
+    )
+
+    assert "state restore warning" in output
+    assert "ValueError: bad state" in output
+    assert "research error" in output
+    assert "RuntimeError: momentum boom" in output
 
 
 def test_two_strike_renderer_exposes_frozen_future_only_gate() -> None:
