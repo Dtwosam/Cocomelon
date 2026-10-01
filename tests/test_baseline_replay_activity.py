@@ -230,6 +230,17 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
         assert decision_activity.decision_reason_counts == (
             ("fixture-directional", 1),
         )
+        assert decision_activity.eligibility_evaluations == 1
+        assert decision_activity.eligibility_rankable == 1
+        assert decision_activity.eligibility_deep_ready == 1
+        assert decision_activity.eligibility_reason_counts == ()
+        assert decision_activity.latest_epoch_market_count == 1
+        assert decision_activity.latest_epoch_rankable_count == 1
+        assert decision_activity.latest_epoch_deep_ready_count == 1
+        assert (
+            decision_activity.latest_epoch_eligibility_reason_counts
+            == ()
+        )
         assert decision_activity.risk_evaluations == 1
         assert decision_activity.risk_approvals == 1
         assert decision_activity.risk_rejections == 0
