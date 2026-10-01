@@ -224,6 +224,7 @@ from cocomelon.research.original_stop_book_evidence import (
     OriginalStopBookEvidenceStore,
 )
 from cocomelon.research.post_freshness_paper_cohort import (
+    clean_evidence_runway_summary,
     post_freshness_paper_cohort_summary,
 )
 from cocomelon.research.profit_lock_counterfactual import (
@@ -4359,6 +4360,48 @@ def _post_freshness_paper_cohort_payload(
     return payload
 
 
+def _clean_evidence_runway_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    lineage_store: ContinuousPaperOpeningLineageStore,
+    journal: JournalStore,
+    combined_state: ProspectiveCombinedEntryFilterState,
+    momentum_state: ProspectiveMomentumBandEntryState,
+    two_strike_state: ProspectiveTwoStrikeStopFilterState,
+    *,
+    timestamp_ms: int,
+) -> dict[str, object]:
+    try:
+        payload = clean_evidence_runway_summary(
+            opportunity_store.iter_records(),
+            lineage_store.iter_records(),
+            tuple(journal.iter_trades()),
+            {
+                combined_state.candidate_id: (
+                    combined_state.started_at_ms
+                ),
+                momentum_state.candidate_id: (
+                    momentum_state.started_at_ms
+                ),
+                two_strike_state.candidate_id: (
+                    two_strike_state.started_at_ms
+                ),
+            },
+            now_ms=timestamp_ms,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["error"] = None
+    return payload
+
+
 def _closed_trade_concentration_payload(
     journal: JournalStore,
     fact_store: EvaluationFactStore,
@@ -5604,6 +5647,15 @@ def _live_status_payload(
             pump.journal,
         )
     )
+    clean_evidence_runway = _clean_evidence_runway_payload(
+        opening_opportunity_store,
+        opening_lineage_store,
+        pump.journal,
+        prospective_combined_entry_filter_state,
+        prospective_momentum_band_entry_state,
+        prospective_two_strike_stop_filter_state,
+        timestamp_ms=timestamp_ms,
+    )
     closed_trade_utc_hour = _closed_trade_utc_hour_payload(
         pump.journal,
         fact_store,
@@ -6108,6 +6160,7 @@ def _live_status_payload(
         "closed_trade_concentration": closed_trade_concentration,
         "closed_trade_stop_reentry": closed_trade_stop_reentry,
         "post_freshness_paper_cohort": post_freshness_paper_cohort,
+        "clean_evidence_runway": clean_evidence_runway,
         "closed_trade_utc_hour": closed_trade_utc_hour,
         "closed_trade_friction": closed_trade_friction,
         "closed_trade_robustness": (
