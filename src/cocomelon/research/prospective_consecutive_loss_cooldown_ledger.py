@@ -18,6 +18,9 @@ LEDGER_SCHEMA_VERSION: Final = 1
 LEDGER_KIND: Final = "prospective-consecutive-loss-cooldown-ledger-v1"
 ZERO: Final = Decimal("0")
 TERMINAL_MARKOUT_STATUSES: Final = frozenset({"settled", "stale"})
+MIN_SETTLED_1H_OPTIONS: Final = 20
+MIN_SETTLED_1H_PER_DIRECTION: Final = 5
+MIN_SETTLED_1H_MARKETS: Final = 4
 
 
 class ProspectiveConsecutiveLossCooldownLedgerError(RuntimeError):
@@ -509,7 +512,7 @@ def _robustness(
     window_ms: int,
 ) -> dict[str, object]:
     horizon_key = str(60 * 60 * 1_000)
-    settled: list[tuple[str, Decimal]] = []
+    settled: list[tuple[str, str, Decimal, Decimal]] = []
     for row in rows:
         windows = row.get("applicable_relaxed_windows_ms")
         if not isinstance(windows, list) or window_ms not in windows:
@@ -525,37 +528,164 @@ def _robustness(
         raw_pnl = raw_markout.get(
             "entry_fee_adjusted_mark_to_market_pnl"
         )
-        if not isinstance(raw_pnl, str):
-            continue
-        settled.append(
-            (cast(str, row["market"]), Decimal(raw_pnl))
+        raw_return = raw_markout.get(
+            "directional_return_fraction"
         )
-    total = sum((pnl for _market, pnl in settled), ZERO)
-    leave_option = tuple(total - pnl for _market, pnl in settled)
-    by_market: dict[str, Decimal] = {}
-    for market, pnl in settled:
-        by_market[market] = by_market.get(market, ZERO) + pnl
-    leave_market = tuple(
-        total - market_pnl for market_pnl in by_market.values()
+        raw_quantity = row.get("filled_quantity")
+        raw_price = row.get("average_fill_price")
+        raw_fee = row.get("entry_fee")
+        if not all(
+            isinstance(value, str)
+            for value in (
+                raw_pnl,
+                raw_return,
+                raw_quantity,
+                raw_price,
+                raw_fee,
+            )
+        ):
+            continue
+        pnl = Decimal(cast(str, raw_pnl))
+        directional_return = Decimal(cast(str, raw_return))
+        quantity = Decimal(cast(str, raw_quantity))
+        price = Decimal(cast(str, raw_price))
+        fee = Decimal(cast(str, raw_fee))
+        notional = quantity * price
+        if notional <= ZERO:
+            raise ProspectiveConsecutiveLossCooldownLedgerError(
+                "settled cooldown option has invalid fill notional"
+            )
+        fee_adjusted_return = directional_return - fee / notional
+        settled.append(
+            (
+                cast(str, row["market"]),
+                cast(str, row["direction"]),
+                pnl,
+                fee_adjusted_return,
+            )
+        )
+
+    total_pnl = sum(
+        (pnl for _market, _direction, pnl, _ret in settled),
+        ZERO,
+    )
+    total_return = sum(
+        (ret for _market, _direction, _pnl, ret in settled),
+        ZERO,
+    )
+    leave_option_pnl = tuple(
+        total_pnl - pnl
+        for _market, _direction, pnl, _ret in settled
+    )
+    leave_option_return = tuple(
+        total_return - ret
+        for _market, _direction, _pnl, ret in settled
+    )
+    by_market_pnl: dict[str, Decimal] = {}
+    by_market_return: dict[str, Decimal] = {}
+    for market, _direction, pnl, ret in settled:
+        by_market_pnl[market] = (
+            by_market_pnl.get(market, ZERO) + pnl
+        )
+        by_market_return[market] = (
+            by_market_return.get(market, ZERO) + ret
+        )
+    leave_market_pnl = tuple(
+        total_pnl - market_pnl
+        for market_pnl in by_market_pnl.values()
+    )
+    leave_market_return = tuple(
+        total_return - market_return
+        for market_return in by_market_return.values()
+    )
+    long_count = sum(
+        direction == "long"
+        for _market, direction, _pnl, _ret in settled
+    )
+    short_count = sum(
+        direction == "short"
+        for _market, direction, _pnl, _ret in settled
+    )
+    market_count = len(by_market_pnl)
+    sample_complete = (
+        len(settled) >= MIN_SETTLED_1H_OPTIONS
+        and long_count >= MIN_SETTLED_1H_PER_DIRECTION
+        and short_count >= MIN_SETTLED_1H_PER_DIRECTION
+        and market_count >= MIN_SETTLED_1H_MARKETS
+    )
+    economics_positive = (
+        total_pnl > ZERO and total_return > ZERO
+    )
+    option_robust = (
+        len(settled) >= 2
+        and min(leave_option_pnl, default=ZERO) > ZERO
+        and min(leave_option_return, default=ZERO) > ZERO
+    )
+    market_robust = (
+        market_count >= 2
+        and min(leave_market_pnl, default=ZERO) > ZERO
+        and min(leave_market_return, default=ZERO) > ZERO
     )
     return {
         "settled_options": len(settled),
-        "market_count": len(by_market),
-        "total_entry_fee_adjusted_1h_pnl": str(total),
+        "long_settled_options": long_count,
+        "short_settled_options": short_count,
+        "market_count": market_count,
+        "total_entry_fee_adjusted_1h_pnl": str(total_pnl),
+        "total_fee_adjusted_directional_return": str(total_return),
+        "mean_fee_adjusted_directional_return": (
+            None
+            if not settled
+            else str(total_return / Decimal(len(settled)))
+        ),
         "leave_one_option_out_min_pnl": str(
-            min(leave_option, default=ZERO)
+            min(leave_option_pnl, default=ZERO)
         ),
-        "positive_after_removing_any_one_option": (
-            len(settled) >= 2
-            and min(leave_option, default=ZERO) > ZERO
+        "leave_one_option_out_min_return": str(
+            min(leave_option_return, default=ZERO)
         ),
+        "positive_after_removing_any_one_option": option_robust,
         "leave_one_market_out_min_pnl": str(
-            min(leave_market, default=ZERO)
+            min(leave_market_pnl, default=ZERO)
         ),
-        "positive_after_removing_any_one_market": (
-            len(by_market) >= 2
-            and min(leave_market, default=ZERO) > ZERO
+        "leave_one_market_out_min_return": str(
+            min(leave_market_return, default=ZERO)
         ),
+        "positive_after_removing_any_one_market": market_robust,
+        "review_readiness": {
+            "ready_for_evidence_review": (
+                sample_complete
+                and economics_positive
+                and option_robust
+                and market_robust
+            ),
+            "changes_risk_limits": False,
+            "sample_complete": sample_complete,
+            "economics_positive": economics_positive,
+            "single_option_robust": option_robust,
+            "single_market_robust": market_robust,
+            "min_settled_1h_options": MIN_SETTLED_1H_OPTIONS,
+            "min_settled_1h_per_direction": (
+                MIN_SETTLED_1H_PER_DIRECTION
+            ),
+            "min_settled_1h_markets": MIN_SETTLED_1H_MARKETS,
+            "missing_settled_1h_options": max(
+                0,
+                MIN_SETTLED_1H_OPTIONS - len(settled),
+            ),
+            "missing_long_settled_1h_options": max(
+                0,
+                MIN_SETTLED_1H_PER_DIRECTION - long_count,
+            ),
+            "missing_short_settled_1h_options": max(
+                0,
+                MIN_SETTLED_1H_PER_DIRECTION - short_count,
+            ),
+            "missing_settled_1h_markets": max(
+                0,
+                MIN_SETTLED_1H_MARKETS - market_count,
+            ),
+        },
     }
 
 
