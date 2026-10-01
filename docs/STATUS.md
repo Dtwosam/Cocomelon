@@ -3738,3 +3738,22 @@ For both the cumulative worker session and the latest decision epoch, the status
 No eligibility threshold is loosened and no trade is admitted by this change. Its purpose is to distinguish healthy selectivity from degraded/stale/missing market data before entry research interprets a NO_TRADE cohort.
 
 **LIVE TRADING: DISABLED.**
+
+
+### Overlap-safe deep-shortlist websocket rotation — 2026-10-01
+
+The continuous paper runtime no longer tears down the active deep-data websocket pair before a refreshed shortlist has proven replacement coverage.
+
+On a shortlist change:
+
+- the current redundant websocket pair remains authoritative while a replacement pair starts in parallel;
+- replacement startup gaps are suppressed until promotion so connection warmup cannot create false evidence gaps;
+- each replacement lane must emit L2-book evidence for every desired deep-shortlist market before the replacement is considered ready;
+- only after that full two-lane market coverage is proven does the runtime reconcile the scanner/pipeline to the new shortlist and retire the previous pair;
+- if replacement readiness fails, the replacement pair is cancelled and the existing healthy pair remains active;
+- overlapping old/new events are de-duplicated by canonical replay event key through a bounded in-session cache;
+- the paper heartbeat reports duplicate drops plus rotation attempts, promotions and readiness failures.
+
+This is a market-data continuity fix. It does not loosen eligibility, strategy, risk, sizing, stop, exit, promotion or live-order rules. Its purpose is to prevent shortlist refresh mechanics from manufacturing `missing_deep_data` or stale-book blind windows that can suppress otherwise valid paper opportunities and contaminate research cohorts.
+
+**LIVE TRADING: DISABLED.**
