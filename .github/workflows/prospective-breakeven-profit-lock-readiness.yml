@@ -255,22 +255,45 @@ jobs:
           LEDGER_RUN_ID: ${{ steps.ledger_source.outputs.run_id }}
           PAPER_RUN_ID: ${{ steps.paper_source.outputs.paper_run_id }}
         run: |
-          cat > /tmp/breakeven-status.md <<EOF
-          ## Prospective breakeven profit-lock readiness
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** waiting for first post-freeze clean source
-
-          - source execution-ledger run: `$LEDGER_RUN_ID`
-          - source paper run: `$PAPER_RUN_ID`
-          - candidate state present: `false`
-
-          Older visible-book profit-lock outcomes remain touched predecessor evidence and receive zero clean credit. No freeze timestamp is reconstructed or guessed.
-
-          **Execution authority:** `false`  
-          **Promotion authority:** `false`  
-          **LIVE TRADING: DISABLED.**
-          EOF
-          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$READINESS_ISSUE"             -f body="$(cat /tmp/breakeven-status.md)"
+          lines = [
+              "## Prospective breakeven profit-lock readiness",
+              "",
+              "**Status:** waiting for first post-freeze clean source",
+              "",
+              (
+                  "- source execution-ledger run: "
+                  f"`{os.environ['LEDGER_RUN_ID']}`"
+              ),
+              (
+                  "- source paper run: "
+                  f"`{os.environ['PAPER_RUN_ID']}`"
+              ),
+              "- candidate state present: `false`",
+              "",
+              (
+                  "Older visible-book profit-lock outcomes remain touched "
+                  "predecessor evidence and receive zero clean credit. "
+                  "No freeze timestamp is reconstructed or guessed."
+              ),
+              "",
+              "**Execution authority:** `false`  ",
+              "**Promotion authority:** `false`  ",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/breakeven-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$READINESS_ISSUE" \
+            -f body="$(cat /tmp/breakeven-status.md)"
 
       - name: Evaluate frozen clean breakeven candidate
         if: ${{ steps.compact.outputs.eligible == 'true' }}
@@ -306,21 +329,38 @@ jobs:
         env:
           ERROR_TEXT: ${{ steps.evaluate.outputs.error }}
         run: |
-          error="${ERROR_TEXT:-unknown error}"
-          cat > /tmp/breakeven-status.md <<EOF
-          ## Prospective breakeven profit-lock readiness
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED — clean evidence invariant failure
-
-          - error: `$error`
-
-          No clean breakeven readiness result is published from this run. Older touched profit-lock economics receive zero clean credit.
-
-          **Execution authority:** `false`  
-          **Promotion authority:** `false`  
-          **LIVE TRADING: DISABLED.**
-          EOF
-          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$READINESS_ISSUE"             -f body="$(cat /tmp/breakeven-status.md)"
+          error = os.environ.get("ERROR_TEXT") or "unknown error"
+          lines = [
+              "## Prospective breakeven profit-lock readiness",
+              "",
+              "**Status:** BLOCKED — clean evidence invariant failure",
+              "",
+              f"- error: `{error}`",
+              "",
+              (
+                  "No clean breakeven readiness result is published from "
+                  "this run. Older touched profit-lock economics receive "
+                  "zero clean credit."
+              ),
+              "",
+              "**Execution authority:** `false`  ",
+              "**Promotion authority:** `false`  ",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/breakeven-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$READINESS_ISSUE" \
+            -f body="$(cat /tmp/breakeven-status.md)"
 
       - name: Fail closed on clean-evidence invariant failure
         if: >-
