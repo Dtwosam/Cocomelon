@@ -101,6 +101,7 @@ jobs:
         env:
           RUN_ID: ${{ steps.ledger_source.outputs.run_id }}
           RUN_ATTEMPT: ${{ steps.ledger_source.outputs.run_attempt }}
+          EXPECTED_NAME: profit-lock-execution-ledger-${{ steps.ledger_source.outputs.run_id }}-${{ steps.ledger_source.outputs.run_attempt }}
         run: |
           set -euo pipefail
           expected_name="profit-lock-execution-ledger-$RUN_ID-$RUN_ATTEMPT"
@@ -134,9 +135,6 @@ jobs:
           test -s "$ledger_path"
           echo "ledger_path=$ledger_path" >> "$GITHUB_OUTPUT"
           echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
-        env:
-          EXPECTED_NAME: profit-lock-execution-ledger-${{ steps.ledger_source.outputs.run_id }}-${{ steps.ledger_source.outputs.run_attempt }}
-
       - name: Resolve exact paper source from immutable ledger
         id: paper_source
         shell: bash
