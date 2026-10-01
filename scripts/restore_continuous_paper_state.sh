@@ -34,15 +34,44 @@ gh api \
   --jq '.content' \
   | base64 --decode > "$workflow_source"
 
+restore_attempts="${COCOMELON_STATE_RESTORE_ATTEMPTS:-3}"
+restore_retry_sleep_seconds="${COCOMELON_STATE_RESTORE_RETRY_SLEEP_SECONDS:-5}"
+if [[ ! "$restore_attempts" =~ ^[1-9][0-9]*$ ]]; then
+  echo "COCOMELON_STATE_RESTORE_ATTEMPTS must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$restore_retry_sleep_seconds" =~ ^[0-9]+$ ]]; then
+  echo "COCOMELON_STATE_RESTORE_RETRY_SLEEP_SECONDS must be a non-negative integer" >&2
+  exit 2
+fi
+
 rm -rf "$state_root"
 mkdir -p "$state_root"
 
 if grep -Fq -- "- name: Pack durable continuous paper state" "$workflow_source"; then
-  echo "::notice::streaming packed continuous-paper artifact $artifact_id"
-  gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
-    | python scripts/stream_zip_member.py continuous-paper-state.tar \
-    | tar -xf - -C "$state_root"
+  restored=false
+  for attempt in $(seq 1 "$restore_attempts"); do
+    rm -rf "$state_root"
+    mkdir -p "$state_root"
+    echo "::notice::streaming packed continuous-paper artifact $artifact_id (attempt $attempt/$restore_attempts)"
+    if gh api \
+      "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" \
+      | python scripts/stream_zip_member.py continuous-paper-state.tar \
+      | tar -xf - -C "$state_root"; then
+      restored=true
+      break
+    fi
+    echo "::warning::packed continuous-paper restore attempt $attempt failed; discarding partial state"
+    rm -rf "$state_root"
+    mkdir -p "$state_root"
+    if [ "$attempt" -lt "$restore_attempts" ] && [ "$restore_retry_sleep_seconds" -gt 0 ]; then
+      sleep "$restore_retry_sleep_seconds"
+    fi
+  done
+  if [ "$restored" != "true" ]; then
+    echo "packed continuous-paper restore failed after $restore_attempts attempts" >&2
+    exit 1
+  fi
 else
   command -v unzip >/dev/null
   artifact_root="$tmp_root/artifact"
