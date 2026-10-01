@@ -370,18 +370,21 @@ def test_profit_lock_execution_ledger_rejects_counter_regression() -> None:
 def test_profit_lock_execution_ledger_rejects_journal_drift() -> None:
     trade = _trade("journal", pnl="-5", opened_at_ms=2_000)
     state = _state((trade,))
-    different = _trade(
-        "journal",
-        pnl="-4",
-        opened_at_ms=2_000,
-    )
+    outcomes = state["outcomes"]
+    assert isinstance(outcomes, list)
+    first_row = outcomes[0]
+    assert isinstance(first_row, dict)
+    first_row["actual_net_pnl"] = "-4"
+    first_row["actual_net_r"] = "-0.4"
+    first_row["delta_net_pnl_estimate"] = "4"
+    first_row["delta_net_r_estimate"] = "0.4"
 
     with pytest.raises(
         ProfitLockExecutionLedgerError,
         match="journal drift: actual_net_pnl",
     ):
         update_profit_lock_execution_ledger(
-            (different,),
+            (trade,),
             state,
             previous=None,
             source_paper_run_id=50,
