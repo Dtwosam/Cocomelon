@@ -9,6 +9,8 @@ from typing import Final, cast
 
 from cocomelon.research.prospective_momentum_band_entry import (
     EMBARGO_MS,
+    MAX_SIGNED_DAY_RETURN,
+    MIN_SIGNED_RETURN_1H,
     ProspectiveMomentumBandEntryState,
 )
 from cocomelon.research.prospective_momentum_band_forward_markout import (
@@ -306,13 +308,17 @@ def _canonical_row(
             raise ProspectiveMomentumBandForwardMarkoutLedgerError(
                 "momentum-band row is missing frozen feature evidence"
             )
-        if (
-            reason == "momentum_band" and decision != "BLOCK"
-        ) or (
-            reason == "momentum_band_pass" and decision != "ADMIT"
-        ):
+        should_block = (
+            Decimal(signed_return_1h) < MIN_SIGNED_RETURN_1H
+            or Decimal(signed_day_return) > MAX_SIGNED_DAY_RETURN
+        )
+        expected_reason = (
+            "momentum_band" if should_block else "momentum_band_pass"
+        )
+        expected_decision = "BLOCK" if should_block else "ADMIT"
+        if reason != expected_reason or decision != expected_decision:
             raise ProspectiveMomentumBandForwardMarkoutLedgerError(
-                "momentum reason does not match decision"
+                "momentum decision does not match frozen thresholds"
             )
 
     raw_markouts = raw.get("markouts")
