@@ -5540,6 +5540,20 @@ def _live_status_payload(
             "no_trade": activity.no_trade_decisions,
         },
         "session_decision_reason_counts": decision_reason_counts,
+        "session_eligibility": {
+            "evaluations": activity.eligibility_evaluations,
+            "rankable": activity.eligibility_rankable,
+            "deep_ready": activity.eligibility_deep_ready,
+            "reason_counts": dict(activity.eligibility_reason_counts),
+        },
+        "latest_epoch_eligibility": {
+            "market_count": activity.latest_epoch_market_count,
+            "rankable": activity.latest_epoch_rankable_count,
+            "deep_ready": activity.latest_epoch_deep_ready_count,
+            "reason_counts": dict(
+                activity.latest_epoch_eligibility_reason_counts
+            ),
+        },
         "session_risk": {
             "evaluations": activity.risk_evaluations,
             "approvals": activity.risk_approvals,
@@ -5971,6 +5985,20 @@ def _operational_live_status_payload(
         "session_decision_reason_counts": dict(
             activity.decision_reason_counts
         ),
+        "session_eligibility": {
+            "evaluations": activity.eligibility_evaluations,
+            "rankable": activity.eligibility_rankable,
+            "deep_ready": activity.eligibility_deep_ready,
+            "reason_counts": dict(activity.eligibility_reason_counts),
+        },
+        "latest_epoch_eligibility": {
+            "market_count": activity.latest_epoch_market_count,
+            "rankable": activity.latest_epoch_rankable_count,
+            "deep_ready": activity.latest_epoch_deep_ready_count,
+            "reason_counts": dict(
+                activity.latest_epoch_eligibility_reason_counts
+            ),
+        },
         "session_risk": {
             "evaluations": activity.risk_evaluations,
             "approvals": activity.risk_approvals,
