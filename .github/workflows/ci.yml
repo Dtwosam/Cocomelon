@@ -213,6 +213,7 @@ jobs:
           tests/test_prospective_full_stack_matched_trade_ledger.py
           tests/test_prospective_full_stack_matched_trade_ledger_workflow.py
           tests/test_prospective_full_stack_capacity_reflow.py
+          tests/test_prospective_full_stack_exit_capacity_reflow.py
           tests/test_prospective_full_stack_reflow_exact_ledger.py
           tests/test_prospective_full_stack_reflow_exact_ledger_workflow.py
           tests/test_prospective_residual_profit_lock.py
