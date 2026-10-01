@@ -4257,6 +4257,11 @@ def _prospective_momentum_band_entry_lines(
         )
     )
     lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
+        )
+    )
+    lines.extend(
         [
             "",
             (
@@ -4908,6 +4913,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
         )
     )
     lines.extend(
