@@ -8922,6 +8922,15 @@ def _render_operational_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    eligibility = payload.get("session_eligibility", {})
+    if not isinstance(eligibility, dict):
+        eligibility = {}
+    latest_eligibility = payload.get(
+        "latest_epoch_eligibility",
+        {},
+    )
+    if not isinstance(latest_eligibility, dict):
+        latest_eligibility = {}
 
     lines = [
         "## Continuous paper runtime live status",
@@ -9123,6 +9132,26 @@ def _render_operational_live_status(
                 f"{payload.get('session_opening_fills', 0)}"
             ),
             (
+                "- latest eligibility markets / rankable / deep-ready: "
+                f"{latest_eligibility.get('market_count', 0)} / "
+                f"{latest_eligibility.get('rankable', 0)} / "
+                f"{latest_eligibility.get('deep_ready', 0)}"
+            ),
+            (
+                "- latest eligibility reasons: "
+                f"{_reason_summary(latest_eligibility.get('reason_counts', {}))}"
+            ),
+            (
+                "- session eligibility evaluated / rankable / deep-ready: "
+                f"{eligibility.get('evaluations', 0)} / "
+                f"{eligibility.get('rankable', 0)} / "
+                f"{eligibility.get('deep_ready', 0)}"
+            ),
+            (
+                "- session eligibility reasons: "
+                f"{_reason_summary(eligibility.get('reason_counts', {}))}"
+            ),
+            (
                 "- strategy reasons: "
                 f"{_reason_summary(payload.get('session_decision_reason_counts', {}))}"
             ),
@@ -9175,6 +9204,15 @@ def render_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    eligibility = payload.get("session_eligibility", {})
+    if not isinstance(eligibility, dict):
+        eligibility = {}
+    latest_eligibility = payload.get(
+        "latest_epoch_eligibility",
+        {},
+    )
+    if not isinstance(latest_eligibility, dict):
+        latest_eligibility = {}
     performance = payload.get("closed_trade_performance", {})
     if not isinstance(performance, dict):
         performance = {}
@@ -9883,6 +9921,26 @@ def render_live_status(
                 "- opening execution attempts / fills: "
                 f"`{payload.get('session_opening_execution_attempts', 0)} / "
                 f"{payload.get('session_opening_fills', 0)}`"
+            ),
+            (
+                "- latest eligibility markets / rankable / deep-ready: "
+                f"`{latest_eligibility.get('market_count', 0)} / "
+                f"{latest_eligibility.get('rankable', 0)} / "
+                f"{latest_eligibility.get('deep_ready', 0)}`"
+            ),
+            (
+                "- latest eligibility reasons: "
+                f"`{_reason_summary(latest_eligibility.get('reason_counts', {}))}`"
+            ),
+            (
+                "- session eligibility evaluated / rankable / deep-ready: "
+                f"`{eligibility.get('evaluations', 0)} / "
+                f"{eligibility.get('rankable', 0)} / "
+                f"{eligibility.get('deep_ready', 0)}`"
+            ),
+            (
+                "- session eligibility reasons: "
+                f"`{_reason_summary(eligibility.get('reason_counts', {}))}`"
             ),
             (
                 "- strategy reasons: "

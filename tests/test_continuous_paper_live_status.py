@@ -71,6 +71,26 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
         "last_decision_evaluated_at_ms": 1_700_000_000_000,
         "session_decisions": {"long": 1, "short": 0, "no_trade": 19},
         "session_decision_reason_counts": {"NO_SIGNAL": 19, "trend": 1},
+        "session_eligibility": {
+            "evaluations": 20,
+            "rankable": 18,
+            "deep_ready": 5,
+            "reason_counts": {
+                "below_volume_floor": 2,
+                "missing_deep_data": 12,
+                "stale_book": 1,
+            },
+        },
+        "latest_epoch_eligibility": {
+            "market_count": 20,
+            "rankable": 18,
+            "deep_ready": 5,
+            "reason_counts": {
+                "below_volume_floor": 2,
+                "missing_deep_data": 12,
+                "stale_book": 1,
+            },
+        },
         "session_risk": {
             "evaluations": 1,
             "approvals": 1,
@@ -3751,6 +3771,13 @@ def test_live_status_renderer_exposes_current_position_and_paper_only_state() ->
     assert "`1 / 0 / 19`" in output
     assert "risk evaluations / approvals / rejections" in output
     assert "opening execution attempts / fills" in output
+    assert "latest eligibility markets / rankable / deep-ready" in output
+    assert "`20 / 18 / 5`" in output
+    assert "latest eligibility reasons:" in output
+    assert "missing_deep_data=12" in output
+    assert "stale_book=1" in output
+    assert "session eligibility evaluated / rankable / deep-ready" in output
+    assert "session eligibility reasons:" in output
     assert "strategy reasons:" in output
     assert "NO_SIGNAL=19" in output
     assert "risk reasons:" in output
@@ -5898,6 +5925,23 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
             "mean_reversion": 1,
             "NO_SIGNAL": 38,
         },
+        "session_eligibility": {
+            "evaluations": 40,
+            "rankable": 40,
+            "deep_ready": 8,
+            "reason_counts": {
+                "missing_deep_data": 30,
+                "stale_book": 2,
+            },
+        },
+        "latest_epoch_eligibility": {
+            "market_count": 20,
+            "rankable": 20,
+            "deep_ready": 4,
+            "reason_counts": {
+                "missing_deep_data": 16,
+            },
+        },
         "session_risk": {
             "evaluations": 2,
             "approvals": 2,
@@ -5940,6 +5984,11 @@ def test_operational_heartbeat_renders_without_research_sections() -> None:
     assert "Operational heartbeat only" in rendered
     assert "Worker run: 123" in rendered
     assert "BTC" in rendered
+    assert "latest eligibility markets / rankable / deep-ready: 20 / 20 / 4" in rendered
+    assert "latest eligibility reasons: missing_deep_data=16" in rendered
+    assert "session eligibility evaluated / rankable / deep-ready: 40 / 40 / 8" in rendered
+    assert "missing_deep_data=30" in rendered
+    assert "stale_book=2" in rendered
     assert "research telemetry deferred: true" in rendered
     assert "Cadence opportunity learning" not in rendered
     assert "Fixed profit-lock counterfactual" not in rendered

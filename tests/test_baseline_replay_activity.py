@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal
+from pathlib import Path
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.features import (
@@ -171,10 +172,16 @@ def _epoch() -> DecisionEpoch:
 
 
 class ScriptedDecisionEngine:
-    def __init__(self, replay_config: BaselineReplayConfig) -> None:
+    def __init__(
+        self,
+        replay_config: BaselineReplayConfig,
+        *,
+        epoch: DecisionEpoch | None = None,
+    ) -> None:
         self._state = RecordedStateBook(
             microstructure_window_ms=replay_config.microstructure_window_ms
         )
+        self._epoch = _epoch() if epoch is None else epoch
         self._emitted = False
 
     @property
@@ -185,7 +192,7 @@ class ScriptedDecisionEngine:
         self._state.apply(record, now_ms)
         if record.event_key == "epoch-trigger" and not self._emitted:
             self._emitted = True
-            return (_epoch(),)
+            return (self._epoch,)
         return ()
 
     def flush(self, _end_ms: int) -> tuple[DecisionEpoch, ...]:
@@ -230,11 +237,113 @@ def test_baseline_pipeline_reports_fill_and_open_position_before_trade_closes(tm
         assert decision_activity.decision_reason_counts == (
             ("fixture-directional", 1),
         )
+        assert decision_activity.eligibility_evaluations == 1
+        assert decision_activity.eligibility_rankable == 1
+        assert decision_activity.eligibility_deep_ready == 1
+        assert decision_activity.eligibility_reason_counts == ()
+        assert decision_activity.latest_epoch_market_count == 1
+        assert decision_activity.latest_epoch_rankable_count == 1
+        assert decision_activity.latest_epoch_deep_ready_count == 1
+        assert (
+            decision_activity.latest_epoch_eligibility_reason_counts
+            == ()
+        )
         assert decision_activity.risk_evaluations == 1
         assert decision_activity.risk_approvals == 1
         assert decision_activity.risk_rejections == 0
         assert decision_activity.opening_execution_attempts == 1
         assert decision_activity.opening_fills == 1
+    finally:
+        execution.close()
+        facts.close()
+
+
+def test_pipeline_reports_underlying_eligibility_failure_reasons(
+    tmp_path: Path,
+) -> None:
+    config = BaselineReplayConfig(execution=PaperExecutionConfig())
+    feature = _feature()
+    epoch = DecisionEpoch(
+        boundary_ms=EVALUATED_AT_MS - 30_000,
+        evaluated_at_ms=EVALUATED_AT_MS,
+        markets=(
+            EpochMarketEvaluation(
+                feature=feature,
+                eligibility=EligibilityDecision(
+                    market=MARKET,
+                    rankable=True,
+                    deep_ready=False,
+                    reasons=(
+                        "missing_deep_data",
+                        "stale_book",
+                    ),
+                ),
+                decision=StrategyDecision(
+                    market=MARKET,
+                    direction=Direction.NO_TRADE,
+                    score=Decimal("0"),
+                    timestamp_ms=EVALUATED_AT_MS,
+                    feature_snapshot_id=feature.snapshot_id,
+                    lead_strategy=None,
+                    invalidation_price=None,
+                    signal_ids=(),
+                    reason_codes=("not_deep_ready",),
+                ),
+            ),
+        ),
+    )
+    execution = PaperExecutionAdapter(
+        tmp_path / "execution-eligibility.sqlite3",
+        config.execution,
+        starting_cash=config.starting_cash,
+        startup_timestamp_ms=EVALUATED_AT_MS - 2_000,
+    )
+    facts = EvaluationFactStore(
+        tmp_path / "facts-eligibility.sqlite3"
+    )
+    pipeline = BaselineReplayPipeline(
+        config,
+        execution,
+        facts,
+        selected_markets=(MARKET,),
+        replay_run_id=RUN_ID + "-eligibility",
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        decision_engine=ScriptedDecisionEngine(
+            config,
+            epoch=epoch,
+        ),
+    )
+    try:
+        pipeline.on_record(
+            _snapshot_record(),
+            _snapshot_record().available_at_ms,
+        )
+        trigger = _trigger_record()
+        pipeline.on_record(trigger, trigger.available_at_ms)
+
+        activity = pipeline.session_decision_activity
+        assert activity.decision_epochs == 1
+        assert activity.no_trade_decisions == 1
+        assert activity.decision_reason_counts == (
+            ("not_deep_ready", 1),
+        )
+        assert activity.eligibility_evaluations == 1
+        assert activity.eligibility_rankable == 1
+        assert activity.eligibility_deep_ready == 0
+        assert activity.eligibility_reason_counts == (
+            ("missing_deep_data", 1),
+            ("stale_book", 1),
+        )
+        assert activity.latest_epoch_market_count == 1
+        assert activity.latest_epoch_rankable_count == 1
+        assert activity.latest_epoch_deep_ready_count == 0
+        assert (
+            activity.latest_epoch_eligibility_reason_counts
+            == (
+                ("missing_deep_data", 1),
+                ("stale_book", 1),
+            )
+        )
     finally:
         execution.close()
         facts.close()
