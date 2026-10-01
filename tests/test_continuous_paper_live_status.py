@@ -24,6 +24,7 @@ from scripts.render_continuous_paper_live_status import (
     _prospective_daily_loss_lockout_reflow_lines,
     _prospective_filter_fixed_schedule_lines,
     _prospective_filter_robustness_lines,
+    _prospective_full_stack_entry_exit_lines,
     _prospective_momentum_band_entry_lines,
     _prospective_replacement_exit_policy_lines,
     _prospective_replacement_exit_readiness_lines,
@@ -6667,3 +6668,86 @@ def test_candidate_stack_overlap_renderer_exposes_failure() -> None:
 
     assert "research error" in output
     assert "RuntimeError: overlap boom" in output
+
+
+def test_full_stack_entry_exit_renderer_exposes_common_economics() -> None:
+    lines = _prospective_full_stack_entry_exit_lines(
+        {
+            "enabled": True,
+            "error": None,
+            "overlap_started_at_ms": 123,
+            "combined_started_at_ms": 100,
+            "two_strike_started_at_ms": 110,
+            "momentum_started_at_ms": 120,
+            "breakeven_started_at_ms": 123,
+            "closed_trades_since_overlap_start": 8,
+            "economically_evaluated_trades": 7,
+            "entry_blocked_trades": 4,
+            "entry_admitted_trades": 4,
+            "missing_combined_decisions": 0,
+            "missing_two_strike_decisions": 0,
+            "missing_momentum_decisions": 0,
+            "missing_breakeven_outcomes": 1,
+            "unevaluable_breakeven_outcomes": 0,
+            "integrity_clean": False,
+            "actual_net_pnl": "-20",
+            "actual_net_r": "-1.2",
+            "entry_stack_candidate_net_pnl": "5",
+            "entry_stack_candidate_net_r": "0.4",
+            "full_stack_candidate_net_pnl": "12",
+            "full_stack_candidate_net_r": "0.9",
+            "full_stack_delta_net_pnl": "32",
+            "full_stack_delta_net_r": "2.1",
+            "breakeven_incremental_net_pnl": "7",
+            "breakeven_incremental_net_r": "0.5",
+            "robustness": {
+                "leave_one_trade_out_min_delta_pnl": "20",
+                "leave_one_trade_out_min_delta_r": "1.2",
+                "leave_one_market_out_min_delta_pnl": "11",
+                "leave_one_market_out_min_delta_r": "0.7",
+            },
+            "by_direction": {
+                "long": {
+                    "trades": 4,
+                    "actual_net_pnl": "-15",
+                    "candidate_net_pnl": "7",
+                    "delta_net_pnl": "22",
+                    "actual_net_r": "-0.9",
+                    "candidate_net_r": "0.5",
+                    "delta_net_r": "1.4",
+                },
+                "short": {
+                    "trades": 3,
+                    "actual_net_pnl": "-5",
+                    "candidate_net_pnl": "5",
+                    "delta_net_pnl": "10",
+                    "actual_net_r": "-0.3",
+                    "candidate_net_r": "0.4",
+                    "delta_net_r": "0.7",
+                },
+            },
+        }
+    )
+    output = "\n".join(lines)
+
+    assert "Prospective full entry + exit stack" in output
+    assert "`123 / 8 / 7`" in output
+    assert "`-20 / 5 / 12`" in output
+    assert "breakeven incremental beyond entry stack PnL / R" in output
+    assert "`7 / 0.5`" in output
+    assert "| LONG | 4 | -15 | 7 | 22 | -0.9 | 0.5 | 1.4 |" in output
+    assert "Missing exit outcomes are never guessed" in output
+
+
+def test_full_stack_entry_exit_renderer_exposes_failure() -> None:
+    output = "\n".join(
+        _prospective_full_stack_entry_exit_lines(
+            {
+                "enabled": False,
+                "error": "RuntimeError: stack boom",
+            }
+        )
+    )
+
+    assert "research error" in output
+    assert "RuntimeError: stack boom" in output
