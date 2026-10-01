@@ -3627,6 +3627,11 @@ def _prospective_entry_filter_lines(raw: object) -> list[str]:
         )
     )
     lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
+        )
+    )
+    lines.extend(
         _prospective_allowed_residual_lines(
             raw.get("allowed_residual")
         )
@@ -4252,6 +4257,11 @@ def _prospective_momentum_band_entry_lines(
         )
     )
     lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
+        )
+    )
+    lines.extend(
         [
             "",
             (
@@ -4259,6 +4269,63 @@ def _prospective_momentum_band_entry_lines(
                 "receive zero clean credit, missing features fail open but "
                 "block clean readiness, nonzero-strike phases are left to the "
                 "repeated-stop challenger, and no paper order is changed._"
+            ),
+        ]
+    )
+    return lines
+
+
+def _prospective_filter_economic_readiness_lines(
+    raw: object,
+) -> list[str]:
+    lines = [
+        "",
+        "#### Candidate economic readiness",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("- economic readiness: `not available`")
+        return lines
+
+    lines.extend(
+        [
+            (
+                "- candidate profitable / improvement positive: "
+                f"`{raw.get('candidate_profitable', False)} / "
+                f"{raw.get('improvement_positive', False)}`"
+            ),
+            (
+                "- candidate LOO trade / market robust: "
+                f"`{raw.get('candidate_single_trade_robust', False)} / "
+                f"{raw.get('candidate_single_market_robust', False)}`"
+            ),
+            (
+                "- delta LOO trade / market robust: "
+                f"`{raw.get('delta_single_trade_robust', False)} / "
+                f"{raw.get('delta_single_market_robust', False)}`"
+            ),
+            (
+                "- candidate LOO trade min PnL / R: "
+                f"`{raw.get('candidate_leave_one_trade_out_min_pnl')} / "
+                f"{raw.get('candidate_leave_one_trade_out_min_r')}`"
+            ),
+            (
+                "- candidate LOO market min PnL / R: "
+                f"`{raw.get('candidate_leave_one_market_out_min_pnl')} / "
+                f"{raw.get('candidate_leave_one_market_out_min_r')}`"
+            ),
+            (
+                "- delta LOO trade min PnL / R: "
+                f"`{raw.get('delta_leave_one_trade_out_min_pnl')} / "
+                f"{raw.get('delta_leave_one_trade_out_min_r')}`"
+            ),
+            (
+                "- delta LOO market min PnL / R: "
+                f"`{raw.get('delta_leave_one_market_out_min_pnl')} / "
+                f"{raw.get('delta_leave_one_market_out_min_r')}`"
+            ),
+            (
+                "- economics ready: "
+                f"`{str(bool(raw.get('economics_ready'))).lower()}`"
             ),
         ]
     )
@@ -4426,6 +4493,11 @@ def _prospective_two_strike_stop_filter_lines(
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
         )
     )
     lines.extend(
@@ -4841,6 +4913,11 @@ def _prospective_combined_entry_filter_lines(
     lines.extend(
         _prospective_filter_robustness_lines(
             raw.get("robustness")
+        )
+    )
+    lines.extend(
+        _prospective_filter_economic_readiness_lines(
+            raw.get("economic_readiness")
         )
     )
     lines.extend(

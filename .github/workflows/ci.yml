@@ -214,6 +214,7 @@ jobs:
           tests/test_prospective_cadence_microstructure_workflow.py
           tests/test_prospective_allowed_residual.py
           tests/test_prospective_candidate_stack_overlap.py
+          tests/test_prospective_filter_economic_readiness.py
           tests/test_prospective_combined_entry_filter.py
           tests/test_prospective_full_stack_entry_exit.py
           tests/test_prospective_full_stack_matched_trade_ledger.py

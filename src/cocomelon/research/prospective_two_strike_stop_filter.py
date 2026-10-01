@@ -8,6 +8,9 @@ from typing import Final
 from cocomelon.domain.journal import TradeJournalEntry
 from cocomelon.domain.strategy import Direction
 from cocomelon.journal.store import JournalStore
+from cocomelon.research.prospective_filter_economic_readiness import (
+    prospective_filter_economic_readiness,
+)
 from cocomelon.research.prospective_filter_robustness import (
     prospective_filter_robustness,
 )
@@ -340,14 +343,16 @@ def prospective_two_strike_stop_filter_summary(
     )
     delta_pnl = candidate_pnl - actual_pnl
     delta_r = candidate_r - actual_r
-    robustness = prospective_filter_robustness(
-        tuple(
-            (
-                trade,
-                trade.trade_id in blocked_ids,
-            )
-            for trade in prospective
+    filter_items = tuple(
+        (
+            trade,
+            trade.trade_id in blocked_ids,
         )
+        for trade in prospective
+    )
+    robustness = prospective_filter_robustness(filter_items)
+    economic_readiness = prospective_filter_economic_readiness(
+        filter_items
     )
 
     by_direction = {
@@ -426,19 +431,29 @@ def prospective_two_strike_stop_filter_summary(
         and missing_long == 0
         and missing_short == 0
     )
-    economics_positive = delta_pnl > ZERO and delta_r > ZERO
-    robust_trade = (
-        robustness.get(
-            "positive_after_any_single_trade_removed"
-        )
-        is True
+    candidate_profitable = (
+        economic_readiness["candidate_profitable"] is True
     )
-    robust_market = (
-        robustness.get(
-            "positive_after_any_single_market_removed"
-        )
-        is True
+    improvement_positive = (
+        economic_readiness["improvement_positive"] is True
     )
+    candidate_trade_robust = (
+        economic_readiness["candidate_single_trade_robust"] is True
+    )
+    candidate_market_robust = (
+        economic_readiness["candidate_single_market_robust"] is True
+    )
+    delta_trade_robust = (
+        economic_readiness["delta_single_trade_robust"] is True
+    )
+    delta_market_robust = (
+        economic_readiness["delta_single_market_robust"] is True
+    )
+    economics_positive = (
+        candidate_profitable and improvement_positive
+    )
+    robust_trade = candidate_trade_robust and delta_trade_robust
+    robust_market = candidate_market_robust and delta_market_robust
     ready_for_review = (
         sample_complete
         and economics_positive
@@ -483,10 +498,21 @@ def prospective_two_strike_stop_filter_summary(
         "by_direction": by_direction,
         "blocked_by_market": blocked_by_market,
         "robustness": robustness,
+        "economic_readiness": economic_readiness,
         "readiness": {
             "ready_for_review": ready_for_review,
             "sample_complete": sample_complete,
+            "candidate_profitable": candidate_profitable,
+            "improvement_positive": improvement_positive,
             "economics_positive": economics_positive,
+            "candidate_single_trade_robust": (
+                candidate_trade_robust
+            ),
+            "candidate_single_market_robust": (
+                candidate_market_robust
+            ),
+            "delta_single_trade_robust": delta_trade_robust,
+            "delta_single_market_robust": delta_market_robust,
             "single_trade_robust": robust_trade,
             "single_market_robust": robust_market,
             "min_prospective_closed_trades": (
