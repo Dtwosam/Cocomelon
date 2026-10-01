@@ -5631,6 +5631,13 @@ def _live_status_payload(
             "rejections": activity.risk_rejections,
             "reason_counts": risk_reason_counts,
         },
+        "consecutive_loss_cooldown": (
+            _consecutive_loss_cooldown_status(
+                execution,
+                risk_limits,
+                timestamp_ms=timestamp_ms,
+            )
+        ),
         "session_opening_execution_attempts": activity.opening_execution_attempts,
         "session_opening_fills": activity.opening_fills,
         "cadence_shadow": pump.cadence_shadow_payload(),
