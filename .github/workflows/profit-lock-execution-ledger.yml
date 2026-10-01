@@ -212,15 +212,15 @@ jobs:
 
           **Status:** waiting for compact execution-shadow state
 
-          - source paper run: `$SOURCE_RUN_ID`
-          - source paper attempt: `$SOURCE_RUN_ATTEMPT`
-          - source resolution: `$RESOLUTION_MODE`
-          - reason: compact source predates export of `profit-lock-execution-shadow-state.json`
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - source resolution: \`$RESOLUTION_MODE\`
+          - reason: compact source predates export of \`profit-lock-execution-shadow-state.json\`
 
           No visible-book execution outcome is credited from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api \
@@ -240,7 +240,7 @@ jobs:
           previous_path=""
           previous_workflow_run_id=""
           runs_json="$(
-            gh api               "repos/$GITHUB_REPOSITORY/actions/workflows/prospective-two-strike-stop-filter-ledger.yml/runs?status=success&per_page=100"
+            gh api               "repos/$GITHUB_REPOSITORY/actions/workflows/profit-lock-execution-ledger.yml/runs?status=success&per_page=100"
           )"
           mapfile -t prior_runs < <(
             jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
