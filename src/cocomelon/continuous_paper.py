@@ -250,6 +250,9 @@ from cocomelon.research.profit_lock_readiness import (
 from cocomelon.research.prospective_candidate_stack_overlap import (
     prospective_candidate_stack_overlap_summary,
 )
+from cocomelon.research.prospective_breakeven_profit_lock import (
+    ProspectiveBreakevenProfitLockState,
+)
 from cocomelon.research.prospective_capacity_reflow_exit_fill import (
     evaluate_prospective_capacity_reflow_exit_fill,
 )
@@ -357,6 +360,9 @@ PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
+)
+PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
+    "prospective-breakeven-profit-lock-state.json"
 )
 PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
     "prospective-two-strike-stop-filter-state.json"
@@ -2024,6 +2030,33 @@ def _restore_prospective_combined_entry_filter(
         return (
             ProspectiveCombinedEntryFilterState(
                 started_at_ms=started_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _restore_prospective_breakeven_profit_lock(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[ProspectiveBreakevenProfitLockState, str | None]:
+    if not path.exists():
+        return (
+            ProspectiveBreakevenProfitLockState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveBreakevenProfitLockState.from_payload(raw),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveBreakevenProfitLockState(
+                frozen_at_ms=frozen_at_ms
             ),
             f"{type(exc).__name__}: {exc}",
         )
@@ -6258,6 +6291,13 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_breakeven_profit_lock_state,
+        _prospective_breakeven_profit_lock_restore_error,
+    ) = _restore_prospective_breakeven_profit_lock(
+        root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
@@ -6500,6 +6540,10 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
                 prospective_combined_entry_filter_state.payload(),
+            )
+            _write_json_atomic(
+                root / PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME,
+                prospective_breakeven_profit_lock_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
