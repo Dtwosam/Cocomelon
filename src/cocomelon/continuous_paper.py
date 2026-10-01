@@ -7104,7 +7104,9 @@ async def run_continuous_paper_session(
             required_market_keys = frozenset(
                 market.canonical for market in markets
             )
-            ready_market_keys = tuple(set() for _ in range(2))
+            ready_market_keys: tuple[set[str], ...] = tuple(
+                set() for _ in range(2)
+            )
 
             async def event_sink(event: StreamEvent) -> None:
                 await pump.process(_record_from_stream(event))
