@@ -6,6 +6,9 @@ from decimal import Decimal
 from typing import Final
 
 from cocomelon.domain.execution import PaperExecutionConfig
+from cocomelon.evidence.openings import conservative_cost_estimate
+from cocomelon.execution.ioc import simulate_ioc
+from cocomelon.execution.planner import PlanningRejection, plan_opening_order
 from cocomelon.research.continuous_paper_opening_opportunity import (
     ContinuousPaperOpeningOpportunityEvidence,
     ContinuousPaperOpeningOpportunityStore,
@@ -18,9 +21,6 @@ from cocomelon.research.prospective_combined_entry_filter import (
     MAX_ACCEPTED_RANK_AGE_MS,
     TOP10_MAX_ORDINAL,
 )
-from cocomelon.evidence.openings import conservative_cost_estimate
-from cocomelon.execution.ioc import simulate_ioc
-from cocomelon.execution.planner import PlanningRejection, plan_opening_order
 from cocomelon.risk.engine import evaluate_risk
 
 STATE_SCHEMA_VERSION: Final = 1
