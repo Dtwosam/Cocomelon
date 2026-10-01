@@ -494,7 +494,7 @@ def _canonical_rows(
         raise ProspectiveConsecutiveLossCooldownLedgerError(
             "duplicate cooldown ledger opportunity id"
         )
-    return tuple(sorted(rows, key=_row_identity))
+    return rows
 
 
 def _rows_sha256(
@@ -917,11 +917,12 @@ def _source_rows(
             terminal_rows.append(row)
         else:
             pending += 1
+    canonical = _canonical_rows(
+        tuple(terminal_rows),
+        started_at_ms=state.started_at_ms,
+    )
     return (
-        _canonical_rows(
-            tuple(terminal_rows),
-            started_at_ms=state.started_at_ms,
-        ),
+        tuple(sorted(canonical, key=_row_identity)),
         pending,
     )
 
@@ -1025,6 +1026,7 @@ def update_cooldown_ledger(
         for row in rows
         if cast(str, row["opportunity_id"]) not in old_ids
     )
+    rows = previous_rows + new_rows
     history.append(
         {
             "paper_run_id": source_paper_run_id,
