@@ -63,8 +63,6 @@ from cocomelon.continuous_paper import (
     _record_from_stream,
     _record_payload,
     _RecordPump,
-    _SupervisorGroup,
-    _wait_supervisor_group_ready,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
     _restore_delay_selector_comparison,
@@ -79,6 +77,8 @@ from cocomelon.continuous_paper import (
     _restore_prospective_top10_rank_filter,
     _restore_prospective_two_strike_stop_filter,
     _stop_requested,
+    _SupervisorGroup,
+    _wait_supervisor_group_ready,
 )
 from cocomelon.domain.execution import (
     PaperExecutionConfig,
