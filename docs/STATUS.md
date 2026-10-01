@@ -4012,3 +4012,27 @@ This is an evidence-starvation diagnostic only. It does not loosen strategy, ris
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **LIVE TRADING: DISABLED.**
+
+
+### Full entry-stack fast forward-markout diagnostic — 2026-10-01
+
+The frozen combined + two-strike + momentum entry stack now has a separate fast descriptive evidence path that does not wait for paper trades to close.
+
+The diagnostic starts at the latest clean start across the three frozen entry candidates. It evaluates only observed opening opportunities that the baseline paper risk engine approved, then applies the existing frozen stack in order:
+
+- combined top-10 / no-LONG-trend screen;
+- two-strike same-market/same-direction stop filter;
+- zero-strike momentum-band filter.
+
+Each opportunity receives one final stack decision, `ADMIT` or `BLOCK`, plus the first blocking layer. No threshold is refit and no new model is introduced.
+
+Using the already captured opening-opportunity mark paths, the audit measures direction-signed returns at fixed 5-minute, 15-minute and 60-minute horizons. Per horizon it compares final-stack ADMIT versus BLOCK mean return, market breadth, LONG/SHORT coverage, and ADMIT-minus-BLOCK separation. Separation is stress-tested by removing any one opportunity and any one market.
+
+A descriptive early-review flag requires at least 20 settled opportunities, at least 5 ADMIT and 5 BLOCK observations, at least 5 LONG and 5 SHORT observations, at least 4 markets, positive ADMIT mean, negative BLOCK mean, positive spread, and positive leave-one-opportunity / leave-one-market spread robustness.
+
+This is an acceleration layer for learning whether the **surviving entry stack** is directionally useful before enough positions close. It does not change the existing closed-trade readiness gates, paper entries, exits, stops, sizing, risk, promotion state, or live authority.
+
+**Execution authority:** `false`  
+**Promotion authority:** `false`  
+**Changes closed-trade readiness:** `false`  
+**LIVE TRADING: DISABLED.**

@@ -528,3 +528,24 @@ def test_continuous_paper_exports_full_stack_exit_capacity_reflow_summary() -> N
         "- name: Pack durable continuous paper state"
     )
     assert compact_at < pack_at
+
+
+def test_full_stack_fast_markout_is_exported_and_runtime_watched() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        '"src/cocomelon/research/prospective_full_stack_forward_markout.py"'
+        in source
+    )
+    assert (
+        "src/cocomelon/research/prospective_full_stack_forward_markout.py"
+        in source.split("changed_runtime=", 1)[1]
+    )
+    assert (
+        "continuous-paper-state/"
+        "prospective-full-stack-forward-markout-summary.json"
+        in source
+    )
+    assert "Upload full-stack fast-markout research summary" in source
+    assert "Render full-stack fast-markout research summary" in source
+    assert "RESEARCH ONLY / NO EXECUTION / NO READINESS" in source
