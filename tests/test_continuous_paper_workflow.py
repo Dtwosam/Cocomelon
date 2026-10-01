@@ -89,7 +89,7 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "compression-level: 6" in source
     assert source.count(
         "bash scripts/restore_continuous_paper_state.sh"
-    ) == 3
+    ) == 4
     assert "RESUME_ARTIFACT_NAME" in source
     assert "STATE_ARTIFACT_NAME" in source
     assert "fast resume restore failed; waiting for exact durable fallback" in source
