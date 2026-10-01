@@ -197,6 +197,7 @@ jobs:
           tests/test_prospective_two_strike_stop_filter_ledger_workflow.py
           tests/test_prospective_cadence_microstructure_workflow.py
           tests/test_prospective_allowed_residual.py
+          tests/test_prospective_candidate_stack_overlap.py
           tests/test_prospective_combined_entry_filter.py
           tests/test_prospective_residual_profit_lock.py
           tests/test_prospective_comparison_ledger.py
