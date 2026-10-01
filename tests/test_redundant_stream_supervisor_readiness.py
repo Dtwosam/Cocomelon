@@ -4,7 +4,6 @@ import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
 
-
 from cocomelon.domain.market import MarketId
 from cocomelon.domain.stream import DataGap, StreamEvent, StreamKind
 from cocomelon.evidence.redundant_stream import RedundantStreamMux
