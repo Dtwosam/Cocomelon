@@ -8028,7 +8028,9 @@ async def run_continuous_paper_session(
                 ),
             )
             pump.stale_l2_rest_reseed_books += reseeded_books
-            pump.stale_l2_rest_reseed_failures += reseed_failures
+            pump.stale_l2_rest_reseed_failures += (
+                reseed_failures
+            )
 
             pump.stale_l2_recovery_attempts += 1
             replacement_group = await start_supervisors(
