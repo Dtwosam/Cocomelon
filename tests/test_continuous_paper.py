@@ -69,6 +69,7 @@ from cocomelon.continuous_paper import (
     _record_payload,
     _RecordPump,
     _refresh_native_market_snapshots,
+    _reseed_l2_books_via_rest,
     _restore_adaptive_delay_selector,
     _restore_cadence_shadow,
     _restore_delay_selector_comparison,
@@ -741,6 +742,63 @@ def test_record_pump_drops_duplicate_event_keys() -> None:
     assert pump.duplicate_records_dropped == 1
 
 
+def test_rest_l2_reseed_accepts_only_fresh_real_books() -> None:
+    class Reader:
+        def l2_book(self, market: MarketId) -> object:
+            if market.coin == "BTC":
+                return {
+                    "coin": "BTC",
+                    "time": 9_999,
+                    "levels": [
+                        [{"px": "100", "sz": "2", "n": 1}],
+                        [{"px": "101", "sz": "3", "n": 1}],
+                    ],
+                }
+            if market.coin == "ETH":
+                return {
+                    "coin": "ETH",
+                    "time": 4_000,
+                    "levels": [
+                        [{"px": "200", "sz": "2", "n": 1}],
+                        [{"px": "201", "sz": "3", "n": 1}],
+                    ],
+                }
+            raise RuntimeError("book unavailable")
+
+    class Pump:
+        def __init__(self) -> None:
+            self.records: list[ReplayRecord] = []
+
+        async def process(self, record: ReplayRecord) -> None:
+            self.records.append(record)
+
+    pump = Pump()
+    refreshed, failed = asyncio.run(
+        _reseed_l2_books_via_rest(
+            Reader(),  # type: ignore[arg-type]
+            (
+                MarketId("", "BTC"),
+                MarketId("", "BTC"),
+                MarketId("", "ETH"),
+                MarketId("", "SOL"),
+            ),
+            pump,  # type: ignore[arg-type]
+            max_book_age_ms=5_000,
+            clock_ms=lambda: 10_000,
+        )
+    )
+
+    assert refreshed == 1
+    assert failed == 2
+    assert len(pump.records) == 1
+    record = pump.records[0]
+    assert record.market == "BTC"
+    assert record.event_kind == "l2_book"
+    assert record.exchange_time_ms == 9_999
+    assert record.available_at_ms == 10_000
+    assert record.source == "hyperliquid-mainnet-info"
+
+
 def test_supervisor_group_readiness_requires_full_market_coverage() -> None:
     async def scenario() -> tuple[bool, bool]:
         sleeper = asyncio.create_task(asyncio.sleep(60))
@@ -967,6 +1025,10 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
 
     assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
     assert "systemically_stale_l2(" in source
+    assert "pump.stale_l2_rest_reseed_attempts += 1" in source
+    assert "_reseed_l2_books_via_rest(" in source
+    assert "pump.stale_l2_rest_reseed_books += reseeded_books" in source
+    assert "pump.stale_l2_rest_reseed_failures += (" in source
     assert "pump.stale_l2_recovery_attempts += 1" in source
     assert "pump.stale_l2_recovery_promotions += 1" in source
     assert "stale_l2_recovery_readiness_failures += 1" in source
