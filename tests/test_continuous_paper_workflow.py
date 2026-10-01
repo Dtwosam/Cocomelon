@@ -68,8 +68,8 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     fallback_dispatch_at = source.index(
         "- name: Queue fallback exact successor continuous paper worker"
     )
-    assert fast_upload_at < fast_dispatch_at < durable_upload_at
-    assert durable_upload_at < fallback_dispatch_at
+    assert fast_upload_at < fast_dispatch_at < fast_cleanup_at
+    assert fast_cleanup_at < durable_upload_at < fallback_dispatch_at
 
 def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> None:
     source = WORKFLOW.read_text(encoding="utf-8")
@@ -117,6 +117,9 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     fast_dispatch_at = source.index(
         "- name: Queue exact successor from fast resume"
     )
+    fast_cleanup_at = source.index(
+        "- name: Remove local fast resume archive"
+    )
     durable_pack_at = source.index(
         "- name: Pack durable continuous paper state"
     )
@@ -132,10 +135,11 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
         < fast_upload_at
         < fast_dispatch_at
         < fast_cleanup_at
-        < pack_at
+        < durable_pack_at
+        < durable_upload_at
+        < fallback_dispatch_at
     )
     assert "run: rm -f continuous-paper-resume.tar.zst" in source
-    assert fast_dispatch_at < durable_pack_at < durable_upload_at
     assert durable_upload_at < fallback_dispatch_at
 
 
