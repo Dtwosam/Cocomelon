@@ -134,6 +134,8 @@ def test_full_stack_capacity_reflow_telemetry_fails_open() -> None:
         {},
         {},
         {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
         PaperExecutionConfig(),
         position_history_loader=lambda _plan_id, _through_ms: (),
     )
@@ -187,6 +189,8 @@ def test_full_stack_capacity_reflow_preserves_lineage_when_fill_fails(
         {},
         {},
         {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
         PaperExecutionConfig(),
         position_history_loader=lambda _plan_id, _through_ms: (),
     )
@@ -198,6 +202,136 @@ def test_full_stack_capacity_reflow_preserves_lineage_when_fill_fails(
     assert isinstance(fill, dict)
     assert fill["enabled"] is False
     assert fill["error"] == "RuntimeError: fill boom"
+
+
+def test_full_stack_capacity_reflow_preserves_fill_when_exit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_full_stack_capacity_reflow",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            releases=(),
+            summary={
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "integrity_clean": True,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_capacity_reflow_fill_feasibility_summary",
+        lambda *_args, **_kwargs: {
+            "replacement_entry_fills_modeled": True,
+        },
+    )
+
+    def fail_exit(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("exit boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_capacity_reflow_exit_fill",
+        fail_exit,
+    )
+
+    payload = _prospective_full_stack_capacity_reflow_payload(
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        {},
+        {},
+        {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
+        position_history_loader=lambda _plan_id, _through_ms: (),
+    )
+
+    assert payload["enabled"] is True
+    assert payload["replacement_entries_modeled"] is True
+    assert payload["replacement_exits_modeled"] is False
+    assert payload["pnl_modeled"] is False
+    exit_fill = payload["exit_fill"]
+    assert isinstance(exit_fill, dict)
+    assert exit_fill["error"] == "RuntimeError: exit boom"
+
+
+def test_full_stack_capacity_reflow_preserves_exit_when_funding_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_full_stack_capacity_reflow",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            releases=(),
+            summary={
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "integrity_clean": True,
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "prospective_capacity_reflow_fill_feasibility_summary",
+        lambda *_args, **_kwargs: {
+            "replacement_entry_fills_modeled": True,
+        },
+    )
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_capacity_reflow_exit_fill",
+        lambda *_args, **_kwargs: {
+            "replacement_entry_fills_modeled": True,
+            "replacement_exit_fills_modeled": True,
+        },
+    )
+
+    def fail_funding(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("funding boom")
+
+    monkeypatch.setattr(
+        "cocomelon.continuous_paper."
+        "evaluate_prospective_capacity_reflow_realized_pnl",
+        fail_funding,
+    )
+
+    payload = _prospective_full_stack_capacity_reflow_payload(
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_records=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(iter_trades=lambda: ()),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        SimpleNamespace(started_at_ms=0),  # type: ignore[arg-type]
+        {},
+        {},
+        {},
+        SimpleNamespace(),  # type: ignore[arg-type]
+        SimpleNamespace(),  # type: ignore[arg-type]
+        PaperExecutionConfig(),
+        position_history_loader=lambda _plan_id, _through_ms: (),
+    )
+
+    assert payload["enabled"] is True
+    assert payload["replacement_entries_modeled"] is True
+    assert payload["replacement_exits_modeled"] is True
+    assert payload["pnl_modeled"] is False
+    realized = payload["realized_pnl"]
+    assert isinstance(realized, dict)
+    assert realized["error"] == "RuntimeError: funding boom"
 
 
 def test_full_stack_entry_exit_telemetry_fails_open() -> None:
