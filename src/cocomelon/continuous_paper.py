@@ -5779,6 +5779,9 @@ def _live_status_payload(
             "reason_counts": dict(
                 activity.latest_epoch_eligibility_reason_counts
             ),
+            "stale_book_age_ms_by_market": dict(
+                activity.latest_epoch_stale_book_age_ms
+            ),
         },
         "session_risk": {
             "evaluations": activity.risk_evaluations,
