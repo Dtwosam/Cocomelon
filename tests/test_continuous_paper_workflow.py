@@ -94,6 +94,12 @@ def test_continuous_paper_state_handoff_prefers_fast_resume_with_fallback() -> N
     assert "durable fallback did not appear" in source
     assert "SOURCE_HEAD_SHA" in source
     assert "ARTIFACT_HEAD_SHA" in source
+    assert 'status = run.get("status")' in source
+    assert (
+        'status == "completed" and run.get("conclusion") != "success"'
+        in source
+    )
+    assert "completed predecessor run must be successful" in source
     assert source.count("timeout-minutes: 30") >= 2
 
     measure_at = source.index(
