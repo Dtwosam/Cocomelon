@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--state-root", required=True, type=Path)
     parser.add_argument("--duration-seconds", type=int, default=19_800)
     parser.add_argument("--deep-limit", type=int, default=20)
-    parser.add_argument("--context-poll-seconds", type=int, default=60)
+    parser.add_argument("--context-poll-seconds", type=int, default=30)
     parser.add_argument("--selection-refresh-seconds", type=int, default=300)
     parser.add_argument("--checkpoint-seconds", type=int, default=30)
     parser.add_argument("--stop-file", type=Path)
