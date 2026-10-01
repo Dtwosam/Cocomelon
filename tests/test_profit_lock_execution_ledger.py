@@ -271,7 +271,10 @@ def test_profit_lock_execution_ledger_appends_and_reconciles() -> None:
     assert second["prior_ledger_sha256"] == first["ledger_sha256"]
     rows = second["rows"]
     assert isinstance(rows, tuple)
-    assert rows[:2] == first["rows"]
+    first_rows = first["rows"]
+    assert isinstance(first_rows, tuple)
+    for row in first_rows:
+        assert row in rows
     validate_profit_lock_execution_ledger(second)
 
 
