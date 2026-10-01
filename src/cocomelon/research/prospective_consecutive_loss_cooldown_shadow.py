@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from typing import Final
+from typing import Final, cast
 
 from cocomelon.domain.execution import PaperExecutionConfig
 from cocomelon.domain.risk import RiskRequest
@@ -435,6 +435,33 @@ def _robustness(
     }
 
 
+def _result_sort_key(
+    item: dict[str, object],
+) -> tuple[int, str, str]:
+    return (
+        cast(int, item["timestamp_ms"]),
+        cast(str, item["market"]),
+        cast(str, item["opportunity_id"]),
+    )
+
+
+def _relaxed_window_applies(
+    item: dict[str, object],
+    *,
+    window_ms: int,
+) -> bool:
+    elapsed = item.get("baseline_elapsed_since_last_close_ms")
+    baseline = item.get("baseline_cooldown_ms")
+    return (
+        isinstance(elapsed, int)
+        and not isinstance(elapsed, bool)
+        and elapsed >= window_ms
+        and isinstance(baseline, int)
+        and not isinstance(baseline, bool)
+        and baseline > window_ms
+    )
+
+
 def prospective_consecutive_loss_cooldown_shadow_summary(
     opportunities: tuple[
         ContinuousPaperOpeningOpportunityEvidence,
@@ -631,11 +658,7 @@ def prospective_consecutive_loss_cooldown_shadow_summary(
     result_tuple = tuple(
         sorted(
             results,
-            key=lambda item: (
-                int(item["timestamp_ms"]),
-                str(item["market"]),
-                str(item["opportunity_id"]),
-            ),
+            key=_result_sort_key,
         )
     )
 
@@ -720,14 +743,10 @@ def prospective_consecutive_loss_cooldown_shadow_summary(
         candidates = tuple(
             result
             for result in result_tuple
-            if isinstance(
-                result["baseline_elapsed_since_last_close_ms"],
-                int,
+            if _relaxed_window_applies(
+                result,
+                window_ms=window_ms,
             )
-            and result["baseline_elapsed_since_last_close_ms"]
-            >= window_ms
-            and isinstance(result["baseline_cooldown_ms"], int)
-            and result["baseline_cooldown_ms"] > window_ms
         )
         fillable = tuple(
             result
