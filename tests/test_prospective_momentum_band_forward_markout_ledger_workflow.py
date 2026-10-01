@@ -121,4 +121,4 @@ def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() ->
     assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
     assert "os.environ['RESOLUTION_MODE']" in waiting
     assert 'os.environ.get("ERROR_TEXT")' in blocked
-    assert "\\\`false\\\`" not in clean
+    assert r"\`false\`" not in clean
