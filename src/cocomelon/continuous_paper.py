@@ -278,6 +278,10 @@ from cocomelon.research.prospective_combined_entry_filter import (
     evaluate_prospective_combined_entry_filter,
     evaluate_prospective_combined_matched_overlap,
 )
+from cocomelon.research.prospective_consecutive_loss_cooldown_shadow import (
+    ProspectiveConsecutiveLossCooldownShadowState,
+    evaluate_prospective_consecutive_loss_cooldown_shadow,
+)
 from cocomelon.research.prospective_daily_loss_lockout_reflow import (
     evaluate_prospective_daily_loss_lockout_reflow,
 )
@@ -357,6 +361,9 @@ PROSPECTIVE_SIDE_CONDITIONED_DELAY_STATE_FILENAME = (
 )
 PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME = (
     "prospective-top10-no-long-trend-state.json"
+)
+PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME = (
+    "prospective-consecutive-loss-cooldown-shadow-state.json"
 )
 PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME = (
     "prospective-two-strike-stop-filter-state.json"
@@ -2027,6 +2034,75 @@ def _restore_prospective_combined_entry_filter(
             ),
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _restore_prospective_consecutive_loss_cooldown_shadow(
+    path: Path,
+    *,
+    frozen_at_ms: int,
+) -> tuple[
+    ProspectiveConsecutiveLossCooldownShadowState,
+    str | None,
+]:
+    if not path.exists():
+        return (
+            ProspectiveConsecutiveLossCooldownShadowState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            None,
+        )
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return (
+            ProspectiveConsecutiveLossCooldownShadowState.from_payload(
+                raw
+            ),
+            None,
+        )
+    except Exception as exc:
+        return (
+            ProspectiveConsecutiveLossCooldownShadowState(
+                frozen_at_ms=frozen_at_ms
+            ),
+            f"{type(exc).__name__}: {exc}",
+        )
+
+
+def _prospective_consecutive_loss_cooldown_shadow_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    path_store: ContinuousPaperOpeningOpportunityPathStore,
+    state: ProspectiveConsecutiveLossCooldownShadowState,
+    config: PaperExecutionConfig,
+    *,
+    restore_error: str | None,
+) -> dict[str, object]:
+    try:
+        payload = (
+            evaluate_prospective_consecutive_loss_cooldown_shadow(
+                opportunity_store,
+                path_store,
+                state,
+                config,
+            )
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "changes_risk_limits": False,
+            "candidate_id": state.candidate_id,
+            "frozen_at_ms": state.frozen_at_ms,
+            "started_at_ms": state.started_at_ms,
+            "state_restore_error": restore_error,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    payload = dict(payload)
+    payload["enabled"] = True
+    payload["state_restore_error"] = restore_error
+    payload["error"] = None
+    return payload
 
 
 def _restore_prospective_two_strike_stop_filter(
@@ -4750,6 +4826,17 @@ def _live_status_payload(
             ),
         )
     )
+    prospective_consecutive_loss_cooldown_shadow = (
+        _prospective_consecutive_loss_cooldown_shadow_payload(
+            opening_opportunity_store,
+            opening_opportunity_path_store,
+            prospective_consecutive_loss_cooldown_shadow_state,
+            paper_execution_config,
+            restore_error=(
+                prospective_consecutive_loss_cooldown_shadow_restore_error
+            ),
+        )
+    )
     prospective_two_strike_stop_filter = (
         _prospective_two_strike_stop_filter_payload(
             pump.journal,
@@ -5239,6 +5326,9 @@ def _live_status_payload(
         "prospective_trade_quality": prospective_trade_quality,
         "prospective_combined_entry_filter": (
             prospective_combined_entry_filter
+        ),
+        "prospective_consecutive_loss_cooldown_shadow": (
+            prospective_consecutive_loss_cooldown_shadow
         ),
         "prospective_two_strike_stop_filter": (
             prospective_two_strike_stop_filter
@@ -6258,6 +6348,14 @@ async def run_continuous_paper_session(
         started_at_ms=started_at_ms,
     )
     (
+        prospective_consecutive_loss_cooldown_shadow_state,
+        prospective_consecutive_loss_cooldown_shadow_restore_error,
+    ) = _restore_prospective_consecutive_loss_cooldown_shadow(
+        root
+        / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
+        frozen_at_ms=started_at_ms,
+    )
+    (
         prospective_two_strike_stop_filter_state,
         prospective_two_strike_stop_filter_restore_error,
     ) = _restore_prospective_two_strike_stop_filter(
@@ -6500,6 +6598,11 @@ async def run_continuous_paper_session(
             _write_json_atomic(
                 root / PROSPECTIVE_COMBINED_ENTRY_FILTER_STATE_FILENAME,
                 prospective_combined_entry_filter_state.payload(),
+            )
+            _write_json_atomic(
+                root
+                / PROSPECTIVE_CONSECUTIVE_LOSS_COOLDOWN_SHADOW_STATE_FILENAME,
+                prospective_consecutive_loss_cooldown_shadow_state.payload(),
             )
             _write_json_atomic(
                 root / PROSPECTIVE_TWO_STRIKE_STOP_FILTER_STATE_FILENAME,
