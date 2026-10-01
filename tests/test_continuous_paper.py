@@ -819,9 +819,14 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
 
 def test_continuous_context_poll_has_freshness_headroom() -> None:
     config = ContinuousPaperConfig()
+    workflow = Path(
+        ".github/workflows/continuous-paper.yml"
+    ).read_text(encoding="utf-8")
 
     assert config.context_poll_seconds == 30
     assert config.context_poll_seconds * 1000 < 60_000
+    assert "--context-poll-seconds 30" in workflow
+    assert "--context-poll-seconds 60" not in workflow
 
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
