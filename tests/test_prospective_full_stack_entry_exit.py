@@ -85,16 +85,28 @@ def _outcome(
         market=trade.market.canonical,
         direction=trade.direction.value,
         rule_id="breakeven_after_0_5r",
-        activated=candidate is not None,
-        triggered=candidate is not None,
+        activated=True,
+        triggered=True,
         simulated_close_complete=candidate is not None,
-        activation_timestamp_ms=trade.opened_at_ms + 1_000 if candidate is not None else None,
-        trigger_timestamp_ms=trade.opened_at_ms + 2_000 if candidate is not None else None,
-        completion_timestamp_ms=trade.opened_at_ms + 3_000 if candidate is not None else None,
-        simulated_filled_quantity=Decimal("1") if candidate is not None else Decimal("0"),
-        simulated_average_exit_price=Decimal("100") if candidate is not None else None,
+        activation_timestamp_ms=trade.opened_at_ms + 1_000,
+        trigger_timestamp_ms=trade.opened_at_ms + 2_000,
+        completion_timestamp_ms=(
+            trade.opened_at_ms + 3_000
+            if candidate is not None
+            else None
+        ),
+        simulated_filled_quantity=(
+            Decimal("1")
+            if candidate is not None
+            else Decimal("0")
+        ),
+        simulated_average_exit_price=(
+            Decimal("100")
+            if candidate is not None
+            else None
+        ),
         simulated_exit_fees=Decimal("0"),
-        attempt_count=1 if candidate is not None else 0,
+        attempt_count=1,
         planning_rejection_count=0,
         no_fill_count=0,
         actual_net_pnl=trade.net_pnl,
@@ -116,9 +128,9 @@ def _outcome(
             else candidate / trade.initial_risk_amount - trade.net_r
         ),
         candidate_source=(
-            "simulated_full_close"
+            "visible_book_ioc"
             if candidate is not None
-            else "not_triggered"
+            else "triggered_incomplete"
         ),
     )
     return outcome.payload()
