@@ -590,7 +590,6 @@ def test_lifecycle_raises_replay_invariant_on_journal_inconsistency(
     facts.close()
 
 
-
 def test_restart_reuses_persisted_equity_fact_for_restored_account_state(
     tmp_path: Path,
 ) -> None:
@@ -630,3 +629,120 @@ def test_restart_reuses_persisted_equity_fact_for_restored_account_state(
     finally:
         execution.close()
         facts.close()
+
+
+def test_checkpoint_keeps_hourly_funding_oracles_with_extrema(
+    tmp_path: Path,
+) -> None:
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        suffix="checkpoint-hourly-oracles",
+    )
+    second_boundary_ms = BOUNDARY_MS + 3_600_000
+    records = (
+        _snapshot_record(),
+        _trigger_record(),
+        _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+        _asset_ctx(ORACLE_MS, mark="100", oracle="100.1"),
+        _funding(),
+        _asset_ctx(BOUNDARY_MS + 100_000, mark="90", oracle="90.1"),
+        _asset_ctx(BOUNDARY_MS + 2_000_000, mark="110", oracle="110.1"),
+        _asset_ctx(
+            second_boundary_ms - 500,
+            mark="95",
+            oracle="95.1",
+        ),
+    )
+    _run_records(pipeline, records)
+
+    checkpoints = pipeline.open_lifecycle_checkpoints
+    assert len(checkpoints) == 1
+    retained = {
+        record.available_at_ms: record
+        for record in checkpoints[0].mark_observations
+    }
+
+    assert ORACLE_MS in retained
+    assert BOUNDARY_MS + 100_000 in retained
+    assert BOUNDARY_MS + 2_000_000 in retained
+    assert second_boundary_ms - 500 in retained
+    assert retained[ORACLE_MS].payload["oracle_px"] == "100.1"
+    assert (
+        retained[second_boundary_ms - 500].payload["oracle_px"]
+        == "95.1"
+    )
+
+    execution.close()
+    facts.close()
+
+
+def test_restored_open_lifecycle_reuses_oracle_for_funding_boundary(
+    tmp_path: Path,
+) -> None:
+    replay_config = _config()
+    pipeline, execution, facts = _pipeline(
+        tmp_path,
+        config=replay_config,
+        suffix="restore-funding-oracle",
+    )
+    _run_records(
+        pipeline,
+        (
+            _snapshot_record(),
+            _trigger_record(),
+            _book(OPEN_BOOK_MS, bid="99.9", ask="100.1"),
+            _asset_ctx(ORACLE_MS, mark="100", oracle="100"),
+        ),
+    )
+    checkpoints = pipeline.open_lifecycle_checkpoints
+    assert len(checkpoints) == 1
+    checkpoint = checkpoints[0]
+
+    opening_plan = execution.store.load_plan(
+        checkpoint.opening_plan_id
+    )
+    assert opening_plan is not None
+    attempts, fills = execution.store.load_execution_history(
+        checkpoint.opening_plan_id
+    )
+    filled_attempts = tuple(
+        attempt
+        for attempt in attempts
+        if attempt.filled_quantity > 0
+    )
+    assert len(filled_attempts) == 1
+    opening_attempt = filled_attempts[0]
+    opening_fills = tuple(
+        fill
+        for fill in fills
+        if fill.attempt_id == opening_attempt.attempt_id
+    )
+
+    restored = BaselineReplayPipeline(
+        replay_config,
+        execution,
+        facts,
+        selected_markets=(MARKET,),
+        replay_run_id=RUN_ID,
+        evidence_class=EvidenceClass.MICROSTRUCTURE,
+        decision_engine=_ScriptedDecisionEngine(replay_config),
+    )
+    restored.restore_open_lifecycle(
+        checkpoint,
+        opening_plan=opening_plan,
+        opening_attempt=opening_attempt,
+        opening_fills=opening_fills,
+    )
+
+    observations = _run_records(restored, (_funding(),))
+    kinds = tuple(
+        observation.kind.value for observation in observations
+    )
+
+    assert "funding_event" in kinds
+    assert "funding_gap" not in kinds
+    assert restored.funding_inconsistent is False
+    assert execution.account.cumulative_funding < Decimal("0")
+
+    execution.close()
+    facts.close()
