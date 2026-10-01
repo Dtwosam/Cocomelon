@@ -155,6 +155,7 @@ def test_full_stack_exit_capacity_reflow_composes_exact_one_hop_economics(
         "prospective_full_stack_exit_capacity_reflow",
         lambda *_args, **_kwargs: SimpleNamespace(
             releases=(),
+            release_terminal_contributions=(),
             summary={
                 "research_only": True,
                 "execution_authority": False,
