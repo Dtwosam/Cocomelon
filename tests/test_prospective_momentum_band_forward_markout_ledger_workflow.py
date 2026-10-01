@@ -90,3 +90,35 @@ def test_fast_markout_ledger_non_success_wake_falls_back() -> None:
         "branch=main&status=completed&per_page=50"
         in source
     )
+
+
+def test_fast_markout_waiting_and_blocked_status_use_quoted_python_builders() -> None:
+    source = _source()
+    waiting = source.split(
+        "      - name: Publish waiting-for-source status",
+        1,
+    )[1].split(
+        "      - name: Restore previous fast-markout ledger",
+        1,
+    )[0]
+    blocked = source.split(
+        "      - name: Publish blocked ledger status",
+        1,
+    )[1].split(
+        "      - name: Fail closed on ledger drift",
+        1,
+    )[0]
+    clean = source.split(
+        "      - name: Publish clean ledger status",
+        1,
+    )[1]
+
+    assert "python - <<'PY'" in waiting
+    assert "python - <<'PY'" in blocked
+    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in waiting
+    assert "cat > /tmp/momentum-fast-status.md <<EOF" not in blocked
+    assert "os.environ['SOURCE_RUN_ID']" in waiting
+    assert "os.environ['SOURCE_RUN_ATTEMPT']" in waiting
+    assert "os.environ['RESOLUTION_MODE']" in waiting
+    assert 'os.environ.get("ERROR_TEXT")' in blocked
+    assert r"\`false\`" not in clean

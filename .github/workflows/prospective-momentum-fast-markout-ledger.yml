@@ -199,22 +199,38 @@ jobs:
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
           RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
         run: |
-          cat > /tmp/momentum-fast-status.md <<EOF
-          ## Momentum fast-markout evidence ledger
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** waiting for new-format compact source
-
-          - source paper run / attempt: `$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT`
-          - source resolution: `$RESOLUTION_MODE`
-          - reason: compact source predates the fast momentum-markout export
-
-          No fast-markout row is credited from this run.
-
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes closed-trade readiness:** `false`
-          **LIVE TRADING: DISABLED.**
-          EOF
+          lines = [
+              "## Momentum fast-markout evidence ledger",
+              "",
+              "**Status:** waiting for new-format compact source",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              (
+                  "- source resolution: "
+                  f"`{os.environ['RESOLUTION_MODE']}`"
+              ),
+              "- reason: compact source predates the fast momentum-markout export",
+              "",
+              "No fast-markout row is credited from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes closed-trade readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/momentum-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
 
       - name: Restore previous fast-markout ledger
@@ -329,22 +345,35 @@ jobs:
           SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
           SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
         run: |
-          error="${ERROR_TEXT:-unknown error}"
-          cat > /tmp/momentum-fast-status.md <<EOF
-          ## Momentum fast-markout evidence ledger
+          python - <<'PY'
+          import os
+          from pathlib import Path
 
-          **Status:** BLOCKED — append-only invariant failure
-
-          - source paper run / attempt: `$SOURCE_RUN_ID / $SOURCE_RUN_ATTEMPT`
-          - error: `$error`
-
-          No fast momentum evidence is published from this run.
-
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes closed-trade readiness:** `false`
-          **LIVE TRADING: DISABLED.**
-          EOF
+          error = os.environ.get("ERROR_TEXT") or "unknown error"
+          lines = [
+              "## Momentum fast-markout evidence ledger",
+              "",
+              "**Status:** BLOCKED — append-only invariant failure",
+              "",
+              (
+                  "- source paper run / attempt: "
+                  f"`{os.environ['SOURCE_RUN_ID']} / "
+                  f"{os.environ['SOURCE_RUN_ATTEMPT']}`"
+              ),
+              f"- error: `{error}`",
+              "",
+              "No fast momentum evidence is published from this run.",
+              "",
+              "**Execution authority:** `false`",
+              "**Promotion authority:** `false`",
+              "**Changes closed-trade readiness:** `false`",
+              "**LIVE TRADING: DISABLED.**",
+          ]
+          Path("/tmp/momentum-fast-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/momentum-fast-status.md)"
 
       - name: Fail closed on ledger drift
