@@ -70,6 +70,7 @@ def _filled_option(
     suffix: str,
     *,
     direction: str = "long",
+    market: str | None = None,
     elapsed_ms: int = 2_000_000,
     statuses: tuple[str, str, str] = (
         "settled",
@@ -91,7 +92,11 @@ def _filled_option(
     return {
         "opportunity_id": f"option-{suffix}",
         "timestamp_ms": timestamp,
-        "market": "SOL" if suffix != "2" else "ETH",
+        "market": (
+            market
+            if market is not None
+            else ("SOL" if suffix != "2" else "ETH")
+        ),
         "direction": direction,
         "lead_strategy": "breakout",
         "rank_ordinal": 3,
@@ -413,6 +418,16 @@ def test_cooldown_ledger_summarizes_fixed_windows_robustly() -> None:
     assert robustness["market_count"] == 2
     assert robustness["leave_one_market_out_min_pnl"] == "3"
     assert robustness["positive_after_removing_any_one_market"] is True
+    assert robustness["total_fee_adjusted_directional_return"] == "0.015"
+    assert robustness["leave_one_option_out_min_return"] == "0.0075"
+    assert robustness["leave_one_market_out_min_return"] == "0.0075"
+    readiness = robustness["review_readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["ready_for_evidence_review"] is False
+    assert readiness["missing_settled_1h_options"] == 18
+    assert readiness["missing_long_settled_1h_options"] == 4
+    assert readiness["missing_short_settled_1h_options"] == 4
+    assert readiness["missing_settled_1h_markets"] == 2
 
     thirty = windows[str(30 * 60 * 1_000)]
     assert thirty["terminal_options"] == 2
@@ -441,3 +456,52 @@ def test_cooldown_ledger_requires_clean_embargo() -> None:
             source_artifact_name="learning-80-1",
             source_artifact_digest=_digest("6"),
         )
+
+
+def test_cooldown_ledger_review_gate_can_pass_precommitted_bar() -> None:
+    state = ProspectiveConsecutiveLossCooldownShadowState(
+        frozen_at_ms=9_000_000
+    )
+    markets = ("BTC", "ETH", "SOL", "ENA")
+    options = [
+        _filled_option(
+            state,
+            str(index),
+            direction="long" if index % 2 == 0 else "short",
+            market=markets[index % len(markets)],
+            elapsed_ms=3_000_000,
+            one_hour_pnl="2",
+        )
+        for index in range(20)
+    ]
+    ledger = update_cooldown_ledger(
+        _summary(state, options),
+        state,
+        previous=None,
+        source_paper_run_id=90,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-90-1",
+        source_artifact_digest=_digest("7"),
+    )
+
+    summary = ledger["summary"]
+    assert isinstance(summary, dict)
+    windows = summary["relaxation_windows"]
+    assert isinstance(windows, dict)
+    for window_ms in (15, 30, 45):
+        item = windows[str(window_ms * 60 * 1_000)]
+        robustness = item["robustness"]
+        assert isinstance(robustness, dict)
+        assert robustness["settled_options"] == 20
+        assert robustness["long_settled_options"] == 10
+        assert robustness["short_settled_options"] == 10
+        assert robustness["market_count"] == 4
+        assert robustness["total_entry_fee_adjusted_1h_pnl"] == "40"
+        readiness = robustness["review_readiness"]
+        assert isinstance(readiness, dict)
+        assert readiness["sample_complete"] is True
+        assert readiness["economics_positive"] is True
+        assert readiness["single_option_robust"] is True
+        assert readiness["single_market_robust"] is True
+        assert readiness["ready_for_evidence_review"] is True
+        assert readiness["changes_risk_limits"] is False
