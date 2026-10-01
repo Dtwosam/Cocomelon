@@ -1245,7 +1245,7 @@ def _revoke_stale_l2_readiness(
 ) -> None:
     if (
         not gap.is_open
-        or gap.reason != "stale"
+        or gap.reason not in {"stale", "disconnect"}
         or not gap.stream_id.startswith("l2Book:")
     ):
         return
@@ -1297,6 +1297,31 @@ class _SupervisorGroup:
             )
         )
 
+    def unhealthy_l2_market_keys(
+        self,
+        *,
+        now_ms: int,
+    ) -> frozenset[str]:
+        if len(self.supervisors) != len(self.ready_market_keys):
+            raise RuntimeError(
+                "supervisor and L2 readiness lane counts differ"
+            )
+        stale_by_lane = tuple(
+            set(supervisor.stale_l2_streams(now_ms=now_ms))
+            for supervisor in self.supervisors
+        )
+        return frozenset(
+            market
+            for market in self.required_market_keys
+            if all(
+                (
+                    f"l2Book:{market}" in stale_by_lane[lane]
+                    or market not in self.ready_market_keys[lane]
+                )
+                for lane in range(len(self.supervisors))
+            )
+        )
+
     def systemically_stale_l2(
         self,
         *,
@@ -1305,16 +1330,16 @@ class _SupervisorGroup:
         required_count = len(self.required_market_keys)
         if required_count == 0:
             return False
-        stale_count = len(
-            self.stale_l2_market_keys(now_ms=now_ms)
+        unhealthy_count = len(
+            self.unhealthy_l2_market_keys(now_ms=now_ms)
         )
         if required_count == 1:
-            return stale_count == 1
-        minimum_stale = max(
+            return unhealthy_count == 1
+        minimum_unhealthy = max(
             2,
             (required_count + 1) // 2,
         )
-        return stale_count >= minimum_stale
+        return unhealthy_count >= minimum_unhealthy
 
 
 async def _wait_supervisor_group_ready(
