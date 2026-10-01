@@ -303,6 +303,9 @@ from cocomelon.research.prospective_full_stack_capacity_reflow import (
 from cocomelon.research.prospective_full_stack_entry_exit import (
     prospective_full_stack_entry_exit_summary,
 )
+from cocomelon.research.prospective_full_stack_exit_capacity_reflow import (
+    prospective_full_stack_exit_capacity_reflow,
+)
 from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryState,
     evaluate_prospective_momentum_band_entry,
@@ -387,6 +390,9 @@ PROSPECTIVE_FULL_STACK_ENTRY_EXIT_SUMMARY_FILENAME = (
 )
 PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME = (
     "prospective-full-stack-capacity-reflow-summary.json"
+)
+PROSPECTIVE_FULL_STACK_EXIT_CAPACITY_REFLOW_SUMMARY_FILENAME = (
+    "prospective-full-stack-exit-capacity-reflow-summary.json"
 )
 PROSPECTIVE_BREAKEVEN_PROFIT_LOCK_STATE_FILENAME = (
     "prospective-breakeven-profit-lock-state.json"
@@ -2362,6 +2368,155 @@ def _prospective_full_stack_capacity_reflow_payload(
             evaluation.releases,
             config,
             position_history_loader=position_history_loader,
+        )
+    except Exception as exc:
+        fill = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "replacement_entry_fills_modeled": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+    else:
+        fill = dict(fill)
+        fill["enabled"] = True
+        fill["error"] = None
+
+    if fill.get("enabled") is True:
+        try:
+            exit_fill = evaluate_prospective_capacity_reflow_exit_fill(
+                fill,
+                exit_book_store,
+                config,
+            )
+        except Exception as exc:
+            exit_fill = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "replacement_exit_fills_modeled": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            exit_fill = dict(exit_fill)
+            exit_fill["enabled"] = True
+            exit_fill["error"] = None
+    else:
+        exit_fill = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "replacement_exit_fills_modeled": False,
+            "error": "replacement entry fill evidence unavailable",
+        }
+
+    if exit_fill.get("enabled") is True:
+        try:
+            realized_pnl = (
+                evaluate_prospective_capacity_reflow_realized_pnl(
+                    exit_fill,
+                    funding_store,
+                )
+            )
+        except Exception as exc:
+            realized_pnl = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "strategy_level_realized_pnl_claimed": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            realized_pnl = dict(realized_pnl)
+            realized_pnl["enabled"] = True
+            realized_pnl["error"] = None
+    else:
+        realized_pnl = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "strategy_level_realized_pnl_claimed": False,
+            "error": "replacement exit-fill evidence unavailable",
+        }
+
+    payload = dict(evaluation.summary)
+    payload["enabled"] = True
+    payload["fill_feasibility"] = fill
+    payload["exit_fill"] = exit_fill
+    payload["realized_pnl"] = realized_pnl
+    payload["replacement_entries_modeled"] = (
+        fill.get("enabled") is True
+    )
+    payload["replacement_exits_modeled"] = (
+        exit_fill.get("enabled") is True
+    )
+    payload["pnl_modeled"] = realized_pnl.get("enabled") is True
+    payload["exact_realized_pnl_available"] = (
+        realized_pnl.get("exact_realized_pnl_available") is True
+    )
+    payload["cross_horizon_economics_aggregated"] = False
+    payload["strategy_level_realized_pnl_claimed"] = False
+    payload["error"] = None
+    return payload
+
+
+def _prospective_full_stack_exit_capacity_reflow_payload(
+    opportunity_store: ContinuousPaperOpeningOpportunityStore,
+    journal: JournalStore,
+    feature_store: LearningFeatureSnapshotStore,
+    combined_state: ProspectiveCombinedEntryFilterState,
+    two_strike_state: ProspectiveTwoStrikeStopFilterState,
+    momentum_state: ProspectiveMomentumBandEntryState,
+    full_stack_entry_exit: dict[str, object],
+    execution_shadow_state: dict[str, object],
+    exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
+    funding_store: ContinuousPaperReplacementFundingStore,
+    config: PaperExecutionConfig,
+    *,
+    position_history_loader: Callable[
+        [str, int],
+        tuple[PaperPosition, ...],
+    ],
+) -> dict[str, object]:
+    overlap_start = full_stack_entry_exit.get("overlap_started_at_ms")
+    try:
+        opportunities = opportunity_store.iter_records()
+        evaluation = prospective_full_stack_exit_capacity_reflow(
+            opportunities,
+            tuple(journal.iter_trades()),
+            feature_store,
+            combined_state,
+            two_strike_state,
+            momentum_state,
+            full_stack_entry_exit,
+            execution_shadow_state,
+        )
+    except Exception as exc:
+        return {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "descriptive_only": True,
+            "changes_readiness_gate": False,
+            "overlap_started_at_ms": overlap_start,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    try:
+        fill = prospective_capacity_reflow_fill_feasibility_summary(
+            opportunities,
+            evaluation.releases,
+            config,
+            position_history_loader=position_history_loader,
+            released_position_terminal_contribution_by_plan=dict(
+                evaluation.release_terminal_contributions
+            ),
         )
     except Exception as exc:
         fill = {
@@ -7290,6 +7445,46 @@ async def run_continuous_paper_session(
         _write_json_atomic(
             root / PROSPECTIVE_FULL_STACK_CAPACITY_REFLOW_SUMMARY_FILENAME,
             full_stack_capacity_reflow,
+        )
+        if profit_lock_execution_shadow.shadow is None:
+            full_stack_exit_capacity_reflow = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "descriptive_only": True,
+                "changes_readiness_gate": False,
+                "error": (
+                    profit_lock_execution_shadow.error
+                    or "profit-lock execution shadow unavailable"
+                ),
+            }
+        else:
+            full_stack_exit_capacity_reflow = (
+                _prospective_full_stack_exit_capacity_reflow_payload(
+                    opening_opportunity_store,
+                    journal,
+                    feature_store,
+                    prospective_combined_entry_filter_state,
+                    prospective_two_strike_stop_filter_state,
+                    prospective_momentum_band_entry_state,
+                    full_stack_entry_exit,
+                    profit_lock_execution_shadow.shadow.state_payload(),
+                    opening_opportunity_exit_book_store,
+                    replacement_funding_store,
+                    replay_config.execution,
+                    position_history_loader=lambda plan_id, through_ms: (
+                        execution.store.load_position_history(
+                            plan_id,
+                            through_ms=through_ms,
+                        )
+                    ),
+                )
+            )
+        _write_json_atomic(
+            root
+            / PROSPECTIVE_FULL_STACK_EXIT_CAPACITY_REFLOW_SUMMARY_FILENAME,
+            full_stack_exit_capacity_reflow,
         )
         closed_trades = tuple(journal.iter_trades())
         summary = ContinuousPaperSummary(
