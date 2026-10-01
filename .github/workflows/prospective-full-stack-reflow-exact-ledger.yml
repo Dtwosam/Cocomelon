@@ -227,16 +227,16 @@ jobs:
 
           **Status:** waiting for new-format compact source
 
-          - source paper run: `$SOURCE_RUN_ID`
-          - source paper attempt: `$SOURCE_RUN_ATTEMPT`
-          - source resolution: `$RESOLUTION_MODE`
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - source resolution: \`$RESOLUTION_MODE\`
           - reason: compact source predates the return-normalized exact-PnL summary format
 
           No exact replacement option-horizon row is credited from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes readiness gates:** `false`
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **Changes readiness gates:** \`false\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/full-stack-reflow-ledger-status.md)"
@@ -360,15 +360,15 @@ jobs:
 
           **Status:** BLOCKED — append-only invariant failure
 
-          - source paper run: `$SOURCE_RUN_ID`
-          - source paper attempt: `$SOURCE_RUN_ATTEMPT`
-          - error: `$error`
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - error: \`$error\`
 
           No exact replacement option-horizon evidence is published from this run.
 
-          **Execution authority:** `false`
-          **Promotion authority:** `false`
-          **Changes readiness gates:** `false`
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **Changes readiness gates:** \`false\`
           **LIVE TRADING: DISABLED.**
           EOF
           gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/full-stack-reflow-ledger-status.md)"
