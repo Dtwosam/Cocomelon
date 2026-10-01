@@ -565,15 +565,15 @@ def prospective_breakeven_from_execution_ledger(
         latest = source_history[-1]
         if isinstance(latest, Mapping):
             result["source_paper_run_id"] = latest.get(
-                "source_paper_run_id"
+                "paper_run_id"
             )
             result["source_paper_run_attempt"] = latest.get(
-                "source_paper_run_attempt"
+                "paper_run_attempt"
             )
             result["source_artifact_name"] = latest.get(
-                "source_artifact_name"
+                "artifact_name"
             )
             result["source_artifact_digest"] = latest.get(
-                "source_artifact_digest"
+                "artifact_digest"
             )
     return result
