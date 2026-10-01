@@ -412,3 +412,26 @@ def test_continuous_paper_exports_full_stack_entry_exit_summary() -> None:
         "- name: Pack durable continuous paper state"
     )
     assert compact_at < pack_at
+
+
+def test_continuous_paper_exports_full_stack_capacity_reflow_summary() -> None:
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    assert (
+        "prospective-full-stack-capacity-reflow-summary.json"
+        in source
+    )
+    assert (
+        "continuous-paper-full-stack-capacity-reflow-"
+        "${{ github.run_id }}-${{ github.run_attempt }}"
+        in source
+    )
+    assert "Render full-stack capacity-reflow research summary" in source
+    assert "portfolio counterfactual: false" in source
+    compact_at = source.index(
+        "- name: Upload compact continuous learning source"
+    )
+    pack_at = source.index(
+        "- name: Pack durable continuous paper state"
+    )
+    assert compact_at < pack_at

@@ -27,6 +27,7 @@ from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
     evaluate_prospective_combined_entry_filter,
     evaluate_prospective_combined_matched_overlap,
+    prospective_combined_block_reason,
 )
 from cocomelon.research.prospective_entry_filter import (
     ProspectiveEntryFilterState,
@@ -573,3 +574,38 @@ def test_combined_filter_crosses_allowed_losses_with_profit_lock_paths(
     assert lock["matched_exact_path_losses"] == 0
     assert lock["missing_exact_path_losses"] == 1
     assert residual["changes_readiness_gate"] is False
+
+
+def test_combined_block_reason_is_reusable_for_observed_opportunities() -> None:
+    assert (
+        prospective_combined_block_reason(
+            direction=Direction.LONG,
+            lead_strategy="trend",
+            ordinal=4,
+        )
+        == "long_trend"
+    )
+    assert (
+        prospective_combined_block_reason(
+            direction=Direction.SHORT,
+            lead_strategy="trend",
+            ordinal=11,
+        )
+        == "rank_above_10"
+    )
+    assert (
+        prospective_combined_block_reason(
+            direction=Direction.LONG,
+            lead_strategy="trend",
+            ordinal=11,
+        )
+        == "long_trend_and_rank_above_10"
+    )
+    assert (
+        prospective_combined_block_reason(
+            direction=Direction.SHORT,
+            lead_strategy="breakout",
+            ordinal=4,
+        )
+        is None
+    )

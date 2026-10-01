@@ -146,6 +146,21 @@ def _single_position_release_options(
     return tuple(options)
 
 
+def single_position_capacity_release_options(
+    evidence: ContinuousPaperOpeningOpportunityEvidence,
+) -> tuple[CapacityReleaseOpportunityOption, ...]:
+    return tuple(
+        CapacityReleaseOpportunityOption(
+            opportunity_id=evidence.opportunity_id,
+            opportunity_timestamp_ms=evidence.opportunity_timestamp_ms,
+            opportunity_market=evidence.market,
+            release_market=option.market,
+            release_correlation_bucket=option.correlation_bucket,
+        )
+        for option in _single_position_release_options(evidence)
+    )
+
+
 def candidate_eligible_capacity_release_options(
     opportunities: tuple[
         ContinuousPaperOpeningOpportunityEvidence,
@@ -175,20 +190,9 @@ def candidate_eligible_capacity_release_options(
             not in RISK_CAPACITY_REJECTION_REASONS
         ):
             continue
-        for option in _single_position_release_options(evidence):
-            output.append(
-                CapacityReleaseOpportunityOption(
-                    opportunity_id=evidence.opportunity_id,
-                    opportunity_timestamp_ms=(
-                        evidence.opportunity_timestamp_ms
-                    ),
-                    opportunity_market=evidence.market,
-                    release_market=option.market,
-                    release_correlation_bucket=(
-                        option.correlation_bucket
-                    ),
-                )
-            )
+        output.extend(
+            single_position_capacity_release_options(evidence)
+        )
     return tuple(
         sorted(
             output,

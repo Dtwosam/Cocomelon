@@ -13,6 +13,7 @@ from cocomelon.research.prospective_two_strike_stop_filter import (
     EMBARGO_MS,
     ProspectiveTwoStrikeStopFilterError,
     ProspectiveTwoStrikeStopFilterState,
+    prospective_two_strike_prior_strikes_at,
     prospective_two_strike_stop_filter_summary,
 )
 
@@ -342,3 +343,70 @@ def test_two_strike_state_rejects_embargo_tamper() -> None:
         match="frozen embargo",
     ):
         ProspectiveTwoStrikeStopFilterState.from_payload(payload)
+
+
+def test_two_strike_prior_strikes_at_is_causal_for_observed_opportunity() -> None:
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=0)
+    start = state.started_at_ms
+    trades = (
+        _trade(
+            "query-loss-1",
+            opened_at_ms=start + 1_000,
+            pnl="-5",
+        ),
+        _trade(
+            "query-loss-2",
+            opened_at_ms=start + 120_000,
+            pnl="-6",
+        ),
+        _trade(
+            "query-blocked",
+            opened_at_ms=start + 240_000,
+            pnl="-7",
+        ),
+    )
+
+    assert prospective_two_strike_prior_strikes_at(
+        trades,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=start + 2_000,
+    ) == 0
+    assert prospective_two_strike_prior_strikes_at(
+        trades,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=start + 62_000,
+    ) == 1
+    assert prospective_two_strike_prior_strikes_at(
+        trades,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=start + 182_000,
+    ) == 2
+    assert prospective_two_strike_prior_strikes_at(
+        trades,
+        state,
+        market="SOL",
+        direction=Direction.LONG,
+        timestamp_ms=start + 241_000,
+    ) == 0
+
+
+def test_two_strike_prior_strikes_rejects_pre_start_query() -> None:
+    state = ProspectiveTwoStrikeStopFilterState(frozen_at_ms=100)
+
+    with pytest.raises(
+        ProspectiveTwoStrikeStopFilterError,
+        match="precedes two-strike clean start",
+    ):
+        prospective_two_strike_prior_strikes_at(
+            (),
+            state,
+            market="SOL",
+            direction=Direction.LONG,
+            timestamp_ms=state.started_at_ms - 1,
+        )

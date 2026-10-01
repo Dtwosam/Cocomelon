@@ -141,6 +141,66 @@ def _qualifying_loss(trade: TradeJournalEntry) -> bool:
     )
 
 
+def prospective_two_strike_prior_strikes_at(
+    trades: Sequence[TradeJournalEntry],
+    state: ProspectiveTwoStrikeStopFilterState,
+    *,
+    market: str,
+    direction: Direction,
+    timestamp_ms: int,
+) -> int:
+    if timestamp_ms < state.started_at_ms:
+        raise ProspectiveTwoStrikeStopFilterError(
+            "query timestamp precedes two-strike clean start"
+        )
+
+    prospective = tuple(
+        trade
+        for trade in trades
+        if trade.opened_at_ms >= state.started_at_ms
+        and trade.opened_at_ms < timestamp_ms
+    )
+    trade_ids = tuple(trade.trade_id for trade in prospective)
+    if len(set(trade_ids)) != len(trade_ids):
+        raise ProspectiveTwoStrikeStopFilterError(
+            "prospective trades contain duplicate trade ids"
+        )
+
+    strikes: dict[tuple[str, Direction], int] = {}
+    admitted_ids: set[str] = set()
+    events: list[tuple[int, int, TradeJournalEntry]] = []
+    for trade in prospective:
+        events.append((trade.opened_at_ms, 1, trade))
+        if trade.closed_at_ms <= timestamp_ms:
+            events.append((trade.closed_at_ms, 0, trade))
+    events.sort(
+        key=lambda item: (
+            item[0],
+            item[1],
+            item[2].opened_at_ms,
+            item[2].trade_id,
+        )
+    )
+
+    for _event_ms, event_kind, trade in events:
+        key = (trade.market.canonical, trade.direction)
+        if event_kind == 1:
+            prior_strikes = strikes.get(key, 0)
+            if prior_strikes >= STRIKE_THRESHOLD:
+                strikes[key] = 0
+            else:
+                admitted_ids.add(trade.trade_id)
+            continue
+        if trade.trade_id not in admitted_ids:
+            continue
+        if _qualifying_loss(trade):
+            strikes[key] = strikes.get(key, 0) + 1
+        else:
+            strikes[key] = 0
+
+    return strikes.get((market, direction), 0)
+
+
 def _direction_summary(
     trades: tuple[TradeJournalEntry, ...],
     blocked_ids: set[str],

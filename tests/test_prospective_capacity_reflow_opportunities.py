@@ -20,6 +20,7 @@ from cocomelon.research.continuous_paper_opening_opportunity import (
 from cocomelon.research.prospective_capacity_reflow_opportunities import (
     candidate_eligible_capacity_release_options,
     prospective_capacity_reflow_opportunity_summary,
+    single_position_capacity_release_options,
 )
 from cocomelon.research.prospective_combined_entry_filter import (
     ProspectiveCombinedEntryFilterState,
@@ -267,3 +268,31 @@ def test_capacity_reflow_summary_rejects_stale_rank_from_candidate_cohort() -> N
     assert summary["candidate_eligible_rejections"] == 0
     assert summary["stale_rank_evidence"] == 1
     assert summary["integrity_clean"] is False
+
+
+def test_single_position_capacity_release_options_are_strategy_agnostic() -> None:
+    request = _request(
+        market="SOL",
+        direction=Direction.SHORT,
+        lead_strategy="trend",
+        timestamp_ms=12_000,
+    )
+    evidence = _evidence(
+        request,
+        rank_ordinal=18,
+        rank_observed_at_ms=11_900,
+    )
+
+    options = single_position_capacity_release_options(evidence)
+
+    assert tuple(
+        (
+            option.opportunity_market,
+            option.release_market,
+            option.release_correlation_bucket,
+        )
+        for option in options
+    ) == (
+        ("SOL", "BTC", "majors"),
+        ("SOL", "ETH", "majors"),
+    )

@@ -172,13 +172,14 @@ def _rank_for_trade(
     return evidence
 
 
-def _block_reason(
-    trade: TradeJournalEntry,
+def prospective_combined_block_reason(
+    *,
+    direction: Direction,
     lead_strategy: str,
     ordinal: int,
 ) -> str | None:
     long_trend = (
-        trade.direction is Direction.LONG
+        direction is Direction.LONG
         and lead_strategy == "trend"
     )
     below_rank_cut = ordinal > TOP10_MAX_ORDINAL
@@ -189,6 +190,18 @@ def _block_reason(
     if below_rank_cut:
         return "rank_above_10"
     return None
+
+
+def _block_reason(
+    trade: TradeJournalEntry,
+    lead_strategy: str,
+    ordinal: int,
+) -> str | None:
+    return prospective_combined_block_reason(
+        direction=trade.direction,
+        lead_strategy=lead_strategy,
+        ordinal=ordinal,
+    )
 
 
 def _mean_decimal(

@@ -25,6 +25,9 @@ from cocomelon.research.prospective_momentum_band_entry import (
     ProspectiveMomentumBandEntryError,
     ProspectiveMomentumBandEntryState,
     prospective_momentum_band_entry_summary,
+    prospective_momentum_band_opportunity_decision,
+    prospective_momentum_band_prior_strikes_at,
+    prospective_momentum_band_snapshot_decision,
 )
 
 
@@ -531,3 +534,104 @@ def test_pre_embargo_trades_receive_zero_credit(
     assert isinstance(details, dict)
     assert trades[0].trade_id not in details
     assert trades[1].trade_id in details
+
+
+def test_momentum_snapshot_decision_is_reusable_for_observed_opportunity(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    snapshot_id = _record(
+        store,
+        "SOL",
+        as_of_ms=999,
+        return_1h="0.02",
+        day_return="0.08",
+    )
+
+    detail = prospective_momentum_band_snapshot_decision(
+        store,
+        market=MarketId("", "SOL"),
+        direction=Direction.LONG,
+        timestamp_ms=1_000,
+        feature_snapshot_id=snapshot_id,
+        prior_strikes=0,
+    )
+
+    assert detail["decision"] == "ADMIT"
+    assert detail["reason"] == "momentum_band_pass"
+    assert detail["signed_return_1h"] == "0.02"
+    assert detail["feature_record_sha256"] is not None
+
+
+def test_momentum_opportunity_decision_replays_candidate_state(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    start = EMBARGO_MS + 10_000_000
+    state = ProspectiveMomentumBandEntryState(
+        frozen_at_ms=start - EMBARGO_MS
+    )
+    pass_id = _record(
+        store,
+        "SOL",
+        as_of_ms=start - 1,
+        return_1h="0.02",
+        day_return="0.08",
+    )
+    weak_id = _record(
+        store,
+        "SOL",
+        as_of_ms=start + 119_999,
+        return_1h="0.001",
+        day_return="0.02",
+    )
+    first_loss = _trade(
+        "query-first-loss",
+        market="SOL",
+        direction=Direction.LONG,
+        opened_at_ms=start,
+        pnl="-5",
+        feature_snapshot_id=pass_id,
+    )
+
+    assert prospective_momentum_band_prior_strikes_at(
+        (first_loss,),
+        store,
+        state,
+        market=MarketId("", "SOL"),
+        direction=Direction.LONG,
+        timestamp_ms=start + 61_000,
+    ) == 1
+
+    detail = prospective_momentum_band_opportunity_decision(
+        (first_loss,),
+        store,
+        state,
+        market=MarketId("", "SOL"),
+        direction=Direction.LONG,
+        timestamp_ms=start + 120_000,
+        feature_snapshot_id=weak_id,
+    )
+    assert detail["prior_strikes"] == 1
+    assert detail["decision"] == "ADMIT"
+    assert detail["reason"] == "nonzero_strike_bypass"
+
+
+def test_momentum_opportunity_rejects_pre_start_query(
+    tmp_path: Path,
+) -> None:
+    store = LearningFeatureSnapshotStore(tmp_path / "features")
+    state = ProspectiveMomentumBandEntryState(frozen_at_ms=100)
+
+    with pytest.raises(
+        ProspectiveMomentumBandEntryError,
+        match="precedes momentum-band clean start",
+    ):
+        prospective_momentum_band_prior_strikes_at(
+            (),
+            store,
+            state,
+            market=MarketId("", "SOL"),
+            direction=Direction.LONG,
+            timestamp_ms=state.started_at_ms - 1,
+        )
