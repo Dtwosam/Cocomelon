@@ -7694,6 +7694,122 @@ def _closed_trade_stability_lines(raw: object) -> list[str]:
     return lines
 
 
+def _post_freshness_paper_cohort_lines(raw: object) -> list[str]:
+    lines = [
+        "",
+        "### Post-data-freshness paper cohort",
+        "",
+        "- authority: `RESEARCH ONLY / NO EXECUTION`",
+    ]
+    if not isinstance(raw, dict):
+        lines.append("_No post-freshness cohort telemetry in this heartbeat._")
+        return lines
+
+    lines.append(
+        f"- enabled: `{str(bool(raw.get('enabled'))).lower()}`"
+    )
+    error = raw.get("error")
+    if error:
+        lines.append(f"- research error: `{error}`")
+        return lines
+
+    lines.extend(
+        [
+            f"- cohort: `{raw.get('cohort_id', 'unknown')}`",
+            (
+                "- fixed open-time boundary / source run / source head: "
+                f"`{raw.get('cohort_started_at_ms')} / "
+                f"{raw.get('cohort_source_run_id')} / "
+                f"{raw.get('cohort_source_head_sha')}`"
+            ),
+            (
+                "- cohort closed W/L/BE / PnL / net R / mean R: "
+                f"`{raw.get('cohort_wins', 0)}/"
+                f"{raw.get('cohort_losses', 0)}/"
+                f"{raw.get('cohort_breakeven', 0)} / "
+                f"{raw.get('cohort_net_pnl', '0')} / "
+                f"{raw.get('cohort_net_r', '0')} / "
+                f"{raw.get('cohort_mean_net_r')}`"
+            ),
+            (
+                "- pre-cohort closed / PnL / net R / mean R: "
+                f"`{raw.get('pre_cohort_closed_trades', 0)} / "
+                f"{raw.get('pre_cohort_net_pnl', '0')} / "
+                f"{raw.get('pre_cohort_net_r', '0')} / "
+                f"{raw.get('pre_cohort_mean_net_r')}`"
+            ),
+            (
+                "- descriptive sample complete / minimum closes: "
+                f"`{str(bool(raw.get('descriptive_sample_complete'))).lower()} / "
+                f"{raw.get('minimum_descriptive_closed_trades', 0)}`"
+            ),
+        ]
+    )
+
+    by_direction = raw.get("by_direction", {})
+    if not isinstance(by_direction, dict):
+        by_direction = {}
+    lines.extend(
+        [
+            "",
+            "| Post-fix side | Trades | W | L | Net PnL | Mean R |",
+            "| --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for side in ("long", "short"):
+        item = by_direction.get(side, {})
+        if not isinstance(item, dict):
+            item = {}
+        lines.append(
+            "| {side} | {trades} | {wins} | {losses} | {pnl} | {mean_r} |".format(
+                side=side.upper(),
+                trades=item.get("trades", 0),
+                wins=item.get("wins", 0),
+                losses=item.get("losses", 0),
+                pnl=item.get("net_pnl", "0"),
+                mean_r=item.get("mean_net_r"),
+            )
+        )
+
+    by_exit = raw.get("by_exit_reason", {})
+    if not isinstance(by_exit, dict):
+        by_exit = {}
+    if by_exit:
+        lines.extend(
+            [
+                "",
+                "| Post-fix exit reason | Trades | W | L | Net PnL | Mean R |",
+                "| --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for reason, item in sorted(by_exit.items()):
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| {reason} | {trades} | {wins} | {losses} | "
+                "{pnl} | {mean_r} |".format(
+                    reason=reason,
+                    trades=item.get("trades", 0),
+                    wins=item.get("wins", 0),
+                    losses=item.get("losses", 0),
+                    pnl=item.get("net_pnl", "0"),
+                    mean_r=item.get("mean_net_r"),
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            (
+                "_Boundary is trade open time, not close time. This cohort is "
+                "descriptive only and cannot reset, promote, or override any "
+                "prospective strategy/readiness gate._"
+            ),
+        ]
+    )
+    return lines
+
+
 def _closed_trade_stop_reentry_lines(raw: object) -> list[str]:
     lines = [
         "",
@@ -9855,6 +9971,11 @@ def render_live_status(
     lines.extend(
         _closed_trade_stop_reentry_lines(
             payload.get("closed_trade_stop_reentry")
+        )
+    )
+    lines.extend(
+        _post_freshness_paper_cohort_lines(
+            payload.get("post_freshness_paper_cohort")
         )
     )
     lines.extend(
