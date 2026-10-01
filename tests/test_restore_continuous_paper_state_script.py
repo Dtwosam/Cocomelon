@@ -214,10 +214,8 @@ def test_restore_script_retries_transient_packed_download(
     workflow_b64 = tmp_path / "retry-workflow.b64"
     workflow_b64.write_bytes(
         base64.b64encode(
-            (
-                "steps:\n"
-                "  - name: Pack durable continuous paper state\n"
-            ).encode("utf-8")
+            b"steps:\n"
+            b"  - name: Pack durable continuous paper state\n"
         )
     )
     counter = tmp_path / "artifact-attempts"
