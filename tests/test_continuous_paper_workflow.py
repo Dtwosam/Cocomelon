@@ -46,8 +46,10 @@ def test_continuous_paper_worker_is_long_running_and_self_chaining() -> None:
     assert 'EVENT_NAME: ${{ github.event_name }}' in source
     assert "SOURCE_RUN_ID" in source
     assert 'if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$SOURCE_RUN_ID" ]' in source
-    assert 'run.get("status") == "in_progress"' in source
-    assert 'run.get("status") in {"queued", "in_progress", "pending"}' not in source
+    assert (
+        'run.get("status") in {"queued", "pending", "in_progress"}'
+        in source
+    )
     assert "Queue exact successor from fast resume" in source
     assert "Queue fallback exact successor continuous paper worker" in source
     assert "\n  continue:\n" not in source
