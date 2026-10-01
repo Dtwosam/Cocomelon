@@ -1,0 +1,504 @@
+name: Profit-Lock Execution Shadow Ledger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/profit-lock-execution-ledger.yml"
+  workflow_run:
+    workflows:
+      - "Continuous Mainnet Paper Trader"
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed Continuous Mainnet Paper Trader run ID
+        required: true
+        type: string
+      source_run_attempt:
+        description: Exact source run attempt
+        required: true
+        default: "1"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: profit-lock-execution-ledger
+  cancel-in-progress: false
+
+jobs:
+  ledger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LEDGER_ISSUE: "721"
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: python -m pip install -e .
+
+      - name: Resolve exact source paper run
+        id: source
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt || '' }}
+          INPUT_RUN_ID: ${{ inputs.source_run_id || '' }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.source_run_attempt || '' }}
+        run: |
+          set -euo pipefail
+          echo "source_eligible=true" >> "$GITHUB_OUTPUT"
+          if [ "$EVENT_NAME" = "workflow_run" ] && [ "$EVENT_CONCLUSION" = "success" ]; then
+            run_id="$EVENT_RUN_ID"
+            run_attempt="$EVENT_RUN_ATTEMPT"
+            resolution_mode="successful_event"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            run_id="$INPUT_RUN_ID"
+            run_attempt="$INPUT_RUN_ATTEMPT"
+            resolution_mode="manual_exact"
+          else
+            runs_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/continuous-paper.yml/runs?branch=main&status=completed&per_page=50"
+            )"
+            read -r run_id run_attempt <<< "$(
+              printf '%s' "$runs_json" | python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in payload.get("workflow_runs", []):
+              if (
+                  run.get("path") == ".github/workflows/continuous-paper.yml"
+                  and run.get("head_branch") == "main"
+                  and run.get("status") == "completed"
+                  and run.get("conclusion") == "success"
+                  and (run.get("head_repository") or {}).get("full_name") == repo
+                  and isinstance(run.get("id"), int)
+                  and isinstance(run.get("run_attempt"), int)
+              ):
+                  print(run["id"], run["run_attempt"])
+                  break
+          '
+            )"
+            if [ "$EVENT_NAME" = "workflow_run" ]; then
+              resolution_mode="latest_successful_after_non_success_wake"
+            else
+              resolution_mode="latest_successful_push"
+            fi
+          fi
+          if [[ ! "$run_id" =~ ^[0-9]+$ || ! "$run_attempt" =~ ^[0-9]+$ ]]; then
+            echo "source paper run identity is invalid" >&2
+            exit 1
+          fi
+
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")"
+          head_sha="$(
+            printf '%s' "$run_json" |
+            SOURCE_ATTEMPT="$run_attempt" python -c '
+          import json, os, sys
+          run = json.load(sys.stdin)
+          if run.get("path") != ".github/workflows/continuous-paper.yml":
+              raise SystemExit("source workflow path mismatch")
+          if run.get("head_branch") != "main":
+              raise SystemExit("source run must be from main")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit("source run must be completed successfully")
+          if str(run.get("run_attempt")) != os.environ["SOURCE_ATTEMPT"]:
+              raise SystemExit("source run attempt mismatch")
+          if (run.get("head_repository") or {}).get("full_name") != os.environ["GITHUB_REPOSITORY"]:
+              raise SystemExit("source repository mismatch")
+          sha = run.get("head_sha")
+          if not isinstance(sha, str) or len(sha) != 40:
+              raise SystemExit("source head sha is invalid")
+          print(sha)
+          '
+          )"
+
+          artifact_name="continuous-paper-learning-source-$run_id-$run_attempt"
+          artifacts_json="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+          )"
+          artifact_line="$(
+            printf '%s' "$artifacts_json" |
+            ARTIFACT_NAME="$artifact_name" python -c '
+          import json, os, sys
+          payload = json.load(sys.stdin)
+          name = os.environ["ARTIFACT_NAME"]
+          matches = [
+              item
+              for item in payload.get("artifacts", [])
+              if item.get("name") == name
+              and item.get("expired") is False
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"expected exactly one non-expired source artifact named {name}"
+              )
+          item = matches[0]
+          digest = item.get("digest")
+          if not isinstance(digest, str) or not digest.startswith("sha256:"):
+              raise SystemExit("source artifact digest is missing or invalid")
+          print(item["id"], item["name"], digest, sep="\t")
+          '
+          )"
+          IFS=$'\t' read -r artifact_id artifact_name artifact_digest <<<"$artifact_line"
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "artifact_digest=$artifact_digest" >> "$GITHUB_OUTPUT"
+          echo "resolution_mode=$resolution_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Download compact paper source
+        if: ${{ steps.source.outputs.source_eligible == 'true' }}
+        id: compact
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.source.outputs.artifact_id }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/profit-lock-source
+          mkdir -p /tmp/profit-lock-source
+          gh api             "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip"             > /tmp/profit-lock-source.zip
+          unzip -q /tmp/profit-lock-source.zip -d /tmp/profit-lock-source
+
+          journal_path="$(
+            find /tmp/profit-lock-source -type f -name journal.sqlite3 -print -quit
+          )"
+          state_path="$(
+            find /tmp/profit-lock-source               -type f               -name profit-lock-execution-shadow-state.json               -print -quit
+          )"
+          if [ -z "$journal_path" ]; then
+            echo "compact paper source is missing journal.sqlite3" >&2
+            exit 1
+          fi
+          if [ -z "$state_path" ]; then
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "journal_path=$journal_path" >> "$GITHUB_OUTPUT"
+            echo "state_path=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -s "$state_path"
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "journal_path=$journal_path" >> "$GITHUB_OUTPUT"
+          echo "state_path=$state_path" >> "$GITHUB_OUTPUT"
+
+      - name: Publish waiting-for-state status
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible != 'true' }}
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+        run: |
+          cat > /tmp/profit-lock-ledger-status.md <<EOF
+          ## Profit-lock execution shadow ledger
+
+          **Status:** waiting for compact execution-shadow state
+
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - source resolution: \`$RESOLUTION_MODE\`
+          - reason: compact source predates export of \`profit-lock-execution-shadow-state.json\`
+
+          No visible-book execution outcome is credited from this run.
+
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE" \
+            -f body="$(cat /tmp/profit-lock-ledger-status.md)"
+
+      - name: Restore previous profit-lock execution ledger
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
+        id: previous
+        shell: bash
+        env:
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          previous_path=""
+          previous_workflow_run_id=""
+          runs_json="$(
+            gh api               "repos/$GITHUB_REPOSITORY/actions/workflows/profit-lock-execution-ledger.yml/runs?status=success&per_page=100"
+          )"
+          mapfile -t prior_runs < <(
+            jq -r               --arg current "$CURRENT_RUN_ID"               '.workflow_runs
+               | map(select((.id | tostring) != $current))
+               | sort_by(.updated_at)
+               | reverse
+               | .[].id'               <<<"$runs_json"
+          )
+          for run_id in "${prior_runs[@]}"; do
+            artifacts_json="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100"
+            )"
+            artifact_line="$(
+              jq -r '
+                .artifacts
+                | map(
+                    select(
+                      (.expired | not)
+                      and (
+                        .name
+                        | startswith("profit-lock-execution-ledger-")
+                      )
+                    )
+                  )
+                | if length > 0
+                  then [.[0].id, .[0].name] | @tsv
+                  else ""
+                  end
+              ' <<<"$artifacts_json"
+            )"
+            if [ -z "$artifact_line" ]; then
+              continue
+            fi
+            IFS=$'\t' read -r artifact_id artifact_name <<<"$artifact_line"
+            rm -rf /tmp/previous-profit-lock-ledger
+            mkdir -p /tmp/previous-profit-lock-ledger
+            gh api               "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip"               > /tmp/previous-profit-lock-ledger.zip
+            unzip -q               /tmp/previous-profit-lock-ledger.zip               -d /tmp/previous-profit-lock-ledger
+            candidate="$(
+              find /tmp/previous-profit-lock-ledger                 -type f                 -name profit-lock-execution-ledger.json                 -print -quit
+            )"
+            if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+              previous_path="$candidate"
+              previous_workflow_run_id="$run_id"
+              break
+            fi
+          done
+          echo "previous_path=$previous_path" >> "$GITHUB_OUTPUT"
+          echo "previous_workflow_run_id=$previous_workflow_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Extend append-only profit-lock execution ledger
+        if: ${{ steps.source.outputs.source_eligible == 'true' && steps.compact.outputs.eligible == 'true' }}
+        id: ledger
+        continue-on-error: true
+        shell: bash
+        env:
+          JOURNAL_PATH: ${{ steps.compact.outputs.journal_path }}
+          STATE_PATH: ${{ steps.compact.outputs.state_path }}
+          PREVIOUS_LEDGER_PATH: ${{ steps.previous.outputs.previous_path }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          SOURCE_ARTIFACT_NAME: ${{ steps.source.outputs.artifact_name }}
+          SOURCE_ARTIFACT_DIGEST: ${{ steps.source.outputs.artifact_digest }}
+        run: |
+          set +e
+          args=(
+            "$JOURNAL_PATH"
+            "$STATE_PATH"
+            --source-paper-run-id "$SOURCE_RUN_ID"
+            --source-paper-run-attempt "$SOURCE_RUN_ATTEMPT"
+            --source-artifact-name "$SOURCE_ARTIFACT_NAME"
+            --source-artifact-digest "$SOURCE_ARTIFACT_DIGEST"
+            --json-out profit-lock-execution-ledger.json
+          )
+          if [ -n "$PREVIOUS_LEDGER_PATH" ]; then
+            args+=(--previous "$PREVIOUS_LEDGER_PATH")
+          fi
+          python scripts/update_profit_lock_execution_ledger.py             "${args[@]}"             > /tmp/profit-lock-ledger.stdout.json             2> /tmp/profit-lock-ledger.error
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            cmp               profit-lock-execution-ledger.json               /tmp/profit-lock-ledger.stdout.json
+            echo "clean=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "clean=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "error<<EOF"
+              cat /tmp/profit-lock-ledger.error
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish blocked ledger status
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean != 'true'
+        shell: bash
+        env:
+          ERROR_TEXT: ${{ steps.ledger.outputs.error }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+        run: |
+          error="${ERROR_TEXT:-unknown error}"
+          cat > /tmp/profit-lock-ledger-status.md <<EOF
+          ## Profit-lock execution shadow ledger
+
+          **Status:** BLOCKED — append-only invariant failure
+
+          - source paper run: \`$SOURCE_RUN_ID\`
+          - source paper attempt: \`$SOURCE_RUN_ATTEMPT\`
+          - error: \`$error\`
+
+          No profit-lock execution evidence is published from this run.
+
+          **Execution authority:** \`false\`
+          **Promotion authority:** \`false\`
+          **LIVE TRADING: DISABLED.**
+          EOF
+          gh api             --method PATCH             -H "Accept: application/vnd.github+json"             "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE"             -f body="$(cat /tmp/profit-lock-ledger-status.md)"
+
+      - name: Fail closed on profit-lock execution ledger drift
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean != 'true'
+        shell: bash
+        run: |
+          echo "Profit-lock execution append-only ledger is blocked." >&2
+          exit 1
+
+      - name: Publish clean ledger status
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        shell: bash
+        env:
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+          SOURCE_RUN_ATTEMPT: ${{ steps.source.outputs.run_attempt }}
+          RESOLUTION_MODE: ${{ steps.source.outputs.resolution_mode }}
+          PREVIOUS_WORKFLOW_RUN_ID: ${{ steps.previous.outputs.previous_workflow_run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          ledger = json.loads(
+              Path("profit-lock-execution-ledger.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          readiness = ledger["readiness"]
+          economics = ledger["economic_robustness"]
+          candidate = ledger["candidate"]
+
+          def stamp(value):
+              return datetime.fromtimestamp(
+                  int(value) / 1000,
+                  tz=UTC,
+              ).isoformat()
+
+          previous = os.environ["PREVIOUS_WORKFLOW_RUN_ID"] or "none"
+          lines = [
+              "## Profit-lock execution shadow ledger",
+              "",
+              "**Status:** append-only clean",
+              "",
+              f"- frozen execution-shadow start: `{stamp(candidate['started_at_ms'])}`",
+              f"- state schema: `{candidate['state_schema_version']}`",
+              f"- source paper run / attempt: `{os.environ['SOURCE_RUN_ID']} / {os.environ['SOURCE_RUN_ATTEMPT']}`",
+              f"- source resolution: `{os.environ['RESOLUTION_MODE']}`",
+              f"- previous ledger workflow run: `{previous}`",
+              f"- outcomes / previous / newly appended: `{ledger['row_count']} / {ledger['previous_row_count']} / {ledger['new_row_count']}`",
+              f"- rows SHA-256: `{ledger['rows_sha256']}`",
+              f"- ledger SHA-256: `{ledger['ledger_sha256']}`",
+              f"- lineage mismatches / orphaned restored positions: `{readiness['lineage_mismatch_closed_trades']} / {readiness['orphaned_restored_positions']}`",
+              f"- all rules ready for review: `{readiness['all_rules_ready_for_review']}`",
+              "",
+              "### Rule evidence",
+              "",
+              "| Rule | Evaluated | Activated | Triggered | Full closes | Incomplete | Missing E/A/T/F | Delta PnL | Delta R | LOTO trade robust | LOTO market robust | Status |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- | --- | --- |",
+          ]
+          readiness_by_rule = {
+              item["rule_id"]: item
+              for item in readiness["rules"]
+          }
+          summary_by_rule = {
+              item["rule_id"]: item
+              for item in ledger["summary"]["rules"]
+          }
+          for rule_id in (
+              "breakeven_after_0_5r",
+              "lock_0_5r_after_1r",
+          ):
+              item = readiness_by_rule[rule_id]
+              summary = summary_by_rule[rule_id]
+              robust = economics[rule_id]
+              missing = (
+                  f"{item['missing_evaluated_trades']}/"
+                  f"{item['missing_activated_trades']}/"
+                  f"{item['missing_triggered_trades']}/"
+                  f"{item['missing_simulated_full_closes']}"
+              )
+              lines.append(
+                  "| {rule} | {evaluated} | {activated} | {triggered} | "
+                  "{full} | {incomplete} | {missing} | {pnl} | {net_r} | "
+                  "{trade_robust} | {market_robust} | {status} |".format(
+                      rule=rule_id,
+                      evaluated=item["economically_evaluated_trades"],
+                      activated=item["activated_trades"],
+                      triggered=item["triggered_trades"],
+                      full=item["simulated_full_closes"],
+                      incomplete=item["triggered_incomplete"],
+                      missing=missing,
+                      pnl=summary["delta_net_pnl_estimate"],
+                      net_r=robust["delta_net_r"],
+                      trade_robust=robust[
+                          "positive_after_removing_any_one_trade"
+                      ],
+                      market_robust=robust[
+                          "positive_after_removing_any_one_market"
+                      ],
+                      status=item["status"],
+                  )
+              )
+          lines.extend(
+              [
+                  "",
+                  "Volume readiness is the pre-existing review gate. Economic and leave-one-out fields are descriptive diagnostics and do not grant promotion or execution authority.",
+                  "",
+                  "**Execution authority:** `false`",
+                  "**Promotion authority:** `false`",
+                  "**LIVE TRADING: DISABLED.**",
+              ]
+          )
+          Path("/tmp/profit-lock-ledger-status.md").write_text(
+              "\n".join(lines) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          gh api \
+            --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/issues/$LEDGER_ISSUE" \
+            -f body="$(cat /tmp/profit-lock-ledger-status.md)"
+
+      - name: Upload profit-lock execution ledger
+        if: >-
+          steps.source.outputs.source_eligible == 'true' &&
+          steps.compact.outputs.eligible == 'true' &&
+          steps.ledger.outputs.clean == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: profit-lock-execution-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: profit-lock-execution-ledger.json
+          if-no-files-found: error
+          retention-days: 90
