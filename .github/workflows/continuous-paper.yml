@@ -601,6 +601,33 @@ jobs:
                       f"{fill.get('full_fill_options', 0)} / "
                       f"{fill.get('partial_fill_options', 0)}"
                   )
+              exit_fill = payload.get("exit_fill", {})
+              if isinstance(exit_fill, dict):
+                  print(
+                      "- replacement exit fills modeled: "
+                      f"{exit_fill.get('replacement_exit_fills_modeled', False)}"
+                  )
+              realized = payload.get("realized_pnl", {})
+              if isinstance(realized, dict):
+                  print(
+                      "- exact realized option-horizons / available: "
+                      f"{realized.get('exact_realized_pnl_option_horizons', 0)} / "
+                      f"{realized.get('exact_realized_pnl_available', False)}"
+                  )
+                  by_horizon = realized.get("by_horizon", {})
+                  if isinstance(by_horizon, dict):
+                      for horizon, item in sorted(
+                          by_horizon.items(),
+                          key=lambda row: int(row[0]),
+                      ):
+                          if not isinstance(item, dict):
+                              continue
+                          print(
+                              f"- horizon {horizon}ms exact options / PnL: "
+                              f"{item.get('exact_realized_pnl_options', 0)} / "
+                              f"{item.get('exact_realized_pnl', '0')}"
+                          )
+              print("- cross-horizon economics aggregated: false")
               print("- portfolio counterfactual: false (one-hop sensitivity only)")
           PY
 

@@ -3669,9 +3669,11 @@ The new audit is deliberately one-hop and conservative:
 - the replacement opportunity must have complete, fresh rank evidence and must pass the frozen combined, two-strike, and zero-strike momentum entry rules at its own decision timestamp;
 - a capacity release receives credit only when the occupied baseline position is proven by opening lineage and closed-trade identity to be one the same frozen entry stack would have blocked;
 - missing feature evidence, stale or missing rank evidence, unresolved open release positions, and missing stack decision maps are explicit integrity misses rather than guessed;
-- for proven releases, the existing captured risk request, account state, L2 book, execution config, and single-position removal accounting are reused to test conservative risk approval, order planning, and IOC replacement-entry fillability.
+- for proven releases, the existing captured risk request, account state, L2 book, execution config, and single-position removal accounting are reused to test conservative risk approval, order planning, and IOC replacement-entry fillability;
+- fillable replacements are then evaluated against the already captured fixed-horizon exit books using the same paper execution model;
+- fee-adjusted realized PnL becomes exact for a horizon only when the replacement fully closes and every crossed hourly funding boundary has complete captured funding evidence.
 
-The audit does **not** recursively simulate a new alternate portfolio, does not assume replacement exits, and does not claim replacement or portfolio PnL. Entry-fill simulation failures are isolated from the causal release-lineage result.
+The audit does **not** recursively simulate a new alternate portfolio and never aggregates economics across exit horizons. Replacement-entry, replacement-exit, and funding failures are isolated by layer. It still does not claim strategy-level or complete portfolio PnL.
 
 The output is written only at paper-worker completion as `prospective-full-stack-capacity-reflow-summary.json` and is included in the compact learning artifact.
 

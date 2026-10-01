@@ -2316,6 +2316,8 @@ def _prospective_full_stack_capacity_reflow_payload(
     combined_summary: dict[str, object],
     two_strike_summary: dict[str, object],
     momentum_summary: dict[str, object],
+    exit_book_store: ContinuousPaperOpeningOpportunityExitBookStore,
+    funding_store: ContinuousPaperReplacementFundingStore,
     config: PaperExecutionConfig,
     *,
     position_history_loader: Callable[
@@ -2375,14 +2377,84 @@ def _prospective_full_stack_capacity_reflow_payload(
         fill["enabled"] = True
         fill["error"] = None
 
+    if fill.get("enabled") is True:
+        try:
+            exit_fill = evaluate_prospective_capacity_reflow_exit_fill(
+                fill,
+                exit_book_store,
+                config,
+            )
+        except Exception as exc:
+            exit_fill = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "replacement_exit_fills_modeled": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            exit_fill = dict(exit_fill)
+            exit_fill["enabled"] = True
+            exit_fill["error"] = None
+    else:
+        exit_fill = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "replacement_exit_fills_modeled": False,
+            "error": "replacement entry fill evidence unavailable",
+        }
+
+    if exit_fill.get("enabled") is True:
+        try:
+            realized_pnl = (
+                evaluate_prospective_capacity_reflow_realized_pnl(
+                    exit_fill,
+                    funding_store,
+                )
+            )
+        except Exception as exc:
+            realized_pnl = {
+                "enabled": False,
+                "research_only": True,
+                "execution_authority": False,
+                "promotion_authority": False,
+                "strategy_level_realized_pnl_claimed": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        else:
+            realized_pnl = dict(realized_pnl)
+            realized_pnl["enabled"] = True
+            realized_pnl["error"] = None
+    else:
+        realized_pnl = {
+            "enabled": False,
+            "research_only": True,
+            "execution_authority": False,
+            "promotion_authority": False,
+            "strategy_level_realized_pnl_claimed": False,
+            "error": "replacement exit-fill evidence unavailable",
+        }
+
     payload = dict(evaluation.summary)
     payload["enabled"] = True
     payload["fill_feasibility"] = fill
+    payload["exit_fill"] = exit_fill
+    payload["realized_pnl"] = realized_pnl
     payload["replacement_entries_modeled"] = (
         fill.get("enabled") is True
     )
-    payload["replacement_exits_modeled"] = False
-    payload["pnl_modeled"] = False
+    payload["replacement_exits_modeled"] = (
+        exit_fill.get("enabled") is True
+    )
+    payload["pnl_modeled"] = realized_pnl.get("enabled") is True
+    payload["exact_realized_pnl_available"] = (
+        realized_pnl.get("exact_realized_pnl_available") is True
+    )
+    payload["cross_horizon_economics_aggregated"] = False
+    payload["strategy_level_realized_pnl_claimed"] = False
     payload["error"] = None
     return payload
 
@@ -7176,6 +7248,8 @@ async def run_continuous_paper_session(
                 full_stack_combined,
                 full_stack_two_strike,
                 full_stack_momentum,
+                opening_opportunity_exit_book_store,
+                replacement_funding_store,
                 replay_config.execution,
                 position_history_loader=lambda plan_id, through_ms: (
                     execution.store.load_position_history(
