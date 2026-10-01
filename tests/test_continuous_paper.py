@@ -45,6 +45,7 @@ from cocomelon.continuous_paper import (
     _entry_markout_predictiveness_payload,
     _excursion_timing_payload,
     _iter_until_stop,
+    _l2_event_fresh_for_promotion,
     _load_checkpoint,
     _opening_fill_liquidity_payload,
     _opening_rank_attribution_payload,
@@ -683,6 +684,57 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "pipeline.reconcile_markets(selected)" in window
     assert "event.kind is StreamKind.L2_BOOK" in source
     assert "required_market_keys <= ready" in source
+
+def test_l2_rotation_promotion_requires_fresh_exchange_timestamp() -> None:
+    receive = datetime.fromtimestamp(10, tz=UTC)
+    fresh = StreamEvent(
+        kind=StreamKind.L2_BOOK,
+        market=MarketId("", "BTC"),
+        exchange_time_ms=9_999,
+        receive_time=receive,
+        schema_version=1,
+        source="test",
+        event_key="fresh-book",
+        payload={"bids": (), "asks": ()},
+    )
+    stale = StreamEvent(
+        kind=StreamKind.L2_BOOK,
+        market=MarketId("", "BTC"),
+        exchange_time_ms=4_000,
+        receive_time=receive,
+        schema_version=1,
+        source="test",
+        event_key="stale-book",
+        payload={"bids": (), "asks": ()},
+    )
+
+    assert _l2_event_fresh_for_promotion(
+        fresh,
+        max_book_age_ms=5_000,
+    )
+    assert not _l2_event_fresh_for_promotion(
+        stale,
+        max_book_age_ms=5_000,
+    )
+
+
+def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
+    source = Path("src/cocomelon/continuous_paper.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "supervisor.stale_l2_streams(now_ms=now_ms)" in source
+    assert "all_required_l2_stale(" in source
+    assert "pump.stale_l2_recovery_attempts += 1" in source
+    assert "pump.stale_l2_recovery_promotions += 1" in source
+    assert "stale_l2_recovery_readiness_failures += 1" in source
+    assert (
+        "stale_after_ms=(\n"
+        "                        replay_config.eligibility.max_book_age_ms"
+        in source
+    )
+    assert "_l2_event_fresh_for_promotion(" in source
+
 
 def test_continuous_config_requires_aligned_refresh_interval() -> None:
     with pytest.raises(ValueError, match="divisible"):
