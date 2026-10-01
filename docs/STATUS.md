@@ -3630,6 +3630,8 @@ A filled shadow option is **not** made immutable while any fixed forward mark is
 
 Previously published terminal rows must remain equivalent after canonicalization. Freeze/rule/source-artifact drift blocks publication instead of rewriting history.
 
+Before clean data exists, each fixed cooldown window has a precommitted evidence-review bar: at least 20 settled one-hour options, at least 5 LONG and 5 SHORT settled options, at least 4 markets, positive fee-adjusted one-hour PnL and size-normalized fee-adjusted directional return, and positive leave-one-option / leave-one-market robustness in both units. Passing this bar authorizes evidence review only; it does not authorize shortening the live or paper risk cooldown, and realized-exit evidence would still be required for such a proposal.
+
 **Execution authority:** `false`  
 **Promotion authority:** `false`  
 **Changes risk limits:** `false`  
