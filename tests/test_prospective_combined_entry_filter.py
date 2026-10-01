@@ -46,6 +46,7 @@ def _trade(
     direction: Direction,
     opened_at_ms: int,
     pnl: str,
+    market: str = "SOL",
 ) -> TradeJournalEntry:
     value = Decimal(pnl)
     entry = Decimal("100")
@@ -55,7 +56,7 @@ def _trade(
         else entry - value
     )
     return TradeJournalEntry(
-        market=MARKET,
+        market=MarketId("", market),
         direction=direction,
         opened_at_ms=opened_at_ms,
         closed_at_ms=opened_at_ms + 60_000,
@@ -609,3 +610,124 @@ def test_combined_block_reason_is_reusable_for_observed_opportunities() -> None:
         )
         is None
     )
+
+
+def test_combined_filter_requires_profitable_robust_economics(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        for index in range(30):
+            allowed = index < 20
+            market = "SOL" if index % 2 == 0 else "ETH"
+            direction = (
+                Direction.LONG
+                if index % 2 == 0
+                else Direction.SHORT
+            )
+            trade = _trade(
+                suffix=f"economic-ready-{index}",
+                direction=direction,
+                opened_at_ms=120_000 + index * 120_000,
+                pnl="2" if allowed else "-1",
+                market=market,
+            )
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy="breakout")
+            )
+            ranks.record(
+                _rank(
+                    trade,
+                    ordinal=4 if allowed else 15,
+                )
+            )
+
+        result = evaluate_prospective_combined_entry_filter(
+            journal,
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(
+                started_at_ms=100_000
+            ),
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["candidate_profitable"] is True
+    assert readiness["improvement_positive"] is True
+    assert readiness["candidate_single_trade_robust"] is True
+    assert readiness["candidate_single_market_robust"] is True
+    assert readiness["delta_single_trade_robust"] is True
+    assert readiness["delta_single_market_robust"] is True
+    assert readiness["economics_positive"] is True
+    assert readiness["single_trade_robust"] is True
+    assert readiness["single_market_robust"] is True
+    assert readiness["ready_for_review"] is True
+    assert result["candidate_trade_contribution_pnl"] == "40"
+    assert result["delta_trade_contribution_pnl"] == "10"
+    assert result["candidate_net_r"] == "4.0"
+    assert result["delta_net_r"] == "1.0"
+
+
+def test_combined_filter_rejects_less_bad_losing_candidate(
+    tmp_path: Path,
+) -> None:
+    journal = JournalStore(tmp_path / "journal.sqlite3")
+    facts = EvaluationFactStore(tmp_path / "facts.sqlite3")
+    ranks = ContinuousPaperOpeningRankStore(
+        tmp_path / "opening-ranks"
+    )
+    try:
+        for index in range(30):
+            allowed = index < 20
+            market = "SOL" if index % 2 == 0 else "ETH"
+            trade = _trade(
+                suffix=f"economic-losing-{index}",
+                direction=(
+                    Direction.LONG
+                    if index % 2 == 0
+                    else Direction.SHORT
+                ),
+                opened_at_ms=120_000 + index * 120_000,
+                pnl="-1" if allowed else "-2",
+                market=market,
+            )
+            journal.record_trade(trade)
+            facts.record_decision_fact(
+                _fact(trade, lead_strategy="breakout")
+            )
+            ranks.record(
+                _rank(
+                    trade,
+                    ordinal=4 if allowed else 15,
+                )
+            )
+
+        result = evaluate_prospective_combined_entry_filter(
+            journal,
+            facts,
+            ranks,
+            ProspectiveCombinedEntryFilterState(
+                started_at_ms=100_000
+            ),
+        )
+    finally:
+        facts.close()
+        journal.close()
+
+    readiness = result["readiness"]
+    assert isinstance(readiness, dict)
+    assert readiness["candidate_profitable"] is False
+    assert readiness["improvement_positive"] is True
+    assert readiness["economics_positive"] is False
+    assert readiness["ready_for_review"] is False
+    assert result["candidate_trade_contribution_pnl"] == "-20"
+    assert result["delta_trade_contribution_pnl"] == "20"
