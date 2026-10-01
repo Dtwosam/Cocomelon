@@ -3882,3 +3882,14 @@ The paper runtime now refreshes REST market context every **30 seconds** while p
 The operational success criterion is that future decision epochs regain rankable markets without changing the stale-context threshold.
 
 **LIVE TRADING: DISABLED.**
+
+
+### REST context response-time provenance — 2026-10-01
+
+The paper context refresh path now timestamps `metaAndAssetCtxs` snapshots when the HTTP response is actually received, not before the request begins.
+
+This removes artificial context aging from network latency and retry time. A slow but successful response can therefore no longer consume part of the existing 60-second freshness budget before its data even enters the replay pipeline.
+
+The 30-second polling cadence and the 60-second stale-context rejection ceiling remain unchanged. No eligibility threshold, strategy rule, risk limit, sizing rule, stop, readiness gate, promotion state, or live-order authority is relaxed.
+
+**LIVE TRADING: DISABLED.**
