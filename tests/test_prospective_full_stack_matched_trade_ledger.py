@@ -405,3 +405,33 @@ def test_full_stack_ledger_does_not_call_less_bad_profitable() -> None:
     assert readiness["improvement_positive"] is True
     assert readiness["candidate_profitable"] is False
     assert readiness["ready_for_evidence_review"] is False
+
+
+def test_full_stack_ledger_rejects_semantically_corrupt_stored_row() -> None:
+    trade = _trade(
+        "corrupt",
+        opened_at_ms=START + 1_000,
+        pnl="-8",
+    )
+    decisions = {trade.trade_id: _block_decision()}
+    ledger = update_full_stack_matched_trade_ledger(
+        (trade,),
+        _summary((trade,), decisions),
+        previous=None,
+        source_paper_run_id=70,
+        source_paper_run_attempt=1,
+        source_artifact_name="learning-70-1",
+        source_artifact_digest=_digest("4"),
+    )
+    corrupt = deepcopy(ledger)
+    rows = list(corrupt["rows"])
+    row = dict(rows[0])
+    row["full_stack_delta_net_pnl"] = "999"
+    rows[0] = row
+    corrupt["rows"] = rows
+
+    with pytest.raises(
+        ProspectiveFullStackMatchedTradeLedgerError,
+        match="stored derived economics do not reconcile",
+    ):
+        validate_full_stack_matched_trade_ledger(corrupt)
