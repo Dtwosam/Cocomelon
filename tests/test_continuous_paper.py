@@ -53,6 +53,7 @@ from cocomelon.continuous_paper import (
     _position_action_payload,
     _position_protection_metrics,
     _profit_lock_counterfactual_payload,
+    _refresh_native_market_snapshots,
     _prospective_candidate_stack_overlap_payload,
     _prospective_combined_entry_filter_payload,
     _prospective_consecutive_loss_cooldown_shadow_payload,
@@ -815,6 +816,53 @@ def test_runtime_recovers_only_systemically_stale_l2_group() -> None:
         in source
     )
     assert "_l2_event_fresh_for_promotion(" in source
+
+
+def test_context_refresh_timestamps_response_receipt() -> None:
+    order: list[str] = []
+
+    class Reader:
+        def meta_and_asset_ctxs(self, dex: str = "") -> object:
+            assert dex == ""
+            order.append("response")
+            return [
+                {
+                    "universe": [
+                        {
+                            "name": "BTC",
+                            "szDecimals": 5,
+                            "maxLeverage": 40,
+                        }
+                    ]
+                },
+                [
+                    {
+                        "dayNtlVlm": "1000000",
+                        "funding": "0.00001",
+                        "markPx": "65000",
+                        "midPx": "65000",
+                        "openInterest": "100",
+                        "oraclePx": "65000",
+                        "premium": "0",
+                        "prevDayPx": "64000",
+                    }
+                ],
+            ]
+
+    def clock_ms() -> int:
+        order.append("clock")
+        return 10_500
+
+    snapshots, received_at_ms = asyncio.run(
+        _refresh_native_market_snapshots(
+            Reader(),  # type: ignore[arg-type]
+            clock_ms=clock_ms,
+        )
+    )
+
+    assert order == ["response", "clock"]
+    assert received_at_ms == 10_500
+    assert snapshots["BTC"].received_at_ms == 10_500
 
 
 def test_continuous_context_poll_has_freshness_headroom() -> None:
