@@ -683,7 +683,7 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     assert "forward_gaps=False" in window
     assert "replacement_group.forward_gaps.set()" in window
     assert "pipeline.reconcile_markets(selected)" in window
-    assert "event.kind is StreamKind.L2_BOOK" in source
+    assert "_l2_event_fresh_for_promotion(" in source
     assert "required_market_keys <= ready" in source
 
 def test_stale_l2_gap_revokes_rotation_readiness() -> None:
