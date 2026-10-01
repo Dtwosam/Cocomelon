@@ -8922,6 +8922,9 @@ def _render_operational_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    cooldown = payload.get("consecutive_loss_cooldown", {})
+    if not isinstance(cooldown, dict):
+        cooldown = {}
     eligibility = payload.get("session_eligibility", {})
     if not isinstance(eligibility, dict):
         eligibility = {}
@@ -9159,6 +9162,18 @@ def _render_operational_live_status(
                 "- risk reasons: "
                 f"{_reason_summary(risk.get('reason_counts', {}))}"
             ),
+            (
+                "- consecutive losses / threshold: "
+                f"{cooldown.get('consecutive_losses', 0)} / "
+                f"{cooldown.get('threshold', 0)}"
+            ),
+            (
+                "- loss cooldown active / elapsed / remaining / configured: "
+                f"{str(bool(cooldown.get('active'))).lower()} / "
+                f"{cooldown.get('elapsed_since_last_close_ms')} / "
+                f"{cooldown.get('remaining_ms')} / "
+                f"{cooldown.get('cooldown_ms')}ms"
+            ),
             "",
             "### Runtime",
             "",
@@ -9214,6 +9229,9 @@ def render_live_status(
     risk = payload.get("session_risk", {})
     if not isinstance(risk, dict):
         risk = {}
+    cooldown = payload.get("consecutive_loss_cooldown", {})
+    if not isinstance(cooldown, dict):
+        cooldown = {}
     eligibility = payload.get("session_eligibility", {})
     if not isinstance(eligibility, dict):
         eligibility = {}
@@ -9959,6 +9977,18 @@ def render_live_status(
             (
                 "- risk reasons: "
                 f"`{_reason_summary(risk.get('reason_counts', {}))}`"
+            ),
+            (
+                "- consecutive losses / threshold: "
+                f"`{cooldown.get('consecutive_losses', 0)} / "
+                f"{cooldown.get('threshold', 0)}`"
+            ),
+            (
+                "- loss cooldown active / elapsed / remaining / configured: "
+                f"`{str(bool(cooldown.get('active'))).lower()} / "
+                f"{cooldown.get('elapsed_since_last_close_ms')} / "
+                f"{cooldown.get('remaining_ms')} / "
+                f"{cooldown.get('cooldown_ms')}ms`"
             ),
             "",
         ]
