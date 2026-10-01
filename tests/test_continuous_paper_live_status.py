@@ -6442,7 +6442,7 @@ def test_candidate_stack_overlap_renderer_exposes_incremental_value() -> None:
     )
 
     assert "Prospective candidate stack overlap" in output
-    assert "`4 / 4`" in output
+    assert "`1000 / 4 / 4`" in output
     assert "| Both block | 1 | 0 | 1 | -10 | -1 |" in output
     assert "| Combined only | 1 | 1 | 0 | 4 | 0.4 |" in output
     assert "| Two-strike only | 1 | 0 | 1 | -6 | -0.6 |" in output
