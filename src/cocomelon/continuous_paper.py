@@ -247,11 +247,11 @@ from cocomelon.research.profit_lock_readiness import (
     MIN_TRIGGERED_TRADES_PER_RULE,
     profit_lock_readiness,
 )
-from cocomelon.research.prospective_candidate_stack_overlap import (
-    prospective_candidate_stack_overlap_summary,
-)
 from cocomelon.research.prospective_breakeven_profit_lock import (
     ProspectiveBreakevenProfitLockState,
+)
+from cocomelon.research.prospective_candidate_stack_overlap import (
+    prospective_candidate_stack_overlap_summary,
 )
 from cocomelon.research.prospective_capacity_reflow_exit_fill import (
     evaluate_prospective_capacity_reflow_exit_fill,
