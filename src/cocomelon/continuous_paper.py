@@ -1234,6 +1234,23 @@ class _ContinuousEntryMidMarkoutSink:
         return payload
 
 
+def _revoke_stale_l2_readiness(
+    ready_market_keys: set[str],
+    gap: DataGap,
+    *,
+    required_market_keys: frozenset[str],
+) -> None:
+    if (
+        not gap.is_open
+        or gap.reason != "stale"
+        or not gap.stream_id.startswith("l2Book:")
+    ):
+        return
+    market = gap.stream_id.removeprefix("l2Book:")
+    if market in required_market_keys:
+        ready_market_keys.discard(market)
+
+
 def _l2_event_fresh_for_promotion(
     event: StreamEvent,
     *,
@@ -7470,6 +7487,11 @@ async def run_continuous_paper_session(
                     gap: DataGap,
                     lane: int = lane,
                 ) -> None:
+                    _revoke_stale_l2_readiness(
+                        ready_market_keys[lane],
+                        gap,
+                        required_market_keys=required_market_keys,
+                    )
                     await mux.on_gap(lane, gap)
 
                 supervisor = WebSocketSupervisor(
