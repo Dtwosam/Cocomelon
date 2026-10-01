@@ -664,8 +664,14 @@ def test_rotation_promotes_replacement_before_retiring_previous() -> None:
     source = Path("src/cocomelon/continuous_paper.py").read_text(
         encoding="utf-8"
     )
+    rotation_guard_index = source.index(
+        "if (\n"
+        "                    not systemically_unhealthy_l2\n"
+        "                    and now_ms >= next_selection_refresh_ms"
+    )
     start_index = source.index(
-        "replacement_group = await start_supervisors("
+        "replacement_group = await start_supervisors(",
+        rotation_guard_index,
     )
     readiness_index = source.index(
         "await _wait_supervisor_group_ready(",
